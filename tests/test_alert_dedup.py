@@ -55,6 +55,11 @@ TEST_CONFIG = {
             "RETRIGGER_PERCENT": 2.0,
             "REARM_PERCENT": 3.0,
         },
+        "TRAP_MONITOR_ALERTS": {
+            "COOLDOWN_MINUTES": 120.0,
+            "RETRIGGER_PERCENT": 3.0,
+            "REARM_PERCENT": 5.0,
+        },
     }
 }
 
@@ -197,6 +202,19 @@ class TestDedupSettings:
         assert s["retrigger_percent"] == 1.0
         assert s["rearm_percent"] == 1.5
 
+    def test_trap_monitor_reads_trap_monitor_alerts_block(self, orch):
+        # TrapMonitor must use its own dedicated block, not silently inherit MACRO_ALERTS.
+        orch.config = {
+            "NOTIFICATIONS": {
+                "TRAP_MONITOR_ALERTS": {"COOLDOWN_MINUTES": 90.0, "RETRIGGER_PERCENT": 3.0, "REARM_PERCENT": 5.0},
+                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 999.0},  # must NOT be used
+            }
+        }
+        s = orch._dedup_settings("TrapMonitor")
+        assert s["cooldown_minutes"] == 90.0
+        assert s["retrigger_percent"] == 3.0
+        assert s["rearm_percent"] == 5.0
+
     def test_missing_key_uses_safe_fallback(self, orch):
         orch.config = {"NOTIFICATIONS": {"CRASH_ALERTS": {}}}
         s = orch._dedup_settings("Crash")
@@ -219,11 +237,20 @@ class TestEvaluateAlertGateCrash:
         """Case 1: no row exists → gate clears the alert."""
         assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn) is False
 
-    def test_case1b_stale_row_from_yesterday_fires(self, orch, db_conn):
-        """Case 1b: row exists but belongs to a prior trading day → treat as new day."""
+    def test_case1b_stale_row_from_yesterday_same_price_suppressed(self, orch, db_conn):
+        """Regression: a UTC day rollover must NOT auto-fire an unchanged condition carried
+        over from a prior day - only genuine deterioration should retrigger it."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, YESTERDAY + " 10:00:00", 0, YESTERDAY)
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn) is False
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn) is True
+
+    def test_case1b_stale_row_from_yesterday_worsened_fires(self, orch, db_conn):
+        """A condition carried over from a prior day still fires once cooldown has elapsed
+        AND the price has genuinely worsened further."""
+        fp = orch._condition_fingerprint(CRASH_REASON)
+        _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, YESTERDAY + " 10:00:00", 0, YESTERDAY)
+        # 100 → 97 = -3% further decline, exceeds RETRIGGER 2.0%; cooldown (>1 day) long elapsed
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 97.0, CRASH_REASON, db_conn) is False
 
     def test_case2_different_fingerprint_fires(self, orch, db_conn):
         """Case 2: a different condition class fires even if still in cooldown."""
@@ -314,6 +341,39 @@ class TestEvaluateAlertGateMoonshot:
 
     def test_moonshot_no_prior_state_fires(self, orch, db_conn):
         assert orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 150.0, MOON_REASON, db_conn) is False
+
+
+class TestEvaluateAlertGateTrapMonitor:
+    """TrapMonitor passes ema_distance (an already-signed percentage) instead of a price,
+    so worsening/recovery is a raw point delta, not a relative pct-of-pct change."""
+
+    TRAP_REASON = "TRAP MONITOR ACTIVE SELLOFF"
+
+    def test_no_prior_state_fires(self, orch, db_conn):
+        assert orch._evaluate_alert_gate("TrapMonitor", TEST_TICKER, -4.5, self.TRAP_REASON, db_conn) is False
+
+    def test_unchanged_ema_distance_stays_suppressed(self, orch, db_conn):
+        """No new data (ema_distance essentially unchanged) must not retrigger."""
+        fp = orch._condition_fingerprint(self.TRAP_REASON)
+        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("TrapMonitor", TEST_TICKER, fp, -4.5, old_ts, 0, TODAY)
+        assert orch._evaluate_alert_gate("TrapMonitor", TEST_TICKER, -4.53, self.TRAP_REASON, db_conn) is True
+
+    def test_deeper_ema_breach_past_cooldown_fires(self, orch, db_conn):
+        fp = orch._condition_fingerprint(self.TRAP_REASON)
+        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("TrapMonitor", TEST_TICKER, fp, -4.5, old_ts, 0, TODAY)
+        # -4.5 → -8.0 = 3.5-point deeper breach, exceeds TRAP_MONITOR_ALERTS RETRIGGER (3.0 points)
+        assert orch._evaluate_alert_gate("TrapMonitor", TEST_TICKER, -8.0, self.TRAP_REASON, db_conn) is False
+
+    def test_recovery_suppresses_and_rearms(self, orch, db_conn):
+        fp = orch._condition_fingerprint(self.TRAP_REASON)
+        _seed_alert_state("TrapMonitor", TEST_TICKER, fp, -4.5, TODAY + " 10:00:00", 0, TODAY)
+        # -4.5 → +1.0 = 5.5-point recovery, exceeds REARM (5.0 points)
+        result = orch._evaluate_alert_gate("TrapMonitor", TEST_TICKER, 1.0, self.TRAP_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("TrapMonitor", TEST_TICKER)
+        assert row["armed"] == 1
 
 
 # ── record_alert_fired ────────────────────────────────────────────────────────

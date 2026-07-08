@@ -180,6 +180,8 @@ class IntradayOrchestrator:
             key = "AI_CONTAGION"
         elif engine == "MarketStress":
             key = "MARKET_STRESS_ALERTS"
+        elif engine == "TrapMonitor":
+            key = "TRAP_MONITOR_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})
@@ -212,8 +214,8 @@ class IntradayOrchestrator:
             )
             row = cursor.fetchone()
 
-            # Case 1: nothing on record for today.
-            if row is None or row["state_date"] != today:
+            # Case 1: never fired before for this ticker/engine.
+            if row is None:
                 return False  # fire
 
             # Case 2: a different condition class -> treat as a new event.
@@ -229,19 +231,25 @@ class IntradayOrchestrator:
             if current_price is None or last_price in (None, 0):
                 return True  # can't compare; stay safe and suppress
 
-            pct_change = (current_price - last_price) / last_price * 100.0
-            if engine == "Crash":
-                # Crash: price falling further is worsening; rising back is recovery.
-                worsened_pct = -pct_change
-                recovered_pct = pct_change
-            elif engine == "Moonshot":
-                # Moonshot: price rising further is worsening; falling back is recovery.
-                worsened_pct = pct_change
-                recovered_pct = -pct_change
+            if engine == "TrapMonitor":
+                # current_price carries ema_distance (already a signed %) here, not a price —
+                # compare the raw point delta rather than a relative pct-of-pct.
+                worsened_pct = last_price - current_price
+                recovered_pct = current_price - last_price
             else:
-                # Macro (yield surge): yield rising further is worsening; falling back is recovery.
-                worsened_pct = pct_change
-                recovered_pct = -pct_change
+                pct_change = (current_price - last_price) / last_price * 100.0
+                if engine == "Crash":
+                    # Crash: price falling further is worsening; rising back is recovery.
+                    worsened_pct = -pct_change
+                    recovered_pct = pct_change
+                elif engine == "Moonshot":
+                    # Moonshot: price rising further is worsening; falling back is recovery.
+                    worsened_pct = pct_change
+                    recovered_pct = -pct_change
+                else:
+                    # Macro (yield surge): yield rising further is worsening; falling back is recovery.
+                    worsened_pct = pct_change
+                    recovered_pct = -pct_change
 
             # Case 4a: event materially reversed — re-arm for a future breach, stay silent now.
             if recovered_pct >= settings["rearm_percent"]:

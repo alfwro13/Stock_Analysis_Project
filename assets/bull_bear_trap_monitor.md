@@ -171,7 +171,7 @@ Capitulation: {level} | Wyckoff: {level}
 ```
 
 ### Deduplication
-Uses the existing `alert_state` table with `engine = "TrapMonitor"`. Alert gating is handled by `IntradayOrchestrator._evaluate_alert_gate()` — the same dedup logic used by crash/moonshot alerts. Cooldown, retrigger, and rearm thresholds are configurable (see Section 7).
+Uses the existing `alert_state` table with `engine = "TrapMonitor"`. Alert gating is handled by `IntradayOrchestrator._evaluate_alert_gate()` — the same dedup logic used by crash/moonshot alerts, resolved via its own `NOTIFICATIONS.TRAP_MONITOR_ALERTS` config block (see Section 7). A UTC calendar-day rollover no longer re-fires an unchanged alert on its own — an alert only fires again once cooldown has elapsed and the condition has genuinely worsened, or the phase itself changes (a new fingerprint). Since Trap Monitor has no price to compare (its scoring is daily-bar-based, not a live quote), the magnitude check instead uses `ema_distance` — the same signed percentage shown in the alert text — and treats the move as a raw point delta (e.g. -4.5% → -8.0% is a 3.5-point deterioration) rather than a relative percentage change.
 
 ---
 
@@ -199,8 +199,8 @@ All keys live under `config.json` / `config.py:DEFAULT_CONFIG`.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `COOLDOWN_MINUTES` | `120` | Minimum gap between repeated alerts for the same ticker |
-| `RETRIGGER_PERCENT` | `3.0` | Price move (%) that re-arms the alert within cooldown |
-| `REARM_PERCENT` | `5.0` | Price move (%) that fully resets the alert state |
+| `RETRIGGER_PERCENT` | `3.0` | `ema_distance` point-move that re-fires the alert once cooldown has elapsed |
+| `REARM_PERCENT` | `5.0` | `ema_distance` point-move (recovery) that fully resets the alert state |
 | `BULL_TRAP_VOLUME_RATIO` | `0.75` | Vol ratio below which the Bull Trap is SEVERE |
 | `BEAR_TRAP_VOLUME_RATIO` | `1.20` | Vol multiple above which a breakdown is higher-conviction |
 | `CAPITULATION_VOL_ZSCORE` | `3.0` | Minimum z-score to gate the capitulation detector |

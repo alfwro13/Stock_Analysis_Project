@@ -781,7 +781,8 @@ def run_trap_monitor_job():
                 continue
 
             reason = f"TRAP MONITOR {phase.replace('_', ' ')}"
-            suppress = orch._evaluate_alert_gate("TrapMonitor", ticker, None, reason, conn)
+            ema_distance = row.get("ema_distance")
+            suppress = orch._evaluate_alert_gate("TrapMonitor", ticker, ema_distance, reason, conn)
             if suppress:
                 continue
 
@@ -803,7 +804,7 @@ def run_trap_monitor_job():
                 f"Capitulation: {row.get('cap_level', '—')} | Wyckoff: {row.get('wyckoff_level', '—')}",
             ]
             if notify("trap_monitor_alert", "TrapMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
-                orch.record_alert_fired("TrapMonitor", ticker, None, reason, conn)
+                orch.record_alert_fired("TrapMonitor", ticker, ema_distance, reason, conn)
             logger.info("TrapMonitor: alert fired for %s (%s).", ticker, phase)
 
     except Exception as e:
