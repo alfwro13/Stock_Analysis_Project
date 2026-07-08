@@ -422,6 +422,39 @@ class TestWorkflowManifest:
         assert _resolve_manifest(job_id) is not None
 
 
+class TestIntradayOrchestratorTrigger:
+    """hour/minute cron fields combine independently, so truncating END_TIME's minute when building
+    the trigger can stop the last */interval_mins tick short of the configured end (fixed 2026-07-08,
+    alongside the related timezone bug in IntradayOrchestrator._run's bounds check)."""
+
+    def _cfg(self, end_time):
+        return {
+            "SCHEDULING": {
+                "CRASH_ALERTS": {
+                    "ENABLED": True, "FREQUENCY": "mon-fri",
+                    "START_TIME": "08:16", "END_TIME": end_time, "INTERVAL_MINUTES": 10,
+                },
+                "MOONSHOT_ALERTS": {"ENABLED": False},
+            },
+        }
+
+    def _hour_field(self):
+        job = _sched_module.scheduler.get_job("intraday_orchestrator_job")
+        return next(str(f) for f in job.trigger.fields if f.name == "hour")
+
+    def test_end_time_on_the_hour_is_not_bumped(self):
+        with patch("scheduler_engine.load_config", return_value=self._cfg("21:00")):
+            reload_scheduler()
+            assert self._hour_field() == "8-21"
+        reload_scheduler()
+
+    def test_end_time_with_minutes_bumps_hour_up_by_one(self):
+        with patch("scheduler_engine.load_config", return_value=self._cfg("21:45")):
+            reload_scheduler()
+            assert self._hour_field() == "8-22"
+        reload_scheduler()
+
+
 class TestBuildWorkflowGraph:
     def test_returns_nodes_and_edges(self):
         graph = build_workflow_graph()

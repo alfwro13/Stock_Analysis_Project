@@ -399,21 +399,25 @@ class IntradayOrchestrator:
         self._prune_alert_state(conn)
         logger.info("Scan initiated.")
         
-        # When START_TIME/END_TIME absent, derive from HOME_EXCHANGE via time_engine so DST is handled automatically.
+        # START_TIME/END_TIME are entered in the Settings UI as USER_TIMEZONE wall-clock time (matching the
+        # scheduler's own CronTrigger(timezone=user_tz)), so they must be localized before comparing to UTC now.
+        # When absent, derive from HOME_EXCHANGE via time_engine, which already returns UTC.
         sched_cfg = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {})
-        _default_open, _default_close = time_engine.market_window_utc()
-        start_str = sched_cfg.get("START_TIME") or _default_open.strftime("%H:%M")
-        end_str   = sched_cfg.get("END_TIME")   or _default_close.strftime("%H:%M")
+        today = datetime.now(timezone.utc).date()
 
         try:
+            if sched_cfg.get("START_TIME") and sched_cfg.get("END_TIME"):
+                user_tz = time_engine.get_user_tz()
+                start_time = datetime.combine(today, datetime.strptime(sched_cfg["START_TIME"], "%H:%M").time(), tzinfo=user_tz).astimezone(timezone.utc).time().replace(tzinfo=None)
+                end_time = datetime.combine(today, datetime.strptime(sched_cfg["END_TIME"], "%H:%M").time(), tzinfo=user_tz).astimezone(timezone.utc).time().replace(tzinfo=None)
+            else:
+                start_time, end_time = time_engine.market_window_utc()
             now = datetime.now(timezone.utc).time().replace(tzinfo=None)
-            start_time = datetime.strptime(start_str, "%H:%M").time()
-            end_time = datetime.strptime(end_str, "%H:%M").time()
             if not (start_time <= now <= end_time):
-                logger.info("Outside active bounds (%s-%s UTC). Aborted.", start_str, end_str)
+                logger.info("Outside active bounds (%s-%s UTC). Aborted.", start_time, end_time)
                 return
         except (ValueError, TypeError) as e:
-            logger.error("Invalid schedule time config (%s-%s): %s", start_str, end_str, e)
+            logger.error("Invalid schedule time config (%s): %s", sched_cfg, e)
             return
 
         # Without normalisation, partial-day volume vs 50-day average understates the ratio and flags every morning breakout as low-volume.

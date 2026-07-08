@@ -15,7 +15,7 @@ from html import escape as html_escape
 from typing import Dict, Any, List
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -206,7 +206,7 @@ async def home():
 
 
 @page_router.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False, xray: bool = False):
+async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, xray: bool = False):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -311,6 +311,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     live_pulse = get_all_cached_pulse()
 
     from accounts_engine import current_price_map
+    from api_routes_accounts import maybe_trigger_price_refresh
+    maybe_trigger_price_refresh(background_tasks)
     price_map = current_price_map(list(set(portfolio_tickers)))
 
     from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS

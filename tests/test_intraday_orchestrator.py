@@ -9,6 +9,7 @@ Covers the two pure helper functions that had no tests:
 """
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from database import create_account, get_performance_cache
+from database import create_account, get_connection, get_performance_cache
 from intraday_orchestrator import IntradayOrchestrator, format_currency, build_stock_url
 
 
@@ -135,3 +136,52 @@ class TestGetPortfolioTickers:
 
         assert "TBILL-606" not in tickers
         assert "AAPL" in tickers
+
+
+# ── _run schedule-bounds gating ─────────────────────────────────────────────────
+
+def _fake_datetime(fixed_utc):
+    """Return a datetime subclass whose .now() always returns fixed_utc."""
+    class _Fake(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_utc.astimezone(tz) if tz else fixed_utc
+    return _Fake
+
+
+class TestScheduleBoundsGating:
+    """CRASH_ALERTS START_TIME/END_TIME are entered in the Settings UI as USER_TIMEZONE wall-clock
+    time (no '(UTC)' label, unlike AI_CONTAGION/TRAP_MONITOR) and the scheduler fires this job on a
+    CronTrigger(timezone=user_tz) — so the in-job bounds check must localize before comparing to UTC
+    'now'. A bare string compare silently delayed the first successful daily scan by the DST offset
+    during BST (fixed 2026-07-08)."""
+
+    @pytest.mark.db
+    def test_bst_morning_within_local_window_is_not_aborted(self):
+        # 07:10 UTC on a July (BST, UTC+1) day = 08:10 Europe/London.
+        now_utc = datetime(2026, 7, 8, 7, 10, 0, tzinfo=timezone.utc)
+        orchestrator = IntradayOrchestrator()
+        orchestrator.config.setdefault("SCHEDULING", {})["CRASH_ALERTS"] = {
+            "START_TIME": "08:00", "END_TIME": "21:00",
+        }
+        with patch("intraday_orchestrator.datetime", _fake_datetime(now_utc)), \
+             patch("time_engine._load_config", return_value={"USER_TIMEZONE": "Europe/London"}), \
+             patch.object(IntradayOrchestrator, "get_portfolio_tickers", return_value=[]) as mock_tickers:
+            orchestrator._run(get_connection())
+
+        mock_tickers.assert_called_once()
+
+    @pytest.mark.db
+    def test_bst_morning_before_local_window_is_aborted(self):
+        # 07:10 UTC on a July (BST, UTC+1) day = 08:10 Europe/London — before a 09:30 local start.
+        now_utc = datetime(2026, 7, 8, 7, 10, 0, tzinfo=timezone.utc)
+        orchestrator = IntradayOrchestrator()
+        orchestrator.config.setdefault("SCHEDULING", {})["CRASH_ALERTS"] = {
+            "START_TIME": "09:30", "END_TIME": "21:00",
+        }
+        with patch("intraday_orchestrator.datetime", _fake_datetime(now_utc)), \
+             patch("time_engine._load_config", return_value={"USER_TIMEZONE": "Europe/London"}), \
+             patch.object(IntradayOrchestrator, "get_portfolio_tickers", return_value=[]) as mock_tickers:
+            orchestrator._run(get_connection())
+
+        mock_tickers.assert_not_called()

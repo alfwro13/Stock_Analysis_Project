@@ -271,7 +271,13 @@ def reload_scheduler():
         interval_mins = int(active_cfg.get("INTERVAL_MINUTES", 10))
         try:
             start_h, _ = map(int, start_time.split(':'))
-            end_h, _ = map(int, end_time.split(':'))
+            end_h, end_m = map(int, end_time.split(':'))
+            # Bump end_h up when END_TIME has a non-zero minute so the */interval_mins ticks still reach
+            # it — hour/minute cron fields combine independently, so a truncated end_h can stop the last
+            # tick short of the configured end time. run_intraday_orchestrator's own bounds check (in
+            # IntradayOrchestrator._run) gates the exact window, so over-covering here is harmless.
+            if end_m > 0:
+                end_h += 1
             scheduler.add_job(
                 run_intraday_orchestrator,
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}", timezone=user_tz),

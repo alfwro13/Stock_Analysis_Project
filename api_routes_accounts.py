@@ -719,12 +719,13 @@ async def api_trigger_treasury_bill_maturity_sweep(background_tasks: BackgroundT
     })
 
 
-def _maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
-    """Backs the Home Assistant integration's polling-driven refresh: whatever interval it (or
-    a browser tab) actually polls these endpoints at becomes the real refresh cadence, capped by
-    UI_PREFERENCES.REFRESH_RATE so a fast poller doesn't hammer Yahoo Finance on every tick —
-    the same needs_refresh pattern GET /api/market-pulse already uses for the live-ticking
-    widget, extended here to cover every held ticker rather than only ones rendered on screen."""
+def maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
+    """Backs the Home Assistant integration's polling-driven refresh and the /portfolio page's
+    own load: whatever cadence actually hits this (an HA poll, a browser tab, a page reload)
+    becomes the real refresh cadence, capped by UI_PREFERENCES.REFRESH_RATE so it doesn't hammer
+    Yahoo Finance on every call — the same needs_refresh pattern GET /api/market-pulse already
+    uses for the live-ticking widget, extended here to cover every held ticker rather than only
+    ones rendered on screen."""
     refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
     tickers = held_tickers_lightweight()
     stale = tickers_needing_refresh(tickers, refresh_rate)
@@ -735,7 +736,7 @@ def _maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
 @accounts_router.get("/accounts/portfolio-totals")
 async def api_portfolio_totals(background_tasks: BackgroundTasks):
     try:
-        _maybe_trigger_price_refresh(background_tasks)
+        maybe_trigger_price_refresh(background_tasks)
         return JSONResponse(content={"status": "success", **portfolio_totals()})
     except Exception as e:
         logger.error("api_portfolio_totals failed: %s", e)
@@ -745,7 +746,7 @@ async def api_portfolio_totals(background_tasks: BackgroundTasks):
 @accounts_router.get("/accounts/list-with-metrics")
 async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
     try:
-        _maybe_trigger_price_refresh(background_tasks)
+        maybe_trigger_price_refresh(background_tasks)
         return JSONResponse(content={"status": "success", **account_metrics_list()})
     except Exception as e:
         logger.error("api_accounts_list_with_metrics failed: %s", e)
@@ -755,7 +756,7 @@ async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
 @accounts_router.get("/accounts/holdings-list")
 async def api_holdings_list(background_tasks: BackgroundTasks):
     try:
-        _maybe_trigger_price_refresh(background_tasks)
+        maybe_trigger_price_refresh(background_tasks)
         return JSONResponse(content={"status": "success", **holdings_with_metrics_all_accounts()})
     except Exception as e:
         logger.error("api_holdings_list failed: %s", e)
