@@ -468,6 +468,59 @@ class TestFallbackSingleHistory:
         _clear_cache(index_ticker)
 
 
+class TestStaleDailyHistoryFallback:
+    """Yahoo's chart-history endpoint can silently truncate the requested window for some
+    symbols (e.g. ^KS200 returning only 2 rows dated days before the live feed) — fetch_and_save_pulse
+    must fall back to the quoteSummary endpoint's own previousClose rather than computing change_pct
+    against a stale/wrong daily row."""
+
+    TICKER = "_STALE_DAILY_TEST"
+
+    def teardown_method(self):
+        _clear_cache(self.TICKER)
+
+    def _stale_daily_and_live(self):
+        stale_daily = pd.DataFrame(
+            {"Close": [1219.62, 1299.30], "High": [1304.45, 1308.19], "Low": [1213.66, 1176.04],
+             "Open": [1269.77, 1235.20], "Volume": [181300000, 156700000]},
+            index=pd.to_datetime(["2026-07-02", "2026-07-03"]),
+        )
+        live = pd.DataFrame(
+            {"Close": [1158.37], "High": [1162.11], "Low": [1155.00], "Open": [1160.00], "Volume": [1000]},
+            index=pd.to_datetime(["2026-07-08 06:30:00"]),
+        )
+        return stale_daily, live
+
+    def test_falls_back_to_info_previous_close_when_daily_history_is_stale(self):
+        stale_daily, live = self._stale_daily_and_live()
+        p1, p2 = _pulse_patches(self.TICKER, stale_daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1225.57}):
+            _mp.fetch_and_save_pulse([self.TICKER])
+
+        row = _read_cache(self.TICKER)
+        assert row["price"] == pytest.approx(1158.37)
+        assert row["change_pct"] == pytest.approx(-5.483, abs=0.01)
+
+    def test_does_not_fall_back_when_daily_history_is_fresh(self):
+        """Normal case (daily and live feeds within a few days of each other) must not call get_ticker_info."""
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches(self.TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info") as mock_info:
+            _mp.fetch_and_save_pulse([self.TICKER])
+        mock_info.assert_not_called()
+
+    def test_missing_info_previous_close_does_not_crash(self):
+        """If the .info fallback also can't help, the ticker must still be written (no crash)."""
+        stale_daily, live = self._stale_daily_and_live()
+        p1, p2 = _pulse_patches(self.TICKER, stale_daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info", return_value=None):
+            _mp.fetch_and_save_pulse([self.TICKER])
+
+        row = _read_cache(self.TICKER)
+        assert row["price"] == pytest.approx(1158.37)
+
+
 class TestUpsertLivePrice:
     """upsert_live_price(): shares a price another engine already fetched, without a new Yahoo call."""
 

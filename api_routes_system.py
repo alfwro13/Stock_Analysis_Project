@@ -298,14 +298,20 @@ async def api_market_pulse_get(background_tasks: BackgroundTasks):
 @system_router.get("/markets")
 async def api_markets(background_tasks: BackgroundTasks, view: str = "dynamic"):
     payload = markets_engine.assemble_markets_payload(view)
-    needs_fetch = [
+    needs_fetch = {
         tile["ticker"]
         for region in payload["regions"]
         for tile in region["tiles"]
         if tile.pop("needs_refresh", False)
-    ]
+    }
+    # A tile's own price can be fresh (needs_refresh above) while the open/closed proxy state
+    # for its exchange is separately stale — e.g. a region with no held tile ticker on this page
+    # view, or a proxy whose market_state hasn't been touched since that exchange was last open.
+    # Without this, a region can report "open" indefinitely once no page traffic refreshes its
+    # proxy's market_state (see GET /api/system/market-status's identical self-heal).
+    needs_fetch.update(proxy_tickers_needing_refresh())
     if needs_fetch:
-        background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
+        background_tasks.add_task(fetch_and_save_pulse, list(needs_fetch))
     return JSONResponse(content={"status": "success", "data": payload})
 
 

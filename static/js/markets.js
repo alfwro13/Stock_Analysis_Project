@@ -90,11 +90,16 @@ function marketsTileHTML(tile) {
 function marketsRegionSectionHTML(region) {
     const label = MARKETS_REGION_LABELS[region.region] || region.region;
     const tilesHTML = region.tiles.map(marketsTileHTML).join('');
+    // Commodities & FX trade near-continuously with no single exchange session (see
+    // markets_engine.get_region_state) — an Open/Closed badge there would misrepresent a
+    // status that was never actually checked, so the badge is only shown for the three
+    // regions whose state is derived from real exchange hours.
+    const badgeHTML = region.region === 'Commodities_FX' ? '' : marketsStateBadgeHTML(region.state);
     return `
         <div class="markets-region-section">
             <div class="markets-region-header">
                 <h3>${label}</h3>
-                ${marketsStateBadgeHTML(region.state)}
+                ${badgeHTML}
             </div>
             <div class="markets-tile-grid">${tilesHTML}</div>
         </div>

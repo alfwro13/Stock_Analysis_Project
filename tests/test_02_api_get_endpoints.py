@@ -318,6 +318,21 @@ def test_get_markets_dynamic_view_returns_200(client):
 
 
 @pytest.mark.api
+def test_get_markets_self_triggers_refresh_for_stale_proxy_tickers(client):
+    """Regression test: a region's open/closed badge must not stay stuck on a stale exchange
+    proxy's market_state forever just because no tile ticker on this page happened to need a
+    price refresh — without this, a region can report "open" indefinitely once no page traffic
+    refreshes its proxy (see the analogous GET /api/system/market-status fix)."""
+    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=["^N225", "^HSI"]), \
+         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+        resp = client.get("/api/markets")
+    assert resp.status_code == 200
+    assert mock_fetch.called
+    fetched = set(mock_fetch.call_args[0][0])
+    assert {"^N225", "^HSI"}.issubset(fetched)
+
+
+@pytest.mark.api
 def test_get_markets_static_view_returns_fixed_order(client):
     resp = client.get("/api/markets?view=static")
     assert resp.status_code == 200

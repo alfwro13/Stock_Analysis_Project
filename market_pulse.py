@@ -502,7 +502,19 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         prev_close = float(t_daily['Close'].iloc[-2])
                     else:
                         prev_close = float(t_daily['Close'].iloc[-1])
-                    
+
+                    # Yahoo's daily chart-history endpoint can silently truncate the requested
+                    # window for some symbols (seen on ^KS200: period="5d" returned only 2 rows,
+                    # days stale relative to the live feed) — when the daily bar is implausibly
+                    # old next to the live feed, prefer the quoteSummary endpoint's own
+                    # previousClose (a separate Yahoo endpoint, not similarly affected) over a
+                    # stale/wrong daily row.
+                    if (t_live.index[-1].date() - t_daily.index[-1].date()).days > 3:
+                        info = yahoo_engine.get_ticker_info(ticker)
+                        info_prev_close = info.get("regularMarketPreviousClose") if info else None
+                        if info_prev_close:
+                            prev_close = float(info_prev_close)
+
                 change_pts: float = current_price - prev_close
                 change_pct: float = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
