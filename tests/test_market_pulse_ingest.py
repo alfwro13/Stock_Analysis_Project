@@ -520,6 +520,31 @@ class TestStaleDailyHistoryFallback:
         row = _read_cache(self.TICKER)
         assert row["price"] == pytest.approx(1158.37)
 
+    def test_falls_back_when_daily_feed_has_caught_up_but_still_has_a_gap(self):
+        """Regression: even once Yahoo's daily feed re-includes "today" as its last row, the row
+        actually used as prev_close (the still-forming branch's t_daily[-2]) can still be several
+        sessions further back if rows were dropped out of the middle of the window — checking
+        only the feed's own last date isn't enough. Found 2026-07-09 on ^KS200: the first fix
+        (comparing only last dates) stopped catching this once Yahoo's feed "caught up"."""
+        today_bday = _last_bday()
+        old_bday = today_bday - pd.Timedelta(days=8)
+        daily = pd.DataFrame(
+            {"Close": [1299.30, 1171.43], "High": [1308.19, 1175.0], "Low": [1176.04, 1168.0],
+             "Open": [1235.20, 1170.0], "Volume": [156700000, 150000000]},
+            index=[old_bday, today_bday],
+        )
+        live = pd.DataFrame(
+            {"Close": [1171.43], "High": [1171.87], "Low": [1170.0], "Open": [1171.0], "Volume": [1000]},
+            index=[today_bday + pd.Timedelta(hours=6)],
+        )
+        p1, p2 = _pulse_patches(self.TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1158.37}):
+            _mp.fetch_and_save_pulse([self.TICKER])
+
+        row = _read_cache(self.TICKER)
+        assert row["price"] == pytest.approx(1171.43)
+        assert row["change_pct"] == pytest.approx(1.127, abs=0.01)
+
 
 class TestUpsertLivePrice:
     """upsert_live_price(): shares a price another engine already fetched, without a new Yahoo call."""

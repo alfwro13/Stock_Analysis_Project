@@ -500,16 +500,21 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     current_price = float(t_live['Close'].iloc[-1])
                     if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date()) and len(t_daily) >= 2:
                         prev_close = float(t_daily['Close'].iloc[-2])
+                        prev_close_date = t_daily.index[-2].date()
                     else:
                         prev_close = float(t_daily['Close'].iloc[-1])
+                        prev_close_date = t_daily.index[-1].date()
 
-                    # Yahoo's daily chart-history endpoint can silently truncate the requested
-                    # window for some symbols (seen on ^KS200: period="5d" returned only 2 rows,
-                    # days stale relative to the live feed) — when the daily bar is implausibly
-                    # old next to the live feed, prefer the quoteSummary endpoint's own
-                    # previousClose (a separate Yahoo endpoint, not similarly affected) over a
-                    # stale/wrong daily row.
-                    if (t_live.index[-1].date() - t_daily.index[-1].date()).days > 3:
+                    # Yahoo's daily chart-history endpoint can silently drop rows out of the
+                    # middle of the requested window for some symbols (seen on ^KS200: period="5d"
+                    # returned only 2 rows with a 6-day gap between them, even once the endpoint
+                    # "caught up" and its last row again matched today) — checking only the
+                    # feed's last date isn't enough once it re-includes today, since the row
+                    # actually used as prev_close can still be several sessions further back.
+                    # When that row is implausibly old next to the live feed, prefer the
+                    # quoteSummary endpoint's own previousClose (a separate Yahoo endpoint, not
+                    # similarly affected) instead.
+                    if (t_live.index[-1].date() - prev_close_date).days > 3:
                         info = yahoo_engine.get_ticker_info(ticker)
                         info_prev_close = info.get("regularMarketPreviousClose") if info else None
                         if info_prev_close:
