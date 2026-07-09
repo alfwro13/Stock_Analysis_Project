@@ -3331,7 +3331,7 @@ Before reading, this endpoint also checks whether any held ticker's `market_puls
 
 ### `POST /api/accounts/refresh-now`
 
-On-demand data refresh for the Home Assistant integration's "Refresh Data" button. Blocks (via a worker thread, so the event loop stays free for other requests) until the refresh actually completes: refreshes live prices for every currently-held ticker (`market_pulse.fetch_and_save_pulse`) and recomputes the live-performance cache for every Trading account (`accounts_engine.refresh_performance_cache`). Runs synchronously rather than as a fire-and-forget background task specifically so the HA button's own immediate coordinator re-poll (`button.py`'s `async_press()`) sees the refreshed data instead of racing ahead of it — a fire-and-forget version of this endpoint used to make the button appear to do nothing. Deliberately does **not** call the Crash & Moonshot Alerts scan (`IntradayOrchestrator().run()`) directly — that scan silently no-ops outside configured market hours, which would make the button appear broken most of the day. Completion (or failure) is dispatched via `notification_engine.notify("ha_refresh_now_status", ...)` (source registered in `NOTIFICATION_SOURCES`, no parent scheduled job — grouped under "Other" in the Settings Notification Settings panel).
+On-demand data refresh for the Home Assistant integration's "Refresh Data" button. Blocks (via a worker thread, so the event loop stays free for other requests) until the refresh actually completes: refreshes live prices for every currently-held ticker (`market_pulse.fetch_and_save_pulse`) and recomputes the live-performance cache for every Trading account (`accounts_engine.refresh_performance_cache`). Runs synchronously rather than as a fire-and-forget background task specifically so the HA button's own immediate coordinator re-poll (`button.py`'s `async_press()`) sees the refreshed data instead of racing ahead of it — a fire-and-forget version of this endpoint used to make the button appear to do nothing. Deliberately does **not** call the Crash & Moonshot Alerts scan (`IntradayOrchestrator().run()`) directly — that scan silently no-ops outside configured market hours, which would make the button appear broken most of the day. Also fires a **background** (fire-and-forget, not awaited) refresh of the entire Markets page ticker registry (`markets_engine.registry_lookup_tickers()`) so any open `/markets` tab sees fresh data on its next poll — this piece is not awaited since HA doesn't need those tickers back before the response. Completion (or failure) is dispatched via `notification_engine.notify("ha_refresh_now_status", ...)` (source registered in `NOTIFICATION_SOURCES`, no parent scheduled job — grouped under "Other" in the Settings Notification Settings panel).
 
 **Request body:** none
 
@@ -3531,7 +3531,9 @@ Returns every enabled `market_ticker_registry` row grouped by region, in the res
             "invert_color": false,
             "asset_type": "Index",
             "sentiment_score": 0.31,
+            "market_state": "open",
             "is_stale": false,
+            "stale_data": false,
             "sparkline": [[1751234400.0, 5270.1], [1751234520.0, 5271.4]]
           }
         ]
@@ -3541,7 +3543,7 @@ Returns every enabled `market_ticker_registry` row grouped by region, in the res
 }
 ```
 
-`region` is one of `Europe`, `US`, `Asia`, `Commodities_FX`. `state` is `open`, `pre`, or `closed` (always `open` for `Commodities_FX`, which has no exchange gating). `is_future` is `true` when the tile has auto-swapped from its spot ticker to its paired front-month future (only possible for the 5 dual-instrument indexes — S&P 500, Nasdaq 100, Dow, Russell 2000, Nikkei 225). `sparkline` is today's session intraday points (oldest first); it holds the last session's points, not an empty array, when the market is closed.
+`region` is one of `Europe`, `US`, `Asia`, `Commodities_FX`. `state` (region-level) is `open` (every constituent exchange open), `partial` ("Some Open" — at least one but not all open), `pre`, or `closed` (always `open` for `Commodities_FX`, which has no exchange gating). `is_future` is `true` when the tile has auto-swapped from its spot ticker to its paired front-month future (only possible for the 5 dual-instrument indexes — S&P 500, Nasdaq 100, Dow, Russell 2000, Nikkei 225). `market_state` (tile-level) is that tile's own exchange's `open`/`pre`/`closed` state, independent of the region aggregate. `stale_data` is `true` only when `market_state == "open"` but the cache hasn't refreshed within the freshness window — a genuine data problem, distinct from `is_stale` alone (which is also `true`, expectedly, whenever a closed market's cache simply hasn't changed). `sparkline` is today's session intraday points (oldest first); it holds the last session's points, not an empty array, when the market is closed.
 
 ---
 
@@ -3559,7 +3561,7 @@ Net-new, generalized market-status endpoint covering every exchange referenced b
 }
 ```
 
-Only NYSE and LSE are genuinely holiday-aware (via the Yahoo `marketState` proxy trick in `market_pulse.is_exchange_open()`); every other exchange falls back to `time_engine`'s weekday+hours heuristic.
+`regions` values are `open` (every constituent exchange open), `partial` ("Some Open"), `pre`, or `closed` — see `markets_engine.get_region_state()`. Only NYSE and LSE are genuinely holiday-aware (via the Yahoo `marketState` proxy trick in `market_pulse.is_exchange_open()`); every other exchange falls back to `time_engine`'s weekday+hours heuristic.
 
 ---
 

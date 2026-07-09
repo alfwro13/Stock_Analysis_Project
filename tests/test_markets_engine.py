@@ -57,10 +57,16 @@ class TestGetRegionExchanges:
 # ── get_region_state ────────────────────────────────────────────────────────────
 
 class TestGetRegionState:
-    def test_open_when_any_constituent_exchange_open(self):
-        with patch("markets_engine.market_pulse.is_exchange_open", side_effect=lambda ex, include_premarket=False: ex == "LSE"):
+    def test_open_when_all_constituent_exchanges_open(self):
+        with patch("markets_engine.market_pulse.is_exchange_open", return_value=True):
             state = markets_engine.get_region_state("Europe")
         assert state["state"] == "open"
+        assert state["recency_seconds"] >= 0
+
+    def test_partial_when_only_some_constituent_exchanges_open(self):
+        with patch("markets_engine.market_pulse.is_exchange_open", side_effect=lambda ex, include_premarket=False: ex == "LSE"):
+            state = markets_engine.get_region_state("Europe")
+        assert state["state"] == "partial"
         assert state["recency_seconds"] >= 0
 
     def test_pre_when_no_exchange_open_but_one_is_premarket(self):
@@ -228,8 +234,17 @@ class TestAssembleMarketsPayload:
         tile = us_region["tiles"][0]
         for field in ("ticker", "display_name", "region", "is_future", "price", "currency",
                       "change_pts", "change_pct", "is_positive", "invert_color", "asset_type",
-                      "sentiment_score", "is_stale", "needs_refresh", "sparkline"):
+                      "sentiment_score", "market_state", "is_stale", "stale_data", "needs_refresh",
+                      "sparkline"):
             assert field in tile, f"tile missing field {field}"
+
+    def test_stale_data_only_flagged_when_tile_market_is_open(self):
+        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+            payload = markets_engine.assemble_markets_payload("static")
+        us_region = next(r for r in payload["regions"] if r["region"] == "US")
+        tile = us_region["tiles"][0]
+        assert tile["market_state"] != "open"
+        assert tile["stale_data"] is False
 
     def test_commodities_fx_region_is_never_empty(self):
         payload = markets_engine.assemble_markets_payload("static")
@@ -266,3 +281,20 @@ class TestSelectPulseTickers:
         result = markets_engine.select_pulse_tickers(dynamic=True, desktop_count=6, mobile_count=6)
         desktop_set = set(result["desktop"])
         assert set(result["mobile"]).issubset(desktop_set) or len(result["mobile"]) == 0
+
+
+# ── registry_lookup_tickers ───────────────────────────────────────────────────────
+
+class TestRegistryLookupTickers:
+    def test_returns_a_resolved_ticker_for_every_active_registry_row(self):
+        from database import get_ticker_registry
+        with patch("markets_engine.market_pulse.is_exchange_open", return_value=True):
+            tickers = markets_engine.registry_lookup_tickers()
+        assert len(tickers) == len(get_ticker_registry(enabled_only=True))
+        assert "^GSPC" in tickers  # spot, since NYSE forced open above
+
+    def test_swaps_to_future_ticker_when_exchange_closed(self):
+        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+            tickers = markets_engine.registry_lookup_tickers()
+        assert "ES=F" in tickers
+        assert "^GSPC" not in tickers

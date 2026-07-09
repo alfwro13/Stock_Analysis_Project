@@ -1914,14 +1914,15 @@ def test_portfolio_totals_zero_trading_accounts_returns_all_zero_shape(client):
 @pytest.mark.api
 def test_refresh_now_completes_before_responding(client):
     # The Home Assistant "Refresh Data" button re-polls its coordinator immediately after this
-    # call returns, so the fetch must be genuinely finished (not just queued) by response time.
+    # call returns, so the portfolio-holdings fetch must be genuinely finished (not just queued)
+    # by response time. The Markets page registry warm-up is a second, background-task call.
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
          patch("api_routes_accounts.refresh_performance_cache") as mock_refresh:
         resp = client.post("/api/accounts/refresh-now")
     assert resp.status_code == 200
     data = _json(resp)
     assert data["status"] == "success"
-    mock_fetch.assert_called_once()
+    assert mock_fetch.call_count == 2
     mock_refresh.assert_not_called()  # no Trading accounts created in this test
 
 
@@ -1936,13 +1937,28 @@ def test_refresh_now_invokes_background_task_functions(client):
         resp = client.post("/api/accounts/refresh-now")
     assert resp.status_code == 200
     assert _json(resp)["status"] == "success"
-    mock_fetch.assert_called_once()
+    assert mock_fetch.call_count == 2
     mock_refresh.assert_called_once_with(account_id)
     mock_notify.assert_called_once()
     assert mock_notify.call_args[0][0] == "ha_refresh_now_status"
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_refresh_now_also_warms_markets_page_registry_cache(client):
+    # A single HA-triggered refresh should also fetch the Markets page's full ticker registry
+    # (not just portfolio holdings), so open Markets tabs see fresh data on their next poll.
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch:
+        resp = client.post("/api/accounts/refresh-now")
+    assert resp.status_code == 200
+    from markets_engine import registry_lookup_tickers
+    registry_call = next(
+        (c for c in mock_fetch.call_args_list if c.args and c.args[0] == registry_lookup_tickers()),
+        None,
+    )
+    assert registry_call is not None
 
 
 @pytest.mark.api

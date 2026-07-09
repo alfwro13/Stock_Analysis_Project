@@ -4,7 +4,7 @@
 **Engines:** `markets_engine.py` (region/session logic, tile assembly), `market_pulse.py` (raw fetch/cache layer, ticker registry accessors)
 **Page:** `/markets` (`templates/markets.html`, `static/js/markets.js`)
 **API Endpoints:** `GET /api/markets`, `GET /api/system/market-status/all`, `GET|POST /api/markets/registry`, `PUT|DELETE /api/markets/registry/{ticker}`
-**Last Updated:** 2026-07-08
+**Last Updated:** 2026-07-09
 
 ---
 
@@ -54,11 +54,14 @@ Editable from Settings → Markets & Market Pulse without a restart — a write 
 `markets_engine.get_region_exchanges(region)` is **derived from the registry** (`{row.exchange for row in registry if row.region == region}`), not a second hardcoded map — adding a new exchange to a region via Settings changes region membership with zero code change.
 
 `markets_engine.get_region_state(region)` aggregates the constituent exchanges' states:
-- `"open"` if any exchange is open.
+- `"open"` if **every** constituent exchange is open.
+- `"partial"` ("Some Open" badge) if at least one, but not all, are open — e.g. Hong Kong still trading while Tokyo has already closed for the day.
 - `"pre"` if none are open but at least one is in its pre-market window (only NYSE has a seeded `premarket_open`, so this only ever fires for the US region today).
 - `"closed"` otherwise.
 
-It also computes a `recency_seconds` tie-break value: seconds since the most-recently-opened constituent opened (open state), or seconds until the soonest constituent opens (pre/closed state). `Commodities_FX` always reports `{"state": "open", "recency_seconds": 0}` — it has no exchange, per §11.
+It also computes a `recency_seconds` tie-break value: seconds since the most-recently-opened constituent opened (open/partial state), or seconds until the soonest constituent opens (pre/closed state). `Commodities_FX` always reports `{"state": "open", "recency_seconds": 0}` — it has no exchange, per §11.
+
+Each tile also carries its **own** `market_state` (`markets_engine.get_exchange_state(row.exchange)`, or `"open"` for exchange-less Commodities/FX rows) independent of the region-level aggregate above — this is what lets a Hong Kong tile render in full color while its region badge reads "Some Open" because Tokyo has closed. A tile whose own `market_state != "open"` renders greyed out (`markets-closed-card`) showing the last available price — expected, not an error. Separately, `stale_data = is_stale and market_state == "open"` flags the genuinely anomalous case — the market is supposed to be live but the cache hasn't refreshed within the freshness window (`market_pulse.is_price_fresh()`) — rendered as a grey tile with a diagonal-stripe overlay (`markets-stale-data-card`) to distinguish "this needs investigating" from "this market is simply closed."
 
 ---
 
@@ -131,6 +134,8 @@ See `assets/api_reference.md` §24 (Markets) for full request/response shapes. S
 | `DELETE /api/markets/registry/{ticker}` | Soft-disable a registry row |
 
 Refresh is page-traffic-driven, exactly like Market Pulse today — `GET /api/markets` computes `needs_refresh` per tile and fires a `fetch_and_save_pulse()` background task inline. No new scheduler job; `scheduler_manifest.JOB_GRAPH["markets_page_source"]` is a `non_job` entry for Workflow Monitor visibility.
+
+**Home Assistant refresh piggyback:** every `POST /api/accounts/refresh-now` call (fired by the HA integration's "Portfolio Refresh Data" button/service) also warms `market_pulse_cache`/`market_pulse_sparkline` for the **entire** ticker registry via `markets_engine.registry_lookup_tickers()`, fired as a `BackgroundTasks` job so it doesn't slow down the awaited portfolio-holdings fetch HA's own response depends on (see `api_routes_accounts._refresh_markets_registry`). This means any open Markets tab sees fresh data on its very next poll instead of waiting on its own independent per-tile staleness cycle. `scheduler_manifest.JOB_GRAPH["ha_refresh_now_source"]["produces"]` includes `market_pulse_sparkline` accordingly. The page also shows a client-side "Last updated Xs/Xm ago" ticker next to the Live/stale dot (`static/js/markets.js:updateMarketsLastUpdatedText`), driven purely by the browser's own last successful poll timestamp — independent of which path (this page's own poll, or the HA piggyback) actually populated the cache.
 
 ---
 

@@ -1,4 +1,6 @@
 let marketsPollInterval;
+let marketsTickInterval;
+let marketsLastFetchTime = null;
 let marketsCurrentView = window.MARKETS_DEFAULT_VIEW || 'dynamic';
 const MARKETS_REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000);
 
@@ -14,6 +16,7 @@ const MARKETS_CURRENCY_PREFIX = { 'USD': '$', 'GBP': '£', 'EUR': '€' };
 function marketsStateBadgeHTML(state) {
     const map = {
         open: ['markets-state-open', 'Open'],
+        partial: ['markets-state-partial', 'Some Open'],
         pre: ['markets-state-pre', 'Pre-Market'],
         closed: ['markets-state-closed', 'Closed'],
     };
@@ -52,9 +55,19 @@ function marketsSparklineSVG(points, isPositive) {
 
 function marketsTileHTML(tile) {
     const isPos = tile.is_positive;
-    let cardClass, changeClass;
     const isForex = tile.asset_type === 'FX';
-    if (tile.invert_color) {
+    const marketOpen = tile.market_state === 'open';
+    let cardClass, changeClass;
+
+    if (!marketOpen) {
+        // Market closed: plain grey, showing the last available data — expected, not an error.
+        cardClass = 'markets-closed-card';
+        changeClass = '';
+    } else if (tile.stale_data) {
+        // Market should be live but the cache hasn't refreshed as expected — flag it distinctly.
+        cardClass = 'markets-stale-data-card';
+        changeClass = '';
+    } else if (tile.invert_color) {
         cardClass = isPos ? 'negative' : 'positive';
         changeClass = isPos ? 'negative' : 'positive';
     } else if (isForex) {
@@ -65,8 +78,7 @@ function marketsTileHTML(tile) {
         changeClass = isPos ? 'positive' : 'negative';
     }
 
-    const staleClass = tile.is_stale ? 'stale-card' : '';
-    const staleText = tile.is_stale ? 'stale-text' : '';
+    const staleText = (!marketOpen || tile.stale_data) ? 'stale-text' : '';
     const sign = isPos ? '+' : '';
     const prefix = MARKETS_CURRENCY_PREFIX[tile.currency] || '';
     const formattedPrice = prefix + Number(tile.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -75,7 +87,7 @@ function marketsTileHTML(tile) {
 
     return `
         <a href="/index/${encodeURIComponent(tile.ticker)}" class="macro-card-link" data-ticker="${tile.ticker}">
-            <div class="macro-card ${cardClass} ${staleClass}">
+            <div class="macro-card ${cardClass}">
                 <div class="macro-title ${staleText}">${tile.display_name}</div>
                 ${marketsSparklineSVG(tile.sparkline, isPos)}
                 <div class="macro-price ${staleText}">${formattedPrice}</div>
@@ -106,6 +118,21 @@ function marketsRegionSectionHTML(region) {
     `;
 }
 
+function formatMarketsAge(ms) {
+    const totalSeconds = Math.max(Math.floor(ms / 1000), 0);
+    if (totalSeconds < 60) return totalSeconds + 's ago';
+    const minutes = Math.floor(totalSeconds / 60);
+    if (minutes < 60) return minutes + 'm ago';
+    const hours = Math.floor(minutes / 60);
+    return hours + 'h ago';
+}
+
+function updateMarketsLastUpdatedText() {
+    const el = document.getElementById('markets-last-updated');
+    if (!el) return;
+    el.innerText = marketsLastFetchTime === null ? '' : ('· Last updated ' + formatMarketsAge(Date.now() - marketsLastFetchTime));
+}
+
 async function fetchMarketsData() {
     try {
         const response = await fetch('/api/markets?view=' + encodeURIComponent(marketsCurrentView));
@@ -119,7 +146,9 @@ async function fetchMarketsData() {
             if (container) {
                 container.innerHTML = result.data.regions.map(marketsRegionSectionHTML).join('');
             }
-            const anyStale = result.data.regions.some(r => r.tiles.some(t => t.is_stale));
+            marketsLastFetchTime = Date.now();
+            updateMarketsLastUpdatedText();
+            const anyStale = result.data.regions.some(r => r.tiles.some(t => t.stale_data));
             if (dot && text) {
                 dot.classList.remove('offline');
                 if (anyStale) {
@@ -159,4 +188,5 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.addEventListener('click', function () { setMarketsView(this.dataset.view); });
     });
     marketsPollInterval = setInterval(fetchMarketsData, MARKETS_REFRESH_RATE_MS);
+    marketsTickInterval = setInterval(updateMarketsLastUpdatedText, 1000);
 });

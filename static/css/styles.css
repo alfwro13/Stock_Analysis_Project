@@ -312,9 +312,12 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .markets-region-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .markets-region-header h3 { margin: 0; color: #4da6ff; }
 .markets-state-open { background-color: #00ffcc; color: #121212; }
+.markets-state-partial { background-color: #ff9900; color: #121212; }
 .markets-state-pre { background-color: #ffaa00; color: #121212; }
 .markets-state-closed { background-color: #555555; color: #e0e0e0; }
 .markets-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.macro-card.markets-closed-card { border-top-color: #555 !important; background: rgba(128, 128, 128, 0.1) !important; }
+.macro-card.markets-stale-data-card { border-top-color: #555 !important; background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.15), rgba(128, 128, 128, 0.15) 8px, rgba(210, 90, 0, 0.3) 8px, rgba(210, 90, 0, 0.3) 16px) !important; }
 .macro-sparkline { width: 100%; height: 28px; margin: 4px 0; }
 .macro-sparkline polyline { fill: none; stroke-width: 2; }
 .macro-sparkline.positive polyline { stroke: #00ffcc; }
@@ -453,6 +456,9 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
      applied per-card via inline style in macro_cards.js — this is just the 4-per-row fallback. */
   .macro-card-link { display: flex; flex: 0 0 calc(25% - 3px); max-width: calc(25% - 3px); }
   .macro-container { gap: 4px; }
+  /* Markets page tiles use a CSS grid container, not .macro-container's flexbox, so the
+     flex-basis override above has no effect here — force the same 4-per-row via grid-template-columns. */
+  .markets-tile-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
   .macro-card { min-width: 0; width: 100%; padding: 6px 2px; }
   .macro-title { font-size: 9px; word-break: break-word; }
   .macro-price { font-size: 12px; }

@@ -46,6 +46,13 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Markets Page — Region &amp; Tile Status</span>
+                <p>The <strong>Markets</strong> page (global indexes, commodities, and FX) groups tiles by region — Europe, US, Asia, and Commodities &amp; FX — and gives each region a status badge: <strong>Open</strong> (every exchange in that region is currently trading), <strong>Some Open</strong> (at least one is trading but not all — e.g. Hong Kong is still open while Tokyo has already closed for the day), <strong>Pre-Market</strong>, or <strong>Closed</strong>.</p>
+                <p>Individual tiles are judged separately from their region badge, since a region can be "Some Open" while any one tile within it is fully live. A tile whose own market is closed is shown greyed out with its last available price — this is expected, not an error. If a tile's market <em>should</em> be open but its price hasn't refreshed as expected, it's shown greyed out with a diagonal-stripe overlay — a distinct signal that the data itself may be stuck, worth a manual refresh or a check of the background fetch.</p>
+                <div class="rule">A "Last updated Xs/Xm ago" indicator next to the Live Markets Data dot always reflects when your browser last actually received fresh data from the server — regardless of whether that data was fetched by your own page poll or piggybacked on a Home Assistant "Portfolio Refresh Data" call.</div>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Bull Markets &amp; Bear Markets</span>
                 <p>A <strong>bull market</strong> is a sustained period of rising prices — typically defined as a 20% rise from a recent low. Investor confidence is high, economies are growing, and most stocks go up. The US stock market was in a bull market for most of 2009–2022.</p>
                 <p>A <strong>bear market</strong> is the opposite — a sustained decline of 20% or more from a recent peak. These are periods of falling confidence, economic contraction, or financial crises. The COVID crash of March 2020 and the 2022 inflation-driven selloff are recent examples.</p>

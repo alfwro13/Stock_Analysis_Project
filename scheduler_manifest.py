@@ -62,7 +62,7 @@ JOB_GRAPH: dict[str, dict] = {
 
     # Home Assistant "Refresh Data" button — not a scheduled job; an on-demand HTTP trigger that
     # rides the same market_pulse_cache/account_performance_cache artifacts as the intraday scan.
-    "ha_refresh_now_source":         {"label": "Home Assistant Refresh Now",                     "category": "manual",      "engine": "api_routes_accounts.py",        "produces": ["market_pulse_cache", "account_performance_cache"],           "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": None},
+    "ha_refresh_now_source":         {"label": "Home Assistant Refresh Now",                     "category": "manual",      "engine": "api_routes_accounts.py",        "produces": ["market_pulse_cache", "market_pulse_sparkline", "account_performance_cache"],  "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": None},
 
     # Markets page — not a scheduled job; refresh is page-traffic-driven (same pattern as Market
     # Pulse itself), triggered inline from GET /api/markets whenever a tile's cache is stale.

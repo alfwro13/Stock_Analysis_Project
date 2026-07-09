@@ -3,17 +3,21 @@
 {% block title %}Quantamental - Markets{% endblock %}
 
 {% block content %}
-<h1 class="mb-1">Markets</h1>
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-1 gap-2">
+    <h1 class="mb-0">Markets</h1>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+        <div class="btn-group change-period-group" id="marketsViewGroup" role="group" aria-label="Markets view">
+            <button type="button" class="btn btn-sm change-period-btn" data-view="dynamic">🌅 Dynamic</button>
+            <button type="button" class="btn btn-sm change-period-btn" data-view="static">📌 Static</button>
+        </div>
+        <div id="markets-status" class="live-refresh-status">
+            <span id="markets-pulse-dot" class="pulse-dot"></span>
+            <span id="markets-pulse-text">Loading market data…</span>
+            <span id="markets-last-updated"></span>
+        </div>
+    </div>
+</div>
 <p class="text-secondary mb-3">Global indexes, commodities, and FX — ordered by which regional session is most relevant right now.</p>
-
-<div class="btn-group change-period-group mb-4" id="marketsViewGroup" role="group" aria-label="Markets view">
-    <button type="button" class="btn btn-sm change-period-btn" data-view="dynamic">🌅 Dynamic</button>
-    <button type="button" class="btn btn-sm change-period-btn" data-view="static">📌 Static</button>
-</div>
-
-<div id="markets-status" class="live-refresh-status mb-3">
-    <span id="markets-pulse-dot" class="pulse-dot"></span> <span id="markets-pulse-text">Loading market data…</span>
-</div>
 
 <div id="markets-regions-container"></div>
 

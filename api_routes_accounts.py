@@ -47,6 +47,7 @@ from database import (
     update_treasury_bill_auto_reinvest,
 )
 from market_pulse import fetch_and_save_pulse
+from markets_engine import registry_lookup_tickers
 from notification_engine import notify
 from profile_engine import update_single_profile
 from scheduler_engine import (
@@ -796,8 +797,19 @@ def _run_refresh_now(tickers: list) -> None:
         raise
 
 
+def _refresh_markets_registry() -> None:
+    """Piggybacks the Markets page's full ticker registry onto every HA-triggered refresh, so
+    open tabs see fresh data on their next poll instead of waiting on their own lazy per-tile
+    staleness cycle. Fired as a background task (not awaited by the route) since HA doesn't need
+    these tickers back — only the portfolio-holdings fetch above must finish before the response."""
+    try:
+        fetch_and_save_pulse(registry_lookup_tickers())
+    except Exception as e:
+        logger.error("HA refresh-now market registry warm failed: %s", e)
+
+
 @accounts_router.post("/accounts/refresh-now")
-async def api_refresh_now():
+async def api_refresh_now(background_tasks: BackgroundTasks):
     # Awaited (via a worker thread, so the event loop stays free for other requests) rather than
     # fired-and-forgotten: the Home Assistant "Refresh Data" button re-polls its coordinator
     # immediately after this call returns, so the fetch must actually be finished by then or the
@@ -807,6 +819,7 @@ async def api_refresh_now():
         await run_in_threadpool(_run_refresh_now, tickers)
     except Exception as e:
         return _error_500(e)
+    background_tasks.add_task(_refresh_markets_registry)
     return JSONResponse(content={"status": "success", "message": "Refresh complete."})
 
 

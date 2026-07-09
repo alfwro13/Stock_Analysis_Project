@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 _DYNAMIC_REGIONS = ("US", "Europe", "Asia")
 _STATIC_REGION_ORDER = ["Europe", "US", "Asia", "Commodities_FX"]
-_TIER_RANK = {"open": 0, "pre": 1, "closed": 2}
+_TIER_RANK = {"open": 0, "partial": 1, "pre": 2, "closed": 3}
 
 
 def get_exchange_state(exchange: str) -> str:
@@ -52,9 +52,12 @@ def _seconds_until_open(exchange: str, now_utc: datetime) -> float:
 
 
 def get_region_state(region: str) -> Dict[str, Any]:
-    """Aggregate open/pre/closed state for a region plus a recency_seconds tie-break value:
-    seconds since the most-recently-opened constituent exchange opened (when any are open),
-    or seconds until the soonest constituent opens (when pre/closed)."""
+    """Aggregate open/partial/pre/closed state for a region plus a recency_seconds tie-break
+    value: seconds since the most-recently-opened constituent exchange opened (when any are
+    open), or seconds until the soonest constituent opens (when pre/closed). "open" requires
+    every constituent exchange to be open; "partial" covers the mixed case (e.g. Hong Kong still
+    open while Tokyo has closed for the day) so the region badge doesn't overstate how live the
+    section actually is."""
     exchanges = get_region_exchanges(region)
     now = datetime.now(timezone.utc)
     if not exchanges:
@@ -64,7 +67,8 @@ def get_region_state(region: str) -> Dict[str, Any]:
     open_exchanges = [ex for ex, s in ex_states.items() if s == "open"]
     if open_exchanges:
         recency = min(_seconds_since_open(ex, now) for ex in open_exchanges)
-        return {"state": "open", "recency_seconds": recency}
+        state = "open" if len(open_exchanges) == len(exchanges) else "partial"
+        return {"state": state, "recency_seconds": recency}
 
     pre_exchanges = [ex for ex, s in ex_states.items() if s == "pre"]
     if pre_exchanges:
@@ -146,6 +150,10 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
         tiles = []
         for row, ticker, display_name, is_future in resolved_by_region[region]:
             cached = cache_by_ticker.get(ticker, {})
+            is_stale = cached.get("is_stale", True)
+            # Own exchange, not the aggregated region state — a Hong Kong tile must read "open"
+            # even while its region badge reads "Some Open" because Tokyo has already closed.
+            market_state = get_exchange_state(row["exchange"]) if row.get("exchange") else "open"
             tiles.append({
                 "ticker": ticker,
                 "display_name": display_name,
@@ -159,7 +167,11 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
                 "invert_color": bool(row["invert_color"]),
                 "asset_type": row["asset_type"],
                 "sentiment_score": cached.get("sentiment_score"),
-                "is_stale": cached.get("is_stale", True),
+                "market_state": market_state,
+                # Only flagged as a data problem when the market is supposed to be live —
+                # staleness while the market is closed is expected (no new prints), not an error.
+                "is_stale": is_stale,
+                "stale_data": is_stale and market_state == "open",
                 "needs_refresh": cached.get("needs_refresh", True),
                 "sparkline": market_pulse.get_intraday_points(ticker),
             })
@@ -170,6 +182,14 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
         })
 
     return {"view": view, "regions": regions_payload}
+
+
+def registry_lookup_tickers() -> List[str]:
+    """Resolved (spot-or-future, per current session) ticker for every active registry row,
+    regardless of region order — used to warm market_pulse_cache for the whole Markets page
+    (e.g. from the Home Assistant refresh-now hook), not just whatever's in view right now."""
+    rows = get_ticker_registry(enabled_only=True)
+    return [resolve_tile(row)[0] for row in rows]
 
 
 def select_pulse_tickers(dynamic: bool, desktop_count: int = 10, mobile_count: int = 8) -> Dict[str, List[str]]:
