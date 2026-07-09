@@ -39,27 +39,59 @@
     <h5 class="mt-4">Charts</h5>
     <div class="row g-3">
         <div class="col-12 col-lg-6">
-            <div class="chart-wrapper" id="pt-chart-underwater-outer">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-underwater-outer')">&#9638; Fullscreen</button>
-                <div id="pt-chart-underwater"></div>
+            <div class="sentiment-module module-red">
+                <div class="chart-wrapper" id="pt-chart-underwater-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-underwater-outer')">&#9638; Fullscreen</button>
+                    <div id="pt-chart-underwater"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        This chart shows how far the portfolio has fallen below its previous highest value at every point in time, expressed as a percentage. A flat line at 0% means the portfolio was at a new high; a dip below the line shows an ongoing decline, and the deepest point marks the largest loss from peak to trough. The line returning to 0% means the portfolio fully recovered and reached a new high again — the longer it stays below the line, the longer that recovery took.
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-12 col-lg-6">
-            <div class="chart-wrapper" id="pt-chart-cumulative-growth-outer">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-cumulative-growth-outer')">&#9638; Fullscreen</button>
-                <div id="pt-chart-cumulative-growth"></div>
+            <div class="sentiment-module module-cyan">
+                <div class="chart-wrapper" id="pt-chart-cumulative-growth-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-cumulative-growth-outer')">&#9638; Fullscreen</button>
+                    <div id="pt-chart-cumulative-growth"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        This chart tracks how £100 invested at the start of the period would have grown over time, for both the portfolio (solid line) and a broad market benchmark (dotted line). If the portfolio's line sits above the benchmark's, it has outperformed the market over that period; if it sits below, the benchmark has done better. Comparing the shape of the two lines also shows whether the portfolio tends to move more smoothly or more sharply than the wider market.
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-12 col-lg-6">
-            <div class="chart-wrapper" id="pt-chart-monthly-heatmap-outer">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-monthly-heatmap-outer')">&#9638; Fullscreen</button>
-                <div id="pt-chart-monthly-heatmap"></div>
+            <div class="sentiment-module module-purple">
+                <div class="chart-wrapper" id="pt-chart-monthly-heatmap-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-monthly-heatmap-outer')">&#9638; Fullscreen</button>
+                    <div id="pt-chart-monthly-heatmap"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        Each cell in this grid shows the portfolio's total return for one calendar month, with a row per year and a column per month. Green cells are positive months and red cells are negative months — the darker the shade, the larger the gain or loss. Scanning across a row shows how returns varied month-to-month within a year, while scanning down a column shows how that same month performed across different years.
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-12 col-lg-6">
-            <div class="chart-wrapper" id="pt-chart-histogram-outer">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-histogram-outer')">&#9638; Fullscreen</button>
-                <div id="pt-chart-histogram"></div>
+            <div class="sentiment-module module-default">
+                <div class="chart-wrapper" id="pt-chart-histogram-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-histogram-outer')">&#9638; Fullscreen</button>
+                    <div id="pt-chart-histogram"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        This histogram shows how often the portfolio's daily returns fell into each range, giving a sense of typical day-to-day movement rather than just the average. Most days cluster near the middle close to zero, with fewer days far to the left (large losses) or right (large gains). The dashed green line marks the average daily return, and the dotted red line marks the 5th-percentile worst-case daily loss (VaR 95%) — on 95% of days, the loss was no worse than this line.
+                    </div>
+                </div>
             </div>
         </div>
     </div>

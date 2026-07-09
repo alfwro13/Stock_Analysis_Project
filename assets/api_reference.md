@@ -2821,6 +2821,83 @@ Each percentile array has length `horizon_years + 1` (index 0 = current year, in
 
 ---
 
+### `GET /api/performance-analytics/accounts`
+
+Returns the same account-tile list and total as `GET /api/monte-carlo/accounts` — both endpoints call the shared `accounts_engine.list_scope_accounts_with_values()` so their tiles never drift apart. Used to populate the account-selector bar on the Portfolio Tearsheet page.
+
+**Auth:** Required (session cookie).
+
+**Rate limit:** 10 requests/minute.
+
+**Response:** identical shape to `GET /api/monte-carlo/accounts` above.
+
+---
+
+### `GET /api/performance-analytics/report`
+
+Returns the **Portfolio Tearsheet** report for an account scope — native (non-quantstats) risk-adjusted return ratios, drawdown duration analytics, distribution/tail stats, win/loss stats, and the 4 chart payloads. Pure computation from `xray_engine.get_scope_return_series()` — no DB writes, no scheduled job.
+
+**Auth:** Required (session cookie).
+
+**Rate limit:** 10 requests/minute.
+
+**Query params:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `account_id` | string | `"all"` | `"all"` = every configured source combined; a Ghostfolio account UUID; or `"acct:{id}"` for one built-in Trading account |
+
+**Response (sufficient cached history — ≥30 overlapping trading days):**
+
+```json
+{
+  "status": "success",
+  "account_id": "all",
+  "annualized_return": 0.084,
+  "metrics": {
+    "risk_adjusted_ratios": {
+      "sortino_ratio": 1.12, "calmar_ratio": 0.61, "omega_ratio": 1.08, "profit_factor": 1.15
+    },
+    "drawdown_analytics": {
+      "max_drawdown": -0.1382, "longest_drawdown_days": 47, "time_underwater_days": 12, "ulcer_index": 0.0421
+    },
+    "distribution_tail_stats": {
+      "best_day": 0.0312, "worst_day": -0.0287, "best_month": 0.0511, "worst_month": -0.0433, "tail_ratio": 1.09
+    },
+    "win_loss_stats": {
+      "win_rate": 0.5238, "avg_win": 0.0091, "avg_loss": -0.0084, "payoff_ratio": 1.08,
+      "max_consecutive_wins": 6, "max_consecutive_losses": 5
+    }
+  },
+  "charts": {
+    "underwater": [{"date": "2025-01-02", "value": 0.0}, "..."],
+    "cumulative_growth": {"dates": ["2025-01-02", "..."], "portfolio": [100.0, "..."], "benchmark": [100.0, "..."]},
+    "monthly_heatmap": {"years": [2025], "months": [1, 2, "...", 12], "matrix": [[0.021, -0.014, null, "..."]]},
+    "histogram": {"returns": [0.004, -0.002, "..."], "mean": 0.0003, "var_95": -0.0142}
+  },
+  "data_warnings": []
+}
+```
+
+**Response (fewer than 30 overlapping cached days):**
+
+```json
+{
+  "status": "success",
+  "account_id": "acct:5",
+  "annualized_return": null,
+  "metrics": null,
+  "charts": null,
+  "data_warnings": ["Not enough cached return history for this scope yet — need at least 30 overlapping cached trading days across the in-scope holdings."]
+}
+```
+
+**Response (scope has no holdings):** `{"status": "error", "message": "No holdings found for this scope..."}`.
+
+`monthly_heatmap.matrix` rows are ordered by `years`, columns by `months` (1–12); a `null` cell means that scope had no cached return data for that calendar month. Every fractional field (`sortino_ratio`, `max_drawdown`, etc.) follows the same sign convention as the equivalent X-ray field (drawdowns and losses are negative).
+
+---
+
 ## 19. Accounts
 
 Native, database-backed brokerage accounts + transaction ledger (`/accounts`). Coexists with Ghostfolio — built-in account holdings are merged into the Portfolio page alongside any Ghostfolio-synced accounts (see `accounts_engine.get_combined_holdings`). Backed by the `accounts`, `account_transactions`, `account_value_history`, and `account_price_history` SQLite tables. `House`/`Pension` accounts are tracked standalone via the **Account Price Scraper** (a generic URL + CSS-selector price feed, configured from the account's own tile/detail page rather than the Settings page) — see the dedicated endpoints below.

@@ -67,6 +67,14 @@ JOB_GRAPH: dict[str, dict] = {
     # Markets page — not a scheduled job; refresh is page-traffic-driven (same pattern as Market
     # Pulse itself), triggered inline from GET /api/markets whenever a tile's cache is stale.
     "markets_page_source":           {"label": "Markets Page",                                   "category": "manual",      "engine": "markets_engine.py",             "produces": ["market_pulse_cache", "market_pulse_sparkline"],              "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": "markets-registry-card"},
+
+    # Monte Carlo Wealth Simulator — not a scheduled job; pure on-demand computation over
+    # already-cached X-ray artifacts (correlation matrix, risk cache), no new artifact produced.
+    "monte_carlo_source":             {"label": "Monte Carlo Wealth Simulator",                   "category": "manual",      "engine": "monte_carlo_engine.py",         "produces": [],                                                             "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
+
+    # Portfolio Tearsheet — not a scheduled job; pure on-demand computation over the same
+    # xray_returns_cache-derived return series X-ray uses, no new artifact produced.
+    "performance_analytics_source":  {"label": "Portfolio Tearsheet",                            "category": "manual",      "engine": "performance_analytics_engine.py", "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code

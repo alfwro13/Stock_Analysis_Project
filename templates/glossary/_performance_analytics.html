@@ -1,0 +1,48 @@
+<div class="accordion-item glossary-section" id="performance-analytics">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-performance-analytics"
+                aria-expanded="false" aria-controls="collapse-performance-analytics">
+            📊 Portfolio Tearsheet
+        </button>
+    </h2>
+    <div id="collapse-performance-analytics" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What the Portfolio Tearsheet Does</span>
+                <p>The <strong>Portfolio Tearsheet</strong> is a native performance-analytics report, covering the same ground as the <strong>quantstats</strong> Python library's metric set — risk-adjusted return ratios, drawdown duration analysis, and win/loss statistics — computed entirely from the app's own cached daily return history, with no external dependency and no static HTML report generator involved.</p>
+                <p>It deliberately doesn't duplicate what the <a href="/portfolio">Portfolio</a> page's X-ray panel already shows (Sharpe ratio, historical VaR/CVaR, skewness/kurtosis, beta, volatility) — the Tearsheet's cards and charts are all metrics X-ray doesn't cover: Sortino and Omega ratios, drawdown duration and time underwater, the Ulcer Index, tail ratio, and win/loss consistency. Both draw on the same underlying per-ticker cached return series, so a scope's numbers stay consistent between the two views.</p>
+                <p>Every metric requires at least 30 overlapping cached trading days across the selected scope's holdings — below that, cards show as unavailable with an explanatory warning rather than a misleading partial figure.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Sortino, Calmar, Omega &amp; Profit Factor</span>
+                <p><strong>Sortino Ratio</strong> is a Sharpe-ratio variant that only penalises downside volatility — a portfolio with big up-days and small down-days scores well, even if its Sharpe ratio (which penalises all volatility equally) looks mediocre.</p>
+                <div class="rule">Sortino = (Annualised Return − Risk-Free Rate) / Downside Deviation, where Downside Deviation = annualised standard deviation of negative daily returns only.</div>
+                <p><strong>Calmar Ratio</strong> divides annualised return by the maximum drawdown — a direct answer to "how much return did I earn per unit of my worst peak-to-trough loss?" Higher is better; a Calmar above 1 means annual return exceeded the worst drawdown.</p>
+                <p><strong>Omega Ratio</strong> compares the total size of gains above a minimum acceptable return threshold (the risk-free rate) to the total size of losses below it. A value above 1 means gains outweighed losses on a probability-weighted basis, using the entire return distribution rather than just its mean and variance.</p>
+                <p><strong>Profit Factor</strong> is the simplest of the four: the sum of every positive daily return divided by the absolute sum of every negative daily return. A value of 2.0 means winning days, in total, were twice the size of losing days.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Drawdown Duration &amp; the Ulcer Index</span>
+                <p>X-ray's Max Drawdown shows how deep the worst decline was. The Tearsheet adds <em>how long</em> it lasted: <strong>Longest Drawdown</strong> is the longest continuous stretch the portfolio spent below a previous high-water mark, and <strong>Time Underwater</strong> is how many days it's been since the most recent new high — both computed from the full dated drawdown curve, not just its lowest point.</p>
+                <p>The <strong>Ulcer Index</strong> combines depth and duration into a single number: the root-mean-square of the drawdown curve. Two portfolios can share the same max drawdown, but the one that spent months underwater — rather than snapping back in days — has a higher Ulcer Index, reflecting the greater psychological and practical cost of the decline.</p>
+                <div class="rule">Ulcer Index = √(mean(drawdown_pct²)) over the entire cached history.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Tail Ratio &amp; Win/Loss Stats</span>
+                <p><strong>Tail Ratio</strong> compares the size of the best days to the worst: the 95th-percentile daily return divided by the absolute 5th-percentile daily return. A ratio above 1 means the portfolio's best days have historically outsized its worst days.</p>
+                <p><strong>Win Rate</strong>, <strong>Average Win</strong>/<strong>Average Loss</strong>, and the <strong>Win/Loss (Payoff) Ratio</strong> (average win ÷ absolute average loss) characterise consistency day-to-day, separately from the ratios above that describe risk-adjusted return over the whole period. <strong>Max Consecutive Wins/Losses</strong> shows the longest streaks in either direction — useful context for how "lumpy" the return pattern has been.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">The Charts</span>
+                <p>The <strong>Underwater Chart</strong> plots the drawdown curve directly — every dip below the water line and how long it took to recover. The <strong>Cumulative Growth</strong> chart indexes the portfolio and its benchmark to a common starting value of 100, making relative performance easy to read regardless of the portfolio's actual size. The <strong>Monthly Returns Heatmap</strong> lays out every calendar month's compounded return in a year × month grid — the tearsheet's signature view for spotting seasonal patterns or a handful of outsized months driving overall performance. A <strong>Daily Return Distribution</strong> histogram, with the mean and 5th-percentile (VaR 95%) marked, rounds out the picture of what a "typical" day actually looked like.</p>
+            </div>
+
+        </div>
+    </div>
+</div>
