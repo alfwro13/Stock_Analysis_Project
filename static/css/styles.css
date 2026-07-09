@@ -1111,7 +1111,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-account-select { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; font-size: 0.85rem; }
 .heatmap-panel { display: none; position: relative; width: 100%; height: 450px; }
 .heatmap-empty { color: var(--bs-body-color); font-size: var(--font-size-body); padding: 12px 0; }
-.heatmap-tile { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid #121212; border-radius: 2px; cursor: default; transition: filter 0.15s; overflow: hidden; padding: 4px; }
+.heatmap-tile { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid #121212; border-radius: 2px; cursor: pointer; transition: filter 0.15s; overflow: hidden; padding: 4px; color: inherit; text-decoration: none; }
 .heatmap-tile:hover { filter: brightness(1.25); z-index: 1; }
 .heatmap-tile-gain { background-color: #1a4d1a; }
 .heatmap-tile-loss { background-color: #4d1a1a; }

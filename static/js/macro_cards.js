@@ -242,8 +242,16 @@ function updateAssetPrices(assets) {
             }
 
             priceEl.className = asset.is_stale ? 'stale-text' : (isPositive ? 'trend-up' : 'trend-down');
+
+            if (rowEl && typeof window._updateRowPnl === 'function') {
+                window._updateRowPnl(rowEl, asset.price);
+            }
         }
     });
+
+    if (typeof window._recomputePortfolioSummary === 'function') {
+        window._recomputePortfolioSummary();
+    }
 }
 
 function handlePulseError() {

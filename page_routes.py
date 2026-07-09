@@ -327,6 +327,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
         row_dict['global_market_value'] = None
         row_dict['global_unrealized_pnl'] = None
         row_dict['global_unrealized_pnl_pct'] = None
+        row_dict['live_shares'] = None
+        row_dict['live_cost_base'] = None
+        row_dict['live_fx_rate'] = None
         asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
         priced = price_map.get(row_dict['ticker'])
         current_price = priced[0] if priced and priced[0] else row_dict['current_price']
@@ -361,6 +364,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             val_in_base = (shares * current_price) * exchange_rate
             row_dict['market_value_base'] = round(val_in_base, 2)
             row_dict['global_market_value'] = round(val_in_base, 2)
+            row_dict['live_shares'] = shares
+            row_dict['live_cost_base'] = cost_in_base
+            row_dict['live_fx_rate'] = exchange_rate
 
             summary_math["value"] += val_in_base
             summary_math["cost"] += cost_in_base

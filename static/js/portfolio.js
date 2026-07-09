@@ -196,6 +196,72 @@ function changePeriod(period) {
     }
 }
 
+// ── Live Unrealized P&L recompute (keeps summary row + Global Value/P&L columns
+// in sync with the same live-price poll that already refreshes Price/Change) ──
+function _baseCurrencySymbol() {
+    var cur = window.BASE_CURRENCY || 'GBP';
+    return ({ GBP: '£', USD: '$', EUR: '€' })[cur] || (cur + ' ');
+}
+
+function _updateRowPnl(rowEl, rawPrice) {
+    var shares   = parseFloat(rowEl.dataset.shares);
+    var costBase = parseFloat(rowEl.dataset.costBase);
+    var fxRate   = parseFloat(rowEl.dataset.fxRate);
+    var price    = parseFloat(rawPrice);
+    if (!shares || !isFinite(fxRate) || !isFinite(price)) return;
+
+    var valueBase = shares * price * fxRate;
+    rowEl.setAttribute('data-value-base', valueBase);
+
+    var sym  = _baseCurrencySymbol();
+    var gvEl = document.getElementById('gv-' + rowEl.dataset.ticker);
+    if (gvEl) {
+        gvEl.textContent = sym + valueBase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        var gvCell = gvEl.closest('td');
+        if (gvCell) gvCell.setAttribute('data-sort', valueBase);
+    }
+
+    if (!isFinite(costBase)) return;
+    var gpnlEl = document.getElementById('gpnl-' + rowEl.dataset.ticker);
+    if (!gpnlEl) return;
+    var pnl  = valueBase - costBase;
+    var pct  = costBase ? (pnl / costBase * 100) : null;
+    var sign = pnl >= 0 ? '+' : '';
+    var cls  = pnl >= 0 ? 'trend-up' : 'trend-down';
+    var html = '<span class="' + cls + '">' + sign + sym + pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</span>';
+    if (pct !== null) {
+        html += '<br><small class="cell-sub">' + sign + pct.toFixed(2) + '%</small>';
+    }
+    gpnlEl.innerHTML = html;
+    var gpnlCell = gpnlEl.closest('td');
+    if (gpnlCell) gpnlCell.setAttribute('data-sort', pnl);
+}
+window._updateRowPnl = _updateRowPnl;
+
+function _recomputePortfolioSummary() {
+    var rows = window._portfolioTable
+        ? window._portfolioTable.rows().nodes()
+        : document.querySelectorAll('#dataTable tbody tr');
+    var totalValue = 0, totalCost = 0, any = false;
+    Array.prototype.forEach.call(rows, function (rowEl) {
+        if (rowEl.classList.contains('child')) return;
+        var v = parseFloat(rowEl.dataset.valueBase);
+        var c = parseFloat(rowEl.dataset.costBase);
+        if (isFinite(v) && isFinite(c) && c > 0) {
+            totalValue += v;
+            totalCost += c;
+            any = true;
+        }
+    });
+    if (!any) return;
+    _updateSummaryRow({
+        base_currency: window.BASE_CURRENCY,
+        portfolio_total_value: totalValue,
+        portfolio_total_investment: totalCost
+    });
+}
+window._recomputePortfolioSummary = _recomputePortfolioSummary;
+
 function _loadXray(accountId) {
     var loadEl = document.getElementById('xray-loading');
     var contEl = document.getElementById('xray-content');

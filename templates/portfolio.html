@@ -17,6 +17,7 @@ window.ENABLE_LIVE_ASSETS = {% if not embed and config and config.UI_PREFERENCES
 window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000{% else %}60000{% endif %};
 window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
 window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
+window.EMBED_MODE = {% if embed %}true{% else %}false{% endif %};
 </script>
 
 {% if not embed %}
@@ -155,6 +156,10 @@ window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
             data-closeytd="{{ item.period_anchors.get('ytd') if item.period_anchors.get('ytd') is not none else '' }}"
             data-close1y="{{ item.period_anchors.get('1y') if item.period_anchors.get('1y') is not none else '' }}"
             data-currency="{{ item.currency }}"
+            data-shares="{{ item.live_shares if item.live_shares is not none else '' }}"
+            data-cost-base="{{ item.live_cost_base if item.live_cost_base is not none else '' }}"
+            data-fx-rate="{{ item.live_fx_rate if item.live_fx_rate is not none else '' }}"
+            data-value-base="{{ item.global_market_value if item.global_market_value is not none else '' }}"
             data-signal="{{ item.overall_signal | upper }}"
             data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
             data-detail-company="{{ item.company_name | e }}"
@@ -198,12 +203,15 @@ window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
             </td>
 
             <td data-sort="{{ item.global_market_value if item.global_market_value is not none else -999 }}" class="num-cell">
+                <span id="gv-{{ item.ticker }}">
                 {% if item.global_market_value is not none %}
                     {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
                     {{ base_sym }}{{ "{:,.2f}".format(item.global_market_value) }}
                 {% else %}N/A{% endif %}
+                </span>
             </td>
             <td data-sort="{{ item.global_unrealized_pnl if item.global_unrealized_pnl is not none else -999999 }}" class="num-cell">
+                <span id="gpnl-{{ item.ticker }}">
                 {% if item.global_unrealized_pnl is not none %}
                     {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
                     {% set pnl_class = 'trend-up' if item.global_unrealized_pnl >= 0 else 'trend-down' %}
@@ -213,6 +221,7 @@ window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
                         <br><small class="cell-sub">{{ pnl_sign }}{{ "{:,.2f}".format(item.global_unrealized_pnl_pct) }}%</small>
                     {% endif %}
                 {% else %}N/A{% endif %}
+                </span>
             </td>
             <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
             <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>

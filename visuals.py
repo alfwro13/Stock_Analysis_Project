@@ -59,9 +59,11 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         margin=dict(l=20, r=20, t=60, b=20),
         xaxis_rangeslider_visible=False,
         title=dict(text=title_text, x=0.5, xanchor='center'),
+        showlegend=False,
         hovermode="x unified",
         hoverlabel=dict(align="left")
     )
+    fig.update_yaxes(automargin=True)
 
     clean_config = {
         'responsive': True,
@@ -153,12 +155,13 @@ def create_macro_chart(df, df_baseline, ticker):
     fig.update_layout(
         template="plotly_dark",
         height=1200,
-        margin=dict(l=20, r=20, t=80, b=20),
+        margin=dict(l=20, r=20, t=80, b=100),
         xaxis_rangeslider_visible=False,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="center", x=0.5),
         hovermode="x unified",
         hoverlabel=dict(align="left")
     )
+    fig.update_yaxes(automargin=True)
 
     clean_config = {
         'responsive': True,
@@ -433,13 +436,13 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
     fig.update_layout(
         template="plotly_dark",
         height=500,
-        margin=dict(l=20, r=20, t=60, b=20),
+        margin=dict(l=20, r=20, t=60, b=60),
         hovermode="x unified",
         hoverlabel=dict(align="left"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5),
     )
-    fig.update_yaxes(title_text="Anomaly Score", range=[0, 1], row=1, col=1)
-    fig.update_yaxes(title_text="Close Price", row=2, col=1)
+    fig.update_yaxes(title_text="Anomaly Score", range=[0, 1], automargin=True, row=1, col=1)
+    fig.update_yaxes(title_text="Close Price", automargin=True, row=2, col=1)
     fig.update_xaxes(rangeslider_visible=False)
 
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
