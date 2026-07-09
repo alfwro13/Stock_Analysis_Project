@@ -3,6 +3,7 @@ var selectedAccountId = "all";
 var METRIC_GROUPS = [
     {
         containerId: "pt-cards-risk_adjusted_ratios",
+        groupKey: "risk_adjusted_ratios",
         metrics: [
             { key: "sortino_ratio", label: "Sortino Ratio", fmt: "num",
               tip: "Like the Sharpe ratio, but only penalises downside volatility — upside swings don't count against it." },
@@ -16,6 +17,7 @@ var METRIC_GROUPS = [
     },
     {
         containerId: "pt-cards-drawdown_analytics",
+        groupKey: "drawdown_analytics",
         metrics: [
             { key: "max_drawdown", label: "Max Drawdown", fmt: "pct",
               tip: "The largest peak-to-trough decline in portfolio value over the cached history, computed from daily returns." },
@@ -29,6 +31,7 @@ var METRIC_GROUPS = [
     },
     {
         containerId: "pt-cards-distribution_tail_stats",
+        groupKey: "distribution_tail_stats",
         metrics: [
             { key: "best_day", label: "Best Day", fmt: "pct", tip: "The single best daily return in the cached history." },
             { key: "worst_day", label: "Worst Day", fmt: "pct", tip: "The single worst daily return in the cached history." },
@@ -40,6 +43,7 @@ var METRIC_GROUPS = [
     },
     {
         containerId: "pt-cards-win_loss_stats",
+        groupKey: "win_loss_stats",
         metrics: [
             { key: "win_rate", label: "Win Rate", fmt: "pct", tip: "Percentage of cached trading days with a positive return." },
             { key: "avg_win", label: "Average Win", fmt: "pct", tip: "Mean daily return on winning days." },
@@ -103,12 +107,65 @@ function renderPlaceholderCards() {
     });
 }
 
+function renderMetricCards(metricsData) {
+    METRIC_GROUPS.forEach(function (group) {
+        var container = document.getElementById(group.containerId);
+        var groupData = metricsData[group.groupKey] || {};
+        var html = "";
+        group.metrics.forEach(function (m) {
+            html += _card(m.label, _fmtMetric(groupData[m.key], m.fmt), m.tip);
+        });
+        container.innerHTML = html;
+    });
+}
+
+function _showWarning(text) {
+    var el = document.getElementById("pt-warning");
+    el.textContent = text;
+    el.classList.remove("d-none");
+}
+
+function _hideWarning() {
+    document.getElementById("pt-warning").classList.add("d-none");
+}
+
+function loadReport(accountId) {
+    _hideWarning();
+    fetch("/api/performance-analytics/report?account_id=" + encodeURIComponent(accountId))
+        .then(function (resp) { return resp.json(); })
+        .then(function (data) {
+            if (data.status !== "success") {
+                renderPlaceholderCards();
+                _showWarning(data.message || "Failed to load the performance report.");
+                return;
+            }
+            if (!data.metrics) {
+                renderPlaceholderCards();
+                _showWarning(
+                    (data.data_warnings && data.data_warnings.length)
+                        ? data.data_warnings.join(" ")
+                        : "Not enough cached return history for this scope yet."
+                );
+                return;
+            }
+            renderMetricCards(data.metrics);
+            if (data.data_warnings && data.data_warnings.length) {
+                _showWarning(data.data_warnings.join(" "));
+            }
+        })
+        .catch(function () {
+            renderPlaceholderCards();
+            _showWarning("Request failed — check server logs.");
+        });
+}
+
 function _setActiveTile(btn, accountId) {
     document.querySelectorAll(".mc-account-tile").forEach(function (t) {
         t.classList.remove("mc-account-tile--active");
     });
     btn.classList.add("mc-account-tile--active");
     selectedAccountId = accountId;
+    loadReport(accountId);
 }
 
 function loadAccounts() {
@@ -146,6 +203,7 @@ function loadAccounts() {
 function initPage() {
     renderPlaceholderCards();
     loadAccounts();
+    loadReport(selectedAccountId);
 }
 
 document.addEventListener("DOMContentLoaded", initPage);
