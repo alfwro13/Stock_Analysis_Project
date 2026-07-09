@@ -2,6 +2,10 @@
 
 {% block title %}Quantamental - Portfolio Tearsheet{% endblock %}
 
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1 class="mb-1">&#128200; Portfolio Tearsheet</h1>
 <p class="text-muted mb-3">
@@ -31,6 +35,34 @@
 
     <h5 class="mt-3">Win / Loss Stats</h5>
     <div class="xray-cards-row" id="pt-cards-win_loss_stats"></div>
+
+    <h5 class="mt-4">Charts</h5>
+    <div class="row g-3">
+        <div class="col-12 col-lg-6">
+            <div class="chart-wrapper" id="pt-chart-underwater-outer">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-underwater-outer')">&#9638; Fullscreen</button>
+                <div id="pt-chart-underwater"></div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="chart-wrapper" id="pt-chart-cumulative-growth-outer">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-cumulative-growth-outer')">&#9638; Fullscreen</button>
+                <div id="pt-chart-cumulative-growth"></div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="chart-wrapper" id="pt-chart-monthly-heatmap-outer">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-monthly-heatmap-outer')">&#9638; Fullscreen</button>
+                <div id="pt-chart-monthly-heatmap"></div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="chart-wrapper" id="pt-chart-histogram-outer">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('pt-chart-histogram-outer')">&#9638; Fullscreen</button>
+                <div id="pt-chart-histogram"></div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

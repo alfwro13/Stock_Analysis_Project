@@ -129,6 +129,154 @@ function _hideWarning() {
     document.getElementById("pt-warning").classList.add("d-none");
 }
 
+var CHART_IDS = ["pt-chart-underwater", "pt-chart-cumulative-growth", "pt-chart-monthly-heatmap", "pt-chart-histogram"];
+
+function _clearCharts() {
+    CHART_IDS.forEach(function (id) {
+        document.getElementById(id).innerHTML = "";
+    });
+}
+
+function _ptChartHeight() {
+    // Mobile can't go below 400 — static/css/styles.css forces a 400px min-height
+    // on .js-plotly-plot under 768px; a smaller value here leaves the chart pinned
+    // short inside a taller, CSS-floored container.
+    return window.innerWidth < 768 ? 400 : 350;
+}
+
+function toggleFullscreen(wrapperId) {
+    var wrapper = document.getElementById(wrapperId);
+    if (!wrapper) return;
+    var isFullscreen = wrapper.classList.contains("is-fullscreen");
+    var btn = wrapper.querySelector(".fullscreen-btn");
+    var plotEl = wrapper.querySelector(".js-plotly-plot");
+    if (isFullscreen) {
+        wrapper.classList.remove("is-fullscreen");
+        if (btn) btn.innerHTML = "&#9638; Fullscreen";
+        if (plotEl && window.Plotly) Plotly.relayout(plotEl, { height: _ptChartHeight() });
+    } else {
+        wrapper.classList.add("is-fullscreen");
+        if (btn) btn.innerHTML = "&#10006; Exit Fullscreen";
+        if (plotEl && window.Plotly) Plotly.relayout(plotEl, { height: window.innerHeight - 120 });
+    }
+    window.dispatchEvent(new Event("resize"));
+}
+
+function _renderUnderwaterChart(underwater) {
+    var el = document.getElementById("pt-chart-underwater");
+    if (!underwater || !underwater.length) {
+        el.innerHTML = "<p class='text-muted'>No drawdown data available.</p>";
+        return;
+    }
+    var traces = [{
+        x: underwater.map(function (d) { return d.date; }),
+        y: underwater.map(function (d) { return d.value * 100; }),
+        name: "Drawdown", fill: "tozeroy",
+        fillcolor: "rgba(239,85,59,0.25)", line: { color: "rgba(239,85,59,0.9)", width: 1.5 },
+        hovertemplate: "%{x}: %{y:.2f}%<extra></extra>",
+    }];
+    var layout = {
+        title: { text: "Underwater / Drawdown", x: 0.5, xanchor: "center" },
+        template: "plotly_dark", height: _ptChartHeight(),
+        margin: { l: 50, r: 20, t: 50, b: 60 },
+        legend: { orientation: "h", yanchor: "top", y: -0.15, xanchor: "center", x: 0.5 },
+        paper_bgcolor: "#1e1e1e", plot_bgcolor: "#1e1e1e", font: { color: "#ccc" },
+        yaxis: { title: "Drawdown %", ticksuffix: "%", automargin: true, gridcolor: "#333" },
+        xaxis: { gridcolor: "#333" },
+    };
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
+}
+
+function _renderCumulativeGrowthChart(cg) {
+    var el = document.getElementById("pt-chart-cumulative-growth");
+    if (!cg) {
+        el.innerHTML = "<p class='text-muted'>No benchmark-comparison data available for this scope.</p>";
+        return;
+    }
+    var traces = [
+        { x: cg.dates, y: cg.portfolio, name: "Portfolio", line: { color: "#00ffcc", width: 2 } },
+        { x: cg.dates, y: cg.benchmark, name: "Benchmark", line: { color: "#bb86fc", width: 1.5, dash: "dot" } },
+    ];
+    var layout = {
+        title: { text: "Cumulative Growth vs. Benchmark (indexed to 100)", x: 0.5, xanchor: "center" },
+        template: "plotly_dark", height: _ptChartHeight(), hovermode: "x unified",
+        margin: { l: 50, r: 20, t: 50, b: 60 },
+        legend: { orientation: "h", yanchor: "top", y: -0.15, xanchor: "center", x: 0.5 },
+        paper_bgcolor: "#1e1e1e", plot_bgcolor: "#1e1e1e", font: { color: "#ccc" },
+        yaxis: { title: "Growth of 100", automargin: true, gridcolor: "#333" },
+        xaxis: { gridcolor: "#333" },
+    };
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
+}
+
+function _renderMonthlyHeatmap(hm) {
+    var el = document.getElementById("pt-chart-monthly-heatmap");
+    if (!hm || !hm.years.length) {
+        el.innerHTML = "<p class='text-muted'>No monthly data available yet.</p>";
+        return;
+    }
+    var monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var z = hm.matrix.map(function (row) {
+        return row.map(function (v) { return v === null ? null : v * 100; });
+    });
+    var trace = {
+        z: z, x: monthLabels, y: hm.years.map(String), type: "heatmap",
+        colorscale: [[0, "#ef553b"], [0.5, "#1e1e1e"], [1, "#00cc96"]], zmid: 0,
+        hovertemplate: "%{y} %{x}: %{z:.2f}%<extra></extra>",
+        colorbar: { title: "%", tickformat: ".0f" },
+    };
+    var layout = {
+        title: { text: "Monthly Returns Heatmap", x: 0.5, xanchor: "center" },
+        template: "plotly_dark", height: _ptChartHeight(),
+        margin: { l: 50, r: 20, t: 50, b: 60 },
+        paper_bgcolor: "#1e1e1e", plot_bgcolor: "#1e1e1e", font: { color: "#ccc" },
+        yaxis: { automargin: true },
+    };
+    Plotly.react(el, [trace], layout, { responsive: true, displaylogo: false });
+}
+
+function _renderHistogramChart(hist) {
+    var el = document.getElementById("pt-chart-histogram");
+    if (!hist || !hist.returns.length) {
+        el.innerHTML = "<p class='text-muted'>No return data available.</p>";
+        return;
+    }
+    var traces = [{
+        x: hist.returns.map(function (v) { return v * 100; }),
+        type: "histogram", name: "Daily Returns",
+        marker: { color: "rgba(99,110,250,0.6)" }, nbinsx: 40,
+    }];
+    var meanPct = hist.mean * 100;
+    var varPct = hist.var_95 * 100;
+    var layout = {
+        title: { text: "Daily Return Distribution", x: 0.5, xanchor: "center" },
+        template: "plotly_dark", height: _ptChartHeight(),
+        margin: { l: 50, r: 20, t: 50, b: 60 },
+        legend: { orientation: "h", yanchor: "top", y: -0.15, xanchor: "center", x: 0.5 },
+        paper_bgcolor: "#1e1e1e", plot_bgcolor: "#1e1e1e", font: { color: "#ccc" },
+        yaxis: { title: "Frequency", automargin: true, gridcolor: "#333" },
+        xaxis: { title: "Daily Return %", ticksuffix: "%", gridcolor: "#333" },
+        shapes: [
+            { type: "line", x0: meanPct, x1: meanPct, y0: 0, y1: 1, yref: "paper",
+              line: { color: "#00ffcc", dash: "dash", width: 1.5 } },
+            { type: "line", x0: varPct, x1: varPct, y0: 0, y1: 1, yref: "paper",
+              line: { color: "#ef553b", dash: "dot", width: 1.5 } },
+        ],
+        annotations: [
+            { x: meanPct, y: 1, yref: "paper", yanchor: "bottom", text: "Mean", showarrow: false, font: { color: "#00ffcc", size: 10 } },
+            { x: varPct, y: 1, yref: "paper", yanchor: "bottom", text: "VaR 95%", showarrow: false, font: { color: "#ef553b", size: 10 } },
+        ],
+    };
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
+}
+
+function renderCharts(charts) {
+    _renderUnderwaterChart(charts.underwater);
+    _renderCumulativeGrowthChart(charts.cumulative_growth);
+    _renderMonthlyHeatmap(charts.monthly_heatmap);
+    _renderHistogramChart(charts.histogram);
+}
+
 function loadReport(accountId) {
     _hideWarning();
     fetch("/api/performance-analytics/report?account_id=" + encodeURIComponent(accountId))
@@ -136,11 +284,13 @@ function loadReport(accountId) {
         .then(function (data) {
             if (data.status !== "success") {
                 renderPlaceholderCards();
+                _clearCharts();
                 _showWarning(data.message || "Failed to load the performance report.");
                 return;
             }
             if (!data.metrics) {
                 renderPlaceholderCards();
+                _clearCharts();
                 _showWarning(
                     (data.data_warnings && data.data_warnings.length)
                         ? data.data_warnings.join(" ")
@@ -149,12 +299,14 @@ function loadReport(accountId) {
                 return;
             }
             renderMetricCards(data.metrics);
+            renderCharts(data.charts);
             if (data.data_warnings && data.data_warnings.length) {
                 _showWarning(data.data_warnings.join(" "));
             }
         })
         .catch(function () {
             renderPlaceholderCards();
+            _clearCharts();
             _showWarning("Request failed — check server logs.");
         });
 }
