@@ -456,9 +456,11 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
      applied per-card via inline style in macro_cards.js — this is just the 4-per-row fallback. */
   .macro-card-link { display: flex; flex: 0 0 calc(25% - 3px); max-width: calc(25% - 3px); }
   .macro-container { gap: 4px; }
-  /* Markets page tiles use a CSS grid container, not .macro-container's flexbox, so the
-     flex-basis override above has no effect here — force the same 4-per-row via grid-template-columns. */
-  .markets-tile-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  /* Markets page tiles sit in a CSS grid container (auto-fill/minmax) on desktop, not
+     .macro-container's flexbox — flex-basis on .macro-card-link above is meaningless inside a
+     grid parent. Switch the container itself to the same flex-wrap mechanism on mobile so the
+     4-per-row sizing above actually applies, instead of fighting two layout models at once. */
+  .markets-tile-grid { display: flex; flex-wrap: wrap; gap: 4px; }
   .macro-card { min-width: 0; width: 100%; padding: 6px 2px; }
   .macro-title { font-size: 9px; word-break: break-word; }
   .macro-price { font-size: 12px; }
