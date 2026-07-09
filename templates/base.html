@@ -29,14 +29,12 @@
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/markets') %} active{% endif %}" href="/markets">🌅 Markets</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/portfolio') %} active{% endif %}" href="/portfolio">💼 Portfolio</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/accounts') %} active{% endif %}" href="/accounts">🏦 Accounts</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/watchlist') %} active{% endif %}" href="/watchlist">👀 Watchlist</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/news') %} active{% endif %}" href="/news">📰 News</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/earnings-volatility') %} active{% endif %}" href="/earnings-volatility">📅 Earnings Volatility</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/market-sentiment') %} active{% endif %}" href="/market-sentiment">🌡️ Market Sentiment</a></li>
-                    <li class="nav-item"><a class="nav-link{% if p.startswith('/market-screener') %} active{% endif %}" href="/market-screener">🌐 Market Screener</a></li>
-                    <li class="nav-item"><a class="nav-link{% if p.startswith('/market-reports') %} active{% endif %}" href="/market-reports">📈 Market Reports</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/tools') %} active{% endif %}" href="/tools">🔧 Tools</a></li>
-                    <li class="nav-item"><a class="nav-link{% if p.startswith('/accounts') %} active{% endif %}" href="/accounts">🏦 Accounts</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/settings') %} active{% endif %}" href="/settings">⚙️ Settings</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/glossary') %} active{% endif %}" href="/glossary">📚 Glossary</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/notifications') %} active{% endif %}" href="/notifications">🔔 Notifications {% if unread_count | default(0) > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a></li>

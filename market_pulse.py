@@ -11,7 +11,7 @@ from database import get_connection, get_mutual_fund_tickers, get_ticker_registr
 from utils import normalize_ticker, is_daily_bar_still_forming
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
-from time_engine import is_trading_session, ticker_exchange
+from time_engine import EXCHANGE_HOURS, is_trading_session, ticker_exchange
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +102,18 @@ def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
     marketState cached from that exchange's proxy index ticker (see _MARKET_STATUS_PROXY) —
     falls back to time_engine's weekday+hours heuristic for any other exchange, or if no
     market_state has been cached yet (e.g. right after a fresh install). With
-    include_premarket=True, Yahoo's 'PRE'/'PREPRE' states also count as open, matching the
-    premarket window time_engine.market_window_utc() grants via its own include_premarket flag."""
+    include_premarket=True, Yahoo's 'PRE'/'PREPRE' states also count as open — but only for
+    exchanges that have a genuine extended-hours session modeled (i.e. a "premarket_open" entry
+    in exchange_hours.json, currently NYSE only). Yahoo returns "PRE" for the entire gap since
+    the previous close on exchanges with no real extended-hours session of their own (most
+    non-US markets), so trusting it there misclassifies a market that has simply closed as
+    "about to open" — this is what made the Markets page show Asia as "Pre-Market" long after
+    HKEX/SSE/TSE had already finished their session for the day (found 2026-07-09)."""
     proxy = _MARKET_STATUS_PROXY.get(exchange)
     if proxy is None:
         return is_trading_session(exchange, include_premarket=include_premarket)
+
+    honor_premarket = include_premarket and "premarket_open" in EXCHANGE_HOURS.get(exchange, {})
 
     conn = None
     try:
@@ -116,14 +123,14 @@ def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
         row = cursor.fetchone()
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to read market_state for %s: %s", proxy, e)
-        return is_trading_session(exchange, include_premarket=include_premarket)
+        return is_trading_session(exchange, include_premarket=honor_premarket)
     finally:
         if conn:
             conn.close()
 
     if row is None or row["market_state"] is None:
-        return is_trading_session(exchange, include_premarket=include_premarket)
-    allowed_states = _OPEN_MARKET_STATES | _PRE_MARKET_STATES if include_premarket else _OPEN_MARKET_STATES
+        return is_trading_session(exchange, include_premarket=honor_premarket)
+    allowed_states = _OPEN_MARKET_STATES | _PRE_MARKET_STATES if honor_premarket else _OPEN_MARKET_STATES
     return row["market_state"] in allowed_states
 
 

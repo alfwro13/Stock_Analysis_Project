@@ -400,10 +400,25 @@ class TestIsExchangeOpen:
         _set_market_state("^GSPC", "CLOSED")
         assert _mp.is_exchange_open("NYSE", include_premarket=True) is False
 
-    def test_include_premarket_propagates_to_heuristic_fallback(self):
+    def test_include_premarket_does_not_propagate_for_exchange_without_premarket_window(self):
+        # XETRA has no "premarket_open" in exchange_hours.json (only NYSE does), so even the
+        # no-cached-row heuristic fallback must not be asked to honor premarket.
         with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
             assert _mp.is_exchange_open("XETRA", include_premarket=True) is True
-            mock_ts.assert_called_once_with("XETRA", include_premarket=True)
+            mock_ts.assert_called_once_with("XETRA", include_premarket=False)
+
+    def test_include_premarket_propagates_to_heuristic_fallback_for_nyse(self):
+        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
+            assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+            mock_ts.assert_called_once_with("NYSE", include_premarket=True)
+
+    def test_pre_state_not_honored_for_exchange_without_premarket_window(self):
+        # The Markets page bug this fixes: Yahoo returns "PRE" for HKEX/TSE/etc. for the whole
+        # gap since the previous close (no genuine extended-hours session modeled for them), so
+        # a stale/lingering "PRE" state must not read as open even with include_premarket=True.
+        _set_market_state("^HSI", "PRE")
+        assert _mp.is_exchange_open("HKEX", include_premarket=True) is False
+        _clear("^HSI")
 
 
 # ── proxy_tickers_needing_refresh ─────────────────────────────────────────────
