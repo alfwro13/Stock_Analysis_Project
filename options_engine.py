@@ -12,6 +12,18 @@ def clear_options_cache(ticker: Optional[str] = None) -> None:
     logger.info("Options cache cleared%s.", f" for {ticker.upper()}" if ticker else " (all tickers)")
 
 
+def _chain_to_dicts(chain_result) -> Dict[str, list]:
+    calls_df, puts_df = chain_result
+    numeric_cols = ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest']
+    calls_df = calls_df[numeric_cols + ['impliedVolatility']].copy()
+    puts_df  = puts_df[numeric_cols  + ['impliedVolatility']].copy()
+    calls_df[numeric_cols] = calls_df[numeric_cols].fillna(0)
+    puts_df[numeric_cols]  = puts_df[numeric_cols].fillna(0)
+    calls = calls_df.where(calls_df.notna(), other=None).to_dict('records')
+    puts  = puts_df.where(puts_df.notna(),   other=None).to_dict('records')
+    return {"calls": calls, "puts": puts}
+
+
 def fetch_options_chain(ticker: str) -> Dict[str, Any]:
     normalized: str = ticker.upper()
     logger.info("Fetching options chain for %s...", normalized)
@@ -27,16 +39,7 @@ def fetch_options_chain(ticker: str) -> Dict[str, Any]:
         chain_result = yahoo_engine.get_options_chain(normalized, exp)
         if chain_result is None:
             continue
-        calls_df, puts_df = chain_result
-
-        numeric_cols = ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest']
-        calls_df = calls_df[numeric_cols + ['impliedVolatility']].copy()
-        puts_df  = puts_df[numeric_cols  + ['impliedVolatility']].copy()
-        calls_df[numeric_cols] = calls_df[numeric_cols].fillna(0)
-        puts_df[numeric_cols]  = puts_df[numeric_cols].fillna(0)
-        calls = calls_df.where(calls_df.notna(), other=None).to_dict('records')
-        puts  = puts_df.where(puts_df.notna(),   other=None).to_dict('records')
-        chain_data[exp] = {"calls": calls, "puts": puts}
+        chain_data[exp] = _chain_to_dicts(chain_result)
 
     if not chain_data:
         return {"error": f"All expiration fetches failed for {ticker}."}
@@ -51,6 +54,28 @@ def fetch_options_chain(ticker: str) -> Dict[str, Any]:
         "current_price": current_price,
         "expirations": target_exps,
         "chains": chain_data,
+    }
+
+
+def fetch_front_month_chain(ticker: str) -> Dict[str, Any]:
+    # Callers that only need the nearest expiration (e.g. Bubble Radar's IV skew metric)
+    # should use this instead of fetch_options_chain — it skips 4 unused expiration fetches
+    # and the redundant live-price call.
+    normalized: str = ticker.upper()
+
+    expirations = yahoo_engine.get_options_expirations(normalized)
+    if not expirations:
+        return {"error": f"No options data available for {ticker}."}
+
+    exp = expirations[0]
+    chain_result = yahoo_engine.get_options_chain(normalized, exp)
+    if chain_result is None:
+        return {"error": f"Expiration fetch failed for {ticker}."}
+
+    return {
+        "ticker": normalized,
+        "expiration": exp,
+        **_chain_to_dicts(chain_result),
     }
 
 

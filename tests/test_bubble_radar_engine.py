@@ -31,6 +31,7 @@ from bubble_radar_engine import (
     _get_fundamentals,
     _record_history,
     _backfill_outcomes,
+    _compute_iv_skew,
     get_bubble_radar_data,
     get_bubble_ticker_detail,
     get_bubble_radar_history,
@@ -313,6 +314,30 @@ def test_get_fundamentals_returns_four_nones_when_ticker_absent(conn):
     assert result == (None, None, None, None), (
         f"Expected (None, None, None, None), got {result}"
     )
+
+
+# ── _compute_iv_skew ─────────────────────────────────────────────────────────
+
+def test_compute_iv_skew_returns_none_without_price():
+    # No Yahoo call should happen at all if the caller has no current price to compare strikes against.
+    assert _compute_iv_skew("AAPL", None) is None
+    assert _compute_iv_skew("AAPL", 0) is None
+
+
+@patch("options_engine.fetch_front_month_chain")
+def test_compute_iv_skew_uses_front_month_chain(mock_fetch):
+    mock_fetch.return_value = {
+        "calls": [{"strike": 110.0, "impliedVolatility": 0.6}],
+        "puts": [{"strike": 90.0, "impliedVolatility": 0.4}],
+    }
+    result = _compute_iv_skew("AAPL", 100.0)
+    mock_fetch.assert_called_once_with("AAPL")
+    assert result == pytest.approx(0.6 / 0.4, rel=1e-3)
+
+
+@patch("options_engine.fetch_front_month_chain", return_value={"error": "no data"})
+def test_compute_iv_skew_returns_none_on_error(mock_fetch):
+    assert _compute_iv_skew("AAPL", 100.0) is None
 
 
 # ── run_bubble_scan integration ───────────────────────────────────────────────

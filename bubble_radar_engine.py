@@ -192,17 +192,14 @@ def _is_us_ticker(ticker: str, conn) -> bool:
     return currency == "USD" and exchange not in ("LSE", "XETRA", "TSE", "ASX")
 
 
-def _compute_iv_skew(ticker: str) -> Optional[float]:
+def _compute_iv_skew(ticker: str, current_price: Optional[float]) -> Optional[float]:
+    if not current_price:
+        return None
     try:
-        from options_engine import fetch_options_chain
-        data = fetch_options_chain(ticker)
-        if "error" in data or not data.get("chains"):
+        from options_engine import fetch_front_month_chain
+        chain = fetch_front_month_chain(ticker)
+        if "error" in chain:
             return None
-        current_price = data.get("current_price", 0)
-        if not current_price:
-            return None
-        first_exp = data["expirations"][0]
-        chain = data["chains"].get(first_exp, {})
         calls = [c for c in chain.get("calls", []) if c.get("strike") and c["strike"] > current_price and c.get("impliedVolatility")]
         puts = [p for p in chain.get("puts", []) if p.get("strike") and p["strike"] < current_price and p.get("impliedVolatility")]
         if not calls or not puts:
@@ -309,7 +306,7 @@ def run_bubble_scan(tickers: list[str]) -> dict:
 
     # Phase 3: network I/O — options chain fetches — no DB connection held.
     for ticker, data in ticker_data.items():
-        data["iv_skew"] = _compute_iv_skew(ticker) if data.get("is_us") else None
+        data["iv_skew"] = _compute_iv_skew(ticker, data.get("price")) if data.get("is_us") else None
 
     # Phase 4: compute scores (pure CPU, no I/O).
     results: dict[str, dict] = {}

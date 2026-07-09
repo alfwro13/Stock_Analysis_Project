@@ -851,13 +851,14 @@
 
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="BUBBLE_RADAR_ENABLED" {% if bubble_sched.ENABLED %}checked{% endif %}>
-                    <label for="BUBBLE_RADAR_ENABLED">Enable daily post-market scan</label>
+                    <label for="BUBBLE_RADAR_ENABLED">Enable post-market scan</label>
                 </div>
                 <div class="flex-gap-15 mb-10">
                     <div class="form-group flex-1">
                         <label>Active Days</label>
                         <select id="BUBBLE_RADAR_FREQ" class="form-select">
                             {% set joined = bubble_sched.DAYS | join(',') if bubble_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                            <option value="weekly" {% if joined == 'mon' %}selected{% endif %}>Weekly (Monday)</option>
                             <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
                             <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
                         </select>

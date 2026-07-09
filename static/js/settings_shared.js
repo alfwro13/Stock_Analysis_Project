@@ -226,6 +226,8 @@ async function saveSettings(silent = false) {
                 "ENABLED": document.getElementById('BUBBLE_RADAR_ENABLED').checked,
                 "DAYS": document.getElementById('BUBBLE_RADAR_FREQ').value === 'mon-sun'
                     ? ['mon','tue','wed','thu','fri','sat','sun']
+                    : document.getElementById('BUBBLE_RADAR_FREQ').value === 'weekly'
+                    ? ['mon']
                     : ['mon','tue','wed','thu','fri'],
                 "TIME": document.getElementById('BUBBLE_RADAR_TIME').value,
                 "WATCH_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_WATCH_THRESHOLD').value) || 70,
