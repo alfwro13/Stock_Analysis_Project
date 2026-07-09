@@ -1004,6 +1004,24 @@ def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disa
     assert data["total"] >= 1000.0
 
 
+# ── Portfolio Tearsheet (Performance Analytics) ────────────────────────────────
+
+@pytest.mark.api
+def test_performance_analytics_report_returns_200(client):
+    """GET /api/performance-analytics/report returns 200 with a status field even when the
+    requested scope has no holdings (status=error) or too little cached history (metrics=None)."""
+    resp = client.get("/api/performance-analytics/report?account_id=all")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert "status" in data
+    if data["status"] == "success" and data.get("metrics") is not None:
+        for group in ("risk_adjusted_ratios", "drawdown_analytics",
+                      "distribution_tail_stats", "win_loss_stats"):
+            assert group in data["metrics"]
+        for chart in ("underwater", "cumulative_growth", "monthly_heatmap", "histogram"):
+            assert chart in data["charts"]
+
+
 # ── Backup & Recovery ──────────────────────────────────────────────────────────
 
 @pytest.mark.api

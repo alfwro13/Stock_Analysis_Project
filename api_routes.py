@@ -41,6 +41,7 @@ from accounts_engine import resolve_watchlist_metadata
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report, resolve_scope_holdings, GhostfolioXRayClient
+from performance_analytics_engine import assemble_performance_report
 from fx_drag_engine import portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
@@ -428,8 +429,9 @@ async def get_xray_report(request: Request, account_id: str = "all"):
     Combines live Ghostfolio holdings/allocations and/or built-in account holdings with
     SQLite-cached risk stats (beta, vol, correlation, VaR). The cache is populated by the
     nightly xray_risk_cache_job scheduler job. Historical VaR/CVaR, Sharpe/Calmar ratio,
-    tracking error and skewness are Ghostfolio-only (no return-series cache exists for
-    built-in accounts) and are omitted with a data_warning when built-in holdings are in scope.
+    tracking error and skewness are derived at request time from per-ticker cached daily
+    returns and work for any scope (Ghostfolio, built-in, or combined) — they are omitted
+    with a data_warning only when fewer than 30 overlapping cached trading days exist yet.
     """
     try:
         report = assemble_xray_report(account_id)
@@ -930,6 +932,22 @@ async def api_monte_carlo_run(request: Request, req: MonteCarloRequest):
             req.inflation_pct,
         )
         return JSONResponse(content=result)
+    except Exception as e:
+        return _error_500(e)
+
+
+@api_router.get("/performance-analytics/report")
+@limiter.limit("10/minute")
+async def api_performance_analytics_report(request: Request, account_id: str = "all"):
+    """
+    Returns the Portfolio Tearsheet report JSON for the given account scope: Sortino/Calmar/
+    Omega ratios, drawdown duration analytics, distribution/tail stats, win/loss stats, and
+    chart data (underwater, cumulative growth vs. benchmark, monthly heatmap, histogram).
+    Native computation from the same per-ticker cached returns xray_engine uses — no DB writes.
+    """
+    try:
+        report = assemble_performance_report(account_id)
+        return JSONResponse(content=report)
     except Exception as e:
         return _error_500(e)
 
