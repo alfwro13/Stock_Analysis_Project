@@ -109,6 +109,7 @@ async def settings_page(request: Request):
             "notification_routing": build_routing_panel(config_data),
             "auction_am_input": auction_am_input,
             "auction_pm_input": auction_pm_input,
+            "exchange_list": sorted(time_engine.EXCHANGE_HOURS.keys()),
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "api_key": os.environ.get("API_KEY", ""),

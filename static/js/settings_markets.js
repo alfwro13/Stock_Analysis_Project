@@ -4,6 +4,23 @@ function _regDomId(ticker) {
     return ticker.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
+function _regExchangeOptionsHtml(currentValue) {
+    const known = window.MARKET_EXCHANGE_LIST || [];
+    const options = ['<option value="">— None —</option>'];
+    // A row saved before this dropdown existed (free-text field) can hold a value that isn't
+    // a recognized exchange key — e.g. a typo or a different case than "KRX" — which silently
+    // fell back to "always open" instead of a real open/closed check. Surface it as its own
+    // clearly-unrecognized option rather than silently dropping it, so the mistake is visible
+    // and the user can pick the correct exchange instead of re-typing a guess.
+    if (currentValue && !known.includes(currentValue)) {
+        options.push(`<option value="${currentValue}" selected>${currentValue} (unrecognized — please re-select)</option>`);
+    }
+    known.forEach(ex => {
+        options.push(`<option value="${ex}" ${ex === currentValue ? 'selected' : ''}>${ex}</option>`);
+    });
+    return options.join('');
+}
+
 function _regEditFormHtml(row) {
     const id = _regDomId(row.ticker);
     const p = `reg-edit-${id}`;
@@ -31,7 +48,9 @@ function _regEditFormHtml(row) {
             </div>
             <div class="form-group flex-1 mb-0">
                 <label>Exchange</label>
-                <input type="text" id="${p}-exchange" value="${row.exchange || ''}">
+                <select id="${p}-exchange">
+                    ${_regExchangeOptionsHtml(row.exchange)}
+                </select>
             </div>
             <div class="form-group flex-1 mb-0">
                 <label>Currency</label>

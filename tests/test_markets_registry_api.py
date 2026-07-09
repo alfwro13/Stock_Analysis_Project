@@ -66,6 +66,50 @@ def test_create_rejects_duplicate_ticker(client):
 
 
 @pytest.mark.api
+def test_create_rejects_unrecognized_exchange(client):
+    """A non-empty exchange that isn't a known time_engine.EXCHANGE_HOURS key must be rejected
+    loudly, not silently fall back to "always open" (found 2026-07-09 on a manually-added
+    ^KS200 row saved with an exchange value that didn't match "KRX" exactly)."""
+    resp = client.post("/api/markets/registry", json={**_SAMPLE_BODY, "exchange": "korea"})
+    assert resp.status_code == 422
+    assert "korea" in _json(resp)["message"]
+
+
+@pytest.mark.api
+def test_create_accepts_blank_exchange(client):
+    resp = client.post("/api/markets/registry", json={**_SAMPLE_BODY, "exchange": None})
+    try:
+        assert resp.status_code == 200
+    finally:
+        _cleanup("^TSTIDX")
+
+
+@pytest.mark.api
+def test_create_accepts_recognized_exchange(client):
+    resp = client.post("/api/markets/registry", json={**_SAMPLE_BODY, "exchange": "KRX"})
+    try:
+        assert resp.status_code == 200
+        import database as _db
+        row = _db.get_ticker_registry_row("^TSTIDX")
+        assert row["exchange"] == "KRX"
+    finally:
+        _cleanup("^TSTIDX")
+
+
+@pytest.mark.api
+def test_update_rejects_unrecognized_exchange(client):
+    client.post("/api/markets/registry", json=_SAMPLE_BODY)
+    try:
+        resp = client.put("/api/markets/registry/^TSTIDX", json={**_SAMPLE_BODY, "exchange": "krx"})
+        assert resp.status_code == 422
+        import database as _db
+        row = _db.get_ticker_registry_row("^TSTIDX")
+        assert row["exchange"] == "LSE"
+    finally:
+        _cleanup("^TSTIDX")
+
+
+@pytest.mark.api
 def test_update_ticker_registry_row(client):
     client.post("/api/markets/registry", json=_SAMPLE_BODY)
     try:

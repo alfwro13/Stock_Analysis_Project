@@ -53,6 +53,7 @@
 <script>
 window.CONFIRM_TOKEN = "{{ confirm_token }}";
 window.ETF_USER_TZ = "{{ config.USER_TIMEZONE | default('Europe/London') }}";
+window.MARKET_EXCHANGE_LIST = {{ (exchange_list | default([])) | tojson }};
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {

@@ -71,8 +71,13 @@
                                 </select>
                             </div>
                             <div class="form-group flex-1 mb-0">
-                                <label>Exchange <span class="text-muted text-sm">(blank = always visible)</span></label>
-                                <input type="text" id="reg-new-exchange" class="form-control" placeholder="e.g. TSE">
+                                <label>Exchange <span class="text-muted text-sm">(none = always visible, no open/closed status — only correct for Commodities &amp; FX)</span></label>
+                                <select id="reg-new-exchange" class="form-control">
+                                    <option value="">— None —</option>
+                                    {% for ex in exchange_list %}
+                                    <option value="{{ ex }}">{{ ex }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                             <div class="form-group flex-1 mb-0">
                                 <label>Currency</label>

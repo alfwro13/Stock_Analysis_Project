@@ -337,6 +337,22 @@ async def api_markets_registry_list():
     return JSONResponse(content={"status": "success", "registry": get_ticker_registry(enabled_only=False)})
 
 
+def _invalid_exchange_error(exchange: Optional[str]):
+    """A non-empty exchange that isn't a recognized time_engine.EXCHANGE_HOURS key silently
+    falls back to "always open" (see markets_engine.assemble_markets_payload) instead of a real
+    open/closed check — found 2026-07-09 on a manually-added ^KS200 row. Reject it loudly here
+    rather than let a typo or wrong case (e.g. "krx" vs "KRX") pass through unnoticed."""
+    if not exchange:
+        return None
+    if exchange in time_engine.EXCHANGE_HOURS:
+        return None
+    valid = ", ".join(sorted(time_engine.EXCHANGE_HOURS.keys()))
+    return JSONResponse(status_code=422, content={
+        "status": "error",
+        "message": f"Unknown exchange '{exchange}' (case-sensitive). Leave blank for no open/closed status, or use one of: {valid}",
+    })
+
+
 @system_router.post("/markets/registry")
 async def api_markets_registry_create(body: TickerRegistryBody):
     ticker = (body.ticker or "").strip()
@@ -344,6 +360,9 @@ async def api_markets_registry_create(body: TickerRegistryBody):
         return JSONResponse(status_code=422, content={"status": "error", "message": "ticker is required."})
     if get_ticker_registry_row(ticker) is not None:
         return JSONResponse(status_code=409, content={"status": "error", "message": f"{ticker} already exists in the registry."})
+    exchange_error = _invalid_exchange_error(body.exchange)
+    if exchange_error:
+        return exchange_error
     ok = upsert_ticker_registry_row(ticker=ticker, **body.model_dump(exclude={"ticker"}))
     if not ok:
         return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save ticker."})
@@ -355,6 +374,9 @@ async def api_markets_registry_create(body: TickerRegistryBody):
 async def api_markets_registry_update(ticker: str, body: TickerRegistryBody):
     if get_ticker_registry_row(ticker) is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"{ticker} not found in the registry."})
+    exchange_error = _invalid_exchange_error(body.exchange)
+    if exchange_error:
+        return exchange_error
     ok = upsert_ticker_registry_row(ticker=ticker, **body.model_dump(exclude={"ticker"}))
     if not ok:
         return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update ticker."})
