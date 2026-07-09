@@ -6,7 +6,7 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -1472,3 +1472,37 @@ def dismiss_autotopup(account_id: int, pending_id: int) -> dict:
         return {"error": f"This top-up has already been {pending['status']}."}
     resolve_pending_topup(pending_id, "dismissed")
     return {"status": "success"}
+
+
+def list_scope_accounts_with_values() -> Tuple[List[Dict], float]:
+    """Every account with holdings (Ghostfolio active accounts + built-in Trading accounts),
+    each with its current value — shared by the Monte Carlo and Portfolio Tearsheet account
+    pickers. Local xray_engine import avoids a circular import (xray_engine imports from
+    this module)."""
+    from xray_engine import GhostfolioXRayClient, resolve_scope_holdings
+
+    config = load_config()
+    gf_accounts = config.get("GHOSTFOLIO_ACCOUNTS", {})
+    discovered = {a["id"]: a["name"] for a in gf_accounts.get("discovered", [])}
+    active_ids = gf_accounts.get("active", [])
+
+    accounts: List[Dict] = []
+    if active_ids:
+        client = GhostfolioXRayClient()
+        if client.is_configured and client.authenticate():
+            for acc_id in active_ids:
+                _, value = client.get_holdings([acc_id])
+                accounts.append({"id": acc_id, "name": discovered.get(acc_id, acc_id), "value": round(value, 2)})
+
+    for acc in get_accounts():
+        if acc["account_type"] != "Trading":
+            continue
+        scope_id = f"acct:{acc['id']}"
+        try:
+            _, value = resolve_scope_holdings(scope_id)
+        except RuntimeError:
+            continue
+        accounts.append({"id": scope_id, "name": acc["name"], "value": round(value, 2)})
+
+    total = round(sum(a["value"] for a in accounts), 2)
+    return accounts, total

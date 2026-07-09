@@ -1712,3 +1712,33 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
 @pytest.mark.db
 def test_tickers_needing_refresh_empty_list_returns_empty():
     assert accounts_engine.tickers_needing_refresh([], 60) == []
+
+
+@pytest.mark.db
+def test_list_scope_accounts_with_values_includes_builtin_trading_account():
+    # Shared account-tile builder behind the Monte Carlo and Portfolio Tearsheet pickers —
+    # must resolve a builtin Trading account's holdings without requiring Ghostfolio.
+    from unittest.mock import patch
+
+    _seed_stock_signal("LSAV_T1", 100.0, "GBP")
+    aid = create_account("ListScopeAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="LSAV_T1", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+
+    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+        accounts, total = accounts_engine.list_scope_accounts_with_values()
+
+    assert any(a["id"] == f"acct:{aid}" for a in accounts)
+    assert total >= 1000.0
+
+
+@pytest.mark.db
+def test_list_scope_accounts_with_values_excludes_non_trading_account():
+    from unittest.mock import patch
+
+    aid = create_account("ListScopeHouseAcc", "GBP", account_type="House")
+
+    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+        accounts, _ = accounts_engine.list_scope_accounts_with_values()
+
+    assert not any(a["id"] == f"acct:{aid}" for a in accounts)

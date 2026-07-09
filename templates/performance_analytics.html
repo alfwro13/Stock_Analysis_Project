@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Portfolio Tearsheet{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128200; Portfolio Tearsheet</h1>
+<p class="text-muted mb-3">
+    A native performance tearsheet for your portfolio: <abbr title="Risk-adjusted return ratios that go beyond Sharpe — Sortino, Calmar, Omega, and Profit Factor.">risk-adjusted ratios</abbr>,
+    <abbr title="How deep and how long your portfolio's drawdowns have run, computed from its own cached daily return history.">drawdown duration analytics</abbr>,
+    and win/loss statistics — computed entirely from your own cached return history, no external report generator involved.
+</p>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
+
+<div id="pt-accounts-bar" class="d-none mb-4">
+    <p class="text-muted small mb-2">Select account scope:</p>
+    <div id="pt-accounts-tiles" class="d-flex flex-wrap gap-2"></div>
+</div>
+
+<div id="pt-warning" class="alert alert-warning d-none" role="alert"></div>
+
+<div id="pt-content">
+    <h5 class="mt-3">Risk-Adjusted Return Ratios</h5>
+    <div class="xray-cards-row" id="pt-cards-risk_adjusted_ratios"></div>
+
+    <h5 class="mt-3">Drawdown Analytics</h5>
+    <div class="xray-cards-row" id="pt-cards-drawdown_analytics"></div>
+
+    <h5 class="mt-3">Distribution &amp; Tail Stats</h5>
+    <div class="xray-cards-row" id="pt-cards-distribution_tail_stats"></div>
+
+    <h5 class="mt-3">Win / Loss Stats</h5>
+    <div class="xray-cards-row" id="pt-cards-win_loss_stats"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/performance_analytics.js?v={{ css_version }}"></script>
+{% endblock %}

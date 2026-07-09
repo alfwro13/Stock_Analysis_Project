@@ -994,8 +994,54 @@ def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disa
     _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="MCTEST", currency="GBP",
                          quantity=10, unit_price=80, exchange_rate=1.0)
 
-    with patch("api_routes.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+    # list_scope_accounts_with_values() (accounts_engine.py) is the shared account-tile
+    # builder behind this endpoint — patch its own load_config, not api_routes'.
+    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/monte-carlo/accounts")
+
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert any(a["id"] == f"acct:{account_id}" for a in data["accounts"])
+    assert data["total"] >= 1000.0
+
+
+@pytest.mark.api
+def test_performance_analytics_accounts_returns_200(client):
+    """GET /api/performance-analytics/accounts returns 200; when nothing is configured, status=error."""
+    resp = client.get("/api/performance-analytics/accounts")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert "status" in data
+    if data["status"] == "success":
+        assert "accounts" in data and isinstance(data["accounts"], list)
+        assert "total" in data and isinstance(data["total"], (int, float))
+    else:
+        assert "message" in data
+
+
+@pytest.mark.api
+def test_performance_analytics_accounts_uses_builtin_trading_accounts_when_ghostfolio_disabled(client):
+    """GET /api/performance-analytics/accounts shares the same account-tile builder as Monte
+    Carlo — must also populate from a built-in Trading account with Ghostfolio disabled."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+            ("PAETEST", 100.0, "GBP"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    account_id = _db.create_account("PAE Builtin Test", "GBP")
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="PAETEST", currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+        resp = client.get("/api/performance-analytics/accounts")
 
     assert resp.status_code == 200
     data = _json(resp)
