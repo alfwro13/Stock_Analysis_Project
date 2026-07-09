@@ -2,7 +2,7 @@
 tests/test_xray_engine.py  — X-ray Engine Unit & Integration Tests
 
 Covers:
-  • _compute_beta, _compute_vol, _compute_max_drawdown, _get_instrument_type (pure)
+  • _compute_beta, _compute_vol, native_max_drawdown, _get_instrument_type (pure)
   • Bug 1: Portfolio beta normalized by covered-weight sum, not raw sum
   • Bug 2: Correlation matrix uses dropna(how='any') for PSD guarantee;
            negative variance is logged + data_warned, not silently discarded
@@ -30,7 +30,9 @@ from database import create_account, add_transaction
 from xray_engine import (
     XRayRiskComputer,
     GhostfolioXRayClient,
-    _compute_max_drawdown,
+    native_max_drawdown,
+    annualized_return,
+    get_scope_return_series,
     _generate_xray_recommendations,
     assemble_xray_report,
     resolve_scope_holdings,
@@ -134,7 +136,7 @@ def _make_holdings(specs):
     return holdings, total
 
 
-def _patch_report(holdings, total, chart=None, config=None, risk_free_rate=None):
+def _patch_report(holdings, total, config=None, risk_free_rate=None):
     """
     Context manager patches for assemble_xray_report:
       - xray_engine.GhostfolioXRayClient → mock returning supplied holdings
@@ -146,18 +148,12 @@ def _patch_report(holdings, total, chart=None, config=None, risk_free_rate=None)
         "BASE_CURRENCY": "GBP",
         "RISK_FREE_RATE": risk_free_rate or 0.045,
     }
-    _chart = chart or [
-        {"date": "2025-06-03", "value": 9_000.0},
-        {"date": "2026-01-02", "value": 10_000.0},
-        {"date": "2026-06-03", "value": 11_000.0},
-    ]
 
     mock_client_cls = MagicMock()
     mock_inst = mock_client_cls.return_value
     mock_inst.is_configured = True
     mock_inst.authenticate.return_value = True
     mock_inst.get_holdings.return_value = (holdings, total)
-    mock_inst.get_performance_chart.return_value = _chart
 
     patches = [
         patch("xray_engine.GhostfolioXRayClient", mock_client_cls),
@@ -208,24 +204,34 @@ class TestComputeVol:
         assert XRayRiskComputer()._compute_vol(pd.Series([0.01] * 5)) is None
 
 
-class TestComputeMaxDrawdown:
+class TestNativeMaxDrawdown:
     def test_basic_drawdown(self):
-        chart = [{"value": 100}, {"value": 120}, {"value": 80}, {"value": 90}]
-        dd = _compute_max_drawdown(chart)
-        assert dd is not None
+        # Prices 100 -> 120 -> 80 -> 90 via daily returns; trough at 80 vs peak 120.
+        rets = pd.Series([0.20, -1 / 3, 0.125])
+        dd, dd_series = native_max_drawdown(rets)
         assert abs(dd - (-40 / 120)) < 1e-9
+        assert isinstance(dd_series, pd.Series)
+        assert len(dd_series) == 3
 
     def test_monotone_rising_is_zero(self):
-        chart = [{"value": v} for v in [100, 110, 120, 130]]
-        dd = _compute_max_drawdown(chart)
-        assert dd is not None
+        rets = pd.Series([0.01, 0.02, 0.01])
+        dd, _ = native_max_drawdown(rets)
         assert dd == 0.0
 
-    def test_single_point_returns_none(self):
-        assert _compute_max_drawdown([{"value": 100}]) is None
+    def test_single_point_is_zero(self):
+        dd, _ = native_max_drawdown(pd.Series([0.05]))
+        assert dd == 0.0
 
-    def test_empty_returns_none(self):
-        assert _compute_max_drawdown([]) is None
+
+class TestAnnualizedReturn:
+    def test_zero_returns_is_zero(self):
+        assert annualized_return(pd.Series([0.0] * 252)) == pytest.approx(0.0)
+
+    def test_flat_positive_daily_return_compounds(self):
+        daily = 0.0004
+        rets = pd.Series([daily] * 252)
+        expected = (1 + daily) ** 252 - 1
+        assert annualized_return(rets) == pytest.approx(expected, rel=1e-6)
 
 
 class TestGetInstrumentType:
@@ -1297,6 +1303,42 @@ class TestBuiltinAccountXrayScope:
         assert result["portfolio_total_value"] >= 500.0
 
 
+class TestGetScopeReturnSeries:
+    """Direct coverage of the function performance_analytics_engine.py will call —
+    verifying it returns real DatetimeIndex pd.Series, not the old .tolist() shape."""
+
+    def test_returns_datetime_indexed_series_when_sufficient_data(self):
+        holdings, total = _make_holdings([{"symbol": T1, "value": 10_000}])
+        rng = np.random.default_rng(5)
+        t1_rets = rng.normal(0.0004, 0.012, 40).tolist()
+        bench_rets = rng.normal(0.0003, 0.007, 40).tolist()
+        dates = [f"2025-{(i // 21) + 1:02d}-{(i % 21) + 1:02d}" for i in range(40)]
+        _seed_returns_cache({T1: t1_rets, BENCHMARK_SYMBOL: bench_rets}, dates)
+
+        port, bench, warnings = get_scope_return_series(holdings, total)
+
+        assert isinstance(port, pd.Series)
+        assert isinstance(port.index, pd.DatetimeIndex)
+        assert isinstance(bench, pd.Series)
+        assert len(port) == len(bench) == 40
+        assert warnings == []
+
+    def test_returns_none_when_fewer_than_30_overlapping_days(self):
+        holdings, total = _make_holdings([{"symbol": T1, "value": 10_000}])
+        dates = [f"2025-01-{i + 1:02d}" for i in range(10)]
+        _seed_returns_cache({T1: [0.01] * 10, BENCHMARK_SYMBOL: [0.01] * 10}, dates)
+
+        port, bench, warnings = get_scope_return_series(holdings, total)
+
+        assert port is None
+        assert bench is None
+
+    def test_returns_none_when_no_holdings_have_weight(self):
+        port, bench, warnings = get_scope_return_series([], 0.0)
+        assert port is None
+        assert bench is None
+
+
 class TestResolveScopeHoldings:
     """resolve_scope_holdings is the shared holdings resolver reused outside xray_engine
     (stress_engine, the Monte Carlo accounts endpoint) — must work with Ghostfolio disabled."""
@@ -1335,15 +1377,26 @@ class TestResolveScopeHoldings:
             with pytest.raises(RuntimeError, match="No holdings found"):
                 resolve_scope_holdings(f"acct:{aid}")
 
-    def test_ghostfolio_scope_still_computes_max_drawdown(self):
-        # Regression guard: assemble_xray_report's max-drawdown chart lookup used to reuse the
-        # holdings-fetch `client`/`ghost_scope_ids` locals directly; extracting resolve_scope_holdings()
-        # moved those out of this function's scope, which a broad try/except silently swallowed
-        # (NameError logged as a warning, max_drawdown left None) instead of failing loudly.
-        holdings, total = _make_holdings([{"symbol": T1, "value": 10_000}])
-        patches, mock_inst = _patch_report(holdings, total)
-        with patches[0], patches[1]:
-            result = assemble_xray_report("all")
+    def test_max_drawdown_and_calmar_populate_without_ghostfolio(self):
+        # Regression guard: max-drawdown/Calmar used to come from a Ghostfolio-only live
+        # performance-chart lookup with no equivalent for built-in accounts, so they silently
+        # stayed None for built-in-only portfolios. Now derived natively from the cached
+        # per-ticker return series (get_scope_return_series/native_max_drawdown), so both
+        # must populate here with Ghostfolio fully disabled.
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("CalmarBuiltinAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        rng = np.random.default_rng(11)
+        t1_rets = rng.normal(0.0004, 0.012, 252).tolist()
+        bench_rets = rng.normal(0.0003, 0.007, 252).tolist()
+        dates = [f"2025-{(i//21)+1:02d}-{(i%21)+1:02d}" for i in range(252)]
+        _seed_returns_cache({T1: t1_rets, BENCHMARK_SYMBOL: bench_rets}, dates)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
 
         assert result["risk_metrics"]["max_drawdown"] is not None
-        mock_inst.get_performance_chart.assert_called()
+        assert result["risk_metrics"]["calmar_ratio"] is not None

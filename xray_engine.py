@@ -286,30 +286,6 @@ class GhostfolioXRayClient:
 
         return holdings, total_value
 
-    def get_performance_chart(self, account_ids: List[str]) -> List[Dict]:
-        # Returns [{date, value}] from performance endpoint; tries v2 first then falls back to v1.
-        accounts_param = ",".join(account_ids)
-        for version in ("v2", "v1"):
-            url = (
-                f"{self.url}/api/{version}/portfolio/performance"
-                f"?range=max&accounts={accounts_param}"
-            )
-            try:
-                resp = self._session.get(url, timeout=30)
-                if resp.status_code != 200:
-                    continue
-                chart = resp.json().get("chart", [])
-                result = []
-                for pt in chart:
-                    val = float(pt.get("netWorth") or pt.get("value") or 0)
-                    if val > 0:
-                        result.append({"date": pt.get("date", ""), "value": val})
-                if result:
-                    return result
-            except Exception as e:
-                logger.warning("Performance chart (%s) failed: %s", version, e)
-        return []
-
     def get_dividend_yield(self, data_source: str, symbol: str) -> Dict:
         """Returns {dividend_yield_pct, dividend_in_base_currency} for one holding."""
         encoded_sym = quote(symbol, safe="")
@@ -524,20 +500,84 @@ def run_xray_precompute() -> bool:
 
 
 
-def _compute_max_drawdown(chart: List[Dict]) -> Optional[float]:
-    """Peak-to-trough max drawdown from [{date, value}...] series."""
-    values = [pt["value"] for pt in chart if (pt.get("value") or 0) > 0]
-    if len(values) < 2:
-        return None
-    peak = values[0]
-    max_dd = 0.0
-    for v in values:
-        if v > peak:
-            peak = v
-        dd = (v - peak) / peak
-        if dd < max_dd:
-            max_dd = dd
-    return float(max_dd)
+def get_scope_return_series(
+    holdings: List[Dict], total_value: float
+) -> Tuple[Optional[pd.Series], Optional[pd.Series], List[str]]:
+    """Weighted daily-return series (portfolio, benchmark) for an already-resolved scope,
+    derived from xray_returns_cache. Single source of truth for assemble_xray_report() and
+    performance_analytics_engine.py — None/None if fewer than 30 overlapping cached days."""
+    data_warnings: List[str] = []
+    portfolio_symbols = [h["symbol"] for h in holdings if h.get("weight", 0) > 0]
+    if not portfolio_symbols:
+        return None, None, data_warnings
+    returns_tickers = list(set(portfolio_symbols + [BENCHMARK_SYMBOL]))
+
+    conn = None
+    returns_cache: Dict[str, Tuple[List[str], List[float]]] = {}
+    try:
+        conn = get_connection()
+        rt_placeholders = ",".join("?" * len(returns_tickers))
+        returns_rows = conn.execute(
+            f"SELECT ticker, dates_json, returns_json FROM xray_returns_cache "
+            f"WHERE benchmark = ? AND ticker IN ({rt_placeholders})",
+            [BENCHMARK_SYMBOL] + returns_tickers,
+        ).fetchall()
+        returns_cache = {
+            row["ticker"]: (json.loads(row["dates_json"]), json.loads(row["returns_json"]))
+            for row in returns_rows
+        }
+    except Exception as e:
+        logger.error("X-ray return series DB read failed: %s", e)
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+    if BENCHMARK_SYMBOL not in returns_cache:
+        return None, None, data_warnings
+
+    series_map: Dict[str, pd.Series] = {}
+    for h in holdings:
+        sym = h["symbol"]
+        if sym in returns_cache and h.get("weight", 0) > 0:
+            dates, rets = returns_cache[sym]
+            series_map[sym] = pd.Series(rets, index=pd.to_datetime(dates))
+    bench_dates, bench_rets_raw = returns_cache[BENCHMARK_SYMBOL]
+    series_map[BENCHMARK_SYMBOL] = pd.Series(bench_rets_raw, index=pd.to_datetime(bench_dates))
+
+    if len(series_map) < 2:
+        return None, None, data_warnings
+
+    combined_df = pd.DataFrame(series_map).dropna(how="any")
+    if len(combined_df) < 30:
+        return None, None, data_warnings
+
+    weights = pd.Series({
+        h["symbol"]: h["weight"] for h in holdings if h["symbol"] in combined_df.columns
+    })
+    port_cols = [c for c in weights.index if c != BENCHMARK_SYMBOL]
+    if not port_cols or weights[port_cols].sum() <= 0:
+        return None, None, data_warnings
+
+    weights = weights[port_cols] / weights[port_cols].sum()
+    port_rets_series = (combined_df[port_cols] * weights[port_cols]).sum(axis=1)
+    bench_rets_series = combined_df[BENCHMARK_SYMBOL]
+    return port_rets_series, bench_rets_series, data_warnings
+
+
+def annualized_return(returns: pd.Series) -> float:
+    """CAGR-style annualisation of a daily return series (252 trading days/year)."""
+    return float((1 + returns).prod() ** (252 / len(returns)) - 1)
+
+
+def native_max_drawdown(returns: pd.Series) -> Tuple[float, pd.Series]:
+    """Peak-to-trough max drawdown and the full dated drawdown series, derived from a daily
+    return series — the only max-drawdown source available for built-in-account-only scopes
+    (Ghostfolio's performance-chart endpoint has no equivalent for those)."""
+    cumulative = (1 + returns).cumprod()
+    running_max = cumulative.cummax()
+    drawdown_series = cumulative / running_max - 1
+    return float(drawdown_series.min()), drawdown_series
 
 
 
@@ -903,8 +943,6 @@ def assemble_xray_report(account_id: str) -> Dict:
     # Combines live Ghostfolio (Tier A) + built-in Trading accounts with SQLite risk cache (Tier C).
     config = load_config()
     base_currency: str = config.get("BASE_CURRENCY", "GBP")
-    active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
-    ghost_scope_ids, _, _ = _classify_scope(account_id, active_ids)
 
     holdings, total_value = resolve_scope_holdings(account_id)
 
@@ -955,7 +993,6 @@ def assemble_xray_report(account_id: str) -> Dict:
     _raw_matrix: Optional[List] = None
     cache_date: Optional[str] = None
     div_cache: Dict[str, Dict] = {}
-    returns_cache: Dict[str, Tuple[List[str], List[float]]] = {}
 
     conn = None
     try:
@@ -999,18 +1036,6 @@ def assemble_xray_report(account_id: str) -> Dict:
             }
             for row in div_rows
         }
-
-        returns_tickers = list(set(portfolio_symbols + [BENCHMARK_SYMBOL]))
-        rt_placeholders = ",".join("?" * len(returns_tickers))
-        returns_rows = conn.execute(
-            f"SELECT ticker, dates_json, returns_json FROM xray_returns_cache "
-            f"WHERE benchmark = ? AND ticker IN ({rt_placeholders})",
-            [BENCHMARK_SYMBOL] + returns_tickers,
-        ).fetchall()
-        returns_cache = {
-            row["ticker"]: (json.loads(row["dates_json"]), json.loads(row["returns_json"]))
-            for row in returns_rows
-        }
     except Exception as e:
         logger.error("X-ray DB read failed: %s", e)
         raise
@@ -1033,36 +1058,14 @@ def assemble_xray_report(account_id: str) -> Dict:
         h["dividend_yield_pct"] = dc.get("yield_pct", 0.0)
         h["dividend_income"] = dc.get("income", 0.0)
 
-    # --- Weighted portfolio return series, derived for THIS scope from per-ticker cached
-    # series (xray_returns_cache) — works for any account scope (Ghostfolio, built-in, or
-    # combined), unlike the old single Ghostfolio-only cached series this replaced.
-    port_rets_series: Optional[List[float]] = None
-    bench_rets_series: Optional[List[float]] = None
-    if BENCHMARK_SYMBOL in returns_cache:
-        series_map: Dict[str, pd.Series] = {}
-        for h in holdings_sorted:
-            sym = h["symbol"]
-            if sym in returns_cache and h["weight"] > 0:
-                dates, rets = returns_cache[sym]
-                series_map[sym] = pd.Series(rets, index=pd.to_datetime(dates))
-        bench_dates, bench_rets_raw = returns_cache[BENCHMARK_SYMBOL]
-        series_map[BENCHMARK_SYMBOL] = pd.Series(bench_rets_raw, index=pd.to_datetime(bench_dates))
-
-        if len(series_map) >= 2:
-            combined_df = pd.DataFrame(series_map).dropna(how="any")
-            if len(combined_df) >= 30:
-                weights = pd.Series({
-                    h["symbol"]: h["weight"] for h in holdings_sorted
-                    if h["symbol"] in combined_df.columns
-                })
-                port_cols = [c for c in weights.index if c != BENCHMARK_SYMBOL]
-                if port_cols and weights[port_cols].sum() > 0:
-                    weights = weights[port_cols] / weights[port_cols].sum()
-                    port_rets_series = (combined_df[port_cols] * weights[port_cols]).sum(axis=1).tolist()
-                    bench_rets_series = combined_df[BENCHMARK_SYMBOL].tolist()
+    # Weighted portfolio/benchmark return series, derived for THIS scope from per-ticker
+    # cached series (xray_returns_cache) — works for any account scope.
+    port_rets_series, bench_rets_series, series_warnings = get_scope_return_series(
+        holdings_sorted, total_value
+    )
 
     # --- Data warnings (initialised early so risk blocks can append to it) ------
-    data_warnings: List[str] = []
+    data_warnings: List[str] = list(series_warnings)
 
     portfolio_beta: Optional[float] = None
     portfolio_vol: Optional[float] = None
@@ -1123,21 +1126,6 @@ def assemble_xray_report(account_id: str) -> Dict:
             if off_diag:
                 avg_pairwise_corr = round(float(np.mean(off_diag)), 3)
 
-    max_drawdown: Optional[float] = None
-    try:
-        # Ghostfolio-only — no equivalent performance-chart endpoint exists for built-in accounts.
-        perf_chart = []
-        if ghost_scope_ids:
-            chart_client = GhostfolioXRayClient()
-            if chart_client.is_configured and chart_client.authenticate():
-                perf_chart = chart_client.get_performance_chart(ghost_scope_ids)
-        if perf_chart:
-            max_drawdown = _compute_max_drawdown(perf_chart)
-            if max_drawdown is not None:
-                max_drawdown = round(max_drawdown, 4)
-    except Exception as e:
-        logger.warning("Max drawdown computation failed: %s", e)
-
     weighted_div_yield = round(
         sum(h["weight"] * (h.get("dividend_yield_pct") or 0) for h in holdings_sorted), 4
     )
@@ -1176,8 +1164,9 @@ def assemble_xray_report(account_id: str) -> Dict:
     calmar_ratio: Optional[float] = None
     skewness: Optional[float] = None
     excess_kurtosis: Optional[float] = None
+    max_drawdown: Optional[float] = None
 
-    if port_rets_series and len(port_rets_series) >= 30:
+    if port_rets_series is not None and len(port_rets_series) >= 30:
         try:
             import scipy.stats as _stats
             pr = np.array(port_rets_series)
@@ -1191,9 +1180,10 @@ def assemble_xray_report(account_id: str) -> Dict:
             skewness = round(float(_stats.skew(pr)), 3)
             excess_kurtosis = round(float(_stats.kurtosis(pr)), 3)  # Fisher = excess
 
-            ann_return = float((1 + pr).prod() ** (252 / len(pr)) - 1)
+            ann_return = annualized_return(port_rets_series)
+            max_drawdown = round(native_max_drawdown(port_rets_series)[0], 4)
 
-            if bench_rets_series and len(bench_rets_series) == len(port_rets_series):
+            if bench_rets_series is not None and len(bench_rets_series) == len(port_rets_series):
                 br = np.array(bench_rets_series)
                 active_rets = pr - br
                 tracking_error = round(float(active_rets.std() * np.sqrt(252)), 4)
@@ -1203,7 +1193,7 @@ def assemble_xray_report(account_id: str) -> Dict:
             if portfolio_vol and portfolio_vol > 0:
                 sharpe_ratio = round((ann_return - rf_rate) / portfolio_vol, 3)
 
-            if max_drawdown and max_drawdown < 0:
+            if max_drawdown < 0:
                 calmar_ratio = round(ann_return / abs(max_drawdown), 3)
 
         except Exception as e:
