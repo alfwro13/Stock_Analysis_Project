@@ -227,7 +227,7 @@ function _renderCumulativeGrowthChart(cg) {
     }
     var traces = [
         { x: cg.dates, y: cg.portfolio, name: "Portfolio", line: { color: "#00ffcc", width: 2 } },
-        { x: cg.dates, y: cg.benchmark, name: "Benchmark", line: { color: "#bb86fc", width: 1.5, dash: "dot" } },
+        { x: cg.dates, y: cg.benchmark, name: "Benchmark (SWDA.L — MSCI World)", line: { color: "#bb86fc", width: 1.5, dash: "dot" } },
     ];
     var layout = {
         title: { text: "Cumulative Growth vs. Benchmark (indexed to 100)", x: 0.5, xanchor: "center" },
