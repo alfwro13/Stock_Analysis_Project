@@ -8,21 +8,7 @@ function _yauChartHeight() {
 }
 
 function toggleFullscreen(wrapperId) {
-    const wrapper = document.getElementById(wrapperId);
-    if (!wrapper) return;
-    const isFullscreen = wrapper.classList.contains('is-fullscreen');
-    const btn = wrapper.querySelector('.fullscreen-btn');
-    const plotEl = wrapper.querySelector('.js-plotly-plot');
-    if (isFullscreen) {
-        wrapper.classList.remove('is-fullscreen');
-        if (btn) btn.innerHTML = '&#9638; Fullscreen';
-        if (plotEl && window.Plotly) Plotly.relayout(plotEl, { height: _yauChartHeight() });
-    } else {
-        wrapper.classList.add('is-fullscreen');
-        if (btn) btn.innerHTML = '&#10006; Exit Fullscreen';
-        if (plotEl && window.Plotly) Plotly.relayout(plotEl, { height: window.innerHeight - 120 });
-    }
-    window.dispatchEvent(new Event('resize'));
+    ChartFullscreen.toggle(wrapperId, { getHeight: _yauChartHeight });
 }
 
 function _yauCollapseSeries(jobLabels, series) {
