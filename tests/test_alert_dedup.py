@@ -442,67 +442,39 @@ def _clear_holding_limit_alert_state():
     conn.close()
 
 
-class TestDedupSettingsHoldingLimit:
-    def test_holding_limit_reads_dedicated_block(self, orch):
-        orch.config = {
-            "NOTIFICATIONS": {
-                "HOLDING_LIMIT_ALERTS": {"COOLDOWN_MINUTES": 45.0, "RETRIGGER_PERCENT": 1.0, "REARM_PERCENT": 1.5},
-                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 999.0},  # must NOT be used
-            }
-        }
-        s = orch._dedup_settings("HoldingLimit")
-        assert s["cooldown_minutes"] == 45.0
-        assert s["retrigger_percent"] == 1.0
-        assert s["rearm_percent"] == 1.5
-
-
-class TestEvaluateAlertGateHoldingLimit:
-    """Direction is encoded in the composite ticker key's ':low'/':high' suffix since the same
-    real ticker can have both a low and a high target, each with independent gate state."""
+class TestEvaluateDailyAlertGate:
+    """HoldingLimit uses a simple once-per-UTC-day gate rather than Crash/Moonshot's
+    worsened/recovered/cooldown model — a price target is a static threshold that can
+    legitimately be crossed back and forth several times in one session, and the user wants
+    at most one notification per (account, ticker, direction) per calendar day, re-arming
+    automatically at day rollover rather than on price recovery (requested 2026-07-10)."""
 
     def teardown_method(self):
         _clear_holding_limit_alert_state()
 
     def test_no_prior_state_fires(self, orch, db_conn):
-        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn) is False
+        assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_LOW, db_conn) is False
 
-    def test_low_worsened_is_price_falling_further(self, orch, db_conn):
+    def test_already_fired_today_suppresses(self, orch, db_conn):
+        orch.record_alert_fired("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn)
+        assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_LOW, db_conn) is True
+
+    def test_fired_yesterday_fires_again_today(self, orch, db_conn):
         fp = orch._condition_fingerprint(LOW_REASON)
-        old_ts = (datetime.utcnow() - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M:%S")
-        _seed_alert_state("HoldingLimit", HOLDING_KEY_LOW, fp, 100.0, old_ts, 0, TODAY)
-        # 100 → 97 = -3.0% for a low breach (price fell further), exceeds RETRIGGER 2.0%
-        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_LOW, 97.0, LOW_REASON, db_conn) is False
+        _seed_alert_state("HoldingLimit", HOLDING_KEY_LOW, fp, 100.0, YESTERDAY + " 10:00:00", 0, YESTERDAY)
+        assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_LOW, db_conn) is False
 
-    def test_low_recovered_is_price_rising_back(self, orch, db_conn):
-        fp = orch._condition_fingerprint(LOW_REASON)
-        _seed_alert_state("HoldingLimit", HOLDING_KEY_LOW, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
-        # 100 → 103.5 = +3.5% recovery for a low breach (price rose back), exceeds REARM 3.0%
-        result = orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_LOW, 103.5, LOW_REASON, db_conn)
-        assert result is True
-        row = _read_alert_state("HoldingLimit", HOLDING_KEY_LOW)
-        assert row["armed"] == 1
-
-    def test_high_worsened_is_price_rising_further(self, orch, db_conn):
-        fp = orch._condition_fingerprint(HIGH_REASON)
-        old_ts = (datetime.utcnow() - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M:%S")
-        _seed_alert_state("HoldingLimit", HOLDING_KEY_HIGH, fp, 100.0, old_ts, 0, TODAY)
-        # 100 → 103 = +3.0% for a high breach (price rose further), exceeds RETRIGGER 2.0%
-        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, 103.0, HIGH_REASON, db_conn) is False
-
-    def test_high_recovered_is_price_falling_back(self, orch, db_conn):
-        fp = orch._condition_fingerprint(HIGH_REASON)
-        _seed_alert_state("HoldingLimit", HOLDING_KEY_HIGH, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
-        # 100 → 96.5 = -3.5% fall-back for a high breach, exceeds REARM 3.0%
-        result = orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, 96.5, HIGH_REASON, db_conn)
-        assert result is True
-        row = _read_alert_state("HoldingLimit", HOLDING_KEY_HIGH)
-        assert row["armed"] == 1
+    def test_repeated_crossings_same_day_suppressed_regardless_of_price(self, orch, db_conn):
+        """Price oscillating back and forth across the target several times in one day must
+        still produce only the first notification — no worsened-price retrigger for this engine."""
+        orch.record_alert_fired("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn)
+        # A much bigger breach later the same day must still be suppressed.
+        assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_LOW, db_conn) is True
 
     def test_low_and_high_keys_track_independent_state(self, orch, db_conn):
         """Same underlying ticker; low and high targets must not share dedup state."""
         orch.record_alert_fired("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn)
-        # High-target gate for the same ticker has no prior state of its own -> still fires.
-        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, 200.0, HIGH_REASON, db_conn) is False
+        assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, db_conn) is False
 
 
 class TestDispatchHoldingLimitAlerts:

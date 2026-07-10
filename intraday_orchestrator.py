@@ -183,8 +183,6 @@ class IntradayOrchestrator:
             key = "MARKET_STRESS_ALERTS"
         elif engine == "TrapMonitor":
             key = "TRAP_MONITOR_ALERTS"
-        elif engine == "HoldingLimit":
-            key = "HOLDING_LIMIT_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})
@@ -249,15 +247,6 @@ class IntradayOrchestrator:
                     # Moonshot: price rising further is worsening; falling back is recovery.
                     worsened_pct = pct_change
                     recovered_pct = -pct_change
-                elif engine == "HoldingLimit":
-                    # ticker carries a composite "{account_id}:{ticker}:low"/":high" key — direction
-                    # is encoded in the suffix since the same real ticker can breach either side.
-                    if ticker.endswith(":low"):
-                        worsened_pct = -pct_change
-                        recovered_pct = pct_change
-                    else:
-                        worsened_pct = pct_change
-                        recovered_pct = -pct_change
                 else:
                     # Macro (yield surge): yield rising further is worsening; falling back is recovery.
                     worsened_pct = pct_change
@@ -453,11 +442,11 @@ class IntradayOrchestrator:
             high_limit = lim.get("high_limit")
             if low_limit is not None and current_price <= low_limit:
                 key = f"{account_id}:{ticker}:low"
-                if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "LOW TARGET REACHED", conn):
+                if not self._evaluate_daily_alert_gate("HoldingLimit", key, conn):
                     alerts_to_send.append((key, ticker, account_name, "low", low_limit, current_price, currency))
             if high_limit is not None and current_price >= high_limit:
                 key = f"{account_id}:{ticker}:high"
-                if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "HIGH TARGET REACHED", conn):
+                if not self._evaluate_daily_alert_gate("HoldingLimit", key, conn):
                     alerts_to_send.append((key, ticker, account_name, "high", high_limit, current_price, currency))
 
     def _dispatch_holding_limit_alerts(self, alert_tuples: list, conn: sqlite3.Connection) -> None:

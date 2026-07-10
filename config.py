@@ -349,11 +349,6 @@ DEFAULT_CONFIG = {
         },
         "MARKET_STRESS_ALERTS": {
             "COOLDOWN_MINUTES": 1440
-        },
-        "HOLDING_LIMIT_ALERTS": {
-            "COOLDOWN_MINUTES": 120,
-            "RETRIGGER_PERCENT": 2.0,
-            "REARM_PERCENT": 3.0
         }
     },
     "NOTIFICATION_ROUTING": {},
