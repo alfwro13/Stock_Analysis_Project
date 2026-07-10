@@ -202,8 +202,8 @@
             });
             // The freshly re-rendered chart comes back at its server-default height —
             // if the wrapper is mid-fullscreen, re-apply that state (see toggleFullscreen).
-            if (typeof window._relayoutStockChart === 'function' && wrapper.classList.contains('is-fullscreen')) {
-                window._relayoutStockChart('intraday-wrapper', window.innerHeight - 120);
+            if (wrapper.classList.contains('is-fullscreen')) {
+                ChartFullscreen.relayoutForCurrentState('intraday-wrapper', _stockChartOpts('intraday-wrapper'));
             }
         } catch (e) {
             // silently ignore — next tick will retry
@@ -296,60 +296,47 @@
     window.refreshSingleData = refreshSingleData;
 
     // ─── Fullscreen Toggle ────────────────────────────────────────────────────────
-    // On desktop the chart wrapper lives inside .detail-right-column which has
-    // position:sticky. Sticky elements form a CSS stacking context with z-index:auto
-    // (paint step 7), so Bootstrap's navbar (z-index:1020, step 8) always paints on
-    // top — making the fullscreen chart partially obscured. Fix: hide the navbar for
-    // the duration of fullscreen mode. Also elevate the sticky column's z-index so the
-    // fixed wrapper is above any other root-level stacking contexts.
-    //
     // These three charts are server-rendered (visuals.py's fig.to_html()), so
     // config.responsive never actually reacts to container size changes (rotation,
     // fullscreen) — width/height must be relayout'd explicitly, per AGENTS.md rule 18.
+    var _STOCK_CHART_IDS = ['intraday-wrapper', 'macro-wrapper', 'anomaly-wrapper'];
     var _chartDefaultHeights = {};
 
     function _captureChartDefaultHeights() {
-        ['intraday-wrapper', 'macro-wrapper', 'anomaly-wrapper'].forEach(function (id) {
+        _STOCK_CHART_IDS.forEach(function (id) {
             var wrapper = document.getElementById(id);
             var plotEl = wrapper && wrapper.querySelector('.js-plotly-plot');
             if (plotEl && plotEl.layout) _chartDefaultHeights[id] = plotEl.layout.height;
         });
     }
 
-    function _relayoutStockChart(wrapperId, height) {
-        var wrapper = document.getElementById(wrapperId);
-        var plotEl = wrapper && wrapper.querySelector('.js-plotly-plot');
-        if (!plotEl || !window.Plotly || !height) return;
-        Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height: height });
-        // A height-shrinking relayout doesn't reliably resize .plot-container/the outer
-        // div on its own — force both explicitly (see AGENTS.md rule 18).
-        plotEl.style.height = height + 'px';
-        var container = plotEl.querySelector('.plot-container');
-        if (container) container.style.height = height + 'px';
+    // On desktop the chart wrapper lives inside .detail-right-column which has
+    // position:sticky. Sticky elements form a CSS stacking context with z-index:auto
+    // (paint step 7), so Bootstrap's navbar (z-index:1020, step 8) always paints on
+    // top — making the fullscreen chart partially obscured. Fix: hide the navbar for
+    // the duration of fullscreen mode. Also elevate the sticky column's z-index so the
+    // fixed wrapper is above any other root-level stacking contexts.
+    function _stockChartOpts(wrapperId) {
+        return {
+            forceWidth: true,
+            getHeight: function () { return _chartDefaultHeights[wrapperId]; },
+            onEnter: function (wrapper) {
+                var navbar = document.querySelector('.app-navbar');
+                var stickyCol = wrapper.closest('.detail-right-column');
+                if (navbar) navbar.style.display = 'none';
+                if (stickyCol) stickyCol.style.zIndex = '10000';
+            },
+            onExit: function (wrapper) {
+                var navbar = document.querySelector('.app-navbar');
+                var stickyCol = wrapper.closest('.detail-right-column');
+                if (navbar) navbar.style.display = '';
+                if (stickyCol) stickyCol.style.zIndex = '';
+            },
+        };
     }
 
-    window._relayoutStockChart = _relayoutStockChart;
-    window._chartDefaultHeights = _chartDefaultHeights;
-
     function toggleFullscreen(wrapperId) {
-        const wrapper = document.getElementById(wrapperId);
-        const isFullscreen = wrapper.classList.contains('is-fullscreen');
-        const navbar = document.querySelector('.app-navbar');
-        const stickyCol = wrapper.closest('.detail-right-column');
-        if (isFullscreen) {
-            wrapper.classList.remove('is-fullscreen');
-            wrapper.querySelector('.fullscreen-btn').innerText = "⧆ Fullscreen";
-            if (navbar) navbar.style.display = '';
-            if (stickyCol) stickyCol.style.zIndex = '';
-            _relayoutStockChart(wrapperId, _chartDefaultHeights[wrapperId]);
-        } else {
-            wrapper.classList.add('is-fullscreen');
-            wrapper.querySelector('.fullscreen-btn').innerText = "✖ Exit Fullscreen";
-            if (navbar) navbar.style.display = 'none';
-            if (stickyCol) stickyCol.style.zIndex = '10000';
-            _relayoutStockChart(wrapperId, window.innerHeight - 120);
-        }
-        window.dispatchEvent(new Event('resize'));
+        ChartFullscreen.toggle(wrapperId, _stockChartOpts(wrapperId));
     }
 
     window.toggleFullscreen = toggleFullscreen;
@@ -357,11 +344,8 @@
     document.addEventListener('DOMContentLoaded', _captureChartDefaultHeights);
 
     window.addEventListener('resize', function () {
-        ['intraday-wrapper', 'macro-wrapper', 'anomaly-wrapper'].forEach(function (id) {
-            var wrapper = document.getElementById(id);
-            if (!wrapper) return;
-            var isFullscreen = wrapper.classList.contains('is-fullscreen');
-            _relayoutStockChart(id, isFullscreen ? (window.innerHeight - 120) : _chartDefaultHeights[id]);
+        _STOCK_CHART_IDS.forEach(function (id) {
+            ChartFullscreen.relayoutForCurrentState(id, _stockChartOpts(id));
         });
     });
 
