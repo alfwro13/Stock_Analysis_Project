@@ -641,7 +641,7 @@ Rebuilds 2 years of historical feature rows used to train the ML model. Only nee
 
 ### `POST /api/ml/trigger-training`
 
-Trains the global XGBoost/RF soft-voting ensemble using the historical feature backfill. Saves the model to `models/ml_ensemble.joblib`. Runs asynchronously — may take 10–30 minutes.
+Trains the global XGBoost/RF soft-voting ensemble using the historical feature backfill (`train_global_ml_model()`, saved to `models/ml_ensemble.joblib`), then trains the Q10/Q90 quantile regressors (`train_quantile_models()`, saved to `models/quantile_q10.joblib`/`quantile_q90.joblib`) — matching the scheduled `ml_training_job`'s two-step behavior via `bg_execute_ml_training()`. Runs asynchronously — may take 10–30 minutes. Before 2026-07-10 this endpoint only ran the first step, silently leaving the quantile models untrained if the weekly scheduled job was ever skipped.
 
 **Request body:** none  
 **Response:** standard background task response
@@ -650,7 +650,7 @@ Trains the global XGBoost/RF soft-voting ensemble using the historical feature b
 
 ### `POST /api/ml/trigger-inference`
 
-Runs daily ML inference on all universe tickers (or portfolio/watchlist tickers if universe is empty) and writes `ml_confidence_score` values into the database. Runs asynchronously.
+Runs daily ML inference on all universe tickers (or portfolio/watchlist tickers if universe is empty): writes `ml_confidence_score` (`update_daily_ml_predictions()`) and `price_q10`/`price_q90` ML Quantile Bands (`score_quantile_predictions()`) — matching the scheduled `ml_inference_job`'s two-step behavior via `bg_execute_ml_inference()`. Runs asynchronously. Before 2026-07-10 this endpoint only ran the first step; a manual trigger reported success but never actually refreshed `price_q10`/`price_q90`.
 
 **Request body:** none  
 **Response:** standard background task response

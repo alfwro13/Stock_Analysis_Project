@@ -709,3 +709,37 @@ def test_execute_restart_skips_pip_install_when_not_pending():
 
     mock_run.assert_not_called()
     mock_notify.assert_not_called()
+
+
+def test_bg_execute_ml_inference_runs_quantile_scoring_too():
+    """The manual "Run Inference Now" trigger must match the scheduled ml_inference_job's
+    behavior (update_daily_ml_predictions + score_quantile_predictions), not just the first
+    half — the missing second call previously left price_q10/price_q90 stuck stale until the
+    next scheduled run, even after a manual trigger reported success (found 2026-07-10)."""
+    import api_routes_triggers
+
+    with (
+        patch("api_routes_triggers.get_universe_tickers", return_value=["ZZINFER"]),
+        patch("api_routes_triggers.update_daily_ml_predictions") as mock_predict,
+        patch("api_routes_triggers.score_quantile_predictions") as mock_quantile,
+    ):
+        api_routes_triggers.bg_execute_ml_inference()
+
+    mock_predict.assert_called_once_with(["ZZINFER"])
+    mock_quantile.assert_called_once_with(["ZZINFER"])
+
+
+def test_bg_execute_ml_training_runs_quantile_training_too():
+    """The manual "Run Training Now" trigger must match the scheduled ml_training_job's
+    behavior (train_global_ml_model + train_quantile_models) — the same missing-second-call
+    pattern as bg_execute_ml_inference, found in the same 2026-07-10 audit pass."""
+    import api_routes_triggers
+
+    with (
+        patch("api_routes_triggers.train_global_ml_model") as mock_train,
+        patch("api_routes_triggers.train_quantile_models") as mock_train_quantile,
+    ):
+        api_routes_triggers.bg_execute_ml_training()
+
+    mock_train.assert_called_once()
+    mock_train_quantile.assert_called_once()

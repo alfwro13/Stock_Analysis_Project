@@ -27,7 +27,7 @@ from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
-from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
+from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill, score_quantile_predictions, train_quantile_models
 from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown
 from seed_macro_calendar import seed_calendar
@@ -93,6 +93,10 @@ def bg_execute_universe_quant_scan():
 def bg_execute_universe_quant_scan_subset(tickers: List[str]):
     run_daily_quant_scan(tickers, scan_type='sideload')
 
+def bg_execute_ml_training():
+    train_global_ml_model()
+    train_quantile_models()
+
 def bg_execute_ml_inference():
     tickers = get_universe_tickers()
     if not tickers:
@@ -101,6 +105,7 @@ def bg_execute_ml_inference():
 
     if tickers:
         update_daily_ml_predictions(tickers)
+        score_quantile_predictions(tickers)
 
 def bg_init_macro_pipeline():
     try:
@@ -209,7 +214,7 @@ async def trigger_ml_backfill_endpoint(request: Request, background_tasks: Backg
 @triggers_router.post("/ml/trigger-training")
 @limiter.limit("2/minute")
 async def trigger_ml_training_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(train_global_ml_model)
+    background_tasks.add_task(bg_execute_ml_training)
     return JSONResponse(content={
         "status": "success",
         "message": "Global ML Walk-Forward Training initiated in the background. Check System Notifications."
