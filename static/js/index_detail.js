@@ -92,42 +92,19 @@
         });
     }
 
-    function _relayoutIndexChart(wrapperId, height) {
-        const wrapper = document.getElementById(wrapperId);
-        const plotEl = wrapper && wrapper.querySelector('.js-plotly-plot');
-        if (!plotEl || !window.Plotly || !height) return;
-        Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height: height });
-        // A height-shrinking relayout doesn't reliably resize .plot-container/the outer
-        // div on its own — force both explicitly (see AGENTS.md rule 18).
-        plotEl.style.height = height + 'px';
-        const container = plotEl.querySelector('.plot-container');
-        if (container) container.style.height = height + 'px';
+    function _indexChartOpts(wrapperId) {
+        return { forceWidth: true, getHeight: function () { return _chartDefaultHeights[wrapperId]; } };
     }
 
     window.toggleFullscreen = function (wrapperId) {
-        const wrapper = document.getElementById(wrapperId);
-        if (!wrapper) return;
-        const isFullscreen = wrapper.classList.contains('is-fullscreen');
-        if (isFullscreen) {
-            wrapper.classList.remove('is-fullscreen');
-            wrapper.querySelector('.fullscreen-btn').innerText = '⛶ Fullscreen';
-            _relayoutIndexChart(wrapperId, _chartDefaultHeights[wrapperId]);
-        } else {
-            wrapper.classList.add('is-fullscreen');
-            wrapper.querySelector('.fullscreen-btn').innerText = '✖ Exit Fullscreen';
-            _relayoutIndexChart(wrapperId, window.innerHeight - 120);
-        }
-        window.dispatchEvent(new Event('resize'));
+        ChartFullscreen.toggle(wrapperId, _indexChartOpts(wrapperId));
     };
 
     document.addEventListener('DOMContentLoaded', _captureChartDefaultHeights);
 
     window.addEventListener('resize', function () {
         CHART_WRAPPER_IDS.forEach(function (id) {
-            const wrapper = document.getElementById(id);
-            if (!wrapper) return;
-            const isFullscreen = wrapper.classList.contains('is-fullscreen');
-            _relayoutIndexChart(id, isFullscreen ? (window.innerHeight - 120) : _chartDefaultHeights[id]);
+            ChartFullscreen.relayoutForCurrentState(id, _indexChartOpts(id));
         });
     });
 })();
