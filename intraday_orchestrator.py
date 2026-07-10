@@ -296,6 +296,28 @@ class IntradayOrchestrator:
             logger.error(f"Alert gate evaluation failed for {engine}/{ticker}: {e}")
             return True  # fail safe: suppress rather than risk spamming
 
+    def _evaluate_daily_alert_gate(self, engine: str, key: str, conn: sqlite3.Connection) -> bool:
+        """Returns True (suppress) if this engine/key already fired today (UTC); False (fire)
+        otherwise. Used by HoldingLimit: a price target is a static threshold that can legitimately
+        be crossed back and forth several times in one session (ordinary intraday noise, not a
+        "worsening condition" the way Crash/Moonshot's gate models it) — the user wants at most one
+        notification per (account, ticker, direction) per calendar day, re-arming automatically at
+        the next UTC day rollover rather than on price recovery."""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT state_date FROM alert_state WHERE engine = ? AND ticker = ?",
+                (engine, key),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return False  # fire: never fired before
+            return row["state_date"] == today  # suppress only if already fired today
+        except Exception as e:
+            logger.error(f"Daily alert gate evaluation failed for {engine}/{key}: {e}")
+            return True  # fail safe: suppress rather than risk spamming
+
     def record_alert_fired(
         self,
         engine: str,
