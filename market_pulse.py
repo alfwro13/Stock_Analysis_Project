@@ -156,37 +156,46 @@ def is_quote_settled(exchange: str, include_premarket: bool = False) -> bool:
     return (now_minutes - open_minutes) >= delay_minutes
 
 
-def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:
-    """Which of the NYSE/LSE proxy tickers (see _MARKET_STATUS_PROXY) have a missing or stale
-    market_state row — lets GET /api/system/market-status self-trigger a background refresh,
-    the same needs_refresh pattern GET /api/market-pulse and the accounts endpoints already use.
-    Without this, is_exchange_open() would only ever see fresh data when something else (the
-    market-sentiment page's JS polling) happens to be fetching these tickers too — a caller that
-    only ever polls market-status (e.g. Home Assistant) would keep falling back to the naive
-    weekday/hours heuristic forever."""
-    proxies = list(_MARKET_STATUS_PROXY.values())
+def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
+    """Which of the given tickers have a missing or stale market_pulse_cache row. Shared by
+    proxy_tickers_needing_refresh() (the 8 exchange-state proxies) and any other caller that
+    wants to self-trigger a background refresh for a fixed ticker list — the needs_refresh
+    pattern GET /api/market-pulse and the accounts endpoints already use, generalized to an
+    arbitrary ticker list so it isn't reimplemented per caller (see AGENTS.md rule 16)."""
+    if not tickers:
+        return []
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        placeholders = ','.join('?' for _ in proxies)
+        placeholders = ','.join('?' for _ in tickers)
         cursor.execute(
             f"SELECT ticker, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
-            proxies,
+            tickers,
         )
         last_updated_map = {row['ticker']: row['last_updated'] for row in cursor.fetchall()}
     except Exception as e:
-        logger.error("[MARKET PULSE] Failed to check proxy ticker staleness: %s", e)
-        return proxies
+        logger.error("[MARKET PULSE] Failed to check ticker staleness: %s", e)
+        return list(tickers)
     finally:
         if conn:
             conn.close()
 
     now = time.time()
     return [
-        t for t in proxies
+        t for t in tickers
         if now - last_updated_map.get(t, 0) > max_age_seconds
     ]
+
+
+def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:
+    """Which of the NYSE/LSE proxy tickers (see _MARKET_STATUS_PROXY) have a missing or stale
+    market_state row — lets GET /api/system/market-status self-trigger a background refresh.
+    Without this, is_exchange_open() would only ever see fresh data when something else (the
+    market-sentiment page's JS polling) happens to be fetching these tickers too — a caller that
+    only ever polls market-status (e.g. Home Assistant) would keep falling back to the naive
+    weekday/hours heuristic forever."""
+    return tickers_needing_refresh(list(_MARKET_STATUS_PROXY.values()), max_age_seconds)
 
 
 def get_intraday_points(ticker: str, max_points: int = _SPARKLINE_MAX_POINTS) -> List[List[float]]:

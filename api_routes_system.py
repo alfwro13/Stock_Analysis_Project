@@ -26,7 +26,7 @@ from config import (
 from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
-from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open, proxy_tickers_needing_refresh, reload_ticker_registry
+from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open, proxy_tickers_needing_refresh, tickers_needing_refresh, reload_ticker_registry
 import markets_engine
 from notification_engine import notify
 from scheduler_engine import (
@@ -827,9 +827,16 @@ def _yahoo_ok() -> bool:
 async def api_market_status(background_tasks: BackgroundTasks):
     from system_check_engine import run_system_checks
     issues = run_system_checks()
-    stale_proxies = proxy_tickers_needing_refresh()
-    if stale_proxies:
-        background_tasks.add_task(fetch_and_save_pulse, stale_proxies)
+    # Home Assistant's coordinator polls this endpoint unconditionally every cycle regardless of
+    # market hours (see AGENTS.md "Always-on polling") — it's the only endpoint every HA install
+    # is guaranteed to hit passively, so it doubles as the Markets registry's background warm-up
+    # for installs that never press "Refresh Data" and never have /markets open in a browser tab.
+    # Without this, the Markets page's tickers only got warmed by page traffic and stayed stale
+    # (visibly "crossed over") between visits — found 2026-07-10.
+    stale_tickers = set(proxy_tickers_needing_refresh())
+    stale_tickers.update(tickers_needing_refresh(markets_engine.registry_lookup_tickers()))
+    if stale_tickers:
+        background_tasks.add_task(fetch_and_save_pulse, list(stale_tickers))
     return JSONResponse(content={
         "status": "success",
         "us_market_open": is_exchange_open("NYSE"),

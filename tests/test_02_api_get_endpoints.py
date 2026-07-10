@@ -218,19 +218,40 @@ def test_get_market_status_self_triggers_refresh_for_stale_proxy_tickers(client)
     never populate market_state at all, and us_market_open/uk_market_open would silently fall
     back to the naive weekday/hours heuristic forever."""
     with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=["^GSPC", "^FTSE"]), \
+         patch("api_routes_system.markets_engine.registry_lookup_tickers", return_value=[]), \
+         patch("api_routes_system.tickers_needing_refresh", return_value=[]), \
          patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/system/market-status")
     assert resp.status_code == 200
-    mock_fetch.assert_called_once_with(["^GSPC", "^FTSE"])
+    mock_fetch.assert_called_once()
+    assert set(mock_fetch.call_args[0][0]) == {"^GSPC", "^FTSE"}
 
 
 @pytest.mark.api
 def test_get_market_status_does_not_trigger_refresh_when_proxies_fresh(client):
     with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=[]), \
+         patch("api_routes_system.markets_engine.registry_lookup_tickers", return_value=[]), \
+         patch("api_routes_system.tickers_needing_refresh", return_value=[]), \
          patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/system/market-status")
     assert resp.status_code == 200
     mock_fetch.assert_not_called()
+
+
+@pytest.mark.api
+def test_get_market_status_self_triggers_refresh_for_stale_registry_tickers(client):
+    """Home Assistant's coordinator poll of this endpoint is now the only reliable background
+    warm-up for the Markets registry on installs that never press "Refresh Data" and never have
+    /markets open in a browser tab — added 2026-07-10 after tiles were observed showing stale
+    ("crossed over") data on cold visits."""
+    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=[]), \
+         patch("api_routes_system.markets_engine.registry_lookup_tickers", return_value=["^KS200", "GC=F"]), \
+         patch("api_routes_system.tickers_needing_refresh", return_value=["^KS200", "GC=F"]), \
+         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+        resp = client.get("/api/system/market-status")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once()
+    assert set(mock_fetch.call_args[0][0]) == {"^KS200", "GC=F"}
 
 
 @pytest.mark.api

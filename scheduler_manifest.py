@@ -68,6 +68,12 @@ JOB_GRAPH: dict[str, dict] = {
     # Pulse itself), triggered inline from GET /api/markets whenever a tile's cache is stale.
     "markets_page_source":           {"label": "Markets Page",                                   "category": "manual",      "engine": "markets_engine.py",             "produces": ["market_pulse_cache", "market_pulse_sparkline"],              "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": "markets-registry-card"},
 
+    # Home Assistant's passive coordinator poll of GET /api/system/market-status — not a scheduled
+    # job, but the only reliable background warm-up for the Markets registry on installs that never
+    # press "Refresh Data" and never have /markets open in a browser tab (added 2026-07-10, since
+    # the coordinator's normal poll otherwise never touched these tickers at all).
+    "ha_market_status_source":       {"label": "Home Assistant Market Status Poll",              "category": "manual",      "engine": "api_routes_system.py",          "produces": ["market_pulse_cache"],                                         "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": None},
+
     # Monte Carlo Wealth Simulator — not a scheduled job; pure on-demand computation over
     # already-cached X-ray artifacts (correlation matrix, risk cache), no new artifact produced.
     "monte_carlo_source":             {"label": "Monte Carlo Wealth Simulator",                   "category": "manual",      "engine": "monte_carlo_engine.py",         "produces": [],                                                             "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},

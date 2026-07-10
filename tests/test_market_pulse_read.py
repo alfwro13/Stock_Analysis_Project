@@ -485,3 +485,31 @@ class TestProxyTickersNeedingRefresh:
             _seed_pulse(ticker, last_updated=time.time() - 120)
         assert set(_mp.proxy_tickers_needing_refresh(max_age_seconds=60)) == self.ALL_PROXIES
         assert _mp.proxy_tickers_needing_refresh(max_age_seconds=300) == []
+
+
+class TestTickersNeedingRefresh:
+    """The generalized helper proxy_tickers_needing_refresh() itself now delegates to — used by
+    GET /api/system/market-status to warm the full Markets registry, not just the 8 exchange-state
+    proxies (added 2026-07-10)."""
+
+    def teardown_method(self):
+        _clear("^KS200", "GC=F", "^GSPC")
+
+    def test_empty_input_returns_empty(self):
+        assert _mp.tickers_needing_refresh([]) == []
+
+    def test_missing_rows_are_stale(self):
+        assert set(_mp.tickers_needing_refresh(["^KS200", "GC=F"])) == {"^KS200", "GC=F"}
+
+    def test_fresh_row_is_not_flagged(self):
+        _seed_pulse("^KS200", last_updated=time.time())
+        assert _mp.tickers_needing_refresh(["^KS200"]) == []
+
+    def test_stale_row_is_flagged(self):
+        _seed_pulse("^KS200", last_updated=time.time() - 3600)
+        assert _mp.tickers_needing_refresh(["^KS200"]) == ["^KS200"]
+
+    def test_custom_max_age_respected(self):
+        _seed_pulse("^KS200", last_updated=time.time() - 120)
+        assert _mp.tickers_needing_refresh(["^KS200"], max_age_seconds=60) == ["^KS200"]
+        assert _mp.tickers_needing_refresh(["^KS200"], max_age_seconds=300) == []
