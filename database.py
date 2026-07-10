@@ -41,7 +41,7 @@ def get_yahoo_api_stats(days: int = 8) -> list:
     try:
         conn = get_connection()
         rows = conn.execute("""
-            SELECT date, total_calls, ipv4_calls, ipv6_calls, rate_limit_429, other_errors
+            SELECT date, total_calls, ipv4_calls, ipv6_calls, rate_limit_429, other_errors, yfinance_logged_errors
             FROM yahoo_api_stats
             ORDER BY date DESC
             LIMIT ?
@@ -60,7 +60,8 @@ def get_yahoo_api_call_log(date_str: str) -> list:
     try:
         conn = get_connection()
         rows = conn.execute("""
-            SELECT substr(call_time, 1, 16) AS minute_ts, job_id, status, COUNT(*) AS call_count
+            SELECT substr(call_time, 1, 16) AS minute_ts, job_id, status, COUNT(*) AS call_count,
+                   SUM(yf_logged_errors) AS yf_logged_errors
             FROM yahoo_api_call_log
             WHERE date = ?
             GROUP BY minute_ts, job_id, status

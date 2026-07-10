@@ -866,10 +866,12 @@ function loadYahooApiStats() {
             }
             let html = '<table class="table table-hover table-sm w-100"><thead><tr>'
                 + '<th>Date</th><th>Total</th><th>IPv4</th><th>IPv6</th><th>429s</th><th>Errors</th>'
+                + '<th><abbr title="ERROR-level lines yfinance itself logged (e.g. a ticker with no data for the requested range, a 404 on a module Yahoo does not support for that instrument) without raising an exception — so the request did not count as a failure above.">yfinance-logged</abbr></th>'
                 + '</tr></thead><tbody>';
             data.rows.forEach(r => {
                 const has429 = r.rate_limit_429 > 0;
                 const hasErr = r.other_errors > 0;
+                const hasYfLogged = r.yfinance_logged_errors > 0;
                 html += '<tr class="yahoo-stats-row-clickable" title="Click to view usage detail chart" onclick="window.open(\'/yahoo-api-usage?date=' + r.date + '\', \'_blank\')">'
                     + '<td>' + r.date + '</td>'
                     + '<td>' + r.total_calls + '</td>'
@@ -877,6 +879,7 @@ function loadYahooApiStats() {
                     + '<td>' + r.ipv6_calls + '</td>'
                     + '<td class="' + (has429 ? 'text-warning' : '') + '">' + r.rate_limit_429 + '</td>'
                     + '<td class="' + (hasErr ? 'text-danger' : '') + '">' + r.other_errors + '</td>'
+                    + '<td class="' + (hasYfLogged ? 'text-warning' : '') + '">' + r.yfinance_logged_errors + '</td>'
                     + '</tr>';
             });
             html += '</tbody></table>';

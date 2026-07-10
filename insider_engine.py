@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from database import get_connection, get_watchlist_tickers
 from config import load_config
+from db_helpers import filter_equity_tickers
 from yahoo_engine import yahoo_engine
 from notification_engine import notify
 
@@ -27,6 +28,7 @@ def run_insider_alert():
     """Scrapes recent SEC Form 4 filings for massive insider buying and aligns with quant scores."""
     try:
         from accounts_engine import get_combined_holdings
+        from treasury_bill_engine import parse_tbill_buy_txn_id
         logger.info("Starting Insider Trading Alert Check...")
 
         config = load_config()
@@ -56,7 +58,9 @@ def run_insider_alert():
             and not t.endswith('=F')
             and not t.endswith('=X')
             and not t.startswith('^')
+            and parse_tbill_buy_txn_id(t) is None
         ]
+        target_tickers = filter_equity_tickers(target_tickers)
         if not target_tickers:
             return True, "No valid equity tickers found to check."
 

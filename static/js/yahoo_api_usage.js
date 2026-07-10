@@ -1,6 +1,7 @@
 const _YAU_PALETTE = ['#3987e5', '#199e70', '#c98500', '#008300', '#9085e9', '#e66767', '#d55181', '#d95926'];
 const _YAU_MAX_SERIES = 7;
 const _YAU_ERROR_COLOR = '#d03b3b';
+const _YAU_YF_LOGGED_COLOR = '#c98500';
 
 function _yauChartHeight() {
     return window.innerWidth < 768 ? 400 : 450;
@@ -71,6 +72,23 @@ function _yauRenderChart(data) {
             x: errorX, y: errorY, text: errorText,
             type: 'scatter', mode: 'markers', name: 'Rate-limit / Errors',
             marker: { color: _YAU_ERROR_COLOR, size: 10, symbol: 'triangle-up' },
+            hovertemplate: '%{text}<extra></extra>',
+        });
+    }
+
+    const yfX = [], yfY = [], yfText = [];
+    data.buckets.forEach((b, i) => {
+        if (data.yf_logged_errors_by_bucket && data.yf_logged_errors_by_bucket[i] > 0) {
+            yfX.push(b);
+            yfY.push(totals[i]);
+            yfText.push(data.yf_logged_errors_by_bucket[i] + ' yfinance-logged issue(s) (no HTTP failure)');
+        }
+    });
+    if (yfX.length) {
+        traces.push({
+            x: yfX, y: yfY, text: yfText,
+            type: 'scatter', mode: 'markers', name: 'yfinance-logged (no HTTP failure)',
+            marker: { color: _YAU_YF_LOGGED_COLOR, size: 9, symbol: 'circle' },
             hovertemplate: '%{text}<extra></extra>',
         });
     }

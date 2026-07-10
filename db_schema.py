@@ -901,24 +901,26 @@ def init_db() -> None:
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS yahoo_api_stats (
-                date           TEXT PRIMARY KEY,
-                total_calls    INTEGER NOT NULL DEFAULT 0,
-                ipv4_calls     INTEGER NOT NULL DEFAULT 0,
-                ipv6_calls     INTEGER NOT NULL DEFAULT 0,
-                rate_limit_429 INTEGER NOT NULL DEFAULT 0,
-                other_errors   INTEGER NOT NULL DEFAULT 0
+                date                  TEXT PRIMARY KEY,
+                total_calls           INTEGER NOT NULL DEFAULT 0,
+                ipv4_calls            INTEGER NOT NULL DEFAULT 0,
+                ipv6_calls            INTEGER NOT NULL DEFAULT 0,
+                rate_limit_429        INTEGER NOT NULL DEFAULT 0,
+                other_errors          INTEGER NOT NULL DEFAULT 0,
+                yfinance_logged_errors INTEGER NOT NULL DEFAULT 0
             )
         ''')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS yahoo_api_call_log (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                call_time      TEXT NOT NULL,
-                date           TEXT NOT NULL,
-                interface      TEXT NOT NULL,
-                status         TEXT NOT NULL,
-                job_id         TEXT,
-                action_context TEXT
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_time        TEXT NOT NULL,
+                date             TEXT NOT NULL,
+                interface        TEXT NOT NULL,
+                status           TEXT NOT NULL,
+                job_id           TEXT,
+                action_context   TEXT,
+                yf_logged_errors INTEGER NOT NULL DEFAULT 0
             )
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_yahoo_api_call_log_date ON yahoo_api_call_log(date)')
@@ -1695,12 +1697,13 @@ def migrate_db(conn, cursor) -> None:
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS yahoo_api_stats (
-                date           TEXT PRIMARY KEY,
-                total_calls    INTEGER NOT NULL DEFAULT 0,
-                ipv4_calls     INTEGER NOT NULL DEFAULT 0,
-                ipv6_calls     INTEGER NOT NULL DEFAULT 0,
-                rate_limit_429 INTEGER NOT NULL DEFAULT 0,
-                other_errors   INTEGER NOT NULL DEFAULT 0
+                date                   TEXT PRIMARY KEY,
+                total_calls            INTEGER NOT NULL DEFAULT 0,
+                ipv4_calls             INTEGER NOT NULL DEFAULT 0,
+                ipv6_calls             INTEGER NOT NULL DEFAULT 0,
+                rate_limit_429         INTEGER NOT NULL DEFAULT 0,
+                other_errors           INTEGER NOT NULL DEFAULT 0,
+                yfinance_logged_errors INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.commit()
@@ -1710,19 +1713,40 @@ def migrate_db(conn, cursor) -> None:
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS yahoo_api_call_log (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                call_time      TEXT NOT NULL,
-                date           TEXT NOT NULL,
-                interface      TEXT NOT NULL,
-                status         TEXT NOT NULL,
-                job_id         TEXT,
-                action_context TEXT
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_time        TEXT NOT NULL,
+                date             TEXT NOT NULL,
+                interface        TEXT NOT NULL,
+                status           TEXT NOT NULL,
+                job_id           TEXT,
+                action_context   TEXT,
+                yf_logged_errors INTEGER NOT NULL DEFAULT 0
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_yahoo_api_call_log_date ON yahoo_api_call_log(date)")
         conn.commit()
     except Exception as e:
         logger.debug("yahoo_api_call_log migration: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(yahoo_api_stats)")
+        existing_yahoo_stats_columns = [info['name'] for info in cursor.fetchall()]
+        if 'yfinance_logged_errors' not in existing_yahoo_stats_columns:
+            logger.info("[MIGRATION] Adding column: yfinance_logged_errors to yahoo_api_stats...")
+            cursor.execute("ALTER TABLE yahoo_api_stats ADD COLUMN yfinance_logged_errors INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add yfinance_logged_errors to yahoo_api_stats: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(yahoo_api_call_log)")
+        existing_yahoo_call_log_columns = [info['name'] for info in cursor.fetchall()]
+        if 'yf_logged_errors' not in existing_yahoo_call_log_columns:
+            logger.info("[MIGRATION] Adding column: yf_logged_errors to yahoo_api_call_log...")
+            cursor.execute("ALTER TABLE yahoo_api_call_log ADD COLUMN yf_logged_errors INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add yf_logged_errors to yahoo_api_call_log: %s", e)
 
     # account_value_history_currency (guard for pre-feature DBs)
     try:

@@ -192,7 +192,7 @@ class TestYahooConnectionBoundary:
              patch("tools.network_engine._increment_api_stat") as mock_inc:
             with ne.yahoo_connection_boundary("test"):
                 pass
-        mock_inc.assert_called_once_with("ipv4", "success", "test")
+        mock_inc.assert_called_once_with("ipv4", "success", "test", 0)
 
     def test_stat_incremented_as_error_on_exception(self):
         mock_session = MagicMock()
@@ -204,7 +204,7 @@ class TestYahooConnectionBoundary:
             with pytest.raises(RuntimeError):
                 with ne.yahoo_connection_boundary("test"):
                     raise RuntimeError("boom")
-        mock_inc.assert_called_once_with("ipv4", "error", "test")
+        mock_inc.assert_called_once_with("ipv4", "error", "test", 0)
 
     def test_stat_incremented_as_429_on_rate_limit(self):
         mock_session = MagicMock()
@@ -216,7 +216,19 @@ class TestYahooConnectionBoundary:
             with pytest.raises(ne._RateLimitedError):
                 with ne.yahoo_connection_boundary("test"):
                     raise ne._RateLimitedError("rate limited")
-        mock_inc.assert_called_once_with("ipv4", "429", "test")
+        mock_inc.assert_called_once_with("ipv4", "429", "test", 0)
+
+    def test_yfinance_logged_errors_counted_without_being_raised(self):
+        import logging as _logging
+        mock_session = MagicMock()
+        with patch("tools.network_engine.load_config", return_value=self._ipv4_only_cfg), \
+             patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine._patch_session_with_retries"), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine._increment_api_stat") as mock_inc:
+            with ne.yahoo_connection_boundary("test"):
+                _logging.getLogger("yfinance").error("$FAKE.L: possibly delisted; no price data found")
+        mock_inc.assert_called_once_with("ipv4", "success", "test", 1)
 
 
 # ── _select_interface ─────────────────────────────────────────────────────────
@@ -293,12 +305,20 @@ class TestYahooApiCallLog:
         with patch("tools.network_engine.current_job_source", return_value="quant_analysis_job"), \
              patch.object(ne, "_ensure_stats_writer"):
             ne._increment_api_stat("ipv4", "success", "Ticker Info: AAPL")
-        call_time, date_str, interface, status, job_id, action_context = ne._stats_queue.get_nowait()
+        call_time, date_str, interface, status, job_id, action_context, yf_errors = ne._stats_queue.get_nowait()
         assert interface == "ipv4"
         assert status == "success"
         assert job_id == "quant_analysis_job"
         assert action_context == "Ticker Info: AAPL"
         assert date_str == call_time[:10]
+        assert yf_errors == 0
+
+    def test_increment_api_stat_carries_yfinance_logged_error_count(self):
+        with patch("tools.network_engine.current_job_source", return_value=None), \
+             patch.object(ne, "_ensure_stats_writer"):
+            ne._increment_api_stat("ipv6", "success", "Ticker Info: SMGB.L", yf_errors=2)
+        *_, yf_errors = ne._stats_queue.get_nowait()
+        assert yf_errors == 2
 
     def test_write_call_log_entry_inserts_row(self):
         import database as db

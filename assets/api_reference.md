@@ -1214,7 +1214,8 @@ Returns daily Yahoo Finance request counts for the past 8 days, broken down by i
       "ipv4_calls": 71,
       "ipv6_calls": 71,
       "rate_limit_429": 0,
-      "other_errors": 2
+      "other_errors": 2,
+      "yfinance_logged_errors": 5
     }
   ]
 }
@@ -1228,6 +1229,7 @@ Returns daily Yahoo Finance request counts for the past 8 days, broken down by i
 | `ipv6_calls` | Calls routed via IPv6 |
 | `rate_limit_429` | Calls that received HTTP 429 |
 | `other_errors` | Calls that raised a non-429 exception |
+| `yfinance_logged_errors` | ERROR-level lines the `yfinance` library itself logged during a call (e.g. no data for the requested range, a 404 on a quoteSummary module Yahoo doesn't support for that instrument) without raising — tracked separately since these never set `other_errors`, but do explain "yfinance" ERROR lines in the Log Viewer |
 
 ---
 
@@ -1248,7 +1250,8 @@ Returns a single day's Yahoo Finance requests bucketed into 15-minute local-time
     "Universe Sync": [0, 0, 0, "..."],
     "Manual / On-Demand": [1, 0, 0, "..."]
   },
-  "errors_by_bucket": [0, 0, 1, "..."]
+  "errors_by_bucket": [0, 0, 1, "..."],
+  "yf_logged_errors_by_bucket": [0, 2, 0, "..."]
 }
 ```
 
@@ -1258,6 +1261,7 @@ Returns a single day's Yahoo Finance requests bucketed into 15-minute local-time
 | `job_labels` | Distinct job labels with at least one call that day (a call made outside any scheduled job is labelled `Manual / On-Demand`); more than 7 distinct jobs collapse the smallest into `Other` |
 | `series` | Per-job array of call counts, one entry per bucket, aligned with `buckets` |
 | `errors_by_bucket` | Count of HTTP 429/error responses per bucket, aligned with `buckets` |
+| `yf_logged_errors_by_bucket` | Count of ERROR-level lines the `yfinance` library itself logged per bucket without raising (see `yfinance_logged_errors` above), aligned with `buckets` |
 
 ---
 

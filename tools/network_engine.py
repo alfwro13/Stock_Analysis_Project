@@ -42,6 +42,33 @@ _CALL_LOG_RETENTION_DAYS = 8
 _PRUNE_INTERVAL_SECS = 3600.0
 _last_call_log_prune = 0.0
 
+# yfinance often logs an ERROR (e.g. "possibly delisted", a 404 on an unsupported quoteSummary
+# module) and just returns an empty result instead of raising — invisible to the except-block-based
+# stat_status above. This handler counts those separately so the Yahoo API Usage panel can surface
+# them without conflating them with actual request failures (429s/exceptions).
+_yf_logged_error_local = threading.local()
+_yf_error_handler_installed = False
+_yf_error_handler_lock = threading.Lock()
+
+
+class _YfErrorCountHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno >= logging.ERROR:
+            count = getattr(_yf_logged_error_local, "count", None)
+            if count is not None:
+                _yf_logged_error_local.count = count + 1
+
+
+def _ensure_yf_error_handler() -> None:
+    global _yf_error_handler_installed
+    if _yf_error_handler_installed:
+        return
+    with _yf_error_handler_lock:
+        if _yf_error_handler_installed:
+            return
+        logging.getLogger("yfinance").addHandler(_YfErrorCountHandler())
+        _yf_error_handler_installed = True
+
 
 class _RateLimitedError(Exception):
     """Raised on HTTP 429; bypasses IPv6-fault handling and transient-retry logic."""
@@ -300,9 +327,9 @@ def _ensure_stats_writer() -> None:
     def _writer() -> None:
         while True:
             try:
-                call_time, date_str, interface, status, job_id, action_context = _stats_queue.get(timeout=60)
-                _write_api_stat(date_str, interface, status)
-                _write_call_log_entry(call_time, date_str, interface, status, job_id, action_context)
+                call_time, date_str, interface, status, job_id, action_context, yf_errors = _stats_queue.get(timeout=60)
+                _write_api_stat(date_str, interface, status, yf_errors)
+                _write_call_log_entry(call_time, date_str, interface, status, job_id, action_context, yf_errors)
                 _maybe_prune_call_log()
             except _queue_module.Empty:
                 pass
@@ -312,15 +339,15 @@ def _ensure_stats_writer() -> None:
     threading.Thread(target=_writer, daemon=True).start()
 
 
-def _write_call_log_entry(call_time: str, date_str: str, interface: str, status: str, job_id, action_context: str) -> None:
+def _write_call_log_entry(call_time: str, date_str: str, interface: str, status: str, job_id, action_context: str, yf_errors: int = 0) -> None:
     from database import get_connection
     conn = None
     try:
         conn = get_connection()
         conn.execute(
-            "INSERT INTO yahoo_api_call_log (call_time, date, interface, status, job_id, action_context) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (call_time, date_str, interface, status, job_id, action_context),
+            "INSERT INTO yahoo_api_call_log (call_time, date, interface, status, job_id, action_context, yf_logged_errors) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (call_time, date_str, interface, status, job_id, action_context, yf_errors),
         )
         conn.commit()
     except Exception as e:
@@ -351,7 +378,7 @@ def _maybe_prune_call_log() -> None:
             conn.close()
 
 
-def _write_api_stat(date_str: str, interface: str, status: str) -> None:
+def _write_api_stat(date_str: str, interface: str, status: str, yf_errors: int = 0) -> None:
     is_ipv4 = 1 if interface == "ipv4" else 0
     is_ipv6 = 1 - is_ipv4
     is_429 = 1 if status == "429" else 0
@@ -363,16 +390,17 @@ def _write_api_stat(date_str: str, interface: str, status: str) -> None:
             conn = get_connection()
             conn.execute("""
                 INSERT INTO yahoo_api_stats
-                    (date, total_calls, ipv4_calls, ipv6_calls, rate_limit_429, other_errors)
-                VALUES (?, 1, ?, ?, ?, ?)
+                    (date, total_calls, ipv4_calls, ipv6_calls, rate_limit_429, other_errors, yfinance_logged_errors)
+                VALUES (?, 1, ?, ?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
-                    total_calls    = total_calls + 1,
-                    ipv4_calls     = ipv4_calls + ?,
-                    ipv6_calls     = ipv6_calls + ?,
-                    rate_limit_429 = rate_limit_429 + ?,
-                    other_errors   = other_errors + ?
-            """, (date_str, is_ipv4, is_ipv6, is_429, is_err,
-                  is_ipv4, is_ipv6, is_429, is_err))
+                    total_calls            = total_calls + 1,
+                    ipv4_calls             = ipv4_calls + ?,
+                    ipv6_calls             = ipv6_calls + ?,
+                    rate_limit_429         = rate_limit_429 + ?,
+                    other_errors           = other_errors + ?,
+                    yfinance_logged_errors = yfinance_logged_errors + ?
+            """, (date_str, is_ipv4, is_ipv6, is_429, is_err, yf_errors,
+                  is_ipv4, is_ipv6, is_429, is_err, yf_errors))
             conn.commit()
         finally:
             if conn:
@@ -381,17 +409,18 @@ def _write_api_stat(date_str: str, interface: str, status: str) -> None:
         logger.debug("Could not write Yahoo API stat: %s", e)
 
 
-def _increment_api_stat(interface: str, status: str, action_context: str = "") -> None:
+def _increment_api_stat(interface: str, status: str, action_context: str = "", yf_errors: int = 0) -> None:
     now = datetime.now(timezone.utc)
     call_time = now.strftime("%Y-%m-%d %H:%M:%S")
     date_str = call_time[:10]
     _ensure_stats_writer()
-    _stats_queue.put((call_time, date_str, interface, status, current_job_source(), action_context))
+    _stats_queue.put((call_time, date_str, interface, status, current_job_source(), action_context, yf_errors))
 
 
 @contextmanager
 def yahoo_connection_boundary(action_context: str):
     _maybe_restore_latch()
+    _ensure_yf_error_handler()
     config = load_config()
     ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
     use_ipv4 = config.get("YAHOO_USE_IPV4", True)
@@ -418,6 +447,7 @@ def yahoo_connection_boundary(action_context: str):
         _patch_session_with_retries(session, action_context)
 
     stat_status = "success"
+    _yf_logged_error_local.count = 0
     try:
         yield session
     except _RateLimitedError:
@@ -428,4 +458,6 @@ def yahoo_connection_boundary(action_context: str):
         raise
     finally:
         session.close()
-        _increment_api_stat(interface, stat_status, action_context)
+        yf_errors = _yf_logged_error_local.count
+        _yf_logged_error_local.count = None
+        _increment_api_stat(interface, stat_status, action_context, yf_errors)

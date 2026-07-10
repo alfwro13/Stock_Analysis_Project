@@ -83,6 +83,35 @@ def get_mutual_fund_tickers(tickers: List[str]) -> set:
             conn.close()
 
 
+def filter_equity_tickers(tickers: List[str]) -> List[str]:
+    """Subset of `tickers` NOT classified as a non-equity quote_type (ETF, MUTUALFUND, etc.) in
+    stock_signals or asset_profiles. A ticker with no quote_type recorded anywhere is treated as
+    equity (kept) — callers that need certainty should already have a profiled quote_type before
+    reaching here. Used to keep equity-only scans (earnings dates, insider Form 4 filings) from
+    hammering Yahoo for instrument types that structurally never have that data."""
+    if not tickers:
+        return tickers
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker FROM stock_signals WHERE ticker IN ({placeholders}) AND quote_type IS NOT NULL AND quote_type != 'EQUITY' "
+            f"UNION SELECT ticker FROM asset_profiles WHERE ticker IN ({placeholders}) AND quote_type IS NOT NULL AND quote_type != 'EQUITY'",
+            tickers * 2,
+        ).fetchall()
+        non_equity = {row["ticker"] for row in rows}
+        if non_equity:
+            logger.info("Excluded %d non-equity tickers: %s", len(non_equity), sorted(non_equity))
+        return [t for t in tickers if t not in non_equity]
+    except Exception as e:
+        logger.debug("Could not filter non-equity tickers: %s", e)
+        return tickers
+    finally:
+        if conn:
+            conn.close()
+
+
 def upsert_quant_signal(
     ticker: str,
     date: str,

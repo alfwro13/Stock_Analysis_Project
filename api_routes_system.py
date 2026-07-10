@@ -559,7 +559,7 @@ async def get_yahoo_api_stats_detail_endpoint(date_str: str):
 
     try:
         raw_rows = get_yahoo_api_call_log(date_str)
-        bucket_jobs: dict = defaultdict(lambda: defaultdict(lambda: {"count": 0, "errors": 0}))
+        bucket_jobs: dict = defaultdict(lambda: defaultdict(lambda: {"count": 0, "errors": 0, "yf_errors": 0}))
         for r in raw_rows:
             naive = datetime.strptime(r["minute_ts"] + ":00", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             local_dt = time_engine.to_local(naive)
@@ -570,6 +570,7 @@ async def get_yahoo_api_stats_detail_endpoint(date_str: str):
             entry["count"] += r["call_count"]
             if r["status"] in ("429", "error"):
                 entry["errors"] += r["call_count"]
+            entry["yf_errors"] += r["yf_logged_errors"] or 0
 
         all_buckets = ["%02d:%02d" % (h, m) for h in range(24) for m in (0, 15, 30, 45)]
         job_labels = sorted({label for jobs in bucket_jobs.values() for label in jobs})
@@ -581,6 +582,13 @@ async def get_yahoo_api_stats_detail_endpoint(date_str: str):
             sum(job_counts["errors"] for job_counts in bucket_jobs.get(b, {}).values())
             for b in all_buckets
         ]
+        # Tracked separately from errors_by_bucket: yfinance logged these internally (e.g. "possibly
+        # delisted", a 404 on an unsupported quoteSummary module) without raising, so they never set
+        # stat_status="error" in yahoo_connection_boundary — a real request outcome, just not a request failure.
+        yf_logged_errors_by_bucket = [
+            sum(job_counts["yf_errors"] for job_counts in bucket_jobs.get(b, {}).values())
+            for b in all_buckets
+        ]
         return JSONResponse(content={
             "status": "success",
             "date": date_str,
@@ -588,6 +596,7 @@ async def get_yahoo_api_stats_detail_endpoint(date_str: str):
             "job_labels": job_labels,
             "series": series,
             "errors_by_bucket": errors_by_bucket,
+            "yf_logged_errors_by_bucket": yf_logged_errors_by_bucket,
         })
     except Exception as e:
         return _error_500(e)
