@@ -196,9 +196,14 @@ def test_index_detail_unknown_ticker_does_not_crash(client):
 
 
 @pytest.mark.pages
-def test_index_detail_new_ticker_shows_no_historical_data_placeholder(client):
+def test_index_detail_new_ticker_shows_no_historical_data_placeholder(client, tmp_path, monkeypatch):
     """A newly-seeded ticker with no baseline_parquet must show the existing placeholder,
-    not crash — confirmed no new bootstrap code path is needed."""
+    not crash — confirmed no new bootstrap code path is needed. HISTORICAL_DIR is redirected
+    to an empty tmp dir so this doesn't depend on ^AXJO genuinely lacking a real fetched
+    parquet on disk — it's a tracked market_ticker_registry index (ASX 200) since the Markets
+    page feature, so a dev/prod checkout that has ever run a daily fetch will have real data
+    for it, which used to make this test's "no data" assumption false (found 2026-07-10)."""
+    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
     resp = client.get("/index/%5EAXJO")
     assert resp.status_code == 200
     assert "No historical data yet" in resp.text
