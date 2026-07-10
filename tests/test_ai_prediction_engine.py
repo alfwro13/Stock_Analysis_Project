@@ -245,7 +245,7 @@ def _run_backfill_mocked(tickers):
 
     with (
         patch("ai_prediction_engine.sync_ticker_metadata"),
-        patch("ai_prediction_engine._download_spy_benchmark", return_value=None),
+        patch("ai_prediction_engine.download_spy_benchmark", return_value=None),
         patch("ai_prediction_engine.load_or_fetch_daily_history") as mock_fetch,
         patch("ai_prediction_engine.time"),
     ):
@@ -314,3 +314,55 @@ class TestMLBackfillResume:
         ).fetchone()
         conn.close()
         assert row is None
+
+
+def _fake_ohlcv(n: int = 260, start: str = "2024-01-01") -> pd.DataFrame:
+    """Deterministic OHLCV DataFrame with n business-day rows, long enough to clear the
+    252-row SMA-200/momentum warm-up window inside run_historical_backfill."""
+    idx = pd.date_range(start, periods=n, freq="B")
+    price = np.linspace(100.0, 130.0, n)
+    return pd.DataFrame(
+        {
+            "Open":   price * 0.99,
+            "High":   price * 1.01,
+            "Low":    price * 0.98,
+            "Close":  price,
+            "Volume": np.full(n, 1_000_000, dtype=float),
+        },
+        index=idx,
+    )
+
+
+class TestRelStrengthSurvivesSpyLag:
+    """SPY's cached history lagging a ticker's freshly-fetched history by a day used to blank
+    rel_strength_5d/20d for that whole row via a blanket dropna() — the exact regression that
+    silently broke ML Quantile Bands / Set Targets suggestions in production for over a week
+    (found 2026-07-10)."""
+
+    def test_rel_strength_written_despite_one_day_spy_lag(self):
+        # A ticker unique to this test file — "MU" is also used by test_quant_engine.py's tests,
+        # and a bare "ORDER BY date DESC LIMIT 1" (no date filter) would pick up whichever test's
+        # row is newest, silently reading the wrong test's data.
+        ticker_df = _fake_ohlcv(n=260)
+        spy_df = ticker_df.iloc[:-1]  # SPY missing the newest date
+
+        def _fake_fetch(ticker):
+            return spy_df if ticker == "SPY" else ticker_df
+
+        from ai_prediction_engine import run_historical_backfill
+        with (
+            patch("ai_prediction_engine.sync_ticker_metadata"),
+            patch("ai_prediction_engine.load_or_fetch_daily_history", side_effect=_fake_fetch),
+            patch("ai_prediction_engine.time"),
+        ):
+            run_historical_backfill(["ZZBACKFILLRS"])
+
+        conn = _db_module.get_connection()
+        row = conn.execute(
+            "SELECT rel_strength_5d, rel_strength_20d FROM quant_signals "
+            "WHERE ticker = 'ZZBACKFILLRS' ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["rel_strength_5d"] is not None
+        assert row["rel_strength_20d"] is not None

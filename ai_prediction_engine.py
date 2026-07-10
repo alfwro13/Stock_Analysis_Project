@@ -229,10 +229,11 @@ def _winsorize_and_impute_fundamentals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _download_spy_benchmark() -> Optional[pd.DataFrame]:
+def download_spy_benchmark() -> Optional[pd.DataFrame]:
     """
     Loads SPY OHLCV data for relative strength calculations.
     Called once before the main ticker loop. Returns None on failure.
+    Shared with quant_engine.py's daily scan — the canonical source for rel_strength_5d/20d.
     """
     try:
         spy = load_or_fetch_daily_history("SPY")
@@ -370,7 +371,7 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
             )
             conn.commit()
 
-        spy_df = _download_spy_benchmark()
+        spy_df = download_spy_benchmark()
 
         log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
 
@@ -420,12 +421,13 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 if spy_df is not None:
                     ticker_ret_5d  = df['Close'].pct_change(5)
                     ticker_ret_20d = df['Close'].pct_change(20)
-                    df['rel_strength_5d']  = (
-                        ticker_ret_5d  - spy_df['spy_ret_5d'].reindex(df.index)
-                    )
-                    df['rel_strength_20d'] = (
-                        ticker_ret_20d - spy_df['spy_ret_20d'].reindex(df.index)
-                    )
+                    # ffill: SPY's own cached history can lag a ticker's freshly-fetched history
+                    # by a day, so an exact-date reindex spuriously NaNs the newest row (and the
+                    # blanket dropna() below then drops that whole row, including unrelated columns).
+                    spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index, method='ffill')
+                    spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index, method='ffill')
+                    df['rel_strength_5d']  = ticker_ret_5d  - spy_ret_5d_aligned
+                    df['rel_strength_20d'] = ticker_ret_20d - spy_ret_20d_aligned
                 else:
                     df['rel_strength_5d']  = np.nan
                     df['rel_strength_20d'] = np.nan

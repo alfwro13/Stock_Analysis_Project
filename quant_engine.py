@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
+import numpy as np
 import pandas as pd
 from data_engine import load_or_fetch_daily_history
 from indicators import (
@@ -17,6 +18,7 @@ from indicators import (
     compute_volume_profile,
     compute_keltner_channel,
 )
+from ai_prediction_engine import download_spy_benchmark
 
 from database import get_connection, log_notification
 
@@ -67,6 +69,9 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 (today_str, scan_type, "", "IN_PROGRESS")
             )
             conn.commit()
+
+        # Fetched once per scan (not per ticker) — shared source for rel_strength_5d/20d below.
+        spy_df = download_spy_benchmark()
 
         for i in range(start_idx, total_tickers):
             ticker = ticker_list[i]
@@ -153,14 +158,34 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 _m12     = float(_v12) if not pd.isna(_v12) else None
                 c_mom_12m_skip1m = (_m12 - c_mom_1m) if (_m12 is not None and c_mom_1m is not None) else None
 
+                log_returns = np.log(close_s / close_s.shift(1))
+                hist_vol_20_series = log_returns.rolling(window=20).std() * np.sqrt(252)
+                c_hist_vol_20 = float(hist_vol_20_series.iloc[-1]) if not pd.isna(hist_vol_20_series.iloc[-1]) else None
+
+                if spy_df is not None:
+                    ticker_ret_5d  = close_s.pct_change(5)
+                    ticker_ret_20d = close_s.pct_change(20)
+                    # ffill: SPY's cached history can lag a freshly-fetched ticker's history by a
+                    # day, so an exact-date reindex would spuriously NaN the newest row.
+                    spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index, method='ffill')
+                    spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index, method='ffill')
+                    _rs5  = (ticker_ret_5d  - spy_ret_5d_aligned).iloc[-1]
+                    _rs20 = (ticker_ret_20d - spy_ret_20d_aligned).iloc[-1]
+                    c_rel_strength_5d  = float(_rs5)  if not pd.isna(_rs5)  else None
+                    c_rel_strength_20d = float(_rs20) if not pd.isna(_rs20) else None
+                else:
+                    c_rel_strength_5d  = None
+                    c_rel_strength_20d = None
+
                 cursor.execute('''
                     INSERT INTO quant_signals
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
                      sma_50, sma_200, volume_surge, bullish_cross, atr_pct, week52_pct,
                      vp_poc, vp_val, vp_vah, vp_entry_zone, vp_exit_zone,
                      kc_z_score, kc_entry_signal, kc_exit_signal,
-                     mom_1m, mom_3m, mom_6m, mom_12m_skip1m)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
+                     hist_vol_20, rel_strength_5d, rel_strength_20d)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close_price=excluded.close_price,
                         volume=excluded.volume,
@@ -185,13 +210,17 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                         mom_1m=excluded.mom_1m,
                         mom_3m=excluded.mom_3m,
                         mom_6m=excluded.mom_6m,
-                        mom_12m_skip1m=excluded.mom_12m_skip1m
+                        mom_12m_skip1m=excluded.mom_12m_skip1m,
+                        hist_vol_20=excluded.hist_vol_20,
+                        rel_strength_5d=excluded.rel_strength_5d,
+                        rel_strength_20d=excluded.rel_strength_20d
                 ''', (
                     ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist,
                     c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct, c_week52_pct,
                     c_vp_poc, c_vp_val, c_vp_vah, c_vp_entry_zone, c_vp_exit_zone,
                     c_kc_z_score, c_kc_entry_signal, c_kc_exit_signal,
                     c_mom_1m, c_mom_3m, c_mom_6m, c_mom_12m_skip1m,
+                    c_hist_vol_20, c_rel_strength_5d, c_rel_strength_20d,
                 ))
 
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?", (ticker, today_str, scan_type))

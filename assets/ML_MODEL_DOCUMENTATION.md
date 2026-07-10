@@ -365,7 +365,7 @@ Std:              11.56
 
 **Change:** Added 2 relative strength features: `rel_strength_5d`, `rel_strength_20d`  
 **Scientific basis:** Cross-sectional momentum — stocks outperforming the market index tend to continue outperforming (Jegadeesh & Titman, 1993; Carhart, 1997 *"On Persistence in Mutual Fund Performance"*, Journal of Finance 52(1), pp. 57–82). Relative strength strips out the market beta component, isolating idiosyncratic price leadership from stocks simply rising with the tide.  
-**Implementation note:** SPY downloaded once via `_download_spy_benchmark()` before the main ticker loop. UK stock caveat documented — SPY used as universal benchmark; FTSE-relative strength would be marginally more accurate for `.L` tickers.
+**Implementation note:** SPY downloaded once via `download_spy_benchmark()` (`ai_prediction_engine.py`, shared with `quant_engine.py`'s daily scan since 2026-07-10) before the main ticker loop. UK stock caveat documented — SPY used as universal benchmark; FTSE-relative strength would be marginally more accurate for `.L` tickers.
 
 **Result:**
 ```
@@ -552,9 +552,8 @@ The full pipeline runs via APScheduler:
 | Table | Column | Description |
 |---|---|---|
 | `quant_signals` | `ml_confidence_score` | Score 0–100. Updated daily by inference |
-| `quant_signals` | `mom_1m` through `mom_12m_skip1m` | Momentum features, stored during backfill |
-| `quant_signals` | `atr_pct`, `hist_vol_20` | Volatility features, stored during backfill |
-| `quant_signals` | `rel_strength_5d`, `rel_strength_20d` | Relative strength features, stored during backfill |
+| `quant_signals` | `mom_1m` through `mom_12m_skip1m`, `atr_pct` | Momentum/volatility features, written by the daily quant scan (`quant_engine.py`) and re-derived over the full 2-year window by the weekly backfill |
+| `quant_signals` | `hist_vol_20`, `rel_strength_5d`, `rel_strength_20d` | As of 2026-07-10, also written by the daily quant scan (`quant_engine.py`), not just the weekly backfill — previously these three were backfill-only, so `score_quantile_predictions()`'s same-date "all features non-null" query would only succeed on the day the weekly backfill last ran (and even then only if `download_spy_benchmark()`'s cached SPY history happened to be date-aligned with the ticker; see `ai_prediction_engine.download_spy_benchmark()`'s `method='ffill'` reindex fix for the alignment half of this bug). `rel_strength_5d`/`20d` still require SPY data (`None` on failure — `ai_prediction_engine.download_spy_benchmark()`, shared by both the daily scan and the weekly backfill); `hist_vol_20` has no SPY dependency and always populates |
 
 ### UI Colour Thresholds
 

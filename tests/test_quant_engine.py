@@ -271,3 +271,88 @@ class TestMomentumFieldsPersisted:
         conn.close()
         assert preserved is not None
         assert preserved["ml_confidence_score"] == pytest.approx(0.91)
+
+
+class TestRelStrengthAndHistVol:
+    """rel_strength_5d/20d and hist_vol_20 used to be written only by the weekly ML backfill
+    job, never by this daily scan — leaving them stale for up to a week and breaking any same-date
+    feature query (e.g. score_quantile_predictions) that requires all of them non-null at once."""
+
+    def test_hist_vol_20_written_independent_of_spy(self):
+        """hist_vol_20 has no SPY dependency and must populate even when SPY data is unavailable."""
+        scan_type = "hist_vol_no_spy_test"
+        ticker = "ZZHISTVOL"
+        fake_data = {ticker: _fake_ohlcv(n=210)}
+
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
+             patch("quant_engine.download_spy_benchmark", return_value=None), \
+             patch("quant_engine.time"):
+            mock_fetch.return_value = fake_data[ticker]
+            run_daily_quant_scan([ticker], scan_type=scan_type)
+
+        conn = database.get_connection()
+        row = conn.execute(
+            "SELECT hist_vol_20, rel_strength_5d, rel_strength_20d FROM quant_signals "
+            "WHERE ticker = ? ORDER BY date DESC LIMIT 1", (ticker,)
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["hist_vol_20"] is not None
+        assert row["rel_strength_5d"] is None
+        assert row["rel_strength_20d"] is None
+
+    def test_rel_strength_written_when_spy_available(self):
+        """With SPY data present, rel_strength_5d/20d must be written as real floats."""
+        scan_type = "rel_strength_test"
+        ticker = "ZZRELSTR1"
+        ticker_df = _fake_ohlcv(n=210)
+
+        spy_df = ticker_df[["Close"]].copy()
+        spy_df["spy_ret_5d"] = spy_df["Close"].pct_change(5)
+        spy_df["spy_ret_20d"] = spy_df["Close"].pct_change(20)
+
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
+             patch("quant_engine.download_spy_benchmark", return_value=spy_df), \
+             patch("quant_engine.time"):
+            mock_fetch.return_value = ticker_df
+            run_daily_quant_scan([ticker], scan_type=scan_type)
+
+        conn = database.get_connection()
+        row = conn.execute(
+            "SELECT rel_strength_5d, rel_strength_20d FROM quant_signals "
+            "WHERE ticker = ? ORDER BY date DESC LIMIT 1", (ticker,)
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["rel_strength_5d"] is not None
+        assert row["rel_strength_20d"] is not None
+
+    def test_rel_strength_survives_one_day_spy_lag(self):
+        """SPY's cached history lagging the ticker's by one day must not blank rel_strength_5d —
+        the exact regression that silently broke ML Quantile Bands for a week in production."""
+        scan_type = "rel_strength_lag_test"
+        ticker = "ZZRELSTR2"
+        ticker_df = _fake_ohlcv(n=210)
+
+        spy_df = ticker_df[["Close"]].copy().iloc[:-1]  # SPY missing the newest date
+        spy_df["spy_ret_5d"] = spy_df["Close"].pct_change(5)
+        spy_df["spy_ret_20d"] = spy_df["Close"].pct_change(20)
+
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
+             patch("quant_engine.download_spy_benchmark", return_value=spy_df), \
+             patch("quant_engine.time"):
+            mock_fetch.return_value = ticker_df
+            run_daily_quant_scan([ticker], scan_type=scan_type)
+
+        conn = database.get_connection()
+        row = conn.execute(
+            "SELECT rel_strength_5d, rel_strength_20d FROM quant_signals "
+            "WHERE ticker = ? ORDER BY date DESC LIMIT 1", (ticker,)
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["rel_strength_5d"] is not None
+        assert row["rel_strength_20d"] is not None
