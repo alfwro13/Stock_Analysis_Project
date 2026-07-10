@@ -435,6 +435,29 @@ def get_all_holding_price_limits() -> dict:
             conn.close()
 
 
+def get_holding_price_limits_for_ticker(ticker: str) -> dict:
+    """Returns {account_id: {"low_limit": .., "high_limit": ..}} for one ticker across every
+    account — scoped lookup for the Stock Detail page's Set Targets panel."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT account_id, low_limit, high_limit FROM holding_price_limits WHERE ticker = ?",
+            (ticker,),
+        )
+        return {
+            r["account_id"]: {"low_limit": r["low_limit"], "high_limit": r["high_limit"]}
+            for r in cursor.fetchall()
+        }
+    except Exception as e:
+        logger.error("Failed to get holding price limits for ticker %s: %s", ticker, e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
 def upsert_holding_price_limit(account_id: int, ticker: str, **fields) -> None:
     """Partial-update upsert for one (account_id, ticker)'s price limit(s) — only overwrites the
     field(s) present in fields, mirroring upsert_performance_cache()'s dynamic-column idiom so a

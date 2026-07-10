@@ -62,7 +62,12 @@
         <div id="verdict">
             {% if portfolio_math %}
             <div class="portfolio-box mb-3">
-                <h2 class="m-0 border-none p-0">Your Position (Global Aggregation)</h2>
+                <div class="flex-between-center flex-wrap gap-2">
+                    <h2 class="m-0 border-none p-0">Your Position (Global Aggregation)</h2>
+                    {% if target_accounts %}
+                    <a href="javascript:void(0)" id="setTargetsToggle" onclick="toggleSetTargetsPanel()" class="set-targets-link">Set Targets</a>
+                    {% endif %}
+                </div>
                 <div class="d-flex flex-wrap gap-3 font-16 mt-15 mb-20">
                     <div><span class="text-muted">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
                     <div><span class="text-muted">Avg VWAP Cost:</span> <strong>{{ display_price(portfolio_math.global.buy_price, stock.currency) }}</strong></div>
@@ -116,6 +121,55 @@
                     </div>
                 </div>
                 {% endfor %}
+                {% endif %}
+
+                {% if target_accounts %}
+                <div id="currentTargetsDisplay" class="current-targets-row"></div>
+
+                <div id="setTargetsPanel" class="set-targets-panel d-none">
+                    <h3 class="text-sm-caps">Set Targets</h3>
+                    <div class="target-suggestion-row">
+                        <span class="text-muted">
+                            <abbr title="Statistical 10-day price range from the ML Quantile Regression model (same model behind the ML Quantile Bands chart below) — a starting point, not a guarantee.">ML Suggested</abbr>:
+                        </span>
+                        <span>
+                            Low: <strong>{% if stock.price_q10 is not none %}{{ display_price(stock.price_q10, stock.currency) }}{% else %}N/A{% endif %}</strong>
+                            &nbsp;|&nbsp;
+                            High: <strong>{% if stock.price_q90 is not none %}{{ display_price(stock.price_q90, stock.currency) }}{% else %}N/A{% endif %}</strong>
+                        </span>
+                    </div>
+
+                    <div class="form-check mt-10 mb-10">
+                        <input type="checkbox" class="form-check-input" id="targetSetForAll" onchange="toggleTargetAllAccountsMode()">
+                        <label class="form-check-label" for="targetSetForAll">Set for all accounts</label>
+                    </div>
+
+                    <div id="targetAllAccountsRow" class="sub-account-row d-none">
+                        <div class="sub-account-name">All Accounts</div>
+                        <label class="target-input-label" for="target-low-all">Low</label>
+                        <input type="number" step="any" min="0" class="target-input" id="target-low-all" placeholder="0">
+                        <label class="target-input-label" for="target-high-all">High</label>
+                        <input type="number" step="any" min="0" class="target-input" id="target-high-all" placeholder="0">
+                    </div>
+
+                    <div id="targetPerAccountRows">
+                        {% for acc in target_accounts %}
+                        {% set limits = holding_price_limits.get(acc.account_id, {}) %}
+                        <div class="sub-account-row" data-account-id="{{ acc.account_id }}">
+                            <div class="sub-account-name">{{ acc.name }}</div>
+                            <label class="target-input-label" for="target-low-{{ acc.account_id }}">Low</label>
+                            <input type="number" step="any" min="0" class="target-input" id="target-low-{{ acc.account_id }}" placeholder="0" value="{{ limits.low_limit if limits.low_limit is not none else '' }}">
+                            <label class="target-input-label" for="target-high-{{ acc.account_id }}">High</label>
+                            <input type="number" step="any" min="0" class="target-input" id="target-high-{{ acc.account_id }}" placeholder="0" value="{{ limits.high_limit if limits.high_limit is not none else '' }}">
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-10">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="saveTargets()">Save Targets</button>
+                        <span id="setTargetsStatus" class="ml-15"></span>
+                    </div>
+                </div>
                 {% endif %}
             </div>
             {% endif %}
@@ -653,6 +707,8 @@
     window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
     window.BASE_CURRENCY     = "{{ position_sizing.base_currency }}";
     window.FX_RATES          = {{ position_sizing.fx_rates | tojson }};
+    window.TARGET_ACCOUNTS   = {{ target_accounts | tojson }};
+    window.HOLDING_PRICE_LIMITS = {{ holding_price_limits | tojson }};
 </script>
 <script src="/static/js/ai_prompt_btn.js?v={{ css_version }}"></script>
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>

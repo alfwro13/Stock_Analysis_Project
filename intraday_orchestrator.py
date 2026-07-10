@@ -14,6 +14,7 @@ import time_engine
 from utils import normalize_ticker, is_daily_bar_still_forming
 from database import get_connection, get_mutual_fund_tickers
 import accounts_engine
+from db_accounts import get_all_holding_price_limits, get_accounts
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine
@@ -24,7 +25,7 @@ from utils import clamp_beta
 logger = logging.getLogger(__name__)
 
 # GUI name: "Crash & Moonshot Alerts". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
-_ALERT_SOURCES = {"Crash": "crash_alert", "Moonshot": "moonshot_alert", "Anomaly": "anomaly_alert", "Macro": "macro_yield_alert"}
+_ALERT_SOURCES = {"Crash": "crash_alert", "Moonshot": "moonshot_alert", "Anomaly": "anomaly_alert", "Macro": "macro_yield_alert", "HoldingLimit": "holding_limit_alert"}
 
 _STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
 _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lookup
@@ -182,6 +183,8 @@ class IntradayOrchestrator:
             key = "MARKET_STRESS_ALERTS"
         elif engine == "TrapMonitor":
             key = "TRAP_MONITOR_ALERTS"
+        elif engine == "HoldingLimit":
+            key = "HOLDING_LIMIT_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})
@@ -246,6 +249,15 @@ class IntradayOrchestrator:
                     # Moonshot: price rising further is worsening; falling back is recovery.
                     worsened_pct = pct_change
                     recovered_pct = -pct_change
+                elif engine == "HoldingLimit":
+                    # ticker carries a composite "{account_id}:{ticker}:low"/":high" key — direction
+                    # is encoded in the suffix since the same real ticker can breach either side.
+                    if ticker.endswith(":low"):
+                        worsened_pct = -pct_change
+                        recovered_pct = pct_change
+                    else:
+                        worsened_pct = pct_change
+                        recovered_pct = -pct_change
                 else:
                     # Macro (yield surge): yield rising further is worsening; falling back is recovery.
                     worsened_pct = pct_change
@@ -387,6 +399,25 @@ class IntradayOrchestrator:
                 self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
             time.sleep(_DISPATCH_SLEEP_SECONDS)
 
+    def _dispatch_holding_limit_alerts(self, alert_tuples: list, conn: sqlite3.Connection) -> None:
+        """Set Targets: fires when a held ticker's user-set low_limit/high_limit is reached; shares the alert_state gate with Crash/Moonshot but keys on a composite account_id:ticker:direction since limits are per-account."""
+        for key, ticker, account_name, direction, limit_price, current_price, currency in alert_tuples:
+            formatted_limit = format_currency(limit_price, currency)
+            formatted_price = format_currency(current_price, currency)
+            url = build_stock_url(SERVER_URL, PORT, ticker)
+            label = "Low Target" if direction == "low" else "High Target"
+            reason = "LOW TARGET REACHED" if direction == "low" else "HIGH TARGET REACHED"
+            msg = (
+                f"🎯 **{label} Reached: {ticker}** ({account_name})\n\n"
+                f"**Target:** {formatted_limit}\n"
+                f"**Current Price:** {formatted_price}\n\n"
+                f"🔗 [View Position]({url})"
+            )
+            feed_msg = f"{ticker} ({account_name}): {label} of {formatted_limit} reached — current price {formatted_price}."
+            if notify(_ALERT_SOURCES["HoldingLimit"], "HoldingLimit", feed_msg, nextcloud_text=msg, conn=conn):
+                self.record_alert_fired("HoldingLimit", key, current_price, reason, conn)
+            time.sleep(_DISPATCH_SLEEP_SECONDS)
+
     def run(self) -> None:
         # Opened here (not in __init__) so it is always on the correct APScheduler worker thread.
         conn = get_connection()
@@ -437,7 +468,14 @@ class IntradayOrchestrator:
             return
 
         metadata = self.get_asset_metadata(tickers)
-        
+
+        holding_limits_by_ticker: Dict[str, Dict[int, Dict[str, Optional[float]]]] = {}
+        for (account_id, lim_ticker), lim in get_all_holding_price_limits().items():
+            if lim.get("low_limit") is None and lim.get("high_limit") is None:
+                continue
+            holding_limits_by_ticker.setdefault(lim_ticker, {})[account_id] = lim
+        account_names = {acc["id"]: acc["name"] for acc in get_accounts()}
+
         # SPY fetched here once so crash_engine never needs a per-scan HTTP call
         macro_tickers = ["^TYX", "SPY"]
         spy_change_pct: Optional[float] = None
@@ -544,6 +582,7 @@ class IntradayOrchestrator:
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []
         anomaly_alerts_to_send = []
+        holding_limit_alerts_to_send = []
 
         # Check correct config paths for enablement (SCHEDULING, not NOTIFICATIONS)
         crash_enabled = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {}).get("ENABLED", False)
@@ -616,7 +655,26 @@ class IntradayOrchestrator:
 
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
-                
+
+                ticker_limits = holding_limits_by_ticker.get(ticker)
+                if ticker_limits:
+                    for account_id, lim in ticker_limits.items():
+                        # holding_price_limits rows for a soft-deleted account are never cleaned up;
+                        # account_names only holds active accounts, so absence here means skip.
+                        account_name = account_names.get(account_id)
+                        if account_name is None:
+                            continue
+                        low_limit = lim.get("low_limit")
+                        high_limit = lim.get("high_limit")
+                        if low_limit is not None and current_price <= low_limit:
+                            key = f"{account_id}:{ticker}:low"
+                            if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "LOW TARGET REACHED", conn):
+                                holding_limit_alerts_to_send.append((key, ticker, account_name, "low", low_limit, current_price, currency))
+                        if high_limit is not None and current_price >= high_limit:
+                            key = f"{account_id}:{ticker}:high"
+                            if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "HIGH TARGET REACHED", conn):
+                                holding_limit_alerts_to_send.append((key, ticker, account_name, "high", high_limit, current_price, currency))
+
                 # evaluate() first so reason string is available for fingerprinting; returns None when no condition met.
                 if crash_enabled:
                     crash_alert = self.crash_engine.evaluate(
@@ -763,12 +821,14 @@ class IntradayOrchestrator:
                 f"Anomaly Score: {a.get('anomaly_score', 0):.2f} detected for {t} at {p}"
             ),
         )
+        self._dispatch_holding_limit_alerts(holding_limit_alerts_to_send, conn)
 
         self._refresh_account_performance_cache()
 
         logger.info(
-            "Scan complete. Dispatched %d crashes, %d moonshots, %d anomalies.",
+            "Scan complete. Dispatched %d crashes, %d moonshots, %d anomalies, %d holding-limit alerts.",
             len(crash_alerts_to_send), len(moonshot_alerts_to_send), len(anomaly_alerts_to_send),
+            len(holding_limit_alerts_to_send),
         )
 
 if __name__ == "__main__":

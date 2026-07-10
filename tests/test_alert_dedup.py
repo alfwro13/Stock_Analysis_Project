@@ -423,6 +423,113 @@ class TestRecordAlertFired:
         assert result is True
 
 
+# ── HoldingLimit (Set Targets) dedup + dispatch ─────────────────────────────────
+
+HOLDING_LIMIT_ACCOUNT_ID = 999001
+HOLDING_KEY_LOW = f"{HOLDING_LIMIT_ACCOUNT_ID}:{TEST_TICKER}:low"
+HOLDING_KEY_HIGH = f"{HOLDING_LIMIT_ACCOUNT_ID}:{TEST_TICKER}:high"
+LOW_REASON = "LOW TARGET REACHED"
+HIGH_REASON = "HIGH TARGET REACHED"
+
+
+def _clear_holding_limit_alert_state():
+    conn = _conn()
+    conn.execute(
+        "DELETE FROM alert_state WHERE engine = 'HoldingLimit' AND ticker IN (?, ?)",
+        (HOLDING_KEY_LOW, HOLDING_KEY_HIGH),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestDedupSettingsHoldingLimit:
+    def test_holding_limit_reads_dedicated_block(self, orch):
+        orch.config = {
+            "NOTIFICATIONS": {
+                "HOLDING_LIMIT_ALERTS": {"COOLDOWN_MINUTES": 45.0, "RETRIGGER_PERCENT": 1.0, "REARM_PERCENT": 1.5},
+                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 999.0},  # must NOT be used
+            }
+        }
+        s = orch._dedup_settings("HoldingLimit")
+        assert s["cooldown_minutes"] == 45.0
+        assert s["retrigger_percent"] == 1.0
+        assert s["rearm_percent"] == 1.5
+
+
+class TestEvaluateAlertGateHoldingLimit:
+    """Direction is encoded in the composite ticker key's ':low'/':high' suffix since the same
+    real ticker can have both a low and a high target, each with independent gate state."""
+
+    def teardown_method(self):
+        _clear_holding_limit_alert_state()
+
+    def test_no_prior_state_fires(self, orch, db_conn):
+        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn) is False
+
+    def test_low_worsened_is_price_falling_further(self, orch, db_conn):
+        fp = orch._condition_fingerprint(LOW_REASON)
+        old_ts = (datetime.utcnow() - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("HoldingLimit", HOLDING_KEY_LOW, fp, 100.0, old_ts, 0, TODAY)
+        # 100 → 97 = -3.0% for a low breach (price fell further), exceeds RETRIGGER 2.0%
+        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_LOW, 97.0, LOW_REASON, db_conn) is False
+
+    def test_low_recovered_is_price_rising_back(self, orch, db_conn):
+        fp = orch._condition_fingerprint(LOW_REASON)
+        _seed_alert_state("HoldingLimit", HOLDING_KEY_LOW, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
+        # 100 → 103.5 = +3.5% recovery for a low breach (price rose back), exceeds REARM 3.0%
+        result = orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_LOW, 103.5, LOW_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("HoldingLimit", HOLDING_KEY_LOW)
+        assert row["armed"] == 1
+
+    def test_high_worsened_is_price_rising_further(self, orch, db_conn):
+        fp = orch._condition_fingerprint(HIGH_REASON)
+        old_ts = (datetime.utcnow() - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("HoldingLimit", HOLDING_KEY_HIGH, fp, 100.0, old_ts, 0, TODAY)
+        # 100 → 103 = +3.0% for a high breach (price rose further), exceeds RETRIGGER 2.0%
+        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, 103.0, HIGH_REASON, db_conn) is False
+
+    def test_high_recovered_is_price_falling_back(self, orch, db_conn):
+        fp = orch._condition_fingerprint(HIGH_REASON)
+        _seed_alert_state("HoldingLimit", HOLDING_KEY_HIGH, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
+        # 100 → 96.5 = -3.5% fall-back for a high breach, exceeds REARM 3.0%
+        result = orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, 96.5, HIGH_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("HoldingLimit", HOLDING_KEY_HIGH)
+        assert row["armed"] == 1
+
+    def test_low_and_high_keys_track_independent_state(self, orch, db_conn):
+        """Same underlying ticker; low and high targets must not share dedup state."""
+        orch.record_alert_fired("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn)
+        # High-target gate for the same ticker has no prior state of its own -> still fires.
+        assert orch._evaluate_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, 200.0, HIGH_REASON, db_conn) is False
+
+
+class TestDispatchHoldingLimitAlerts:
+    """_dispatch_holding_limit_alerts: (key, ticker, account_name, direction, limit_price,
+    current_price, currency) tuples -> notify() + record_alert_fired() on success only."""
+
+    def teardown_method(self):
+        _clear_holding_limit_alert_state()
+
+    def test_successful_notify_records_alert_state(self, orch, db_conn):
+        alert_tuples = [(HOLDING_KEY_LOW, TEST_TICKER, "Trading", "low", 90.0, 85.0, "USD")]
+        with patch("intraday_orchestrator.notify", return_value=True) as mock_notify:
+            orch._dispatch_holding_limit_alerts(alert_tuples, db_conn)
+
+        assert mock_notify.call_args.args[0] == "holding_limit_alert"
+        row = _read_alert_state("HoldingLimit", HOLDING_KEY_LOW)
+        assert row is not None
+        assert row["last_price"] == 85.0
+
+    def test_failed_notify_does_not_record_alert_state(self, orch, db_conn):
+        alert_tuples = [(HOLDING_KEY_HIGH, TEST_TICKER, "Trading", "high", 200.0, 210.0, "USD")]
+        with patch("intraday_orchestrator.notify", return_value=False):
+            orch._dispatch_holding_limit_alerts(alert_tuples, db_conn)
+
+        assert _read_alert_state("HoldingLimit", HOLDING_KEY_HIGH) is None
+
+
 # ── log_notification_feed ─────────────────────────────────────────────────────
 
 class TestLogNotificationFeed:

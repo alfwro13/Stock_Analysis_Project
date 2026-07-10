@@ -444,6 +444,109 @@ function cancelNameEdit() {
     document.getElementById('name-edit-btn').hidden = false;
 }
 
+function toggleSetTargetsPanel() {
+    var panel = document.getElementById('setTargetsPanel');
+    if (panel) panel.classList.toggle('d-none');
+}
+
+function toggleTargetAllAccountsMode() {
+    var allRow = document.getElementById('targetAllAccountsRow');
+    var perAccountRows = document.getElementById('targetPerAccountRows');
+    var useAll = document.getElementById('targetSetForAll').checked;
+    if (allRow) allRow.classList.toggle('d-none', !useAll);
+    if (perAccountRows) perAccountRows.classList.toggle('d-none', useAll);
+}
+
+function _targetInputValue(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    var raw = el.value.trim();
+    if (raw === '') return null;
+    var num = parseFloat(raw);
+    if (isNaN(num) || num <= 0) return null;
+    return num;
+}
+
+async function _postHoldingPriceLimit(accountId, ticker, lowLimit, highLimit) {
+    const response = await fetch('/api/accounts/holding-price-limit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            account_id: accountId,
+            ticker: ticker,
+            low_limit: lowLimit,
+            high_limit: highLimit
+        })
+    });
+    const data = await response.json();
+    if (!response.ok || data.status !== 'success') {
+        throw new Error(data.message || 'Failed to save target.');
+    }
+    return data;
+}
+
+function _escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+function renderCurrentTargetsDisplay(limitsByAccount) {
+    var container = document.getElementById('currentTargetsDisplay');
+    if (!container) return;
+    var currency = window.STOCK_CURRENCY;
+    var fmt = window.PositionSizing.formatCurrency;
+    var rows = (window.TARGET_ACCOUNTS || [])
+        .map(function (acc) {
+            var limits = limitsByAccount[acc.account_id] || {};
+            if (limits.low_limit == null && limits.high_limit == null) return null;
+            var low = limits.low_limit != null ? fmt(limits.low_limit, currency) : 'Not set';
+            var high = limits.high_limit != null ? fmt(limits.high_limit, currency) : 'Not set';
+            return '<div class="sub-account-row"><div class="sub-account-name">' +
+                _escapeHtml(acc.name) + '</div><div>Low: <strong>' + low +
+                '</strong> &nbsp;|&nbsp; High: <strong>' + high + '</strong></div></div>';
+        })
+        .filter(function (html) { return html !== null; });
+    container.innerHTML = rows.length
+        ? '<h3 class="text-sm-caps">Your Targets</h3>' + rows.join('')
+        : '';
+}
+
+async function saveTargets() {
+    const statusEl = document.getElementById('setTargetsStatus');
+    const ticker = window.STOCK_TICKER;
+    const useAll = document.getElementById('targetSetForAll').checked;
+    statusEl.textContent = 'Saving...';
+
+    const limitsByAccount = Object.assign({}, window.HOLDING_PRICE_LIMITS || {});
+    const failedAccounts = [];
+    for (const acc of window.TARGET_ACCOUNTS) {
+        const low = useAll ? _targetInputValue('target-low-all') : _targetInputValue('target-low-' + acc.account_id);
+        const high = useAll ? _targetInputValue('target-high-all') : _targetInputValue('target-high-' + acc.account_id);
+        try {
+            await _postHoldingPriceLimit(acc.account_id, ticker, low, high);
+            limitsByAccount[acc.account_id] = { low_limit: low, high_limit: high };
+        } catch (e) {
+            failedAccounts.push(acc.name);
+        }
+    }
+    window.HOLDING_PRICE_LIMITS = limitsByAccount;
+    renderCurrentTargetsDisplay(limitsByAccount);
+
+    if (failedAccounts.length) {
+        statusEl.textContent = 'Failed to save for: ' + failedAccounts.join(', ');
+    } else {
+        statusEl.textContent = 'Saved.';
+        setTimeout(function () { statusEl.textContent = ''; }, 3000);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.TARGET_ACCOUNTS && window.TARGET_ACCOUNTS.length) {
+        renderCurrentTargetsDisplay(window.HOLDING_PRICE_LIMITS || {});
+    }
+});
+
 function saveNameOverride(reset) {
     var name = reset ? '' : document.getElementById('name-edit-input').value.trim();
     fetch('/api/ticker/' + window.STOCK_TICKER + '/name-override', {

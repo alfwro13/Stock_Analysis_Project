@@ -146,6 +146,25 @@ def test_set_holding_price_limit_partial_update_preserves_other_field():
 
 
 @pytest.mark.db
+def test_get_holding_price_limits_for_ticker_scoped_to_one_ticker():
+    """Set Targets panel on the Stock Detail page reads only its own ticker's rows, not the
+    whole-portfolio batch get_all_holding_price_limits() dict."""
+    from db_accounts import get_holding_price_limits_for_ticker
+
+    aid1 = create_account("TargetScopeAcc1", "GBP")
+    aid2 = create_account("TargetScopeAcc2", "GBP")
+    portfolio_metrics_engine.set_holding_price_limit(aid1, "ZZSCOPE", low_limit=10.0, high_limit=20.0)
+    portfolio_metrics_engine.set_holding_price_limit(aid2, "ZZSCOPE", low_limit=15.0)
+    portfolio_metrics_engine.set_holding_price_limit(aid1, "ZZOTHER", low_limit=99.0)
+
+    limits = get_holding_price_limits_for_ticker("ZZSCOPE")
+
+    assert set(limits.keys()) == {aid1, aid2}
+    assert limits[aid1] == {"low_limit": 10.0, "high_limit": 20.0}
+    assert limits[aid2] == {"low_limit": 15.0, "high_limit": None}
+
+
+@pytest.mark.db
 def test_portfolio_totals_sums_multiple_trading_accounts():
     _seed_stock_signal("ZZPT1", 100.0, "GBP")
     _seed_stock_signal("ZZPT2", 50.0, "GBP")

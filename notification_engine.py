@@ -27,6 +27,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "moonshot_alert":        {"label": "Moonshot Alert",               "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
     "anomaly_alert":         {"label": "Anomaly Alert",                "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
     "macro_yield_alert":     {"label": "Macro Yield Surge Alert",      "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
+    "holding_limit_alert":   {"label": "Position Target Reached",      "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
     "hmm_regime_alert":      {"label": "Market Regime Change (HMM)",   "job_id": "quant_analysis_job",        "default": dict(_NO_TALK)},
     "market_stress_alert":   {"label": "Market Stress Alert",          "job_id": "quant_analysis_job",        "default": dict(_NO_TALK)},
     "ai_contagion_alert":    {"label": "AI Sector Contagion Alert",    "job_id": "ai_contagion_job",          "default": dict(_NO_TALK)},

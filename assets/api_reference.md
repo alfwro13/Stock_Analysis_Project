@@ -3554,7 +3554,7 @@ Current value + basic performance for every non-deleted Pension/House account, f
 
 ### `POST /api/accounts/holding-price-limit`
 
-Sets one holding's low and/or high price alert limit, called by the Home Assistant integration's per-holding Low Limit / High Limit number entities. Thin wrapper around `portfolio_metrics_engine.set_holding_price_limit()`.
+Sets one holding's low and/or high price alert limit ("Set Targets" on the Stock Detail page's Your Position box, and the Home Assistant integration's per-holding Low Limit / High Limit number entities — both read/write the same `holding_price_limits` row, so a target set on either surface is reflected on the other). Thin wrapper around `portfolio_metrics_engine.set_holding_price_limit()`. Every 5 minutes during market hours, `intraday_orchestrator.py`'s scan compares each held ticker's live price against any stored limit and fires a `holding_limit_alert` notification (source label "Position Target Reached") the first time it's crossed, using the same `alert_state` dedup/cooldown/rearm gate as Crash and Moonshot alerts (composite key `{account_id}:{ticker}:low`/`:high` since low and high targets on the same ticker are independent conditions).
 
 **Request body**
 

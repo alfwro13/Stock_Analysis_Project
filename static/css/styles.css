@@ -268,6 +268,12 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .account-badge-pending { background: #4d3300; color: #ffaa00; }
 .sub-account-row { display: flex; gap: 40px; font-size: var(--font-size-body); margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
 .sub-account-name { font-weight: bold; color: #00ffcc; min-width: 150px; }
+.set-targets-link { font-size: var(--font-size-btn); color: #00ffcc; text-decoration: underline dotted; cursor: pointer; }
+.current-targets-row:empty { display: none; }
+.set-targets-panel { margin-top: 15px; padding-top: 15px; border-top: 1px solid #333; }
+.target-suggestion-row { font-size: var(--font-size-body); margin-bottom: 10px; }
+.target-input-label { font-size: var(--font-size-body); color: #888; margin-left: 10px; }
+.target-input { width: 100px; background-color: #121212; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; padding: 4px 8px; font-size: var(--font-size-form); }
 /* Glossary Hub Enhancements */
 .glossary-wrapper { display: grid; grid-template-columns: 280px 1fr; gap: 30px; margin-top: 20px; align-items: flex-start; }
 .glossary-sidebar { position: sticky; top: 100px; background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }

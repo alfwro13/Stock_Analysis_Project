@@ -1429,6 +1429,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     user_asset = get_combined_holdings().get(ticker)
 
     portfolio_math = None
+    target_accounts = []
+    holding_price_limits = {}
     if user_asset and stock_data and stock_data.get('current_price'):
         priced = current_price_map([ticker]).get(ticker)
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
@@ -1455,8 +1457,19 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 acc_m["name"] = acc.get("name", "Unknown Account")
                 account_maths.append(acc_m)
 
+            acc_raw_id = acc.get("id", "")
+            if isinstance(acc_raw_id, str) and acc_raw_id.startswith("acct:"):
+                target_accounts.append({
+                    "account_id": int(acc_raw_id[len("acct:"):]),
+                    "name": acc.get("name", "Unknown Account"),
+                })
+
         if global_math:
             portfolio_math = {"global": global_math, "accounts": account_maths}
+
+        if target_accounts:
+            from db_accounts import get_holding_price_limits_for_ticker
+            holding_price_limits = get_holding_price_limits_for_ticker(ticker)
 
     fx_breakdown = None
     if portfolio_math and stock_data and stock_data.get("currency") == "USD":
@@ -1624,6 +1637,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "anomaly_radar_html": anomaly_radar_html,
             "anomaly_percentile": anomaly_percentile,
             "portfolio_math": portfolio_math,
+            "target_accounts": target_accounts,
+            "holding_price_limits": holding_price_limits,
             "fx_breakdown": fx_breakdown,
             "days_to_earnings": days_to_earnings,
             "volatility_date": volatility_date,
