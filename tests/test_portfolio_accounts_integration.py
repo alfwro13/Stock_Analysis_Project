@@ -183,6 +183,34 @@ def test_change_period_cookie_reflects_anchor_close_not_1d(client, monkeypatch):
 
 
 @pytest.mark.pages
+def test_ignored_ticker_excluded_from_period_anchor_fetch(client, monkeypatch):
+    """A ticker on the Ignored Tickers list must never reach price_history_helpers'
+    Yahoo-touching anchor-close lookup, even though it's a genuine held position."""
+    from config import load_config as _real_load_config
+
+    aid = create_account("Integ IgnoredAnchor", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZKEEP", company_name="Keep Co",
+                     currency="GBP", quantity=1, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDROP", company_name="Drop Co",
+                     currency="GBP", quantity=1, unit_price=50, exchange_rate=1.0)
+    _seed_stock_signal("ZZKEEP", 100.0, "GBP")
+
+    merged_config = {**_real_load_config(), "IGNORED_TICKERS": ["ZZDROP"]}
+    monkeypatch.setattr("page_routes.load_config", lambda: merged_config)
+
+    captured = {}
+    def _fake_anchor_closes(tickers):
+        captured["tickers"] = tickers
+        return {t: {"5d": None, "1m": None, "6m": None, "ytd": None, "1y": None} for t in tickers}
+    monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", _fake_anchor_closes)
+
+    resp = client.get(f"/portfolio?account_id=acct:{aid}")
+    assert resp.status_code == 200
+    assert "ZZKEEP" in captured["tickers"]
+    assert "ZZDROP" not in captured["tickers"]
+
+
+@pytest.mark.pages
 def test_change_period_missing_history_renders_na(client, monkeypatch):
     aid = create_account("Integ ChangeNA", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCHGNA", company_name="Change NA",

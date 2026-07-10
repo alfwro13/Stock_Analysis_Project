@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from accounts_engine import (
     _ticker_known, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
-    filter_value_history_by_period, fx_rate_on_date, get_combined_holdings, held_tickers_lightweight,
+    filter_value_history_by_period, fx_rate_on_date, held_tickers_lightweight,
     pension_units_as_of, reconcile_cash, record_pension_contribution, record_pension_fee,
     refresh_performance_cache, resnapshot_account, resolve_watchlist_metadata,
     sync_house_purchase_price, sync_pension_opening_balance,
@@ -814,7 +814,7 @@ async def api_refresh_now(background_tasks: BackgroundTasks):
     # fired-and-forgotten: the Home Assistant "Refresh Data" button re-polls its coordinator
     # immediately after this call returns, so the fetch must actually be finished by then or the
     # re-poll just sees the still-stale data it was trying to fix.
-    tickers = list(get_combined_holdings().keys())
+    tickers = held_tickers_lightweight()
     try:
         await run_in_threadpool(_run_refresh_now, tickers)
     except Exception as e:

@@ -291,6 +291,59 @@ def test_normalize_ticker_already_uppercase():
 
 
 @pytest.mark.config
+def test_ignored_tickers_set_normalizes_and_uses_supplied_config():
+    """ignored_tickers_set() must uppercase/strip entries and honor an explicitly-passed config
+    dict rather than always reloading from disk — callers that already hold a loaded config
+    (and tests that patch their module's own load_config) rely on this."""
+    from utils import ignored_tickers_set
+    result = ignored_tickers_set({"IGNORED_TICKERS": [" tsla ", "gme"]})
+    assert result == {"TSLA", "GME"}
+
+
+@pytest.mark.config
+def test_ignored_tickers_set_defaults_to_load_config_when_no_config_passed():
+    """With no config argument, ignored_tickers_set() must fall back to the real load_config()."""
+    from unittest.mock import patch
+    from utils import ignored_tickers_set
+    with patch("config.load_config", return_value={"IGNORED_TICKERS": ["ZZDEFAULTED"]}):
+        result = ignored_tickers_set()
+    assert result == {"ZZDEFAULTED"}
+
+
+@pytest.mark.config
+def test_is_synthetic_ticker_true_for_tbill_and_pension():
+    """TBILL-{txn_id} and PENSION-{account_id} have no Yahoo Finance listing and must be
+    flagged as synthetic — the structural half of is_excluded_from_yahoo_fetch()."""
+    from utils import is_synthetic_ticker
+    assert is_synthetic_ticker("TBILL-606") is True
+    assert is_synthetic_ticker("PENSION-12") is True
+
+
+@pytest.mark.config
+def test_is_synthetic_ticker_false_for_real_ticker():
+    from utils import is_synthetic_ticker
+    assert is_synthetic_ticker("AAPL") is False
+
+
+@pytest.mark.config
+def test_is_excluded_from_yahoo_fetch_true_for_synthetic_ticker_regardless_of_ignored_list():
+    from utils import is_excluded_from_yahoo_fetch
+    assert is_excluded_from_yahoo_fetch("TBILL-606", ignored=set()) is True
+
+
+@pytest.mark.config
+def test_is_excluded_from_yahoo_fetch_true_for_ignored_ticker():
+    from utils import is_excluded_from_yahoo_fetch
+    assert is_excluded_from_yahoo_fetch("gme", ignored={"GME"}) is True
+
+
+@pytest.mark.config
+def test_is_excluded_from_yahoo_fetch_false_for_normal_unignored_ticker():
+    from utils import is_excluded_from_yahoo_fetch
+    assert is_excluded_from_yahoo_fetch("AAPL", ignored={"GME"}) is False
+
+
+@pytest.mark.config
 def test_is_daily_bar_still_forming_true_when_daily_matches_live_date_and_is_today():
     """A daily bar dated the same as (or after) the live feed's last tick, and matching today's
     real calendar date, is still-forming, not a completed close."""

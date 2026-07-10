@@ -87,6 +87,16 @@ def test_missing_parquet_returns_all_none_without_raising():
     assert all(v is None for v in anchors.values())
 
 
+def test_tbill_synthetic_ticker_skips_fetch_and_returns_all_none():
+    """TBILL-{txn_id} has no Yahoo Finance listing (see AGENTS.md's Treasury Bill section) —
+    must never reach load_or_fetch_daily_history, which would hit Yahoo and log a 404."""
+    today = date(2024, 7, 6)
+    with patch("price_history_helpers.load_or_fetch_daily_history") as mock_loader:
+        anchors = _anchor_closes_for_ticker("TBILL-606", today)
+    mock_loader.assert_not_called()
+    assert all(v is None for v in anchors.values())
+
+
 def test_get_period_anchor_closes_batches_multiple_tickers():
     df_a = _fake_ohlcv("2022-06-01", "2024-07-05")
     df_b = _fake_ohlcv("2022-06-01", "2024-07-05")

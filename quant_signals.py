@@ -826,12 +826,12 @@ class QuantEngine:
             logger.error("Failed to secure database connection for %s: %s", ticker, conn_e)
 
     def run_all(self) -> None:
-        from treasury_bill_engine import parse_tbill_buy_txn_id
+        from utils import is_synthetic_ticker
         logger.info("Starting Institutional Quantamental Engine...")
         for filename in os.listdir(HISTORICAL_DIR):
             if filename.endswith(".parquet") and "BASELINE" not in filename:
                 ticker = filename.replace(".parquet", "")
-                if parse_tbill_buy_txn_id(ticker) is not None:
+                if is_synthetic_ticker(ticker):
                     continue
                 self.analyze_ticker(ticker)
         logger.info("Analysis Complete. Master Database is fully updated.")

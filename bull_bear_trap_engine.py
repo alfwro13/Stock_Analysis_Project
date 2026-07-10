@@ -381,8 +381,10 @@ class TrapEngine:
         if self.monitor_portfolio:
             try:
                 from accounts_engine import get_combined_holdings
+                from utils import is_excluded_from_yahoo_fetch
                 for t in get_combined_holdings().keys():
-                    tickers.add(t.upper())
+                    if not is_excluded_from_yahoo_fetch(t, self.ignored_tickers):
+                        tickers.add(t.upper())
             except Exception as e:
                 logger.warning("TrapEngine: could not load portfolio tickers: %s", e)
         tickers -= self.ignored_tickers

@@ -8,7 +8,7 @@ import pandas as pd
 import notification_engine
 from config import load_config, HISTORICAL_DIR
 from database import get_connection, get_mutual_fund_tickers, get_ticker_registry
-from utils import normalize_ticker, is_daily_bar_still_forming
+from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 from time_engine import EXCHANGE_HOURS, is_trading_session, market_window_utc, ticker_exchange
@@ -325,7 +325,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     asset_tickers = [normalize_ticker(t) for t in asset_tickers]
 
     config_data = load_config()
-    ignored_tickers = {normalize_ticker(t) for t in config_data.get("IGNORED_TICKERS", [])}
+    ignored_tickers = ignored_tickers_set(config_data)
 
     pulse_index_tickers = _select_active_pulse_tickers(config_data)
     registry_by_ticker = {r["ticker"]: r for r in get_ticker_registry(enabled_only=True)}

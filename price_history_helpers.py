@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Dict, Optional
 
 from data_engine import load_or_fetch_daily_history
+from utils import is_synthetic_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,8 @@ def _anchor_cutoffs(today: date) -> Dict[str, date]:
 
 def _anchor_closes_for_ticker(ticker: str, today: date) -> Dict[str, Optional[float]]:
     anchors: Dict[str, Optional[float]] = {key: None for key in PERIOD_KEYS}
+    if is_synthetic_ticker(ticker):
+        return anchors
     df = load_or_fetch_daily_history(ticker)
     if df is None or df.empty:
         return anchors

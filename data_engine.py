@@ -11,7 +11,7 @@ from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
-from utils import normalize_ticker, is_daily_bar_still_forming  # noqa: F401 — normalize_ticker re-exported for callers
+from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +48,11 @@ class DataEngine:
 
     def get_all_tickers(self) -> List[str]:
         from accounts_engine import get_combined_holdings
-        from treasury_bill_engine import parse_tbill_buy_txn_id
         tickers: Set[str] = set()
+        ignored_tickers = ignored_tickers_set(load_config())
 
         for ticker in get_combined_holdings().keys():
-            if ticker and parse_tbill_buy_txn_id(ticker) is None:
+            if ticker and not is_excluded_from_yahoo_fetch(ticker, ignored_tickers):
                 tickers.add(normalize_ticker(ticker))
 
         if isinstance(self.watchlist.get("watchlist"), list):
@@ -63,10 +63,6 @@ class DataEngine:
         for ticker in self.account_tickers:
             if ticker:
                 tickers.add(normalize_ticker(ticker))
-
-        # normalized to match the uppercased ticker set
-        config_data = load_config()
-        ignored_tickers = {normalize_ticker(t) for t in config_data.get("IGNORED_TICKERS", [])}
 
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return sorted(valid_tickers)

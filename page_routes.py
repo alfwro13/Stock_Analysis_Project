@@ -23,7 +23,7 @@ from config import load_config, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACC
 import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
-from utils import normalize_ticker
+from utils import normalize_ticker, ignored_tickers_set
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -282,6 +282,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                     if acc["id"] == account_id:
                         portfolio_tickers.append(data["ticker"])
                         break
+
+    ignored_tickers = ignored_tickers_set(config_data)
+    portfolio_tickers = [t for t in portfolio_tickers if normalize_ticker(t) not in ignored_tickers]
 
     portfolio_data = []
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}

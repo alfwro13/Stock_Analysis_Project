@@ -437,6 +437,21 @@ class TestLoadHistoryAutoFetch:
         assert result is None
 
 
+class TestGetTickerList:
+    """TBILL-{txn_id} synthetic tickers have no Yahoo Finance listing (see AGENTS.md's
+    Treasury Bill section) — must never enter the scan list _load_history() later fetches."""
+
+    def test_tbill_ticker_excluded_from_portfolio_scope(self):
+        engine = TrapEngine(_CFG)
+        engine.proxy_tickers = []
+        engine.monitor_portfolio = True
+        holdings = {"AAPL": {}, "TBILL-606": {}}
+        with patch("accounts_engine.get_combined_holdings", return_value=holdings):
+            tickers = engine._get_ticker_list()
+        assert "AAPL" in tickers
+        assert not any(t.startswith("TBILL-") for t in tickers)
+
+
 # ── _detect_bear_trap() ────────────────────────────────────────────────────────
 
 def _make_bear_trap_df(

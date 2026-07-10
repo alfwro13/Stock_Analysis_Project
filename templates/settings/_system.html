@@ -346,7 +346,7 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>Ignored Tickers <span class="text-muted text-xs">(comma-separated, e.g. GBP, USD, 0P00018XAR.L)</span></label>
+                <label><abbr title="Excluded from every Yahoo Finance-touching fetch app-wide (portfolio, watchlist, X-ray, Trap Monitor, Insider Alerts, etc). Treasury Bill (TBILL-*) and Pension (PENSION-*) synthetic tickers are always excluded automatically and never need to be listed here.">Ignored Tickers</abbr> <span class="text-muted text-xs">(comma-separated, e.g. GBP, USD, 0P00018XAR.L)</span></label>
                 <input type="text" id="IGNORED_TICKERS" class="form-control" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
             </div>
             <div class="form-group">

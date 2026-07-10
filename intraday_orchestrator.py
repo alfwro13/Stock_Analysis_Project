@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
-from utils import normalize_ticker, is_daily_bar_still_forming
+from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set
 from database import get_connection, get_mutual_fund_tickers
 import accounts_engine
 from db_accounts import get_all_holding_price_limits, get_accounts
@@ -93,11 +93,10 @@ class IntradayOrchestrator:
 
     def get_portfolio_tickers(self) -> List[str]:
         from accounts_engine import get_combined_holdings
-        from treasury_bill_engine import parse_tbill_buy_txn_id
         try:
             return [
                 normalize_ticker(t) for t in get_combined_holdings().keys()
-                if parse_tbill_buy_txn_id(t) is None
+                if not is_synthetic_ticker(t)
             ]
         except Exception:
             logger.error("Failed to load portfolio tickers from accounts engine", exc_info=True)
@@ -508,7 +507,7 @@ class IntradayOrchestrator:
         session_elapsed_frac = max(0.01, min(1.0, _elapsed / _session_total)) if _session_total > 0 else 1.0
 
         tickers = self.get_portfolio_tickers()
-        ignored = self.config.get("IGNORED_TICKERS", [])
+        ignored = ignored_tickers_set(self.config)
         mutual_funds = get_mutual_fund_tickers(tickers)
 
         tickers = [t for t in tickers if t not in ignored and t not in mutual_funds]

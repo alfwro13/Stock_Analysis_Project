@@ -22,7 +22,7 @@ from db_accounts import (
 )
 from database import get_connection
 from portfolio_service import get_rate_to_base
-from utils import normalize_ticker
+from utils import normalize_ticker, ignored_tickers_set
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -683,7 +683,7 @@ def held_tickers_lightweight() -> list:
         if conn:
             conn.close()
 
-    ignored = {normalize_ticker(t) for t in load_config().get("IGNORED_TICKERS", [])}
+    ignored = ignored_tickers_set(load_config())
     return [t for t in tickers if normalize_ticker(t) not in ignored]
 
 

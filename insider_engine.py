@@ -28,7 +28,7 @@ def run_insider_alert():
     """Scrapes recent SEC Form 4 filings for massive insider buying and aligns with quant scores."""
     try:
         from accounts_engine import get_combined_holdings
-        from treasury_bill_engine import parse_tbill_buy_txn_id
+        from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
         logger.info("Starting Insider Trading Alert Check...")
 
         config = load_config()
@@ -42,7 +42,7 @@ def run_insider_alert():
         if not enable_portfolio and not enable_watchlist:
             return True, "Insider checks skipped (Both toggles disabled)."
 
-        ignored = set(config.get("IGNORED_TICKERS", []))
+        ignored = ignored_tickers_set(config)
 
         target_tickers = set()
         if enable_portfolio:
@@ -54,11 +54,10 @@ def run_insider_alert():
             t for t in target_tickers
             if t
             and not t.startswith('0P')
-            and t not in ignored
             and not t.endswith('=F')
             and not t.endswith('=X')
             and not t.startswith('^')
-            and parse_tbill_buy_txn_id(t) is None
+            and not is_excluded_from_yahoo_fetch(t, ignored)
         ]
         target_tickers = filter_equity_tickers(target_tickers)
         if not target_tickers:

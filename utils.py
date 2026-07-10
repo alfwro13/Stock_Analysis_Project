@@ -1,7 +1,7 @@
 # Lightweight helpers with no heavy dependencies — safe to import from any module.
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,35 @@ def ensure_workflow_assets() -> None:
 
 def normalize_ticker(ticker: str) -> str:
     return str(ticker).strip().upper()
+
+
+def ignored_tickers_set(config: Optional[dict] = None) -> set:
+    """Normalized Settings-page IGNORED_TICKERS — the single source every Yahoo-touching
+    ticker-list builder must filter against, so an ignored ticker is actually ignored everywhere."""
+    if config is None:
+        from config import load_config
+        config = load_config()
+    return {normalize_ticker(t) for t in config.get("IGNORED_TICKERS", [])}
+
+
+def is_synthetic_ticker(ticker: str) -> bool:
+    """True for a structurally unfetchable synthetic ticker (TBILL-*, PENSION-*) that has no
+    real Yahoo Finance listing and must never reach a Yahoo-touching call."""
+    from treasury_bill_engine import parse_tbill_buy_txn_id
+    from account_scraper_engine import parse_pension_account_id
+    return parse_tbill_buy_txn_id(ticker) is not None or parse_pension_account_id(ticker) is not None
+
+
+def is_excluded_from_yahoo_fetch(ticker: str, ignored: Optional[set] = None) -> bool:
+    """True when `ticker` must never reach a Yahoo Finance-touching call: is_synthetic_ticker()
+    or on the Settings-page Ignored Tickers list. Pass a pre-computed `ignored` (from
+    ignored_tickers_set()) when filtering many tickers in a loop, to avoid reloading config
+    on every call."""
+    if is_synthetic_ticker(ticker):
+        return True
+    if ignored is None:
+        ignored = ignored_tickers_set()
+    return normalize_ticker(ticker) in ignored
 
 
 def clamp_beta(raw: Any, lo: float = 0.5, hi: float = 2.0, default: float = 1.0) -> float:

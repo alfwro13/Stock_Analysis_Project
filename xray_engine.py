@@ -15,6 +15,7 @@ from data_engine import load_or_fetch_daily_history
 from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -474,7 +475,11 @@ def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> 
 
 def run_xray_precompute() -> bool:
     logger.info("X-ray pre-compute job started.")
-    symbols = set(get_combined_holdings().keys())
+    ignored_tickers = ignored_tickers_set(load_config())
+    symbols = {
+        sym for sym in get_combined_holdings().keys()
+        if not is_excluded_from_yahoo_fetch(sym, ignored_tickers)
+    }
     holdings = [{"symbol": sym, "data_source": "YAHOO", "currency": ""} for sym in symbols]
     if not holdings:
         logger.warning("X-ray pre-compute: no tickers found in portfolio or built-in Trading accounts.")

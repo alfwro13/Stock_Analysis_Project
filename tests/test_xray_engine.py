@@ -36,6 +36,7 @@ from xray_engine import (
     _generate_xray_recommendations,
     assemble_xray_report,
     resolve_scope_holdings,
+    run_xray_precompute,
     BENCHMARK_SYMBOL,
     _DEVELOPED_MARKET_CODES,
     _EMERGING_MARKET_CODES,
@@ -1301,6 +1302,48 @@ class TestBuiltinAccountXrayScope:
         symbols = {h["symbol"] for h in result["holdings"]}
         assert T2 in symbols
         assert result["portfolio_total_value"] >= 500.0
+
+
+class TestRunXrayPrecomputeExcludesSyntheticTickers:
+    """TBILL-{txn_id} synthetic tickers have no Yahoo Finance listing (see AGENTS.md's
+    Treasury Bill section) — run_xray_precompute() must not pass them to yfinance."""
+
+    def test_tbill_ticker_excluded_from_compute_and_cache_symbols(self):
+        import treasury_bill_engine as tbe
+
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("XrayTBillPrecomputeAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        tbe.buy_treasury_bill(aid, "2026-01-05", 1000.0, 996.16, "2026-02-02")
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()), \
+             patch.object(XRayRiskComputer, "compute_and_cache", return_value=True) as mock_compute:
+            run_xray_precompute()
+
+        assert mock_compute.call_count == 1
+        symbols = {h["symbol"] for h in mock_compute.call_args[0][0]}
+        assert T1 in symbols
+        assert not any(s.startswith("TBILL-") for s in symbols)
+
+    def test_ignored_ticker_excluded_from_compute_and_cache_symbols(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("XrayIgnoredPrecomputeAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        add_transaction(aid, "Buy", "2026-01-05", ticker="ZZIGNORED", currency="GBP",
+                         quantity=5, unit_price=10, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config({"IGNORED_TICKERS": ["ZZIGNORED"]})), \
+             patch.object(XRayRiskComputer, "compute_and_cache", return_value=True) as mock_compute:
+            run_xray_precompute()
+
+        assert mock_compute.call_count == 1
+        symbols = {h["symbol"] for h in mock_compute.call_args[0][0]}
+        assert T1 in symbols
+        assert "ZZIGNORED" not in symbols
 
 
 class TestGetScopeReturnSeries:

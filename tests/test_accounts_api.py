@@ -2087,6 +2087,29 @@ def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(cli
 
 
 @pytest.mark.api
+def test_refresh_now_excludes_treasury_bill_synthetic_ticker(client):
+    # TBILL-{txn_id} has no Yahoo Finance listing (see AGENTS.md's Treasury Bill section) —
+    # the "Refresh Data" button must not pass it to fetch_and_save_pulse.
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="RefreshNowTBillAcc", initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-05-01", "face_value": 501.43, "purchase_price": 500.0,
+        "maturity_date": "2026-05-29", "indicative_ytm": 3.72,
+    })
+    assert resp.status_code == 200
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("api_routes_accounts.refresh_performance_cache"):
+        resp = client.post("/api/accounts/refresh-now")
+    assert resp.status_code == 200
+    portfolio_call_tickers = mock_fetch.call_args_list[0].args[0]
+    assert not any(t.startswith("TBILL-") for t in portfolio_call_tickers)
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_refresh_now_notifies_error_on_failure(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="RefreshNowFailAcc")
