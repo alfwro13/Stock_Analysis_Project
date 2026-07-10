@@ -20,32 +20,36 @@ $(document).ready(function() {
     });
 });
 
-function toggleFullscreen(wrapperId) {
-    const elem = document.getElementById(wrapperId);
-    if (!elem) return;
+// All charts on this page are server-rendered (visuals.py's fig.to_html()), so
+// config.responsive never actually reacts to container size changes (rotation,
+// fullscreen) — width/height must be relayout'd explicitly, per AGENTS.md rule 18.
+const _SENTIMENT_CHART_IDS = [
+    'us-fg-wrapper', 'us-vix-wrapper', 'us-yield-wrapper', 'us-yield-curve-wrapper',
+    'us-liquidity-wrapper', 'us-inflation-wrapper', 'us-credit-wrapper',
+    'uk-gbp-wrapper', 'uk-yield-wrapper', 'uk-liquidity-wrapper', 'uk-inflation-wrapper', 'uk-credit-wrapper',
+];
+const _sentimentChartDefaultHeights = {};
 
-    if (!document.fullscreenElement && !document.mozFullScreenElement &&
-        !document.webkitFullscreenElement && !document.msFullscreenElement) {
-        if (elem.requestFullscreen) {
-            elem.requestFullscreen();
-        } else if (elem.msRequestFullscreen) {
-            elem.msRequestFullscreen();
-        } else if (elem.mozRequestFullScreen) {
-            elem.mozRequestFullScreen();
-        } else if (elem.webkitRequestFullscreen) {
-            elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
-        }
-        elem.classList.add('is-fullscreen');
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        }
-        elem.classList.remove('is-fullscreen');
-    }
+function _captureSentimentChartDefaultHeights() {
+    _SENTIMENT_CHART_IDS.forEach(function (id) {
+        const wrapper = document.getElementById(id);
+        const plotEl = wrapper && wrapper.querySelector('.js-plotly-plot');
+        if (plotEl && plotEl.layout) _sentimentChartDefaultHeights[id] = plotEl.layout.height;
+    });
 }
+
+function _sentimentChartOpts(wrapperId) {
+    return { forceWidth: true, getHeight: function () { return _sentimentChartDefaultHeights[wrapperId]; } };
+}
+
+function toggleFullscreen(wrapperId) {
+    ChartFullscreen.toggle(wrapperId, _sentimentChartOpts(wrapperId));
+}
+
+document.addEventListener('DOMContentLoaded', _captureSentimentChartDefaultHeights);
+
+window.addEventListener('resize', function () {
+    _SENTIMENT_CHART_IDS.forEach(function (id) {
+        ChartFullscreen.relayoutForCurrentState(id, _sentimentChartOpts(id));
+    });
+});
