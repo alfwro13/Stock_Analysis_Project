@@ -530,6 +530,82 @@ class TestDispatchHoldingLimitAlerts:
         assert _read_alert_state("HoldingLimit", HOLDING_KEY_HIGH) is None
 
 
+class TestCheckHoldingLimits:
+    """_check_holding_limits: shared by the main portfolio loop and the target-only loop
+    (watchlist tickers with a target but no holding) so the price-target check itself is
+    never duplicated between the two call sites."""
+
+    def teardown_method(self):
+        _clear_holding_limit_alert_state()
+
+    def test_low_breach_appends_alert(self, orch, db_conn):
+        alerts = []
+        limits_by_ticker = {TEST_TICKER: {HOLDING_LIMIT_ACCOUNT_ID: {"low_limit": 90.0, "high_limit": None}}}
+        names = {HOLDING_LIMIT_ACCOUNT_ID: "Watchlist"}
+        orch._check_holding_limits(TEST_TICKER, 85.0, "USD", limits_by_ticker, names, db_conn, alerts)
+
+        assert len(alerts) == 1
+        key, ticker, account_name, direction, limit_price, current_price, currency = alerts[0]
+        assert direction == "low"
+        assert account_name == "Watchlist"
+        assert current_price == 85.0
+
+    def test_high_breach_appends_alert(self, orch, db_conn):
+        alerts = []
+        limits_by_ticker = {TEST_TICKER: {HOLDING_LIMIT_ACCOUNT_ID: {"low_limit": None, "high_limit": 100.0}}}
+        names = {HOLDING_LIMIT_ACCOUNT_ID: "Watchlist"}
+        orch._check_holding_limits(TEST_TICKER, 110.0, "USD", limits_by_ticker, names, db_conn, alerts)
+
+        assert len(alerts) == 1
+        assert alerts[0][3] == "high"
+
+    def test_no_limits_for_ticker_appends_nothing(self, orch, db_conn):
+        alerts = []
+        orch._check_holding_limits(TEST_TICKER, 100.0, "USD", {}, {}, db_conn, alerts)
+        assert alerts == []
+
+    def test_price_within_range_appends_nothing(self, orch, db_conn):
+        alerts = []
+        limits_by_ticker = {TEST_TICKER: {HOLDING_LIMIT_ACCOUNT_ID: {"low_limit": 50.0, "high_limit": 150.0}}}
+        names = {HOLDING_LIMIT_ACCOUNT_ID: "Watchlist"}
+        orch._check_holding_limits(TEST_TICKER, 100.0, "USD", limits_by_ticker, names, db_conn, alerts)
+        assert alerts == []
+
+    def test_unknown_account_id_skipped(self, orch, db_conn):
+        """A holding_price_limits row for a soft-deleted account (missing from account_names)
+        must not fire, even if its price threshold is technically breached."""
+        alerts = []
+        limits_by_ticker = {TEST_TICKER: {999999: {"low_limit": 90.0, "high_limit": None}}}
+        orch._check_holding_limits(TEST_TICKER, 85.0, "USD", limits_by_ticker, {}, db_conn, alerts)
+        assert alerts == []
+
+
+class TestComputeTargetOnlyTickers:
+    """_compute_target_only_tickers: the set of tickers with an active target that aren't
+    already in the held set — e.g. a Watchlist-only ticker with a Position Target set."""
+
+    def test_ticker_with_target_not_held_is_included(self, orch):
+        held = set()
+        limits_by_ticker = {"ZZWATCH": {1: {"low_limit": 10.0, "high_limit": None}}}
+        assert orch._compute_target_only_tickers(held, limits_by_ticker) == ["ZZWATCH"]
+
+    def test_ticker_with_target_already_held_is_excluded(self, orch):
+        held = {"AAPL"}
+        limits_by_ticker = {"AAPL": {1: {"low_limit": 10.0, "high_limit": None}}}
+        assert orch._compute_target_only_tickers(held, limits_by_ticker) == []
+
+    def test_no_targets_returns_empty(self, orch):
+        assert orch._compute_target_only_tickers({"AAPL"}, {}) == []
+
+    def test_mixed_held_and_target_only(self, orch):
+        held = {"AAPL"}
+        limits_by_ticker = {
+            "AAPL": {1: {"low_limit": 10.0, "high_limit": None}},
+            "ZZWATCH": {2: {"low_limit": 5.0, "high_limit": None}},
+        }
+        assert orch._compute_target_only_tickers(held, limits_by_ticker) == ["ZZWATCH"]
+
+
 # ── log_notification_feed ─────────────────────────────────────────────────────
 
 class TestLogNotificationFeed:

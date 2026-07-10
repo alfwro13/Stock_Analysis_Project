@@ -1467,9 +1467,18 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         if global_math:
             portfolio_math = {"global": global_math, "accounts": account_maths}
 
-        if target_accounts:
-            from db_accounts import get_holding_price_limits_for_ticker
-            holding_price_limits = get_holding_price_limits_for_ticker(ticker)
+    if is_in_watchlist:
+        from db_accounts import get_watchlist_account
+        watchlist_account = get_watchlist_account()
+        if watchlist_account:
+            target_accounts.append({
+                "account_id": watchlist_account["id"],
+                "name": "Watchlist",
+            })
+
+    if target_accounts:
+        from db_accounts import get_holding_price_limits_for_ticker
+        holding_price_limits = get_holding_price_limits_for_ticker(ticker)
 
     fx_breakdown = None
     if portfolio_math and stock_data and stock_data.get("currency") == "USD":

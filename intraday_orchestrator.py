@@ -399,6 +399,45 @@ class IntradayOrchestrator:
                 self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
             time.sleep(_DISPATCH_SLEEP_SECONDS)
 
+    @staticmethod
+    def _compute_target_only_tickers(held_set: set, holding_limits_by_ticker: Dict[str, Dict[int, Dict[str, Optional[float]]]]) -> List[str]:
+        """Tickers with an active low/high target that aren't in held_set — e.g. a Watchlist-only
+        ticker with a target set from the Stock Detail page's Position Targets box. Kept out of
+        the main portfolio ticker list so they never enter Crash/Moonshot/Anomaly evaluation."""
+        return sorted(t for t in holding_limits_by_ticker.keys() if t not in held_set)
+
+    def _check_holding_limits(
+        self,
+        ticker: str,
+        current_price: float,
+        currency: str,
+        holding_limits_by_ticker: Dict[str, Dict[int, Dict[str, Optional[float]]]],
+        account_names: Dict[int, str],
+        conn: sqlite3.Connection,
+        alerts_to_send: list,
+    ) -> None:
+        """Shared by the main portfolio loop and the target-only loop (e.g. watchlist tickers with
+        a target but no holding) so the price-target check itself is never duplicated."""
+        ticker_limits = holding_limits_by_ticker.get(ticker)
+        if not ticker_limits:
+            return
+        for account_id, lim in ticker_limits.items():
+            # holding_price_limits rows for a soft-deleted account are never cleaned up;
+            # account_names only holds active accounts, so absence here means skip.
+            account_name = account_names.get(account_id)
+            if account_name is None:
+                continue
+            low_limit = lim.get("low_limit")
+            high_limit = lim.get("high_limit")
+            if low_limit is not None and current_price <= low_limit:
+                key = f"{account_id}:{ticker}:low"
+                if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "LOW TARGET REACHED", conn):
+                    alerts_to_send.append((key, ticker, account_name, "low", low_limit, current_price, currency))
+            if high_limit is not None and current_price >= high_limit:
+                key = f"{account_id}:{ticker}:high"
+                if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "HIGH TARGET REACHED", conn):
+                    alerts_to_send.append((key, ticker, account_name, "high", high_limit, current_price, currency))
+
     def _dispatch_holding_limit_alerts(self, alert_tuples: list, conn: sqlite3.Connection) -> None:
         """Set Targets: fires when a held ticker's user-set low_limit/high_limit is reached; shares the alert_state gate with Crash/Moonshot but keys on a composite account_id:ticker:direction since limits are per-account."""
         for key, ticker, account_name, direction, limit_price, current_price, currency in alert_tuples:
@@ -463,23 +502,29 @@ class IntradayOrchestrator:
 
         tickers = [t for t in tickers if t not in ignored and t not in mutual_funds]
 
-        if not tickers:
-            logger.warning("No valid portfolio items found for intraday scan.")
-            return
-
-        metadata = self.get_asset_metadata(tickers)
-
         holding_limits_by_ticker: Dict[str, Dict[int, Dict[str, Optional[float]]]] = {}
         for (account_id, lim_ticker), lim in get_all_holding_price_limits().items():
             if lim.get("low_limit") is None and lim.get("high_limit") is None:
                 continue
             holding_limits_by_ticker.setdefault(lim_ticker, {})[account_id] = lim
+
+        # A ticker with a target set (e.g. via the Watchlist row on the Stock Detail page) but not
+        # actually held must still be scanned for the price-target check — but deliberately does
+        # NOT join `tickers` itself, so it stays out of Crash/Moonshot/Anomaly evaluation below.
+        held_set = set(tickers)
+        target_only_tickers = self._compute_target_only_tickers(held_set, holding_limits_by_ticker)
+
+        if not tickers and not target_only_tickers:
+            logger.warning("No valid portfolio items found for intraday scan.")
+            return
+
+        metadata = self.get_asset_metadata(sorted(held_set | set(target_only_tickers)))
         account_names = {acc["id"]: acc["name"] for acc in get_accounts()}
 
         # SPY fetched here once so crash_engine never needs a per-scan HTTP call
         macro_tickers = ["^TYX", "SPY"]
         spy_change_pct: Optional[float] = None
-        download_list = sorted(set(tickers + macro_tickers))
+        download_list = sorted(set(tickers + target_only_tickers + macro_tickers))
         
         logger.info("Performing bulk YF 5m fetch for %d assets & macro benchmarks.", len(download_list))
         ticker_dfs = yahoo_engine.get_intraday(download_list, period="1d", interval="5m")
@@ -656,24 +701,10 @@ class IntradayOrchestrator:
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
 
-                ticker_limits = holding_limits_by_ticker.get(ticker)
-                if ticker_limits:
-                    for account_id, lim in ticker_limits.items():
-                        # holding_price_limits rows for a soft-deleted account are never cleaned up;
-                        # account_names only holds active accounts, so absence here means skip.
-                        account_name = account_names.get(account_id)
-                        if account_name is None:
-                            continue
-                        low_limit = lim.get("low_limit")
-                        high_limit = lim.get("high_limit")
-                        if low_limit is not None and current_price <= low_limit:
-                            key = f"{account_id}:{ticker}:low"
-                            if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "LOW TARGET REACHED", conn):
-                                holding_limit_alerts_to_send.append((key, ticker, account_name, "low", low_limit, current_price, currency))
-                        if high_limit is not None and current_price >= high_limit:
-                            key = f"{account_id}:{ticker}:high"
-                            if not self._evaluate_alert_gate("HoldingLimit", key, current_price, "HIGH TARGET REACHED", conn):
-                                holding_limit_alerts_to_send.append((key, ticker, account_name, "high", high_limit, current_price, currency))
+                self._check_holding_limits(
+                    ticker, current_price, currency, holding_limits_by_ticker,
+                    account_names, conn, holding_limit_alerts_to_send,
+                )
 
                 # evaluate() first so reason string is available for fingerprinting; returns None when no condition met.
                 if crash_enabled:
@@ -763,6 +794,37 @@ class IntradayOrchestrator:
 
             except Exception:
                 logger.error("Error processing %s", ticker, exc_info=True)
+
+        for ticker in target_only_tickers:
+            try:
+                if isinstance(df_bulk.columns, pd.MultiIndex):
+                    if ticker not in df_bulk.columns.get_level_values(0):
+                        continue
+                    df_intraday = df_bulk[ticker].copy()
+                else:
+                    if 'Close' not in df_bulk.columns:
+                        continue
+                    df_intraday = df_bulk.copy()
+
+                if 'Close' in df_intraday.columns:
+                    df_intraday.dropna(subset=['Close'], inplace=True)
+                if df_intraday.empty:
+                    continue
+
+                df_intraday.index = df_intraday.index.tz_localize(None)
+                if self._seconds_since(df_intraday.index[-1]) > _STALE_SECONDS:
+                    continue
+
+                current_price = float(df_intraday['Close'].iloc[-1])
+                asset_meta = metadata.get(ticker, {})
+                currency = asset_meta.get('currency', 'USD')
+
+                self._check_holding_limits(
+                    ticker, current_price, currency, holding_limits_by_ticker,
+                    account_names, conn, holding_limit_alerts_to_send,
+                )
+            except Exception:
+                logger.error("Error processing target-only ticker %s", ticker, exc_info=True)
 
         self._dispatch_alerts(
             "Crash",

@@ -287,6 +287,45 @@ def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkey
         conn.close()
 
 
+@pytest.mark.pages
+def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
+    """A ticker with no built-in-account holding but present on the Watchlist has no
+    "Your Position" box (portfolio_math is None), but must still get a standalone
+    "Position Targets" box with a Watchlist row, since Set Targets no longer lives
+    inside the Your Position box."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZWATCHONLY', 50.0, 'USD', 'EQUITY')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZWATCHONLY", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/stock/ZZWATCHONLY", follow_redirects=True)
+        assert resp.status_code < 500
+        assert "Position Targets" in resp.text
+        assert "Watchlist" in resp.text
+        assert "Your Position (Global Aggregation)" not in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZWATCHONLY"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZWATCHONLY'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
 # ── Safety net: no page returns 500 ──────────────────────────────────────────
 
 @pytest.mark.pages

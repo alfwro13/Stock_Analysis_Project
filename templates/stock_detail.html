@@ -62,12 +62,7 @@
         <div id="verdict">
             {% if portfolio_math %}
             <div class="portfolio-box mb-3">
-                <div class="flex-between-center flex-wrap gap-2">
-                    <h2 class="m-0 border-none p-0">Your Position (Global Aggregation)</h2>
-                    {% if target_accounts %}
-                    <a href="javascript:void(0)" id="setTargetsToggle" onclick="toggleSetTargetsPanel()" class="set-targets-link">Set Targets</a>
-                    {% endif %}
-                </div>
+                <h2 class="m-0 border-none p-0">Your Position (Global Aggregation)</h2>
                 <div class="d-flex flex-wrap gap-3 font-16 mt-15 mb-20">
                     <div><span class="text-muted">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
                     <div><span class="text-muted">Avg VWAP Cost:</span> <strong>{{ display_price(portfolio_math.global.buy_price, stock.currency) }}</strong></div>
@@ -122,12 +117,18 @@
                 </div>
                 {% endfor %}
                 {% endif %}
+            </div>
+            {% endif %}
 
-                {% if target_accounts %}
+            {% if target_accounts %}
+            <div class="portfolio-box mb-3">
+                <div class="flex-between-center flex-wrap gap-2">
+                    <h2 class="m-0 border-none p-0">Position Targets</h2>
+                    <a href="javascript:void(0)" id="setTargetsToggle" onclick="toggleSetTargetsPanel()" class="set-targets-link">Set Targets</a>
+                </div>
                 <div id="currentTargetsDisplay" class="current-targets-row"></div>
 
                 <div id="setTargetsPanel" class="set-targets-panel d-none">
-                    <h3 class="text-sm-caps">Set Targets</h3>
                     <div class="target-suggestion-row">
                         <span class="text-muted">
                             <abbr title="Statistical 10-day price range from the ML Quantile Regression model (same model behind the ML Quantile Bands chart below) — a starting point, not a guarantee.">ML Suggested</abbr>:
@@ -170,7 +171,6 @@
                         <span id="setTargetsStatus" class="ml-15"></span>
                     </div>
                 </div>
-                {% endif %}
             </div>
             {% endif %}
 
