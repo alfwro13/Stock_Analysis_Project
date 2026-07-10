@@ -28,6 +28,7 @@ _BUILTIN_EXCHANGE_HOURS: dict[str, dict] = {
         "tz":       "Europe/London",
         "currency": "GBP",
         "suffixes": [".L"],
+        "quote_delay_minutes": 15,
     },
     "XETRA": {
         "open":     "09:00",

@@ -271,6 +271,20 @@ def test_run_account_value_snapshot_job_runner_is_wired():
 
 
 @pytest.mark.db
+def test_run_account_value_snapshot_also_refreshes_performance_cache():
+    """The nightly snapshot job must also refresh account_performance_cache in the same run —
+    otherwise period-return baselines stay frozen at the last cron tick (~21:59 UTC) until the
+    07:00 UTC window reopens, which is stale data an always-polling HA integration would surface."""
+    import scheduler_jobs
+    from database import get_performance_cache
+    aid = create_account("SnapshotAlsoRefreshesCacheAcc", "GBP", initial_cash=99.0)
+    scheduler_jobs.run_account_value_snapshot()
+
+    performance = get_performance_cache(aid)
+    assert performance is not None, "run_account_value_snapshot did not populate account_performance_cache"
+
+
+@pytest.mark.db
 def test_run_account_performance_refresh_job_runner_is_wired():
     """scheduler_jobs.run_account_performance_refresh_job must actually call
     accounts_engine.refresh_all_trading_performance_caches — a regression guard for the job
@@ -1697,6 +1711,9 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
         accounts_engine.market_pulse, "is_exchange_open",
         lambda exchange: exchange == "LSE",
     )
+    # Quote-settled gate stubbed True here — this test is about the age/missing logic,
+    # not the settle gate (covered separately below).
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange: True)
     _seed_market_pulse("ZZFRESHREF", 100.0, time.time())
     _seed_market_pulse("ZZSTALEREF", 100.0, time.time() - 3600)
     # "ZZNOCACHEREF" has no market_pulse_cache row at all.
@@ -1707,6 +1724,32 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
     assert "ZZFRESHREF" not in stale
     assert "ZZSTALEREF" in stale
     assert "ZZNOCACHEREF" in stale
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_skips_stale_ticker_when_quote_not_yet_settled(monkeypatch):
+    import time
+
+    # Exchange is open (LSE just opened) but its quote isn't trustworthy yet (Yahoo's
+    # delayed LSE feed) — a stale cached ticker must NOT be re-fetched until settled,
+    # or the fetch would pull a not-yet-representative quote into market_pulse_cache.
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: True)
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange: False)
+    _seed_market_pulse("ZZUNSETTLEDREF", 100.0, time.time() - 3600)
+
+    stale = accounts_engine.tickers_needing_refresh(["ZZUNSETTLEDREF"], 60)
+    assert "ZZUNSETTLEDREF" not in stale
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_bootstraps_missing_ticker_even_when_quote_not_settled(monkeypatch):
+    # The missing-row bootstrap exception must bypass the settle gate too — a genuinely
+    # missing row can't get worse by fetching it immediately.
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: True)
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange: False)
+
+    stale = accounts_engine.tickers_needing_refresh(["ZZNOCACHEUNSETTLED"], 60)
+    assert "ZZNOCACHEUNSETTLED" in stale
 
 
 @pytest.mark.db

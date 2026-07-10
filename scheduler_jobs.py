@@ -143,6 +143,11 @@ def run_backup_job():
 def run_account_value_snapshot(scheduled: bool = True):
     try:
         written = snapshot_all_accounts(scheduled=scheduled)
+        # Otherwise account_performance_cache stays frozen at ~21:59 UTC's numbers until the
+        # 07:00 UTC cron window reopens — HA polls that happen overnight (once no longer gated
+        # on market hours) would see a stale figure until the next trading day is well underway.
+        # DB/cache-only: reads whatever prices are already cached, no live Yahoo call.
+        refresh_all_trading_performance_caches()
         notify("account_value_snapshot_status", "Success",
                f"Account Value Snapshot completed: {written} account(s) updated.", level="info")
     except Exception as e:

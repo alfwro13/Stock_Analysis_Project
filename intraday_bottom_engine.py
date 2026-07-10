@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from config import HISTORICAL_DIR
 from database import get_mutual_fund_tickers
-from market_pulse import is_exchange_open, upsert_live_price
+from market_pulse import is_exchange_open, is_quote_settled, upsert_live_price
 from yahoo_engine import yahoo_engine
 from utils import is_daily_bar_still_forming
 
@@ -333,10 +333,12 @@ class IntradayBottomEngine:
             currency = currency_map.get(ticker, "")
             exchange = time_engine.ticker_exchange(ticker, currency)
             premarket = exchange in ("NYSE",)
-            if is_exchange_open(exchange, include_premarket=premarket):
-                open_tickers.append(ticker)
-            else:
+            if not is_exchange_open(exchange, include_premarket=premarket):
                 logger.debug("DipRadar: %s — %s market closed, skipping.", ticker, exchange)
+            elif not is_quote_settled(exchange, include_premarket=premarket):
+                logger.debug("DipRadar: %s — %s quote not yet settled since open, skipping.", ticker, exchange)
+            else:
+                open_tickers.append(ticker)
 
         if not open_tickers:
             return []

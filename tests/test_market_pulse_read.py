@@ -421,6 +421,38 @@ class TestIsExchangeOpen:
         _clear("^HSI")
 
 
+# ── is_quote_settled ───────────────────────────────────────────────────────────
+
+class TestIsQuoteSettled:
+    """Regression coverage for the bug this fixes: the instant LSE opens, Yahoo's free
+    quote feed is still ~15-20 minutes behind, so any engine treating is_exchange_open()
+    alone as 'safe to act on this quote' pulls a not-yet-representative price."""
+
+    def test_closed_exchange_is_not_settled(self):
+        with patch("market_pulse.is_exchange_open", return_value=False):
+            assert _mp.is_quote_settled("LSE") is False
+
+    def test_exchange_with_no_configured_delay_is_settled_as_soon_as_open(self):
+        with patch("market_pulse.is_exchange_open", return_value=True):
+            assert _mp.is_quote_settled("NYSE") is True
+
+    def test_lse_not_settled_within_delay_window_of_open(self):
+        from datetime import time as dtime
+        with patch("market_pulse.is_exchange_open", return_value=True), \
+             patch("market_pulse.market_window_utc", return_value=(dtime(8, 0), dtime(16, 30))), \
+             patch("market_pulse.datetime") as mock_dt:
+            mock_dt.now.return_value.time.return_value = dtime(8, 5)
+            assert _mp.is_quote_settled("LSE") is False
+
+    def test_lse_settled_once_delay_window_has_passed(self):
+        from datetime import time as dtime
+        with patch("market_pulse.is_exchange_open", return_value=True), \
+             patch("market_pulse.market_window_utc", return_value=(dtime(8, 0), dtime(16, 30))), \
+             patch("market_pulse.datetime") as mock_dt:
+            mock_dt.now.return_value.time.return_value = dtime(8, 16)
+            assert _mp.is_quote_settled("LSE") is True
+
+
 # ── proxy_tickers_needing_refresh ─────────────────────────────────────────────
 
 class TestProxyTickersNeedingRefresh:

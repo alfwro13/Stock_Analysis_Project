@@ -12,7 +12,7 @@ _EXCHANGE_HOURS_PATH = os.path.join(os.path.dirname(__file__), "data", "exchange
 
 _DEFAULT_EXCHANGE_HOURS = {
     "NYSE":    {"open":"09:30","close":"16:00","tz":"America/New_York",     "currency":"USD","suffixes":[],"premarket_open":"04:00"},
-    "LSE":     {"open":"08:00","close":"16:30","tz":"Europe/London",        "currency":"GBP","suffixes":[".L"]},
+    "LSE":     {"open":"08:00","close":"16:30","tz":"Europe/London",        "currency":"GBP","suffixes":[".L"],"quote_delay_minutes":15},
     "XETRA":   {"open":"09:00","close":"17:30","tz":"Europe/Berlin",        "currency":"EUR","suffixes":[".DE",".F"]},
     "TSE":     {"open":"09:00","close":"15:30","tz":"Asia/Tokyo",           "currency":"JPY","suffixes":[".T"]},
     "ASX":     {"open":"10:00","close":"16:00","tz":"Australia/Sydney",     "currency":"AUD","suffixes":[".AX"]},

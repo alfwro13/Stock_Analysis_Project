@@ -11,7 +11,7 @@ from database import get_connection, get_mutual_fund_tickers, get_ticker_registr
 from utils import normalize_ticker, is_daily_bar_still_forming
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
-from time_engine import EXCHANGE_HOURS, is_trading_session, ticker_exchange
+from time_engine import EXCHANGE_HOURS, is_trading_session, market_window_utc, ticker_exchange
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,28 @@ def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
         return is_trading_session(exchange, include_premarket=honor_premarket)
     allowed_states = _OPEN_MARKET_STATES | _PRE_MARKET_STATES if honor_premarket else _OPEN_MARKET_STATES
     return row["market_state"] in allowed_states
+
+
+def is_quote_settled(exchange: str, include_premarket: bool = False) -> bool:
+    """True once `exchange` is open (is_exchange_open()) AND enough time has passed since its
+    session open for Yahoo's free quote feed to be trustworthy — 0 minutes for most exchanges,
+    but LSE's feed runs ~15-20 minutes behind in practice (see 'quote_delay_minutes' in
+    exchange_hours.json). Any engine that reacts to a live quote the instant a market opens
+    (not just on a slower fixed-interval scan well after open) must gate on this, not just
+    is_exchange_open() — see accounts_engine.tickers_needing_refresh() and
+    intraday_bottom_engine.run_scan(). `include_premarket` is forwarded to is_exchange_open()
+    so a premarket-armed NYSE check isn't wrongly blocked by this gate (NYSE's own delay is 0
+    anyway, but the open-time math below still needs a consistent 'is this session live' input)."""
+    if not is_exchange_open(exchange, include_premarket=include_premarket):
+        return False
+    delay_minutes = EXCHANGE_HOURS.get(exchange, {}).get("quote_delay_minutes", 0)
+    if delay_minutes <= 0:
+        return True
+    open_time, _close_time = market_window_utc(exchange, include_premarket=include_premarket)
+    now = datetime.now(timezone.utc).time()
+    open_minutes = open_time.hour * 60 + open_time.minute
+    now_minutes = now.hour * 60 + now.minute
+    return (now_minutes - open_minutes) >= delay_minutes
 
 
 def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:

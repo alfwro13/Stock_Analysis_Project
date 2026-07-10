@@ -238,6 +238,7 @@ class TestMutualFundGuard:
         with patch.object(eng, "get_active_monitors", return_value=["0P00018XAR.L", "AAPL"]), \
              patch.object(eng, "_get_currency_map", return_value={}), \
              patch("intraday_bottom_engine.is_exchange_open", return_value=True), \
+             patch("intraday_bottom_engine.is_quote_settled", return_value=True), \
              patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
              patch("intraday_bottom_engine.yahoo_engine.get_intraday", return_value={}) as mock_intraday, \
              patch.object(eng, "analyze_ticker", return_value=None):
@@ -249,8 +250,39 @@ class TestMutualFundGuard:
         with patch.object(eng, "get_active_monitors", return_value=["0P00018XAR.L"]), \
              patch.object(eng, "_get_currency_map", return_value={}), \
              patch("intraday_bottom_engine.is_exchange_open", return_value=True), \
+             patch("intraday_bottom_engine.is_quote_settled", return_value=True), \
              patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
              patch("intraday_bottom_engine.yahoo_engine.get_intraday") as mock_intraday, \
              patch.object(eng, "analyze_ticker", return_value=None):
             eng.run_scan()
         mock_intraday.assert_not_called()
+
+
+class TestQuoteSettledGuard:
+    """Regression coverage: an armed LSE ticker must not be scanned the instant the market
+    opens, before Yahoo's delayed feed has caught up — same root cause as
+    accounts_engine.tickers_needing_refresh()'s settle gate."""
+
+    def test_run_scan_excludes_ticker_when_exchange_open_but_quote_not_settled(self):
+        eng = _make_engine()
+        with patch.object(eng, "get_active_monitors", return_value=["VWRP.L"]), \
+             patch.object(eng, "_get_currency_map", return_value={"VWRP.L": "GBP"}), \
+             patch("intraday_bottom_engine.is_exchange_open", return_value=True), \
+             patch("intraday_bottom_engine.is_quote_settled", return_value=False), \
+             patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value=set()), \
+             patch("intraday_bottom_engine.yahoo_engine.get_intraday") as mock_intraday:
+            result = eng.run_scan()
+        mock_intraday.assert_not_called()
+        assert result == []
+
+    def test_run_scan_includes_ticker_once_quote_settled(self):
+        eng = _make_engine()
+        with patch.object(eng, "get_active_monitors", return_value=["VWRP.L"]), \
+             patch.object(eng, "_get_currency_map", return_value={"VWRP.L": "GBP"}), \
+             patch("intraday_bottom_engine.is_exchange_open", return_value=True), \
+             patch("intraday_bottom_engine.is_quote_settled", return_value=True), \
+             patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value=set()), \
+             patch("intraday_bottom_engine.yahoo_engine.get_intraday", return_value={}) as mock_intraday, \
+             patch.object(eng, "analyze_ticker", return_value=None):
+            eng.run_scan()
+        mock_intraday.assert_called_once_with(["VWRP.L"], period="1d", interval="1m")

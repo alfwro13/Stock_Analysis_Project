@@ -695,14 +695,18 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     have moved since the market shut, but that reasoning doesn't apply to a genuinely missing
     row (a restart or maintenance-prune gap, or a newly-bought ticker) — without this bootstrap
     exception a ticker with no row stays permanently unrecoverable for the rest of a closure,
-    since normal polling would never trigger a fetch to create the first row. Gated once per
-    call rather than per-ticker via time_engine.ticker_exchange() — that call falls back to a
-    config read for any ticker with no recognised suffix/currency, which is cheap for one ticker
-    but adds up badly across every held ticker on every poll of the accounts-API endpoints; a
-    plain LSE-or-NYSE-open check is the same practical scope GET /api/system/market-status
-    already exposes, at a small, constant cost per call. Used by the HA-polled accounts
-    endpoints to trigger a real fetch when due, mirroring the same needs_refresh pattern
-    GET /api/market-pulse already uses."""
+    since normal polling would never trigger a fetch to create the first row.
+
+    An already-cached (non-missing) ticker is additionally gated on
+    market_pulse.is_quote_settled() for its own resolved exchange, not just is_exchange_open() —
+    Yahoo's free LSE feed runs ~15-20 minutes behind, so the instant LSE opens this would
+    otherwise trigger a live fetch of a not-yet-representative delayed quote, which then gets
+    re-fetched (and changes) on every subsequent poll until Yahoo's feed catches up, producing a
+    visibly wrong, self-correcting blip in every account gain figure derived from it right at
+    market open. A ticker excluded purely by this gate is left on its last cached price and
+    logged at debug level rather than acted on — see AGENTS.md's central-engine rule for
+    is_quote_settled(). Used by the HA-polled accounts endpoints to trigger a real fetch when
+    due, mirroring the same needs_refresh pattern GET /api/market-pulse already uses."""
     if not tickers:
         return []
     conn = None
@@ -715,6 +719,11 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
             tickers
         )
         cache_map = {r["ticker"]: r["last_updated"] for r in cursor.fetchall()}
+        cursor.execute(
+            f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})",
+            tickers
+        )
+        currency_map = {r["ticker"]: r["currency"] for r in cursor.fetchall()}
     except Exception as e:
         logger.error("Failed to check tickers needing refresh: %s", e)
         return []
@@ -727,7 +736,20 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
         return missing
 
     now = time.time()
-    return [t for t in tickers if now - cache_map.get(t, 0) > refresh_rate]
+    settled_cache: dict[str, bool] = {}
+    stale = []
+    for t in tickers:
+        if t in cache_map and now - cache_map[t] <= refresh_rate:
+            continue
+        if t in cache_map:
+            exchange = time_engine.ticker_exchange(t, currency_map.get(t, ""))
+            if exchange not in settled_cache:
+                settled_cache[exchange] = market_pulse.is_quote_settled(exchange)
+            if not settled_cache[exchange]:
+                logger.debug("Refresh skipped for %s — %s quote not yet settled since open.", t, exchange)
+                continue
+        stale.append(t)
+    return stale
 
 
 def _bucket_equity_by_currency(open_holdings: dict, price_lookup) -> tuple:
