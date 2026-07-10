@@ -23,8 +23,8 @@
 
 {# ── 30-day normalised performance ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
-    <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-daily-wrapper')">&#x26F6; Fullscreen</button>
+    <div class="chart-wrapper" id="ai-perf-daily-outer-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-daily-outer-wrapper', 'ai-perf-daily-wrapper')">&#x26F6; Fullscreen</button>
         <div id="ai-perf-daily-wrapper">
             {{ perf_daily_html | safe }}
         </div>
@@ -39,8 +39,8 @@
 {# ── Intraday normalised performance (hidden when market is closed) ── #}
 {% if perf_intraday_html %}
 <div class="sentiment-module module-purple sentiment-module--spaced">
-    <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-intraday-wrapper')">&#x26F6; Fullscreen</button>
+    <div class="chart-wrapper" id="ai-perf-intraday-outer-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-intraday-outer-wrapper', 'ai-perf-intraday-wrapper')">&#x26F6; Fullscreen</button>
         <div id="ai-perf-intraday-wrapper">
             {{ perf_intraday_html | safe }}
         </div>
@@ -55,8 +55,8 @@
 
 {# ── Pairwise correlation heatmap ── #}
 <div class="sentiment-module module-yellow sentiment-module--spaced">
-    <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-corr-wrapper')">&#x26F6; Fullscreen</button>
+    <div class="chart-wrapper" id="ai-corr-outer-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-corr-outer-wrapper', 'ai-corr-wrapper')">&#x26F6; Fullscreen</button>
         <div id="ai-corr-wrapper">
             {{ corr_html | safe }}
         </div>
@@ -71,15 +71,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-function toggleFullscreen(wrapperId) {
-    const el = document.getElementById(wrapperId);
-    if (!el) return;
-    if (!document.fullscreenElement) {
-        el.requestFullscreen().catch(() => {});
-    } else {
-        document.exitFullscreen();
-    }
-}
-</script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
+<script src="/static/js/ai_contagion.js?v={{ css_version }}"></script>
 {% endblock %}
