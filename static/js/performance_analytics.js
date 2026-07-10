@@ -152,45 +152,19 @@ var PT_CHART_WRAPPER_IDS = [
 ];
 
 // These charts are drawn via the JS API (Plotly.react), which normally auto-tracks its
-// container's width on its own — but relayout()ing height only (as toggleFullscreen used
-// to) freezes Plotly's internally-recorded width at whatever it was before the .is-fullscreen
-// class was toggled, so the fullscreen chart rendered at half the viewport width instead of
-// the full width. Always relayout width alongside height, measured fresh off the DOM.
-function _ptRelayoutChart(wrapperId, height) {
-    var wrapper = document.getElementById(wrapperId);
-    var plotEl = wrapper && wrapper.querySelector(".js-plotly-plot");
-    if (!plotEl || !window.Plotly || !height) return;
-    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height: height });
-    // A height-shrinking relayout doesn't reliably resize .plot-container/the outer
-    // div on its own — force both explicitly (see AGENTS.md rule 18).
-    plotEl.style.height = height + "px";
-    var container = plotEl.querySelector(".plot-container");
-    if (container) container.style.height = height + "px";
-}
+// container's width on its own — but relayout()ing height only freezes Plotly's internally-
+// recorded width at whatever it was before the .is-fullscreen class was toggled, so the
+// fullscreen chart rendered at half the viewport width instead of the full width. Always
+// relayout width alongside height (opts.forceWidth), measured fresh off the DOM.
+var _PT_CHART_OPTS = { forceWidth: true, getHeight: _ptChartHeight };
 
 function toggleFullscreen(wrapperId) {
-    var wrapper = document.getElementById(wrapperId);
-    if (!wrapper) return;
-    var isFullscreen = wrapper.classList.contains("is-fullscreen");
-    var btn = wrapper.querySelector(".fullscreen-btn");
-    if (isFullscreen) {
-        wrapper.classList.remove("is-fullscreen");
-        if (btn) btn.innerHTML = "&#9638; Fullscreen";
-        _ptRelayoutChart(wrapperId, _ptChartHeight());
-    } else {
-        wrapper.classList.add("is-fullscreen");
-        if (btn) btn.innerHTML = "&#10006; Exit Fullscreen";
-        _ptRelayoutChart(wrapperId, window.innerHeight - 120);
-    }
-    window.dispatchEvent(new Event("resize"));
+    ChartFullscreen.toggle(wrapperId, _PT_CHART_OPTS);
 }
 
 window.addEventListener("resize", function () {
     PT_CHART_WRAPPER_IDS.forEach(function (id) {
-        var wrapper = document.getElementById(id);
-        if (!wrapper) return;
-        var isFullscreen = wrapper.classList.contains("is-fullscreen");
-        _ptRelayoutChart(id, isFullscreen ? (window.innerHeight - 120) : _ptChartHeight());
+        ChartFullscreen.relayoutForCurrentState(id, _PT_CHART_OPTS);
     });
 });
 
