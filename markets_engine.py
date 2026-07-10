@@ -11,17 +11,14 @@ logger = logging.getLogger(__name__)
 
 _DYNAMIC_REGIONS = ("US", "Europe", "Asia")
 _STATIC_REGION_ORDER = ["Europe", "US", "Asia", "Commodities_FX"]
-_TIER_RANK = {"open": 0, "partial": 1, "pre": 2, "closed": 3}
+_TIER_RANK = {"open": 0, "partial": 1, "pre": 2, "post": 3, "closed": 4}
 
 
 def get_exchange_state(exchange: str) -> str:
-    """Tri-state open/pre/closed for one exchange, built on market_pulse.is_exchange_open()
-    (holiday-aware where a proxy ticker exists, weekday+hours heuristic otherwise)."""
-    if market_pulse.is_exchange_open(exchange, include_premarket=False):
-        return "open"
-    if market_pulse.is_exchange_open(exchange, include_premarket=True):
-        return "pre"
-    return "closed"
+    """4-state open/pre/post/closed for one exchange — see
+    market_pulse.get_exchange_session_state() (holiday-aware where a proxy ticker exists,
+    weekday+hours heuristic otherwise; 'post' only available for proxy-mapped exchanges)."""
+    return market_pulse.get_exchange_session_state(exchange)
 
 
 def get_region_exchanges(region: str) -> List[str]:
@@ -52,12 +49,13 @@ def _seconds_until_open(exchange: str, now_utc: datetime) -> float:
 
 
 def get_region_state(region: str) -> Dict[str, Any]:
-    """Aggregate open/partial/pre/closed state for a region plus a recency_seconds tie-break
-    value: seconds since the most-recently-opened constituent exchange opened (when any are
-    open), or seconds until the soonest constituent opens (when pre/closed). "open" requires
-    every constituent exchange to be open; "partial" covers the mixed case (e.g. Hong Kong still
-    open while Tokyo has closed for the day) so the region badge doesn't overstate how live the
-    section actually is."""
+    """Aggregate open/partial/pre/post/closed state for a region plus a recency_seconds
+    tie-break value: seconds since the most-recently-opened constituent exchange opened (when
+    any are open), or seconds until the soonest constituent opens (when pre/post/closed). "open"
+    requires every constituent exchange to be open; "partial" covers the mixed case (e.g. Hong
+    Kong still open while Tokyo has closed for the day) so the region badge doesn't overstate
+    how live the section actually is. "post" ranks below "pre" (see _TIER_RANK) since
+    after-hours trading is a lower-priority session than the pre-market one still to come."""
     exchanges = get_region_exchanges(region)
     now = datetime.now(timezone.utc)
     if not exchanges:
@@ -74,6 +72,11 @@ def get_region_state(region: str) -> Dict[str, Any]:
     if pre_exchanges:
         recency = min(_seconds_until_open(ex, now) for ex in pre_exchanges)
         return {"state": "pre", "recency_seconds": recency}
+
+    post_exchanges = [ex for ex, s in ex_states.items() if s == "post"]
+    if post_exchanges:
+        recency = min(_seconds_until_open(ex, now) for ex in post_exchanges)
+        return {"state": "post", "recency_seconds": recency}
 
     recency = min(_seconds_until_open(ex, now) for ex in exchanges)
     return {"state": "closed", "recency_seconds": recency}
@@ -138,6 +141,13 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
             ticker, display_name, is_future = resolve_tile(row)
             resolved.append((row, ticker, display_name, is_future))
             lookup_tickers.append(ticker)
+            # Also warm the *other* dual-instrument ticker (spot or future, whichever isn't
+            # resolved right now) so a consumer needing both simultaneously (e.g. independent
+            # spot + futures sensors in the Home Assistant integration) always has live data for
+            # both, not just whichever one this tile currently displays.
+            if row.get("future_ticker"):
+                lookup_tickers.append(row["ticker"])
+                lookup_tickers.append(row["future_ticker"])
         resolved_by_region[region] = resolved
 
     config_data = load_config()
@@ -154,10 +164,41 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
             # Own exchange, not the aggregated region state — a Hong Kong tile must read "open"
             # even while its region badge reads "Some Open" because Tokyo has already closed.
             market_state = get_exchange_state(row["exchange"]) if row.get("exchange") else "open"
+
+            dual_instrument = None
+            if row.get("future_ticker"):
+                spot_cached = cache_by_ticker.get(row["ticker"], {})
+                future_cached = cache_by_ticker.get(row["future_ticker"], {})
+                dual_instrument = {
+                    "spot": {
+                        "ticker": row["ticker"], "display_name": row["display_name"],
+                        "price": spot_cached.get("price", 0.0),
+                        "change_pts": spot_cached.get("change_pts", 0.0),
+                        "change_pct": spot_cached.get("change_pct", 0.0),
+                        "is_positive": spot_cached.get("is_positive", True),
+                        "is_active": not is_future,
+                    },
+                    "future": {
+                        "ticker": row["future_ticker"],
+                        "display_name": row.get("future_display_name") or row["display_name"],
+                        "price": future_cached.get("price", 0.0),
+                        "change_pts": future_cached.get("change_pts", 0.0),
+                        "change_pct": future_cached.get("change_pct", 0.0),
+                        "is_positive": future_cached.get("is_positive", True),
+                        "is_active": is_future,
+                    },
+                }
+
             tiles.append({
                 "ticker": ticker,
+                # Stable identity for consumers that must not churn when resolve_tile() swaps a
+                # dual-instrument index between its spot and future ticker across the trading
+                # day (e.g. ^GSPC <-> ES=F) — "ticker" above is whichever one is resolved right
+                # now, "registry_ticker" is always the registry row's own primary ticker.
+                "registry_ticker": row["ticker"],
                 "display_name": display_name,
                 "region": region,
+                "exchange": row.get("exchange"),
                 "is_future": is_future,
                 "price": cached.get("price", 0.0),
                 "currency": row["currency"],
@@ -174,6 +215,7 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
                 "stale_data": is_stale and market_state == "open",
                 "needs_refresh": cached.get("needs_refresh", True),
                 "sparkline": market_pulse.get_intraday_points(ticker),
+                "dual_instrument": dual_instrument,
             })
         regions_payload.append({
             "region": region,
@@ -186,10 +228,20 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
 
 def registry_lookup_tickers() -> List[str]:
     """Resolved (spot-or-future, per current session) ticker for every active registry row,
-    regardless of region order — used to warm market_pulse_cache for the whole Markets page
-    (e.g. from the Home Assistant refresh-now hook), not just whatever's in view right now."""
+    plus both the spot and future ticker for any row with a dual-instrument pairing, regardless
+    of region order — used to warm market_pulse_cache for the whole Markets page (e.g. from the
+    Home Assistant refresh-now hook), not just whatever's in view right now. Both tickers of a
+    dual-instrument pair are included (not just the resolved one) so consumers needing both
+    prices simultaneously — the Home Assistant integration's independent spot/futures sensors —
+    always have live data for the one not currently on display."""
     rows = get_ticker_registry(enabled_only=True)
-    return [resolve_tile(row)[0] for row in rows]
+    tickers: List[str] = []
+    for row in rows:
+        tickers.append(resolve_tile(row)[0])
+        if row.get("future_ticker"):
+            tickers.append(row["ticker"])
+            tickers.append(row["future_ticker"])
+    return tickers
 
 
 def select_pulse_tickers(dynamic: bool, desktop_count: int = 10, mobile_count: int = 8) -> Dict[str, List[str]]:

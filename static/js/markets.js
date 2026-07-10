@@ -18,6 +18,7 @@ function marketsStateBadgeHTML(state) {
         open: ['markets-state-open', 'Open'],
         partial: ['markets-state-partial', 'Some Open'],
         pre: ['markets-state-pre', 'Pre-Market'],
+        post: ['markets-state-post', 'Post-Market'],
         closed: ['markets-state-closed', 'Closed'],
     };
     const entry = map[state] || map.closed;

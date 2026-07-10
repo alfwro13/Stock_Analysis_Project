@@ -320,6 +320,7 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .markets-state-open { background-color: #00ffcc; color: #121212; }
 .markets-state-partial { background-color: #ff9900; color: #121212; }
 .markets-state-pre { background-color: #ffaa00; color: #121212; }
+.markets-state-post { background-color: #4da6ff; color: #121212; }
 .markets-state-closed { background-color: #555555; color: #e0e0e0; }
 .markets-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .macro-card.markets-closed-card { border-top-color: #555 !important; background: rgba(128, 128, 128, 0.1) !important; }

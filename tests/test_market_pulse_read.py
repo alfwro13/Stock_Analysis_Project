@@ -421,6 +421,57 @@ class TestIsExchangeOpen:
         _clear("^HSI")
 
 
+# ── get_exchange_session_state ──────────────────────────────────────────────────
+
+class TestGetExchangeSessionState:
+    def teardown_method(self):
+        _clear("^GSPC", "^FTSE", "^HSI")
+
+    def test_regular_state_is_open(self):
+        _set_market_state("^GSPC", "REGULAR")
+        assert _mp.get_exchange_session_state("NYSE") == "open"
+
+    def test_pre_state_is_pre_for_nyse(self):
+        _set_market_state("^GSPC", "PRE")
+        assert _mp.get_exchange_session_state("NYSE") == "pre"
+
+    def test_prepre_state_is_pre_for_nyse(self):
+        _set_market_state("^GSPC", "PREPRE")
+        assert _mp.get_exchange_session_state("NYSE") == "pre"
+
+    def test_pre_state_is_closed_for_exchange_without_premarket_window(self):
+        # Same reasoning as is_exchange_open(): Yahoo's "PRE" spans the whole gap since
+        # previous close for exchanges with no genuine extended-hours session (only NYSE
+        # has one modeled), so it must not read as "pre" there.
+        _set_market_state("^HSI", "PRE")
+        assert _mp.get_exchange_session_state("HKEX") == "closed"
+
+    def test_post_state_is_post(self):
+        _set_market_state("^GSPC", "POST")
+        assert _mp.get_exchange_session_state("NYSE") == "post"
+
+    def test_postpost_state_is_post(self):
+        _set_market_state("^FTSE", "POSTPOST")
+        assert _mp.get_exchange_session_state("LSE") == "post"
+
+    def test_closed_state_is_closed(self):
+        _set_market_state("^GSPC", "CLOSED")
+        assert _mp.get_exchange_session_state("NYSE") == "closed"
+
+    def test_falls_back_to_heuristic_when_no_cached_row(self):
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.get_exchange_session_state("NYSE") == "open"
+
+    def test_falls_back_to_pre_heuristic_when_cached_market_state_is_null(self):
+        _set_market_state("^GSPC", None)
+        with patch("market_pulse.is_trading_session", side_effect=lambda ex, include_premarket=False: include_premarket):
+            assert _mp.get_exchange_session_state("NYSE") == "pre"
+
+    def test_untracked_exchange_uses_heuristic_directly(self):
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.get_exchange_session_state("XETRA") == "open"
+
+
 # ── is_quote_settled ───────────────────────────────────────────────────────────
 
 class TestIsQuoteSettled:

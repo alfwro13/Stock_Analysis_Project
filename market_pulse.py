@@ -75,6 +75,7 @@ _MARKET_STATUS_PROXY: Dict[str, str] = {
 }
 _OPEN_MARKET_STATES = {"REGULAR"}
 _PRE_MARKET_STATES = {"PRE", "PREPRE"}
+_POST_MARKET_STATES = {"POST", "POSTPOST"}
 _SPARKLINE_MAX_POINTS = 60
 
 
@@ -132,6 +133,50 @@ def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
         return is_trading_session(exchange, include_premarket=honor_premarket)
     allowed_states = _OPEN_MARKET_STATES | _PRE_MARKET_STATES if honor_premarket else _OPEN_MARKET_STATES
     return row["market_state"] in allowed_states
+
+
+def get_exchange_session_state(exchange: str) -> str:
+    """4-state 'open'/'pre'/'post'/'closed' session status for one exchange, built on the same
+    cached Yahoo marketState as is_exchange_open() (see _MARKET_STATUS_PROXY) rather than a
+    second lookup — Yahoo already reports 'POST'/'POSTPOST' for after-hours trading on these 8
+    proxy-mapped exchanges, it just wasn't being surfaced past the open/pre/closed collapse
+    is_exchange_open() does for its boolean callers. Exchanges with no proxy ticker (most
+    non-US/UK/EU/Asia-majors) have no post-market concept in exchange_hours.json either, so they
+    fall back to the existing open/closed-only time_engine heuristic — same limitation
+    is_exchange_open() already has for those exchanges."""
+    proxy = _MARKET_STATUS_PROXY.get(exchange)
+    if proxy is None:
+        if is_trading_session(exchange):
+            return "open"
+        return "pre" if is_trading_session(exchange, include_premarket=True) else "closed"
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT market_state FROM market_pulse_cache WHERE ticker = ?", (proxy,))
+        row = cursor.fetchone()
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to read market_state for %s: %s", proxy, e)
+        row = None
+    finally:
+        if conn:
+            conn.close()
+
+    state = row["market_state"] if row and row["market_state"] is not None else None
+    if state is None:
+        if is_trading_session(exchange):
+            return "open"
+        return "pre" if is_trading_session(exchange, include_premarket=True) else "closed"
+
+    if state in _OPEN_MARKET_STATES:
+        return "open"
+    if state in _PRE_MARKET_STATES:
+        honor_premarket = "premarket_open" in EXCHANGE_HOURS.get(exchange, {})
+        return "pre" if honor_premarket else "closed"
+    if state in _POST_MARKET_STATES:
+        return "post"
+    return "closed"
 
 
 def is_quote_settled(exchange: str, include_premarket: bool = False) -> bool:
