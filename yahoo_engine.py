@@ -7,7 +7,8 @@ from typing import Optional
 import yfinance as yf
 import pandas as pd
 
-from tools.network_engine import yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset
+from tools.network_engine import yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset, suppress_yf_delisted_noise
+from notification_engine import notify
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,21 @@ _TTLS: dict[str, int] = {
 }
 
 
+_INTRADAY_GAP_ALERT_MINUTES = 30  # how long a ticker must be empty before it's "persistent", not a blip
+
+
 class YahooEngine:
     def __init__(self) -> None:
         self._cache: dict[str, _CacheEntry] = {}
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
+        # Central intraday-data-gap tracker (see _track_intraday_gap_misses/_hits): in-memory,
+        # not DB-backed — resets on restart, which is fine since a persisting gap re-detects and
+        # re-times itself within _INTRADAY_GAP_ALERT_MINUTES regardless.
+        self._intraday_gap_since: dict[str, float] = {}
+        self._intraday_gap_alerted: set[str] = set()
+        self._intraday_gap_lock = threading.Lock()
 
     def _ttl(self, data_type: str, interval: str = "") -> int:
         if data_type == "intraday":
@@ -163,6 +173,15 @@ class YahooEngine:
 
         if missing:
             try:
+                # A thinly-traded ticker can have zero prints yet today, so Yahoo's period=1d
+                # intraday endpoint legitimately returns nothing for it — not a fetch bug, and
+                # not something a wider period should paper over with stale multi-day-old data
+                # mislabeled as current (confirmed 2026-07-10: LCJP.L/SMGB.L had full daily-bar
+                # coverage and a live quote, only the tight 1d intraday window was empty). yfinance
+                # logs this as "possibly delisted", which is misleading for this case, so it's
+                # demoted to DEBUG here; _track_intraday_gap_misses/_hits below is the actual
+                # tracking + escalation mechanism (see class docstring-level comment there).
+                suppress_yf_delisted_noise(True)
                 with _yf_singleton_lock:
                     with yahoo_connection_boundary(f"Intraday {period}/{interval}") as session:
                         df_bulk = yf.download(
@@ -178,8 +197,77 @@ class YahooEngine:
                         result[t] = df
             except Exception:
                 logger.error("get_intraday failed for %s", missing, exc_info=True)
+            finally:
+                suppress_yf_delisted_noise(False)
+
+            gap_tickers = [t for t in missing if result.get(t) is None]
+            hit_tickers = [t for t in missing if result.get(t) is not None]
+            if gap_tickers:
+                self._track_intraday_gap_misses(gap_tickers)
+            if hit_tickers:
+                self._track_intraday_gap_hits(hit_tickers)
 
         return {t: df for t, df in result.items() if df is not None}
+
+    def _track_intraday_gap_misses(self, tickers: list[str]) -> None:
+        """Records the first time each ticker's intraday fetch came back empty; once a ticker has
+        been empty continuously for _INTRADAY_GAP_ALERT_MINUTES, fires one aggregated notification
+        covering every ticker that just crossed that threshold (not one notification per ticker —
+        the whole point of tracking this centrally in the engine, rather than per-caller, is to
+        catch e.g. the crash/moonshot scan, dip radar, and ETF predictor all hitting the same
+        Yahoo-side gap and only alert once)."""
+        now = time.time()
+        newly_persistent: list[tuple[str, float]] = []
+        with self._intraday_gap_lock:
+            for t in tickers:
+                since = self._intraday_gap_since.setdefault(t, now)
+                age_min = (now - since) / 60
+                if age_min >= _INTRADAY_GAP_ALERT_MINUTES and t not in self._intraday_gap_alerted:
+                    self._intraday_gap_alerted.add(t)
+                    newly_persistent.append((t, age_min))
+        if newly_persistent:
+            self._notify_intraday_gap(newly_persistent)
+
+    def _track_intraday_gap_hits(self, tickers: list[str]) -> None:
+        """Clears gap tracking for tickers whose fetch just succeeded; fires one aggregated
+        recovery notification for any that had previously crossed the alert threshold."""
+        recovered = []
+        with self._intraday_gap_lock:
+            for t in tickers:
+                self._intraday_gap_since.pop(t, None)
+                if t in self._intraday_gap_alerted:
+                    self._intraday_gap_alerted.discard(t)
+                    recovered.append(t)
+        if recovered:
+            self._notify_intraday_gap_recovered(recovered)
+
+    @staticmethod
+    def _notify_intraday_gap(newly_persistent: list[tuple[str, float]]) -> None:
+        lines = ", ".join(f"{t} ({int(age)}m)" for t, age in sorted(newly_persistent))
+        plural = "s" if len(newly_persistent) > 1 else ""
+        notify(
+            "yahoo_intraday_gap_alert", "Warning",
+            f"Yahoo Finance has returned no intraday data for {len(newly_persistent)} ticker{plural} "
+            f"for at least {_INTRADAY_GAP_ALERT_MINUTES} minutes: {lines}. Daily data and quotes may "
+            f"still be fine — this only affects intraday charts and intraday-based alerts for these tickers.",
+            level="warning",
+        )
+
+    @staticmethod
+    def _notify_intraday_gap_recovered(recovered: list[str]) -> None:
+        plural = "s" if len(recovered) > 1 else ""
+        notify(
+            "yahoo_intraday_gap_alert", "Info",
+            f"Yahoo Finance intraday data has resumed for {len(recovered)} ticker{plural}: {', '.join(sorted(recovered))}.",
+            level="info",
+        )
+
+    def is_intraday_gap_alerted(self, ticker: str) -> bool:
+        """True once a ticker's intraday gap has crossed _INTRADAY_GAP_ALERT_MINUTES and hasn't
+        recovered yet — used by the Stock Detail page to show a "data currently unavailable" note
+        instead of silently rendering a possibly stale cached chart."""
+        with self._intraday_gap_lock:
+            return ticker in self._intraday_gap_alerted
 
     def get_ticker_info(self, ticker: str) -> Optional[dict]:
         """Raw yfinance .info dict for one ticker, cached 6 h."""

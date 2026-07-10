@@ -215,6 +215,18 @@ class TestIntradayChartPlaceholders:
         html = self._get_chart_html_error(client)
         assert "unavailable" in html.lower()
 
+    def test_gap_notice_shown_when_ticker_persistently_gapped(self, client):
+        with patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=True):
+            html = self._get_chart_html(client)
+        assert "box-warning" in html
+        assert "no fresh intraday data" in html.lower()
+        assert "style=" not in html
+
+    def test_gap_notice_absent_when_not_gapped(self, client):
+        with patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=False):
+            html = self._get_chart_html(client)
+        assert "box-warning" not in html
+
 
 # ── 4. CSS class presence in styles.css ───────────────────────────────────────
 

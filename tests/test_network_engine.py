@@ -5,6 +5,7 @@ Covers the one-time IPv6 latch (trigger, dedup, restore) and session routing.
 No real network calls; curl_cffi Session is mocked throughout.
 """
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -229,6 +230,41 @@ class TestYahooConnectionBoundary:
             with ne.yahoo_connection_boundary("test"):
                 _logging.getLogger("yfinance").error("$FAKE.L: possibly delisted; no price data found")
         mock_inc.assert_called_once_with("ipv4", "success", "test", 1)
+
+
+class TestYfErrorNoiseFilter:
+    def setup_method(self):
+        ne._ensure_yf_error_filter()
+        ne._yf_logged_error_local.count = 0
+
+    def test_demotes_delisted_message_while_suppression_active(self):
+        record = logging.LogRecord("yfinance", logging.ERROR, __file__, 1, "$FAKE.L: possibly delisted; no price data found", None, None)
+        ne.suppress_yf_delisted_noise(True)
+        try:
+            keep = ne._YfErrorNoiseFilter().filter(record)
+        finally:
+            ne.suppress_yf_delisted_noise(False)
+        assert keep is True
+        assert record.levelno == logging.DEBUG
+        assert ne._yf_logged_error_local.count == 1
+
+    def test_leaves_delisted_message_at_error_when_suppression_inactive(self):
+        record = logging.LogRecord("yfinance", logging.ERROR, __file__, 1, "$FAKE.L: possibly delisted; no price data found", None, None)
+        ne.suppress_yf_delisted_noise(False)
+        keep = ne._YfErrorNoiseFilter().filter(record)
+        assert keep is True
+        assert record.levelno == logging.ERROR
+        assert ne._yf_logged_error_local.count == 1
+
+    def test_leaves_unrelated_error_message_untouched_even_when_suppressed(self):
+        record = logging.LogRecord("yfinance", logging.ERROR, __file__, 1, "HTTP Error 404: something else entirely", None, None)
+        ne.suppress_yf_delisted_noise(True)
+        try:
+            ne._YfErrorNoiseFilter().filter(record)
+        finally:
+            ne.suppress_yf_delisted_noise(False)
+        assert record.levelno == logging.ERROR
+        assert ne._yf_logged_error_local.count == 1
 
 
 # ── _select_interface ─────────────────────────────────────────────────────────

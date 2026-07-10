@@ -44,30 +44,50 @@ _last_call_log_prune = 0.0
 
 # yfinance often logs an ERROR (e.g. "possibly delisted", a 404 on an unsupported quoteSummary
 # module) and just returns an empty result instead of raising — invisible to the except-block-based
-# stat_status above. This handler counts those separately so the Yahoo API Usage panel can surface
+# stat_status above. This filter counts those separately so the Yahoo API Usage panel can surface
 # them without conflating them with actual request failures (429s/exceptions).
 _yf_logged_error_local = threading.local()
-_yf_error_handler_installed = False
-_yf_error_handler_lock = threading.Lock()
+_yf_noise_suppress_local = threading.local()
+_yf_error_filter_installed = False
+_yf_error_filter_lock = threading.Lock()
 
 
-class _YfErrorCountHandler(logging.Handler):
-    def emit(self, record: logging.LogRecord) -> None:
+class _YfErrorNoiseFilter(logging.Filter):
+    """Always counts ERROR-level yfinance log records (for the API Usage tracker), then — only
+    while suppress_yf_delisted_noise(True) is active on the calling thread — demotes yfinance's
+    "possibly delisted" line to DEBUG. That message is yfinance's generic wording for "empty
+    result", which is a known false alarm for a thinly-traded ticker's intraday fetch (see
+    yahoo_engine.get_intraday's gap-tracking); counting must happen before demotion so the stat
+    still reflects the real event even though it's no longer written to the log file."""
+    def filter(self, record: logging.LogRecord) -> bool:
         if record.levelno >= logging.ERROR:
             count = getattr(_yf_logged_error_local, "count", None)
             if count is not None:
                 _yf_logged_error_local.count = count + 1
+            if getattr(_yf_noise_suppress_local, "active", False) and "possibly delisted" in record.getMessage():
+                record.levelno = logging.DEBUG
+                record.levelname = "DEBUG"
+        return True
 
 
-def _ensure_yf_error_handler() -> None:
-    global _yf_error_handler_installed
-    if _yf_error_handler_installed:
+def _ensure_yf_error_filter() -> None:
+    global _yf_error_filter_installed
+    if _yf_error_filter_installed:
         return
-    with _yf_error_handler_lock:
-        if _yf_error_handler_installed:
+    with _yf_error_filter_lock:
+        if _yf_error_filter_installed:
             return
-        logging.getLogger("yfinance").addHandler(_YfErrorCountHandler())
-        _yf_error_handler_installed = True
+        logging.getLogger("yfinance").addFilter(_YfErrorNoiseFilter())
+        _yf_error_filter_installed = True
+
+
+def suppress_yf_delisted_noise(active: bool) -> None:
+    """Demotes yfinance's "possibly delisted" ERROR line to DEBUG for the current thread while
+    active=True. Scope this narrowly around a call site where an empty result is an expected,
+    already-handled condition (e.g. yahoo_engine.get_intraday's per-ticker gap tracking) — it
+    must not be left active around a call where "possibly delisted" could mean a real delisting
+    worth seeing in the log (e.g. the nightly historical/fundamentals fetch)."""
+    _yf_noise_suppress_local.active = active
 
 
 class _RateLimitedError(Exception):
@@ -420,7 +440,7 @@ def _increment_api_stat(interface: str, status: str, action_context: str = "", y
 @contextmanager
 def yahoo_connection_boundary(action_context: str):
     _maybe_restore_latch()
-    _ensure_yf_error_handler()
+    _ensure_yf_error_filter()
     config = load_config()
     ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
     use_ipv4 = config.get("YAHOO_USE_IPV4", True)

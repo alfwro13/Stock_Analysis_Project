@@ -320,6 +320,71 @@ class TestGetIntraday:
         assert "SPY" in result
         assert isinstance(result["QQQ"], pd.DataFrame)
 
+    @patch("yahoo_engine.suppress_yf_delisted_noise")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_suppresses_delisted_noise_around_fetch_and_always_clears_it(self, mock_ctx, mock_dl, mock_suppress):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["SPY"])
+
+        self.eng.get_intraday(["SPY"])
+        mock_suppress.assert_any_call(True)
+        assert mock_suppress.call_args_list[-1] == call(False)
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_empty_result_tracked_but_no_alert_before_threshold(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = pd.DataFrame()
+
+        result = self.eng.get_intraday(["LCJP.L"])
+        assert result == {}
+        assert "LCJP.L" in self.eng._intraday_gap_since
+        assert not self.eng.is_intraday_gap_alerted("LCJP.L")
+        mock_notify.assert_not_called()
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_persistent_gap_fires_one_aggregated_alert(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = pd.DataFrame()
+        # Simulate both tickers having been empty for longer than the alert threshold already.
+        self.eng._intraday_gap_since["LCJP.L"] = time.time() - 31 * 60
+        self.eng._intraday_gap_since["SMGB.L"] = time.time() - 45 * 60
+
+        self.eng.get_intraday(["LCJP.L", "SMGB.L"])
+
+        assert self.eng.is_intraday_gap_alerted("LCJP.L")
+        assert self.eng.is_intraday_gap_alerted("SMGB.L")
+        mock_notify.assert_called_once()
+        args, kwargs = mock_notify.call_args
+        assert args[0] == "yahoo_intraday_gap_alert"
+        assert "LCJP.L" in args[2] and "SMGB.L" in args[2]
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_recovery_clears_gap_and_fires_recovery_notice(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["LCJP.L"])
+        self.eng._intraday_gap_since["LCJP.L"] = time.time() - 31 * 60
+        self.eng._intraday_gap_alerted.add("LCJP.L")
+
+        self.eng.get_intraday(["LCJP.L"])
+
+        assert not self.eng.is_intraday_gap_alerted("LCJP.L")
+        assert "LCJP.L" not in self.eng._intraday_gap_since
+        mock_notify.assert_called_once()
+        args, kwargs = mock_notify.call_args
+        assert args[0] == "yahoo_intraday_gap_alert"
+        assert "LCJP.L" in args[2]
+
 
 # ─── TestSingleTickerMethods ──────────────────────────────────────────────────
 

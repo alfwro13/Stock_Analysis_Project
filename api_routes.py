@@ -658,6 +658,17 @@ async def intraday_monitor_summary():
         conn.close()
 
 
+def _intraday_gap_notice_html(ticker: str) -> str:
+    """Prepended to the intraday chart HTML when yahoo_engine has a persistent (>=30 min) empty-fetch
+    streak for this ticker — otherwise a stale cached chart renders with no indication it isn't live."""
+    if not yahoo_engine.is_intraday_gap_alerted(ticker):
+        return ""
+    return (
+        "<div class='box-warning mb-2'>⚠️ Yahoo Finance currently has no fresh intraday data for "
+        f"{ticker} — the chart below may be showing the last available data, not live.</div>"
+    )
+
+
 @api_router.get("/intraday-chart/{ticker}")
 async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     """Return freshly rendered intraday chart HTML for a given ticker."""
@@ -696,10 +707,10 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
     except FileNotFoundError:
         html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
-        return JSONResponse(content={"html": html})
+        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
     except Exception:
         html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
-        return JSONResponse(content={"html": html})
+        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
@@ -727,7 +738,7 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         market_tz=mkt_tz,
         data_delay_minutes=delay_min,
     )
-    return JSONResponse(content={"html": html})
+    return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
 
 
 @api_router.post("/intraday-chart/refresh")
@@ -776,10 +787,10 @@ async def refresh_intraday_chart(req: TickerRequest):
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
     except FileNotFoundError:
         html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
-        return JSONResponse(content={"html": html})
+        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
     except Exception:
         html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
-        return JSONResponse(content={"html": html})
+        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
 
     mkt_tz = _intraday_market_tz(ticker, currency)
     delay_min = _EXCHANGE_DELAYS.get(currency, 0)
@@ -810,7 +821,7 @@ async def refresh_intraday_chart(req: TickerRequest):
         market_tz=mkt_tz,
         data_delay_minutes=delay_min,
     )
-    return JSONResponse(content={"html": html})
+    return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
 
 def _active_log_path() -> Path | None:
     cfg = load_config()
