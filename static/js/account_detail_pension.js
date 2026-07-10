@@ -5,42 +5,21 @@ function _pensionChartHeight() {
     return window.innerWidth < 768 ? 400 : 350;
 }
 
-const _PENSION_CHART_SELECTORS = ['#pension-price-chart-wrapper', '#pension-value-chart-wrapper'];
+const _PENSION_CHART_WRAPPERS = ['pension-price-chart-outer-wrapper', 'pension-value-chart-outer-wrapper'];
 
 // These charts are embedded server-side (visuals.py's fig.to_html()) rather than created via
 // the Plotly JS API, and their `config.responsive` never actually reacts to container size
 // changes (rotation, fullscreen) — so width/height must be relayout'd explicitly on every resize.
-function _relayoutPensionChart(sel, height) {
-    const plotEl = document.querySelector(`${sel} .js-plotly-plot`);
-    if (!plotEl || !window.Plotly) return;
-    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height });
-}
+const _PENSION_CHART_OPTS = { getHeight: _pensionChartHeight, forceWidth: true };
 
 function toggleFullscreen(wrapperId) {
-    const wrapper = document.getElementById(wrapperId);
-    if (!wrapper) return;
-    const isFullscreen = wrapper.classList.contains('is-fullscreen');
-    const btn = wrapper.querySelector('.fullscreen-btn');
-    const sel = `#${wrapper.querySelector('[id$="-chart-wrapper"]').id}`;
-    if (isFullscreen) {
-        wrapper.classList.remove('is-fullscreen');
-        if (btn) btn.innerHTML = '&#9638; Fullscreen';
-        _relayoutPensionChart(sel, _pensionChartHeight());
-    } else {
-        wrapper.classList.add('is-fullscreen');
-        if (btn) btn.innerHTML = '&#10006; Exit Fullscreen';
-        _relayoutPensionChart(sel, window.innerHeight - 120);
-    }
+    ChartFullscreen.toggle(wrapperId, _PENSION_CHART_OPTS);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    _PENSION_CHART_SELECTORS.forEach(sel => _relayoutPensionChart(sel, _pensionChartHeight()));
+    _PENSION_CHART_WRAPPERS.forEach(id => ChartFullscreen.relayoutForCurrentState(id, _PENSION_CHART_OPTS));
     window.addEventListener('resize', () => {
-        _PENSION_CHART_SELECTORS.forEach(sel => {
-            const wrapper = document.querySelector(sel).closest('.chart-wrapper');
-            const isFullscreen = wrapper && wrapper.classList.contains('is-fullscreen');
-            _relayoutPensionChart(sel, isFullscreen ? window.innerHeight - 120 : _pensionChartHeight());
-        });
+        _PENSION_CHART_WRAPPERS.forEach(id => ChartFullscreen.relayoutForCurrentState(id, _PENSION_CHART_OPTS));
     });
 });
 

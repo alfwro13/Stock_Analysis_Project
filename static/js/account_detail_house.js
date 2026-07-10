@@ -8,34 +8,16 @@ function _houseChartHeight() {
 // This chart is embedded server-side (visuals.py's fig.to_html()) rather than created via
 // the Plotly JS API, and its `config.responsive` never actually reacts to container size
 // changes (rotation, fullscreen) — so width/height must be relayout'd explicitly on every resize.
-function _relayoutHouseChart(height) {
-    const plotEl = document.querySelector('#house-chart-wrapper .js-plotly-plot');
-    if (!plotEl || !window.Plotly) return;
-    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height });
-}
+const _HOUSE_CHART_OPTS = { getHeight: _houseChartHeight, forceWidth: true };
 
 function toggleFullscreen(wrapperId) {
-    const wrapper = document.getElementById(wrapperId);
-    if (!wrapper) return;
-    const isFullscreen = wrapper.classList.contains('is-fullscreen');
-    const btn = wrapper.querySelector('.fullscreen-btn');
-    if (isFullscreen) {
-        wrapper.classList.remove('is-fullscreen');
-        if (btn) btn.innerHTML = '&#9638; Fullscreen';
-        _relayoutHouseChart(_houseChartHeight());
-    } else {
-        wrapper.classList.add('is-fullscreen');
-        if (btn) btn.innerHTML = '&#10006; Exit Fullscreen';
-        _relayoutHouseChart(window.innerHeight - 120);
-    }
+    ChartFullscreen.toggle(wrapperId, _HOUSE_CHART_OPTS);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    _relayoutHouseChart(_houseChartHeight());
+    ChartFullscreen.relayoutForCurrentState('house-chart-outer-wrapper', _HOUSE_CHART_OPTS);
     window.addEventListener('resize', () => {
-        const wrapper = document.getElementById('house-chart-outer-wrapper');
-        const isFullscreen = wrapper && wrapper.classList.contains('is-fullscreen');
-        _relayoutHouseChart(isFullscreen ? window.innerHeight - 120 : _houseChartHeight());
+        ChartFullscreen.relayoutForCurrentState('house-chart-outer-wrapper', _HOUSE_CHART_OPTS);
     });
 });
 
