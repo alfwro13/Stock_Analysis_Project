@@ -54,7 +54,7 @@ window.ChartFullscreen = (function () {
             if (opts.onEnter) opts.onEnter(wrapper);
         }
         var height = resolveHeight(opts, plotEl, willBeFullscreen);
-        var extraProps = opts.getExtraProps ? opts.getExtraProps(willBeFullscreen) : null;
+        var extraProps = opts.getExtraProps ? opts.getExtraProps(willBeFullscreen, plotEl) : null;
         relayoutPlot(plotEl, height, !!opts.forceWidth, extraProps);
         window.dispatchEvent(new Event('resize'));
     }
@@ -69,7 +69,7 @@ window.ChartFullscreen = (function () {
         var plotEl = resolvePlotEl(innerWrapper);
         var isFullscreen = wrapper.classList.contains('is-fullscreen');
         var height = resolveHeight(opts, plotEl, isFullscreen);
-        var extraProps = opts.getExtraProps ? opts.getExtraProps(isFullscreen) : null;
+        var extraProps = opts.getExtraProps ? opts.getExtraProps(isFullscreen, plotEl) : null;
         relayoutPlot(plotEl, height, !!opts.forceWidth, extraProps);
     }
 

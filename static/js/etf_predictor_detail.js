@@ -122,63 +122,45 @@ function _etfDesktopMarginBottom(plotEl) {
     return plotEl._etfDesktopMarginB;
 }
 
-function _relayoutEtfChart(innerWrapperId, isFullscreen) {
-    const plotEl = document.querySelector('#' + innerWrapperId + ' .js-plotly-plot');
-    if (!plotEl || !window.Plotly) return;
-    const isMobile = window.innerWidth < 768;
-    const height = isFullscreen ? window.innerHeight - 120 : (isMobile ? 400 : _etfDesktopHeight(plotEl));
-    // Some charts here reserve a generous bottom margin (desktop-height-tuned, for a below-plot
-    // legend that can wrap several rows with up to ~20 constituents) — at the 400px mobile floor
-    // that fixed pixel margin becomes a much larger fraction of the chart, showing as dead space
-    // below the plotted data. Shrink it on the non-fullscreen mobile branch only; fullscreen and
-    // desktop still get the room the legend may need to wrap.
-    const desktopMarginB = _etfDesktopMarginBottom(plotEl);
-    const marginB = (isMobile && !isFullscreen) ? Math.min(80, desktopMarginB) : desktopMarginB;
-    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height, 'margin.b': marginB });
-    // Plotly.relayout() shrinks/grows the drawing surface (.svg-container) but does not reliably
-    // sync the size of the surrounding container elements — confirmed via DevTools on the
-    // contributions chart: both plotEl itself (.js-plotly-plot, the graph div relayout() is
-    // called on) and its child .plot-container.plotly independently kept a stale inline height
-    // from the original desktop render, leaving dead space below the correctly-resized SVG.
-    // Force both explicitly rather than trust Plotly to propagate the new size outward/inward.
-    plotEl.style.height = height + 'px';
-    const innerContainer = plotEl.querySelector('.plot-container');
-    if (innerContainer) innerContainer.style.height = height + 'px';
+// Some charts here reserve a generous bottom margin (desktop-height-tuned, for a below-plot
+// legend that can wrap several rows with up to ~20 constituents) — at the 400px mobile floor
+// that fixed pixel margin becomes a much larger fraction of the chart, showing as dead space
+// below the plotted data. Shrink it on the non-fullscreen mobile branch only; fullscreen and
+// desktop still get the room the legend may need to wrap.
+function _etfChartOpts() {
+    return {
+        forceWidth: true,
+        getHeight: function (plotEl) {
+            const isMobile = window.innerWidth < 768;
+            return isMobile ? 400 : _etfDesktopHeight(plotEl);
+        },
+        getExtraProps: function (isFullscreen, plotEl) {
+            const isMobile = window.innerWidth < 768;
+            const desktopMarginB = _etfDesktopMarginBottom(plotEl);
+            const marginB = (isMobile && !isFullscreen) ? Math.min(80, desktopMarginB) : desktopMarginB;
+            return { 'margin.b': marginB };
+        },
+    };
 }
 
 function toggleFullscreen(outerWrapperId, innerWrapperId) {
-    const wrapper = document.getElementById(outerWrapperId);
-    if (!wrapper) return;
-    const isFullscreen = wrapper.classList.contains('is-fullscreen');
-    const btn = wrapper.querySelector('.fullscreen-btn');
-    if (isFullscreen) {
-        wrapper.classList.remove('is-fullscreen');
-        if (btn) btn.innerHTML = '&#9638; Fullscreen';
-    } else {
-        wrapper.classList.add('is-fullscreen');
-        if (btn) btn.innerHTML = '&#10006; Exit Fullscreen';
-    }
-    _relayoutEtfChart(innerWrapperId, !isFullscreen);
+    ChartFullscreen.toggle(outerWrapperId, Object.assign({ innerWrapperId }, _etfChartOpts()));
 }
 
-function _relayoutEtfChartSafe(innerWrapperId, isFullscreen) {
+function _relayoutEtfChartSafe(outerWrapperId, innerWrapperId) {
     // One chart's relayout throwing (e.g. Plotly not yet finished initialising that div) must
     // not abort the forEach and silently skip relayout for the remaining charts on the page.
     try {
-        _relayoutEtfChart(innerWrapperId, isFullscreen);
+        ChartFullscreen.relayoutForCurrentState(outerWrapperId, Object.assign({ innerWrapperId }, _etfChartOpts()));
     } catch (e) {
         console.error('ETF chart relayout failed for', innerWrapperId, e);
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    _ETF_CHART_WRAPPERS.forEach(w => _relayoutEtfChartSafe(w.inner, false));
+    _ETF_CHART_WRAPPERS.forEach(w => _relayoutEtfChartSafe(w.outer, w.inner));
     window.addEventListener('resize', () => {
-        _ETF_CHART_WRAPPERS.forEach(w => {
-            const outer = document.getElementById(w.outer);
-            const isFullscreen = outer && outer.classList.contains('is-fullscreen');
-            _relayoutEtfChartSafe(w.inner, isFullscreen);
-        });
+        _ETF_CHART_WRAPPERS.forEach(w => _relayoutEtfChartSafe(w.outer, w.inner));
     });
 });
 
