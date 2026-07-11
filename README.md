@@ -160,6 +160,16 @@ url: http://192.168.1.71:8090/portfolio?embed=true
 aspect_ratio: 100%
 ```
 
+**Avoiding the login screen (Embed Token):** since a browser normally has no session cookie when loading an embedded iframe from a different origin (e.g. Home Assistant's own domain), a plain `?embed=true` URL will redirect to the login page inside the iframe. Generate an **Embed Token** from **Settings → User Account** and append it to the URL to skip login for that request:
+
+```
+type: iframe
+url: http://192.168.1.71:8090/portfolio?embed=true&embed_token=<your-embed-token>
+aspect_ratio: 100%
+```
+
+The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the general-purpose API Key described below. Generating a new embed token immediately invalidates the old one.
+
 ### **Native Home Assistant Integration (Sensors)**
 
 Beyond the iframe embed above, a dedicated companion project — [Stock Analysis Project](Stock_Analysis_Project_ha_integration/) — installs as a proper HACS custom component and pulls your portfolio totals (value, gain, FX-adjusted gain, Time-Weighted Return, dividends), per-account metrics, per-holding data (market value, gain, dividends, RSI, moving-average trend, earnings date, plus optional low/high price targets — settable from either Home Assistant or the app's own Position Targets box on the Stock Detail page), Pension/House account valuations, and market-wide macro/sentiment signals (Fear & Greed Index, Market Regime, US/UK market classification, US 10Y Treasury and UK 10Y Gilt yield threat level, US Treasury Auction Demand) straight into Home Assistant as native sensors, rather than an embedded webpage. It requires generating an API key from **Settings → User Account** in this app and pointing the integration at this instance's URL. It also automatically skips polling live-market-dependent data (portfolio/account/holdings) while both the UK and US markets are closed, so it isn't re-fetching unchanged prices overnight. See that project's own README for installation and entity details.

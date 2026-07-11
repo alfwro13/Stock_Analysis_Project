@@ -1292,6 +1292,22 @@ Changes the dashboard login password. Requires `X-Confirm-Token` header. The new
 
 ---
 
+### `POST /api/generate-embed-token`
+
+Generates a new Embed Token (32-byte hex) and persists it to `.env` as `EMBED_TOKEN`, invalidating the previous one. Requires `X-Confirm-Token` header.
+
+The embed token bypasses login only for `GET` requests carrying `?embed=true` on the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) — see the auth middleware in `main.py`. It grants no other access (no other page, no `/api/*` endpoint, no non-GET method), unlike the general-purpose `API_KEY`/`X-API-Key` mechanism.
+
+**Headers:** `X-Confirm-Token: <token>`
+
+**Response**
+
+```json
+{ "embed_token": "<64-char-hex>" }
+```
+
+---
+
 ### `POST /api/save-account-email`
 
 Saves the account email address used for password-reset notifications. Requires `X-Confirm-Token` header. Stored as `ACCOUNT_EMAIL` in `.env`.

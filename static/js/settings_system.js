@@ -82,7 +82,7 @@ function toggleApiKeyVisibility() {
 async function generateApiKey() {
     if (!confirm('Generate a new API key? The current key will stop working immediately.')) return;
     setStatus('ua-apikey-msg', 'info', 'Generating…');
-    const res = await fetch('/api/generate-api-key', { method: 'POST' });
+    const res = await fetch('/api/generate-api-key', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
         const input = document.getElementById('ua_api_key');
@@ -91,6 +91,33 @@ async function generateApiKey() {
         setStatus('ua-apikey-msg', 'success', 'New API key generated and saved.');
     } else {
         setStatus('ua-apikey-msg', 'error', data.detail || 'Failed to generate key.');
+    }
+}
+
+function toggleEmbedTokenVisibility() {
+    const input = document.getElementById('ua_embed_token');
+    const btn = event.currentTarget;
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈 Hide';
+    } else {
+        input.type = 'password';
+        btn.textContent = '👁 Show';
+    }
+}
+
+async function generateEmbedToken() {
+    if (!confirm('Generate a new embed token? The current token will stop working immediately.')) return;
+    setStatus('ua-embedtoken-msg', 'info', 'Generating…');
+    const res = await fetch('/api/generate-embed-token', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        const input = document.getElementById('ua_embed_token');
+        input.value = data.embed_token;
+        input.type = 'text';
+        setStatus('ua-embedtoken-msg', 'success', 'New embed token generated and saved.');
+    } else {
+        setStatus('ua-embedtoken-msg', 'error', data.detail || 'Failed to generate token.');
     }
 }
 

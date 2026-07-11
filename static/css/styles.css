@@ -585,6 +585,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .cell-sub { color: #aaa; font-size: 0.8em; }
 .ticker-link { color: #4da6ff; font-weight: bold; }
 .text-warning { color: #ffaa00; }
+.btn-nowrap { white-space: nowrap; }
 .text-muted-small { font-size: 12px; color: #bbb; }
 .inline-block { display: inline-block; }
 .no-decoration-abbr { text-decoration: none; }

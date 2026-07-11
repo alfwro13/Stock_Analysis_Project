@@ -14,7 +14,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette_csrf import CSRFMiddleware
 
 from config import PORT, SERVER_URL, load_config
-from auth import COOKIE_NAME, verify_session_token
+from auth import COOKIE_NAME, verify_session_token, verify_embed_token
 from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans
@@ -69,6 +69,10 @@ _EXEMPT_PREFIXES = ("/static/", "/assets/", "/rss/")
 # Paths accessible with a valid session even when password is still default
 _CHANGE_PW_PATHS = {"/change-password", "/api/change-password", "/admin-reset-password", "/api/admin-reset-password"}
 
+# Pages embeddable via ?embed=true (e.g. Home Assistant iframe) — the embed token only bypasses login here
+_EMBED_PATHS = {"/portfolio", "/watchlist"}
+_EMBED_PATH_PREFIXES = ("/stock/",)
+
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -91,6 +95,16 @@ async def auth_middleware(request: Request, call_next):
         if expected and secrets.compare_digest(api_key.encode(), expected.encode()):
             return await call_next(request)
         return JSONResponse({"detail": "Invalid API key"}, status_code=401)
+
+    # Embed token authentication — GET only, scoped to the embeddable pages, requires embed=true
+    is_embed_path = path in _EMBED_PATHS or any(path.startswith(p) for p in _EMBED_PATH_PREFIXES)
+    if (
+        request.method == "GET"
+        and is_embed_path
+        and request.query_params.get("embed", "").lower() == "true"
+        and verify_embed_token(request.query_params.get("embed_token", ""))
+    ):
+        return await call_next(request)
 
     # Session cookie authentication
     token = request.cookies.get(COOKIE_NAME, "")

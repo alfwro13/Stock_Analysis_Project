@@ -77,6 +77,11 @@ def verify_session_token(token: str) -> bool:
         return False
 
 
+def verify_embed_token(token: str) -> bool:
+    expected = os.environ.get("EMBED_TOKEN", "")
+    return bool(expected) and bool(token) and hmac.compare_digest(token.encode(), expected.encode())
+
+
 def _is_https() -> bool:
     from config import load_config
     return load_config().get("SERVER_URL", "").startswith("https://")

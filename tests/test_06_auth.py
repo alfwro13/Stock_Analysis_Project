@@ -36,7 +36,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from auth import COOKIE_NAME, create_session_token, hash_password, verify_password, verify_session_token
+from auth import COOKIE_NAME, create_session_token, hash_password, verify_embed_token, verify_password, verify_session_token
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -121,6 +121,29 @@ class TestTokenHelpers:
         token = create_session_token("alice", remember=True)
         monkeypatch.undo()
         assert verify_session_token(token) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1a. verify_embed_token  (pure unit tests, no HTTP)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEmbedTokenHelper:
+
+    def test_valid_token_matches(self, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "correct-token")
+        assert verify_embed_token("correct-token") is True
+
+    def test_wrong_token_fails(self, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "correct-token")
+        assert verify_embed_token("wrong-token") is False
+
+    def test_empty_token_fails(self, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "correct-token")
+        assert verify_embed_token("") is False
+
+    def test_unset_env_var_fails(self, monkeypatch):
+        monkeypatch.delenv("EMBED_TOKEN", raising=False)
+        assert verify_embed_token("anything") is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +255,42 @@ class TestAuthMiddleware:
         monkeypatch.delenv("API_KEY", raising=False)
         resp = raw_client.get("/api/notifications/latest", headers={"X-API-Key": "any-key"})
         assert resp.status_code == 401
+
+    # ── Embed-token path ───────────────────────────────────────────────────────
+
+    def test_valid_embed_token_grants_access_to_portfolio(self, raw_client, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "embed-secret")
+        resp = raw_client.get("/portfolio?embed=true&embed_token=embed-secret")
+        assert resp.status_code == 200
+
+    def test_valid_embed_token_grants_access_to_watchlist(self, raw_client, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "embed-secret")
+        resp = raw_client.get("/watchlist?embed=true&embed_token=embed-secret")
+        assert resp.status_code == 200
+
+    def test_embed_token_without_embed_flag_still_redirects(self, raw_client, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "embed-secret")
+        resp = raw_client.get("/portfolio?embed_token=embed-secret")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["location"]
+
+    def test_wrong_embed_token_still_redirects(self, raw_client, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "embed-secret")
+        resp = raw_client.get("/portfolio?embed=true&embed_token=wrong-token")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["location"]
+
+    def test_embed_token_does_not_bypass_non_embed_paths(self, raw_client, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "embed-secret")
+        resp = raw_client.get("/api/notifications/latest?embed=true&embed_token=embed-secret")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["location"]
+
+    def test_embed_token_does_not_bypass_non_get_methods(self, raw_client, monkeypatch):
+        monkeypatch.setenv("EMBED_TOKEN", "embed-secret")
+        resp = raw_client.post("/api/generate-embed-token?embed=true&embed_token=embed-secret")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["location"]
 
     # ── Session-cookie path ───────────────────────────────────────────────────
 
@@ -502,6 +561,25 @@ class TestConfirmToken:
         data = resp.json()
         assert "api_key" in data, f"Response must contain api_key; got {data}"
         assert len(data["api_key"]) == 64, "api_key must be 64 hex chars (32-byte token)"
+
+    def test_generate_embed_token_requires_confirm_token(self, client):
+        """POST /api/generate-embed-token must reject requests without X-Confirm-Token."""
+        resp = client.post("/api/generate-embed-token")
+        assert resp.status_code == 422, (
+            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
+        )
+
+    def test_generate_embed_token_invalid_token_returns_403(self, client):
+        resp = client.post("/api/generate-embed-token", headers={"X-Confirm-Token": "wrong"})
+        assert resp.status_code == 403
+
+    def test_generate_embed_token_valid_token_returns_200(self, client, confirm_token):
+        with patch("dotenv.set_key"), patch.dict(os.environ, {}, clear=False):
+            resp = client.post("/api/generate-embed-token", headers={"X-Confirm-Token": confirm_token})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "embed_token" in data, f"Response must contain embed_token; got {data}"
+        assert len(data["embed_token"]) == 64, "embed_token must be 64 hex chars (32-byte token)"
 
     def test_change_password_requires_confirm_token(self, client):
         """POST /api/change-password must reject requests without X-Confirm-Token."""

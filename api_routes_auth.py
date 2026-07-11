@@ -75,6 +75,16 @@ async def generate_api_key():
     return {"api_key": new_key}
 
 
+@auth_router.post("/generate-embed-token", dependencies=[Depends(require_confirm_token)])
+async def generate_embed_token():
+    import secrets as _secrets
+    from dotenv import set_key
+    new_token = _secrets.token_hex(32)
+    set_key(str(BASE_DIR / ".env"), "EMBED_TOKEN", new_token)
+    os.environ["EMBED_TOKEN"] = new_token
+    return {"embed_token": new_token}
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str

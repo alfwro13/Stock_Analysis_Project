@@ -113,6 +113,7 @@ async def settings_page(request: Request):
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "api_key": os.environ.get("API_KEY", ""),
+            "embed_token": os.environ.get("EMBED_TOKEN", ""),
             "confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", ""),
             "nextcloud_url": os.environ.get("NEXTCLOUD_URL", ""),
             "nextcloud_bot_username": os.environ.get("NEXTCLOUD_BOT_USERNAME", ""),

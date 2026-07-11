@@ -717,16 +717,35 @@
                     <label>Current API key</label>
                     <div class="flex-gap-10">
                         <input type="password" id="ua_api_key" class="form-control font-monospace flex-1" value="{{ api_key }}" readonly>
-                        <button type="button" class="btn btn-primary mt-0" style="white-space:nowrap;" onclick="toggleApiKeyVisibility()">👁 Show</button>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="toggleApiKeyVisibility()">👁 Show</button>
                     </div>
                     {% if not api_key %}
-                    <p class="settings-desc mt-5" style="color: var(--text-warning, #f59e0b);">
+                    <p class="settings-desc mt-5 text-warning">
                         No API key set — generate one below to enable script access.
                     </p>
                     {% endif %}
                 </div>
                 <button type="button" class="btn btn-primary mt-0" onclick="generateApiKey()">🔄 Generate New API Key</button>
                 <div id="ua-apikey-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Embed Token</h4>
+                <p class="settings-desc">Use this token to embed pages (e.g. a Home Assistant iframe card) without logging in: append <code>&amp;embed_token=&lt;token&gt;</code> to any <code>?embed=true</code> URL for <code>/portfolio</code>, <code>/watchlist</code>, or <code>/stock/&lt;ticker&gt;</code>. Generating a new token immediately invalidates the old one.</p>
+                <div class="form-group">
+                    <label>Current embed token</label>
+                    <div class="flex-gap-10">
+                        <input type="password" id="ua_embed_token" class="form-control font-monospace flex-1" value="{{ embed_token }}" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="toggleEmbedTokenVisibility()">👁 Show</button>
+                    </div>
+                    {% if not embed_token %}
+                    <p class="settings-desc mt-5 text-warning">
+                        No embed token set — generate one below to enable no-login embedding.
+                    </p>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="generateEmbedToken()">🔄 Generate New Embed Token</button>
+                <div id="ua-embedtoken-msg"></div>
             </div>
 
             <div class="settings-panel mt-20">
