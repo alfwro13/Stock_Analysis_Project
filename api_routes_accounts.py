@@ -631,7 +631,7 @@ async def api_list_watchlist_items(account_id: int):
 
 @accounts_router.post("/accounts/{account_id}/watchlist-items")
 @limiter.limit("30/minute")
-async def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistItemBody):
+async def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistItemBody, background_tasks: BackgroundTasks):
     try:
         acc, error = _require_watchlist_account(account_id)
         if error:
@@ -645,6 +645,9 @@ async def api_add_watchlist_item(request: Request, account_id: int, body: Watchl
         )
         if item_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add ticker to watchlist."})
+        if not _ticker_known(ticker):
+            background_tasks.add_task(update_single_profile, ticker)
+            background_tasks.add_task(fetch_and_save_single_ticker, ticker)
         return JSONResponse(content={"status": "success", "id": item_id})
     except Exception as e:
         logger.error("api_add_watchlist_item failed for account %s: %s", account_id, e)

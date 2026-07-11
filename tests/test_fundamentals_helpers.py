@@ -23,6 +23,11 @@ from fundamentals_helpers import (
     calculate_beneish_m_score,
     compute_quality_grade,
     get_earnings_days,
+    is_quality_compounder,
+    is_quality_on_sale,
+    is_garp_tenbagger,
+    is_mean_reversion_setup,
+    is_dividend_harvest_candidate,
 )
 
 
@@ -421,29 +426,130 @@ class TestGetEarningsDays:
 # ── compute_quality_grade ────────────────────────────────────────────────────
 
 class TestComputeQualityGrade:
+    """roe is a Yahoo-style fraction (0.20 = 20%); debt_to_equity is Yahoo's own percentage-like
+    scale (debtToEquity≈30 means 30% D/E) — matches the units actually stored in stock_signals
+    by universe_fundamentals_engine.py/quant_signals.py, not an arbitrary ratio."""
+
     def _row(self, roe=None, debt=None, pe=None, peg=None):
         return {'roe': roe, 'debt_to_equity': debt, 'trailing_pe': pe, 'peg_ratio': peg}
 
     def test_grade_a_full(self):
-        assert compute_quality_grade(self._row(roe=20, debt=0.3, pe=20)) == 'A'
+        assert compute_quality_grade(self._row(roe=0.20, debt=30, pe=20)) == 'A'
 
     def test_grade_a_via_peg(self):
-        assert compute_quality_grade(self._row(roe=20, debt=0.3, peg=1.2)) == 'A'
+        assert compute_quality_grade(self._row(roe=0.20, debt=30, peg=1.2)) == 'A'
 
     def test_grade_b(self):
-        assert compute_quality_grade(self._row(roe=12, debt=0.8, pe=30)) == 'B'
+        assert compute_quality_grade(self._row(roe=0.12, debt=80, pe=30)) == 'B'
 
     def test_grade_c_no_data(self):
         assert compute_quality_grade(self._row()) == 'C'
 
     def test_grade_c_low_roe(self):
-        assert compute_quality_grade(self._row(roe=5, debt=0.5, pe=40)) == 'C'
+        assert compute_quality_grade(self._row(roe=0.05, debt=50, pe=40)) == 'C'
 
     def test_grade_d_negative_roe(self):
-        assert compute_quality_grade(self._row(roe=-5, debt=0.3, pe=15)) == 'D'
+        assert compute_quality_grade(self._row(roe=-0.05, debt=30, pe=15)) == 'D'
 
     def test_grade_d_high_debt(self):
-        assert compute_quality_grade(self._row(roe=10, debt=2.5, pe=20)) == 'D'
+        assert compute_quality_grade(self._row(roe=0.10, debt=250, pe=20)) == 'D'
 
     def test_d_overrides_other_good_metrics(self):
-        assert compute_quality_grade(self._row(roe=-1, debt=0.2, pe=10)) == 'D'
+        assert compute_quality_grade(self._row(roe=-0.01, debt=20, pe=10)) == 'D'
+
+
+# ── Report-screen predicates (mirror reports_engine.py thresholds) ───────────
+
+class TestIsQualityCompounder:
+    def _row(self, **overrides):
+        row = {
+            'roe': 0.20, 'debt_to_equity': 50, 'profit_margin': 0.15,
+            'revenue_growth': 0.10, 'current_ratio': 2.0, 'trailing_pe': 20, 'composite_score': 70,
+        }
+        row.update(overrides)
+        return row
+
+    def test_matches_all_thresholds(self):
+        assert is_quality_compounder(self._row()) is True
+
+    def test_fails_low_roe(self):
+        assert is_quality_compounder(self._row(roe=0.05)) is False
+
+    def test_fails_pe_out_of_band(self):
+        assert is_quality_compounder(self._row(trailing_pe=50)) is False
+
+    def test_missing_field_is_false(self):
+        assert is_quality_compounder(self._row(composite_score=None)) is False
+
+
+class TestIsQualityOnSale:
+    def _row(self, **overrides):
+        row = {
+            'close_price': 100, 'fifty_two_week_low': 95, 'roe': 0.12,
+            'debt_to_equity': 50, 'profit_margin': 0.08, 'trailing_pe': 15, 'composite_score': 55,
+        }
+        row.update(overrides)
+        return row
+
+    def test_matches_all_thresholds(self):
+        assert is_quality_on_sale(self._row()) is True
+
+    def test_fails_too_far_above_low(self):
+        assert is_quality_on_sale(self._row(close_price=130)) is False
+
+    def test_fails_high_debt(self):
+        assert is_quality_on_sale(self._row(debt_to_equity=200)) is False
+
+    def test_null_debt_is_allowed(self):
+        assert is_quality_on_sale(self._row(debt_to_equity=None)) is True
+
+
+class TestIsGarpTenbagger:
+    def _row(self, **overrides):
+        row = {'peter_lynch_peg': 0.8, 'revenue_growth': 0.20, 'roe': 0.15, 'forward_pe': 25}
+        row.update(overrides)
+        return row
+
+    def test_matches_all_thresholds(self):
+        assert is_garp_tenbagger(self._row(), market_cap=1_000_000_000) is True
+
+    def test_fails_small_cap(self):
+        assert is_garp_tenbagger(self._row(), market_cap=100_000_000) is False
+
+    def test_fails_high_peg(self):
+        assert is_garp_tenbagger(self._row(peter_lynch_peg=1.5), market_cap=1_000_000_000) is False
+
+    def test_no_market_cap_is_false(self):
+        assert is_garp_tenbagger(self._row(), market_cap=None) is False
+
+
+class TestIsMeanReversionSetup:
+    def test_matches_oversold_uptrend(self):
+        assert is_mean_reversion_setup({'close_price': 110, 'sma_200': 100, 'rsi_14': 25}) is True
+
+    def test_fails_below_sma(self):
+        assert is_mean_reversion_setup({'close_price': 90, 'sma_200': 100, 'rsi_14': 25}) is False
+
+    def test_fails_rsi_above_threshold(self):
+        assert is_mean_reversion_setup({'close_price': 110, 'sma_200': 100, 'rsi_14': 45}) is False
+
+    def test_custom_max_rsi(self):
+        assert is_mean_reversion_setup({'close_price': 110, 'sma_200': 100, 'rsi_14': 35}, max_rsi=40) is True
+
+
+class TestIsDividendHarvestCandidate:
+    def test_matches_thresholds(self):
+        row = {'dividend_yield': 0.03, 'composite_score': 60, 'ex_dividend_date': '2026-08-01'}
+        assert is_dividend_harvest_candidate(row) is True
+
+    def test_fails_low_yield(self):
+        row = {'dividend_yield': 0.01, 'composite_score': 60, 'ex_dividend_date': '2026-08-01'}
+        assert is_dividend_harvest_candidate(row) is False
+
+    def test_fails_unknown_ex_div_date(self):
+        row = {'dividend_yield': 0.03, 'composite_score': 60, 'ex_dividend_date': 'Unknown'}
+        assert is_dividend_harvest_candidate(row) is False
+
+    def test_custom_thresholds(self):
+        row = {'dividend_yield': 0.025, 'composite_score': 55, 'ex_dividend_date': '2026-08-01'}
+        assert is_dividend_harvest_candidate(row, min_yield=0.02, min_score=55) is True

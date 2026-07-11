@@ -944,9 +944,13 @@ def test_watchlist_items_add_list_and_bulk_delete(client):
     import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
-    with patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
-        "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
-    }):
+    with (
+        patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+            "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+        }),
+        patch("api_routes_accounts.update_single_profile"),
+        patch("api_routes_accounts.fetch_and_save_single_ticker"),
+    ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "AAPL"})
     assert resp.status_code == 200
     item_id = _json(resp)["id"]
@@ -972,9 +976,13 @@ def test_watchlist_item_readd_is_idempotent(client):
     import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
-    with patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
-        "company_name": "Microsoft Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
-    }):
+    with (
+        patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+            "company_name": "Microsoft Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+        }),
+        patch("api_routes_accounts.update_single_profile"),
+        patch("api_routes_accounts.fetch_and_save_single_ticker"),
+    ):
         first = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
         second = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
     assert first["id"] == second["id"]
@@ -993,6 +1001,29 @@ def test_watchlist_items_endpoints_reject_non_watchlist_account(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_add_watchlist_item_unknown_ticker_triggers_yahoo_fetch(client):
+    """A ticker with no existing asset_profiles row must get an immediate profile + price-history
+    fetch queued when added via the Accounts page, matching the Buy-transaction behaviour."""
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+
+    with (
+        patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+            "company_name": "Zzz Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+        }),
+        patch("api_routes_accounts.update_single_profile") as mock_profile,
+        patch("api_routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+    ):
+        resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "ZZZNOTREAL4"})
+    assert resp.status_code == 200
+    mock_profile.assert_called_once_with("ZZZNOTREAL4")
+    mock_fetch.assert_called_once_with("ZZZNOTREAL4")
+
+    item_id = _json(resp)["id"]
+    _db.delete_watchlist_items(wl_id, [item_id])
 
 
 def _mock_html_resp(text: str):

@@ -2,6 +2,10 @@
 
 {% block title %}Quantamental - Watchlist{% endblock %}
 
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
 {% block content %}
 {% if not embed %}
 <h1 class="mb-3">Watchlist Signals</h1>
@@ -10,12 +14,15 @@
     window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_WATCHLIST %}true{% else %}false{% endif %};
     window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
 </script>
-{% set show_indexes = True %}
-{% include 'macro_cards.html' %}
-{% endif %}
 
-{% if macro_regime %}
-    {% include 'partials/risk_summary.html' %}
+<div class="sentiment-widgets">
+    <div class="sentiment-widget">
+        <div id="sector-donut-chart"></div>
+    </div>
+    <div class="sentiment-widget">
+        <div id="score-rsi-scatter-chart"></div>
+    </div>
+</div>
 {% endif %}
 
 <div class="row g-2 mb-3 align-items-center">
@@ -66,10 +73,13 @@
             <option value="0">Below 40 (Weak)</option>
         </select>
     </div>
-    <div class="col-12 col-md-auto ms-md-auto">
-        <a href="/score-history?filter=watchlist&ref=/watchlist" class="btn btn-outline-info w-100">&#128200; Score History</a>
+    <div class="col-12 col-md-auto ms-md-auto xray-link-container d-none d-md-flex">
+        <a href="#" id="heatmap-link" class="xray-link-btn" onclick="toggleHeatmap(); return false;">&#9638; Heatmap</a>
+        <a href="/score-history?filter=watchlist&ref=/watchlist" class="xray-link-btn ms-2">&#128200; Score History</a>
     </div>
 </div>
+
+<div id="heatmap-panel" class="heatmap-panel"></div>
 
 <table id="dataTable" class="table table-hover w-100">
     <thead>
@@ -91,13 +101,17 @@
             <th>Sentiment</th>
             <th>Earnings</th>
             <th>Score</th>
+            <th><abbr title="Piotroski F-Score (0-9): count of accounting-quality tests passed. Below 4 signals financial distress.">Piotroski</abbr></th>
+            <th><abbr title="Altman Z-Score: bankruptcy-risk model. Below 1.81 signals distress risk.">Altman Z</abbr></th>
+            <th><abbr title="Beneish M-Score: earnings-manipulation likelihood. Above -1.78 signals possible manipulation.">Beneish M</abbr></th>
             <th>Setups & Tags</th>
             <th>Signal</th>
         </tr>
     </thead>
     <tbody>
         {% for item in watchlist %}
-        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+        {% set cp = cached_pulse.get(item.ticker) %}
+        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ cp.change_pct|float if cp and cp.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
             <td data-sort="{{ item.ticker }}" class="num-cell">
                 <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% if embed_token %}&embed_token={{ embed_token }}{% endif %}{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 {% if freetrade_only and not item.is_freetrade %}
@@ -108,7 +122,6 @@
                 {{ item.company_name }}
             </td>
 
-            {% set cp = cached_pulse.get(item.ticker) %}
             <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
                 <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                     {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
@@ -197,7 +210,52 @@
 
             <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
             <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
+            <td data-sort="{{ item.piotroski_f_score if item.piotroski_f_score is not none else -999 }}" class="num-cell">
+                {% if item.piotroski_f_score is not none %}
+                    <span class="{{ 'metric-poor' if item.piotroski_f_score < 4 else 'metric-excellent' }}">{{ item.piotroski_f_score|int }}</span>
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.altman_z_score if item.altman_z_score is not none else -999 }}" class="num-cell">
+                {% if item.altman_z_score is not none %}
+                    <span class="{{ 'metric-poor' if item.altman_z_score < 1.81 else 'metric-excellent' }}">{{ "{:,.2f}".format(item.altman_z_score) }}</span>
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.beneish_m_score if item.beneish_m_score is not none else -999 }}" class="num-cell">
+                {% if item.beneish_m_score is not none %}
+                    <span class="{{ 'metric-poor' if item.beneish_m_score > -1.78 else 'metric-excellent' }}">{{ "{:,.2f}".format(item.beneish_m_score) }}</span>
+                {% else %}N/A{% endif %}
+            </td>
             <td class="max-w-150">
+                <div class="inline-block">
+                    <abbr title="Quality Grade: composite ROE/debt/PE/PEG grade (A=high-quality compounder, D=loss-making or over-leveraged)." class="no-decoration-abbr">
+                        <span class="setup-tag quality-grade-{{ item.quality_grade | lower }}">Grade {{ item.quality_grade }}</span>
+                    </abbr>
+                </div>
+
+                {% if item.trap_phase and item.trap_phase != 'Neutral' %}
+                    <div class="inline-block">
+                        <abbr title="Market Trap & Recovery Monitor phase — see the /trap-monitor tool for details." class="no-decoration-abbr">
+                            <span class="setup-tag">{{ item.trap_phase }}</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
+                {% if item.bubble_flag %}
+                    <div class="inline-block">
+                        <abbr title="Bubble Radar flag — see the /bubble-radar tool for the full valuation-euphoria breakdown." class="no-decoration-abbr">
+                            <span class="setup-tag">🫧 {{ item.bubble_flag }}</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
+                {% for tag in item.report_tags %}
+                    <div class="inline-block">
+                        <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
+                            <span class="setup-tag">{{ tag.name }}</span>
+                        </abbr>
+                    </div>
+                {% endfor %}
+
                 {% for tag in item.setup_tags_list %}
                     <div class="inline-block">
                         <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
@@ -228,6 +286,25 @@
         {% endfor %}
     </tbody>
 </table>
+
+<div class="modal fade" id="addTickerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Ticker to Watchlist</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+            <label for="wl-add-search">Company Name or Ticker</label>
+            <input type="text" id="wl-add-search" placeholder="e.g. Apple or AAPL" autocomplete="off">
+        </div>
+        <div id="wl-add-results"></div>
+        <div id="wl-add-status" class="status-msg-sm"></div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -237,5 +314,9 @@
     window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
 </script>
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
+<script src="/static/js/heatmap_treemap.js?v={{ css_version }}"></script>
+<script src="/static/js/watchlist_heatmap.js?v={{ css_version }}"></script>
 <script src="/static/js/watchlist.js?v={{ css_version }}"></script>
+<script src="/static/js/watchlist_add_ticker.js?v={{ css_version }}"></script>
+<script src="/static/js/watchlist_charts.js?v={{ css_version }}"></script>
 {% endblock %}

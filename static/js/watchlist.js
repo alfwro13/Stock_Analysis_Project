@@ -41,6 +41,15 @@ $(document).ready(function () {
             { responsivePriority: 4, targets: 16 }     // Score
         ]
     });
+    window._watchlistTable = table;
+
+    try { if (localStorage.getItem('watchlist_heatmap_active')) _wlEnterHeatmapMode(); } catch (e) {}
+
+    $('#dataTable tbody').on('click', 'tr:not(.child)', function (e) {
+        if ($(e.target).closest('a').length) return;
+        if ($(e.target).closest('.dtr-control').length) return;
+        $(this).find('.dtr-control').trigger('click');
+    });
 
     $('#customSearchInput').on('keyup', function () {
         table.search(this.value).draw();
@@ -48,22 +57,22 @@ $(document).ready(function () {
 
     $('#signalFilter').on('change', function () {
         var val = $(this).val();
-        if (val === 'ALL') { table.column(18).search('').draw(); }
-        else { table.column(18).search('^' + val + '$', true, false).draw(); }
+        if (val === 'ALL') { table.column(21).search('').draw(); }
+        else { table.column(21).search('^' + val + '$', true, false).draw(); }
     });
 
     $('#tagFilter').on('change', function () {
         $('#candleFilter').val('ALL');
         var val = $(this).val();
-        if (val === 'ALL') { table.column(17).search('').draw(); }
-        else { table.column(17).search(val).draw(); }
+        if (val === 'ALL') { table.column(20).search('').draw(); }
+        else { table.column(20).search(val).draw(); }
     });
 
     $('#candleFilter').on('change', function () {
         $('#tagFilter').val('ALL');
         var val = $(this).val();
-        if (val === 'ALL') { table.column(17).search('').draw(); }
-        else { table.column(17).search(val, false, false).draw(); }
+        if (val === 'ALL') { table.column(20).search('').draw(); }
+        else { table.column(20).search(val, false, false).draw(); }
     });
 
     var scoreMin = null, scoreMax = null;

@@ -192,7 +192,7 @@ Authenticates with Ghostfolio and discovers all available portfolio accounts. Sa
 
 ### `POST /api/watchlist/add`
 
-Adds a ticker to the native Watchlist account (the star toggle on `/stock/{ticker}` calls this). Resolves company name/currency/quote type via Yahoo and exchange via `time_engine.ticker_exchange()` before inserting into `watchlist_items`. Re-adding an already-watched ticker is a no-op.
+Adds a ticker to the native Watchlist account (the star toggle on `/stock/{ticker}` calls this, as does the "+ Add Ticker" button on `/watchlist` itself). Resolves company name/currency/quote type via Yahoo and exchange via `time_engine.ticker_exchange()` before inserting into `watchlist_items`. Re-adding an already-watched ticker is a no-op. If the ticker has no existing `asset_profiles` row, also queues a background profile update (`profile_engine.update_single_profile`) and price-history fetch (`data_engine.fetch_and_save_single_ticker`) so it doesn't sit unpriced until the next nightly scan.
 
 **Request body**
 
@@ -275,7 +275,7 @@ Lists every ticker on the given Watchlist account. 400 if `account_id` is not a 
 
 ### `POST /api/accounts/{account_id}/watchlist-items`
 
-Adds a ticker to the given Watchlist account via the "+ Add Ticker" modal. Resolves metadata server-side the same way `/api/watchlist/add` does.
+Adds a ticker to the given Watchlist account via the "+ Add Ticker" modal. Resolves metadata server-side the same way `/api/watchlist/add` does, including the same background Yahoo profile/price-history fetch for a previously-unknown ticker.
 
 **Request body**
 

@@ -24,6 +24,14 @@ import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
 from utils import normalize_ticker, ignored_tickers_set
+from fundamentals_helpers import (
+    compute_quality_grade,
+    is_quality_compounder,
+    is_quality_on_sale,
+    is_garp_tenbagger,
+    is_mean_reversion_setup,
+    is_dividend_harvest_candidate,
+)
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -599,7 +607,12 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                    q.close_price as quant_close_price,
                    q.vp_entry_zone,
                    q.vp_exit_zone,
+                   q.sma_200,
                    m.is_freetrade,
+                   tmeta.market_cap,
+                   trap.phase as trap_phase,
+                   (SELECT flag FROM bubble_radar_metrics
+                    WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -613,12 +626,10 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             LEFT JOIN market_universe m ON s.ticker = m.ticker
             LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
+            LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
+            LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
         """)
         db_rows = cursor.fetchall()
-
-        cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-        macro_row = cursor.fetchone()
-        macro_regime = dict(macro_row) if macro_row else None
 
         cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
         global_update_val = cursor.fetchone()['global_updated']
@@ -644,6 +655,24 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                     row_dict['setup_tags_list'] = []
             else:
                 row_dict['setup_tags_list'] = []
+
+            row_dict['quality_grade'] = compute_quality_grade(row_dict)
+
+            screen_row = dict(row_dict)
+            screen_row['close_price'] = row_dict.get('quant_close_price')
+            report_tags = []
+            if is_quality_compounder(screen_row):
+                report_tags.append({'name': 'Quality Compounder', 'tooltip': 'Meets the Market Reports Quality Compounders screen: ROE>15%, low debt, steady growth, reasonable PE.'})
+            if is_quality_on_sale(screen_row):
+                report_tags.append({'name': 'Quality on Sale', 'tooltip': 'Meets the Market Reports Quality on Sale screen: near its 52-week low despite solid fundamentals.'})
+            if is_garp_tenbagger(screen_row, row_dict.get('market_cap')):
+                report_tags.append({'name': 'GARP Tenbagger', 'tooltip': 'Meets the Market Reports GARP Tenbaggers screen: low PEG with strong growth (Peter Lynch style).'})
+            if is_mean_reversion_setup(screen_row):
+                report_tags.append({'name': 'Mean Reversion Setup', 'tooltip': 'Meets the Market Reports Mean Reversion screen: oversold RSI within a longer-term uptrend.'})
+            if is_dividend_harvest_candidate(screen_row):
+                report_tags.append({'name': 'Dividend Harvest', 'tooltip': 'Meets the Market Reports Dividend Harvest screen: solid yield with a healthy composite score.'})
+            row_dict['report_tags'] = report_tags
+
             watchlist_data.append(row_dict)
 
     watchlist_data.sort(key=lambda x: x['ticker'])
@@ -662,7 +691,6 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "unread_count": get_unread_count(),
             "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
-            "macro_regime": macro_regime,
             "freetrade_only": freetrade_only,
             "position_sizing": position_sizing_context
         }

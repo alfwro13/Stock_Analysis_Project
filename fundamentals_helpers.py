@@ -273,23 +273,28 @@ def calculate_beneish_m_score(bs, fin, cf) -> Optional[float]:
 
 
 def compute_quality_grade(row: dict) -> str:
-    """A/B/C/D grade from ROE, debt/equity, PE/PEG: D=loss-making or over-leveraged, A=high-quality compounder."""
+    """A/B/C/D grade from ROE, debt/equity, PE/PEG: D=loss-making or over-leveraged, A=high-quality compounder.
+
+    roe is a Yahoo-style fraction (0.15 = 15%); debt_to_equity is Yahoo's own percentage-like
+    scale (debtToEquity≈30 means 30% D/E, per universe_fundamentals_engine.py) — these must match
+    the units actually stored in stock_signals, not an arbitrary ratio/percentage of the caller's choosing.
+    """
     roe  = row.get('roe')
     debt = row.get('debt_to_equity')
     pe   = row.get('trailing_pe')
     peg  = row.get('peg_ratio')
 
-    if (roe is not None and roe < 0) or (debt is not None and debt > 2.0):
+    if (roe is not None and roe < 0) or (debt is not None and debt > 200):
         return 'D'
 
-    a_roe  = roe is not None and roe > 15
-    a_debt = debt is None or debt < 0.5
+    a_roe  = roe is not None and roe > 0.15
+    a_debt = debt is None or debt < 50
     a_val  = (pe is not None and pe < 25) or (peg is not None and peg < 1.5)
     if a_roe and a_debt and a_val:
         return 'A'
 
-    b_roe  = roe is not None and roe > 10
-    b_debt = debt is None or debt < 1.0
+    b_roe  = roe is not None and roe > 0.10
+    b_debt = debt is None or debt < 100
     b_val  = pe is None or pe < 35
     if b_roe and b_debt and b_val:
         return 'B'
@@ -325,3 +330,55 @@ def get_instrument_type(asset_class: str, asset_sub_class: str) -> str:
     if cls:
         return cls.title()
     return "Other"
+
+
+def is_quality_compounder(row: dict) -> bool:
+    """Mirrors reports_engine.get_quality_compounders()'s WHERE clause — keep thresholds in sync if that query changes."""
+    roe, debt, margin, growth, current_ratio, pe, score = (
+        row.get('roe'), row.get('debt_to_equity'), row.get('profit_margin'),
+        row.get('revenue_growth'), row.get('current_ratio'), row.get('trailing_pe'), row.get('composite_score'),
+    )
+    if None in (roe, debt, margin, growth, current_ratio, pe, score):
+        return False
+    return (
+        roe > 0.15 and debt < 100 and margin > 0.10 and growth > 0.05
+        and current_ratio > 1.5 and score >= 60 and 10 <= pe <= 35
+    )
+
+
+def is_quality_on_sale(row: dict) -> bool:
+    """Mirrors reports_engine.get_quality_on_sale()'s WHERE clause — keep thresholds in sync if that query changes."""
+    close, low_52w, roe, debt, margin, pe, score = (
+        row.get('close_price'), row.get('fifty_two_week_low'), row.get('roe'),
+        row.get('debt_to_equity'), row.get('profit_margin'), row.get('trailing_pe'), row.get('composite_score'),
+    )
+    if None in (close, low_52w, roe, margin, pe, score) or low_52w <= 0:
+        return False
+    if debt is not None and debt >= 150:
+        return False
+    return close <= low_52w * 1.15 and roe > 0.10 and margin > 0.05 and 0 < pe < 25 and score >= 50
+
+
+def is_garp_tenbagger(row: dict, market_cap: Optional[float]) -> bool:
+    """Mirrors reports_engine.get_garp_tenbaggers()'s WHERE clause, minus its market_universe.is_index=1
+    restriction (a user's Watchlist pick needn't be an index member for this to be a useful tag)."""
+    peg, growth, roe, fwd_pe = row.get('peter_lynch_peg'), row.get('revenue_growth'), row.get('roe'), row.get('forward_pe')
+    if None in (peg, growth, roe, fwd_pe) or not market_cap:
+        return False
+    return 0 < peg <= 1.0 and growth > 0.15 and roe > 0.10 and 10 <= fwd_pe <= 40 and market_cap > 500_000_000
+
+
+def is_mean_reversion_setup(row: dict, max_rsi: float = 30.0) -> bool:
+    """Mirrors reports_engine.get_mean_reversion_setups()'s WHERE clause — keep thresholds in sync if that query changes."""
+    close, sma_200, rsi = row.get('close_price'), row.get('sma_200'), row.get('rsi_14')
+    if None in (close, sma_200, rsi):
+        return False
+    return close > sma_200 and rsi <= max_rsi
+
+
+def is_dividend_harvest_candidate(row: dict, min_yield: float = 0.02, min_score: int = 50) -> bool:
+    """Mirrors reports_engine.get_dividend_harvest_setups()'s WHERE clause — keep thresholds in sync if that query changes."""
+    yield_, score, ex_div = row.get('dividend_yield'), row.get('composite_score'), row.get('ex_dividend_date')
+    if yield_ is None or score is None or not ex_div or ex_div == 'Unknown':
+        return False
+    return yield_ >= min_yield and score >= min_score

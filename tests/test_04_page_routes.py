@@ -366,6 +366,66 @@ def test_watchlist_ticker_link_propagates_embed_token(client):
             conn.close()
 
 
+@pytest.mark.pages
+def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
+    """The Watchlist analytics overhaul: forensic score columns, Quality Grade / report-screen /
+    trap / bubble badges render for a seeded ticker, and the Market Pulse widget + US 10Y
+    Treasury / UK 10Y Gilt cards are gone from the page entirely."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO stock_signals (
+                ticker, current_price, currency, quote_type, composite_score,
+                piotroski_f_score, altman_z_score, beneish_m_score,
+                roe, debt_to_equity, profit_margin, revenue_growth, current_ratio, trailing_pe
+            ) VALUES (
+                'ZZANALYTICS', 100.0, 'USD', 'EQUITY', 70,
+                2, 1.2, -1.0,
+                0.20, 30, 0.15, 0.10, 2.0, 20
+            )
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO trap_monitor_results (ticker, phase) VALUES ('ZZANALYTICS', 'Bull Trap')"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO bubble_radar_metrics (ticker, scan_date, flag) VALUES ('ZZANALYTICS', '2026-07-10', 'Euphoria')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "ZZANALYTICS", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        body = resp.text
+        assert "Grade A" in body
+        assert "Quality Compounder" in body
+        assert "Bull Trap" in body
+        assert "Euphoria" in body
+        assert "Piotroski" in body
+        assert "Altman Z" in body
+        assert "Beneish M" in body
+        assert "macro-cards-container" not in body
+        assert "US 10Y Treasury" not in body
+        assert "UK 10Y Gilt" not in body
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZANALYTICS"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZANALYTICS'")
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'ZZANALYTICS'")
+            conn.execute("DELETE FROM bubble_radar_metrics WHERE ticker = 'ZZANALYTICS'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
 # ── Safety net: no page returns 500 ──────────────────────────────────────────
 
 @pytest.mark.pages

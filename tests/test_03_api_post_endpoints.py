@@ -218,15 +218,68 @@ def test_post_settings_with_position_sizing(client, confirm_token):
 
 @pytest.mark.api
 def test_post_watchlist_add_with_mock(client):
-    """POST /api/watchlist/add inserts into watchlist_items without calling Yahoo."""
+    """POST /api/watchlist/add inserts into watchlist_items (Yahoo profile/history calls mocked out)."""
     import database as _db
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
-    with patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta):
+    with (
+        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api_routes.update_single_profile"),
+        patch("api_routes.fetch_and_save_single_ticker"),
+    ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
     assert _json(resp)["status"] == "success"
     wl = _db.get_watchlist_account()
     assert "AAPL" in _db.get_watchlist_tickers()
+    _db.remove_watchlist_ticker(wl["id"], "AAPL")
+
+
+@pytest.mark.api
+def test_post_watchlist_add_unknown_ticker_triggers_yahoo_fetch(client):
+    """A ticker with no existing asset_profiles row must get an immediate profile + price-history
+    fetch queued, not wait for the next nightly scan cycle."""
+    import database as _db
+    fake_meta = {"company_name": "Zzz Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
+    with (
+        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api_routes.update_single_profile") as mock_profile,
+        patch("api_routes.fetch_and_save_single_ticker") as mock_fetch,
+    ):
+        resp = client.post("/api/watchlist/add", json={"ticker": "ZZZNOTREAL3"})
+    assert resp.status_code == 200
+    mock_profile.assert_called_once_with("ZZZNOTREAL3")
+    mock_fetch.assert_called_once_with("ZZZNOTREAL3")
+
+    wl = _db.get_watchlist_account()
+    _db.remove_watchlist_ticker(wl["id"], "ZZZNOTREAL3")
+
+
+@pytest.mark.api
+def test_post_watchlist_add_known_ticker_skips_yahoo_fetch(client):
+    """A ticker that already has an asset_profiles row must not re-trigger a background fetch."""
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO asset_profiles (ticker, company_name) VALUES (?, ?)",
+            ("AAPL", "Apple Inc."),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
+    with (
+        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api_routes.update_single_profile") as mock_profile,
+        patch("api_routes.fetch_and_save_single_ticker") as mock_fetch,
+    ):
+        resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
+    assert resp.status_code == 200
+    mock_profile.assert_not_called()
+    mock_fetch.assert_not_called()
+
+    wl = _db.get_watchlist_account()
     _db.remove_watchlist_ticker(wl["id"], "AAPL")
 
 
