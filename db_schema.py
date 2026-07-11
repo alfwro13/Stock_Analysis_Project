@@ -142,6 +142,26 @@ def _seed_market_ticker_registry(cursor) -> None:
         ''', row)
 
 
+DEFAULT_PENSION_BENCHMARK_TICKERS = [
+    ("URTH", "MSCI World Index"),
+    ("VWRL.L", "FTSE All-World Index"),
+]
+
+
+def _seed_pension_benchmark_defaults(cursor) -> None:
+    cursor.execute(
+        "SELECT id FROM accounts WHERE account_type = 'Pension' AND deleted_at IS NULL "
+        "AND id NOT IN (SELECT DISTINCT account_id FROM account_benchmark_tickers)"
+    )
+    for row in cursor.fetchall():
+        for sort_order, (ticker, display_name) in enumerate(DEFAULT_PENSION_BENCHMARK_TICKERS):
+            cursor.execute(
+                "INSERT OR IGNORE INTO account_benchmark_tickers (account_id, ticker, display_name, sort_order) "
+                "VALUES (?, ?, ?, ?)",
+                (row["id"], ticker, display_name, sort_order)
+            )
+
+
 def _ensure_watchlist_account() -> None:
     conn = None
     try:
@@ -949,6 +969,7 @@ def init_db() -> None:
                 autotopup_day_of_month INTEGER,
                 autotopup_day_of_week INTEGER,
                 autotopup_notes TEXT,
+                benchmark_cpi_target_pct REAL NOT NULL DEFAULT 4.0,
                 deleted_at      TEXT DEFAULT NULL,
                 created_at      TEXT DEFAULT (datetime('now'))
             )
@@ -1002,6 +1023,18 @@ def init_db() -> None:
                 source      TEXT NOT NULL,
                 created_at  TEXT DEFAULT (datetime('now')),
                 UNIQUE(account_id, price_date)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_benchmark_tickers (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id    INTEGER NOT NULL,
+                ticker        TEXT NOT NULL,
+                display_name  TEXT NOT NULL,
+                sort_order    INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT DEFAULT (datetime('now')),
+                UNIQUE(account_id, ticker)
             )
         ''')
 
@@ -1230,6 +1263,7 @@ def migrate_db(conn, cursor) -> None:
         ('autotopup_day_of_month', "ALTER TABLE accounts ADD COLUMN autotopup_day_of_month INTEGER"),
         ('autotopup_day_of_week', "ALTER TABLE accounts ADD COLUMN autotopup_day_of_week INTEGER"),
         ('autotopup_notes', "ALTER TABLE accounts ADD COLUMN autotopup_notes TEXT"),
+        ('benchmark_cpi_target_pct', "ALTER TABLE accounts ADD COLUMN benchmark_cpi_target_pct REAL NOT NULL DEFAULT 4.0"),
     ):
         if col not in existing_account_columns:
             try:
@@ -1816,6 +1850,27 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE treasury_bills ADD COLUMN ytm_confirmed INTEGER NOT NULL DEFAULT 0")
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to add indicative_ytm/ytm_confirmed to treasury_bills: %s", e)
+
+    # account_benchmark_tickers (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_benchmark_tickers (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id    INTEGER NOT NULL,
+                ticker        TEXT NOT NULL,
+                display_name  TEXT NOT NULL,
+                sort_order    INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT DEFAULT (datetime('now')),
+                UNIQUE(account_id, ticker)
+            )
+        ''')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create account_benchmark_tickers: %s", e)
+
+    try:
+        _seed_pension_benchmark_defaults(cursor)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to seed pension benchmark defaults: %s", e)
 
     cursor.execute("PRAGMA table_info(etf_predictor_predictions)")
     existing_etf_prediction_columns = [info['name'] for info in cursor.fetchall()]

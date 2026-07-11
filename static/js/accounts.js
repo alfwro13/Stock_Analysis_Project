@@ -112,6 +112,7 @@ function _accountCardHtml(acc) {
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAccountModal(${acc.id})">Edit</button>
                     ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper ${_scraperStatusBadgeHtml(acc)}</button>` : ''}
+                    ${isPension ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openBenchmarkModal(${acc.id})">&#127919; Benchmarks</button>` : ''}
                     ${isTrading ? `<button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAutoTopupModal(${acc.id})">&#9200; Auto Top-up</button>` : ''}
                 </div>
             </div>

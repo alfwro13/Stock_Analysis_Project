@@ -1174,6 +1174,50 @@ def test_pension_endpoints_reject_non_pension_account(client):
 
 
 @pytest.mark.api
+def test_pension_benchmark_config_defaults_on_create(client):
+    account_id = _create_account(client, account_type="Pension")
+    resp = client.get(f"/api/accounts/{account_id}/benchmark-config")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["cpi_target_pct"] == 4.0
+    tickers = {t["ticker"]: t["display_name"] for t in data["tickers"]}
+    assert tickers == {"URTH": "MSCI World Index", "VWRL.L": "FTSE All-World Index"}
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_benchmark_config_save_roundtrip(client):
+    account_id = _create_account(client, account_type="Pension")
+    resp = client.put(f"/api/accounts/{account_id}/benchmark-config", json={
+        "cpi_target_pct": 5.5,
+        "tickers": [{"ticker": "spy", "display_name": "S&P 500"}],
+    })
+    assert resp.status_code == 200
+    assert _json(resp)["status"] == "success"
+
+    resp = client.get(f"/api/accounts/{account_id}/benchmark-config")
+    data = _json(resp)
+    assert data["cpi_target_pct"] == 5.5
+    assert len(data["tickers"]) == 1
+    assert data["tickers"][0]["ticker"] == "SPY"
+    assert data["tickers"][0]["display_name"] == "S&P 500"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_benchmark_config_rejects_non_pension_account(client):
+    account_id = _create_account(client, account_type="House")
+    resp = client.get(f"/api/accounts/{account_id}/benchmark-config")
+    assert resp.status_code == 400
+    resp = client.put(f"/api/accounts/{account_id}/benchmark-config", json={"cpi_target_pct": 4.0, "tickers": []})
+    assert resp.status_code == 400
+
+
+@pytest.mark.api
 def test_treasury_bill_buy_and_list_endpoints(client):
     account_id = _create_account(client, initial_cash=2000.0)
     resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={

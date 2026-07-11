@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
 from database import get_connection, get_auction_summary, get_ticker_registry_row, get_ticker_registry_row_by_future
+from macro_data_engine import get_uk_cpi_yoy_series
 from regime_engine import get_latest_regime
 from sentiment_engine import (
     get_sentiment_html,
@@ -252,7 +253,7 @@ async def market_sentiment_page(request: Request):
                 df_uk_ig = df_indicators[['uk_corporate_spread']].rename(columns={'uk_corporate_spread': 'value'}).dropna().sort_index() if 'uk_corporate_spread' in df_indicators.columns else pd.DataFrame()
                 df_yield_curve = df_indicators[['us_yield_curve']].rename(columns={'us_yield_curve': 'value'}).dropna().sort_index() if 'us_yield_curve' in df_indicators.columns else pd.DataFrame()
                 df_us_cpi = df_indicators[['us_cpi_inflation']].rename(columns={'us_cpi_inflation': 'value'}).dropna().sort_index() if 'us_cpi_inflation' in df_indicators.columns else pd.DataFrame()
-                df_uk_cpi = df_indicators[['uk_cpi_inflation']].rename(columns={'uk_cpi_inflation': 'value'}).dropna().sort_index() if 'uk_cpi_inflation' in df_indicators.columns else pd.DataFrame()
+                df_uk_cpi = get_uk_cpi_yoy_series().rename('value').to_frame()
             else:
                 df_m2 = df_us_hy = df_m4 = df_uk_ig = df_yield_curve = pd.DataFrame()
                 df_us_cpi = df_uk_cpi = pd.DataFrame()

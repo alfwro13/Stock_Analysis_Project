@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 from datetime import datetime, timezone
 from plotly.subplots import make_subplots
+from typing import Optional
 import pandas as pd
 import ta
 import textwrap
@@ -534,7 +535,10 @@ def create_house_value_chart(df: pd.DataFrame) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
-def create_pension_value_chart(df: pd.DataFrame) -> str:
+_BENCHMARK_LINE_COLORS = ("#ffaa00", "#ff66cc", "#66aaff", "#cc99ff", "#99ff66")
+
+
+def create_pension_value_chart(df: pd.DataFrame, benchmark_series: Optional[dict] = None) -> str:
     # df indexed by snapshot_date (DatetimeIndex) with a 'total_value' column from account_value_history.
     # Cash/Net Contributions are omitted (always ~0 for Pension, no cash sub-ledger) so the y-axis
     # autoranges to the actual value range instead of being dragged down to include a flat 0 line.
@@ -542,11 +546,17 @@ def create_pension_value_chart(df: pd.DataFrame) -> str:
     if not df.empty and 'total_value' in df.columns:
         fig.add_trace(go.Scatter(x=df.index, y=df['total_value'], name="Pension Value", line=dict(color="#00ffcc", width=2), connectgaps=True))
 
+    has_benchmarks = bool(benchmark_series)
+    for i, (label, series) in enumerate(sorted((benchmark_series or {}).items())):
+        color = _BENCHMARK_LINE_COLORS[i % len(_BENCHMARK_LINE_COLORS)]
+        fig.add_trace(go.Scatter(x=series.index, y=series.values, name=label, line=dict(color=color, width=1.5, dash="dot"), connectgaps=True))
+
     fig.update_layout(
         title=dict(text="Pension Value Over Time", x=0.5, xanchor='center'),
         template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
-        showlegend=False,
+        margin=dict(l=20, r=20, t=50, b=60 if has_benchmarks else 20), hovermode="x unified",
+        showlegend=has_benchmarks,
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
     )
     fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True, automargin=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})

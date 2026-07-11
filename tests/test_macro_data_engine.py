@@ -30,6 +30,7 @@ from macro_data_engine import (
     fetch_boe_data,
     fetch_ons_taxonomy_data,
     update_macro_indicators,
+    get_uk_cpi_yoy_series,
     ONS_TAXONOMY,
 )
 
@@ -357,5 +358,43 @@ class TestUpdateMacroIndicators:
         finally:
             cleanup = _db_module.get_connection()
             cleanup.execute("DELETE FROM macro_indicators WHERE date='2024-01-31'")
+            cleanup.commit()
+            cleanup.close()
+
+
+class TestGetUkCpiYoySeries:
+    """The single reusable source for UK CPI YoY%, shared by the Market Sentiment page and the
+    Pension account's CPI+target benchmark overlay (accounts_engine.pension_benchmark_overlay)."""
+
+    def test_returns_clean_date_indexed_series(self):
+        seed_conn = _db_module.get_connection()
+        seed_conn.execute("INSERT OR IGNORE INTO macro_indicators (date, uk_cpi_inflation) VALUES ('2026-01-31', 3.2)")
+        seed_conn.execute("INSERT OR IGNORE INTO macro_indicators (date, uk_cpi_inflation) VALUES ('2026-02-28', 2.9)")
+        seed_conn.commit()
+        seed_conn.close()
+
+        try:
+            series = get_uk_cpi_yoy_series()
+            assert series[pd.Timestamp("2026-01-31")] == pytest.approx(3.2)
+            assert series[pd.Timestamp("2026-02-28")] == pytest.approx(2.9)
+            assert series.index.is_monotonic_increasing
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date IN ('2026-01-31', '2026-02-28')")
+            cleanup.commit()
+            cleanup.close()
+
+    def test_drops_null_rows(self):
+        seed_conn = _db_module.get_connection()
+        seed_conn.execute("INSERT OR IGNORE INTO macro_indicators (date, us_m2) VALUES ('2026-03-31', 1.0)")
+        seed_conn.commit()
+        seed_conn.close()
+
+        try:
+            series = get_uk_cpi_yoy_series()
+            assert pd.Timestamp("2026-03-31") not in series.index
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date='2026-03-31'")
             cleanup.commit()
             cleanup.close()

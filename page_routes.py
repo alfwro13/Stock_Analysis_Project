@@ -501,7 +501,8 @@ async def account_detail_page(request: Request, account_id: int):
 @page_router.get("/accounts/{account_id}/pension", response_class=HTMLResponse)
 async def pension_account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
-        account_summary, pension_activities, pension_display_label, scraped_price_performance,
+        account_summary, pension_activities, pension_benchmark_overlay, pension_display_label,
+        scraped_price_performance,
     )
     from database import get_account, get_price_history, get_value_history
     from visuals import create_pension_unit_price_chart, create_pension_value_chart
@@ -522,7 +523,8 @@ async def pension_account_detail_page(request: Request, account_id: int):
     if value_history:
         value_df = pd.DataFrame(value_history).set_index("snapshot_date")
         value_df.index = pd.to_datetime(value_df.index)
-        value_chart_html = create_pension_value_chart(value_df)
+        benchmark_series = pension_benchmark_overlay(account_id, value_df)
+        value_chart_html = create_pension_value_chart(value_df, benchmark_series)
     else:
         value_chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
 

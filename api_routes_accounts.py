@@ -45,6 +45,8 @@ from database import (
     get_unresolved_pending_topups,
     get_treasury_bill,
     update_treasury_bill_auto_reinvest,
+    get_benchmark_tickers,
+    replace_benchmark_tickers,
 )
 from market_pulse import fetch_and_save_pulse
 from markets_engine import registry_lookup_tickers
@@ -136,6 +138,16 @@ class AutoTopupConfirmBody(BaseModel):
     pending_id: int
     amount: float
     txn_date: str
+
+
+class BenchmarkTickerBody(BaseModel):
+    ticker: str
+    display_name: str
+
+
+class BenchmarkConfigBody(BaseModel):
+    cpi_target_pct: float = 4.0
+    tickers: list[BenchmarkTickerBody] = []
 
 
 class AutoTopupDismissBody(BaseModel):
@@ -1057,6 +1069,44 @@ async def api_record_pension_fee(request: Request, account_id: int, body: Pensio
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_record_pension_fee account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/{account_id}/benchmark-config")
+@limiter.limit("60/minute")
+async def api_get_benchmark_config(request: Request, account_id: int):
+    try:
+        acc, error = _require_pension_account(account_id)
+        if error:
+            return error
+        return JSONResponse(content={
+            "status": "success",
+            "cpi_target_pct": acc["benchmark_cpi_target_pct"],
+            "tickers": get_benchmark_tickers(account_id),
+        })
+    except Exception as e:
+        logger.error("api_get_benchmark_config account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.put("/accounts/{account_id}/benchmark-config")
+@limiter.limit("30/minute")
+async def api_update_benchmark_config(request: Request, account_id: int, body: BenchmarkConfigBody):
+    try:
+        _acc, error = _require_pension_account(account_id)
+        if error:
+            return error
+        tickers = [
+            {"ticker": normalize_ticker(t.ticker), "display_name": t.display_name.strip()}
+            for t in body.tickers if t.ticker.strip() and t.display_name.strip()
+        ]
+        ok = update_account(account_id, benchmark_cpi_target_pct=body.cpi_target_pct)
+        ok = replace_benchmark_tickers(account_id, tickers) and ok
+        if not ok:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save benchmark configuration."})
+        return JSONResponse(content={"status": "success", "message": "Benchmark configuration saved."})
+    except Exception as e:
+        logger.error("api_update_benchmark_config account=%s failed: %s", account_id, e)
         return _error_500(e)
 
 

@@ -27,6 +27,23 @@ ONS_TAXONOMY: Dict[str, str] = {
     "BCJD": "/employmentandlabourmarket/peoplenotinwork/outofworkbenefits/timeseries/bcjd/unem/data"
 }
 
+def get_uk_cpi_yoy_series() -> pd.Series:
+    """Single source of truth for UK CPI YoY% — reused by the Market Sentiment page's chart
+    (uk_cpi_inflation vs FTSE 100) and the Pension account's CPI+target benchmark overlay."""
+    conn = None
+    try:
+        conn = get_connection()
+        df = pd.read_sql_query("SELECT date, uk_cpi_inflation FROM macro_indicators", conn)
+    finally:
+        if conn:
+            conn.close()
+    if df.empty:
+        return pd.Series(dtype=float)
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+    return df['uk_cpi_inflation'].dropna().sort_index()
+
+
 def get_retry_session() -> requests.Session:
     session = requests.Session()
     retry_strategy = Retry(
@@ -241,8 +258,9 @@ def update_macro_indicators() -> None:
             float(row['IUDBEDR']) if 'IUDBEDR' in row and pd.notna(row['IUDBEDR']) else None,
         ))
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         # INSERT OR IGNORE: preserves the point-in-time value recorded on each date; late revisions must not overwrite historical training rows.
         cursor.executemany('''
@@ -271,9 +289,11 @@ def update_macro_indicators() -> None:
         conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database bulk insertion failed: {e}")
-        conn.rollback()
+        if conn:
+            conn.rollback()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     init_db()

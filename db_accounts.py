@@ -62,8 +62,16 @@ def create_account(
             "INSERT INTO accounts (name, currency, initial_cash, note, opened_date, account_type, pension_start_date, opening_balance_units, pension_ticker_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (name, currency, initial_cash, note, opened_date, account_type, pension_start_date, opening_balance_units, pension_ticker_label)
         )
+        account_id = cursor.lastrowid
+        if account_type == "Pension":
+            from db_schema import DEFAULT_PENSION_BENCHMARK_TICKERS
+            for sort_order, (ticker, display_name) in enumerate(DEFAULT_PENSION_BENCHMARK_TICKERS):
+                cursor.execute(
+                    "INSERT INTO account_benchmark_tickers (account_id, ticker, display_name, sort_order) VALUES (?, ?, ?, ?)",
+                    (account_id, ticker, display_name, sort_order)
+                )
         conn.commit()
-        return cursor.lastrowid
+        return account_id
     except Exception as e:
         logger.error("Failed to create account: %s", e)
         return None
@@ -79,6 +87,7 @@ _ALLOWED_ACCOUNT_COLUMNS = frozenset({
     "pension_ticker_label",
     "autotopup_enabled", "autotopup_amount", "autotopup_frequency",
     "autotopup_day_of_month", "autotopup_day_of_week", "autotopup_notes",
+    "benchmark_cpi_target_pct",
 })
 
 
@@ -988,6 +997,47 @@ def confirm_treasury_bill_ytm(bill_id: int, face_value: float, indicative_ytm: O
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to confirm YTM for treasury bill %s: %s", bill_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_benchmark_tickers(account_id: int) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM account_benchmark_tickers WHERE account_id = ? ORDER BY sort_order, id",
+            (account_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get benchmark tickers for account %s: %s", account_id, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def replace_benchmark_tickers(account_id: int, tickers: list) -> bool:
+    """Wholesale replace — the edit modal always submits the full list, so delete+reinsert is
+    simpler and safer than diffing against the existing rows."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM account_benchmark_tickers WHERE account_id = ?", (account_id,))
+        for sort_order, item in enumerate(tickers):
+            cursor.execute(
+                "INSERT INTO account_benchmark_tickers (account_id, ticker, display_name, sort_order) VALUES (?, ?, ?, ?)",
+                (account_id, item["ticker"], item["display_name"], sort_order)
+            )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error("Failed to replace benchmark tickers for account %s: %s", account_id, e)
         return False
     finally:
         if conn:

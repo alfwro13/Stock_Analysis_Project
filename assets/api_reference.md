@@ -3268,6 +3268,36 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 
 ---
 
+### `GET /api/accounts/{id}/benchmark-config`
+
+Returns the Pension account's benchmark overlay configuration for the "Pension Benchmarks" edit modal. Pension-only; 400 otherwise. Rate limit: 60/minute.
+
+**Response:**
+```json
+{ "status": "success", "cpi_target_pct": 4.0, "tickers": [
+    { "id": 1, "account_id": 12, "ticker": "URTH", "display_name": "MSCI World Index", "sort_order": 0, "created_at": "..." },
+    { "id": 2, "account_id": 12, "ticker": "VWRL.L", "display_name": "FTSE All-World Index", "sort_order": 1, "created_at": "..." }
+] }
+```
+
+---
+
+### `PUT /api/accounts/{id}/benchmark-config`
+
+Saves the CPI target and wholesale-replaces the account's ticker benchmark list (`db_accounts.replace_benchmark_tickers` — delete + reinsert, so the request body is always the full list, not a diff). Tickers are normalized (`utils.normalize_ticker` — uppercased/stripped); rows missing a non-empty `ticker` or `display_name` are dropped silently. Both values feed `accounts_engine.pension_benchmark_overlay()`, which the Pension detail page (`/accounts/{id}/pension`) calls to overlay rebased comparison lines on the Pension Value Over Time chart. Pension-only; 400 otherwise. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "cpi_target_pct": 4.0, "tickers": [
+    { "ticker": "URTH", "display_name": "MSCI World Index" },
+    { "ticker": "VWRL.L", "display_name": "FTSE All-World Index" }
+] }
+```
+
+Returns `{"status": "success", "message": "Benchmark configuration saved."}`.
+
+---
+
 ### UK Treasury Bills (Trading)
 
 Tracks zero-coupon UK Treasury bills (`treasury_bill_engine.py`) as holdings inside a Trading account, via a dedicated action rather than the generic transaction form. All four endpoints below 400 if the account is not `Trading`.

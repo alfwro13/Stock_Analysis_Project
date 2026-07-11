@@ -1405,6 +1405,52 @@ def scraped_price_performance(account_id: int) -> dict:
     return result
 
 
+def pension_benchmark_overlay(account_id: int, value_df: pd.DataFrame) -> Dict[str, pd.Series]:
+    """Rebases each configured benchmark to the pension's own starting value so all lines are
+    directly comparable on the same value chart, rather than plotted as a separate % return axis."""
+    from db_accounts import get_benchmark_tickers
+    from data_engine import load_or_fetch_daily_history
+    from macro_data_engine import get_uk_cpi_yoy_series
+
+    if value_df.empty or "total_value" not in value_df.columns:
+        return {}
+    start_value = float(value_df["total_value"].iloc[0])
+    if not start_value:
+        return {}
+
+    result: Dict[str, pd.Series] = {}
+
+    acc = get_account(account_id)
+    target_pct = float(acc.get("benchmark_cpi_target_pct") or 4.0) if acc else 4.0
+    cpi_series = get_uk_cpi_yoy_series()
+    if not cpi_series.empty:
+        combined_idx = cpi_series.index.union(value_df.index)
+        cpi_on_value_dates = cpi_series.reindex(combined_idx).sort_index().ffill().reindex(value_df.index)
+        annual_rate = cpi_on_value_dates / 100.0 + target_pct / 100.0
+        daily_rate = (1 + annual_rate) ** (1 / 365) - 1
+        daily_rate = daily_rate.fillna(0.0)
+        daily_rate.iloc[0] = 0.0  # anchor the line to start_value exactly on the pension's own start date
+        cumulative = (1 + daily_rate).cumprod()
+        result[f"UK CPI + {target_pct:g}% Target"] = start_value * cumulative
+
+    for row in get_benchmark_tickers(account_id):
+        ticker, display_name = row["ticker"], row["display_name"]
+        hist = load_or_fetch_daily_history(ticker)
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            continue
+        close = hist["Close"]
+        combined_idx = close.index.union(value_df.index)
+        close_on_value_dates = close.reindex(combined_idx).sort_index().ffill().reindex(value_df.index)
+        if not close_on_value_dates.notna().any():
+            continue
+        start_price = close_on_value_dates.dropna().iloc[0]
+        if not start_price:
+            continue
+        result[display_name] = start_value * (close_on_value_dates / start_price)
+
+    return result
+
+
 def pension_activities(account_id: int) -> list:
     """Activities enriched with a running total-units balance, walked chronologically (oldest
     first, matching get_transactions' own order) before the page reverses it for newest-first

@@ -26,6 +26,7 @@ from visuals import (
     create_uk_liquidity_chart,
     create_uk_credit_chart,
     create_yield_curve_chart,
+    create_pension_value_chart,
 )
 from visuals_ai import (
     create_ai_contagion_performance_chart,
@@ -321,3 +322,26 @@ class TestCreateMacroChart:
         df = self._df()
         result = create_macro_chart(df.copy(), df.copy(), "SPY")
         assert isinstance(result, str) and "<div" in result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# create_pension_value_chart benchmark overlay
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCreatePensionValueChart:
+
+    def _value_df(self, n: int = 5) -> pd.DataFrame:
+        idx = pd.date_range("2026-01-01", periods=n, freq="D")
+        return pd.DataFrame({"total_value": np.linspace(1000.0, 1050.0, n)}, index=idx)
+
+    def test_without_benchmarks_legend_hidden(self):
+        result = create_pension_value_chart(self._value_df())
+        assert isinstance(result, str) and "<div" in result
+        assert '"showlegend": false' in result or '"showlegend":false' in result
+
+    def test_with_benchmarks_legend_shown_and_lines_present(self):
+        value_df = self._value_df()
+        benchmarks = {"MSCI World Index": pd.Series(np.linspace(1000.0, 1080.0, len(value_df)), index=value_df.index)}
+        result = create_pension_value_chart(value_df, benchmarks)
+        assert isinstance(result, str)
+        assert "MSCI World Index" in result

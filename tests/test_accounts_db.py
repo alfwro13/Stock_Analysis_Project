@@ -16,6 +16,8 @@ from database import (
     upsert_performance_cache,
     get_performance_cache,
     get_all_account_tickers,
+    get_benchmark_tickers,
+    replace_benchmark_tickers,
 )
 
 
@@ -217,3 +219,40 @@ def test_get_all_account_tickers_excludes_soft_deleted_accounts():
     tickers = get_all_account_tickers()
 
     assert "ZZDELETEDACC" not in tickers
+
+
+@pytest.mark.db
+def test_create_pension_account_seeds_default_benchmark_tickers():
+    aid = create_account("PensionBenchmarkDefaultsAcc", "GBP", account_type="Pension")
+    acc = get_account(aid)
+    assert acc["benchmark_cpi_target_pct"] == 4.0
+
+    rows = get_benchmark_tickers(aid)
+    assert {(r["ticker"], r["display_name"]) for r in rows} == {
+        ("URTH", "MSCI World Index"),
+        ("VWRL.L", "FTSE All-World Index"),
+    }
+
+
+@pytest.mark.db
+def test_create_trading_account_has_no_benchmark_tickers():
+    aid = create_account("TradingBenchmarkAcc", "GBP", account_type="Trading")
+    assert get_benchmark_tickers(aid) == []
+
+
+@pytest.mark.db
+def test_replace_benchmark_tickers_overwrites_existing_list():
+    aid = create_account("PensionBenchmarkReplaceAcc", "GBP", account_type="Pension")
+    assert replace_benchmark_tickers(aid, [{"ticker": "SPY", "display_name": "S&P 500"}]) is True
+
+    rows = get_benchmark_tickers(aid)
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "SPY"
+    assert rows[0]["display_name"] == "S&P 500"
+
+
+@pytest.mark.db
+def test_update_account_benchmark_cpi_target_pct():
+    aid = create_account("PensionCpiTargetAcc", "GBP", account_type="Pension")
+    assert update_account(aid, benchmark_cpi_target_pct=6.0) is True
+    assert get_account(aid)["benchmark_cpi_target_pct"] == 6.0

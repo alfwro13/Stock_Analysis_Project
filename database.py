@@ -139,6 +139,8 @@ from db_accounts import (  # noqa: E402
     resolve_pending_topup,
     get_treasury_bill,
     update_treasury_bill_auto_reinvest,
+    get_benchmark_tickers,
+    replace_benchmark_tickers,
 )
 
 __all__ = [
@@ -200,4 +202,6 @@ __all__ = [
     "resolve_pending_topup",
     "get_treasury_bill",
     "update_treasury_bill_auto_reinvest",
+    "get_benchmark_tickers",
+    "replace_benchmark_tickers",
 ]

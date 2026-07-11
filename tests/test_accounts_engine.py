@@ -1785,3 +1785,56 @@ def test_list_scope_accounts_with_values_excludes_non_trading_account():
         accounts, _ = accounts_engine.list_scope_accounts_with_values()
 
     assert not any(a["id"] == f"acct:{aid}" for a in accounts)
+
+
+@pytest.mark.db
+def test_pension_benchmark_overlay_cpi_line_anchored_to_start_value():
+    from unittest.mock import patch
+
+    aid = create_account("PensionOverlayCpiAcc", "GBP", account_type="Pension")
+    value_df = pd.DataFrame(
+        {"total_value": [1000.0, 1010.0, 1020.0]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03"]),
+    )
+    cpi_series = pd.Series([3.0], index=pd.to_datetime(["2026-01-01"]))
+
+    with patch("macro_data_engine.get_uk_cpi_yoy_series", return_value=cpi_series), \
+         patch("data_engine.load_or_fetch_daily_history", return_value=pd.DataFrame()):
+        result = accounts_engine.pension_benchmark_overlay(aid, value_df)
+
+    label = "UK CPI + 4% Target"
+    assert label in result
+    assert result[label].iloc[0] == pytest.approx(1000.0)
+    assert result[label].iloc[-1] > 1000.0  # 4% + 3% CPI compounds upward over 2 days
+
+
+@pytest.mark.db
+def test_pension_benchmark_overlay_ticker_line_rebased_to_start_value():
+    from unittest.mock import patch
+
+    aid = create_account("PensionOverlayTickerAcc", "GBP", account_type="Pension")
+    from db_accounts import replace_benchmark_tickers
+    replace_benchmark_tickers(aid, [{"ticker": "URTH", "display_name": "MSCI World Index"}])
+
+    value_df = pd.DataFrame(
+        {"total_value": [1000.0, 1000.0]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+    price_hist = pd.DataFrame(
+        {"Close": [100.0, 110.0]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+
+    with patch("macro_data_engine.get_uk_cpi_yoy_series", return_value=pd.Series(dtype=float)), \
+         patch("data_engine.load_or_fetch_daily_history", return_value=price_hist):
+        result = accounts_engine.pension_benchmark_overlay(aid, value_df)
+
+    assert "MSCI World Index" in result
+    assert result["MSCI World Index"].iloc[0] == pytest.approx(1000.0)
+    assert result["MSCI World Index"].iloc[1] == pytest.approx(1100.0)  # +10% price move
+
+
+@pytest.mark.db
+def test_pension_benchmark_overlay_empty_value_history_returns_empty_dict():
+    aid = create_account("PensionOverlayEmptyAcc", "GBP", account_type="Pension")
+    assert accounts_engine.pension_benchmark_overlay(aid, pd.DataFrame()) == {}
