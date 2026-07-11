@@ -18,6 +18,7 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
 window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
 window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
 window.EMBED_MODE = {% if embed %}true{% else %}false{% endif %};
+window.EMBED_TOKEN = {{ embed_token | tojson }};
 </script>
 
 {% if not embed %}
@@ -170,7 +171,7 @@ window.EMBED_MODE = {% if embed %}true{% else %}false{% endif %};
             data-detail-sentiment="{{ item.sentiment_score if item.sentiment_score is not none else '' }}"
             data-detail-ml="{{ item.ml_confidence_score if item.ml_confidence_score is not none else '' }}">
             <td data-sort="{{ item.ticker }}" class="num-cell">
-                <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
+                <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% if embed_token %}&embed_token={{ embed_token }}{% endif %}{% endif %}" class="ticker-link">{{ item.ticker }}</a>
             </td>
             <td data-sort="{{ item.company_name }}">
                 {{ item.company_name }}

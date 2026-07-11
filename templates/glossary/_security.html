@@ -13,6 +13,7 @@
                 <span class="term-title">Embed Token</span>
                 <p>The Portfolio, Watchlist, and Stock Detail pages can be embedded read-only in another tool (e.g. a Home Assistant iframe card) via <code>?embed=true</code>, which hides the navbar and other chrome. Because that embed usually loads the page cross-origin, the normal session cookie is never sent, so the page would otherwise redirect to the login screen every time.</p>
                 <p>The <strong>Embed Token</strong> (Settings → User Account) is a dedicated secret, separate from the general-purpose API Key, that lets a <code>GET</code> request to one of those pages skip login when both <code>embed=true</code> and a matching <code>&amp;embed_token=&lt;token&gt;</code> are present in the URL. It grants no other access — it does not work on any other page, on any <code>/api/*</code> endpoint, or on any non-<code>GET</code> request — so a leaked embed URL exposes only the read-only embedded view, not the API Key's full account access. Generating a new token immediately invalidates the old one.</p>
+                <p>Clicking a ticker from an embedded Portfolio or Watchlist page carries the token forward automatically, so drilling into a Stock Detail page from an embedded view stays logged in without needing the token typed into that link separately.</p>
             </div>
 
         </div>

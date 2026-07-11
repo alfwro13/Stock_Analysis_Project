@@ -207,7 +207,7 @@ async def home():
 
 
 @page_router.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, xray: bool = False):
+async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -398,6 +398,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "portfolio": portfolio_data,
             "global_updated": global_updated,
             "embed": embed,
+            "embed_token": embed_token,
             "unread_count": get_unread_count(),
             "account_options": account_options,
             "selected_account": account_id,
@@ -575,7 +576,7 @@ async def house_account_detail_page(request: Request, account_id: int):
 
 
 @page_router.get("/watchlist", response_class=HTMLResponse)
-async def watchlist_page(request: Request, embed: bool = False):
+async def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -657,6 +658,7 @@ async def watchlist_page(request: Request, embed: bool = False):
             "watchlist": watchlist_data,
             "global_updated": global_updated,
             "embed": embed,
+            "embed_token": embed_token,
             "unread_count": get_unread_count(),
             "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
@@ -1143,7 +1145,7 @@ async def score_history_page(request: Request, filter: str = "all", ref: str = "
 
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
-async def stock_detail(request: Request, ticker: str, embed: bool = False):
+async def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token: str = ""):
     ticker = normalize_ticker(ticker)
     if ticker in get_index_tickers():
         return RedirectResponse(f"/index/{ticker}", status_code=302)
@@ -1660,6 +1662,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "price_action": price_action,
             "unread_count": get_unread_count(),
             "embed": embed,
+            "embed_token": embed_token,
             "config": load_config(),
             "cached_pulse": get_all_cached_pulse(),
             "is_in_watchlist": is_in_watchlist,

@@ -331,6 +331,41 @@ def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
             conn.close()
 
 
+@pytest.mark.pages
+def test_watchlist_ticker_link_propagates_embed_token(client):
+    """When /watchlist is loaded with ?embed=true&embed_token=..., its ticker links to
+    /stock/{ticker} must carry the same embed_token — otherwise clicking through from an
+    embedded (no-session-cookie) view hits the login-redirect middleware branch."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZEMBEDLINK', 50.0, 'USD', 'EQUITY')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "ZZEMBEDLINK", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist?embed=true&embed_token=my-test-token")
+        assert resp.status_code < 500
+        assert "/stock/ZZEMBEDLINK?embed=true&embed_token=my-test-token" in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZEMBEDLINK"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZEMBEDLINK'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
 # ── Safety net: no page returns 500 ──────────────────────────────────────────
 
 @pytest.mark.pages

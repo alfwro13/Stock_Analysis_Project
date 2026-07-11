@@ -68,7 +68,7 @@ function _buildHeatmap(panel) {
         var sign  = r.item.change > 0 ? '+' : '';
         var label = sign + r.item.change.toFixed(2) + '%';
         var minSide = Math.min(r.w, r.h);
-        var href = '/stock/' + encodeURIComponent(r.item.ticker) + (window.EMBED_MODE ? '?embed=true' : '');
+        var href = '/stock/' + encodeURIComponent(r.item.ticker) + (window.EMBED_MODE ? '?embed=true' + (window.EMBED_TOKEN ? '&embed_token=' + encodeURIComponent(window.EMBED_TOKEN) : '') : '');
         html += '<a href="' + href + '" class="heatmap-tile ' + cls + '" style="left:' + Math.round(r.x) + 'px;top:' + Math.round(r.y) + 'px;width:' + Math.round(r.w) + 'px;height:' + Math.round(r.h) + 'px;">'
               + (minSide >= 20 ? '<span class="heatmap-tile-ticker">' + r.item.ticker + '</span>' : '')
               + (minSide >= 35 ? '<span class="heatmap-tile-change">' + label + '</span>' : '')

@@ -99,7 +99,7 @@
         {% for item in watchlist %}
         <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
             <td data-sort="{{ item.ticker }}" class="num-cell">
-                <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
+                <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% if embed_token %}&embed_token={{ embed_token }}{% endif %}{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 {% if freetrade_only and not item.is_freetrade %}
                 <br><span class="badge badge-freetrade">Not on Freetrade</span>
                 {% endif %}
