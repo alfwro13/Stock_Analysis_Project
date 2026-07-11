@@ -153,22 +153,21 @@ By appending a simple URL parameter, the system will automatically hide the top 
 
 *(Note: Replace localhost with your actual server IP if hosting on a network device like a Raspberry Pi or NAS).*
 
+**Avoiding the login screen (Embed Token):** a browser normally has no session cookie when loading an embedded iframe from a different origin (e.g. Home Assistant's own domain), so a plain `?embed=true` URL redirects to the login page inside the iframe instead of showing the dashboard. To skip login for embedded pages, generate an **Embed Token** from **Settings → User Account** and append it as an `embed_token` parameter:
+
+* **Portfolio:** http://localhost:8090/portfolio?embed=true&embed_token=\<your-embed-token\>
+* **Watchlist:** http://localhost:8090/watchlist?embed=true&embed_token=\<your-embed-token\>
+
+The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the general-purpose API Key used by the Native Home Assistant Integration below. Generating a new embed token immediately invalidates the old one.
+
 **Example Home Assistant Webpage Card Configuration:**
-```
-type: iframe  
-url: http://192.168.1.71:8090/portfolio?embed=true
-aspect_ratio: 100%
-```
-
-**Avoiding the login screen (Embed Token):** since a browser normally has no session cookie when loading an embedded iframe from a different origin (e.g. Home Assistant's own domain), a plain `?embed=true` URL will redirect to the login page inside the iframe. Generate an **Embed Token** from **Settings → User Account** and append it to the URL to skip login for that request:
-
 ```
 type: iframe
 url: http://192.168.1.71:8090/portfolio?embed=true&embed_token=<your-embed-token>
 aspect_ratio: 100%
 ```
 
-The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the general-purpose API Key described below. Generating a new embed token immediately invalidates the old one.
+*(Omit `&embed_token=...` if you're relying on an already-logged-in session in the same browser instead — see above.)*
 
 ### **Native Home Assistant Integration (Sensors)**
 
