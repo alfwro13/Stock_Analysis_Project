@@ -3,7 +3,7 @@
 **Project:** Stock Analysis Quantitative Trading Terminal  
 **Engine:** `anomaly_engine.py`  
 **Model Files:** `data/anomaly_models/{ticker}.joblib`  
-**Last Updated:** 2026-06-04  
+**Last Updated:** 2026-07-12  
 
 ---
 
@@ -226,6 +226,8 @@ For each portfolio ticker (if anomaly_enabled and Volume available):
 ```
 
 **Deduplication:** Anomaly alerts pass through `_evaluate_alert_gate("Anomaly", ...)`, which uses the same cooldown/fingerprint/hysteresis logic as Crash and Moonshot alerts. The `alert_state` table stores the dedup state for the `"Anomaly"` engine key.
+
+**Quote-settlement gating (added 2026-07-12):** before deriving `current_price`/`session_open` for a ticker, `_run()` now resolves that ticker's own exchange (`time_engine.ticker_exchange(ticker, currency)`) and skips the ticker entirely for this cycle — no `upsert_live_price`, no Crash/Moonshot/Anomaly/HoldingLimit evaluation — unless `market_pulse.is_quote_settled(exchange, include_premarket=(exchange == "NYSE"))` is true. Previously this per-ticker loop had no exchange gating at all beyond the scan's single global START_TIME/END_TIME window, so a held LSE ticker scanned within Yahoo's ~15-minute post-open feed lag (`quote_delay_minutes` in `exchange_hours.json`) could feed a stale/delayed 5-minute bar into the Isolation Forest feature vector (and into Crash/Moonshot's `intraday_drop_pct`/`price_spike_pct`) as if it were live, producing a false anomaly/crash/moonshot alert that self-corrected a few 5-minute cycles later once Yahoo's feed caught up — the same race already fixed in `accounts_engine.tickers_needing_refresh()` and `intraday_bottom_engine.run_scan()`, just not previously applied to this scan loop. The target-only-ticker loop (Position Targets on a ticker not actually held) gets the identical gate for the same reason. No behavior change for NYSE-only portfolios, since NYSE's `quote_delay_minutes` is 0 and `is_quote_settled("NYSE")` is equivalent to `is_exchange_open("NYSE")`.
 
 ---
 

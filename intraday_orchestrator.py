@@ -21,6 +21,7 @@ from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine
 from notification_engine import notify
+import market_pulse
 from market_pulse import upsert_live_price
 from utils import clamp_beta
 
@@ -726,6 +727,13 @@ class IntradayOrchestrator:
                 current_price = float(df_intraday['Close'].iloc[-1])
                 session_open = float(df_intraday['Open'].iloc[0]) if 'Open' in df_intraday.columns else None
 
+                asset_meta = metadata.get(ticker, {})
+                currency = asset_meta.get('currency', 'USD')
+                ticker_exchange = time_engine.ticker_exchange(ticker, currency)
+                if not market_pulse.is_quote_settled(ticker_exchange, include_premarket=(ticker_exchange == "NYSE")):
+                    logger.debug("%s — %s quote not yet settled, skipping this cycle.", ticker, ticker_exchange)
+                    continue
+
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
                 if not hist_path.exists():
                     continue
@@ -761,9 +769,6 @@ class IntradayOrchestrator:
                     new_row = pd.DataFrame({'Close': [current_price]}, index=[latest_dt])
                     df_combined = pd.concat([df_hist[['Close']], new_row])
                     df_combined.sort_index(inplace=True)
-
-                asset_meta = metadata.get(ticker, {})
-                currency = asset_meta.get('currency', 'USD')
 
                 self._check_holding_limits(
                     ticker, current_price, currency, holding_limits_by_ticker,
@@ -882,6 +887,10 @@ class IntradayOrchestrator:
                 current_price = float(df_intraday['Close'].iloc[-1])
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
+                ticker_exchange = time_engine.ticker_exchange(ticker, currency)
+                if not market_pulse.is_quote_settled(ticker_exchange, include_premarket=(ticker_exchange == "NYSE")):
+                    logger.debug("%s — %s quote not yet settled, skipping this cycle.", ticker, ticker_exchange)
+                    continue
 
                 self._check_holding_limits(
                     ticker, current_price, currency, holding_limits_by_ticker,

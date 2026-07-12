@@ -65,7 +65,7 @@ class TestScanMarketClosed:
         engine = AIContagionEngine(_CFG)
         conn = _get_conn()
         try:
-            with patch("ai_contagion_engine.is_exchange_open", return_value=False):
+            with patch("ai_contagion_engine.is_quote_settled", return_value=False):
                 result = engine.scan()
         finally:
             conn.close()
@@ -80,7 +80,7 @@ class TestScanNoData:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=None),
             ):
                 result = engine.scan()
@@ -93,7 +93,7 @@ class TestScanNoData:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value={}),
             ):
                 result = engine.scan()
@@ -124,7 +124,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -140,7 +140,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -156,7 +156,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -171,7 +171,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -186,7 +186,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -203,7 +203,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -219,7 +219,7 @@ class TestScanTwoTier:
         conn = _get_conn()
         try:
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):
@@ -332,7 +332,7 @@ class TestSharesLivePriceOnEveryScan:
             conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('NVDA','AMD','SMH')")
             conn.commit()
             with (
-                patch("ai_contagion_engine.is_exchange_open", return_value=True),
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
                 patch.object(engine, "_fetch_basket_data", return_value=basket),
                 patch.object(engine, "_check_volume_spike", return_value=False),
             ):

@@ -344,7 +344,7 @@ class TestRunTrapMonitorJobMarketGating:
         with patch(
             "bull_bear_trap_engine.TrapEngine.run_scan",
             return_value=[self._row("AAPL")],
-        ), patch("scheduler_jobs.is_exchange_open", return_value=False) as mock_open, \
+        ), patch("scheduler_jobs.is_quote_settled", return_value=False) as mock_open, \
            patch("scheduler_jobs.notify") as mock_notify:
             scheduler_jobs.run_trap_monitor_job()
 
@@ -365,7 +365,7 @@ class TestRunTrapMonitorJobMarketGating:
         with patch(
             "bull_bear_trap_engine.TrapEngine.run_scan",
             return_value=[self._row("QQQ")],
-        ), patch("scheduler_jobs.is_exchange_open", return_value=False) as mock_open, \
+        ), patch("scheduler_jobs.is_quote_settled", return_value=False) as mock_open, \
            patch("scheduler_jobs.notify") as mock_notify:
             scheduler_jobs.run_trap_monitor_job()
 
@@ -385,7 +385,7 @@ class TestRunTrapMonitorJobMarketGating:
         with patch(
             "bull_bear_trap_engine.TrapEngine.run_scan",
             return_value=[self._row("AAPL")],
-        ), patch("scheduler_jobs.is_exchange_open", return_value=True), \
+        ), patch("scheduler_jobs.is_quote_settled", return_value=True), \
            patch("scheduler_jobs.notify", return_value=True) as mock_notify:
             scheduler_jobs.run_trap_monitor_job()
 

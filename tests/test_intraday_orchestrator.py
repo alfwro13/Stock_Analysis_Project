@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -185,3 +186,71 @@ class TestScheduleBoundsGating:
             orchestrator._run(get_connection())
 
         mock_tickers.assert_not_called()
+
+
+# ── _run per-ticker quote-settlement gating ─────────────────────────────────────
+
+class TestQuoteSettlementGating:
+    """LSE's free Yahoo feed lags ~15 min at open; a held LSE ticker scanned in that window must
+    not feed a not-yet-settled price into Crash/Moonshot/Anomaly/HoldingLimit or market_pulse_cache
+    (the same race already fixed in accounts_engine.tickers_needing_refresh() /
+    intraday_bottom_engine.run_scan(), not previously applied to this scan loop)."""
+
+    @staticmethod
+    def _intraday_df():
+        idx = pd.date_range(end=pd.Timestamp.now(tz=timezone.utc), periods=5, freq="5min")
+        return pd.DataFrame(
+            {"Open": [100.0] * 5, "Close": [100.0, 101.0, 99.0, 102.0, 100.5], "Volume": [1000] * 5},
+            index=idx,
+        )
+
+    @staticmethod
+    def _hist_df():
+        idx = pd.date_range(end=datetime.now(timezone.utc).date(), periods=25, freq="D")
+        return pd.DataFrame({"Close": [90.0 + i * 0.1 for i in range(25)]}, index=idx)
+
+    def _run_with_ticker(self, tmp_path, ticker="VOD.L", currency="GBP", is_settled=False):
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, currency, company_name) VALUES (?, ?, ?)",
+            (ticker, currency, "Test Co"),
+        )
+        conn.commit()
+
+        self._hist_df().to_parquet(tmp_path / f"{ticker}.parquet", engine="pyarrow")
+        fake_dfs = {ticker: self._intraday_df(), "SPY": self._intraday_df(), "^TYX": self._intraday_df()}
+
+        orchestrator = IntradayOrchestrator()
+        orchestrator.config.setdefault("SCHEDULING", {})["CRASH_ALERTS"] = {
+            "ENABLED": True, "START_TIME": "00:00", "END_TIME": "23:59",
+        }
+
+        with (
+            patch("intraday_orchestrator.HISTORICAL_DIR", tmp_path),
+            patch("intraday_orchestrator.INTRADAY_DIR", tmp_path),
+            patch("time_engine._load_config", return_value={"USER_TIMEZONE": "UTC"}),
+            patch.object(IntradayOrchestrator, "get_portfolio_tickers", return_value=[ticker]),
+            patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value=fake_dfs),
+            patch("intraday_orchestrator.market_pulse.is_quote_settled", return_value=is_settled) as mock_settled,
+            patch("intraday_orchestrator.upsert_live_price") as mock_upsert,
+        ):
+            orchestrator._run(conn)
+
+        return mock_settled, mock_upsert
+
+    @pytest.mark.db
+    def test_unsettled_quote_skips_upsert_and_evaluation(self, tmp_path):
+        mock_settled, mock_upsert = self._run_with_ticker(tmp_path, is_settled=False)
+        mock_settled.assert_called_with("LSE", include_premarket=False)
+        mock_upsert.assert_not_called()
+
+    @pytest.mark.db
+    def test_settled_quote_proceeds_to_upsert(self, tmp_path):
+        mock_settled, mock_upsert = self._run_with_ticker(tmp_path, is_settled=True)
+        mock_settled.assert_called_with("LSE", include_premarket=False)
+        mock_upsert.assert_called_once()
+
+    @pytest.mark.db
+    def test_nyse_ticker_checked_with_premarket_true(self, tmp_path):
+        mock_settled, _ = self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
+        mock_settled.assert_called_with("NYSE", include_premarket=True)
