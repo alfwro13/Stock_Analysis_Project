@@ -683,6 +683,35 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     watchlist_data.sort(key=lambda x: x['ticker'])
     sectors = sorted({row['sector'] or 'Unclassified' for row in watchlist_data})
 
+    present_signals = {row['overall_signal'].upper() for row in watchlist_data if row.get('overall_signal')}
+
+    present_tags = set()
+    for row in watchlist_data:
+        for tag in row.get('setup_tags_list') or []:
+            present_tags.add(tag['name'])
+        for tag in row.get('report_tags') or []:
+            present_tags.add(tag['name'])
+        if row.get('trap_phase_label'):
+            present_tags.add(row['trap_phase_label'])
+        if row.get('bubble_flag_label'):
+            present_tags.add(row['bubble_flag_label'])
+        if row.get('quality_grade'):
+            present_tags.add('Grade ' + row['quality_grade'])
+
+    present_score_buckets = set()
+    for row in watchlist_data:
+        score = row.get('composite_score')
+        if score is None:
+            continue
+        if score >= 75:
+            present_score_buckets.add('75')
+        elif score >= 60:
+            present_score_buckets.add('60')
+        elif score >= 40:
+            present_score_buckets.add('40')
+        else:
+            present_score_buckets.add('0')
+
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
     position_sizing_context = _build_position_sizing_context(config_data, db_rows)
@@ -692,6 +721,9 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
         context={
             "watchlist": watchlist_data,
             "sectors": sectors,
+            "present_signals": present_signals,
+            "present_tags": present_tags,
+            "present_score_buckets": present_score_buckets,
             "global_updated": global_updated,
             "embed": embed,
             "embed_token": embed_token,

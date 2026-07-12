@@ -429,7 +429,7 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
         assert "UK 10Y Gilt" not in body
         assert 'id="sectorFilter"' in body
         assert '<option value="Technology">Technology</option>' in body
-        assert '<option value="GARP Tenbagger">GARP Tenbagger</option>' in body
+        assert '<option value="Quality Compounder">Quality Compounder</option>' in body
         assert '<option value="Bubble Risk">Bubble Risk</option>' in body
         assert 'data-sector="Technology"' in body
         # 'Unknown' is the literal sentinel written when Yahoo has no earnings date — the visible
@@ -444,6 +444,51 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
             conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZANALYTICS'")
             conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'ZZANALYTICS'")
             conn.execute("DELETE FROM bubble_radar_metrics WHERE ticker = 'ZZANALYTICS'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
+def test_watchlist_filters_only_show_present_values(client):
+    """Filter dropdowns must only offer options with at least one matching row — an option with
+    zero matches would filter the table down to nothing for no useful reason."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO stock_signals (
+                ticker, current_price, currency, quote_type, composite_score, overall_signal, sector
+            ) VALUES (
+                'ZZFILTERONLY', 50.0, 'USD', 'EQUITY', 65, 'NEUTRAL', 'Utilities'
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "ZZFILTERONLY", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        body = resp.text
+        assert '<option value="NEUTRAL">Neutral</option>' in body
+        assert '<option value="60">60' in body
+        assert '<option value="Utilities">Utilities</option>' in body
+        # This ticker has no fundamentals set, so it can't qualify for any report-screen tag —
+        # if it's the only watchlist row, that option must not render.
+        assert 'value="Quality Compounder"' not in body
+        assert 'value="STRONG BUY"' not in body
+        assert 'value="BEARISH / CAUTION"' not in body
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZFILTERONLY"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZFILTERONLY'")
             conn.commit()
         finally:
             conn.close()

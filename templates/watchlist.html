@@ -35,61 +35,61 @@
     <div class="col-6 col-md-auto">
         <select id="signalFilter" class="form-select">
             <option value="ALL">All Signals</option>
-            <option value="STRONG BUY">Strong Buy</option>
-            <option value="BULLISH / HOLD">Bullish / Hold</option>
-            <option value="NEUTRAL">Neutral</option>
-            <option value="BEARISH / CAUTION">Bearish / Caution</option>
+            {% if 'STRONG BUY' in present_signals %}<option value="STRONG BUY">Strong Buy</option>{% endif %}
+            {% if 'BULLISH / HOLD' in present_signals %}<option value="BULLISH / HOLD">Bullish / Hold</option>{% endif %}
+            {% if 'NEUTRAL' in present_signals %}<option value="NEUTRAL">Neutral</option>{% endif %}
+            {% if 'BEARISH / CAUTION' in present_signals %}<option value="BEARISH / CAUTION">Bearish / Caution</option>{% endif %}
         </select>
     </div>
     <div class="col-6 col-md-auto">
         <select id="tagFilter" class="form-select">
             <option value="ALL">All Setup Tags</option>
-            <option value="⚡ MACD Reversal">⚡ MACD Reversals (Oversold)</option>
-            <option value="⚡ MACD Bullish Cross">⚡ MACD Bullish Cross (Trend)</option>
-            <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
-            <option value="👑 Market Leader">👑 Market Leaders</option>
-            <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
-            <option value="Quality Compounder">Quality Compounder</option>
-            <option value="Quality on Sale">Quality on Sale</option>
-            <option value="GARP Tenbagger">GARP Tenbagger</option>
-            <option value="Mean Reversion Setup">Mean Reversion Setup</option>
-            <option value="Dividend Harvest">Dividend Harvest</option>
-            <option value="Bull Trap Risk">Bull Trap Risk</option>
-            <option value="Bear Trap Risk">Bear Trap Risk</option>
-            <option value="Capitulation">Capitulation</option>
-            <option value="Accumulation">Accumulation</option>
-            <option value="Active Selloff">Active Selloff</option>
-            <option value="Bubble Risk">Bubble Risk</option>
-            <option value="Bubble Watch">Bubble Watch</option>
-            <option value="Grade A">Grade A</option>
-            <option value="Grade B">Grade B</option>
-            <option value="Grade C">Grade C</option>
-            <option value="Grade D">Grade D</option>
+            {% if '⚡ MACD Reversal' in present_tags %}<option value="⚡ MACD Reversal">⚡ MACD Reversals (Oversold)</option>{% endif %}
+            {% if '⚡ MACD Bullish Cross' in present_tags %}<option value="⚡ MACD Bullish Cross">⚡ MACD Bullish Cross (Trend)</option>{% endif %}
+            {% if '🔥 VCP Breakout' in present_tags %}<option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>{% endif %}
+            {% if '👑 Market Leader' in present_tags %}<option value="👑 Market Leader">👑 Market Leaders</option>{% endif %}
+            {% if '🚨 Divergence Warning' in present_tags %}<option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>{% endif %}
+            {% if 'Quality Compounder' in present_tags %}<option value="Quality Compounder">Quality Compounder</option>{% endif %}
+            {% if 'Quality on Sale' in present_tags %}<option value="Quality on Sale">Quality on Sale</option>{% endif %}
+            {% if 'GARP Tenbagger' in present_tags %}<option value="GARP Tenbagger">GARP Tenbagger</option>{% endif %}
+            {% if 'Mean Reversion Setup' in present_tags %}<option value="Mean Reversion Setup">Mean Reversion Setup</option>{% endif %}
+            {% if 'Dividend Harvest' in present_tags %}<option value="Dividend Harvest">Dividend Harvest</option>{% endif %}
+            {% if 'Bull Trap Risk' in present_tags %}<option value="Bull Trap Risk">Bull Trap Risk</option>{% endif %}
+            {% if 'Bear Trap Risk' in present_tags %}<option value="Bear Trap Risk">Bear Trap Risk</option>{% endif %}
+            {% if 'Capitulation' in present_tags %}<option value="Capitulation">Capitulation</option>{% endif %}
+            {% if 'Accumulation' in present_tags %}<option value="Accumulation">Accumulation</option>{% endif %}
+            {% if 'Active Selloff' in present_tags %}<option value="Active Selloff">Active Selloff</option>{% endif %}
+            {% if 'Bubble Risk' in present_tags %}<option value="Bubble Risk">Bubble Risk</option>{% endif %}
+            {% if 'Bubble Watch' in present_tags %}<option value="Bubble Watch">Bubble Watch</option>{% endif %}
+            {% if 'Grade A' in present_tags %}<option value="Grade A">Grade A</option>{% endif %}
+            {% if 'Grade B' in present_tags %}<option value="Grade B">Grade B</option>{% endif %}
+            {% if 'Grade C' in present_tags %}<option value="Grade C">Grade C</option>{% endif %}
+            {% if 'Grade D' in present_tags %}<option value="Grade D">Grade D</option>{% endif %}
         </select>
     </div>
     <div class="col-6 col-md-auto">
         <select id="candleFilter" class="form-select">
             <option value="ALL">All Candle Patterns</option>
-            <option value="🌅 Morning Star">🌅 Morning Star</option>
-            <option value="🌇 Evening Star">🌇 Evening Star</option>
-            <option value="🐂 Bullish Engulfing">🐂 Bullish Engulfing</option>
-            <option value="🐻 Bearish Engulfing">🐻 Bearish Engulfing</option>
-            <option value="🪖 Three White Soldiers">🪖 Three White Soldiers</option>
-            <option value="🗡️ Piercing Line">🗡️ Piercing Line</option>
-            <option value="🌱 Bullish Harami Cross">🌱 Bullish Harami Cross</option>
-            <option value="🕸️ Bearish Harami Cross">🕸️ Bearish Harami Cross</option>
-            <option value="🔨 Hammer Rejection">🔨 Hammer Rejection</option>
-            <option value="🌠 Shooting Star">🌠 Shooting Star</option>
-            <option value="⚖️ Doji">⚖️ Doji</option>
+            {% if '🌅 Morning Star' in present_tags %}<option value="🌅 Morning Star">🌅 Morning Star</option>{% endif %}
+            {% if '🌇 Evening Star' in present_tags %}<option value="🌇 Evening Star">🌇 Evening Star</option>{% endif %}
+            {% if '🐂 Bullish Engulfing' in present_tags %}<option value="🐂 Bullish Engulfing">🐂 Bullish Engulfing</option>{% endif %}
+            {% if '🐻 Bearish Engulfing' in present_tags %}<option value="🐻 Bearish Engulfing">🐻 Bearish Engulfing</option>{% endif %}
+            {% if '🪖 Three White Soldiers' in present_tags %}<option value="🪖 Three White Soldiers">🪖 Three White Soldiers</option>{% endif %}
+            {% if '🗡️ Piercing Line' in present_tags %}<option value="🗡️ Piercing Line">🗡️ Piercing Line</option>{% endif %}
+            {% if '🌱 Bullish Harami Cross' in present_tags %}<option value="🌱 Bullish Harami Cross">🌱 Bullish Harami Cross</option>{% endif %}
+            {% if '🕸️ Bearish Harami Cross' in present_tags %}<option value="🕸️ Bearish Harami Cross">🕸️ Bearish Harami Cross</option>{% endif %}
+            {% if '🔨 Hammer Rejection' in present_tags %}<option value="🔨 Hammer Rejection">🔨 Hammer Rejection</option>{% endif %}
+            {% if '🌠 Shooting Star' in present_tags %}<option value="🌠 Shooting Star">🌠 Shooting Star</option>{% endif %}
+            {% if '⚖️ Doji' in present_tags %}<option value="⚖️ Doji">⚖️ Doji</option>{% endif %}
         </select>
     </div>
     <div class="col-6 col-md-auto">
         <select id="scoreFilter" class="form-select">
             <option value="ALL">All Scores</option>
-            <option value="75">75+ (Strong)</option>
-            <option value="60">60–74 (Good)</option>
-            <option value="40">40–59 (Neutral)</option>
-            <option value="0">Below 40 (Weak)</option>
+            {% if '75' in present_score_buckets %}<option value="75">75+ (Strong)</option>{% endif %}
+            {% if '60' in present_score_buckets %}<option value="60">60–74 (Good)</option>{% endif %}
+            {% if '40' in present_score_buckets %}<option value="40">40–59 (Neutral)</option>{% endif %}
+            {% if '0' in present_score_buckets %}<option value="0">Below 40 (Weak)</option>{% endif %}
         </select>
     </div>
     <div class="col-6 col-md-auto">
