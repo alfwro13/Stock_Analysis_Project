@@ -332,8 +332,39 @@ def get_instrument_type(asset_class: str, asset_sub_class: str) -> str:
     return "Other"
 
 
+# Single source of truth for the report-screen thresholds below — reports_engine.py's five
+# SQL WHERE clauses bind to these same constants instead of duplicating the literal values.
+QUALITY_COMPOUNDER_MIN_ROE = 0.15
+QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY = 100
+QUALITY_COMPOUNDER_MIN_MARGIN = 0.10
+QUALITY_COMPOUNDER_MIN_GROWTH = 0.05
+QUALITY_COMPOUNDER_MIN_CURRENT_RATIO = 1.5
+QUALITY_COMPOUNDER_MIN_SCORE = 60
+QUALITY_COMPOUNDER_MIN_PE = 10
+QUALITY_COMPOUNDER_MAX_PE = 35
+
+QUALITY_ON_SALE_MAX_PRICE_VS_52W_LOW = 1.15
+QUALITY_ON_SALE_MIN_ROE = 0.10
+QUALITY_ON_SALE_MAX_DEBT_TO_EQUITY = 150
+QUALITY_ON_SALE_MIN_MARGIN = 0.05
+QUALITY_ON_SALE_MAX_PE = 25
+QUALITY_ON_SALE_MIN_SCORE = 50
+
+GARP_MAX_PEG = 1.0
+GARP_MIN_GROWTH = 0.15
+GARP_MIN_ROE = 0.10
+GARP_MIN_FORWARD_PE = 10
+GARP_MAX_FORWARD_PE = 40
+GARP_MIN_MARKET_CAP = 500_000_000
+
+MEAN_REVERSION_DEFAULT_MAX_RSI = 30.0
+
+DIVIDEND_HARVEST_DEFAULT_MIN_YIELD = 0.02
+DIVIDEND_HARVEST_DEFAULT_MIN_SCORE = 50
+
+
 def is_quality_compounder(row: dict) -> bool:
-    """Mirrors reports_engine.get_quality_compounders()'s WHERE clause — keep thresholds in sync if that query changes."""
+    """Mirrors reports_engine.get_quality_compounders()'s WHERE clause via the shared constants above."""
     roe, debt, margin, growth, current_ratio, pe, score = (
         row.get('roe'), row.get('debt_to_equity'), row.get('profit_margin'),
         row.get('revenue_growth'), row.get('current_ratio'), row.get('trailing_pe'), row.get('composite_score'),
@@ -341,43 +372,55 @@ def is_quality_compounder(row: dict) -> bool:
     if None in (roe, debt, margin, growth, current_ratio, pe, score):
         return False
     return (
-        roe > 0.15 and debt < 100 and margin > 0.10 and growth > 0.05
-        and current_ratio > 1.5 and score >= 60 and 10 <= pe <= 35
+        roe > QUALITY_COMPOUNDER_MIN_ROE and debt < QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY
+        and margin > QUALITY_COMPOUNDER_MIN_MARGIN and growth > QUALITY_COMPOUNDER_MIN_GROWTH
+        and current_ratio > QUALITY_COMPOUNDER_MIN_CURRENT_RATIO and score >= QUALITY_COMPOUNDER_MIN_SCORE
+        and QUALITY_COMPOUNDER_MIN_PE <= pe <= QUALITY_COMPOUNDER_MAX_PE
     )
 
 
 def is_quality_on_sale(row: dict) -> bool:
-    """Mirrors reports_engine.get_quality_on_sale()'s WHERE clause — keep thresholds in sync if that query changes."""
+    """Mirrors reports_engine.get_quality_on_sale()'s WHERE clause via the shared constants above."""
     close, low_52w, roe, debt, margin, pe, score = (
         row.get('close_price'), row.get('fifty_two_week_low'), row.get('roe'),
         row.get('debt_to_equity'), row.get('profit_margin'), row.get('trailing_pe'), row.get('composite_score'),
     )
     if None in (close, low_52w, roe, margin, pe, score) or low_52w <= 0:
         return False
-    if debt is not None and debt >= 150:
+    if debt is not None and debt >= QUALITY_ON_SALE_MAX_DEBT_TO_EQUITY:
         return False
-    return close <= low_52w * 1.15 and roe > 0.10 and margin > 0.05 and 0 < pe < 25 and score >= 50
+    return (
+        close <= low_52w * QUALITY_ON_SALE_MAX_PRICE_VS_52W_LOW and roe > QUALITY_ON_SALE_MIN_ROE
+        and margin > QUALITY_ON_SALE_MIN_MARGIN and 0 < pe < QUALITY_ON_SALE_MAX_PE and score >= QUALITY_ON_SALE_MIN_SCORE
+    )
 
 
 def is_garp_tenbagger(row: dict, market_cap: Optional[float]) -> bool:
-    """Mirrors reports_engine.get_garp_tenbaggers()'s WHERE clause, minus its market_universe.is_index=1
-    restriction (a user's Watchlist pick needn't be an index member for this to be a useful tag)."""
+    """Mirrors reports_engine.get_garp_tenbaggers()'s WHERE clause via the shared constants above, minus its
+    market_universe.is_index=1 restriction (a user's Watchlist pick needn't be an index member for this to be a useful tag)."""
     peg, growth, roe, fwd_pe = row.get('peter_lynch_peg'), row.get('revenue_growth'), row.get('roe'), row.get('forward_pe')
     if None in (peg, growth, roe, fwd_pe) or not market_cap:
         return False
-    return 0 < peg <= 1.0 and growth > 0.15 and roe > 0.10 and 10 <= fwd_pe <= 40 and market_cap > 500_000_000
+    return (
+        0 < peg <= GARP_MAX_PEG and growth > GARP_MIN_GROWTH and roe > GARP_MIN_ROE
+        and GARP_MIN_FORWARD_PE <= fwd_pe <= GARP_MAX_FORWARD_PE and market_cap > GARP_MIN_MARKET_CAP
+    )
 
 
-def is_mean_reversion_setup(row: dict, max_rsi: float = 30.0) -> bool:
-    """Mirrors reports_engine.get_mean_reversion_setups()'s WHERE clause — keep thresholds in sync if that query changes."""
+def is_mean_reversion_setup(row: dict, max_rsi: float = MEAN_REVERSION_DEFAULT_MAX_RSI) -> bool:
+    """Mirrors reports_engine.get_mean_reversion_setups()'s WHERE clause via the shared constant above."""
     close, sma_200, rsi = row.get('close_price'), row.get('sma_200'), row.get('rsi_14')
     if None in (close, sma_200, rsi):
         return False
     return close > sma_200 and rsi <= max_rsi
 
 
-def is_dividend_harvest_candidate(row: dict, min_yield: float = 0.02, min_score: int = 50) -> bool:
-    """Mirrors reports_engine.get_dividend_harvest_setups()'s WHERE clause — keep thresholds in sync if that query changes."""
+def is_dividend_harvest_candidate(
+    row: dict,
+    min_yield: float = DIVIDEND_HARVEST_DEFAULT_MIN_YIELD,
+    min_score: int = DIVIDEND_HARVEST_DEFAULT_MIN_SCORE,
+) -> bool:
+    """Mirrors reports_engine.get_dividend_harvest_setups()'s WHERE clause via the shared constants above."""
     yield_, score, ex_div = row.get('dividend_yield'), row.get('composite_score'), row.get('ex_dividend_date')
     if yield_ is None or score is None or not ex_div or ex_div == 'Unknown':
         return False

@@ -2,6 +2,15 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 from database import get_connection
+from fundamentals_helpers import (
+    QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,
+    QUALITY_COMPOUNDER_MIN_GROWTH, QUALITY_COMPOUNDER_MIN_CURRENT_RATIO, QUALITY_COMPOUNDER_MIN_SCORE,
+    QUALITY_COMPOUNDER_MIN_PE, QUALITY_COMPOUNDER_MAX_PE,
+    QUALITY_ON_SALE_MAX_PRICE_VS_52W_LOW, QUALITY_ON_SALE_MIN_ROE, QUALITY_ON_SALE_MAX_DEBT_TO_EQUITY,
+    QUALITY_ON_SALE_MIN_MARGIN, QUALITY_ON_SALE_MAX_PE, QUALITY_ON_SALE_MIN_SCORE,
+    GARP_MAX_PEG, GARP_MIN_GROWTH, GARP_MIN_ROE, GARP_MIN_FORWARD_PE, GARP_MAX_FORWARD_PE, GARP_MIN_MARKET_CAP,
+    MEAN_REVERSION_DEFAULT_MAX_RSI, DIVIDEND_HARVEST_DEFAULT_MIN_YIELD, DIVIDEND_HARVEST_DEFAULT_MIN_SCORE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +65,7 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         if conn:
             conn.close()
 
-def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0.0) -> List[Dict[str, Any]]:
+def get_mean_reversion_setups(max_rsi: float = MEAN_REVERSION_DEFAULT_MAX_RSI, min_sma_distance: float = 0.0) -> List[Dict[str, Any]]:
     """Stocks above 200D SMA with RSI < max_rsi; EQUITY filter prevents illiquid funds appearing."""
     logger.info("Generating Mean Reversion Report (Max RSI: %s)...", max_rsi)
     conn = None
@@ -153,7 +162,9 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         if conn:
             conn.close()
 
-def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) -> List[Dict[str, Any]]:
+def get_dividend_harvest_setups(
+    min_yield: float = DIVIDEND_HARVEST_DEFAULT_MIN_YIELD, min_score: int = DIVIDEND_HARVEST_DEFAULT_MIN_SCORE,
+) -> List[Dict[str, Any]]:
     """High-yield dividend stocks filtered for yield traps; LEFT JOIN on market_universe keeps portfolio-only OTC/ETF holdings."""
     logger.info("Generating Dividend Harvest Report (Min Yield: %s, Min Score: %s)...", min_yield, min_score)
     conn = None
@@ -273,17 +284,21 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
         LEFT JOIN asset_profiles p ON s.ticker = p.ticker
         LEFT JOIN latest_price lp ON s.ticker = lp.ticker
         WHERE s.quote_type = 'EQUITY'
-          AND s.roe > 0.15
-          AND s.debt_to_equity < 100
-          AND s.profit_margin > 0.10
-          AND s.revenue_growth > 0.05
-          AND s.current_ratio > 1.5
-          AND s.composite_score >= 60
-          AND s.trailing_pe BETWEEN 10 AND 35
+          AND s.roe > ?
+          AND s.debt_to_equity < ?
+          AND s.profit_margin > ?
+          AND s.revenue_growth > ?
+          AND s.current_ratio > ?
+          AND s.composite_score >= ?
+          AND s.trailing_pe BETWEEN ? AND ?
         ORDER BY s.composite_score DESC, s.roe DESC
         LIMIT 500
         """
-        cursor.execute(query)
+        cursor.execute(query, (
+            QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,
+            QUALITY_COMPOUNDER_MIN_GROWTH, QUALITY_COMPOUNDER_MIN_CURRENT_RATIO, QUALITY_COMPOUNDER_MIN_SCORE,
+            QUALITY_COMPOUNDER_MIN_PE, QUALITY_COMPOUNDER_MAX_PE,
+        ))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -337,16 +352,19 @@ def get_quality_on_sale() -> List[Dict[str, Any]]:
         WHERE s.quote_type = 'EQUITY'
           AND s.fifty_two_week_low IS NOT NULL AND s.fifty_two_week_low > 0
           AND lp.close_price > 0
-          AND lp.close_price <= s.fifty_two_week_low * 1.15
-          AND s.roe > 0.10
-          AND (s.debt_to_equity IS NULL OR s.debt_to_equity < 150)
-          AND s.profit_margin > 0.05
-          AND s.trailing_pe > 0 AND s.trailing_pe < 25
-          AND s.composite_score >= 50
+          AND lp.close_price <= s.fifty_two_week_low * ?
+          AND s.roe > ?
+          AND (s.debt_to_equity IS NULL OR s.debt_to_equity < ?)
+          AND s.profit_margin > ?
+          AND s.trailing_pe > 0 AND s.trailing_pe < ?
+          AND s.composite_score >= ?
         ORDER BY s.composite_score DESC, pct_above_52w_low ASC
         LIMIT 500
         """
-        cursor.execute(query)
+        cursor.execute(query, (
+            QUALITY_ON_SALE_MAX_PRICE_VS_52W_LOW, QUALITY_ON_SALE_MIN_ROE, QUALITY_ON_SALE_MAX_DEBT_TO_EQUITY,
+            QUALITY_ON_SALE_MIN_MARGIN, QUALITY_ON_SALE_MAX_PE, QUALITY_ON_SALE_MIN_SCORE,
+        ))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -401,15 +419,17 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
         WHERE m.is_index = 1
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
           AND s.peter_lynch_peg > 0
-          AND s.peter_lynch_peg <= 1.0
-          AND s.revenue_growth > 0.15
-          AND s.roe > 0.10
-          AND s.forward_pe BETWEEN 10 AND 40
-          AND COALESCE(tm.market_cap, 0) > 500000000
+          AND s.peter_lynch_peg <= ?
+          AND s.revenue_growth > ?
+          AND s.roe > ?
+          AND s.forward_pe BETWEEN ? AND ?
+          AND COALESCE(tm.market_cap, 0) > ?
         ORDER BY s.peter_lynch_peg ASC, lq.ml_confidence_score DESC
         LIMIT 500
         """
-        cursor.execute(query)
+        cursor.execute(query, (
+            GARP_MAX_PEG, GARP_MIN_GROWTH, GARP_MIN_ROE, GARP_MIN_FORWARD_PE, GARP_MAX_FORWARD_PE, GARP_MIN_MARKET_CAP,
+        ))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
