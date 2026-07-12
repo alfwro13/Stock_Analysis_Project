@@ -104,6 +104,7 @@ from db_helpers import (  # noqa: E402
     get_trap_phase_accuracy,
     get_auction_summary,
     get_ticker_registry,
+    get_registry_spot_future_tickers,
     get_ticker_registry_row,
     get_ticker_registry_row_by_future,
     get_ticker_registry_row_by_exchange,

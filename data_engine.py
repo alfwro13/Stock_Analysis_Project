@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Set, List, Dict, Any, Optional
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
-from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_ticker_registry
+from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
@@ -64,10 +64,9 @@ class DataEngine:
             if ticker:
                 tickers.add(normalize_ticker(ticker))
 
-        for row in get_ticker_registry(enabled_only=True):
-            for ticker in (row.get("ticker"), row.get("future_ticker")):
-                if ticker and not is_excluded_from_yahoo_fetch(ticker, ignored_tickers):
-                    tickers.add(normalize_ticker(ticker))
+        for ticker in get_registry_spot_future_tickers():
+            if not is_excluded_from_yahoo_fetch(ticker, ignored_tickers):
+                tickers.add(normalize_ticker(ticker))
 
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return sorted(valid_tickers)

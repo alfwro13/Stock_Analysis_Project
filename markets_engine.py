@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import market_pulse
 import time_engine
 from config import load_config
-from database import get_ticker_registry, get_ticker_registry_row_by_exchange
+from database import get_ticker_registry, get_ticker_registry_row_by_exchange, get_registry_spot_future_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -259,12 +259,8 @@ def registry_lookup_tickers() -> List[str]:
     prices simultaneously — the Home Assistant integration's independent spot/futures sensors —
     always have live data for the one not currently on display."""
     rows = get_ticker_registry(enabled_only=True)
-    tickers: List[str] = []
-    for row in rows:
-        tickers.append(resolve_tile(row)[0])
-        if row.get("future_ticker"):
-            tickers.append(row["ticker"])
-            tickers.append(row["future_ticker"])
+    tickers: List[str] = [resolve_tile(row)[0] for row in rows]
+    tickers.extend(get_registry_spot_future_tickers())
     return tickers
 
 

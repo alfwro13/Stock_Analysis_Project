@@ -473,3 +473,19 @@ def test_get_ticker_registry_enabled_only_excludes_disabled_rows():
     assert all(r.get("enabled", 1) != 0 for r in rows)
     tickers = {r["ticker"] for r in rows}
     assert "^GSPC" in tickers
+
+
+@pytest.mark.db
+def test_get_registry_spot_future_tickers_includes_dual_instrument_pair():
+    tickers = _db.get_registry_spot_future_tickers()
+    assert "^GSPC" in tickers
+    assert "ES=F" in tickers
+
+
+@pytest.mark.db
+def test_get_registry_spot_future_tickers_skips_missing_future_ticker():
+    with patch.object(db_helpers, "get_ticker_registry", return_value=[
+        {"ticker": "^FTSE", "future_ticker": None},
+    ]):
+        tickers = db_helpers.get_registry_spot_future_tickers()
+    assert tickers == ["^FTSE"]

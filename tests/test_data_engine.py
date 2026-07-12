@@ -95,7 +95,7 @@ def test_get_all_tickers_empty_inputs_returns_empty_list():
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
          patch("accounts_engine.get_combined_holdings", return_value={}), \
-         patch("data_engine.get_ticker_registry", return_value=[]):
+         patch("data_engine.get_registry_spot_future_tickers", return_value=[]):
         tickers = engine.get_all_tickers()
 
     assert tickers == []
@@ -111,10 +111,9 @@ def test_get_all_tickers_includes_market_registry_tickers():
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = []
 
-    registry_rows = [{"ticker": "^GSPC", "future_ticker": "ES=F"}]
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
          patch("accounts_engine.get_combined_holdings", return_value={}), \
-         patch("data_engine.get_ticker_registry", return_value=registry_rows):
+         patch("data_engine.get_registry_spot_future_tickers", return_value=["^GSPC", "ES=F"]):
         tickers = engine.get_all_tickers()
 
     assert "^GSPC" in tickers
@@ -129,10 +128,9 @@ def test_get_all_tickers_excludes_ignored_registry_tickers():
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = []
 
-    registry_rows = [{"ticker": "^GSPC", "future_ticker": None}]
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["^GSPC"]}), \
          patch("accounts_engine.get_combined_holdings", return_value={}), \
-         patch("data_engine.get_ticker_registry", return_value=registry_rows):
+         patch("data_engine.get_registry_spot_future_tickers", return_value=["^GSPC"]):
         tickers = engine.get_all_tickers()
 
     assert "^GSPC" not in tickers

@@ -374,6 +374,16 @@ def get_ticker_registry(enabled_only: bool = True) -> List[dict]:
             conn.close()
 
 
+def get_registry_spot_future_tickers(enabled_only: bool = True) -> List[str]:
+    """Pure registry ticker/future_ticker list (no live market-state read), shared by data_engine and markets_engine so neither depends on the other."""
+    tickers: List[str] = []
+    for row in get_ticker_registry(enabled_only=enabled_only):
+        for ticker in (row.get("ticker"), row.get("future_ticker")):
+            if ticker:
+                tickers.append(ticker)
+    return tickers
+
+
 def get_ticker_registry_row(ticker: str) -> Optional[dict]:
     conn = None
     try:
