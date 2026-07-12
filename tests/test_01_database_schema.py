@@ -11,9 +11,11 @@ These tests run against the session-level temp DB created in conftest.py.
 No network access required.
 """
 
+import json
 import sys
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -22,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # conftest.py redirects database.DB_PATH to the temp test file before this runs.
 # We use database.get_connection() so tests share the same redirected path.
 import database as _db
+import db_schema
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -681,3 +684,24 @@ def test_trap_monitor_results_primary_key_is_ticker():
         conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'PK_TEST_TRAP'")
         conn.commit()
         conn.close()
+
+
+@pytest.mark.db
+def test_seed_exchange_hours_json_backfills_new_fields_without_overwriting_existing(tmp_path):
+    """A pre-existing exchange_hours.json (seeded before quote_delay_minutes was added to
+    _DEFAULT_EXCHANGE_HOURS) must gain the new field on the next init_db() run, without
+    touching any field/exchange the operator already had on disk."""
+    path = tmp_path / "exchange_hours.json"
+    stale = {
+        "NYSE": {"open": "09:30", "close": "16:00", "tz": "America/New_York", "currency": "USD", "suffixes": []},
+        "LSE": {"open": "07:45", "close": "16:30", "tz": "Europe/London", "currency": "GBP", "suffixes": [".L"]},
+    }
+    path.write_text(json.dumps(stale))
+
+    with patch("db_schema._EXCHANGE_HOURS_PATH", str(path)):
+        db_schema._seed_exchange_hours_json()
+
+    result = json.loads(path.read_text())
+    assert result["LSE"]["quote_delay_minutes"] == 15
+    assert result["LSE"]["open"] == "07:45", "operator-edited field must survive the backfill"
+    assert "XETRA" in result, "an exchange added to defaults after the file was first seeded must be backfilled"

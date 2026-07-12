@@ -44,15 +44,35 @@ _DEFAULT_EXCHANGE_HOURS = {
 
 
 def _seed_exchange_hours_json() -> None:
-    if os.path.exists(_EXCHANGE_HOURS_PATH):
+    if not os.path.exists(_EXCHANGE_HOURS_PATH):
+        try:
+            os.makedirs(os.path.dirname(_EXCHANGE_HOURS_PATH), exist_ok=True)
+            with open(_EXCHANGE_HOURS_PATH, "w", encoding="utf-8") as f:
+                json.dump(_DEFAULT_EXCHANGE_HOURS, f, indent=2)
+            logger.info("Created default exchange_hours.json at %s", _EXCHANGE_HOURS_PATH)
+        except Exception as exc:
+            logger.warning("Could not write exchange_hours.json: %s", exc)
         return
+
+    # Backfill exchanges/fields added to _DEFAULT_EXCHANGE_HOURS after this file was first
+    # seeded on this install (e.g. LSE's quote_delay_minutes) — never overwrites a value
+    # already present, so any operator edit to an existing field survives.
     try:
-        os.makedirs(os.path.dirname(_EXCHANGE_HOURS_PATH), exist_ok=True)
-        with open(_EXCHANGE_HOURS_PATH, "w", encoding="utf-8") as f:
-            json.dump(_DEFAULT_EXCHANGE_HOURS, f, indent=2)
-        logger.info("Created default exchange_hours.json at %s", _EXCHANGE_HOURS_PATH)
+        with open(_EXCHANGE_HOURS_PATH, "r", encoding="utf-8") as f:
+            current = json.load(f)
+        changed = False
+        for exchange, defaults in _DEFAULT_EXCHANGE_HOURS.items():
+            existing = current.setdefault(exchange, {})
+            for key, value in defaults.items():
+                if key not in existing:
+                    existing[key] = value
+                    changed = True
+        if changed:
+            with open(_EXCHANGE_HOURS_PATH, "w", encoding="utf-8") as f:
+                json.dump(current, f, indent=2)
+            logger.info("Backfilled new default fields into exchange_hours.json")
     except Exception as exc:
-        logger.warning("Could not write exchange_hours.json: %s", exc)
+        logger.warning("Could not backfill exchange_hours.json: %s", exc)
 
 
 # Seed rows for market_ticker_registry — the single source of truth for every index/commodity/FX

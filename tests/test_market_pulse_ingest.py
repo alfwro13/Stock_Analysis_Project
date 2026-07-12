@@ -52,14 +52,16 @@ def _clear_cache(*tickers):
     conn.close()
 
 
-def _last_bday() -> pd.Timestamp:
-    """Most recent business day; bdate_range excludes non-business end dates, keeping index length deterministic."""
-    return pd.offsets.BusinessDay().rollback(pd.Timestamp.now().normalize())
+def _today_ts() -> pd.Timestamp:
+    """Real UTC 'today' — utils.is_daily_bar_still_forming() requires the daily bar's own date
+    to equal actual today, so fixtures anchored to the last business day would fail this
+    invariant on a Saturday/Sunday test run (Friday < today)."""
+    return pd.Timestamp(datetime.now(timezone.utc).date())
 
 
 def _flat_daily_df(prices: list) -> pd.DataFrame:
     """Non-MultiIndex daily DataFrame (single-ticker download path)."""
-    dates = pd.bdate_range(end=_last_bday(), periods=len(prices))
+    dates = pd.date_range(end=_today_ts(), periods=len(prices), freq="D")
     return pd.DataFrame(
         {"Close": prices, "High": [p * 1.01 for p in prices],
          "Low": [p * 0.99 for p in prices], "Open": prices, "Volume": [0] * len(prices)},
@@ -69,10 +71,9 @@ def _flat_daily_df(prices: list) -> pd.DataFrame:
 
 def _flat_live_df(price: float) -> pd.DataFrame:
     """Non-MultiIndex 2m live DataFrame (single-ticker download path)."""
-    # Anchor to the same business-day reference as _flat_daily_df so the
-    # last_daily_date >= live_date comparison in market_pulse.py is always True,
-    # matching the intraday path that the tests are designed to exercise.
-    ref = _last_bday() + pd.Timedelta(hours=12)
+    # Anchor to the same day as _flat_daily_df so the last_daily_date >= live_date comparison
+    # in market_pulse.py is always True, matching the intraday path the tests exercise.
+    ref = _today_ts() + pd.Timedelta(hours=12)
     return pd.DataFrame(
         {"Close": [price], "High": [price * 1.005], "Low": [price * 0.995],
          "Open": [price], "Volume": [1000]},
@@ -526,7 +527,7 @@ class TestStaleDailyHistoryFallback:
         sessions further back if rows were dropped out of the middle of the window — checking
         only the feed's own last date isn't enough. Found 2026-07-09 on ^KS200: the first fix
         (comparing only last dates) stopped catching this once Yahoo's feed "caught up"."""
-        today_bday = _last_bday()
+        today_bday = _today_ts()
         old_bday = today_bday - pd.Timedelta(days=8)
         daily = pd.DataFrame(
             {"Close": [1299.30, 1171.43], "High": [1308.19, 1175.0], "Low": [1176.04, 1168.0],
@@ -621,7 +622,7 @@ def _clear_sparkline(*tickers):
 
 
 def _multi_point_live_df(prices: list) -> pd.DataFrame:
-    ref = _last_bday() + pd.Timedelta(hours=9)
+    ref = _today_ts() + pd.Timedelta(hours=9)
     dates = [ref + pd.Timedelta(minutes=2 * i) for i in range(len(prices))]
     return pd.DataFrame(
         {"Close": prices, "High": [p * 1.005 for p in prices], "Low": [p * 0.995 for p in prices],

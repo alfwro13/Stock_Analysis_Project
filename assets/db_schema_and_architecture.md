@@ -101,7 +101,7 @@ We offload heavy time-series math and unstructured payload caching to local file
 * 📄 **`data/watchlist.json`**: Legacy active-watchlist file, superseded by the `watchlist_items` table (see §1) — only read once at startup for the one-time migration. Same disabled-Ghostfolio deletion lifecycle as `portfolio.json` above.
 * 📄 **`data/freetrade_blacklist.json`**: Self-healing ledger of permanently banned tickers.
 * 📄 **`data/isin_ticker_cache.json`**: Mapping of European ISINs to Yahoo Finance symbols.
-* 📄 **`data/exchange_hours.json`**: Per-exchange open/close times, timezones, currencies, and ticker suffixes. Auto-seeded with defaults for 28 exchanges on first boot. Edit this file to customise or add exchange definitions; read at runtime by `time_engine.py` and `etf_predictor_engine.py`.
+* 📄 **`data/exchange_hours.json`**: Per-exchange open/close times, timezones, currencies, and ticker suffixes. Auto-seeded with defaults for 28 exchanges on first boot; on every subsequent `init_db()` run, `db_schema._seed_exchange_hours_json()` also backfills any exchange or field added to `_DEFAULT_EXCHANGE_HOURS` after this install's file was first written (e.g. LSE's `quote_delay_minutes`, added 2026-07-10), without overwriting any field already present — so an install seeded before a new default field existed self-heals on the next restart instead of silently missing it forever. Edit this file to customise or add exchange definitions; read at runtime by `time_engine.py` and `etf_predictor_engine.py`.
 
 ---
 
