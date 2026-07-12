@@ -43,6 +43,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import database as _db
 
 
+@pytest.fixture(autouse=True)
+def _block_real_nextcloud_send():
+    """Same fixture name as conftest.py's session-wide safety-net mock — pytest resolves the
+    module-level definition first, so this no-op *overrides* (not adds to) it for this module:
+    TestSendTextMessageCredentials unit-tests send_text_message's own real implementation against
+    a mocked requests.post, so it needs the real function running, not the global mock.
+    TestDispatchAlerts patches send_text_message itself per-test regardless, so is unaffected."""
+    yield
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 TEST_TICKER = "_NC_DISPATCH_TEST"

@@ -233,6 +233,11 @@ class TestQuoteSettlementGating:
             patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value=fake_dfs),
             patch("intraday_orchestrator.market_pulse.is_quote_settled", return_value=is_settled) as mock_settled,
             patch("intraday_orchestrator.upsert_live_price") as mock_upsert,
+            # The fake OHLCV data can trip real Crash/Moonshot evaluation when is_settled=True —
+            # without this, a settled-quote test fires a real Nextcloud Talk alert (see conftest.py's
+            # _block_real_nextcloud_send session-wide safety net; this local patch is redundant with
+            # it but kept to match this codebase's per-test-file mocking convention).
+            patch("notification_engine.nextcloud_talk.send_text_message", return_value=True),
         ):
             orchestrator._run(conn)
 

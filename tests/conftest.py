@@ -29,6 +29,15 @@ market_state is missing/stale (market_pulse.proxy_tickers_needing_refresh()), wh
 the accounts case above — is unconditional on wall-clock market hours, so an unpatched test DB
 (no cache rows yet) would trigger a real fetch on every single run, not just during real market
 hours.
+
+Every test also gets `nextcloud_talk.send_text_message` mocked out by default (see the autouse
+`_block_real_nextcloud_send` fixture below) — a safety net on top of the per-test-file convention
+of explicitly patching it, after a test class (`TestQuoteSettlementGating` in
+test_intraday_orchestrator.py) that exercised real Crash/Moonshot alert dispatch end-to-end
+without that patch fired two live Nextcloud Talk messages (AAPL, VOD.L) on every test run
+(found 2026-07-12). `tests/test_nextcloud_dispatch.py::TestSendTextMessageCredentials`, which
+unit-tests send_text_message's own real implementation against a mocked `requests.post`,
+overrides this fixture with a no-op in that module.
 """
 
 import os
@@ -87,6 +96,16 @@ _db_module.init_db()
 
 # ── 4. TestClient fixture ─────────────────────────────────────────────────────
 from fastapi.testclient import TestClient  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _block_real_nextcloud_send():
+    """Session-wide safety net: no test should ever be able to dispatch a real Nextcloud Talk
+    message, regardless of whether it remembered to mock the send path itself. A test asserting
+    on send/dispatch behavior uses its own local `with patch(...)`, which shadows this one for
+    the duration of its `with` block, so this only guards the tests that forgot to."""
+    with patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
+        yield
 
 
 @pytest.fixture(scope="session")
