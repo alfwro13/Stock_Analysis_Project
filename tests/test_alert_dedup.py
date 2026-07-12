@@ -20,7 +20,7 @@ to the methods that now require an explicit connection (M2 refactor).
 
 import sys
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -35,8 +35,8 @@ import database as _db
 
 TEST_TICKER = "_DEDUP_TEST"   # unlikely to collide with real data
 
-TODAY = datetime.utcnow().strftime("%Y-%m-%d")
-YESTERDAY = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+TODAY = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+YESTERDAY = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 TEST_CONFIG = {
     "NOTIFICATIONS": {
@@ -279,7 +279,7 @@ class TestEvaluateAlertGateCrash:
     def test_case4a_borderline_recovery_just_below_rearm_stays_suppressed(self, orch, db_conn):
         """Case 4a boundary: 2.9% recovery < REARM 3.0% → stays in case 4b/4c, not re-armed."""
         fp = orch._condition_fingerprint(CRASH_REASON)
-        recent_ts = (datetime.utcnow() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+        recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, recent_ts, 0, TODAY)
         # +2.9% recovery, just below REARM threshold — does NOT re-arm
         result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 102.9, CRASH_REASON, db_conn)
@@ -290,7 +290,7 @@ class TestEvaluateAlertGateCrash:
     def test_case4b_cooldown_elapsed_and_worsened_fires(self, orch, db_conn):
         """Case 4b: cooldown elapsed AND price fell further >= RETRIGGER (2%) → fires."""
         fp = orch._condition_fingerprint(CRASH_REASON)
-        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
         # 100 → 97 = -3.0% for Crash (worsened), exceeds RETRIGGER 2.0%
         assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 97.0, CRASH_REASON, db_conn) is False
@@ -298,7 +298,7 @@ class TestEvaluateAlertGateCrash:
     def test_case4b_worsened_but_cooldown_not_elapsed_suppresses(self, orch, db_conn):
         """Case 4c: price worsened enough but cooldown hasn't elapsed → still suppressed."""
         fp = orch._condition_fingerprint(CRASH_REASON)
-        recent_ts = (datetime.utcnow() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+        recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, recent_ts, 0, TODAY)
         # Price fell 5% — clearly worsened — but only 30 min elapsed (< 120 min cooldown)
         assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 95.0, CRASH_REASON, db_conn) is True
@@ -306,7 +306,7 @@ class TestEvaluateAlertGateCrash:
     def test_case4c_cooldown_elapsed_but_insufficient_deterioration_suppresses(self, orch, db_conn):
         """Case 4c: cooldown elapsed but price only moved 1% (< RETRIGGER 2%) → suppressed."""
         fp = orch._condition_fingerprint(CRASH_REASON)
-        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
         # 100 → 99 = only 1% worse, less than RETRIGGER 2.0%
         assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 99.0, CRASH_REASON, db_conn) is True
@@ -324,7 +324,7 @@ class TestEvaluateAlertGateMoonshot:
     def test_moonshot_worsened_is_price_rising(self, orch, db_conn):
         """Moonshot: price rising further past cooldown+retrigger threshold fires."""
         fp = orch._condition_fingerprint(MOON_REASON)
-        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Moonshot", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
         # 100 → 103 = +3.0% further spike, exceeds RETRIGGER 2.0%
         assert orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 103.0, MOON_REASON, db_conn) is False
@@ -355,13 +355,13 @@ class TestEvaluateAlertGateTrapMonitor:
     def test_unchanged_ema_distance_stays_suppressed(self, orch, db_conn):
         """No new data (ema_distance essentially unchanged) must not retrigger."""
         fp = orch._condition_fingerprint(self.TRAP_REASON)
-        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("TrapMonitor", TEST_TICKER, fp, -4.5, old_ts, 0, TODAY)
         assert orch._evaluate_alert_gate("TrapMonitor", TEST_TICKER, -4.53, self.TRAP_REASON, db_conn) is True
 
     def test_deeper_ema_breach_past_cooldown_fires(self, orch, db_conn):
         fp = orch._condition_fingerprint(self.TRAP_REASON)
-        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("TrapMonitor", TEST_TICKER, fp, -4.5, old_ts, 0, TODAY)
         # -4.5 → -8.0 = 3.5-point deeper breach, exceeds TRAP_MONITOR_ALERTS RETRIGGER (3.0 points)
         assert orch._evaluate_alert_gate("TrapMonitor", TEST_TICKER, -8.0, self.TRAP_REASON, db_conn) is False
@@ -409,9 +409,9 @@ class TestRecordAlertFired:
         assert row["state_date"] == TODAY
 
     def test_last_fired_utc_is_recent(self, orch, db_conn):
-        before = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        before = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
-        after = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        after = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         row = _read_alert_state("Crash", TEST_TICKER)
         assert before <= row["last_fired_utc"] <= after
 
@@ -630,14 +630,14 @@ class TestPruneAlertState:
         conn.close()
 
     def test_deletes_rows_older_than_7_days(self, orch, db_conn):
-        eight_days_ago = (datetime.utcnow() - timedelta(days=8)).strftime("%Y-%m-%d")
+        eight_days_ago = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
         _seed_alert_state("Crash", self.OLD_TICKER, "abc", 100.0,
                           eight_days_ago + " 10:00:00", 0, eight_days_ago)
         orch._prune_alert_state(db_conn)
         assert _read_alert_state("Crash", self.OLD_TICKER) is None
 
     def test_retains_rows_within_7_days(self, orch, db_conn):
-        three_days_ago = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")
+        three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d")
         _seed_alert_state("Crash", self.RECENT_TICKER, "abc", 100.0,
                           three_days_ago + " 10:00:00", 0, three_days_ago)
         orch._prune_alert_state(db_conn)
@@ -666,7 +666,7 @@ class TestMacroEngine:
     def test_macro_rising_yield_counts_as_worsened(self, orch, db_conn):
         """Macro: yield rising further past cooldown+retrigger fires (worsening = higher yield)."""
         fp = orch._condition_fingerprint(self.MACRO_REASON)
-        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Macro", TEST_TICKER, fp, 4.5, old_ts, 0, TODAY)
         # 4.5 → 4.62 = +2.67% rise in yield, exceeds RETRIGGER 2.0%
         assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.62, self.MACRO_REASON, db_conn) is False
