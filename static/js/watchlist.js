@@ -52,7 +52,12 @@ $(document).ready(function () {
     });
 
     $('#customSearchInput').on('keyup', function () {
+        $('#customSearchClear').toggle(Boolean(this.value));
         table.search(this.value).draw();
+    });
+
+    $('#customSearchClear').on('click', function () {
+        $('#customSearchInput').val('').trigger('keyup');
     });
 
     $('#signalFilter').on('change', function () {
@@ -91,6 +96,19 @@ $(document).ready(function () {
         else if (val === '60') { scoreMin = 60; scoreMax = 74; }
         else if (val === '40') { scoreMin = 40; scoreMax = 59; }
         else if (val === '0') { scoreMin = 0; scoreMax = 39; }
+        table.draw();
+    });
+
+    var sectorSelected = 'ALL';
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+        if (settings.nTable.id !== 'dataTable') return true;
+        if (sectorSelected === 'ALL') return true;
+        var node = table.row(dataIndex).node();
+        return Boolean(node) && node.dataset.sector === sectorSelected;
+    });
+
+    $('#sectorFilter').on('change', function () {
+        sectorSelected = $(this).val();
         table.draw();
     });
 });

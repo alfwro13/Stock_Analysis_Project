@@ -52,3 +52,12 @@ function _wlBuildHeatmap(panel) {
     });
     window.HeatmapTreemap.render(panel, items);
 }
+
+$(document).ready(function () {
+    $('#dataTable').on('draw.dt', function () {
+        if (window._wlHeatmapMode) {
+            var panel = document.getElementById('heatmap-panel');
+            if (panel) _wlBuildHeatmap(panel);
+        }
+    });
+});

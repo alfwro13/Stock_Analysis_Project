@@ -36,6 +36,7 @@ from bubble_radar_engine import (
     get_bubble_ticker_detail,
     get_bubble_radar_history,
     run_bubble_scan,
+    flag_label,
 )
 
 
@@ -436,3 +437,14 @@ def test_bubble_radar_run_post_returns_success(client):
     assert resp.status_code == 200
     data = _json(resp)
     assert data.get("status") == "success"
+
+
+class TestFlagLabel:
+    def test_bubble_flag(self):
+        assert flag_label("bubble") == "Bubble Risk"
+
+    def test_watch_flag(self):
+        assert flag_label("watch") == "Bubble Watch"
+
+    def test_none_returns_none(self):
+        assert flag_label(None) is None

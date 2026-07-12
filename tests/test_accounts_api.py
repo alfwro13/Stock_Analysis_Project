@@ -1,7 +1,7 @@
 """Tests for the built-in Accounts API endpoints (api_routes_accounts.py)."""
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -950,6 +950,7 @@ def test_watchlist_items_add_list_and_bulk_delete(client):
         }),
         patch("api_routes_accounts.update_single_profile"),
         patch("api_routes_accounts.fetch_and_save_single_ticker"),
+        patch("api_routes_accounts.QuantEngine"),
     ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -982,6 +983,7 @@ def test_watchlist_item_readd_is_idempotent(client):
         }),
         patch("api_routes_accounts.update_single_profile"),
         patch("api_routes_accounts.fetch_and_save_single_ticker"),
+        patch("api_routes_accounts.QuantEngine"),
     ):
         first = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
         second = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
@@ -1016,6 +1018,7 @@ def test_add_watchlist_item_unknown_ticker_triggers_yahoo_fetch(client):
         }),
         patch("api_routes_accounts.update_single_profile") as mock_profile,
         patch("api_routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api_routes_accounts.QuantEngine"),
     ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "ZZZNOTREAL4"})
     assert resp.status_code == 200
@@ -1024,6 +1027,90 @@ def test_add_watchlist_item_unknown_ticker_triggers_yahoo_fetch(client):
 
     item_id = _json(resp)["id"]
     _db.delete_watchlist_items(wl_id, [item_id])
+
+
+@pytest.mark.api
+def test_add_watchlist_item_missing_stock_signals_row_triggers_analyze(client):
+    """A ticker that's already 'known' (asset_profiles exists) but has no stock_signals row yet
+    must still get an immediate analyze_ticker() call queued when added via the Accounts page —
+    otherwise it silently never appears on the Watchlist page."""
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO asset_profiles (ticker, company_name) VALUES (?, ?)",
+            ("ZZANALYZEME2", "Analyze Me Too Inc."),
+        )
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZANALYZEME2'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    mock_engine = MagicMock()
+    with (
+        patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+            "company_name": "Analyze Me Too Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+        }),
+        patch("api_routes_accounts.update_single_profile") as mock_profile,
+        patch("api_routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api_routes_accounts.QuantEngine", return_value=mock_engine),
+    ):
+        resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "ZZANALYZEME2"})
+    assert resp.status_code == 200
+    mock_profile.assert_not_called()
+    mock_fetch.assert_not_called()
+    mock_engine.analyze_ticker.assert_called_once_with("ZZANALYZEME2")
+
+    item_id = _json(resp)["id"]
+    _db.delete_watchlist_items(wl_id, [item_id])
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM asset_profiles WHERE ticker = 'ZZANALYZEME2'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.api
+def test_add_watchlist_item_existing_stock_signals_row_skips_analyze(client):
+    """A ticker that already has a stock_signals row must not re-trigger analyze_ticker()."""
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO asset_profiles (ticker, company_name) VALUES (?, ?)",
+            ("AAPL", "Apple Inc."),
+        )
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker) VALUES ('AAPL')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    mock_engine = MagicMock()
+    with (
+        patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+            "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+        }),
+        patch("api_routes_accounts.update_single_profile"),
+        patch("api_routes_accounts.fetch_and_save_single_ticker"),
+        patch("api_routes_accounts.QuantEngine", return_value=mock_engine),
+    ):
+        resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "AAPL"})
+    assert resp.status_code == 200
+    mock_engine.analyze_ticker.assert_not_called()
+
+    item_id = _json(resp)["id"]
+    _db.delete_watchlist_items(wl_id, [item_id])
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'AAPL'")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _mock_html_resp(text: str):

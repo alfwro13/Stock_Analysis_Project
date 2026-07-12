@@ -378,20 +378,22 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
     try:
         conn.execute("""
             INSERT OR REPLACE INTO stock_signals (
-                ticker, current_price, currency, quote_type, composite_score,
+                ticker, current_price, currency, quote_type, composite_score, sector,
                 piotroski_f_score, altman_z_score, beneish_m_score,
-                roe, debt_to_equity, profit_margin, revenue_growth, current_ratio, trailing_pe
+                roe, debt_to_equity, profit_margin, revenue_growth, current_ratio, trailing_pe,
+                next_earnings_date
             ) VALUES (
-                'ZZANALYTICS', 100.0, 'USD', 'EQUITY', 70,
+                'ZZANALYTICS', 100.0, 'USD', 'EQUITY', 70, 'Technology',
                 2, 1.2, -1.0,
-                0.20, 30, 0.15, 0.10, 2.0, 20
+                0.20, 30, 0.15, 0.10, 2.0, 20,
+                'Unknown'
             )
         """)
         conn.execute(
-            "INSERT OR REPLACE INTO trap_monitor_results (ticker, phase) VALUES ('ZZANALYTICS', 'Bull Trap')"
+            "INSERT OR REPLACE INTO trap_monitor_results (ticker, phase) VALUES ('ZZANALYTICS', 'BULL_TRAP_RISK')"
         )
         conn.execute(
-            "INSERT OR REPLACE INTO bubble_radar_metrics (ticker, scan_date, flag) VALUES ('ZZANALYTICS', '2026-07-10', 'Euphoria')"
+            "INSERT OR REPLACE INTO bubble_radar_metrics (ticker, scan_date, flag) VALUES ('ZZANALYTICS', '2026-07-10', 'bubble')"
         )
         conn.commit()
     finally:
@@ -406,14 +408,24 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
         body = resp.text
         assert "Grade A" in body
         assert "Quality Compounder" in body
-        assert "Bull Trap" in body
-        assert "Euphoria" in body
+        assert "Bull Trap Risk" in body
+        assert "Bubble Risk" in body
         assert "Piotroski" in body
         assert "Altman Z" in body
         assert "Beneish M" in body
         assert "macro-cards-container" not in body
         assert "US 10Y Treasury" not in body
         assert "UK 10Y Gilt" not in body
+        assert 'id="sectorFilter"' in body
+        assert '<option value="Technology">Technology</option>' in body
+        assert '<option value="GARP Tenbagger">GARP Tenbagger</option>' in body
+        assert '<option value="Bubble Risk">Bubble Risk</option>' in body
+        assert 'data-sector="Technology"' in body
+        # 'Unknown' is the literal sentinel written when Yahoo has no earnings date — the visible
+        # cell text must render as "-", not the raw string (it may still appear in data-sort).
+        row_html = body[body.index('data-ticker="ZZANALYTICS"'):].split('</tr>')[0]
+        assert '>-</td>' in row_html
+        assert '>Unknown</td>' not in row_html
     finally:
         conn = _db.get_connection()
         try:

@@ -222,6 +222,14 @@ def _flag_from_score(score: int, watch_threshold: int, flag_threshold: int) -> O
     return None
 
 
+_FLAG_LABELS = {"bubble": "Bubble Risk", "watch": "Bubble Watch"}
+
+
+def flag_label(flag: Optional[str]) -> Optional[str]:
+    """Canonical human-readable label for a stored flag value — mirrors static/js/bubble_radar.js's own label map."""
+    return _FLAG_LABELS.get(flag)
+
+
 def _record_history(ticker: str, scan_date: str, flag: str, price: Optional[float], conn) -> None:
     cursor = conn.cursor()
     cursor.execute(

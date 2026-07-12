@@ -37,7 +37,7 @@ from config import (
 from database import (
     get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
 )
-from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known
+from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
@@ -118,6 +118,8 @@ async def api_watchlist_add(req: TickerRequest, background_tasks: BackgroundTask
         if not await asyncio.to_thread(_ticker_known, ticker):
             background_tasks.add_task(update_single_profile, ticker)
             background_tasks.add_task(fetch_and_save_single_ticker, ticker)
+        if not await asyncio.to_thread(_has_stock_signals_row, ticker):
+            background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to watchlist."})
 

@@ -1838,3 +1838,27 @@ def test_pension_benchmark_overlay_ticker_line_rebased_to_start_value():
 def test_pension_benchmark_overlay_empty_value_history_returns_empty_dict():
     aid = create_account("PensionOverlayEmptyAcc", "GBP", account_type="Pension")
     assert accounts_engine.pension_benchmark_overlay(aid, pd.DataFrame()) == {}
+
+
+@pytest.mark.db
+def test_has_stock_signals_row_true_when_row_exists():
+    conn = get_connection()
+    try:
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker) VALUES ('ZZSIGROW')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert accounts_engine._has_stock_signals_row('ZZSIGROW') is True
+
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZSIGROW'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+def test_has_stock_signals_row_false_when_missing():
+    assert accounts_engine._has_stock_signals_row('ZZNOSIGROW') is False

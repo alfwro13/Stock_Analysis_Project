@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import (
-    _ticker_known, account_summary, confirm_autotopup, create_transfer,
+    _ticker_known, _has_stock_signals_row, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, held_tickers_lightweight,
     pension_units_as_of, reconcile_cash, record_pension_contribution, record_pension_fee,
@@ -26,6 +26,7 @@ import notification_engine
 from api_deps import limiter, _error_500
 from config import load_config
 from data_engine import fetch_and_save_single_ticker
+from quant_signals import QuantEngine
 from database import (
     get_accounts,
     get_account,
@@ -648,6 +649,8 @@ async def api_add_watchlist_item(request: Request, account_id: int, body: Watchl
         if not _ticker_known(ticker):
             background_tasks.add_task(update_single_profile, ticker)
             background_tasks.add_task(fetch_and_save_single_ticker, ticker)
+        if not _has_stock_signals_row(ticker):
+            background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
         return JSONResponse(content={"status": "success", "id": item_id})
     except Exception as e:
         logger.error("api_add_watchlist_item failed for account %s: %s", account_id, e)

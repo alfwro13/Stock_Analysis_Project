@@ -489,6 +489,21 @@ def _phase_severity(phase: str) -> int:
         return len(_PHASE_ORDER)
 
 
+_PHASE_LABELS: dict[str, str] = {
+    "ACTIVE_SELLOFF":       "Active Selloff",
+    "BULL_TRAP_RISK":       "Bull Trap Risk",
+    "CAPITULATION_FORMING": "Capitulation",
+    "BEAR_TRAP_RISK":       "Bear Trap Risk",
+    "ACCUMULATION":         "Accumulation",
+    "NEUTRAL":              "Neutral",
+}
+
+
+def phase_label(phase: Optional[str]) -> str:
+    """Canonical human-readable label for a stored phase code — mirrors static/js/trap_monitor.js's own label map."""
+    return _PHASE_LABELS.get(phase, phase or "Neutral")
+
+
 def fill_trap_phase_actuals() -> int:
     today = datetime.now(timezone.utc).date()
     cutoff_14d = (today - timedelta(days=14)).strftime("%Y-%m-%d")

@@ -23,7 +23,7 @@ import ta
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
-from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER, fill_trap_phase_actuals
+from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER, fill_trap_phase_actuals, phase_label
 
 # ── minimal config ─────────────────────────────────────────────────────────────
 
@@ -866,3 +866,19 @@ class TestFillTrapPhaseActuals:
             assert count == 0, "NEUTRAL phase rows must not be resolved"
         finally:
             self._cleanup()
+
+
+class TestPhaseLabel:
+    def test_known_phases(self):
+        assert phase_label("BULL_TRAP_RISK") == "Bull Trap Risk"
+        assert phase_label("CAPITULATION_FORMING") == "Capitulation"
+        assert phase_label("BEAR_TRAP_RISK") == "Bear Trap Risk"
+        assert phase_label("ACCUMULATION") == "Accumulation"
+        assert phase_label("ACTIVE_SELLOFF") == "Active Selloff"
+        assert phase_label("NEUTRAL") == "Neutral"
+
+    def test_unknown_phase_falls_back_to_raw_value(self):
+        assert phase_label("SOME_FUTURE_PHASE") == "SOME_FUTURE_PHASE"
+
+    def test_none_falls_back_to_neutral(self):
+        assert phase_label(None) == "Neutral"

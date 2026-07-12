@@ -296,7 +296,7 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
                 {% endif %}
             </td>
 
-            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date and item.next_earnings_date != 'Unknown' %}{{ item.next_earnings_date }}{% else %}-{% endif %}</td>
             <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
             <td class="max-w-150">
                 {% for tag in item.setup_tags_list %}

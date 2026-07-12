@@ -63,6 +63,23 @@ def _ticker_known(ticker: str) -> bool:
             conn.close()
 
 
+def _has_stock_signals_row(ticker: str) -> bool:
+    """Distinct from _ticker_known() (asset_profiles) — a ticker can have a profile/parquet
+    but still be missing from stock_signals if analyze_ticker() was never triggered for it,
+    which silently hides it from the Portfolio/Watchlist pages (both filter FROM stock_signals)."""
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute("SELECT 1 FROM stock_signals WHERE ticker = ?", (ticker,)).fetchone()
+        return row is not None
+    except Exception as e:
+        logger.error("_has_stock_signals_row check failed for %s: %s", ticker, e)
+        return True
+    finally:
+        if conn:
+            conn.close()
+
+
 def _fx(txn) -> float:
     rate = txn["exchange_rate"]
     return rate if rate is not None else 1.0

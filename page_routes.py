@@ -32,6 +32,8 @@ from fundamentals_helpers import (
     is_mean_reversion_setup,
     is_dividend_harvest_candidate,
 )
+from bull_bear_trap_engine import phase_label
+from bubble_radar_engine import flag_label
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -673,9 +675,13 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                 report_tags.append({'name': 'Dividend Harvest', 'tooltip': 'Meets the Market Reports Dividend Harvest screen: solid yield with a healthy composite score.'})
             row_dict['report_tags'] = report_tags
 
+            row_dict['trap_phase_label'] = phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None
+            row_dict['bubble_flag_label'] = flag_label(row_dict.get('bubble_flag'))
+
             watchlist_data.append(row_dict)
 
     watchlist_data.sort(key=lambda x: x['ticker'])
+    sectors = sorted({row['sector'] or 'Unclassified' for row in watchlist_data})
 
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
@@ -685,6 +691,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
         request=request, name="watchlist.html",
         context={
             "watchlist": watchlist_data,
+            "sectors": sectors,
             "global_updated": global_updated,
             "embed": embed,
             "embed_token": embed_token,

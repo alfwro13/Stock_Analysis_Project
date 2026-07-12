@@ -59,11 +59,10 @@ function _wcRenderSectorDonut() {
         hovertemplate: '%{label}: %{value} tickers (%{percent})<extra></extra>'
     }], {
         title: { text: 'Sector Allocation', x: 0.5, xanchor: 'center', font: { color: '#fff' } },
-        showlegend: true,
-        legend: { orientation: 'h', yanchor: 'top', y: -0.1, xanchor: 'center', x: 0.5, font: { color: '#ccc' } },
+        showlegend: false,
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        margin: { t: 40, b: 60, l: 10, r: 10 },
+        margin: { t: 40, b: 20, l: 10, r: 10 },
         height: 380
     }, { responsive: true, displayModeBar: false });
 }

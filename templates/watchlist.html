@@ -27,7 +27,10 @@
 
 <div class="row g-2 mb-3 align-items-center">
     <div class="col-12 col-md">
-        <input type="text" id="customSearchInput" class="form-control" placeholder="🔍 Search ticker or name...">
+        <div class="search-input-wrap">
+            <input type="text" id="customSearchInput" class="form-control watchlist-search-input" placeholder="🔍 Search ticker or name...">
+            <button type="button" class="search-clear-btn" id="customSearchClear" title="Clear search">&#x2715;</button>
+        </div>
     </div>
     <div class="col-6 col-md-auto">
         <select id="signalFilter" class="form-select">
@@ -46,6 +49,22 @@
             <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
             <option value="👑 Market Leader">👑 Market Leaders</option>
             <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
+            <option value="Quality Compounder">Quality Compounder</option>
+            <option value="Quality on Sale">Quality on Sale</option>
+            <option value="GARP Tenbagger">GARP Tenbagger</option>
+            <option value="Mean Reversion Setup">Mean Reversion Setup</option>
+            <option value="Dividend Harvest">Dividend Harvest</option>
+            <option value="Bull Trap Risk">Bull Trap Risk</option>
+            <option value="Bear Trap Risk">Bear Trap Risk</option>
+            <option value="Capitulation">Capitulation</option>
+            <option value="Accumulation">Accumulation</option>
+            <option value="Active Selloff">Active Selloff</option>
+            <option value="Bubble Risk">Bubble Risk</option>
+            <option value="Bubble Watch">Bubble Watch</option>
+            <option value="Grade A">Grade A</option>
+            <option value="Grade B">Grade B</option>
+            <option value="Grade C">Grade C</option>
+            <option value="Grade D">Grade D</option>
         </select>
     </div>
     <div class="col-6 col-md-auto">
@@ -71,6 +90,14 @@
             <option value="60">60–74 (Good)</option>
             <option value="40">40–59 (Neutral)</option>
             <option value="0">Below 40 (Weak)</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-auto">
+        <select id="sectorFilter" class="form-select">
+            <option value="ALL">All Sectors</option>
+            {% for sector in sectors %}
+            <option value="{{ sector }}">{{ sector }}</option>
+            {% endfor %}
         </select>
     </div>
     <div class="col-12 col-md-auto ms-md-auto xray-link-container d-none d-md-flex">
@@ -208,7 +235,7 @@
                 {% endif %}
             </td>
 
-            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date and item.next_earnings_date != 'Unknown' %}{{ item.next_earnings_date }}{% else %}-{% endif %}</td>
             <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
             <td data-sort="{{ item.piotroski_f_score if item.piotroski_f_score is not none else -999 }}" class="num-cell">
                 {% if item.piotroski_f_score is not none %}
@@ -232,18 +259,18 @@
                     </abbr>
                 </div>
 
-                {% if item.trap_phase and item.trap_phase != 'Neutral' %}
+                {% if item.trap_phase_label %}
                     <div class="inline-block">
                         <abbr title="Market Trap & Recovery Monitor phase — see the /trap-monitor tool for details." class="no-decoration-abbr">
-                            <span class="setup-tag">{{ item.trap_phase }}</span>
+                            <span class="setup-tag">{{ item.trap_phase_label }}</span>
                         </abbr>
                     </div>
                 {% endif %}
 
-                {% if item.bubble_flag %}
+                {% if item.bubble_flag_label %}
                     <div class="inline-block">
                         <abbr title="Bubble Radar flag — see the /bubble-radar tool for the full valuation-euphoria breakdown." class="no-decoration-abbr">
-                            <span class="setup-tag">🫧 {{ item.bubble_flag }}</span>
+                            <span class="setup-tag">🫧 {{ item.bubble_flag_label }}</span>
                         </abbr>
                     </div>
                 {% endif %}
