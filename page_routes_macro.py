@@ -26,8 +26,8 @@ from utils import normalize_ticker
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
-    _intraday_market_tz,
-    _EXCHANGE_DELAYS,
+    intraday_market_tz,
+    EXCHANGE_DELAYS,
     create_us_liquidity_chart,
     create_us_credit_chart,
     create_uk_liquidity_chart,
@@ -410,8 +410,8 @@ async def index_detail(request: Request, ticker: str):
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
         s1 = price_action['s1'] if price_action else None
         s2 = price_action['s2'] if price_action else None
-        mkt_tz = _intraday_market_tz(ticker, currency)
-        delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+        mkt_tz = intraday_market_tz(ticker, currency)
+        delay_min = EXCHANGE_DELAYS.get(currency, 0)
         intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
                                               market_tz=mkt_tz, data_delay_minutes=delay_min)
     except FileNotFoundError:

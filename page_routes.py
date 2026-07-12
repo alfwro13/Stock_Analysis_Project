@@ -37,8 +37,8 @@ from bubble_radar_engine import flag_label
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
-    _intraday_market_tz,
-    _EXCHANGE_DELAYS,
+    intraday_market_tz,
+    EXCHANGE_DELAYS,
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
 )
@@ -1618,8 +1618,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
 
         s1_val = price_action['s1'] if price_action else None
         s2_val = price_action['s2'] if price_action else None
-        mkt_tz = _intraday_market_tz(ticker, currency)
-        delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+        mkt_tz = intraday_market_tz(ticker, currency)
+        delay_min = EXCHANGE_DELAYS.get(currency, 0)
         intraday_html = create_intraday_chart(
             df_intraday, ticker, s1=s1_val, s2=s2_val,
             live_pattern_name=live_pattern_name,

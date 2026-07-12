@@ -8,13 +8,13 @@ import textwrap
 from quant_signals import get_candlestick_patterns
 import time_engine
 
-_EXCHANGE_DELAYS = {
+EXCHANGE_DELAYS = {
     'GBp': 15, 'GBP': 15,  # LSE — Yahoo Finance free-tier delay
     'EUR': 15,              # Euronext and other European exchanges
 }
 
 
-def _intraday_market_tz(ticker: str, currency: str) -> str:
+def intraday_market_tz(ticker: str, currency: str) -> str:
     return time_engine.get_user_tz().key
 
 

@@ -3,7 +3,7 @@ tests/test_timezone_hygiene.py
 
 Guards against timezone regressions across three testable layers:
 
-1. ROUTING — _intraday_market_tz() and _EXCHANGE_DELAYS return the right
+1. ROUTING — intraday_market_tz() and EXCHANGE_DELAYS return the right
    values per ticker/currency.
 
 2. CHART — create_intraday_chart() with market_tz shifts naive UTC timestamps
@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from visuals import create_intraday_chart, _intraday_market_tz, _EXCHANGE_DELAYS
+from visuals import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -47,37 +47,37 @@ def _single_candle_df(naive_utc_str: str) -> pd.DataFrame:
 
 class TestIntradayMarketTz:
     """
-    _intraday_market_tz() is a display helper — it returns the user's configured
+    intraday_market_tz() is a display helper — it returns the user's configured
     USER_TIMEZONE for all tickers so intraday charts are always shown in local time.
     Exchange routing (NYSE/LSE/etc.) lives in time_engine.ticker_exchange().
     """
 
     def test_returns_a_valid_iana_tz_string(self):
         from zoneinfo import ZoneInfo
-        tz_str = _intraday_market_tz("AAPL", "USD")
+        tz_str = intraday_market_tz("AAPL", "USD")
         ZoneInfo(tz_str)  # raises if invalid
 
     def test_same_tz_for_uk_and_us_tickers(self):
         # All tickers get the same display timezone regardless of their exchange
-        assert _intraday_market_tz("VOD.L", "GBp") == _intraday_market_tz("AAPL", "USD")
+        assert intraday_market_tz("VOD.L", "GBp") == intraday_market_tz("AAPL", "USD")
 
     def test_same_tz_for_all_currencies(self):
-        assert _intraday_market_tz("SPY", "USD") == _intraday_market_tz("SIE.DE", "EUR")
+        assert intraday_market_tz("SPY", "USD") == intraday_market_tz("SIE.DE", "EUR")
 
 
 class TestExchangeDelays:
 
     def test_gbp_pence_has_delay(self):
-        assert _EXCHANGE_DELAYS.get("GBp", 0) > 0
+        assert EXCHANGE_DELAYS.get("GBp", 0) > 0
 
     def test_gbp_has_delay(self):
-        assert _EXCHANGE_DELAYS.get("GBP", 0) > 0
+        assert EXCHANGE_DELAYS.get("GBP", 0) > 0
 
     def test_eur_has_delay(self):
-        assert _EXCHANGE_DELAYS.get("EUR", 0) > 0
+        assert EXCHANGE_DELAYS.get("EUR", 0) > 0
 
     def test_usd_has_no_delay(self):
-        assert _EXCHANGE_DELAYS.get("USD", 0) == 0
+        assert EXCHANGE_DELAYS.get("USD", 0) == 0
 
 
 # ── 2. Chart timestamp shift ──────────────────────────────────────────────────

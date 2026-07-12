@@ -72,7 +72,7 @@ from curl_cffi import requests as cffi_requests
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
-from visuals import create_intraday_chart, _intraday_market_tz, _EXCHANGE_DELAYS
+from visuals import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 from monte_carlo_engine import run_simulation as _run_mc_simulation
 
@@ -695,8 +695,8 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         if conn_meta:
             conn_meta.close()
 
-    mkt_tz = _intraday_market_tz(ticker, currency)
-    delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+    mkt_tz = intraday_market_tz(ticker, currency)
+    delay_min = EXCHANGE_DELAYS.get(currency, 0)
 
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
@@ -797,8 +797,8 @@ async def refresh_intraday_chart(req: TickerRequest):
         html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
         return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
 
-    mkt_tz = _intraday_market_tz(ticker, currency)
-    delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+    mkt_tz = intraday_market_tz(ticker, currency)
+    delay_min = EXCHANGE_DELAYS.get(currency, 0)
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
