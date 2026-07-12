@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
+import db_helpers
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -261,6 +262,37 @@ def test_get_mutual_fund_tickers_finds_stock_signals_classification():
         conn.execute("DELETE FROM stock_signals WHERE ticker = 'GU_SS_FUND'")
         conn.commit()
         conn.close()
+
+
+# ── get_next_earnings_dates ───────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_get_next_earnings_dates_returns_company_name_and_date():
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO stock_signals (ticker, company_name, next_earnings_date) "
+            "VALUES ('GU_ERN_1', 'Example Corp', '2026-08-01')"
+        )
+        conn.commit()
+        result = db_helpers.get_next_earnings_dates(["GU_ERN_1"])
+        assert result == {"GU_ERN_1": {"company_name": "Example Corp", "next_earnings_date": "2026-08-01"}}
+    finally:
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'GU_ERN_1'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_next_earnings_dates_empty_input_returns_empty_dict():
+    assert db_helpers.get_next_earnings_dates([]) == {}
+
+
+@pytest.mark.db
+def test_get_next_earnings_dates_ticker_with_no_row_omitted():
+    """A ticker never scanned yet is simply absent from the result — not a placeholder entry."""
+    result = db_helpers.get_next_earnings_dates(["GU_ERN_UNKNOWN_TICKER"])
+    assert "GU_ERN_UNKNOWN_TICKER" not in result
 
 
 # ── batch_update_trap_phase_actuals ───────────────────────────────────────────

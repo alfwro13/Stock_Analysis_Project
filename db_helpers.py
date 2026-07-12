@@ -112,6 +112,34 @@ def filter_equity_tickers(tickers: List[str]) -> List[str]:
             conn.close()
 
 
+def get_next_earnings_dates(tickers: List[str]) -> dict:
+    """{ticker: {"company_name", "next_earnings_date"}} from stock_signals for `tickers` — the
+    single shared read of the value written nightly by the Quant Scan (quant_signals.py) and
+    weekly by the Universe Fundamentals sync, both from Yahoo's earningsTimestamp field. Callers
+    checking "does this ticker have earnings soon" must use this instead of re-deriving the date
+    via a live yahoo_engine.get_ticker_info()/get_earnings_dates() call."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, company_name, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+        return {
+            row["ticker"]: {"company_name": row["company_name"], "next_earnings_date": row["next_earnings_date"]}
+            for row in rows
+        }
+    except Exception as e:
+        logger.error("Failed to fetch next earnings dates: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
 def upsert_quant_signal(
     ticker: str,
     date: str,

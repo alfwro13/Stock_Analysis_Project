@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from database import get_connection
 from config import load_config
+from db_helpers import get_next_earnings_dates
 from time_engine import now_local
 from notification_engine import notify
 
@@ -23,20 +24,14 @@ def run_earnings_alert():
 
         conn = get_connection()
         try:
-            cursor = conn.cursor()
-
-            placeholders = ','.join('?' for _ in tickers)
-            query = f"SELECT ticker, company_name, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})"
-            cursor.execute(query, tickers)
-            rows = cursor.fetchall()
+            earnings_data = get_next_earnings_dates(tickers)
 
             today = now_local().date()
             alerts_sent = 0
 
-            for row in rows:
-                ticker = row['ticker']
-                name = row['company_name']
-                earnings_date_str = row['next_earnings_date']
+            for ticker, data in earnings_data.items():
+                name = data['company_name']
+                earnings_date_str = data['next_earnings_date']
 
                 if not earnings_date_str or earnings_date_str == 'Unknown':
                     continue

@@ -9,7 +9,7 @@ import pandas as pd
 
 from data_engine import load_or_fetch_daily_history
 from database import get_connection, log_notification
-from db_helpers import filter_equity_tickers
+from db_helpers import filter_equity_tickers, get_next_earnings_dates
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -132,42 +132,23 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
         today = datetime.now(timezone.utc)
         cutoff_date = today + timedelta(days=14)
 
+        cached_earnings_dates = get_next_earnings_dates(ticker_list)
+
         for i, ticker in enumerate(ticker_list):
             try:
-                earnings_date = None
-                e_date_str = None
+                e_date_str = cached_earnings_dates.get(ticker, {}).get('next_earnings_date')
+                if not e_date_str or e_date_str == 'Unknown':
+                    continue
 
-                # Bypass stale SQLite values — always fetch live to avoid acting on outdated dates
                 try:
-                    info = yahoo_engine.get_ticker_info(ticker) or {}
-                    earnings_ts = info.get('earningsTimestamp')
-                    if earnings_ts:
-                        earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc)
-
-                    # Cross-check with earnings calendar (more accurate than the .info timestamp)
-                    live_dates = yahoo_engine.get_earnings_dates(ticker, limit=5)
-                    if live_dates is not None and not live_dates.empty:
-                        now_utc = pd.Timestamp.now(tz=timezone.utc)
-                        if live_dates.index.tz is None:
-                            live_dates.index = live_dates.index.tz_localize(timezone.utc)
-                        else:
-                            live_dates.index = live_dates.index.tz_convert(timezone.utc)
-                        future_dates = live_dates.index[live_dates.index >= now_utc]
-                        if len(future_dates) > 0:
-                            earnings_date = future_dates.min().to_pydatetime()
-
-                    if earnings_date:
-                        e_date_str = earnings_date.strftime('%Y-%m-%d')
-                except Exception as e:
-                    logger.debug("Failed to fetch live earnings date for %s: %s", ticker, e)
-
-                if not earnings_date:
+                    earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                except ValueError:
                     continue
 
                 if not (today <= earnings_date <= cutoff_date):
                     continue
 
-                logger.info("Analyzing %s (Live Earnings Date: %s)...", ticker, e_date_str)
+                logger.info("Analyzing %s (Earnings Date: %s)...", ticker, e_date_str)
 
                 hist = load_or_fetch_daily_history(ticker)
                 hist = hist.tail(30) if hist is not None else pd.DataFrame()
