@@ -5,7 +5,7 @@ import sqlite3
 from typing import Optional
 
 from config import load_config
-from database import log_notification as _db_log_notification
+from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES
 import nextcloud_talk
 
 logger = logging.getLogger(__name__)
@@ -121,8 +121,8 @@ def notify(
         if conn is not None:
             try:
                 conn.execute(
-                    "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-                    (message_type, message_text),
+                    "INSERT INTO system_notifications (message_type, message_text, is_read) VALUES (?, ?, ?)",
+                    (message_type, message_text, message_type in AUTO_READ_MESSAGE_TYPES),
                 )
                 conn.commit()
             except Exception as e:

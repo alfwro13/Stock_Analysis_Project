@@ -19,7 +19,7 @@ def _read(message_text_like):
     conn = _db.get_connection()
     try:
         return conn.execute(
-            "SELECT message_type, message_text FROM system_notifications WHERE message_text LIKE ?",
+            "SELECT message_type, message_text, is_read FROM system_notifications WHERE message_text LIKE ?",
             (f"%{message_text_like}%",),
         ).fetchall()
     finally:
@@ -105,6 +105,61 @@ class TestNotifyChannels:
         with patch("notification_engine.load_config", return_value=self._routing(nextcloud_talk=True)), \
              patch("notification_engine.nextcloud_talk.send_text_message", side_effect=RuntimeError("boom")):
             assert ne.notify("network_fault", "Net", f"q {MARKER}") is False
+
+    def test_info_success_scheduler_auto_marked_read_via_db_log_path(self):
+        with patch("notification_engine.load_config", return_value=self._routing(in_app=True)):
+            ne.notify("network_fault", "Info", f"info {MARKER}")
+            ne.notify("network_fault", "Success", f"success {MARKER}")
+            ne.notify("network_fault", "Scheduler", f"scheduler {MARKER}")
+            ne.notify("network_fault", "Error", f"error {MARKER}")
+        conn = _db.get_connection()
+        try:
+            rows = {
+                r["message_type"]: r["is_read"]
+                for r in conn.execute(
+                    "SELECT message_type, is_read FROM system_notifications WHERE message_text LIKE ?",
+                    (f"%{MARKER}%",),
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        assert rows["Info"] == 1
+        assert rows["Success"] == 1
+        assert rows["Scheduler"] == 1
+        assert rows["Error"] == 0
+
+    def test_info_success_scheduler_auto_marked_read_via_conn_path(self):
+        conn = _db.get_connection()
+        try:
+            with patch("notification_engine.load_config", return_value=self._routing(in_app=True)):
+                ne.notify("network_fault", "Info", f"connpath {MARKER}", conn=conn)
+                ne.notify("network_fault", "Error", f"connpath {MARKER}", conn=conn)
+            rows = {
+                r["message_type"]: r["is_read"]
+                for r in conn.execute(
+                    "SELECT message_type, is_read FROM system_notifications WHERE message_text LIKE ?",
+                    (f"%connpath {MARKER}%",),
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        assert rows["Info"] == 1
+        assert rows["Error"] == 0
+
+
+class TestDbLogNotificationAutoRead:
+    def test_auto_read_types_marked_read_others_unread(self):
+        _db.log_notification("Info", f"db info {MARKER}")
+        _db.log_notification("Success", f"db success {MARKER}")
+        _db.log_notification("Scheduler", f"db scheduler {MARKER}")
+        _db.log_notification("Error", f"db error {MARKER}")
+        _db.log_notification("Warning", f"db warning {MARKER}")
+        rows = {r["message_type"]: r["is_read"] for r in _read(MARKER)}
+        assert rows["Info"] == 1
+        assert rows["Success"] == 1
+        assert rows["Scheduler"] == 1
+        assert rows["Error"] == 0
+        assert rows["Warning"] == 0
 
 
 class TestJobSourceContext:

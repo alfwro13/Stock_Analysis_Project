@@ -37,7 +37,9 @@ def db_path(tmp_path):
         CREATE TABLE system_notifications (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             message_type TEXT,
-            message_text TEXT
+            message_text TEXT,
+            is_read      BOOLEAN DEFAULT 0,
+            status       TEXT NOT NULL DEFAULT 'sent'
         );
     """)
     conn.commit()

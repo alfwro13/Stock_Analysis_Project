@@ -19,14 +19,18 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+# Message types that don't need operator triage — never counted toward the unread badge.
+AUTO_READ_MESSAGE_TYPES = {"Info", "Success", "Scheduler"}
+
+
 def log_notification(message_type: str, message_text: str) -> None:
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
+            "INSERT INTO system_notifications (message_type, message_text, is_read) VALUES (?, ?, ?)",
+            (message_type, message_text, message_type in AUTO_READ_MESSAGE_TYPES)
         )
         conn.commit()
     except Exception as e:

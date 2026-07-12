@@ -161,6 +161,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Purpose:** In-app notification feed surfaced in the Settings notifications panel.
 * **Key Columns:** `id` (PK autoincrement), `timestamp`, `message_type`, `message_text`, `is_read`, `status`.
 * **Written by:** all notifications now funnel through `notification_engine.notify()`, whose in-app channel writes this table (directly, or via `database.log_notification()`). Whether a given source reaches this table is controlled by `NOTIFICATION_ROUTING`. Deep pipeline-progress messages still call `database.log_notification()` directly (in-app only).
+* **Auto-read types:** rows with `message_type` in `Info`/`Success`/`Scheduler` (`database.AUTO_READ_MESSAGE_TYPES`) are inserted with `is_read = 1` — these don't need operator triage, so they never contribute to the unread badge or the `/notifications` page's "unread" card highlight.
 
 #### `scheduler_run_log`
 * **Purpose:** Records the last-run timestamp per APScheduler job ID so jobs can guard against re-running within their minimum interval. Also stores per-job timing/outcome used by the Workflow Monitor.

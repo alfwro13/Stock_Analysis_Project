@@ -104,7 +104,9 @@ Returns all system notifications newer than a given ID. Used by the UI to poll f
 }
 ```
 
-`type` is a free-text category written by the engine that generated the notification. Common values: `Success`, `Error`, `Warning`, `Info`.
+`type` is a free-text category written by the engine that generated the notification. Common values: `Success`, `Error`, `Warning`, `Info`, `Scheduler`, `HoldingLimit`.
+
+Notifications of type `Info`, `Success`, or `Scheduler` are written already marked as read (`database.AUTO_READ_MESSAGE_TYPES`) since they don't need operator triage — they never appear in this endpoint's response (which filters on `is_read = 0`) and never increment the navbar unread badge, but they still appear on the `/notifications` page itself.
 
 ---
 
