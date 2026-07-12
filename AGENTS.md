@@ -120,6 +120,7 @@ Stock_Analysis_Project/
 │   ├── vendor/               # Vendored front-end libs (Bootstrap 5, jQuery, DataTables + Responsive) — no CDN at runtime
 │   └── js/
 │       ├── csrf.js           # CSRF token helper
+│       ├── utils.js          # Shared small cross-page JS helpers (e.g. escapeHtml()) — load before any page JS that calls them
 │       ├── navbar.js         # base.html navbar: notification poller + freshness badge
 │       ├── position_sizing.js
 │       ├── settings_shared.js    # setStatus(), setBoxStatus(), saveSettings(), search IIFE, global vars — load first
@@ -286,7 +287,7 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
     **Before writing new calculation logic:** grep for the concept first (e.g. `current_price`, `exchange_rate`, `pnl`) to check whether a canonical engine function already exists. If it does, use it. If a genuinely new calculation is needed that overlaps with an existing one, extend the existing canonical function rather than writing a sibling.
 
-17. **Helper files are the canonical home for shared utility/calculation logic — check them before writing new logic, and extend rather than duplicate.** This codebase has five dedicated shared-helper modules, each scoped to a layer:
+17. **Helper files are the canonical home for shared utility/calculation logic — check them before writing new logic, and extend rather than duplicate.** This codebase has six dedicated shared-helper modules, each scoped to a layer:
 
     | Helper file | Scope | Examples |
     |---|---|---|
@@ -295,6 +296,9 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
     | `page_helpers.py` | Page-route-layer display/formatting helpers shared across `page_routes*.py` | `_fmt_currency`, `_fmt_volume`, `calculate_pnl`, `_build_position_sizing_context` |
     | `utils.py` | Generic, layer-agnostic utilities with no DB/page dependency | `normalize_ticker`, `ignored_tickers_set`, `is_synthetic_ticker`, `is_excluded_from_yahoo_fetch` |
     | `price_history_helpers.py` | Per-ticker calendar-period return calculations derived from parquet price history | `get_period_anchor_closes`, `pct_from_anchor` |
+    | `static/js/utils.js` | Small, generic, cross-page front-end JS helpers with no page-specific dependency (the front-end equivalent of `utils.py`) | `escapeHtml()` |
+
+    **Front-end helpers follow the same rule, not just Python ones.** Before adding a small utility function (HTML escaping, string/number formatting, etc.) to a page-specific file under `static/js/`, check `static/js/utils.js` first. Any template loading a script that calls into it must add `<script src="/static/js/utils.js?v={{ css_version }}">` before that script tag. `static/js/utils.js` consolidated four byte-for-byte-identical `_escapeHtml`/`_wlEscapeHtml` copies (`accounts.js`, `watchlist_account.js`, `stock_detail.js`, `watchlist_add_ticker.js`) on 2026-07-12.
 
     **Before writing a new utility function, calculation, or query helper:** grep the relevant helper file(s) above for the concept first. If an existing function already does it, or is close enough to extend (e.g. an extra parameter), use/extend it — do not write a second, parallel implementation in the calling module. Same failure mode as rule 16, generalised beyond business calculations to any reusable helper: duplicated logic drifts apart silently (a fix applied to one copy doesn't propagate to the other) until two callers disagree on something that should be identical — see the `get_mutual_fund_tickers()` gap (fixed 2026-07-03) where `intraday_orchestrator.py` had its own undocumented ad-hoc `ticker.startswith('0P')` mutual-fund check instead of using the canonical `db_helpers` function, which itself hadn't been wired into every `get_intraday()` call site that needed it.
 
