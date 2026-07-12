@@ -35,7 +35,11 @@
 </div>
 <p class="text-muted mb-2">Type: {{ stock.quote_type }}{% if stock.industry %} | Industry: {{ stock.industry }}{% endif %} | Sector/Category: {{ stock.sector }} | Currency: {{ stock.currency }} | Country: {{ stock.country }}{% if stock.index_membership %} | Index: {{ stock.index_membership }}{% endif %}</p>
 
-{% if not embed %}
+{% if embed %}
+<nav class="sd-anchor-nav d-flex flex-wrap gap-2 align-items-center mb-3">
+    <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">&#8592; Back</a>
+</nav>
+{% else %}
 <nav class="sd-anchor-nav d-flex flex-wrap gap-2 align-items-center mb-3">
     <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">&#8592; Back</a>
     <a href="#verdict" class="btn btn-outline-secondary btn-sm">Verdict</a>

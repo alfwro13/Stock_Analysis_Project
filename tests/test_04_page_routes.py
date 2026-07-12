@@ -249,6 +249,17 @@ def test_stock_detail_missing_data_does_not_crash(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_embed_mode_still_shows_back_button(client):
+    """Embed mode hides the full anchor nav (Verdict/Charts/Glossary etc.) and macro cards,
+    but a bare Back button must still render — otherwise an embedded iframe (e.g. Home
+    Assistant) has no way to return to the Watchlist/Portfolio page it was opened from."""
+    resp = client.get("/stock/ZZNOTREAL99?embed=true", follow_redirects=True)
+    assert resp.status_code < 500
+    assert "history.back()" in resp.text
+    assert "Verdict</a>" not in resp.text
+
+
+@pytest.mark.pages
 def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkeypatch):
     """A ticker that has a quant_signals row but no stock_signals row yet (e.g. freshly
     fetched, before the full nightly pipeline has run) hits the 'UNIVERSE SCAN ONLY'
