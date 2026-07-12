@@ -469,12 +469,6 @@ async function _postHoldingPriceLimit(accountId, ticker, lowLimit, highLimit) {
     return data;
 }
 
-function _escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, function (c) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-}
-
 function renderCurrentTargetsDisplay(limitsByAccount) {
     var container = document.getElementById('currentTargetsDisplay');
     if (!container) return;
@@ -487,7 +481,7 @@ function renderCurrentTargetsDisplay(limitsByAccount) {
             var low = limits.low_limit != null ? fmt(limits.low_limit, currency) : 'Not set';
             var high = limits.high_limit != null ? fmt(limits.high_limit, currency) : 'Not set';
             return '<div class="sub-account-row"><div class="sub-account-name">' +
-                _escapeHtml(acc.name) + '</div><div>Low: <strong>' + low +
+                escapeHtml(acc.name) + '</div><div>Low: <strong>' + low +
                 '</strong> &nbsp;|&nbsp; High: <strong>' + high + '</strong></div></div>';
         })
         .filter(function (html) { return html !== null; });

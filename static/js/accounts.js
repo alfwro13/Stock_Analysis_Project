@@ -2,10 +2,6 @@ let _accountsCache = {};
 let _txnCache = {};
 let _txnLookupTimer = null;
 
-function _escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 function _formatThousands(value) {
     return Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
@@ -46,14 +42,14 @@ const _ACCOUNT_CASH_TILE_LABELS = { House: 'Initial Purchase', Pension: 'Current
 function _accountCashLine(acc) {
     const label = _ACCOUNT_CASH_TILE_LABELS[acc.account_type];
     if (acc.account_type === 'Pension') {
-        return `${label}: ${_formatThousands(acc.current_balance ?? acc.initial_cash)} ${_escapeHtml(acc.currency)}`;
+        return `${label}: ${_formatThousands(acc.current_balance ?? acc.initial_cash)} ${escapeHtml(acc.currency)}`;
     }
     if (acc.account_type === 'House') {
         const current = acc.current_balance ?? acc.initial_cash;
         const gain = acc.initial_cash ? ((current - acc.initial_cash) / acc.initial_cash) * 100 : 0;
-        return `${label}: ${_formatThousands(acc.initial_cash)} ${_escapeHtml(acc.currency)} &middot; Current Estimate: ${_formatThousands(current)} ${_escapeHtml(acc.currency)} &middot; Value gain: ${gain.toFixed(2)}%`;
+        return `${label}: ${_formatThousands(acc.initial_cash)} ${escapeHtml(acc.currency)} &middot; Current Estimate: ${_formatThousands(current)} ${escapeHtml(acc.currency)} &middot; Value gain: ${gain.toFixed(2)}%`;
     }
-    return `${label}: ${acc.initial_cash} ${_escapeHtml(acc.currency)}`;
+    return `${label}: ${acc.initial_cash} ${escapeHtml(acc.currency)}`;
 }
 
 const _WATCHLIST_BREAKDOWN_LABELS = { equity: 'Equity', etf: 'ETF', fund: 'Fund', other: 'Other' };
@@ -72,7 +68,7 @@ function _accountStatsLine(acc) {
         return `${count} ticker${count === 1 ? '' : 's'}${_watchlistBreakdownText(acc)}`;
     }
     if (acc.account_type === 'Trading') {
-        return `Holdings: ${acc.holdings_count ?? 0} &middot; Equity: ${_formatThousands(acc.equity_value ?? 0)} ${_escapeHtml(acc.currency)} &middot; Cash: ${_formatThousands(acc.cash_balance ?? 0)} ${_escapeHtml(acc.currency)}`;
+        return `Holdings: ${acc.holdings_count ?? 0} &middot; Equity: ${_formatThousands(acc.equity_value ?? 0)} ${escapeHtml(acc.currency)} &middot; Cash: ${_formatThousands(acc.cash_balance ?? 0)} ${escapeHtml(acc.currency)}`;
     }
     return _accountCashLine(acc);
 }
@@ -105,9 +101,9 @@ function _accountCardHtml(acc) {
         <div class="guide-card h-100" id="account-card-${acc.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span>${isTrading ? _pendingTopupTagHtml(acc) : ''}</h4>
+                    <h4 class="mb-0">${escapeHtml(acc.name)} <span class="account-badge">${escapeHtml(acc.account_type)}</span>${isTrading ? _pendingTopupTagHtml(acc) : ''}</h4>
                     <p class="text-muted account-stats-line mb-0">${_accountStatsLine(acc)}</p>
-                    ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
+                    ${acc.note ? `<p class="text-secondary small mb-0">${escapeHtml(acc.note)}</p>` : ''}
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAccountModal(${acc.id})">Edit</button>
@@ -136,24 +132,24 @@ function _populateAccountSelect() {
     const current = sel.value;
     sel.innerHTML = Object.values(_accountsCache)
         .filter(a => a.account_type !== 'Watchlist')
-        .map(a => `<option value="${a.id}">${_escapeHtml(a.name)}</option>`).join('');
+        .map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
     if (current) sel.value = current;
 }
 
 function _populateCurrencySelect() {
     const sel = document.getElementById('txn-currency');
     sel.innerHTML = (window.ACCOUNT_CURRENCIES || ['GBP', 'GBp', 'USD', 'EUR'])
-        .map(c => `<option value="${_escapeHtml(c)}">${_escapeHtml(c)}</option>`).join('');
+        .map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
     const feeSel = document.getElementById('txn-fee-currency');
     feeSel.innerHTML = (window.ACCOUNT_CURRENCIES || ['GBP', 'GBp', 'USD', 'EUR'])
-        .map(c => `<option value="${_escapeHtml(c)}">${_escapeHtml(c)}</option>`).join('');
+        .map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 }
 
 function _setCurrencySelectValue(currency) {
     const sel = document.getElementById('txn-currency');
     if (!currency) return;
     if (!Array.from(sel.options).some(o => o.value === currency)) {
-        sel.insertAdjacentHTML('beforeend', `<option value="${_escapeHtml(currency)}">${_escapeHtml(currency)}</option>`);
+        sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(currency)}">${escapeHtml(currency)}</option>`);
     }
     sel.value = currency;
 }
@@ -162,7 +158,7 @@ function _setFeeCurrencySelectValue(currency) {
     const sel = document.getElementById('txn-fee-currency');
     if (!currency) return;
     if (!Array.from(sel.options).some(o => o.value === currency)) {
-        sel.insertAdjacentHTML('beforeend', `<option value="${_escapeHtml(currency)}">${_escapeHtml(currency)}</option>`);
+        sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(currency)}">${escapeHtml(currency)}</option>`);
     }
     sel.value = currency;
 }
@@ -173,7 +169,7 @@ function _populateToAccountSelect() {
     const current = sel.value;
     sel.innerHTML = Object.values(_accountsCache)
         .filter(a => String(a.id) !== String(sourceId) && a.account_type !== 'Watchlist')
-        .map(a => `<option value="${a.id}">${_escapeHtml(a.name)}</option>`).join('');
+        .map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
     if (current) sel.value = current;
 }
 
@@ -262,7 +258,7 @@ async function saveAccount() {
 function _skippedRowsHtml(skippedRows) {
     if (!skippedRows || skippedRows.length === 0) return '';
     const items = skippedRows.map(r =>
-        `<li>${_escapeHtml(r.date || '?')} — ${_escapeHtml(r.ticker || '?')}: ${_escapeHtml(r.reason)}</li>`
+        `<li>${escapeHtml(r.date || '?')} — ${escapeHtml(r.ticker || '?')}: ${escapeHtml(r.reason)}</li>`
     ).join('');
     return `<ul class="small text-muted mb-0 mt-1">${items}</ul>`;
 }
@@ -292,7 +288,7 @@ async function confirmImportCsv() {
         const pageStatus = document.getElementById(`account-import-status-${accountId}`);
         if (data.status === 'success') {
             if (pageStatus) {
-                pageStatus.innerHTML = `<span class="msg-success">${_escapeHtml(data.message)}</span>`
+                pageStatus.innerHTML = `<span class="msg-success">${escapeHtml(data.message)}</span>`
                     + _skippedRowsHtml(data.skipped_rows);
             }
             _csvImportModal().hide();
@@ -303,10 +299,10 @@ async function confirmImportCsv() {
             }
             if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else {
-            status.innerHTML = `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Import failed.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${_escapeHtml(e.message)}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -526,7 +522,7 @@ function _lookupTicker() {
             if (data.status === 'success' && data.found) {
                 _setCurrencySelectValue(data.currency);
                 document.getElementById('txn-company-name').value = data.company_name || '';
-                resultEl.innerHTML = `<span class="msg-success">${_escapeHtml(data.company_name)} (${_escapeHtml(data.currency)}, ${_escapeHtml(data.quote_type)})</span>`;
+                resultEl.innerHTML = `<span class="msg-success">${escapeHtml(data.company_name)} (${escapeHtml(data.currency)}, ${escapeHtml(data.quote_type)})</span>`;
                 _onTxnCurrencyOrDateChange();
             } else {
                 resultEl.innerHTML = '<span class="msg-error">Ticker not found on Yahoo Finance.</span>';

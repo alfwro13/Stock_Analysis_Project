@@ -1,10 +1,6 @@
 let _wlItems = [];
 let _wlSearchTimer = null;
 
-function _wlEscapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 function _wlAddTickerModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('addTickerModal'));
 }
@@ -17,9 +13,9 @@ function _wlPopulateFilters() {
     const currentExchange = exchangeSel.value;
     const currentType = typeSel.value;
     exchangeSel.innerHTML = '<option value="">All Exchanges</option>' +
-        exchanges.map(e => `<option value="${_wlEscapeHtml(e)}">${_wlEscapeHtml(e)}</option>`).join('');
+        exchanges.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
     typeSel.innerHTML = '<option value="">All Types</option>' +
-        types.map(t => `<option value="${_wlEscapeHtml(t)}">${_wlEscapeHtml(t)}</option>`).join('');
+        types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
     if (exchanges.includes(currentExchange)) exchangeSel.value = currentExchange;
     if (types.includes(currentType)) typeSel.value = currentType;
 }
@@ -43,10 +39,10 @@ function _wlRenderRows() {
     tbody.innerHTML = visible.map(i => `
         <tr>
             <td><input type="checkbox" class="form-check-input wl-row-check" data-id="${i.id}"></td>
-            <td>${_wlEscapeHtml(i.ticker)}</td>
-            <td>${_wlEscapeHtml(i.company_name || '—')}</td>
-            <td>${_wlEscapeHtml(i.exchange || '—')}</td>
-            <td>${_wlEscapeHtml(i.quote_type || '—')}</td>
+            <td>${escapeHtml(i.ticker)}</td>
+            <td>${escapeHtml(i.company_name || '—')}</td>
+            <td>${escapeHtml(i.exchange || '—')}</td>
+            <td>${escapeHtml(i.quote_type || '—')}</td>
         </tr>
     `).join('');
 
@@ -97,9 +93,9 @@ async function _wlRunSearch(query) {
             return;
         }
         results.innerHTML = '<div class="list-group">' + matches.map(m => `
-            <button type="button" class="list-group-item list-group-item-action" onclick="addTickerToWatchlist('${_wlEscapeHtml(m.ticker)}')">
-                <strong>${_wlEscapeHtml(m.ticker)}</strong> — ${_wlEscapeHtml(m.company_name || '')}
-                <span class="text-muted small">${_wlEscapeHtml(m.quote_type || '')}</span>
+            <button type="button" class="list-group-item list-group-item-action" onclick="addTickerToWatchlist('${escapeHtml(m.ticker)}')">
+                <strong>${escapeHtml(m.ticker)}</strong> — ${escapeHtml(m.company_name || '')}
+                <span class="text-muted small">${escapeHtml(m.quote_type || '')}</span>
             </button>
         `).join('') + '</div>';
     } catch (e) {
@@ -121,7 +117,7 @@ async function addTickerToWatchlist(ticker) {
             _wlAddTickerModal().hide();
             await loadWatchlistItems();
         } else {
-            status.innerHTML = `<span class="msg-error">${_wlEscapeHtml(data.message || 'Failed to add ticker.')}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to add ticker.')}</span>`;
         }
     } catch (e) {
         status.innerHTML = `<span class="msg-error">${e.message}</span>`;

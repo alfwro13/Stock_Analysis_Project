@@ -4,8 +4,8 @@ function _benchmarkModal() {
 
 function _benchmarkTickerRowHtml(ticker, displayName) {
     return `<div class="benchmark-ticker-row flex-gap-15 mb-10">
-        <input type="text" class="benchmark-ticker-input" placeholder="Ticker (e.g. URTH)" value="${_escapeHtml(ticker || '')}">
-        <input type="text" class="benchmark-name-input" placeholder="Display Name" value="${_escapeHtml(displayName || '')}">
+        <input type="text" class="benchmark-ticker-input" placeholder="Ticker (e.g. URTH)" value="${escapeHtml(ticker || '')}">
+        <input type="text" class="benchmark-name-input" placeholder="Display Name" value="${escapeHtml(displayName || '')}">
         <button type="button" class="btn-danger" onclick="removeBenchmarkTickerRow(this)">&times;</button>
     </div>`;
 }

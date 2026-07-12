@@ -1,9 +1,5 @@
 let _wlAddSearchTimer = null;
 
-function _wlEscapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 function _wlAddTickerModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('addTickerModal'));
 }
@@ -31,9 +27,9 @@ async function _wlRunAddSearch(query) {
             return;
         }
         results.innerHTML = '<div class="list-group">' + matches.map(m => `
-            <button type="button" class="list-group-item list-group-item-action" onclick="addTickerToWatchlist('${_wlEscapeHtml(m.ticker)}')">
-                <strong>${_wlEscapeHtml(m.ticker)}</strong> — ${_wlEscapeHtml(m.company_name || '')}
-                <span class="text-muted small">${_wlEscapeHtml(m.quote_type || '')}</span>
+            <button type="button" class="list-group-item list-group-item-action" onclick="addTickerToWatchlist('${escapeHtml(m.ticker)}')">
+                <strong>${escapeHtml(m.ticker)}</strong> — ${escapeHtml(m.company_name || '')}
+                <span class="text-muted small">${escapeHtml(m.quote_type || '')}</span>
             </button>
         `).join('') + '</div>';
     } catch (e) {
@@ -55,7 +51,7 @@ async function addTickerToWatchlist(ticker) {
             status.innerHTML = '<span class="msg-success">Added — refreshing…</span>';
             window.location.reload();
         } else {
-            status.innerHTML = `<span class="msg-error">${_wlEscapeHtml(data.message || 'Failed to add ticker.')}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to add ticker.')}</span>`;
         }
     } catch (e) {
         status.innerHTML = `<span class="msg-error">${e.message}</span>`;
