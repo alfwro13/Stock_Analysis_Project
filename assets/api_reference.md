@@ -377,7 +377,7 @@ Pass `"display_name": ""` to clear an existing override.
 
 ### `POST /api/intraday-chart/refresh`
 
-Fetches fresh 5-minute intraday data from Yahoo Finance for a single ticker, persists it to parquet, then returns re-rendered chart HTML. Used by the Stock Detail page auto-refresh timer to keep the Intraday Pulse chart current without a full page reload.
+Fetches fresh 5-minute intraday data from Yahoo Finance for a single ticker, persists it to parquet, then returns re-rendered chart HTML. Used by both the Stock Detail and Index Detail page auto-refresh timers to keep the Intraday Pulse chart current without a full page reload.
 
 **Request body**
 

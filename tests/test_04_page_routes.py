@@ -227,6 +227,18 @@ def test_index_detail_no_futures_banner_when_cash_market_open(client):
     assert "cash market closed" not in resp.text
 
 
+@pytest.mark.pages
+def test_index_detail_wires_intraday_auto_refresh_globals(client):
+    """The intraday chart must auto-refresh on load, mirroring the Stock Detail page —
+    the refresh-status countdown element and the ENABLE_LIVE_ASSETS/INDEX_REFRESH_RATE_MS
+    globals index_detail.js reads to drive it must be present."""
+    resp = client.get("/index/%5EGSPC")
+    assert resp.status_code == 200
+    assert 'id="refresh-status"' in resp.text
+    assert "window.ENABLE_LIVE_ASSETS" in resp.text
+    assert "window.INDEX_REFRESH_RATE_MS" in resp.text
+
+
 # ── Stock Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages

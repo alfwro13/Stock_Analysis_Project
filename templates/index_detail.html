@@ -74,6 +74,7 @@
         </div>
         {% endif %}
     </div>
+    <div id="refresh-status" class="live-refresh-status"></div>
     {% if context_blurb %}
     <p class="bg-dark-panel-sm mb-0">{{ context_blurb }}</p>
     {% endif %}
@@ -311,6 +312,7 @@
 <script>
     window.INDEX_TICKER = {{ ticker | tojson }};
     window.INDEX_REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
+    window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
 </script>
 <script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
 <script src="/static/js/index_detail.js?v={{ css_version }}"></script>

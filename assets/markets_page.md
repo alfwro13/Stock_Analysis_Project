@@ -4,7 +4,7 @@
 **Engines:** `markets_engine.py` (region/session logic, tile assembly), `market_pulse.py` (raw fetch/cache layer, ticker registry accessors)
 **Page:** `/markets` (`templates/markets.html`, `static/js/markets.js`)
 **API Endpoints:** `GET /api/markets`, `GET /api/system/market-status/all`, `GET|POST /api/markets/registry`, `PUT|DELETE /api/markets/registry/{ticker}`
-**Last Updated:** 2026-07-09
+**Last Updated:** 2026-07-12
 
 ---
 
@@ -18,9 +18,10 @@
 6. [Spot/Future Auto-Swap](#6-spotfuture-auto-swap)
 7. [Sparkline Persistence](#7-sparkline-persistence)
 8. [Market Pulse Integration](#8-market-pulse-integration)
-9. [API Endpoints](#9-api-endpoints)
-10. [Settings](#10-settings)
-11. [Known Limitations & Judgment Calls](#11-known-limitations--judgment-calls)
+9. [Index Detail Page Data Lifecycle](#9-index-detail-page-data-lifecycle)
+10. [API Endpoints](#10-api-endpoints)
+11. [Settings](#11-settings)
+12. [Known Limitations & Judgment Calls](#12-known-limitations--judgment-calls)
 
 ---
 
@@ -122,7 +123,17 @@ No sparklines were added to Market Pulse tiles — kept Markets-page-only, to mi
 
 ---
 
-## 9. API Endpoints
+## 9. Index Detail Page Data Lifecycle
+
+`/index/{ticker}` (`templates/index_detail.html` + `page_routes_macro.index_detail()`) shows an Intraday Pulse chart, a Macro Trend chart (2Y daily), and a Technicals & Risk panel (RSI/MACD/SMA/momentum/VaR/CVaR/sentiment from `quant_signals`).
+
+**Intraday auto-refresh (added 2026-07-12):** mirroring the Stock Detail page, `static/js/index_detail.js` starts a timer on page load (gated on `UI_PREFERENCES.LIVE_DETAILS`, interval from `UI_PREFERENCES.REFRESH_RATE`) that calls `POST /api/intraday-chart/refresh` and swaps in the freshly rendered chart HTML in place, with a "Next update in M:SS" countdown (`#refresh-status`) matching the Stock Detail page's indicator. No new endpoint — `/api/intraday-chart/refresh` already took a bare `ticker` and was Stock-Detail-only in practice.
+
+**Nightly historical/technicals coverage (added 2026-07-12):** every enabled `market_ticker_registry` row's `ticker` **and** `future_ticker` (if any) is now included in `DataEngine.get_all_tickers()` — the same daily fetch universe documented in AGENTS.md rule 3 for Portfolio/Watchlist/Accounts — so the nightly Update Pipeline job (`run_update_pipeline` → `DataEngine.update_all_data()` → `QuantEngine.run_all()`) downloads 2Y daily history and populates `quant_signals` technicals for every Markets page ticker automatically. Before this, a registry ticker only got a historical parquet (and therefore a populated Macro Trend chart / Technicals panel) after a manual click of the Index Detail page's own "Refresh" button (`POST /api/index/refresh`); now that button is a manual on-demand override, not the only path to real data. `QuantEngine.run_all()` needed no change — it already scans every non-baseline `.parquet` file in `data/historical/`, so a ticker's technicals populate as soon as its price history exists there, regardless of which job wrote it. This also means these tickers are now in scope for the other consumers of `get_all_tickers()` — the ML ensemble backfill/training universe (see `assets/ML_MODEL_DOCUMENTATION.md` §3), the daily tail-risk (VaR/CVaR) scan, the sentiment scan, and the earnings-volatility scan; non-equity tickers have no fundamentals/earnings data and are handled by each of those engines' existing NULL/missing-data paths (e.g. the ML model's cross-sectional median imputation), not a new special case.
+
+---
+
+## 10. API Endpoints
 
 See `assets/api_reference.md` §24 (Markets) for full request/response shapes. Summary:
 
@@ -143,7 +154,7 @@ Refresh is page-traffic-driven, exactly like Market Pulse today — `GET /api/ma
 
 ---
 
-## 10. Settings
+## 11. Settings
 
 Settings → Markets & Market Pulse (`templates/settings/_markets.html`, `static/js/settings_markets.js`):
 - Market Pulse Tile Selection: dynamic-view toggle, desktop/mobile tile counts (saved with the rest of the settings form).
@@ -151,7 +162,7 @@ Settings → Markets & Market Pulse (`templates/settings/_markets.html`, `static
 
 ---
 
-## 11. Known Limitations & Judgment Calls
+## 12. Known Limitations & Judgment Calls
 
 - **Commodities/FX have no session-hours model.** None of Gold/Silver/Copper/WTI/Brent/DXY/GBPUSD/EURUSD map cleanly to a single exchange in `time_engine.EXCHANGE_HOURS` (COMEX/NYMEX/Globex/FX aren't modeled), so these rows have `exchange = NULL` and are always considered "open" for fetch/display purposes. A future refinement could add real Globex/FX session hours if genuine weekend/maintenance-window awareness is wanted.
 - **Euro Stoxx 50 (`^STOXX50E`) is gated on the `Euronext` exchange** as a pragmatic approximation — it's a pan-eurozone index traded via Eurex, which has no dedicated entry in `exchange_hours.json`.

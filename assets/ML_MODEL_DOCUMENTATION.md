@@ -64,7 +64,7 @@ Yahoo Finance via `yfinance` library, `auto_adjust=True` (split and dividend adj
 
 ### Universe
 Up to 350 tickers per training run, composed of:
-- User portfolio and watchlist tickers (from `DataEngine.get_all_tickers()`)
+- User portfolio, watchlist, and account tickers, plus every Markets page index/commodity/FX/rate ticker from `market_ticker_registry` (all via `DataEngine.get_all_tickers()`; non-equity tickers have NULL fundamentals and receive cross-sectional median imputation, see below)
 - Random sample of up to 300 tickers from the `market_universe` table
 
 ### History

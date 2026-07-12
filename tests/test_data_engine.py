@@ -86,7 +86,7 @@ def test_get_all_tickers_excludes_tbill_synthetic_tickers():
 
 
 def test_get_all_tickers_empty_inputs_returns_empty_list():
-    """With empty portfolio and watchlist, result must be an empty list."""
+    """With empty portfolio, watchlist, and market ticker registry, result must be an empty list."""
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
@@ -94,10 +94,48 @@ def test_get_all_tickers_empty_inputs_returns_empty_list():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}):
+         patch("accounts_engine.get_combined_holdings", return_value={}), \
+         patch("data_engine.get_ticker_registry", return_value=[]):
         tickers = engine.get_all_tickers()
 
     assert tickers == []
+
+
+def test_get_all_tickers_includes_market_registry_tickers():
+    """Markets page tickers (market_ticker_registry) must be included so the index detail
+    page's macro chart and technicals populate from the nightly download without requiring
+    a manual per-ticker Refresh click."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
+
+    registry_rows = [{"ticker": "^GSPC", "future_ticker": "ES=F"}]
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value={}), \
+         patch("data_engine.get_ticker_registry", return_value=registry_rows):
+        tickers = engine.get_all_tickers()
+
+    assert "^GSPC" in tickers
+    assert "ES=F" in tickers
+
+
+def test_get_all_tickers_excludes_ignored_registry_tickers():
+    """A registry ticker on the Settings-page Ignored Tickers list must not be fetched."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
+
+    registry_rows = [{"ticker": "^GSPC", "future_ticker": None}]
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["^GSPC"]}), \
+         patch("accounts_engine.get_combined_holdings", return_value={}), \
+         patch("data_engine.get_ticker_registry", return_value=registry_rows):
+        tickers = engine.get_all_tickers()
+
+    assert "^GSPC" not in tickers
 
 
 def test_get_all_tickers_result_is_sorted():

@@ -53,6 +53,98 @@
         }
     });
 
+    // ─── Intraday Auto-Refresh ────────────────────────────────────────────────────
+    var _intradayBusy = false;
+    var _intradayTimer = null;
+
+    async function _refreshIntradayChart() {
+        if (_intradayBusy) return;
+        _intradayBusy = true;
+        try {
+            const resp = await fetch('/api/intraday-chart/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticker: TICKER })
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data || !data.html) return;
+            const wrapper = document.getElementById('intraday-wrapper');
+            if (!wrapper) return;
+            const btn = wrapper.querySelector('.fullscreen-btn');
+            Array.from(wrapper.children).forEach(function (child) {
+                if (child !== btn) child.remove();
+            });
+            const tmp = document.createElement('div');
+            tmp.innerHTML = data.html;
+            Array.from(tmp.childNodes).forEach(function (node) {
+                if (node.nodeName !== 'SCRIPT') {
+                    wrapper.appendChild(node.cloneNode(true));
+                }
+            });
+            tmp.querySelectorAll('script').forEach(function (oldScript) {
+                const s = document.createElement('script');
+                Array.from(oldScript.attributes).forEach(function (attr) {
+                    s.setAttribute(attr.name, attr.value);
+                });
+                s.textContent = oldScript.textContent;
+                wrapper.appendChild(s);
+            });
+            // The freshly re-rendered chart comes back at its server-default height —
+            // if the wrapper is mid-fullscreen, re-apply that state (see toggleFullscreen).
+            if (wrapper.classList.contains('is-fullscreen')) {
+                ChartFullscreen.relayoutForCurrentState('intraday-wrapper', _indexChartOpts('intraday-wrapper'));
+            }
+        } catch (e) {
+            // silently ignore — next tick will retry
+        } finally {
+            _intradayBusy = false;
+        }
+    }
+
+    function startIntradayAutoRefresh() {
+        if (!window.ENABLE_LIVE_ASSETS) return;
+        _refreshIntradayChart();
+        _intradayTimer = setInterval(function () {
+            resetCountdown();
+            _refreshIntradayChart();
+        }, refreshRate);
+    }
+
+    // ─── Refresh Status Countdown ─────────────────────────────────────────────────
+    var _countdownSecs = 0;
+    var _countdownTick = null;
+
+    function updateCountdownDisplay() {
+        const el = document.getElementById('refresh-status');
+        if (!el) return;
+        const m = Math.floor(_countdownSecs / 60);
+        const s = _countdownSecs % 60;
+        el.innerHTML = '<span class="pulse-dot pulse-dot-live"></span> Next update in ' + m + ':' + String(s).padStart(2, '0');
+    }
+
+    function resetCountdown() {
+        _countdownSecs = Math.round(refreshRate / 1000);
+        updateCountdownDisplay();
+    }
+
+    function initRefreshStatus() {
+        const el = document.getElementById('refresh-status');
+        if (!el) return;
+        if (!window.ENABLE_LIVE_ASSETS) {
+            el.innerHTML = '<span class="pulse-dot offline"></span> Manual updates only';
+            return;
+        }
+        resetCountdown();
+        _countdownTick = setInterval(function () {
+            _countdownSecs = Math.max(0, _countdownSecs - 1);
+            updateCountdownDisplay();
+        }, 1000);
+    }
+
+    startIntradayAutoRefresh();
+    document.addEventListener('DOMContentLoaded', initRefreshStatus);
+
     window.refreshIndexData = async function () {
         const btn = document.getElementById('refreshDataBtn');
         btn.disabled = true;
