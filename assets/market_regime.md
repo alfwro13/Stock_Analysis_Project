@@ -58,11 +58,14 @@ CREATE TABLE IF NOT EXISTS macro_regimes (
     dxy_close REAL,
     uk_gilt_close REAL,
     gbpusd_close REAL,
-    yield_velocity REAL,
-    systemic_threat_level TEXT,
-    threat_source TEXT
+    us_yield_velocity REAL,
+    us_threat_level TEXT,
+    uk_yield_velocity REAL,
+    uk_threat_level TEXT
 );
 ```
+
+US and UK sides are scored independently — there is no single blended `systemic_threat_level`/`threat_source`. See `assets/systematic_risk.md` for the full breakdown, including why the US side is 10Y (`^TNX`)-based here but the separate intraday shock alert and per-asset yield correlation each still use 30Y (`^TYX`).
 
 * * *
 
@@ -76,13 +79,15 @@ The system routes the calculated Turbulence Index into three logical operational
 
 ### Systemic Macro Threat Levels (`macro_regimes`)
 
-Yield acceleration maps into strict danger vectors, indicating valuation multiple contraction risks:
+Yield acceleration maps into strict danger vectors, indicating valuation multiple contraction risks. US (`us_threat_level`, `^TNX`-based) and UK (`uk_threat_level`, Gilt-based) are scored independently, each against its own thresholds:
 
-- 🔴 **RED THREAT:** \$V_{\\text{yield}} \\ge 3.5\\\\%\$ OR \$Y_{\\text{current}} \\ge 5.0\\\\%\$. Indicates immediate severe liquidation pressure across tech, growth, and high-leverage assets.
-    
-- 🟡 **YELLOW THREAT:** \$V_{\\text{yield}} \\ge 1.5\\\\%\$. Indicates interest rates are moving up with high momentum. Multiples are entering a compression phase.
-    
+- 🔴 **RED THREAT:** 3-day velocity ≥ 30 bps, OR current yield ≥ 4.75% (US) / 5.0% (UK). Indicates immediate severe liquidation pressure across tech, growth, and high-leverage assets.
+
+- 🟡 **YELLOW THREAT:** 3-day velocity ≥ 15 bps, OR current yield ≥ 4.25% (US) / 4.5% (UK). Indicates interest rates are moving up with high momentum. Multiples are entering a compression phase.
+
 - 🟢 **GREEN THREAT:** Gilt and Treasury parameters are stable or falling. Favorable macro conditions for standard stock selection and asset price expansion.
+
+See `assets/systematic_risk.md` for the full threshold table and the exact formulas.
     
 
 * * *

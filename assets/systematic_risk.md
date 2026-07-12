@@ -1,6 +1,6 @@
 # **🏛️ Sovereign Interest Rate Systematic Risk Architecture**
 
-This specification document outlines the comprehensive mathematical, database, and software architecture governing the interest rate systematic risk engine within the Quantamental Web Terminal.
+This specification document outlines the mathematical, database, and software architecture governing sovereign interest-rate systemic risk within the Quantamental Web Terminal.
 
 ## **1\. Macroeconomic Foundations: The Gravity of Interest Rates**
 
@@ -8,19 +8,7 @@ In institutional finance, interest rates function as the "gravitational pull" on
 
 ### **A. Discounted Cash Flow (DCF) Multiple Compression**
 
-Equity valuations are calculated by discounting projected future cash flows back to the present day. The discount rate (![][image1]) is heavily tied to the "risk-free" rate of return offered by government bonds:
-
-![][image2]
-
-Where:
-
-* ![][image3] represents the present value of the corporation.  
-* ![][image4] represents the expected corporate cash flow at time ![][image5].  
-* ![][image1] is the discount rate, which is a composite of the risk-free rate (![][image6], sovereign yields) and an equity risk premium (ERP):
-
-![][image8]
-
-**The Compression Mechanism:** When government bond yields (such as the US 30Y Treasury or UK 10Y Gilt) surge, the risk-free rate (![][image6]) climbs. Because ![][image1] is in the denominator, any upward movement in sovereign yields mathematically shrinks the present value (![][image3]) of all future cash flows. This effect is exponentially worse for high-growth tech companies (high-multiple stocks with ![][image9]) because their most substantial cash flows are expected far in the future (![][image10]), compounding the discounting penalty.
+Equity valuations are calculated by discounting projected future cash flows back to the present day. The discount rate is heavily tied to the "risk-free" rate of return offered by government bonds. When government bond yields surge, the risk-free rate climbs, and — because the discount rate sits in the denominator of the DCF formula — any upward movement in sovereign yields mathematically shrinks the present value of all future cash flows. This effect is exponentially worse for high-growth tech companies (high-multiple stocks) because their most substantial cash flows are expected far in the future, compounding the discounting penalty.
 
 ### **B. Leverage & Debt Refinancing Vulnerability**
 
@@ -28,65 +16,99 @@ For highly leveraged companies, a high interest rate environment represents an i
 
 ## **2\. Mathematical Implementations in the App**
 
-To dynamically detect and manage this macro risk, your terminal implements two distinct mathematical engines:
+The terminal implements **three** distinct, independently-scoped engines around sovereign yields — a daily per-country threat classifier, an intraday shock alert, and a per-asset rolling correlation. They read different tickers and run on different schedules; do not assume they share thresholds or a single "systemic threat level."
 
-### **A. 72-Hour Yield Velocity (![][image11])**
+### **A. Daily Systemic Threat Classification — `regime_engine.py:calculate_systemic_macro_threat()`**
 
-The velocity engine, located in regime\_engine.py, measures the speed and acceleration of sovereign bond yields rather than just their absolute values. A slow increase allows equity multiples to digest the rate hike; a rapid spike triggers a market-wide valuation shock.
+Runs once per day (as part of the `market_regime_job`, alongside `calculate_market_regime()`). Unlike the old unified model, the **US and UK sides are scored and stored completely independently** — there is no single blended `systemic_threat_level`; there are `us_threat_level` and `uk_threat_level` columns, each with its own thresholds.
 
-The engine calculates the 3-day percentage rate of change over approximately 72 trading hours:
+**US side** is derived from **`^TNX` (the 10-Year US Treasury Note), not `^TYX` (the 30-Year Bond)**. `^TYX` is still fetched and stored (`tyx_close`) for display/reference, but it does not feed the threat classification.
 
-![][image12]
+**UK side** is derived from the scraped `UK_GILT_BASELINE.parquet` series (10Y Gilt, via `gilt_engine.py`), falling back to `^TNX`'s own value if the baseline parquet is missing.
 
-Where:
+For each side, the engine computes a 3-trading-day yield velocity in **basis points**, using a date-based lookback (not a fixed `iloc[-4]` offset) so it survives weekends/holidays:
 
-* ![][image13] represents the current day's closing yield (iloc[-1]).
+```
+us_velocity_bps  = (curr_tnx  - tnx_4_days_ago)  * 100.0
+gilt_velocity_bps = (curr_gilt - gilt_4_days_ago) * 100.0
+```
 
-* ![][image14] represents the closing yield 3 trading days ago (iloc[-4]).
+**Thresholds** (`regime_engine.py`, calibrated to the post-2022 rate environment — see Section 4 for the full table):
 
-This is calculated for both the US 30Y Treasury Bond (^TYX) and the UK 10Y Gilt (UK10YG via the FT.com scraper). The system tracks the maximum velocity:
+```
+# US (^TNX-based)
+if us_velocity_bps >= 30.0 or curr_tnx >= 4.75:
+    us_threat_level = "RED"
+elif us_velocity_bps >= 15.0 or curr_tnx >= 4.25:
+    us_threat_level = "YELLOW"
+else:
+    us_threat_level = "GREEN"
 
- **![][image15]**
+# UK (Gilt-based)
+if gilt_velocity_bps >= 30.0 or curr_gilt >= 5.0:
+    uk_threat_level = "RED"
+elif gilt_velocity_bps >= 15.0 or curr_gilt >= 4.5:
+    uk_threat_level = "YELLOW"
+else:
+    uk_threat_level = "GREEN"
+```
 
- 
-### B\. 60-Day Rolling Asset-Yield Correlation (![][image16])
+Both results are written to `macro_regimes` (see Section 3) and immediately feed `classify_macro_regime()`, which layers on the broader business-cycle label (`Expansion`/`Late Cycle`/`Contraction`/`Recovery`/`Risk-On`) used elsewhere in the app.
 
-To determine if an individual stock is sensitive to interest rate fluctuations, the system calculates the rolling Pearson correlation coefficient between the daily returns of the asset and the daily returns of the sovereign bond yields over a 60-day window (![][image17]):
+### **B. Intraday Yield Shock Warning — `intraday_orchestrator.py`**
 
-![][image18]
+A **separate, narrower** engine that runs inside the 5-minute intraday scan loop during active market hours. It watches exactly two tickers, `["^TYX", "SPY"]` — **this is the one place in the app that genuinely reacts to the 30Y Treasury**, and it has no UK Gilt component at all (the message-building branch for a non-`^TYX` ticker is currently dead code, since `^TYX` is the only yield ticker in that list).
 
-Where:
+It compares the current intraday price to the session's opening price:
 
-* ![][image19] is the daily logarithmic return of the stock.  
-* ![][image20] is the daily logarithmic return of the benchmark bond (Gilt for LSE assets, 30Y Treasury for US assets).
+```
+m_spike = ((m_curr - m_open) / m_open) * 100.0
+if m_spike >= _MACRO_YIELD_SURGE_PCT:   # 1.5%
+    ...fire "SYSTEMIC MACRO ALERT" via notification_engine.notify()...
+```
 
-**The Threshold:** A correlation ![][image21] indicates a strong inverse relationship, meaning the stock's price actively collapses whenever bond yields rise.
+`_MACRO_YIELD_SURGE_PCT = 1.5` (a module-level constant in `intraday_orchestrator.py`). The alert is dispatched through the unified notification router (`notify()`, source `Macro`) rather than a direct Nextcloud call, and is deduplicated/cooldown-gated via `_evaluate_alert_gate()` like the other intraday condition-severity alerts (see AGENTS.md rule 19).
+
+### **C. 60-Day Rolling Asset-Yield Correlation — `quant_signals.py`**
+
+To determine if an individual stock is sensitive to interest rate fluctuations, the nightly Quant Scan (`QuantEngine.analyze_ticker()`) calculates the rolling Pearson correlation coefficient between the daily returns of the asset and the daily returns of a sovereign-yield benchmark over a 60-day window:
+
+```python
+yield_baseline = "UK_GILT_BASELINE" if is_uk_asset else "TYX_BASELINE"
+...
+rolling_corr = asset_returns.rolling(window=60).corr(yield_returns)
+```
+
+**This correlation deliberately still benchmarks US assets against the 30Y Treasury (`TYX_BASELINE.parquet`)**, not the 10Y — a genuine, intentional difference from Section A's threat classifier, which switched to 10Y. A `TNX_BASELINE.parquet` file is fetched and cached (`data_engine.py`) but is not currently consumed by this correlation calculation. UK assets are benchmarked against `UK_GILT_BASELINE`, same as Section A.
+
+The result is stored per-ticker in `stock_signals.yield_correlation`. **The threshold:** a correlation ≤ **-0.3** indicates a strong inverse relationship, meaning the stock's price tends to fall whenever bond yields rise — this is the exact value the Stock Detail page checks (Section 5B).
 
 ## 3\. Database Schema & Storage Structures
 
-These calculated risk vectors are saved directly in your SQLite relational tables to power various UI views and screener engines:
-
-```
--- Table tracking global systemic risk indicators
+```sql
+-- Table tracking the daily per-country sovereign yield threat classification
 CREATE TABLE IF NOT EXISTS macro_regimes (
     date TEXT PRIMARY KEY,
-    tyx_close REAL,                  -- US 30Y Treasury Close Yield
-    tnx_close REAL,                  -- US 10Y Treasury Close Yield
-    dxy_close REAL,                  -- US Dollar Index Close
-    uk_gilt_close REAL,              -- UK 10Y Gilt Close Yield
-    gbpusd_close REAL,               -- GBP/USD Exchange Rate
-    yield_velocity REAL,             -- Max calculated 3-day rate of change
-    systemic_threat_level TEXT,      -- GREEN, YELLOW, or RED
-    threat_source TEXT               -- "US 30Y Treasury" or "UK 10Y Gilt"
+    tyx_close REAL,              -- US 30Y Treasury close yield (display/reference only — not used in threat classification)
+    tnx_close REAL,              -- US 10Y Treasury close yield (drives us_threat_level)
+    dxy_close REAL,              -- US Dollar Index close
+    uk_gilt_close REAL,          -- UK 10Y Gilt close yield (drives uk_threat_level)
+    gbpusd_close REAL,           -- GBP/USD exchange rate
+    us_yield_velocity REAL,      -- 3-day US yield rate of change, in basis points
+    us_threat_level TEXT,        -- GREEN, YELLOW, or RED
+    uk_yield_velocity REAL,      -- 3-day UK gilt rate of change, in basis points
+    uk_threat_level TEXT         -- GREEN, YELLOW, or RED
+    -- plus market-turbulence/regime-label columns written by calculate_market_regime()
+    -- and classify_macro_regime() — see db_schema.py for the full column set.
 );
 
--- Table storing individual asset profiles with correlation parameters
+-- Table storing individual asset profiles with the yield-sensitivity correlation
 CREATE TABLE IF NOT EXISTS stock_signals (
     ticker TEXT PRIMARY KEY,
     current_price REAL,
     trailing_pe REAL,
     debt_to_equity REAL,
-    yield_correlation REAL,          -- Stores the 60-day rolling Pearson correlation
+    yield_correlation REAL,      -- 60-day rolling Pearson correlation vs. TYX_BASELINE (US) or UK_GILT_BASELINE (UK)
     composite_score INTEGER,
     overall_signal TEXT,
     educational_notes TEXT,
@@ -94,131 +116,52 @@ CREATE TABLE IF NOT EXISTS stock_signals (
 );
 ```
 
+There is no `systemic_threat_level` or `threat_source` column — those belonged to an earlier, unified design that was superseded by the independent `us_threat_level`/`uk_threat_level` split.
+
 ## 4\. Threat Level Thresholds & Classifications
 
-The `regime_engine.py` script maps the calculated yields and velocity parameters into three distinct danger zones:
+The `regime_engine.py:calculate_systemic_macro_threat()` function maps each country's yield level and 3-day velocity into three independent danger zones. **US and UK have separate thresholds — they are not symmetric.**
 
-```
-# Systemic threat classification rules
-if max_velocity >= 3.5 or curr_tyx >= 5.0 or curr_gilt >= 5.0:
-    threat_level = "RED"
-elif max_velocity >= 1.5:
-    threat_level = "YELLOW"
-else:
-    threat_level = "GREEN"
-```
+| Level | US (`^TNX`) | UK (Gilt) |
+|---|---|---|
+| 🔴 RED | velocity ≥ 30 bps/3-day, or level ≥ 4.75% | velocity ≥ 30 bps/3-day, or level ≥ 5.0% |
+| 🟡 YELLOW | velocity ≥ 15 bps/3-day, or level ≥ 4.25% | velocity ≥ 15 bps/3-day, or level ≥ 4.5% |
+| 🟢 GREEN | below both YELLOW conditions | below both YELLOW conditions |
 
 ### 🔴 RED THREAT (Catastrophic Liquidation)
 
-- **Trigger:** Maximum yield velocity \$V_{\\text{yield}} \\ge 3.5\\%\$, or either the US 30Y or UK 10Y yield crosses the \$5.0\\%\$ threshold.
-    
 - **Meaning:** Bond markets are experiencing extreme liquidation pressure, or yields have breached structural containment levels. Expect immediate valuation compression.
-    
 
 ### 🟡 YELLOW THREAT (Multiple Compression Warning)
 
-- **Trigger:** Maximum yield velocity \$V_{\\text{yield}} \\ge 1.5\\%\$.
-    
 - **Meaning:** Rates are rising rapidly, indicating capital is exiting high-growth equities to lock in risk-free sovereign debt.
-    
 
 ### 🟢 GREEN THREAT (Stable Environment)
 
-- **Trigger:** Yield velocity is low (\$V_{\\text{yield}} < 1.5\\%\$), and absolute yields are in normal ranges.
-    
 - **Meaning:** Sovereign bond markets are calm, creating a supportive background for equities.
-    
+
+These thresholds are calibrated to the post-2022 rate environment and are intentionally hardcoded in `regime_engine.py` rather than user-configurable.
 
 ## 5\. Downstream Code Workflows: How Your App Protects You
 
-When a yellow or red threat is registered, your terminal deploys defensive measures across two separate engines:
-
 ### A. Intraday Yield Shock Warning (`intraday_orchestrator.py`)
 
-To prevent severe losses before the market closes, `intraday_orchestrator.py` runs a 5-minute polling loop during active trading hours. It monitors the intraday changes of US and UK yields:
+See Section 2B. This is the only real-time (5-minute) reaction to sovereign yields — a `^TYX` intraday spike of ≥1.5% versus the session open fires a Nextcloud alert (via `notification_engine.notify()`) warning that "the cost of capital is experiencing a violent intraday shock."
 
-```
-# Intraday rate-shock checking
-if m_open > 0:
-    m_spike = ((m_curr - m_open) / m_open) * 100.0
-    if m_spike >= 1.5 and not self.is_alert_suppressed("Macro", m_ticker):
-        msg = (
-            f"🚨 **SYSTEMIC MACRO ALERT: {name} SURGING** 🚨\n\n"
-            f"**Current Yield:** {m_curr:.3f}%\n"
-            f"**Intraday Spike:** +{m_spike:.2f}%\n\n"
-            f"⚠️ The cost of capital is experiencing a violent intraday shock. "
-            f"Expect immediate severe valuation compression across high-multiple and tech equities."
-        )
-        send_text_message(msg, self.config)
-```
+### B. The Stock Detail Warning Badge (`templates/stock_detail.html`)
 
-If yields spike by \$1.5\\%\$ **or more intraday**, an emergency warning is broadcasted directly to your Nextcloud Talk channel, letting you hedge or manage risk immediately.
+When you open an individual stock's page, `page_routes.py` queries the database for the stock's `yield_correlation`, `trailing_pe`, and `debt_to_equity`. If the stock is both leveraged/expensive and has a strong negative yield correlation, it displays a warning badge:
 
-### B. The Stock Detail Warning Badge (`stock_detail.html`)
-
-When you open an individual stock's page, `page_routes.py` queries the database for the stock's `yield_correlation`, `trailing_pe`, and `debt_to_equity`. If it fits the macro vulnerability profile, it displays a bright red warning banner:
-
-```
-<!-- HTML injection on stock detail page -->
+```jinja
 {% if stock.yield_correlation is not none and stock.yield_correlation <= -0.3 %}
-    {% if (stock.trailing_pe is not none and stock.trailing_pe > 30) or (stock.debt_to_equity is not none and stock.debt_to_equity > 1.5) %}
-        <div class="yield-sensitive-container">
-            <span class="yield-sensitive-tag">⚠️ Yield Sensitive (Macro Trap)</span>
-        </div>
-    {% endif %}
+    ...
+    <span class="yield-sensitive-tag">⚠️ Yield Sensitive (Macro Trap)</span>
+    ...
 {% endif %}
 ```
 
-This warning keeps you informed of underlying macro vulnerabilities whenever you review an asset.
+This warning keeps you informed of underlying macro vulnerabilities whenever you review an asset. Note this badge is driven by Section 2C's 30Y-benchmarked correlation, not by Section A's 10Y-benchmarked daily threat level — a stock can show "Yield Sensitive" independent of what today's `us_threat_level`/`uk_threat_level` reads.
 
-[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAZCAYAAADjRwSLAAAAkUlEQVR4XmNgGAVEAwUFhQgQlpOTCwPSHEA6DUgngDBQmgWkwB2IPUBYXl7+IhCvAbIVgPRtEAZqcCZOEZDINTY2ZgVhoOB7kGIZGRlpIHstCAPZQmA3ARm6IAwU/AlUxIHiYBgASiZD8QF0OTgA6l4IxY3ocnBAlCKgNVdBWFZW1hZdDg4UFRXFQRhdfBTAAQALbCoyX+WodgAAAABJRU5ErkJggg==>
+### C. US/UK Threat Summary Cards (Portfolio page)
 
-[image2]: <data:image/png;base64,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>
-
-[image3]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAYCAYAAAACqyaBAAABsElEQVR4Xu2Tu0vDUBjFK1R8ITgZaJKmJZEIDiIVQRF08B8QcdDJyUl8UBeH7uIgKoKzVOgiqOAi7joJLp0VB8VOnRxc6jlyq5evSdtBaYcc+NHc73znPnqTWCxSGyieSqVmQ5ghhmH06QHUhmVvOp029B7LsoaqXjKZHCG6/y2YA47j5MA7eFRwTM4Ub2BKyyxh/AAqeD4gWHxUnxfeAiirvmWi+z9CuBvmJ3a3SgL8U/hFUVvh4jihSXSPSiQSvZjrRNZrxL+GE2H3PpE+vAJ41muYeE5lJojuUZhz13VdW9Zr1OrFdzDRk6x7ntdF4JXAtu5xk1wczJNq3bbtcYJaVu8PFRovcJIb3/f7CcKu+jd44gKeDzOZTKeewT33cHF4m0SVO1DLE9kfJgZKmODK+X3Lc9jMBk7nEBmoCn2vYI+o8Rpy00T2BgqBMZ4ATEqvkZC5d9TnyO8cv0eyp65avXgWlPEYl14jIXcO7hTHeLsHZU9dIXTN+5b1ZoTsPvgguOd16QcKjYsI3CoqGL+AS9nXSNj0FvJF0uzb/WfiPZumaRHp/btaunikSG2vL33KihonZ9D3AAAAAElFTkSuQmCC>
-
-[image4]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAXCAYAAABqBU3hAAABxElEQVR4Xu2Vvy8DcRjGSxM/BiJhaq+9O5ocjc2iG4lFmKxIpLGIiJhN2C0S7LrRQfwKHUyIgcQgJjt/gbGep32/dff2FwmphCf55L593+e9e76X9ttQ6F+/UZFIpMe27Xlh3HGcNtPD55Tf+62SB2fBCUgLU+AUrAo39OK6Bx6EPLgCOUM8Hr+VemEj+lkBWZbVTmB8Alu6D4VRzwj3poj1tJDHW+r3D0h/EfU1onsBwbghvHqe16H7FHbUS74SIJFItGJmh+heQI0O0IwbvAhnuqkFz7FvXRYA12GCWlo8E8TMlMl1XY83IEi6q/u15A+A2Vk8eIEBhUKAuoLRNQHAtu7Xkg6A66hd/BWRigEQ0gkUGh6AgvlZONI9Lb5ms/YHAANSSwllATDbhaDnus6hdeGNJt2nfGfFpqlVClBN3Dm0Al8mFov1kVJTHUT7KIU/RotC8mWCvuurzRAGwA0H/X4tzoED+JfwxbeJ9oSi0Wg3TFkkPYRxTJhkclyTxHjt4lH8KPAN3IEcz5FqZwn618lkskXXS2p4ACP+KeGhI4ZPDdURTsVOBLjEsgkbGSLa86PC27WwmQswxzBEe/71N/UOhAa0o7/YMC0AAAAASUVORK5CYII=>
-
-[image5]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAcAAAAbCAYAAACwRpUzAAAAqElEQVR4XmNgGGCgrq7OKy0tLQPC6HL4JeXl5dcCcTYIo8uBJJ8pKiqagTC6HKakgoKCP1CwFYr/A3EzCMvJyRkzAFXpATktIAwUOAlU7ADFEjDjeqG4B9kaoiT3gTDQ2DAUCWNjY1agxFcQBtovr6SkxA/CUlJSIvglgYKGQHwfhKFWlIAw2LVAVXJAzmMo7gbiJBCG2ysjI6MCwsrKymJwQaIkhwcAAGDzNW+EJoWpAAAAAElFTkSuQmCC>
-
-[image6]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAABkElEQVR4Xu2TTStEYRTHx9uC2NBQ987MndssRslqVgpZsFJYWFPKzlaU5gNIsiSSBRaSTzDKbOxZSVlqir2FpPE75pnpzImam8Zq/vXrznNe75zn3FispYhqS6fTUz8RBMFYIpHoFmxSw4rH470UysMTPDvknE+lUgc8X4VkMjlhcyOJIiXYFYz92PGg7ZHEOIYpUOY5L2gf9itHiWO79jWspjdg1qsU+OQy+4WqPQzDIexvAo2XdU4kUeAQXgJ3uY4dKNJ8WrA5VWWz2T7f9wesvU4UeqTIiVnRSziysVpslkfMOdxYX004QyjTYEbbSZ4Tux2bFi+ySd6i1LC+mv6jwQq8e57Xo+0kbkgDuWhB+1yOcEfcXiaTGdT+OhF0BkVr5+0upAE/OwT+xajMXMfgv9fnmnDMQsHxEVS+4kKssuffu855XRrQaEHgTfcxd4pPNkfAf63KRhejmaxulR4hzcYF7Ns6PrKa3uA3MZo1gSZL1vcn5XK5LoqOUPxUsJf+Z7FJPoVvYUuw/pYa1hdW0nlJAnMgHwAAAABJRU5ErkJggg==>
-
-[image7]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACkAAAAXCAYAAACWEGYrAAACBklEQVR4Xu2VvUscURTFV9bOiCKuC/sx+wmLf0CENLpNQBCSzs4UIhYpNFgIIhamCASJdbSwkJSBhKiYDxAEEYy1H9hYpdDSwsbC/M76Zn2+OKMWQhbmwOHOPfed9+7MvDcTi0WI8J/B87xJuCnmcrlLuAd/Wdy19D15iAP5fP6b0S/x/iCf5XrJcBUOu2u5Pq5/Emfgosg8O8QPlUql1fXGSqVSVjQLjrr1YrHoUTsWSZuklcvlhL+Y60kmky3oJ3DO1oVUKtUZ5BPQ19G/u3pok5lMpqxIbV4sFApJ5fdYbAOeuvpdPrR3pt4t1gsN3yTasiLN9YiM61J+x2Jx9tsRtU+OHrpNBHwL1M55OB1ivWA3Cb/AOc8cJvjVmqMOu0mNZ/J+4oTI9W98HxOJxBPXF9BkXMxmsy/Qz9DHbE8N6XQ6I1oLVokj4gOarDJ2UCT/A1+7HsFuEq7krk53jcwxRaNPXU8NDdeku0/QJhT5DLWJ5G+VB7y2GshfoZ/rRmxd0J62fONuPRBhB8cHd/lSpD6kPKxJtAHp2mO2Lji+f/deEMKepGBuYN/wmbSw081XoNfUpn2NMc8V7SfJTb+5doUA8ySGbUOZb/wWvavf5YU1cbsm53rL1+AB/GxN20S+oVPuvwH4/hbfIVyzfLejIZp8RMT1t6KxPpG82R0QIUKER8Rf7yQodijPFysAAAAASUVORK5CYII=>
-
-[image8]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAmwAAAAsCAYAAADYUuRgAAADFUlEQVR4Xu3bP4sVVxgH4LtLBBMjsciy4TKzs3fcZAlaRFZQyB8sxMZSSROMhU1IEwikS5rUFoKrRTAB/QoKWqSKoiSIKIqVWFiIX8GkiO8JM3L2eBcvm92NmOeBlzPvO2dmbvlj7r2DAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwRvPz8wfyqut679LS0pZy33opn5fVR1VVvV/O27Z9J79+YWFhptwTtTXfAwDwWpmbm2ubpvk76ot+FsfXoi7m+yYR9zpWzkpx3yPpeSlo9bMIicOYPUzHMzMzb6fzzy8YDKbjvr/HOtUP4vz1qMtZfzhdE/uO9jMAgNdGhJwvuwD1Xj+L/n70v+X7JhHXnS5npTKwtW37QTc/k9Yxge2fc1EfZv2KwDYajZp0TdQv/QwAYNNUVfVmhJuvIlgdjPom6vNB9rbp34qQ81MKaH0f9/84+qcRgj7L900irlsuZ6U8sC0uLm6P45/TPPp9aV0lsKVw9kbWl2/Y9nSB7cd+BgCwaSKEfJ/eQsX6Z4SpXbE+iXVpzL4fVqsU+sr9vTh/J+pWvzfufaWu693lvuFw+FY5K8X1Z8tZqekCW9S5CGl/pDU/3we2/PPEeinf07wY2H6Ne52fnZ3dlu8DANg03deWt8v5eoj7/hVhZ0ffx7Me5eeT2PPtuN+ndQEyD4c38n40Gh0qr2lWfiU6FcffdfNRWss3bOnNW94n0V9fy1e2AAAbJgLKcvOSt1dFcFpR5T8tc3H+RtE/zvsIRsdjdvNlz08m3PPCnw6S9Jy0loGtruudeZ80AhsA8KqJgHKv++3auot7nyz6u2nNA1XMbsUy3ferWWtgq6pqIWYP0nEZ2IbD4bt9372xm06BLepqvwcA4D8XQWW2nG2UFKTquv500P3IP/r9UaeKbWNNEtjWaCoC6ycpvJUnAAD+9yKEfR11opyP07btXDkDAGADpX+LRli7IIgBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwCvrGc2os4jSApbHAAAAAElFTkSuQmCC>
-
-[image9]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFUAAAAYCAYAAACLM7HoAAAEEklEQVR4Xu2YXYhVVRTHxyzIykprmrwzc/edDxlMimIIAtFRRAmNoogKvzAfAqmHqKmYZGr6EMUHvzWUEDWQsJeixyGCUAk1kgzqoejBJ58iepSYfv971p7Zd3XvzL2XuQ/S+cOPe85aa6+999rn7HPObWvLddNojiiVSvd6R67mlRc1FYVYWYu+vr5u4dt4FYvFp4w13tfb21v0eWsw5NverJobQhiFX+G6oXOxF/4ydviGqfAfFG3ZFVshivUkHMM/AWeMURZgH79n4Zrxd7X2rZYWk76/gS84PiAY29IqcWPEnIbj8K7AfIuPmxQBv8WEqZ3kLwj8E93d3Y+nvij8C/B/KLwvCt82y1EQzj1X4L/g7C1Ve3v7XYJ+rzOHh2Tj9z2B7U/u0AdkoybbBbYzsS3HnxlvRFuFdHtqwjR8RqQ+Otgk5IdVqS8K+6saVBxYNYVsda+ktq6urs6Ojo47k5gTqd9LfmOYMd/j/Y2qs7OzS4TsTtwmG7+vGarHo2b7WTC/V2JbfC8LP6dJ5UVtQVEJ3ozzxsDAwHyR+sLUZX6+rcZ+h++It3kRcxX2OtuJQqFwRzxnW1ie+mupp6fnEcb8ubYqcvQIH9OswtSer61ojm0PE8ZzMY6xPi1kV0ySIhOOQ/BLf39/u+B4EQNfwe8wfCuYRK9vJ4VsUm96eyq9PdigzpNnl+B4XHl9bCNijKQIHwtyfsLvYz6mXtnd+Cl8L0r2aqh529jLd3ISX37bMXtpMlEUjh+xfxemnvqjnI/AEz7Wi5gxLYS3pyJmqzrnqryfQnQIzoexf+Bjm5Vyk/MjOBuvIh8zk2i7BC4b44ODg7exRfVXKyrn6wz5lqR5dBkX5NAWUOGoU3R0zNu8iDkFF1Mb/S2LbxO2gCOc96UxjYoCzCPP68znitDi+ZiZRJu1woq4vZi92ZSLGpLbP71S/3NR5UWt1KwU1fYSJXiwwlGHtO/Sfou3e5H/GnH7vF3Sg9GKfsr76hGFXCjoYwd9fFms8kVXS7RZb1yKCxCyLUCoiOUHML+/C8a4Nbbl+CWB/Y9omxSDOInzJ2+vRyQ8mL4SeTHZxcIW7UXv18s1vq/xDQnvn0564jL2d2i3W9DPwz5mJgV7yME/FHXAbKsMFXWDbOTfLzjfGdvS9/sC26GY7NmQPX3FjZB9mo5rkvErYjrRwe2CNoe9Lwr/VyH79BUa4IWkT3HO+v7Bt62lkok2e+At3jHv8zGNiByLDD3tRyjS82HqQaVP0LK4ve8WmoPFvW3jP9fMFlNVRft0hdXe10oxiY0ifbedDekpz1yWUbCV2ten2dtvJW6pYnVszI7yoragqEzsqOCw6hdWrgbFKi1gRceE9+VqUhRzSH/ACO/LlStXrv+h/gVIeW+ozuJdpQAAAABJRU5ErkJggg==>
-
-[image10]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAAYCAYAAACMcW/9AAAB/ElEQVR4Xu2VTWsTURSGp8TiRoqCU2UyX8mkokWUkuqiuLJUqBTE6C7gwoWISylCFxUKdSG40F2EYhBc2GL3BTeVgivxLxRcCN3UXyD6HL0TM4fRySSLGJgXHnLn3PecezJ37oxlFSo0Wip5nndeB7Wq1apfqVSu6fggCoJgy/AE1uF9GIYvBe0V87Lv+x90PEVjeBsUeS0wvluv18e1KY+o8dnwFfbgAeExQ1JMbss/0vEskXMVNviTj2zbPiZoT5bM3dzS8VT9140yuQirhgO2cjP4fdtzi7wZmm0J1Fmr1Wq29vxN5LwVGJZ4/i+TfzphkMOD4Z7AQt/5nSc2mzD1Idd1p6j3jgVX9Fya8O4aluGWjOllSeiYKHZfYPJTV25fovC0oUW9Z9Q9qz1pwntdiK/JX+D6m8D4RBxsCxR90cnMKWlOHpuuWqH2/ENH2MVIiAM0eA5+GBq/giPTKIN9gQVuy3Wv24X/iqFN/qtePhZpIvdh3FQURZ7EOFAX4hj93LDK5bIbB+SU8tU5k3UAHMc5SXM7sgMCRQPtySPWvglvBMu84Bk3WeOLwBrHLZqbIHgoEHgKz4kdVbUSkq8QzZ3S8UHkm9caPIY79PORHbokdExcOIK8UrpyhyIanOMmXGRY0nOj02he8cBPBn++Zlk0dX6hQoWGqJ+bwpd0OhILhQAAAABJRU5ErkJggg==>
-
-[image11]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYCAYAAACIhL/AAAACRElEQVR4Xu2VPWhTYRSGb2urDlo6GJGQ3Js/iEZFa5T6AyIFB7GDQ634hyKuuuggakVcxEFBB3FpoQY66NCpYEWcLNKlWio6dXXWxbU+b/Jd+3FIahFMq+SFh+/e95zvnJOb+xMELf3vKpVKazOZzBELoTZHVel0eq8f5zz/q8jfVD6f3xxF0SPHD5gPw/AOoQ5HVQx1l9iC4w05RxerNEk0nab5hPWlbDa7i9gtYWNNE83H4aP1UTv+WGCuatP1Lwz4BL7X8a/DQes3XQxxDRaSyeQmz8vCQz9vxcRDclIDQk/scVzhCe728xqog/2vyN1iA76o91Q1rc9rax/+B/bvFjZeFYFeDUijftYzAu+UzWskck8E3ruzntS83oAS/jC9y8LGqlr1A3KZkxoQblNoVMQxjtfDBcdpXvBpCg3COeF+3JB//zrveC6XC2MvlUrt9AZsF+wfEPgj0CPifCu9TvQ1+caGnPCD+AccM5y2McAN2C/K5XIn/luOt7IeE+y/r314rwuFQpfwB2R9Lsg7pF4cv88sdQ9KJH0Ka5+6hiLnHWyj0EXjv3ADjjkqMKSVmtsF/9IOnbt/64uI97N3NPrNFVSTPSxrrO+LnEs0m2TtM/5LDQgPBDnn5evKcd4t3CezIo/1q4j3a0Ddf2KxqtGqH3A5ovg6Cs8G3hNL48N4c3AvHgYeh7V36+VisbhRRLWv1YzuO9abguOrMMjxZ9Znwmu3fNGwV+iBoMgVG19Ruad0ynE2kUhssDkttfQH+gkVlbEoYPFpZgAAAABJRU5ErkJggg==>
-
-[image12]: <data:image/png;base64,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>
-
-[image13]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADcAAAAYCAYAAABeIWWlAAACfUlEQVR4Xu2XPWgUQRiGN/6gIFiJF867ndu7q0Qkehb+okajgj8gQopYKOQUFSLYCEok+NfY+VOIWmmhQbEQUSsl0TqiIkELLRTRxlaw0edlv8XJcqgIwu2xLzzszDvfzM53Mzu7FwS5crWfSqXSgkqlss4nDMNGOq5cLq/xY2q1Wjkd03Zyzq2Hc8YP+EhyQ6mwLvzb8M24DitSMe0tJvwMPlDs8v16vT6X1RqPomix8NsyI1bssFaP6yrPnob3AG+D52VPHZ0cW65AIt/ZgucTj/IxvKYfl1mRyH34wkr1C8pn0jGZFSu1V1sT7oogdbi0oaZrx6XNliKhXUpO77EsvMuYawS7035LdXRyOkwIfp32fdHeqx+BZ7JK/FpB/QQ/xnyuO1UWQXzSDkKTL5wdgtgt9NtoMSsF9f0al+3lrL9Yavcapn27oO9m6ocKhcKcYrE4T1C/hj8Ke6ZMspUIeslAl9O+pFeFvS6Oa58Te48X/CyBP8bkF+mFT/t7QZcZ1Wo1pPyVtmWCPkdgNt4EffoE5Qt43RpPfQTeWehVUlzfGBH1fVwHvTmNuN+tHIMeFAQ9dfFhMglXhR9n/iTfo3Xft7Y7Ss7KEyKIJ6r6qynBsfdQ37VCdZvDuLNVh4swgNdjKzOqODvFR5Jx/pjc34pBnghutFx1rUrSxk1uecm9E41GY6bVnydxiYh/ZKvVbTFb4YofU4nVg39TWL9+vJNJDP6wksPf9qvnP6ijk2OA1cYYAw7AKa/tKAy5+AD5JML4+WzC54ptfYvto/zW2b8RHRDyKZ/GPyBcfKgsgUvwQuhAcnGijxljoeDZ30T9RjJ2rly5cv0X/QS4XM2vPs5muwAAAABJRU5ErkJggg==>
-
-[image14]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACUAAAAYCAYAAAB9ejRwAAAB/0lEQVR4Xu2Vv0tbURzFUxA7VFBaYoYk7+WXBQMupXQUsVpQhA6lJaAoSFCnFt2qlAyibg4OrlbEwaWDTpJof1DoFCgd3MTRv8Epfo7eRy83dIgkMYUcONx7v99z7z3vvvu+LxRq439GNBqNJRKJIZuxWGzA1mQymYeuJpVKdduausL3/WG4aViB52w6Y2tkgPhPeGm4lU6n47amYWCz37DsxuPxeBqjPzDSK7r5hoKNP5rTSgaxcDjcxfgX7Le1TUNLmpIZY2rZim17njdi65oO3R2MnNHOGy64mqYDQ0vmtG6+SDdfT1BqwjQdbrwKGMnDK9Um0c3XE1yLOerkEzdehZY0xR3axVTJjVPl+4h/EpPJ5AvaWRZ9JwYaPRDzX4toBu35moN2ivaV1jLrlYmtK2drXTxAeIGw4CYE4jui7pqekP5nUQYjkcgj2mKgpb9H0X1OflRkPKk4hhet9b7/86RIvhf923pUYeIfPYHo6Aoimjca6zRE9Ica65+pWmfq3Ve0E/yinooyTPxA/WA9Yt+Y8zgY3wm+eX2BKTZ9a6jT0z/0KJvNdorENhjnOa2caIrwM/jFWu9UpmjH/+5SI1ralF4Dm07TPxF5JQy9LP0i7UtD3bdjYisi/Q/My9FftdZbM/kxe5+a4Dl36t5hLmvJcJ+n7nE1bbQBrgH5oZ6/M2cTGwAAAABJRU5ErkJggg==>
-
-[image15]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAmwAAAArCAYAAADFV9TYAAAIOUlEQVR4Xu3cCYxdVR3H8emisriAWrrfe2da2lo3QkXZpASDCnVjEQkYiksltsEIFFwS3NkUgWBEQNKKaJVgxAAlxgJCARtN1SqKDW6ETUDTIAaNJaT+fu/+T+e80zeTlpbBab6f5OTs9953Z5L7zzn3vb4+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIDdt2rSXN02zR9mOQbo/k2bOnPmish0AgFGtqqrD9ZA7v67rv82bN+8FeZ8ChL3V/oTS2Ur75n3bQuc4OM5xv9KZbtNDdYLKtyhtnD59+oxyjmnecvVv0txdyr7haM5kzV2U6gMDA7Py/tFIn+lSfaaTovzpuJf/0d9oZjbmH0q/V1oyOHNk6NqO03nX+G+m9JZom6u2e5QeLf+3nkv6f/l82QYAwM5gvB6q/1U6Km9U/Ut6+P02b9sefnjndR17vtq+kLfl1L+P+jcpKNm17BvO1KlTX6G570t1HeO6vH800me4q6hf6L9Z0bZM2Zi8bSQp8H6XruHAvE31y6ZMmfLKvO25pvPttjME6QAAlMZXVfV9PVyvTw1e1VLbeTs4YPNq2fysvsyrMPmYXH9//+ueTcBW0jFuKttGG92nj+R1fabTfW/yNt3bJq+PNAVsb9B1vjfVdTlv1zWemI8ZKTr3BWUbAACj3XgnPVwf0gP3LDcov9h5HrCp/0m1f8LbW8ovj3F7Kh2udIfbNea7Skera2yalzhAU3rc7xjpuMcrfTT1OZBT+kVsoz2utEABwGtSwKbyfirf5fMp/1Adq2aac63Kq5RepbRRx36pAr1DNO5c96v8erXfrXGHNu2K3QKl36m82u+EqbxG6aJ0HYmvrW63gnumcrxpziRfg9JXVZ6jfIPSNbr2Nyv/u1K/xyk/wMkrgbrOn0dbv8rHad75EyZMeLHq96p+sPv0Gd7YFO+uxf3oBGxx31fk/aWJEyfu7u3T8jg7mo5/SSqnz/t80LmfHsltWAAARoIDNgdf5+pBt17BwBQ9eE9zW51tY6rtlLTVpPL+TfZuWQQkRyldmdpK6jvMQYbSCUo3OsDJ+taq/imXlV+ha1meAjZvcSn/WeqXMapvUCDzVvcrEHltzDslHS8FbKYxK1M5+hap7RGXNefqvG97+XrSPYrPekyU11WxSubgyZ/J5SoC5ETXc5/GHq10RmpTeUE+xmbMmLGXj++y74vKByhfqPwPym+IYPQ213WOecq/Xrd/n694jvJ+pcUaOyfqS1Q+2dceYzdp3jfUNUbtq1W/ffPJh6FxP4i8szXatK5Q+mTUP6DjXq78UOU/rmMFTuXzVP5gzHVAe1g6ZgSnH9acPZTv62vL5j2g8jWzZ89+SRpvHqN7MDVvAwBgtOsEbAqAZsfD8Mz03lHdHbDNr9uH+dl+COvh/rLUV7dBmB+Sm1+C78GB1l+UVjqlRh1rlzjv9T52pBPzFTblz6SAx3yceMhv7Ouxmue+VK6LLdEIADdozEHKT8/7tpevV8fdM5UdmET5V0qLY5jvw9c07jMOWtJcc5DkIKRoe2deT3SMp9Q3UGcrhFW7td0JfBzU+Z6pflUW1HZWwNT+I7UfqLTWdQd4c+fOfaH6fxL9y+O446pYTd0amrNG2Xgd59rUls5dSvfDf18Hclm7g8/jXfb/mOq3qb5PFau+qt+r+nui3HO1U+3/biIYBQBgp5C/FO6HvR507071pntL9NGsfIT69tdD9NSoL/VxlP85jemlbld2tvjmZ9OuEt3qcjykva24+UsHDjRUviqOcYzSM/GO28O6hvdH+xlqq12uugO2VZFfltq8VergJtV3FF9v1TtgW1fHtzfrWIUyX6fSIl+PqmNi+3O+xjyVxnjrVO0TUz2p28C36x0x1b+n+Qtd9hwf2yt6av+2j6l0RDb2lxEUT87afprKmnuS6hememac2o8sG61uA+9L8zafI68nGrfYn1/5b8qf4mgiYHOuMd+Kbd8NqV/lbyr9enBGN/U92dcjkAcAYFTSg22J0r+UVikw2tvvT/nh6MDHbfEAdn6k0i1+eCp9Vuljqi/TA9X5rUpfjJWwvyrdrvY3ledK6iwoyIyNh/dFmrs6tua8KuXz3x1B3HVK5yit19hjPUljG9VvVvY5b5FG29Vqe1D5x11X+X6VL1C+ND9hkwWmO4KO97a4Xv+8xbFRvifKT9ftvVmq6zxE+ZfjPp6q8pXKz1K+1p+hbrcE/6m0KgUy6j+oPF+dBaBZ2wpdx8lRnqzywrQ1GIGbV8A61DdH6b5Zs2blAfudqWxDfNtyrMatKxtN7Y+V3wrVtb86ryd1u8LmLddL/Lcv+tKW5ztU/k78bz2U+r1qp/qDgzO61TvBF00AAHjW9CDs9/ZZ2b4thvrdNfML+lWsUPWS3v0qOdgs2xJv9Q2xVdvZCn4+eHWw2Ybfl6vj3bOibYuX+iMA7PxUioO8pl0FvTi9gK/yHQ4CNWZ9BHBeERxI8+ti1arXOaxq32/bQq/77Pvvc5XtEbB1tkRV/lPeV8WqaQTuK/1eZR0rsFa3XzL54+CMbnXxEzUAAGAU0YN8hdIP62G+HPH/qGm/tdq11TiMcV7F64stQQfY/qHiJrZn05i6/WJAZ4z6JsW27FZptvHbpgq8Kp/fK7dl39bw/LJtCH4/sOv3/gAAAEaMApFzhlphRKtut5NPKNsBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABG3v8ATwv0Xqw2bsEAAAAASUVORK5CYII=>
-
-[image16]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACcAAAAYCAYAAAB5j+RNAAACEklEQVR4Xu2VzUtUURiHRzRBjZJwGJ1m5s6XFYO7USyhFi0CW7kJyhRFEsFZRGs1wV0kIuKmVZGGBEWrIHLhRgjUXRHiolb9E230+el7487pLtyoDN4fPLznvF/nvXPv0VgsUqRIkc6f6jzPuwszIpfL3XETzkSpVKqJgdagUiwW44L1joZ1c09dDLGcyWRmg75sNvseFoM+Rw2Cui96GDcoFQqFND2+Cs4Yc+P4b+L/nk6nu9xYjFeXECT85dfrDMYo3MP/MugLE3kDmDrX74v4MxE2nIR/pfaGo2hUkPDL9zGsJ9A+9h7xEV7dkOABrrJ/RGwQ2ytYz+C/olrWt4x+vVLzVQx/uHrqHhoD+FdDh+PAN4KET76P9YKxavs+7+hy7Nh+mmbd5XL5gmC/wXBF7H2YE7Gjm7+eSCRabLB/w3Hea+vZR58Cdjt0OAK/jU1Y4EkWsfNCBwfyvgniN2g+7PT4oE8C+w7eGvpztJLP569hJ40x6tuxP536tf+Gs4b7gmASemh2uSrJRM4ToZtJ3m0ndjgcB79gPSjkZ9/KLb5EzVOh4dQf+8epr7HhKBgnsCuqAiFKJpPNggO3fJ/+gwjqf9DruYZhvSTYP2A/Qfw6+8/GR+iAKc++Q10Kna/PKXieJl7C+UpUBRwR7y2VSo1CDd34iYhfok1PK9yYL7uNuiyPRTwev+jmRIp0TB0AfFytfVJyNqoAAAAASUVORK5CYII=>
-
-[image17]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAD8AAAAYCAYAAABN9iVRAAACpklEQVR4Xu2WT4hNURzHXxMSSsnr6XnvnfcH5RXJK82QGkNRY8NmdtSMkqWUaLJBsVITbzWNP4kpGytZUIM0dsRiFiQKWSgLJcvn83XPee903NFYuHq9+61P9/x+53d/5/zuPefcm8mkStXz6iuXy4OiVCrtEH4n/jWWXzEim82uEH5cV6para40xpyBOWgJCux3/dgDlhn4As2ylZfmnyuXyy0XDHvRzmWa9ohwMXoh+G8L/BO8yOu0h/08sSLoDry1TMb0D8FY6E9KjP1AUNCFTLRaj2N/EF6MajgiZBOzlPb7QqGwSbST+SJgI4GnSHxSYH8jeFUQM45vve9LSsxtH+N/Ffl8fpl8xWJxJ/6jQjZzW0t/i+s64e7FN60HZh/a7+rp4m2SfhKvFtzwHfu0H4Pvlm8nKSZ+jfGfCdr1crTkd/kx2MMqXmeY8PxNY7eMH98WHVNcFnn2JHyq1+tL3EGDfdW7ZV7ZWB2gC4JiDokwjy/iZin4taB9nuJKJjrYTggbMwqt8EuE7zI8F52Mnui46dsMskWJlJCJ7RHm/x52L+Gz0AuRjzntxv4h7GodiyueWiZM9CWb62S00imo/R76CZ7B/4TrOcHT3hDGJCXGf2iCpattqmItWvIH1I5Z9ld4UI+F87XV08WT5BgBAzH+EZt4VoT98+lv97yJlusftxT9l+C+8HzbTeenbK9OeLVrtVpRuDh7WOrQazpfWzjvNhqNxaFfPvo+kviGCPuTlIpjLu8EZp98FLUf+43I2MOauFc6C4S710RfCa2M6E+PxkF4ZGnBU31C3A1O+MdNdIqOhn1Jy0RvX5ylyEGu90z01znkxWyFF4KYw1yn9Ob9PF0tCqqoeH9f+3Kf5kqlsg02h/1drZ4uPlWqVKlSLVA/ASmQAEiYUu3AAAAAAElFTkSuQmCC>
-
-[image18]: <data:image/png;base64,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>
-
-[image19]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADUAAAAYCAYAAABa1LWYAAACgklEQVR4Xu2W34uMURjHZ3cnIiQ1q+bXO28zNXasUlK20K6I8vtCCqUsLnAhJYmRG6XkUrQbUhtJLhGj7D/AhRttuXChLe5daNP6fPc9p848SVxsvTvNtz6dc77nx/s85z1z3slkuuoqNeqpVCrDfyKKoqFisbhE2EmpVi6XW0bwTfgMXx1qN8vl8j3K76JUKm2xc1MvAp+G28L49x2fQj/14qitIehZyv0i7MN/7pim2Rv2pVodmRS/nVME/YsLYZXwfhzHq/F/CJI9Hs5JvQh6DL5F7oJw3IJJEt4u7JzUi+CnCPyhuc6fwbgdO5/ihs1bz6rRaCwivpvWbxOBxzBLUjtCnwfsk2+P5HyKYC9bz6pWqy0mrgHrt6lTkzoBP/P5/NLQJ8lLSkqXhQjGj/LwA4L6iPfZhKrQ7Yl/NvStV6/Xl9M+gr+JZp+gvQ2moFkoFIrCj3fKCvpPsskF09cuBk3ApPV54FMllXEPZaF1UMN758dQH3e/wZXU7wjnX5Dnfe9R9Ag27LXePuVebZ7AzzL+o1/bSpsgGHuI8qrt14Dd0HLMRMm/iVYm+Q7NfYtoX4ySb9fcW2Gxu9hZyrU6JoL+t5SH9eOl/lgoYNgjz/veg4bA+xIlN+wN5l8XWvtvSfkTw5wJ1thg+/9ZLLLVvYlhHU8WHIGXOteCxa/RPkO5mWO2UVSr1X68F8xZL0IPBhwfgmdEgmqvS6qPcpdQP2NjlTxvhaD9HoY0zq/xX+rIpKwqyd+pVtl9kKmP4b3RTUn5yLET/4FPKvS0MYK5x2hfcWscFFqf8hWcY71BoWTRjNsUvyFPWO+8jW1BiSSO6ra0/oIWb/O09brqKmX6DfNp2OfCmD2XAAAAAElFTkSuQmCC>
-
-[image20]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAAAYCAYAAAC1Ft6mAAACtUlEQVR4Xu2XO2gUQRzGk+ADH0gEz9Pz7nbv0XgRNDkLBcV4haISIxFBA2riI4ogSEBQfJBG7KJNENFgYaGdKBa+SKVNRCsLU4gWBhsrQQQl6O/jZpLJkBMiwSzHffBjd77/f567M7dXV1dTTbOqhjAMWyuwIZ/Pzxd+pciKwS4JguASfIKPBpXFIHwRqVRqvV830mLQX+GKcP10On1f8LSGXT/SYvXXMJHfDHq7cGNM5qkgPuL6kVbVTYhJnGTAP2Ox2GLh+CH+D0OHWyfS4gncYcCjwcRhIPphiNgm4deJtBj4B7jlHNfiIVz3c/8m8rvgjO9bsTAHBX2992PJZHIVsSfUPyz8uBU5l2Gp74+L/ZMz+6fV9Snvxx9LJBILhRurJLWl/ej7vmj3re9JDPQ0/XYLP2aVyWTW+t4kVd2EaPwYfON2juvTaJ8mGo/HFwmTW6LTNga9W5CzTlf8ZsNZvHbl6gfb/Gh3wkasBts25df2XqKNzXhHqHs+LL+2XW7cipwOaPH9SSLhHg088328R8S+27K+FFidON5j2CnIaYSbxWJxrsDbBbdJr1ebhka8vdBr27ITInZCsEg9vAXL8O+GU+wh/K2GZu0zN2YT1PFzwxh89icVlE+6XyZXDMgnb09Q/iQaZILbKK+wdeisKJ9rU+B8RlG+yvWizQvNVwfeO8NKU+4Np3hCWkizmKf0Wrqx6UirvMViP1DNkxgxXHAr6ClqQma13wgby2azaXtvfa6vDKtNWRMa30O5XG45p98Cp94QtBAPrTcdVd2EKor2+gwHXJ/OBvCGddLxahwSmjSU8NvTE79Do1z3cd0huL8WlPflC3ggNBn8G9z3O+2/pJ1zhUJhntvvP0urbDrqEf/hf1I9/Rz3zRkTK3TUbPCS8OMzLfpq02Hg+zXVNMv6A0gP59msOiekAAAAAElFTkSuQmCC>
-
-[image21]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGkAAAAYCAYAAAD5/NNeAAAEJ0lEQVR4Xu2YW4hVVRjHz5gSYpapw8jc1pmLjpfEy0mshJB5SfDFQEVNUtTwgoUvgg14wQsWRVhBlNSUjoLVg0wvKqWgZpGgImI9pAglvviU4IO91O9/9lozaz7PmRE9Rzu5//Bj7/V931rfuu291zmZTKpUqVKlSpWq7KqpqRnW2Ni4VFhfKdXc3DxOZLPZbufc+9DZ1NQ0RdhYK2LXeU7DXvq6u66ubpSwsf8rtbW1DWfAG5m0PfX19a3CxpRKtD2UXFcEEzxJNvKO5/4Pob7YOkH4Z1Hvsqiurn5KNu6/p/4pYeMrXtq1DPBjz37tbBtTDjGZi8n3p4jt0cItiO2xqDuPmL8FcRO97WvKN4WNr3g9dotE4GyCNnvarf+/JPr3Ehyhz59xnSBsTDlF3nfIeU7Edib9F4H/3djen3K53BDauQ7vCevPq7W19UmcB2l4A/fVgvJPMNfGPkrRvzGwz/M2jLAxD0vMTSf5zwpj/9nzeWwvJuI64ISPr/LcLRLtIWhHbGM3fDVAosGCuKOaPOsMoo1PPF3W19DQMAP7BepPtb4iqiJ+iaBON7m38gEfaYMehjQ/RRbpjOdAbO9Hg4hth5u0tU308UZPzZ3wbgzS5GlyY1sh0ei8TLHVz+T9U0WhRZKwf0HunLXfi6g3309UfnCM5WkbM5D07RCu9zXfL2ys51WP+w9cgded808S/fkwtg8k6uyEf0SjPy3mlS5SBSwShdeFi04o2eS9P8YHaxKWwWLR0tLSgG0hLKU8U6jjtbW1o1WXk5YT6FWYLhuvo8nC9S7SILUbwN4J00L++9AToX+0cxw6mMhaG1RqkWcF/C6M/ZJnZWyPxbi3wiERbPR/teZccL8oDv5SYPwu2AjaJbB1+/KLcF5QrMK+CV7QicSfSk5QHq+FVTu+rcG+nXa7SFz3k3OWp9klu+5ev0kDivbmwhGX7Myd1l8qaSPQ/h0Rfrj6H7i3RNgojO0VyodF2MyM+yTlqyK0h20L5duCui3BrgFd8/zokse3B534ojj5xQSSLu9pIPF94xdpbdb/YnbJq0G/W5aQ8DnBfZcf2G9xfeL3uQd7kgpKT72w9lKKfq/0/MA4FjHRR7lfL0KM5ovyXyIskksOCuGAsYp6b3C9Quwc0ZOAVR/reh+vLIE5eLYnIJJLHu0V+I8pgfF9q0VyyQ7eK4JP7Yb/srB36ZvB9UZcX4uk3LGt0qQTpt4MetVbXzHxo/sZwfhni4L/2aWLVDqVbZFc8pjl/wy0Piu9+vwP3osZf5KjQy8Ll3wkt8vGdYcg6RqXHB6mwUee8xoI1w6ub3kWUv6V66d9EhaRBuIKnLgKQR82CNtGRckl34w+O7+QGOjMcEhgMt+0/lRllD5iLMAIYX1B/vSmj9trIvytnipVqlSpUpVQ/wLvyZIn7uqqTwAAAABJRU5ErkJggg==>
-
-[image22]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGsAAAAYCAYAAAD9CQNjAAAFKUlEQVR4Xu2YW2hcVRSGJ2nUeL8RUpLMnMlFU4M+yKhtUy8tiDZKtV5iTRtbKRWFSq1Q0WKK0FI0IJUKWk0Ra6vQSlOvlWooKhKlFineQCn44kMRQcEXH0Ti98+s4+wsZpJJojaR88PPPvvfa62z915n77PPSaUSJEhQFlXpdPoKyhpjSbS1tdV5LcF/j8knq6Oj49RsNrvQ09uhzQvbW1tb094mwfhg7l6JomgL3G/s8jYtLS0Z9I+wrR3V0NzcXE/DNuPv8Djso6nKmIe1jxjfhZ3FKCcH9GF+U1PTZV6fCoi5CB5movYZtzN5F3s7j0wm0w134bvJ+Dz8IpwnYs2hfkzXrK4rRerD6I/hu47yXuNXUYkkjoIFH/S6QIDraFsr+raTBRJ1uvXpJQZ+i+htJgK2nnOI9VOYHMbdb9q5YmgfArtV2H0HTxhfpT+XhjYkpBf9YKip78F1p3FnaFMSGL1DwCNe11apm6fcaptGmEW/V4r083W4OjXG+6AcGhsbm/D9TU93rFHfAEd4MNrEwHwUuPc92N3h9RC0L8LufavOEtEGVOGetVwPiXpoil5lkCRrZiVL++wJr3ODJ/7pd8O/CW2HeriYgPVifX39md6mUjD2N4l12Ose2KxQskj4hSJ+C1LuwbZt+xN7+G8X6d8ytWH/DOeHG8TQpyxweFRPUTg4tA60LaHdTAETMdf4AePo9e3lYKt0l6jJbW9vP9vbeGC3HPu9lKuNj8Ah76tjO/o2bJ8UkapJ0FVcvxDb1NXVnWXH+/K7GIPqUbLgJSnb8tQBPRHetgRqsD1U8vsA6KgvauI0GN+OPg/9a5HrOb59oiDGQmLtMW5iDI3eZizocCDi+yU8kBrnFYANc97c7rT3lJhQK4FqxVdSNXci9aPM5TrKrd74b9C5azAYwfB6eJ8YjXeEDMAELU2NMSABm4dLJUuIJ1er2bdVCvxvhkPcpz/ekrzNRECs22xOtNpW+vYY+jbyDzX2O/D9IdQ8aH9c823X+WM/fd+oOuVTeo+Ko71SSbJKYdomi2UcqWMKAAfEuA3HWrhKJHivthWuewLO1Y3QL4h9qM+HXeHfjkxhecfJyp+IzH8p+mtGbcMVIZfLnYLvrfBtEd+neegavF0loG9L8B8Ot3Lql2tOiN0vhvYhsPkF/5edthMeD7UYFld8NtaI/5aItsbqNxLzTrHoWUQNhn/An0tlNCp+tB21eh+BcqImjfqHOt5S3mTcjFkV5VBDQ8MZYpisTPEl3skEtyqumK3wnWUv60+x3zjeR2slINZW+Kf6EmvEXow2En50axLRBun7+aI0yo91UIj9TDuimKFm0JH9gBge5qg/JxL/AdXx76beJRZdA9DwPdzg9RC0f6YJzbhtAX0/ybooKq6Q3VFhae/RXwExThb+sym/FWN/2vaKUYUry17Ip3l9stCKtLHp989dIvVj1NeHduo//BX9PFGaEoX2BvVlIr47KF/UMT30FWh7CF4thnrW/rtGdiihHNA3V9nvLgLkKKq9HoIga7A75G+GPqhkZW3LgD3SNaD4phq4BqtVQPmjGPvHycpM4Z01VWiH4P4Lgolr9jblgP1sknatWO5UnC28Tu73egju+SDcDJf7tlFIkjWDklUJ9O7hhp+HmjpI8G+iwmkmvz3A7Qy8W53TN4hI+0ElVQOj7DOupX53VNiCxfG+TfJIF/5ax3+5xyTxF3v//zW0L4t2mJg2f98TOFiCho0rpvK/LUGCBAkSJJgE/gL3AbWhvQQLRAAAAABJRU5ErkJggg==>
-
-[image23]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACkAAAAXCAYAAACWEGYrAAACmElEQVR4Xu2VTaiMURjH594r8rGiaa75emfGhMbnAjcWJpSNCEXKRojSLeGWj4VkbiiRRJSPcBe6EhtlYWF3UygbCxvK1gJri+v3n/c5954583ZvymZq/vVrzvNxnvO873vOmVSqq67+v4rF4vEoim6WSqWzuVxugQhzqtVqmpwHob8pAkPGVYrshBMUvSzC3CSRP8DcW3BNFAqFHS6GvdB4a/YmeCqov5ffU/xeEozHqLV0srInEh4Jksbhsyak0+l5Isz1RTNrBfnf+c3imiGoMYLviHIY7zdeyK7VajMZ3xZenTUC35DztYngQ5HP52eHsalEI3eNO4F/C/W+aMzvbuOlhfUQ14UMa/qewOx1NdrUKU3eF2qyXC6vrFQqi8OcJDHnnSgGe5d9tRr/OIcjH03uyY+E+sjd7hq3GudYc4nwa7TJPQk0YBc8p9hpEeb6Iu+rcdH3s7+Wq0ntV+ej8XoUH5jDzsd4vQ6ps6cUydsEV8As2bzR+VpE6OSG+U7EvxktTTJ/hc2t+36nbDY7RxB/jNnLwywS2KPMa/i3w4Q6okndTXY/9Tgfyb+MYS+1RcQ+GA3fz/5apSbZLjXf78RaV4Tb+0W7AmGP7Cg+RH1Gs+A6FbQn3+cKYf80WhrwpTchIjupTtgb4LdOru+XWG8jsZPC+Rh/MjbLLsV/JhXRTMDRT/C90Ge2QpjRH6FL1go1twQ806eST08u8L2y9ZrCPqg83ydpO+F/koq/mP/VXgvW3SqbmufVl3A5ShoUuu+i+Hp4o7fqv1nGRwWxH5lMZu7E5Dg2Cje8nLGkawz/MC+imuA/ZBwzeyTM6YwmnWhyGYsM/Os/D+qx01kXSfO1lYgdCP2+iF+AM9Ne7F111dX0+guNtujmIxBmEgAAAABJRU5ErkJggg==>
-
-[image24]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGsAAAAYCAYAAAD9CQNjAAAE4ElEQVR4Xu2YWWhcVRjHJ4ta9zWkTJK5k0VTgz5I1C5uFZcaBS1qqGljK6WiUKkVFC1NEVpEC1JR0NoUsbYKRZqKS6U6DypSpRYRXFAp+OJDHwR99MGH+vvPfNc583EnM5nQppH7hz/nnm87y3fuOefeTCZFihRV0dTV1XU1ZasxEX19fW1eluLko/FkDQwMnJ7P5xd7ejtkC0J9b29vl7dJURvM3VtRFG2B+4xD3qanpyeH/HNs51Qouru721FsM/4Nj8IxVE3GIkx/3PgRXFSOMjOgDws7Ozuv9PLpIpvNXkLsPSJvwQ1en4RcLjcMd+Gzyfga/DacJyZ/HvXv9Ezca0Tqh5A/g+86yoeM30cJSayABZ/wcoEAN6FbK3rdTIFEnWl9eoOB3y16mymihVgFxrojsoXJJN7ijZKAzyrsf4HHjG/TnytCG2KNIj8QytT34HmRcWdokwiMPiTgYS/XVqnGM+5tO4XQQr9XivTzXbg6M8l5UAucF+cpUSIxb/P6JGD3IPb3eXkI9Ddj94lVW0Rk46poy+O5IKr9slcVpMkqYbYkS/vsMS+ngWdPxNlwoqDtUIuLCVgvtre3n+1tJkMjycJ2hZLV0dFxsYjfdRm3sG3b/tIW/70i/VsmHfYvcX+4XQx9qgKHp9XBcHDIBpBtCe1mC5iI+cZPGceo11dDg8laju1eytXGp2Chv7//3NBO13bk27B9XkTUTIKu5fn12Katre0cu95X38UY1Ih18vKMbXnqgFaEt01AK7YHE78PgK76oiZOg/F65AuQ/yDyPM/rpwpiLI7sRgc3MYYOb1MNDSaLOe/ud7KPlZhQloBmbPYrqZo7kfoR2l1H+Zw3/g+6ploHb4UPi1GtK2QAJmhpZrLVkCnaPBElJEuIJ1dvs9fVC/zviko3uq3xluRtaiFMVr3bkr6N/KJmHNuJ8Vso80C/UfNtz8VrP33foDrlC/S/U6z0yqTJijErkkXHIuvkRjguxjoc58BVIsFHta3wPBJwvhpCflHsQ30hHAr/dtjrHSereCMy/6XI3zFqG64Lg4ODp+F7D/xAxPdFFl3W200FYbKIucTrk4Dtn4ztTSfbCY+GshjIrzK+Esto630R2RqrLyHm/WLZs4xWDP+BfyRlNCp/tB2x+hiBBkVNGvXPSFYf5Z3GzZg1URay2exZYpgsnneJiskE9yqumK/zzLLD+ivsN7Cyzxe9TSNwybrD6zWJ6Cbo+4WiZJRf6KIQ2iE7HCWfO7qy7xfDyxz1V0XiP6o6/sPUh8SyawAUv8InvTwE+q81oQRb6eT7SNalUfkN2R2VXu09TORlYpws/OdS/iTG/uj2ilGdb5YdyGd4+XRA2+/ZJB83/gwL2uZEs9Ft7y/GcIEomRIlX+rLRGJsp9yha3plC8VxPg6vF0N53v67RnYpoRzXwqn63UWAQYpmLw9BkDXYHfSNIZ9Qsmhwq3FEcg0obpTn9Rqs3gLK38XYP05Wbhpn1kyCsc0laTeK1W7F+dJx8oiXh2BOHoOb4XKvq0CarMZx0pNVD3T20OA3oUwdJPiPUek2U9we4MtM/LA6p28QEf0BJVUDoxwzrqX+QFTagsVa3yZF2F/r+C/3pMwnnD3/a2hfFu0yccr8fU/hYAk6ZFwx1f9tKVKkSJEixTTxL43Hqn+jchgjAAAAAElFTkSuQmCC>
-
-[image25]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGsAAAAYCAYAAAD9CQNjAAAEzklEQVR4Xu2YXWhcRRTHN2m09bP1I6Rskp2bD90a9EHWj1q/sVrjgxQ11LTVilSsRKqCYqURoUWsLxEFW5siVqvYh6ZStFLdBxWpUosIfqBS8MWHPgj66IMP9fffe647O97tbrcQknD/8GdmzjlzZuace+ee3VwuQ4YMddHW29t7FW2HMRWDg4OdoSzD9KP1ZA0NDZ0ZRdEtIUM7ZEt9/cDAQG9ok6ExiN3bzrmtcJ9xOLTp7+8vIP8c2wU1ir6+vi4UE8a/4TE4jqrNWIHpTxg/gsuqXuYW8vn8xZxvj8hbcGOoT0OhUBiBu5nzvHE7/NaPE8Ffwvg79fF7tcj4MPJNzN1I+5Dxe5eSxBqY86lQLuDgZnRjYqibQ5jH+cqcdaezB5Mg3hYapYE567D/BR43vksyLvdt8LUW+UFfxvhNr7/MuMu3SQVGH+LwSCjXVanFc8HbNtOhYIkEchv7vzfU1wPfi/O9ZN0e6tOA3QON1kB/K3af2HCeiGxSA1159Mui1q/OqoMsWTFmS7J0zx4P5SzwQk9PzxWhfKaC/S7nHBMEYIPI3s8KbU6GVpKF7Rolq7u7+yKRedfnggdb+8DmS3v47xHZ3yrpsH+F+uEO0Z9TF0x4Vhvs6uo6x5MNIdvq281AtOt7IHL4l+GdocGpoMVkrcZ2L+3DxmdguVgsnufbqWxHPoHtSyKidhJ0Df03EpvOzs5zrbyvf4txyFHb5GU5u/K0gSafzA5sD6X+PgAq9UXW+FSHCfXIlyL/QaS/JNSngbXmY/uYi2+EK8XQphW0mCxi3lcMZB8rMb4sBe3Y7FdSFTuR8VHW3Uj7Ymj8H1Sm2gaXw0dE16iE9EDgVuZO9jTkKjZPuZRkCc7KZb3NoS4NCiT2X7Hvu0Pd6cBPVrPXkn4bhQ81+9uBj998WQj0mxVv61fKfmL0nMa027hSe8TaWbksWQlmRbLYmLNNboaTYqJj4gK4TsT5WjbWTX/U47VaCPmFyRzG18Fh/98Oe72TZFUqIpu/Evl7Rl3DTaFUKp0hf3BKxP+Dudhvy/CTxb5WhPo0YPsna78VyHbBY74sgbNrG76WyFjrgIhsvY1X4PM+sTqzig4M/4F/pGXUVX+0HbXxOI5KogXtM5I1SHuXcQtmbbTlfD5/tugni/5uUT55OwbkV4ya/GYFqHxjXVxlvQ/H9E0TQ8NGCJL1v2JFQXTxg3GBKBntFyoUfDtkR1z6d0cl+37RL+YYvy7if4PGzB9hPCxWp3pA8St8OpT7QP+1AmpPsS/fR7IucdU35B0Xv9p7uCYuFZNkMX8x7U9iMh/dXtGdwptVD1FcsKjw2E5/E2svDG3SgP0HFuQTxp9hWdecaDZ6k//C7yJRMiVKcxmvEvGxg3anyvTaFSrnfALeIPryyP53dVaU0E7qwan7uwsHJZr2UO4DJ+uxOxQuhnxKyYri8lkclVwHShal/6QOq+DR/i4m85NkFZr8ZjUL/PVHTV5npwPWWEzSbhLrVcVR/Dl5NJT7ICaPwy1wdairQZas1jHtyWoG+vaw4De+TBvE+Y8urmYq1wN8lUCNaHPoiyL6g0qqDkY7bhxjfL+Lr2Cx0W+TDI2ge1m0YmIu//s+u2EJOmxc41cxGTJkyJAhwzTgXzbpnKjKpGc2AAAAAElFTkSuQmCC>
-
-[image26]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACkAAAAXCAYAAACWEGYrAAACUUlEQVR4Xu2VO2hUQRSGYyIaFC18re5r7j5wZWtB0vgqbERBQS1sxAeCopL4QEVEUIKNEQQbRfBRiAZ8FVqksFIrQbAQexuxt5Gg3785szs7XuIGbSL3h4975p8zM2f23pnt68uU6d+rXC6fcM7dSJLkXKFQWCrinHq9vpycO7HfJSYYZLLjPPfEfWmq1WorBBOPM+4Yzx3GNRhSDs9Vxmtrb4KHgjG7eZ7kOSqI37L2mu5VTCRcFyQ8IvErjMQ5aSoWi3VB/k/4zvjngnizzyHeazxRu9lsziO+KXxOqVRaK/BOeW9akfhZu4v9NLGxqjEa93kx107jqVlziceEGlb0bUGzvzNyGv13RSYmFZnL5RZWKpX1Qgv7HNf5Jt/THCB3my/c+s8zpiHaE/9JDPrkevwmmdgJ9AaOUsAhQfyOA1UKc9nLBjd1YA56j3gIfzjM60luBr9ko9FYJFxwUCTaYyz+IvRC5fP5BYKcezT7OTQ1YQf3MvH2eEyXZlORPV0FXL6LBZOvDH3Gj8Ak/mDoe+FfFdVqdbXafCJ3jV1qu6lDNGD8LivydOynKencix8jfxjvR1qROli2ifZ3T/zBaL0Rjfc3R2dkIBVJ55kUf6vxWK/KvNZVwqSHo9xbMB56Er/6fPz7hHOMlvBeCTawRW3Wv6i30/WGSLhiTMAkfLF4gsR1ylEhAu+brht5+q8VTPoMfz9cMF6ykWXtBUxaQ/9QKf4B44i1H8Q5s6PIv5Wd1I1MrkuzEvdLFLeEnH2xH4r+S3B2Rhd7pkyZ0vULGxLGdhr2sqIAAAAASUVORK5CYII=>
+`templates/partials/risk_summary.html` renders two independent floating widget cards — "🇺🇸 US 10Y Treasury" and "🇬🇧 UK 10Y Gilt" — each colored per its own `us_threat_level`/`uk_threat_level` and showing its own 3-day velocity in bps, sourced directly from `macro_regimes`. See AGENTS.md rule 18 for the shared floating-widgets card convention this partial follows.
