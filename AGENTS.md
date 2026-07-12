@@ -497,7 +497,7 @@ All time-related code **must** go through `time_engine.py`. Never hardcode timez
 | `feature_names.json` | Ordered feature list for inference |
 | `feature_stats.joblib` | Cross-sectional z-score stats |
 
-Retrain via the Settings UI ("Initialize AI Engine") or the `ml_historical_backfill.py` script.
+Retrain via Settings → Machine Learning & AI Engine: Run Backfill Now (Historical Data Backfill & Sync), then Run Training Now (Global Model Training).
 
 ---
 
