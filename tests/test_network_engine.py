@@ -232,6 +232,79 @@ class TestYahooConnectionBoundary:
         mock_inc.assert_called_once_with("ipv4", "success", "test", 1)
 
 
+class TestPatchSessionWithRetries:
+    def test_success_response_returned_as_is(self):
+        session = MagicMock()
+        ok_response = MagicMock(status_code=200)
+        session.request = MagicMock(return_value=ok_response)
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3)
+        assert session.request("GET", "http://example.com") is ok_response
+
+    def test_retries_on_500_then_succeeds(self):
+        session = MagicMock()
+        ok_response = MagicMock(status_code=200)
+        err_response = MagicMock(status_code=500)
+        original = MagicMock(side_effect=[err_response, ok_response])
+        session.request = original
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3)
+        with patch("tools.network_engine.time.sleep"):
+            result = session.request("GET", "http://example.com")
+        assert result is ok_response
+        assert original.call_count == 2
+
+    def test_raises_transient_http_error_after_exhausting_retries_on_500(self):
+        session = MagicMock()
+        err_response = MagicMock(status_code=500)
+        original = MagicMock(return_value=err_response)
+        session.request = original
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=2)
+        with patch("tools.network_engine.time.sleep"):
+            with pytest.raises(ne._TransientHTTPError, match="test-ctx"):
+                session.request("GET", "http://example.com")
+        assert original.call_count == 3
+
+    def test_429_raises_rate_limited_error_without_retry(self):
+        session = MagicMock()
+        response_429 = MagicMock(status_code=429)
+        original = MagicMock(return_value=response_429)
+        session.request = original
+        with patch("tools.network_engine._enter_yahoo_rate_limit") as mock_enter:
+            ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3)
+            with pytest.raises(ne._RateLimitedError):
+                session.request("GET", "http://example.com")
+        mock_enter.assert_called_once_with("test-ctx")
+        assert original.call_count == 1
+
+
+class TestCreateFailoverSession:
+    def test_retries_on_500_then_succeeds(self):
+        ok_response = MagicMock(status_code=200)
+        err_response = MagicMock(status_code=500)
+        mock_session = MagicMock()
+        original = MagicMock(side_effect=[err_response, ok_response])
+        mock_session.request = original
+        with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine.time.sleep"):
+            session = ne.create_failover_session("::1", "test-ctx", {})
+            result = session.request("GET", "http://example.com")
+        assert result is ok_response
+        assert original.call_count == 2
+
+    def test_raises_transient_http_error_after_exhausting_retries_and_skips_ipv6_fault_alert(self):
+        err_response = MagicMock(status_code=500)
+        mock_session = MagicMock()
+        original = MagicMock(return_value=err_response)
+        mock_session.request = original
+        with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine.time.sleep"), \
+             patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
+            session = ne.create_failover_session("::1", "test-ctx", {})
+            with pytest.raises(ne._TransientHTTPError, match="test-ctx"):
+                session.request("GET", "http://example.com")
+        mock_alert.assert_not_called()
+        assert original.call_count == 4
+
+
 class TestYfErrorNoiseFilter:
     def setup_method(self):
         ne._ensure_yf_error_filter()

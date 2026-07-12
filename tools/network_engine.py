@@ -94,6 +94,10 @@ class _RateLimitedError(Exception):
     """Raised on HTTP 429; bypasses IPv6-fault handling and transient-retry logic."""
 
 
+class _TransientHTTPError(Exception):
+    """Raised after exhausting retries on a repeated Yahoo Finance 5xx; bypasses IPv6-fault handling like _RateLimitedError."""
+
+
 def _select_interface(use_ipv4: bool, use_ipv6: bool) -> str:
     global _routing_counter
     if use_ipv4 and use_ipv6:
@@ -246,6 +250,19 @@ def _patch_session_with_retries(
                 if response.status_code == 429:
                     _enter_yahoo_rate_limit(action_context)
                     raise _RateLimitedError("HTTP 429. URL: %s" % url)
+                if response.status_code >= 500:
+                    if attempt < max_retries:
+                        sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
+                        logger.warning(
+                            "Transient network error during '%s': HTTP %d from Yahoo Finance. Retrying in %.2fs (Attempt %d/%d).",
+                            action_context, response.status_code, sleep_time, attempt + 1, max_retries,
+                        )
+                        time.sleep(sleep_time)
+                        continue
+                    raise _TransientHTTPError(
+                        "HTTP %d from Yahoo Finance during '%s' after %d attempts. URL: %s"
+                        % (response.status_code, action_context, max_retries + 1, url)
+                    )
                 return response
 
     session.request = wrapped_request
@@ -273,13 +290,27 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     _enter_yahoo_rate_limit(action_context)
                     raise _RateLimitedError("HTTP 429 on IPv6 interface. URL: %s" % url)
 
+                if response.status_code >= 500:
+                    if attempt < max_retries:
+                        sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
+                        logger.warning(
+                            "Transient network error during '%s': HTTP %d from Yahoo Finance. Retrying in %.2fs (Attempt %d/%d).",
+                            action_context, response.status_code, sleep_time, attempt + 1, max_retries,
+                        )
+                        time.sleep(sleep_time)
+                        continue
+                    raise _TransientHTTPError(
+                        "HTTP %d from Yahoo Finance during '%s' on IPv6 interface after %d attempts. URL: %s"
+                        % (response.status_code, action_context, max_retries + 1, url)
+                    )
+
                 if not getattr(session, 'fallback_triggered', False):
                     _update_ipv6_status(failing=False)
 
                 return response
 
             except Exception as e:
-                if isinstance(e, _RateLimitedError):
+                if isinstance(e, (_RateLimitedError, _TransientHTTPError)):
                     raise
 
                 error_str = str(e)
