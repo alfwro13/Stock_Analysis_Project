@@ -198,11 +198,14 @@ def run_update_pipeline():
     try:
         log_sched_notification("Scheduler", "Started Update Pipeline...")
         logger.info("Background update initiated.")
-        DataEngine().update_all_data()
+        data_engine = DataEngine()
+        data_engine.update_all_data()
         from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
         calculate_systemic_macro_threat()
         regime_result = calculate_market_regime()
         QuantEngine().run_all()
+        from universe_fundamentals_engine import sync_etf_holdings_cache
+        sync_etf_holdings_cache(data_engine.get_all_tickers())
         logger.info("Background update complete.")
         log_sched_notification("Success", "Update Pipeline completed successfully.")
 

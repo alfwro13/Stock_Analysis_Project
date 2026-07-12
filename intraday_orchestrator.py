@@ -1,5 +1,6 @@
 import hashlib
 import ipaddress
+import json
 import re
 import time
 import logging
@@ -11,6 +12,7 @@ from datetime import datetime, timezone
 from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
+import markets_engine
 from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set
 from database import get_connection, get_mutual_fund_tickers
 import accounts_engine
@@ -115,6 +117,7 @@ class IntradayOrchestrator:
 
             query = f"""
                 SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
+                       s.quote_type, s.top_holdings,
                        q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
                        q.rsi_14, q.sma_50, q.hist_vol_20
                 FROM stock_signals s
@@ -132,6 +135,8 @@ class IntradayOrchestrator:
                     'atr_stop_loss': row['atr_stop_loss'],
                     'atr_last_updated': row['last_updated'],
                     'beta': row['beta'],
+                    'quote_type': row['quote_type'],
+                    'top_holdings': row['top_holdings'],
                     'ml_confidence_score': row['ml_confidence_score'],
                     'var_95': row['var_95'],
                     'cvar_95': row['cvar_95'],
@@ -348,6 +353,30 @@ class IntradayOrchestrator:
             return (now_utc - ts.tz_convert(timezone.utc)).total_seconds()
         return (now_utc - ts.tz_localize(timezone.utc)).total_seconds()
 
+    def _bulk_change_pct(self, df_bulk: pd.DataFrame, download_list: List[str], ticker: str) -> Optional[float]:
+        """Session open-to-latest % change for one ticker, sliced from the already-fetched bulk 5m frame."""
+        try:
+            if isinstance(df_bulk.columns, pd.MultiIndex):
+                if ticker not in df_bulk.columns.get_level_values(0):
+                    return None
+                m_df = df_bulk[ticker].copy()
+            elif 'Close' in df_bulk.columns and len(download_list) == 1:
+                m_df = df_bulk.copy()
+            else:
+                return None
+
+            m_df.dropna(subset=['Close'], inplace=True)
+            if len(m_df) < 5 or self._seconds_since(m_df.index[-1]) > _STALE_SECONDS:
+                return None
+
+            m_open = float(m_df['Close'].iloc[0])
+            m_curr = float(m_df['Close'].iloc[-1])
+            if m_open > 0:
+                return ((m_curr - m_open) / m_open) * 100.0
+        except Exception:
+            logger.error("Bulk change pct extraction failed for %s", ticker, exc_info=True)
+        return None
+
     def _refresh_account_performance_cache(self) -> None:
         """Rides along on this scan cycle so account performance figures are refreshed server-side
         once, shared by every browser tab that later polls the account detail page, rather than
@@ -531,10 +560,28 @@ class IntradayOrchestrator:
         metadata = self.get_asset_metadata(sorted(held_set | set(target_only_tickers)))
         account_names = {acc["id"]: acc["name"] for acc in get_accounts()}
 
+        # Resolve, up front, which registry index (if any) each ETF's cached top holdings map
+        # to, so it can be fetched in the same bulk call rather than crash_engine hitting Yahoo
+        # per-alert. Non-ETFs and ETFs with no/unresolvable cached holdings contribute nothing.
+        etf_benchmark_tickers: set = set()
+        for t in tickers:
+            meta = metadata.get(t, {})
+            if meta.get('quote_type') != 'ETF' or not meta.get('top_holdings'):
+                continue
+            try:
+                holdings = json.loads(meta['top_holdings'])
+                resolved = markets_engine.resolve_benchmark_for_holdings(holdings)
+                if resolved:
+                    etf_benchmark_tickers.add(resolved['ticker'])
+            except (TypeError, ValueError):
+                logger.debug("Could not parse cached top_holdings for %s", t, exc_info=True)
+
         # SPY fetched here once so crash_engine never needs a per-scan HTTP call
         macro_tickers = ["^TYX", "SPY"]
+        benchmark_index_tickers = sorted(etf_benchmark_tickers - set(macro_tickers))
         spy_change_pct: Optional[float] = None
-        download_list = sorted(set(tickers + target_only_tickers + macro_tickers))
+        benchmark_changes: Dict[str, float] = {}
+        download_list = sorted(set(tickers + target_only_tickers + macro_tickers + benchmark_index_tickers))
         
         logger.info("Performing bulk YF 5m fetch for %d assets & macro benchmarks.", len(download_list))
         ticker_dfs = yahoo_engine.get_intraday(download_list, period="1d", interval="5m")
@@ -611,6 +658,11 @@ class IntradayOrchestrator:
             except Exception:
                 logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
 
+        for bench_ticker in benchmark_index_tickers:
+            pct = self._bulk_change_pct(df_bulk, download_list, bench_ticker)
+            if pct is not None:
+                benchmark_changes[bench_ticker] = pct
+
         try:
             cursor = conn.cursor()
             cursor.execute('''
@@ -631,8 +683,10 @@ class IntradayOrchestrator:
             logger.error("Failed to query AI Macro Defense status.", exc_info=True)
             self.crash_engine.ai_threshold_cap = None
 
-        # Inject pre-fetched SPY change so crash_engine never makes its own per-crash HTTP call
+        # Inject pre-fetched SPY change + resolved ETF benchmark changes so crash_engine never
+        # makes its own per-crash HTTP call
         self.crash_engine.spy_change_pct = spy_change_pct
+        self.crash_engine.benchmark_changes = benchmark_changes
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []

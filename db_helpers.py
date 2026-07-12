@@ -406,6 +406,27 @@ def get_ticker_registry_row_by_future(future_ticker: str) -> Optional[dict]:
             conn.close()
 
 
+def get_ticker_registry_row_by_exchange(exchange: str, asset_type: str = "Index") -> Optional[dict]:
+    """Canonical index for an exchange, e.g. LSE -> FTSE 100 not FTSE 250, via sort_order."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM market_ticker_registry WHERE exchange = ? AND asset_type = ? "
+            "AND enabled = 1 ORDER BY sort_order LIMIT 1",
+            (exchange, asset_type),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to fetch ticker registry row for exchange %s: %s", exchange, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def upsert_ticker_registry_row(**fields) -> bool:
     """Insert or fully update one market_ticker_registry row. `ticker` is required; any other
     _REGISTRY_COLUMNS field omitted falls back to its table default on insert, or is left

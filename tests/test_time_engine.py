@@ -7,6 +7,8 @@ from unittest.mock import patch
 import time_engine
 from time_engine import (
     ticker_exchange,
+    ticker_exchange_from_suffix,
+    ticker_exchange_or_none,
     market_window_utc,
     is_market_open,
     is_trading_session,
@@ -76,6 +78,43 @@ class TestTickerExchange:
     def test_ambiguous_uses_fallback_when_no_home_exchange(self):
         with patch("time_engine._load_config", return_value={}):
             assert ticker_exchange("UNKNOWN") == "NYSE"  # _FALLBACK_EXCHANGE
+
+
+class TestTickerExchangeFromSuffix:
+    """Suffix-only variant — never falls back to HOME_EXCHANGE; used where crediting an
+    unrecognised ticker to the operator's home exchange would be wrong (e.g. ETF constituent
+    exchange inference in etf_predictor_engine.py)."""
+
+    def test_dot_l_suffix_returns_lse(self):
+        assert ticker_exchange_from_suffix("SMGB.L") == "LSE"
+
+    def test_krx_suffix_returns_krx(self):
+        assert ticker_exchange_from_suffix("005930.KS") == "KRX"
+
+    def test_plain_ticker_defaults_to_nyse(self):
+        assert ticker_exchange_from_suffix("AAPL") == "NYSE"
+
+    def test_unrecognised_suffix_defaults_to_nyse(self):
+        assert ticker_exchange_from_suffix("XYZ.UNKNOWN") == "NYSE"
+
+
+class TestTickerExchangeOrNone:
+    """Suffix-only, null-preserving variant — used by markets_engine.resolve_benchmark_for_holdings
+    so an unrecognised suffix is skipped rather than silently misattributed to NYSE."""
+
+    def test_dot_l_suffix_returns_lse(self):
+        assert ticker_exchange_or_none("SMGB.L") == "LSE"
+
+    def test_krx_suffix_returns_krx(self):
+        assert ticker_exchange_or_none("005930.KS") == "KRX"
+
+    def test_unrecognised_suffix_returns_none(self):
+        assert ticker_exchange_or_none("XYZ.UNKNOWN") is None
+
+    def test_plain_ticker_with_no_dot_returns_none(self):
+        # Deliberately does NOT default plain tickers to NYSE — the caller (markets_engine)
+        # applies that convention itself so it isn't silently baked into this primitive.
+        assert ticker_exchange_or_none("AAPL") is None
 
 
 # ---------------------------------------------------------------------------

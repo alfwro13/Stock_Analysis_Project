@@ -1,8 +1,16 @@
 """Tests for universe_fundamentals_engine pure functions."""
+import json
 import math
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+import pandas as pd
 import pytest
 
-from universe_fundamentals_engine import _compute_fundamental_score, _clean
+import database as _db
+from universe_fundamentals_engine import (
+    _compute_fundamental_score, _clean, _needs_holdings_refresh, sync_etf_holdings_cache,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -151,3 +159,92 @@ class TestBreakdownHtml:
     def test_notes_html_contains_universe_note(self):
         _, _, notes_html = _compute_fundamental_score({})
         assert "Technical signals unavailable" in notes_html
+
+
+# ---------------------------------------------------------------------------
+# _needs_holdings_refresh
+# ---------------------------------------------------------------------------
+
+class TestNeedsHoldingsRefresh:
+    def test_missing_holdings_needs_refresh(self):
+        assert _needs_holdings_refresh(None, None) is True
+
+    def test_missing_timestamp_needs_refresh(self):
+        assert _needs_holdings_refresh("[]", None) is True
+
+    def test_unparseable_timestamp_needs_refresh(self):
+        assert _needs_holdings_refresh("[]", "not-a-date") is True
+
+    def test_recent_timestamp_does_not_need_refresh(self):
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        assert _needs_holdings_refresh("[]", recent) is False
+
+    def test_stale_timestamp_needs_refresh(self):
+        stale = (datetime.now(timezone.utc) - timedelta(days=31)).strftime("%Y-%m-%d %H:%M:%S")
+        assert _needs_holdings_refresh("[]", stale) is True
+
+
+# ---------------------------------------------------------------------------
+# sync_etf_holdings_cache
+# ---------------------------------------------------------------------------
+
+def _upsert_stock_signal(ticker, quote_type, top_holdings=None, holdings_updated_at=None):
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, quote_type, top_holdings, holdings_updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (ticker, quote_type, top_holdings, holdings_updated_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+class TestSyncEtfHoldingsCache:
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker IN ('TST_ETF', 'TST_EQUITY')")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_fetches_and_caches_holdings_for_etf(self):
+        _upsert_stock_signal("TST_ETF", "ETF")
+        df = pd.DataFrame(
+            {"Name": ["Toyota"], "Holding Percent": [0.12]},
+            index=pd.Index(["7203.T"], name="Symbol"),
+        )
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings", return_value=df):
+            sync_etf_holdings_cache(["TST_ETF"])
+
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT top_holdings, holdings_updated_at FROM stock_signals WHERE ticker='TST_ETF'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["holdings_updated_at"] is not None
+        holdings = json.loads(row["top_holdings"])
+        assert holdings == [{"symbol": "7203.T", "name": "Toyota", "weight": 0.12}]
+
+    def test_skips_non_etf_ticker(self):
+        _upsert_stock_signal("TST_EQUITY", "EQUITY")
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings") as mock_fetch:
+            sync_etf_holdings_cache(["TST_EQUITY"])
+        mock_fetch.assert_not_called()
+
+    def test_skips_etf_with_fresh_cached_holdings(self):
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        _upsert_stock_signal("TST_ETF", "ETF", top_holdings="[]", holdings_updated_at=recent)
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings") as mock_fetch:
+            sync_etf_holdings_cache(["TST_ETF"])
+        mock_fetch.assert_not_called()
+
+    def test_empty_ticker_list_is_noop(self):
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings") as mock_fetch:
+            sync_etf_holdings_cache([])
+        mock_fetch.assert_not_called()

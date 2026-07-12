@@ -308,6 +308,74 @@ class TestSelectPulseTickers:
         assert set(result["mobile"]).issubset(desktop_set) or len(result["mobile"]) == 0
 
 
+# ── resolve_benchmark_for_holdings ─────────────────────────────────────────────────
+
+class TestResolveBenchmarkForHoldings:
+    def test_empty_holdings_returns_none(self):
+        assert markets_engine.resolve_benchmark_for_holdings([]) is None
+
+    def test_holdings_with_unrecognised_suffix_returns_none(self):
+        holdings = [{"symbol": "AAA.ZZZUNKNOWN", "name": "Nobody", "weight": 0.1}]
+        assert markets_engine.resolve_benchmark_for_holdings(holdings) is None
+
+    def test_recognised_exchange_with_no_registry_index_is_skipped(self):
+        # .KS (Korea/KRX) IS recognised by time_engine's suffix registry (data/exchange_hours.json)
+        # but the test DB's market_ticker_registry seed has no KRX index row — resolution must
+        # skip it (not error, not default elsewhere) rather than falsely resolving something.
+        holdings = [{"symbol": "005930.KS", "name": "Samsung", "weight": 0.1}]
+        assert markets_engine.resolve_benchmark_for_holdings(holdings) is None
+
+    def test_new_exchange_auto_detected_once_a_registry_index_exists(self):
+        """The operator's core requirement: adding a Settings -> Markets registry row for an
+        exchange time_engine already recognises (e.g. KRX) must make it usable here with zero
+        code changes — no second hardcoded suffix map to update."""
+        holdings = [{"symbol": "005930.KS", "name": "Samsung", "weight": 0.1}]
+        fake_row = {"ticker": "^KS11", "display_name": "KOSPI", "exchange": "KRX"}
+        with patch("markets_engine.get_ticker_registry_row_by_exchange", side_effect=lambda ex: fake_row if ex == "KRX" else None):
+            row = markets_engine.resolve_benchmark_for_holdings(holdings)
+        assert row == fake_row
+
+    def test_dominant_exchange_with_no_index_falls_back_to_next_best(self):
+        holdings = [
+            {"symbol": "005930.KS", "name": "Samsung", "weight": 0.20},  # KRX recognised, no registry index
+            {"symbol": "7203.T", "name": "Toyota", "weight": 0.15},
+            {"symbol": "9984.T", "name": "SoftBank", "weight": 0.10},
+        ]
+        row = markets_engine.resolve_benchmark_for_holdings(holdings)
+        assert row is not None
+        assert row["exchange"] == "TSE"
+
+    def test_asia_heavy_holdings_resolve_to_asx_index(self):
+        holdings = [
+            {"symbol": "BHP.AX", "name": "BHP", "weight": 0.10},
+            {"symbol": "CBA.AX", "name": "CBA", "weight": 0.08},
+            {"symbol": "1299.HK", "name": "AIA", "weight": 0.05},
+        ]
+        row = markets_engine.resolve_benchmark_for_holdings(holdings)
+        assert row is not None
+        assert row["exchange"] == "ASX"
+        assert row["ticker"] == "^AXJO"
+
+    def test_dominant_exchange_by_weight_wins(self):
+        holdings = [
+            {"symbol": "005930.KS", "name": "Samsung", "weight": 0.20},  # recognised but no registry index
+            {"symbol": "7203.T", "name": "Toyota", "weight": 0.15},
+            {"symbol": "9984.T", "name": "SoftBank", "weight": 0.10},
+            {"symbol": "1299.HK", "name": "AIA", "weight": 0.05},
+        ]
+        row = markets_engine.resolve_benchmark_for_holdings(holdings)
+        assert row is not None
+        assert row["exchange"] == "TSE"
+        assert row["ticker"] == "^N225"
+
+    def test_us_holdings_resolve_to_sp500(self):
+        holdings = [{"symbol": "AAPL", "name": "Apple", "weight": 0.30}]
+        row = markets_engine.resolve_benchmark_for_holdings(holdings)
+        assert row is not None
+        assert row["exchange"] == "NYSE"
+        assert row["ticker"] == "^GSPC"
+
+
 # ── registry_lookup_tickers ───────────────────────────────────────────────────────
 
 class TestRegistryLookupTickers:

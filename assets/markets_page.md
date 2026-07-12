@@ -18,6 +18,7 @@
 6. [Spot/Future Auto-Swap](#6-spotfuture-auto-swap)
 7. [Sparkline Persistence](#7-sparkline-persistence)
 8. [Market Pulse Integration](#8-market-pulse-integration)
+8b. [ETF Crash-Alert Benchmark Resolution](#8b-etf-crash-alert-benchmark-resolution)
 9. [Index Detail Page Data Lifecycle](#9-index-detail-page-data-lifecycle)
 10. [API Endpoints](#10-api-endpoints)
 11. [Settings](#11-settings)
@@ -120,6 +121,18 @@ Market Pulse (the widget on Portfolio/Watchlist/Stock Detail, `templates/macro_c
 - `UI_PREFERENCES.MARKET_PULSE_DESKTOP_COUNT`/`MARKET_PULSE_MOBILE_COUNT` (default 10/8) parameterize the previously hardcoded tile counts. Mobile is always a sub-filter of the desktop selection (`is_pulse_mobile=1` rows, first N of them, server order preserved) — never an independently-ranked list, so desktop and mobile never disagree about which tickers are "in scope" today.
 
 No sparklines were added to Market Pulse tiles — kept Markets-page-only, to minimize regression risk on the already-proven widget embedded on three pages.
+
+---
+
+## 8b. ETF Crash-Alert Benchmark Resolution
+
+Added July 2026. `crash_engine.py`'s Crash Alert context report used to always compare a crashing ticker's move to the S&P 500, which is misleading for an ETF that doesn't actually track the US market (e.g. an LSE-listed Asia-Pacific ex-Japan ETF). The registry is now used as the lookup target for a holdings-derived benchmark:
+
+- `universe_fundamentals_engine.sync_etf_holdings_cache(tickers)` fetches `yahoo_engine.get_fund_holdings(ticker)` (top-10 holdings DataFrame) for every held/watchlisted ticker with `stock_signals.quote_type == 'ETF'`, and caches the result as JSON in `stock_signals.top_holdings` (with `holdings_updated_at` as a 30-day freshness marker) — see the "ETF Holdings Columns" note in `assets/db_schema_and_architecture.md`. Called from `run_update_pipeline` (`quant_analysis_job`, Mon–Fri 18:00 UTC) right after the quant scan, over the same ticker universe `DataEngine.get_all_tickers()` already processed that run.
+- `markets_engine.resolve_benchmark_for_holdings(top_holdings)` aggregates each holding's weight by its home exchange and returns the registry's canonical index for whichever exchange dominates, via the new `db_helpers.get_ticker_registry_row_by_exchange(exchange)` (lowest `sort_order` enabled Index row for that exchange, e.g. FTSE 100 over FTSE 250 for `LSE`). **Exchange detection is not a second hardcoded map** — it calls `time_engine.ticker_exchange_or_none(symbol)`, which resolves a ticker's Yahoo suffix (`.T`, `.HK`, `.KS`, …) against `data/exchange_hours.json`, the same suffix registry `time_engine.ticker_exchange()`/`ticker_exchange_from_suffix()` and `etf_predictor_engine.py` already use — so an exchange added there (e.g. adding KRX via Settings → Markets & Market Pulse, which already had `.KS`/`.KQ` registered in `exchange_hours.json`) becomes usable for benchmark resolution immediately, with no code change. A holding with an unrecognised suffix is skipped (not guessed); a recognised exchange with no `market_ticker_registry` Index row is likewise skipped in favour of the next-most-represented exchange. Returns `None` only when nothing resolves at all (holdings not cached yet, or every exchange present is unmapped/unregistered — e.g. a broad/thematic global ETF).
+- `intraday_orchestrator.py`'s `_run()` resolves each scanned ETF's benchmark up front, adds any newly-needed registry index tickers to the same bulk 5-minute intraday fetch already used for SPY/^TYX (no extra HTTP call), and injects the resulting `{ticker: change_pct}` map into `crash_engine.benchmark_changes` — mirroring the existing `spy_change_pct` injection pattern.
+- `crash_engine._generate_context_report()`: for a non-ETF ticker, behavior is unchanged (S&P 500 comparison). For an ETF with a resolved benchmark, the comparison sentence names the resolved index (e.g. "Nikkei 225: -2.34%") instead of S&P 500, using the injected live change or falling back to a single live fetch when not injected (e.g. standalone/test invocation, mirroring the existing SPY fallback). For an ETF with no resolvable benchmark, **the comparison sentence is omitted entirely** rather than defaulting to a misleading S&P 500 comparison — an explicit operator decision, since a global/thematic ETF (e.g. ARKK) has no single relevant regional index.
+- Scope: Crash Alerts only, ETFs only. Moonshot Alerts and non-ETF equities are unaffected.
 
 ---
 

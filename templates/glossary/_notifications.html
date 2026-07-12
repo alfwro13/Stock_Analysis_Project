@@ -32,6 +32,12 @@
                 <p>Because a single scheduled job can produce multiple distinct alert types (the intraday orchestrator produces crash, moonshot, dip radar, anomaly, and macro yield alerts — each a different signal with different urgency), each alert type has its own routing row in the Notification Settings panel. This lets you, for example, push dip radar and crash alerts to your phone while keeping moonshot alerts (lower urgency for your strategy) in-app only.</p>
             </div>
 
+            <div class="term-box">
+                <span class="term-title">ETF Crash-Alert Benchmark Resolution</span>
+                <p>A Crash Alert's context report compares the crashing ticker's move against a broader-market benchmark, so you can tell an isolated company issue from a market-wide sell-off. For an ordinary stock this is always the S&amp;P 500 — but a globally-diversified ETF may not track the US market at all (e.g. an Asia-Pacific ex-Japan ETF), so comparing it to the S&amp;P 500 would be misleading.</p>
+                <p>For ETFs, the system instead looks at the ETF's cached top-10 holdings, works out which stock exchange dominates them by weight, and compares against that exchange's own headline index from the <a href="/markets">Markets</a> page's index registry (e.g. Nikkei 225 for a Japan-heavy fund, FTSE 100 for a UK-heavy one). Exchange detection reuses the app's existing exchange registry (the same one behind market hours/timezones), so adding a new exchange's index to the <a href="/markets">Markets</a> page (e.g. KOSPI for Korea) makes it available as a crash-alert benchmark automatically — no separate configuration needed. If no single exchange clearly dominates the holdings, or the dominant one has no index on the Markets page yet, the benchmark comparison is left out of the alert entirely rather than showing a misleading one.</p>
+            </div>
+
         </div>
     </div>
 </div>

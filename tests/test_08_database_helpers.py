@@ -431,6 +431,20 @@ def test_get_ticker_registry_row_by_future_unknown_returns_none():
 
 
 @pytest.mark.db
+def test_get_ticker_registry_row_by_exchange_returns_lowest_sort_order_index():
+    # LSE has both FTSE 100 (^FTSE) and FTSE 250 (^FTMC) — the headline index (lowest
+    # sort_order) must win, matching the Markets page's own display convention.
+    row = _db.get_ticker_registry_row_by_exchange("LSE")
+    assert row is not None
+    assert row["ticker"] == "^FTSE"
+
+
+@pytest.mark.db
+def test_get_ticker_registry_row_by_exchange_unknown_returns_none():
+    assert _db.get_ticker_registry_row_by_exchange("NOPE_EXCHANGE") is None
+
+
+@pytest.mark.db
 def test_soft_delete_ticker_registry_row_disables_without_deleting():
     conn = _conn()
     try:

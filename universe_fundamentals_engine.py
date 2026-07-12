@@ -2,8 +2,8 @@ import json
 import logging
 import math
 import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
 from config import FUNDAMENTALS_DIR
 from yahoo_engine import yahoo_engine
@@ -11,6 +11,10 @@ from database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
 
 logger = logging.getLogger(__name__)
+
+# Holdings composition changes slowly (quarterly rebalances at most) — a 30-day cache window
+# avoids re-fetching on every quant_analysis_job run while still catching drift eventually.
+_HOLDINGS_REFRESH_DAYS = 30
 
 
 def _fetch_info(ticker: str) -> dict:
@@ -288,6 +292,72 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     finally:
         if conn:
             conn.close()
+
+
+def _needs_holdings_refresh(top_holdings: Optional[str], holdings_updated_at: Optional[str]) -> bool:
+    if not top_holdings or not holdings_updated_at:
+        return True
+    try:
+        last = datetime.strptime(holdings_updated_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return last < datetime.now(timezone.utc) - timedelta(days=_HOLDINGS_REFRESH_DAYS)
+
+
+def sync_etf_holdings_cache(tickers: List[str]) -> None:
+    """DB-caches ETF top-holdings so crash_engine resolves a benchmark from cache, not a live fetch."""
+    if not tickers:
+        return
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(tickers))
+        cursor.execute(
+            f"SELECT ticker, top_holdings, holdings_updated_at FROM stock_signals "
+            f"WHERE ticker IN ({placeholders}) AND quote_type = 'ETF'",
+            tickers,
+        )
+        etf_rows = cursor.fetchall()
+    finally:
+        if conn:
+            conn.close()
+
+    for row in etf_rows:
+        ticker = row['ticker']
+        if not _needs_holdings_refresh(row['top_holdings'], row['holdings_updated_at']):
+            continue
+        try:
+            df = yahoo_engine.get_fund_holdings(ticker)
+            if df is None or df.empty:
+                continue
+            holdings = [
+                {
+                    "symbol": symbol,
+                    "name": r.get('Name'),
+                    "weight": _clean(r.get('Holding Percent')) or 0.0,
+                }
+                for symbol, r in df.head(10).iterrows()
+            ]
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            conn = None
+            try:
+                conn = get_connection()
+                conn.execute(
+                    "UPDATE stock_signals SET top_holdings = ?, holdings_updated_at = ? WHERE ticker = ?",
+                    (json.dumps(holdings), timestamp, ticker),
+                )
+                conn.commit()
+            finally:
+                if conn:
+                    conn.close()
+            logger.info("[%s] ETF top holdings cached.", ticker)
+        except Exception as e:
+            logger.error("[%s] ETF holdings fetch failed: %s", ticker, e)
+
+        # Polite rate limiting — yfinance is not a paid API
+        time.sleep(0.4)
 
 
 def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: bool = False) -> None:

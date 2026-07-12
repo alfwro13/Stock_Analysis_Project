@@ -130,17 +130,9 @@ def _filter_pre_constituent_open(
     return df[(df.index >= premarket_start) & (df.index < constituent_open)]
 
 
-def _ticker_exchange_explicit(ticker: str) -> str:
-    """Exchange from ticker suffix only — never falls back to HOME_EXCHANGE; plain tickers default to NYSE."""
-    suffix_map = time_engine._SUFFIX_TO_EXCHANGE
-    # Try longest suffix first to handle multi-part suffixes like .TWO
-    for length in (4, 3, 2, 1):
-        dot_pos = -(length + 1)
-        if len(ticker) > length and ticker[dot_pos] == ".":
-            candidate = ticker[dot_pos:].upper()
-            if candidate in suffix_map:
-                return suffix_map[candidate]
-    return "NYSE"
+# Canonical implementation lives in time_engine.py (also used by markets_engine.py for ETF
+# crash-alert benchmark resolution) — aliased here so existing call sites/imports are unchanged.
+_ticker_exchange_explicit = time_engine.ticker_exchange_from_suffix
 
 
 def _infer_constituent_exchanges(tickers: list) -> list[str]:

@@ -1,17 +1,41 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import market_pulse
 import time_engine
 from config import load_config
-from database import get_ticker_registry
+from database import get_ticker_registry, get_ticker_registry_row_by_exchange
 
 logger = logging.getLogger(__name__)
 
 _DYNAMIC_REGIONS = ("US", "Europe", "Asia")
 _STATIC_REGION_ORDER = ["Europe", "US", "Asia", "Commodities_FX"]
 _TIER_RANK = {"open": 0, "partial": 1, "pre": 2, "post": 3, "closed": 4}
+
+def resolve_benchmark_for_holdings(top_holdings: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Registry index for the most-represented exchange (via time_engine's suffix registry, not a
+    second hardcoded map); unrecognised suffixes and exchanges with no registry index are skipped."""
+    if not top_holdings:
+        return None
+
+    weight_by_exchange: Dict[str, float] = {}
+    for holding in top_holdings:
+        symbol = holding.get("symbol") or ""
+        weight = holding.get("weight") or 0.0
+        if "." not in symbol:
+            exchange = "NYSE"
+        else:
+            exchange = time_engine.ticker_exchange_or_none(symbol)
+            if exchange is None:
+                continue
+        weight_by_exchange[exchange] = weight_by_exchange.get(exchange, 0.0) + weight
+
+    for exchange in sorted(weight_by_exchange, key=weight_by_exchange.get, reverse=True):
+        row = get_ticker_registry_row_by_exchange(exchange)
+        if row:
+            return row
+    return None
 
 
 def get_exchange_state(exchange: str) -> str:

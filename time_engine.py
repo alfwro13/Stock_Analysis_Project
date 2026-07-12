@@ -146,8 +146,8 @@ def fmt_datetime(dt: datetime) -> str:
     return to_local(dt).strftime("%Y-%m-%d %H:%M %Z")
 
 
-def ticker_exchange(ticker: str, currency: str = "") -> str:
-    """Infer exchange from ticker suffix (JSON registry) or currency fallback."""
+def _match_suffix(ticker: str) -> Optional[str]:
+    """Longest-matching registered ticker suffix's exchange (data/exchange_hours.json), or None."""
     suffix_map = _build_suffix_lookup()
     # Check longest matching suffix first to handle multi-part suffixes like .TWO
     for length in (4, 3, 2, 1):
@@ -156,6 +156,14 @@ def ticker_exchange(ticker: str, currency: str = "") -> str:
             candidate = ticker[dot_pos:].upper()
             if candidate in suffix_map:
                 return suffix_map[candidate]
+    return None
+
+
+def ticker_exchange(ticker: str, currency: str = "") -> str:
+    """Infer exchange from ticker suffix (JSON registry) or currency fallback."""
+    matched = _match_suffix(ticker)
+    if matched:
+        return matched
     # Currency fallbacks for plain tickers (no recognised suffix)
     if currency in ("GBp", "GBP"):
         return "LSE"
@@ -166,6 +174,19 @@ def ticker_exchange(ticker: str, currency: str = "") -> str:
     if currency == "USD":
         return "NYSE"
     return _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
+
+
+def ticker_exchange_from_suffix(ticker: str) -> str:
+    """Exchange from ticker suffix only — never falls back to HOME_EXCHANGE; plain tickers default to NYSE."""
+    return _match_suffix(ticker) or "NYSE"
+
+
+def ticker_exchange_or_none(ticker: str) -> Optional[str]:
+    """Exchange from a recognised ticker suffix only, incl. data/exchange_hours.json's full
+    registry (KRX, SGX, TSX, etc.); None (not a guess) for an unrecognised or absent suffix — the
+    caller must decide what "no match" means (skip, or treat a bare ticker as NYSE) rather than
+    this function silently defaulting one way for every caller (see markets_engine.py)."""
+    return _match_suffix(ticker)
 
 
 def exchange_tz(exchange: str) -> str:

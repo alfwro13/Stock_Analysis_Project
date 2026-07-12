@@ -298,6 +298,7 @@ def init_db() -> None:
                 expense_ratio REAL,
                 top_holdings TEXT,
                 sector_weightings TEXT,
+                holdings_updated_at TEXT,
 
                 -- Sentiment & Dividends
                 dividend_yield REAL,
@@ -1364,6 +1365,7 @@ def migrate_db(conn, cursor) -> None:
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
         'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL',
         'expense_ratio': 'REAL', 'top_holdings': 'TEXT', 'sector_weightings': 'TEXT',
+        'holdings_updated_at': 'TEXT',
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL',

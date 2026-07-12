@@ -106,6 +106,7 @@ from db_helpers import (  # noqa: E402
     get_ticker_registry,
     get_ticker_registry_row,
     get_ticker_registry_row_by_future,
+    get_ticker_registry_row_by_exchange,
     upsert_ticker_registry_row,
     soft_delete_ticker_registry_row,
 )

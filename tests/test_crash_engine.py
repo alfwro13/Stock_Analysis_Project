@@ -4,6 +4,7 @@ tests/test_crash_engine.py — unit tests for crash_engine.CrashEngine.evaluate(
 Covers session-crash detection, multi-day trend bleed, ATR floor, beta scaling,
 and the AI Volatility Defense cap. No network calls; uses synthetic DataFrames.
 """
+import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -207,6 +208,77 @@ class TestSpyMarketContext:
             report = eng._generate_context_report("TEST", -4.0, df, {"company_name": "Test"})
         mock_fetch.assert_called_once()
         assert "US market is currently closed" in report
+
+    def test_etf_with_unresolved_benchmark_omits_comparison_sentence(self):
+        """Per operator direction: an ETF whose holdings aren't cached yet, or don't map to a
+        single dominant exchange, must omit the S&P 500 (or any) comparison sentence rather
+        than default to a misleading one."""
+        eng = _engine()
+        df = self._context_df()
+        meta = {"company_name": "Global Thematic ETF", "quote_type": "ETF", "top_holdings": None}
+        report = eng._generate_context_report("ARKK", -4.0, df, meta)
+        assert "S&P 500" not in report
+        assert "currently closed" not in report
+
+    def test_etf_with_resolved_benchmark_uses_relevant_index_name(self):
+        eng = _engine()
+        eng.benchmark_changes = {"^N225": -2.0}
+        df = self._context_df()
+        meta = {
+            "company_name": "Asia Pacific ETF",
+            "quote_type": "ETF",
+            "top_holdings": json.dumps([{"symbol": "7203.T", "name": "Toyota", "weight": 0.2}]),
+        }
+        with patch(
+            "crash_engine.markets_engine.resolve_benchmark_for_holdings",
+            return_value={"ticker": "^N225", "display_name": "Nikkei 225", "exchange": "TSE"},
+        ):
+            report = eng._generate_context_report("VAPX.L", -4.0, df, meta)
+        assert "Nikkei 225" in report
+        assert "S&P 500" not in report
+        assert "-2.00%" in report
+
+    def test_etf_benchmark_falls_back_to_live_fetch_when_not_injected(self):
+        eng = _engine()
+        eng.benchmark_changes = {}
+        df = self._context_df()
+        meta = {
+            "company_name": "Asia Pacific ETF",
+            "quote_type": "ETF",
+            "top_holdings": json.dumps([{"symbol": "7203.T", "name": "Toyota", "weight": 0.2}]),
+        }
+        with patch(
+            "crash_engine.markets_engine.resolve_benchmark_for_holdings",
+            return_value={"ticker": "^N225", "display_name": "Nikkei 225", "exchange": "TSE"},
+        ), patch.object(eng, "_fetch_live_change_pct", return_value=-3.0) as mock_fetch:
+            report = eng._generate_context_report("VAPX.L", -4.0, df, meta)
+        mock_fetch.assert_called_once_with("^N225", "TSE")
+        assert "-3.00%" in report
+
+    def test_etf_benchmark_market_closed_shows_index_specific_note(self):
+        eng = _engine()
+        eng.benchmark_changes = {}
+        df = self._context_df()
+        meta = {
+            "company_name": "Asia Pacific ETF",
+            "quote_type": "ETF",
+            "top_holdings": json.dumps([{"symbol": "7203.T", "name": "Toyota", "weight": 0.2}]),
+        }
+        with patch(
+            "crash_engine.markets_engine.resolve_benchmark_for_holdings",
+            return_value={"ticker": "^N225", "display_name": "Nikkei 225", "exchange": "TSE"},
+        ), patch.object(eng, "_fetch_live_change_pct", return_value=None):
+            report = eng._generate_context_report("VAPX.L", -4.0, df, meta)
+        assert "Nikkei 225 is currently closed" in report
+
+    def test_non_etf_ticker_keeps_sp500_comparison_even_with_holdings_resolver_available(self):
+        eng = _engine()
+        df = self._context_df()
+        meta = {"company_name": "Test Corp", "quote_type": "EQUITY"}
+        with patch("crash_engine.markets_engine.resolve_benchmark_for_holdings") as mock_resolve:
+            report = eng._generate_context_report("TEST", -4.0, df, meta)
+        mock_resolve.assert_not_called()
+        assert "S&P 500" in report
 
     def test_fetch_market_context_skips_when_nyse_closed(self):
         eng = _engine()
