@@ -201,6 +201,51 @@ def is_quote_settled(exchange: str, include_premarket: bool = False) -> bool:
     return (now_minutes - open_minutes) >= delay_minutes
 
 
+def build_registry_exchange_map(registry_rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, str]:
+    """ticker/future_ticker -> exchange for every enabled registry row, sharing the exchange
+    between a dual-instrument row's spot and future ticker exactly as markets_engine.resolve_tile()
+    already does for the spot/future swap itself — a future contract's settlement gate should
+    track the same underlying exchange, not a separate (and unmodeled) futures-exchange concept.
+    A caller that already fetched get_ticker_registry() for its own use (e.g.
+    get_cached_pulse_from_db()'s registry_by_ticker) should pass registry_rows to avoid a repeat
+    query."""
+    if registry_rows is None:
+        registry_rows = get_ticker_registry(enabled_only=True)
+    exchange_map: Dict[str, str] = {}
+    for row in registry_rows:
+        exchange = row.get("exchange")
+        if not exchange:
+            continue
+        exchange_map[row["ticker"]] = exchange
+        if row.get("future_ticker"):
+            exchange_map[row["future_ticker"]] = exchange
+    return exchange_map
+
+
+def resolve_ticker_exchange(ticker: str, currency: str = "", registry_exchange_map: Optional[Dict[str, str]] = None) -> str:
+    """The exchange to gate `ticker`'s quote freshness on. Prefers market_ticker_registry's own
+    `exchange` column (indexes/commodities/FX tracked by the Markets page/Market Pulse — the
+    authoritative source per AGENTS.md's central-engine rule), falling back to
+    time_engine.ticker_exchange(ticker, currency) for ordinary equities that have no registry
+    row. Callers refreshing many tickers at once should build registry_exchange_map() themselves
+    and pass it in to avoid a repeat query per ticker."""
+    if registry_exchange_map is None:
+        registry_exchange_map = build_registry_exchange_map()
+    exchange = registry_exchange_map.get(ticker)
+    if exchange:
+        return exchange
+    return ticker_exchange(ticker, currency)
+
+
+def is_ticker_quote_settled(ticker: str, currency: str = "", registry_exchange_map: Optional[Dict[str, str]] = None) -> bool:
+    """is_quote_settled() resolved against `ticker`'s own exchange rather than a caller-supplied
+    one — the single canonical per-ticker settlement check, shared by every needs_refresh path
+    (accounts_engine.tickers_needing_refresh(), get_cached_pulse_from_db(),
+    registry_tickers_needing_refresh()) instead of each reimplementing its own exchange
+    resolution. See AGENTS.md rule 16/17."""
+    return is_quote_settled(resolve_ticker_exchange(ticker, currency, registry_exchange_map))
+
+
 def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
     """Which of the given tickers have a missing or stale market_pulse_cache row. Shared by
     proxy_tickers_needing_refresh() (the 8 exchange-state proxies) and any other caller that
@@ -241,6 +286,47 @@ def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:
     only ever polls market-status (e.g. Home Assistant) would keep falling back to the naive
     weekday/hours heuristic forever."""
     return tickers_needing_refresh(list(_MARKET_STATUS_PROXY.values()), max_age_seconds)
+
+
+def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
+    """Same staleness-by-age check as tickers_needing_refresh(), but additionally gates an
+    already-cached ticker on is_ticker_quote_settled() for its own registry exchange. Deliberately
+    a separate function rather than a branch inside tickers_needing_refresh(): that function is
+    also used by proxy_tickers_needing_refresh() for the exchange-state proxy tickers themselves,
+    which must stay ungated on settlement — they're what is_quote_settled() depends on to know an
+    exchange is open at all, so gating them on it would be circular. A ticker missing a cached row
+    entirely is refreshed unconditionally, same bootstrap exception as tickers_needing_refresh()."""
+    if not tickers:
+        return []
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ','.join('?' for _ in tickers)
+        cursor.execute(
+            f"SELECT ticker, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+            tickers,
+        )
+        last_updated_map = {row['ticker']: row['last_updated'] for row in cursor.fetchall()}
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to check registry ticker staleness: %s", e)
+        return list(tickers)
+    finally:
+        if conn:
+            conn.close()
+
+    registry_exchange_map = build_registry_exchange_map()
+    now = time.time()
+    stale = []
+    for t in tickers:
+        if t not in last_updated_map:
+            stale.append(t)
+            continue
+        if now - last_updated_map[t] <= max_age_seconds:
+            continue
+        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map):
+            stale.append(t)
+    return stale
 
 
 def get_intraday_points(ticker: str, max_points: int = _SPARKLINE_MAX_POINTS) -> List[List[float]]:
@@ -328,7 +414,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     ignored_tickers = ignored_tickers_set(config_data)
 
     pulse_index_tickers = _select_active_pulse_tickers(config_data)
-    registry_by_ticker = {r["ticker"]: r for r in get_ticker_registry(enabled_only=True)}
+    registry_rows = get_ticker_registry(enabled_only=True)
+    registry_by_ticker = {r["ticker"]: r for r in registry_rows}
     seen: set = set(pulse_index_tickers.keys())
     requested_assets: List[str] = []
     for t in asset_tickers:
@@ -340,6 +427,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     conn = get_connection()
     rows: List[Any] = []
     sentiment_scores: Dict[str, float] = {}
+    equity_currency_map: Dict[str, str] = {}
     try:
         cursor = conn.cursor()
 
@@ -365,6 +453,11 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
 
             for s_row in sentiment_rows:
                 sentiment_scores[s_row['ticker']] = s_row['sentiment_score']
+
+        if requested_assets:
+            placeholders = ','.join('?' for _ in requested_assets)
+            cursor.execute(f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})", requested_assets)
+            equity_currency_map = {r['ticker']: r['currency'] for r in cursor.fetchall()}
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to read pulse from DB: %s", e)
         return {"indexes": [], "assets": []}
@@ -373,7 +466,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
 
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
     current_time: float = time.time()
-    trading_now: bool = is_trading_session()
+    registry_exchange_map = build_registry_exchange_map(registry_rows)
 
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
 
@@ -389,7 +482,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             age = current_time - row['last_updated']
             has_data = row['last_updated'] > 0 and row['price'] != 0.0
             is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
-            needs_refresh: bool = False if not trading_now else (not has_data or age > int(refresh_rate))
+            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map)
+            needs_refresh: bool = False if not settled else (not has_data or age > int(refresh_rate))
             data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],

@@ -292,6 +292,124 @@ class TestClosedMarketStaleness:
         assert result[ASSET_TICKER]["is_stale"] is False
 
 
+# ── needs_refresh gated per-ticker exchange, not one global is_trading_session() ──────────────
+
+class TestNeedsRefreshPerTickerExchange:
+    """Regression coverage for the fix: get_cached_pulse_from_db() used to gate every row's
+    needs_refresh on one global is_trading_session() (HOME_EXCHANGE heuristic), so an LSE row and
+    an NYSE row always agreed on whether to refresh even when only one of their two exchanges was
+    actually open/settled. It must now be resolved per ticker via its own exchange."""
+
+    def teardown_method(self):
+        _clear("^FTSE", "^GSPC")
+
+    def test_lse_and_nyse_index_rows_gated_independently(self):
+        _seed_pulse("^FTSE", last_updated=time.time() - 3600)
+        _seed_pulse("^GSPC", last_updated=time.time() - 3600)
+
+        def fake_settled(exchange, include_premarket=False):
+            return exchange == "NYSE"
+
+        with patch("market_pulse.is_quote_settled", side_effect=fake_settled):
+            result = _mp.get_cached_pulse_from_db([], refresh_rate=60)
+        by_ticker = {r["ticker"]: r for r in result["indexes"]}
+        assert by_ticker["^FTSE"]["needs_refresh"] is False
+        assert by_ticker["^GSPC"]["needs_refresh"] is True
+
+    def test_equity_asset_exchange_resolved_via_currency_when_not_in_registry(self):
+        _clear(ASSET_TICKER)
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
+        conn = _conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, currency) VALUES (?, ?)",
+            (ASSET_TICKER, "GBp"),
+        )
+        conn.commit()
+        conn.close()
+
+        def fake_settled(exchange, include_premarket=False):
+            return exchange == "LSE"
+
+        try:
+            with patch("market_pulse.is_quote_settled", side_effect=fake_settled):
+                result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+            asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+            assert asset["needs_refresh"] is True
+        finally:
+            conn = _conn()
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ASSET_TICKER,))
+            conn.commit()
+            conn.close()
+            _clear(ASSET_TICKER)
+
+
+# ── resolve_ticker_exchange / is_ticker_quote_settled (shared per-ticker helper) ──────────────
+
+class TestResolveTickerExchange:
+    def test_registry_ticker_uses_registry_exchange_not_currency_fallback(self):
+        assert _mp.resolve_ticker_exchange("^FTSE", currency="USD") == "LSE"
+
+    def test_future_ticker_shares_its_spot_rows_exchange(self):
+        assert _mp.resolve_ticker_exchange("ES=F") == "NYSE"
+
+    def test_unknown_ticker_falls_back_to_currency_resolution(self):
+        assert _mp.resolve_ticker_exchange("_NOT_A_REGISTRY_TICKER", currency="EUR") == "XETRA"
+
+    def test_precomputed_map_is_used_when_given(self):
+        prebuilt = {"^FTSE": "XETRA"}
+        assert _mp.resolve_ticker_exchange("^FTSE", registry_exchange_map=prebuilt) == "XETRA"
+
+
+class TestIsTickerQuoteSettled:
+    def test_delegates_to_is_quote_settled_for_resolved_exchange(self):
+        with patch("market_pulse.is_quote_settled", return_value=False) as mock_settled:
+            assert _mp.is_ticker_quote_settled("^FTSE") is False
+        mock_settled.assert_called_once_with("LSE")
+
+
+# ── registry_tickers_needing_refresh ──────────────────────────────────────────
+
+class TestRegistryTickersNeedingRefresh:
+    """Sibling of tickers_needing_refresh() used to warm market_ticker_registry rows (Markets
+    page / GET /api/system/market-status) — unlike the bare age-only check, an already-cached
+    ticker must also be gated on is_ticker_quote_settled() for its own exchange."""
+
+    def teardown_method(self):
+        _clear("^FTSE", "^GSPC", "^KS200")
+
+    def test_empty_input_returns_empty(self):
+        assert _mp.registry_tickers_needing_refresh([]) == []
+
+    def test_missing_row_always_included_regardless_of_settlement(self):
+        with patch("market_pulse.is_quote_settled", return_value=False):
+            assert _mp.registry_tickers_needing_refresh(["^KS200"]) == ["^KS200"]
+
+    def test_fresh_row_not_flagged_even_when_settled(self):
+        _seed_pulse("^FTSE", last_updated=time.time())
+        with patch("market_pulse.is_quote_settled", return_value=True):
+            assert _mp.registry_tickers_needing_refresh(["^FTSE"]) == []
+
+    def test_stale_row_excluded_when_its_exchange_not_settled(self):
+        _seed_pulse("^FTSE", last_updated=time.time() - 3600)
+        with patch("market_pulse.is_quote_settled", return_value=False):
+            assert _mp.registry_tickers_needing_refresh(["^FTSE"]) == []
+
+    def test_stale_row_included_when_its_exchange_settled(self):
+        _seed_pulse("^FTSE", last_updated=time.time() - 3600)
+        with patch("market_pulse.is_quote_settled", return_value=True):
+            assert _mp.registry_tickers_needing_refresh(["^FTSE"]) == ["^FTSE"]
+
+    def test_two_rows_gated_independently_by_own_exchange(self):
+        _seed_pulse("^FTSE", last_updated=time.time() - 3600)
+        _seed_pulse("^GSPC", last_updated=time.time() - 3600)
+
+        def fake_settled(exchange, include_premarket=False):
+            return exchange == "NYSE"
+
+        with patch("market_pulse.is_quote_settled", side_effect=fake_settled):
+            assert _mp.registry_tickers_needing_refresh(["^FTSE", "^GSPC"]) == ["^GSPC"]
+
+
 # ── is_price_fresh (shared helper) ────────────────────────────────────────────
 
 class TestIsPriceFresh:
