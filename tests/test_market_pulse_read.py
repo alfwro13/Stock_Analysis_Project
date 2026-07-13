@@ -527,6 +527,18 @@ class TestIsExchangeOpen:
         with patch("market_pulse.is_trading_session", return_value=True):
             assert _mp.is_exchange_open("NYSE") is False
 
+    def test_exchange_calendar_veto_overrides_live_regular_state(self):
+        """New canonical-holiday-source behaviour: even if Yahoo's cached marketState is stale
+        or wrong and still says REGULAR, a real exchange_calendars holiday must still veto it."""
+        _set_market_state("^GSPC", "REGULAR")
+        with patch("market_pulse.is_exchange_holiday", return_value=True):
+            assert _mp.is_exchange_open("NYSE") is False
+
+    def test_no_veto_on_ordinary_day_still_reads_live_state(self):
+        _set_market_state("^GSPC", "REGULAR")
+        with patch("market_pulse.is_exchange_holiday", return_value=False):
+            assert _mp.is_exchange_open("NYSE") is True
+
     def test_postpost_state_is_not_open(self):
         _set_market_state("^FTSE", "POSTPOST")
         assert _mp.is_exchange_open("LSE") is False
@@ -637,6 +649,11 @@ class TestGetExchangeSessionState:
     def test_untracked_exchange_uses_heuristic_directly(self):
         with patch("market_pulse.is_trading_session", return_value=True):
             assert _mp.get_exchange_session_state("XETRA") == "open"
+
+    def test_exchange_calendar_veto_overrides_live_regular_state(self):
+        _set_market_state("^GSPC", "REGULAR")
+        with patch("market_pulse.is_exchange_holiday", return_value=True):
+            assert _mp.get_exchange_session_state("NYSE") == "closed"
 
 
 # ── is_quote_settled ───────────────────────────────────────────────────────────

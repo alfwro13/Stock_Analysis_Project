@@ -12,6 +12,7 @@ from time_engine import (
     market_window_utc,
     is_market_open,
     is_trading_session,
+    is_exchange_holiday,
     reset_cron_trigger_params,
     exchange_tz,
     to_local,
@@ -184,6 +185,60 @@ class TestIsMarketOpen:
 
     def test_returns_bool(self):
         assert isinstance(is_market_open("NYSE"), bool)
+
+
+# ---------------------------------------------------------------------------
+# is_exchange_holiday
+# ---------------------------------------------------------------------------
+
+class TestIsExchangeHoliday:
+    def teardown_method(self):
+        # Each test may populate the module-level calendar cache with a mocked entry.
+        time_engine._calendar_cache.pop("BOGUS_EXCHANGE", None)
+        time_engine._uncovered_calendar_warned.discard("BOGUS_EXCHANGE")
+
+    def test_new_years_day_is_a_holiday(self):
+        # 2026-01-01 is a Thursday (weekday), NYSE closed for New Year's Day
+        new_years = datetime(2026, 1, 1, 15, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(new_years)):
+            assert is_exchange_holiday("NYSE") is True
+
+    def test_july_4th_observed_friday_is_a_holiday(self):
+        # 2026-07-04 falls on a Saturday; NYSE observes it Friday 2026-07-03 (AGENTS.md example)
+        observed = datetime(2026, 7, 3, 15, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(observed)):
+            assert is_exchange_holiday("NYSE") is True
+
+    def test_ordinary_weekday_is_not_a_holiday(self):
+        with patch("time_engine.datetime", _fake_datetime(_SUMMER_UTC)):
+            assert is_exchange_holiday("NYSE") is False
+
+    def test_lse_holiday_uses_its_own_calendar(self):
+        # 2026-01-01 is also a UK bank holiday (New Year's Day)
+        new_years = datetime(2026, 1, 1, 11, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(new_years)):
+            assert is_exchange_holiday("LSE") is True
+
+    def test_unmapped_exchange_fails_open_and_warns_once(self, caplog):
+        with caplog.at_level("WARNING", logger="time_engine"):
+            assert is_exchange_holiday("BOGUS_EXCHANGE") is False
+            assert is_exchange_holiday("BOGUS_EXCHANGE") is False
+        warnings = [r for r in caplog.records if "BOGUS_EXCHANGE" in r.getMessage()]
+        assert len(warnings) == 1
+
+    def test_none_exchange_uses_home_exchange_config(self):
+        with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "NYSE"}):
+            with patch("time_engine.datetime", _fake_datetime(_SUMMER_UTC)):
+                assert is_exchange_holiday(None) is False
+
+
+class TestIsMarketOpenHolidayVeto:
+    def test_holiday_overrides_otherwise_open_hours(self):
+        # 15:00 UTC on 2026-01-01 (Thursday) = 10:00 EST, mid NYSE session hours were it a
+        # trading day — but it's New Year's Day, so is_market_open must still return False.
+        new_years_mid_session = datetime(2026, 1, 1, 15, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(new_years_mid_session)):
+            assert is_market_open("NYSE") is False
 
 
 # ---------------------------------------------------------------------------

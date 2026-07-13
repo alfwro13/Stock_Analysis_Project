@@ -8,6 +8,9 @@ from datetime import datetime, time as dtime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional
 
+import exchange_calendars as xcals
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 _EXCHANGE_HOURS_PATH = os.path.join(os.path.dirname(__file__), "data", "exchange_hours.json")
@@ -47,6 +50,19 @@ _BUILTIN_EXCHANGE_HOURS: dict[str, dict] = {
 }
 
 _FALLBACK_EXCHANGE = "NYSE"
+
+# App exchange id -> exchange_calendars code. NSE/SZSE/Euronext deliberately share a sibling
+# exchange's calendar (no distinct upstream calendar exists) since each genuinely follows the
+# same trading-holiday calendar as its sibling (India NSE/BSE; PRC SSE/SZSE; harmonised
+# Euronext venues since 2002).
+_EXCHANGE_CALENDAR_CODES: dict[str, str] = {
+    "NYSE": "XNYS", "LSE": "XLON", "XETRA": "XETR", "TSE": "XTKS", "ASX": "XASX",
+    "KRX": "XKRX", "HKEX": "XHKG", "SGX": "XSES", "NSE": "XBOM", "BSE": "XBOM",
+    "SSE": "XSHG", "SZSE": "XSHG", "TWSE": "XTAI", "TSX": "XTSE", "BOVESPA": "BVMF",
+    "BMV": "XMEX", "Euronext": "XPAR", "SIX": "XSWX", "MIL": "XMIL", "BME": "XMAD",
+    "OMXS": "XSTO", "OMXH": "XHEL", "OMXC": "XCSE", "OSE": "XOSL", "WBAG": "XWBO",
+    "WSE": "XWAR", "JSE": "XJSE", "TASE": "XTAE", "Tadawul": "XSAU",
+}
 
 _registry_cache: dict | None = None
 _suffix_cache: dict[str, str] | None = None
@@ -222,11 +238,50 @@ def market_window_utc(
     return open_utc, close_utc
 
 
+_calendar_cache: dict[str, object] = {}
+_uncovered_calendar_warned: set[str] = set()
+
+
+def _get_exchange_calendar(exchange: str):
+    if exchange in _calendar_cache:
+        return _calendar_cache[exchange]
+    code = _EXCHANGE_CALENDAR_CODES.get(exchange)
+    if code is None:
+        if exchange not in _uncovered_calendar_warned:
+            logger.warning(
+                "No exchange_calendars mapping for %s; holiday check disabled for it", exchange
+            )
+            _uncovered_calendar_warned.add(exchange)
+        cal = None
+    else:
+        try:
+            cal = xcals.get_calendar(code)
+        except Exception as exc:
+            logger.error("Failed to build exchange_calendars calendar %s for %s: %s", code, exchange, exc)
+            cal = None
+    _calendar_cache[exchange] = cal
+    return cal
+
+
+def is_exchange_holiday(exchange: Optional[str] = None) -> bool:
+    """True if *exchange* is closed today for a scheduled holiday, per exchange_calendars.
+    Unmapped exchanges fail open (return False) rather than blocking the caller."""
+    if exchange is None:
+        exchange = _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
+    calendar = _get_exchange_calendar(exchange)
+    if calendar is None:
+        return False
+    local_date = datetime.now(timezone.utc).astimezone(ZoneInfo(exchange_tz(exchange))).date()
+    return not calendar.is_session(pd.Timestamp(local_date))
+
+
 def is_market_open(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
 ) -> bool:
-    """True if current UTC time falls within *exchange*'s trading hours."""
+    """True if current UTC time falls within *exchange*'s trading hours and it isn't a holiday."""
+    if is_exchange_holiday(exchange):
+        return False
     open_utc, close_utc = market_window_utc(exchange, include_premarket=include_premarket)
     now = datetime.now(timezone.utc).time().replace(tzinfo=None)
     return open_utc <= now <= close_utc

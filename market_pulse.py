@@ -11,7 +11,7 @@ from database import get_connection, get_mutual_fund_tickers, get_ticker_registr
 from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
-from time_engine import EXCHANGE_HOURS, is_trading_session, market_window_utc, ticker_exchange
+from time_engine import EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, ticker_exchange
 
 logger = logging.getLogger(__name__)
 
@@ -99,17 +99,22 @@ def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool
 
 
 def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
-    """Exchange-holiday-aware market-open check for NYSE/LSE, backed by the live Yahoo
-    marketState cached from that exchange's proxy index ticker (see _MARKET_STATUS_PROXY) —
-    falls back to time_engine's weekday+hours heuristic for any other exchange, or if no
-    market_state has been cached yet (e.g. right after a fresh install). With
-    include_premarket=True, Yahoo's 'PRE'/'PREPRE' states also count as open — but only for
+    """Market-open check, holiday-vetoed first via time_engine.is_exchange_holiday()
+    (exchange_calendars — the one canonical holiday source, checked even for the 8 exchanges
+    below with a live proxy). Beyond that veto, NYSE/LSE/XETRA/TSE/HKEX/SSE/ASX/Euronext are
+    backed by the live Yahoo marketState cached from that exchange's proxy index ticker (see
+    _MARKET_STATUS_PROXY) — falls back to time_engine's weekday+hours heuristic for any other
+    exchange, or if no market_state has been cached yet (e.g. right after a fresh install).
+    With include_premarket=True, Yahoo's 'PRE'/'PREPRE' states also count as open — but only for
     exchanges that have a genuine extended-hours session modeled (i.e. a "premarket_open" entry
     in exchange_hours.json, currently NYSE only). Yahoo returns "PRE" for the entire gap since
     the previous close on exchanges with no real extended-hours session of their own (most
     non-US markets), so trusting it there misclassifies a market that has simply closed as
     "about to open" — this is what made the Markets page show Asia as "Pre-Market" long after
     HKEX/SSE/TSE had already finished their session for the day (found 2026-07-09)."""
+    if is_exchange_holiday(exchange):
+        return False
+
     proxy = _MARKET_STATUS_PROXY.get(exchange)
     if proxy is None:
         return is_trading_session(exchange, include_premarket=include_premarket)
@@ -136,14 +141,19 @@ def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
 
 
 def get_exchange_session_state(exchange: str) -> str:
-    """4-state 'open'/'pre'/'post'/'closed' session status for one exchange, built on the same
-    cached Yahoo marketState as is_exchange_open() (see _MARKET_STATUS_PROXY) rather than a
+    """4-state 'open'/'pre'/'post'/'closed' session status for one exchange. Holiday-vetoed
+    first via time_engine.is_exchange_holiday() — same canonical check is_exchange_open() uses —
+    so this sibling function can't disagree with it on a holiday. Beyond that veto, built on the
+    same cached Yahoo marketState as is_exchange_open() (see _MARKET_STATUS_PROXY) rather than a
     second lookup — Yahoo already reports 'POST'/'POSTPOST' for after-hours trading on these 8
     proxy-mapped exchanges, it just wasn't being surfaced past the open/pre/closed collapse
     is_exchange_open() does for its boolean callers. Exchanges with no proxy ticker (most
     non-US/UK/EU/Asia-majors) have no post-market concept in exchange_hours.json either, so they
     fall back to the existing open/closed-only time_engine heuristic — same limitation
     is_exchange_open() already has for those exchanges."""
+    if is_exchange_holiday(exchange):
+        return "closed"
+
     proxy = _MARKET_STATUS_PROXY.get(exchange)
     if proxy is None:
         if is_trading_session(exchange):

@@ -15,6 +15,7 @@ ghostfolio==0.8.1
 python-slugify==8.0.4
 requests==2.33.1
 apscheduler==3.10.4
+exchange_calendars==4.13.2
 fake-useragent==1.5.1
 matplotlib==3.10.0
 scipy>=1.17.1
