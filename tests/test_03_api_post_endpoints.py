@@ -878,3 +878,47 @@ def test_bg_execute_ml_training_runs_quantile_training_too():
 
     mock_train.assert_called_once()
     mock_train_quantile.assert_called_once()
+
+
+@pytest.mark.api
+def test_post_learn_session_returns_cards(client):
+    resp = client.post("/api/learn/session")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert data.get("status") == "success"
+    assert isinstance(data.get("cards"), list)
+    assert len(data["cards"]) == 10
+
+
+@pytest.mark.api
+def test_post_learn_answer_creates_state_and_advances_box(client):
+    resp = client.post("/api/learn/answer", json={"term_key": "market-capitalisation", "grade": "good"})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert data.get("status") == "success"
+    assert data["box"] == 1
+    assert data["term_key"] == "market-capitalisation"
+
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT box FROM learn_term_state WHERE term_key = 'market-capitalisation'"
+        ).fetchone()
+        assert row["box"] == 1
+    finally:
+        conn.execute("DELETE FROM learn_term_state WHERE term_key = 'market-capitalisation'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.api
+def test_post_learn_answer_invalid_grade_returns_400(client):
+    resp = client.post("/api/learn/answer", json={"term_key": "market-capitalisation", "grade": "bogus"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.api
+def test_post_learn_answer_unknown_term_key_returns_400(client):
+    resp = client.post("/api/learn/answer", json={"term_key": "not-a-real-term", "grade": "good"})
+    assert resp.status_code == 400

@@ -83,6 +83,8 @@ EXPECTED_TABLES = [
     "backup_history",
     "market_ticker_registry",
     "market_pulse_sparkline",
+    "learn_cards",
+    "learn_term_state",
 ]
 
 
@@ -705,3 +707,49 @@ def test_seed_exchange_hours_json_backfills_new_fields_without_overwriting_exist
     assert result["LSE"]["quote_delay_minutes"] == 15
     assert result["LSE"]["open"] == "07:45", "operator-edited field must survive the backfill"
     assert "XETRA" in result, "an exchange added to defaults after the file was first seeded must be backfilled"
+
+
+@pytest.mark.db
+def test_learn_cards_has_required_columns():
+    cols = _columns("learn_cards")
+    required = {"term_key", "section_id", "level_order", "term_title", "question", "answer", "distractors"}
+    assert not (required - cols), f"learn_cards missing columns: {required - cols}"
+
+
+@pytest.mark.db
+def test_learn_term_state_has_required_columns():
+    cols = _columns("learn_term_state")
+    required = {"term_key", "box", "due_at", "correct_streak", "lapses", "total_reviews", "last_result"}
+    assert not (required - cols), f"learn_term_state missing columns: {required - cols}"
+
+
+@pytest.mark.db
+def test_seed_learn_cards_is_populated_and_idempotent():
+    import learn_cards_seed
+    conn = _conn()
+    try:
+        count = conn.execute("SELECT COUNT(*) AS n FROM learn_cards").fetchone()["n"]
+        assert count == len(learn_cards_seed.CARDS)
+
+        conn.execute(
+            "INSERT INTO learn_term_state (term_key, box, total_reviews) VALUES (?, ?, ?)",
+            (learn_cards_seed.CARDS[0]["term_key"], 3, 5)
+        )
+        conn.commit()
+
+        cursor = conn.cursor()
+        db_schema._seed_learn_cards(cursor)
+        conn.commit()
+
+        count_after = conn.execute("SELECT COUNT(*) AS n FROM learn_cards").fetchone()["n"]
+        assert count_after == len(learn_cards_seed.CARDS), "re-seeding must not duplicate rows"
+
+        state = conn.execute(
+            "SELECT box FROM learn_term_state WHERE term_key = ?",
+            (learn_cards_seed.CARDS[0]["term_key"],)
+        ).fetchone()
+        assert state["box"] == 3, "re-seeding cards must not wipe existing progress state"
+    finally:
+        conn.execute("DELETE FROM learn_term_state WHERE term_key = ?", (learn_cards_seed.CARDS[0]["term_key"],))
+        conn.commit()
+        conn.close()

@@ -211,6 +211,15 @@ async def glossary(request: Request):
     )
 
 
+@page_router.get("/glossary/learn", response_class=HTMLResponse)
+async def glossary_learn(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="learn.html",
+        context={"unread_count": get_unread_count()}
+    )
+
+
 @page_router.get("/", response_class=RedirectResponse)
 async def home():
     return RedirectResponse(url="/portfolio")

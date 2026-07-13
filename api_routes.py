@@ -54,6 +54,7 @@ from ai_sentiment_engine import AISentimentPromptEngine
 from news_feed_engine import run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, fetch_and_save_single_ticker
+import glossary_learn_engine
 from utils import normalize_ticker
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
@@ -214,6 +215,47 @@ async def api_options_payoff(req: PayoffRequest):
     except Exception as e:
         logger.exception("Payoff matrix calculation failed")
         return _error_500(e)
+
+class GlossaryLearnAnswer(BaseModel):
+    term_key: str
+    grade: str
+
+
+@api_router.get("/learn/overview")
+@limiter.limit("30/minute")
+async def api_learn_overview(request: Request):
+    try:
+        return JSONResponse(content={"status": "success", **glossary_learn_engine.overview()})
+    except Exception as e:
+        logger.exception("learn/overview failed")
+        return _error_500(e)
+
+
+@api_router.post("/learn/session")
+@limiter.limit("15/minute")
+async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30)):
+    try:
+        cards = glossary_learn_engine.build_session(size=size)
+        return JSONResponse(content={"status": "success", "cards": cards})
+    except Exception as e:
+        logger.exception("learn/session failed")
+        return _error_500(e)
+
+
+@api_router.post("/learn/answer")
+@limiter.limit("120/minute")
+async def api_learn_answer(request: Request, body: GlossaryLearnAnswer):
+    if body.grade not in ("good", "hard", "fail"):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "invalid grade"})
+    try:
+        result = glossary_learn_engine.get_answer(body.term_key, body.grade)
+        return JSONResponse(content={"status": "success", **result})
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+    except Exception as e:
+        logger.exception("learn/answer failed")
+        return _error_500(e)
+
 
 @api_router.get("/screener-data")
 @limiter.limit("20/minute")

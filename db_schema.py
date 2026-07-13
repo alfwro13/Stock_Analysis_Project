@@ -5,6 +5,7 @@ import logging
 from database import get_connection
 from config import BASE_CURRENCY, WATCHLIST_PATH
 import time_engine
+import learn_cards_seed
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,30 @@ def _seed_market_ticker_registry(cursor) -> None:
                 pulse_sort_order, is_pulse_mobile, sort_order, context_blurb, baseline_parquet
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', row)
+
+
+def _seed_learn_cards(cursor) -> None:
+    level_order = {section_id: i + 1 for i, (section_id, _) in enumerate(learn_cards_seed.LEVELS)}
+    seeded_keys = []
+    for card in learn_cards_seed.CARDS:
+        seeded_keys.append(card["term_key"])
+        cursor.execute('''
+            INSERT INTO learn_cards (
+                term_key, section_id, level_order, term_title, question, answer, distractors
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(term_key) DO UPDATE SET
+                section_id=excluded.section_id, level_order=excluded.level_order,
+                term_title=excluded.term_title, question=excluded.question,
+                answer=excluded.answer, distractors=excluded.distractors,
+                updated_at=datetime('now')
+        ''', (
+            card["term_key"], card["section_id"], level_order[card["section_id"]],
+            card["term_title"], card["question"], card["answer"], json.dumps(card["distractors"])
+        ))
+    if seeded_keys:
+        placeholders = ",".join("?" for _ in seeded_keys)
+        cursor.execute(f"DELETE FROM learn_cards WHERE term_key NOT IN ({placeholders})", seeded_keys)
+        cursor.execute(f"DELETE FROM learn_term_state WHERE term_key NOT IN ({placeholders})", seeded_keys)
 
 
 DEFAULT_PENSION_BENCHMARK_TICKERS = [
@@ -1169,11 +1194,39 @@ def init_db() -> None:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_account ON treasury_bills(account_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_status_maturity ON treasury_bills(status, maturity_date)')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS learn_cards (
+                term_key     TEXT PRIMARY KEY,
+                section_id   TEXT NOT NULL,
+                level_order  INTEGER NOT NULL,
+                term_title   TEXT NOT NULL,
+                question     TEXT NOT NULL,
+                answer       TEXT NOT NULL,
+                distractors  TEXT NOT NULL,
+                updated_at   TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS learn_term_state (
+                term_key         TEXT PRIMARY KEY,
+                box              INTEGER NOT NULL DEFAULT 0,
+                due_at           TEXT,
+                correct_streak   INTEGER NOT NULL DEFAULT 0,
+                lapses           INTEGER NOT NULL DEFAULT 0,
+                total_reviews    INTEGER NOT NULL DEFAULT 0,
+                last_result      TEXT,
+                last_reviewed_at TEXT
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_learn_state_due ON learn_term_state(due_at)')
+
         conn.commit()
 
         migrate_db(conn, cursor)
         _seed_exchange_hours_json()
         _seed_market_ticker_registry(cursor)
+        _seed_learn_cards(cursor)
         conn.commit()
         _ensure_watchlist_account()
         _import_legacy_watchlist_json()

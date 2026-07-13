@@ -1,0 +1,90 @@
+# Glossary Learning
+
+A spaced-repetition study system layered on top of the Glossary, added July 2026. Reachable
+only via the 🎓 **Learn the Glossary** button next to the Glossary page header (`/glossary`) —
+there is deliberately no separate navbar entry.
+
+## Why
+
+The Glossary (`templates/glossary/_*.html`) holds ~139 curated explanations of the app's
+concepts, metrics, and engines, but reading a definition once rarely makes it stick. Glossary
+Learning turns every term-box into a study card and schedules reviews using a **Leitner box**
+system — a well-established spaced-repetition method — so weak terms resurface more often than
+strong ones, without any scores or gamification beyond visible progress.
+
+## Architecture
+
+| Concern | File |
+|---|---|
+| Card content (git-tracked, one entry per glossary term-box) | `learn_cards_seed.py` |
+| DB tables + idempotent seeding | `db_schema.py` (`learn_cards`, `learn_term_state`, `_seed_learn_cards()`) |
+| Leitner-box math, session builder, overview | `glossary_learn_engine.py` |
+| API endpoints | `api_routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`) |
+| Page route | `page_routes.py` (`GET /glossary/learn`) |
+| Study UI | `templates/learn.html` + `static/js/learn.js` |
+
+Card content lives in a git-tracked Python module (not `data/`, which is gitignored) so it
+survives deployments and is upserted into `learn_cards` on every `init_db()` run — editing a
+card's question/answer/distractors in `learn_cards_seed.py` and restarting the app is enough to
+update it. `learn_term_state` (per-term progress) is never touched by re-seeding.
+
+## Leitner-box spec
+
+Five boxes, box 0 = never studied:
+
+| Box after a "good" answer | Next review interval |
+|---|---|
+| 1 | 1 day |
+| 2 | 3 days |
+| 3 | 7 days |
+| 4 | 14 days |
+| 5 | 30 days (repeats) |
+
+- **Grading:** multiple-choice correct → `good`; wrong → `fail`. Flip-card recall: "Knew it" →
+  `good`, "Fuzzy" → `hard`, "Didn't know" → `fail`.
+- **`good`** advances a box (capped at 5) and increments the correct streak.
+- **`hard`** holds the box at its current level (floor of 1) and resets the streak.
+- **`fail`** (a lapse) drops the box straight back to 1, increments the lapse counter.
+- **Exercise mode:** box ≤ 2 uses multiple-choice (recognition); box ≥ 3 switches to a
+  self-graded flip card (active recall) — a term only reaches recall mode after two consecutive
+  correct answers, and a lapse demotes it back to multiple-choice.
+- **Derived status** (not stored, computed from `box`/`total_reviews`/`lapses`/`last_result`):
+  `new`, `learning` (box 1-2), `strong` (box 3-4), `learned` (box 5), `weak` (box ≤ 2 with 2+
+  lapses or the most recent answer was wrong).
+
+All timestamps are UTC (`datetime.now(timezone.utc)`), matching the app-wide time convention.
+
+## Course structure
+
+Terms are grouped into 21 levels matching the glossary's own accordion sections
+(`learn_cards_seed.LEVELS`), ordered from foundational to advanced: Market Fundamentals →
+Candlestick Anatomy → Technical Analysis → Company Valuation → Trading Strategies → AI & Risk
+Metrics → … → System Methodology. A level unlocks once at least 80% of the previous level's
+terms have been studied at least once, so the course can't jump straight to advanced engine
+terminology before the fundamentals are covered.
+
+## Session composition
+
+`glossary_learn_engine.build_session(size=10)`:
+1. Due reviews first (`due_at <= now`), oldest debt first.
+2. Remaining slots filled with unstudied terms from the lowest unlocked, incomplete level.
+3. Each item includes `mode` (`mcq`/`recall`), the question, and (for `mcq`) four shuffled
+   options. Grading happens client-side (single-user app) via `POST /api/learn/answer`.
+
+## Adding a new glossary term — checklist
+
+When a new `<div class="term-box">` is added to any `templates/glossary/_*.html` partial:
+
+1. Add a matching entry to `learn_cards_seed.CARDS` — `term_key` (unique slug), `section_id`
+   (an existing `LEVELS` entry, or a new one added to `LEVELS` if it's a new section),
+   `term_title` (must exactly match the term-box's `<span class="term-title">` text, including
+   punctuation — entity-decoded and whitespace-normalized for comparison), `question`, `answer`,
+   and exactly 3 `distractors`.
+2. Restart the app — `_seed_learn_cards()` upserts the new card on the next `init_db()` run.
+3. `tests/test_glossary_learn_seed.py`'s coverage tests enforce this 1:1 — a term-box with no
+   seed card (or a seed card with no matching term-box) fails the suite, so forgetting this step
+   is caught by `./run_tests.sh`, not silently shipped.
+
+Removing a term-box works the same way in reverse: delete its `CARDS` entry, restart — the
+seeding prune step removes the orphaned `learn_cards` row (and any `learn_term_state` progress
+for it) automatically.

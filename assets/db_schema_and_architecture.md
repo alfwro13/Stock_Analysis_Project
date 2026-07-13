@@ -356,6 +356,17 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **CRUD:** `db_accounts.py` (re-exported from `database.py`): `get_watchlist_account`, `get_watchlist_items`, `add_watchlist_item`, `delete_watchlist_items`, `remove_watchlist_ticker`, `get_watchlist_tickers`. Metadata (`company_name`/`currency`/`quote_type`/`exchange`) is resolved once at insert time via `accounts_engine.resolve_watchlist_metadata()`.
 * **Migration:** `db_schema._import_legacy_watchlist_json()` runs once at startup — if the table is empty and `data/watchlist.json` exists, every ticker is imported (enriched from cached `stock_signals` data where available). The file itself is left on disk afterward and is never read or written again.
 
+#### `learn_cards`
+* **Purpose:** Curated study cards for the Glossary Learning feature (spaced-repetition study system, reachable via the 🎓 Learn button on `/glossary`). One row per glossary term-box.
+* **Key Columns:** `term_key` (PK, stable slug), `section_id` (glossary accordion id), `level_order` (course ordering, 1-21), `term_title` (must exactly match the glossary `term-title` text — enforced by `tests/test_glossary_learn_seed.py`), `question`, `answer`, `distractors` (JSON array of 3 wrong answers), `updated_at`.
+* **Seeding:** git-tracked `learn_cards_seed.py` (`LEVELS` + `CARDS`) is upserted into this table on every `init_db()` run via `db_schema._seed_learn_cards()`, so content edits propagate on restart. Rows whose `term_key` is no longer in the seed are pruned.
+* **Full design:** `assets/glossary_learning.md`.
+
+#### `learn_term_state`
+* **Purpose:** Per-term spaced-repetition progress (Leitner box system) for Glossary Learning.
+* **Key Columns:** `term_key` (PK, FK to `learn_cards`), `box` (0=new, 1-5), `due_at` (UTC, next scheduled review), `correct_streak`, `lapses`, `total_reviews`, `last_result` (`good`/`hard`/`fail`), `last_reviewed_at`.
+* **Writes:** `glossary_learn_engine.get_answer()`, called from `POST /api/learn/answer`. Never touched by re-seeding, so progress survives content updates.
+
 ---
 
 ### Stateless Tools (no DB table)

@@ -1110,3 +1110,17 @@ def test_backup_status_returns_200(client):
     assert data["stored_count"] == 2
     assert data["last_backup"]["status"] == "success"
     assert len(data["backups"]) == 1
+
+
+@pytest.mark.api
+def test_get_learn_overview_returns_200(client):
+    """GET /api/learn/overview must return 200 with levels, due_count, weak_terms."""
+    resp = client.get("/api/learn/overview")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert data.get("status") == "success"
+    assert isinstance(data.get("levels"), list)
+    assert len(data["levels"]) == len(__import__("learn_cards_seed").LEVELS)
+    assert "due_count" in data
+    assert "weak_terms" in data
+    assert "total_learned" in data
