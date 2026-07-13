@@ -54,50 +54,58 @@ function marketsSparklineSVG(points, isPositive) {
     return `<svg class="macro-sparkline ${cls}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><polyline points="${coords}"></polyline></svg>`;
 }
 
-function marketsTileHTML(tile) {
-    const isPos = tile.is_positive;
-    const isForex = tile.asset_type === 'FX';
-    const marketOpen = tile.market_state === 'open';
-    let cardClass, changeClass;
+function marketsCardVisualState(isPositive, invertColor, isForex, isStale, marketOpen) {
+    // marketOpen === null means "no exchange-session concept applies" (e.g. a futures contract,
+    // which trades near-continuously) — color by data freshness only, never grey for "closed".
+    if (marketOpen === false) return { cardClass: 'markets-closed-card', changeClass: '', stale: true };
+    if (isStale) return { cardClass: 'markets-stale-data-card', changeClass: '', stale: true };
+    if (invertColor) return { cardClass: isPositive ? 'negative' : 'positive', changeClass: isPositive ? 'negative' : 'positive', stale: false };
+    if (isForex) return { cardClass: 'chart-wrapper-accent-cyan', changeClass: 'text-accent-cyan', stale: false };
+    return { cardClass: isPositive ? 'positive' : 'negative', changeClass: isPositive ? 'positive' : 'negative', stale: false };
+}
 
-    if (!marketOpen) {
-        // Market closed: plain grey, showing the last available data — expected, not an error.
-        cardClass = 'markets-closed-card';
-        changeClass = '';
-    } else if (tile.stale_data) {
-        // Market should be live but the cache hasn't refreshed as expected — flag it distinctly.
-        cardClass = 'markets-stale-data-card';
-        changeClass = '';
-    } else if (tile.invert_color) {
-        cardClass = isPos ? 'negative' : 'positive';
-        changeClass = isPos ? 'negative' : 'positive';
-    } else if (isForex) {
-        cardClass = 'chart-wrapper-accent-cyan';
-        changeClass = 'text-accent-cyan';
-    } else {
-        cardClass = isPos ? 'positive' : 'negative';
-        changeClass = isPos ? 'positive' : 'negative';
-    }
-
-    const staleText = (!marketOpen || tile.stale_data) ? 'stale-text' : '';
-    const sign = isPos ? '+' : '';
-    const prefix = MARKETS_CURRENCY_PREFIX[tile.currency] || '';
-    const formattedPrice = prefix + Number(tile.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formattedChange = Number(tile.change_pct).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const futureBadge = tile.is_future ? '<div class="mt-10"><span class="sent-badge sent-neutral">Futures</span></div>' : '';
+function marketsCardHTML(ticker, displayName, price, changePct, currency, sparkline, sentimentScore, badgeText, visual) {
+    const sign = changePct >= 0 ? '+' : '';
+    const prefix = MARKETS_CURRENCY_PREFIX[currency] || '';
+    const formattedPrice = prefix + Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedChange = Number(changePct).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const staleText = visual.stale ? 'stale-text' : '';
+    const badgeHTML = badgeText ? `<div class="mt-10"><span class="sent-badge sent-neutral">${badgeText}</span></div>` : '';
+    const sentimentHTML = sentimentScore !== undefined ? marketsSentimentBadgeHTML(sentimentScore) : '';
 
     return `
-        <a href="/index/${encodeURIComponent(tile.ticker)}" class="macro-card-link" data-ticker="${tile.ticker}">
-            <div class="macro-card ${cardClass}">
-                <div class="macro-title ${staleText}">${tile.display_name}</div>
-                ${marketsSparklineSVG(tile.sparkline, isPos)}
+        <a href="/index/${encodeURIComponent(ticker)}" class="macro-card-link" data-ticker="${ticker}">
+            <div class="macro-card ${visual.cardClass}">
+                <div class="macro-title ${staleText}">${displayName}</div>
+                ${marketsSparklineSVG(sparkline, changePct >= 0)}
                 <div class="macro-price ${staleText}">${formattedPrice}</div>
-                <div class="macro-change ${changeClass} ${staleText}">${sign}${formattedChange}%</div>
-                ${futureBadge}
-                ${marketsSentimentBadgeHTML(tile.sentiment_score)}
+                <div class="macro-change ${visual.changeClass} ${staleText}">${sign}${formattedChange}%</div>
+                ${badgeHTML}
+                ${sentimentHTML}
             </div>
         </a>
     `;
+}
+
+function marketsTileHTML(tile) {
+    const isForex = tile.asset_type === 'FX';
+
+    if (tile.dual_instrument) {
+        // Spot and future are always shown side by side (not auto-swapped into one tile) so it's
+        // never ambiguous which instrument a price belongs to.
+        const spot = tile.dual_instrument.spot;
+        const future = tile.dual_instrument.future;
+        const spotVisual = marketsCardVisualState(spot.is_positive, tile.invert_color, isForex, spot.is_stale, tile.market_state === 'open');
+        const futureVisual = marketsCardVisualState(future.is_positive, tile.invert_color, isForex, future.is_stale, null);
+        return (
+            marketsCardHTML(spot.ticker, spot.display_name, spot.price, spot.change_pct, tile.currency, spot.sparkline, tile.sentiment_score, 'Index', spotVisual) +
+            marketsCardHTML(future.ticker, future.display_name, future.price, future.change_pct, tile.currency, future.sparkline, undefined, 'Futures', futureVisual)
+        );
+    }
+
+    const marketOpen = tile.market_state === 'open';
+    const visual = marketsCardVisualState(tile.is_positive, tile.invert_color, isForex, tile.stale_data, marketOpen);
+    return marketsCardHTML(tile.ticker, tile.display_name, tile.price, tile.change_pct, tile.currency, tile.sparkline, tile.sentiment_score, null, visual);
 }
 
 function marketsRegionSectionHTML(region) {

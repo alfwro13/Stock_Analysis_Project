@@ -118,8 +118,8 @@
             </div>
 
             <div class="term-box">
-                <span class="term-title">Spot/Futures Auto-Swap</span>
-                <p>Some major indexes — the S&amp;P 500, Nasdaq 100, Dow Jones, Russell 2000, and Nikkei 225 — trade two ways: a <strong>cash/spot</strong> price only available while that exchange's regular session is open, and a <strong>futures</strong> contract that trades almost continuously, including outside regular hours. Rather than showing two separate tiles, the Markets page (and Market Pulse, if configured to show one of these) shows a single tile that automatically swaps to the futures price and label whenever the cash market is closed or in pre-market — this is what makes, for example, "S&amp;P 500 Futures" appear at UK lunchtime as New York's open approaches, without a separate futures section.</p>
+                <span class="term-title">Spot/Futures Tiles</span>
+                <p>Some major indexes — the S&amp;P 500, Nasdaq 100, Dow Jones, Russell 2000, and Nikkei 225 — trade two ways: a <strong>cash/spot</strong> price only available while that exchange's regular session is open, and a <strong>futures</strong> contract that trades almost continuously, including outside regular hours. The Markets page shows both as two adjacent tiles, labeled "Index" and "Futures", so it's never ambiguous which instrument a price belongs to — the futures tile is colored purely by how fresh its own data is (it has no "market closed" state of its own, since it trades near-continuously), while the index tile still greys out while its cash market is shut. The compact Market Pulse widget (Portfolio/Watchlist/Stock Detail) is different: it shows only one of the two, automatically swapping to the futures price and label whenever the cash market is closed or in pre-market, since it has room for a single summary tile per index rather than a pair.</p>
             </div>
 
             <div class="term-box">

@@ -1713,7 +1713,7 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
     )
     # Quote-settled gate stubbed True here — this test is about the age/missing logic,
     # not the settle gate (covered separately below).
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange: True)
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange, include_premarket=False: True)
     _seed_market_pulse("ZZFRESHREF", 100.0, time.time())
     _seed_market_pulse("ZZSTALEREF", 100.0, time.time() - 3600)
     # "ZZNOCACHEREF" has no market_pulse_cache row at all.
@@ -1734,7 +1734,7 @@ def test_tickers_needing_refresh_skips_stale_ticker_when_quote_not_yet_settled(m
     # delayed LSE feed) — a stale cached ticker must NOT be re-fetched until settled,
     # or the fetch would pull a not-yet-representative quote into market_pulse_cache.
     monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: True)
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange: False)
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange, include_premarket=False: False)
     _seed_market_pulse("ZZUNSETTLEDREF", 100.0, time.time() - 3600)
 
     stale = accounts_engine.tickers_needing_refresh(["ZZUNSETTLEDREF"], 60)
@@ -1746,7 +1746,7 @@ def test_tickers_needing_refresh_bootstraps_missing_ticker_even_when_quote_not_s
     # The missing-row bootstrap exception must bypass the settle gate too — a genuinely
     # missing row can't get worse by fetching it immediately.
     monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: True)
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange: False)
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange, include_premarket=False: False)
 
     stale = accounts_engine.tickers_needing_refresh(["ZZNOCACHEUNSETTLED"], 60)
     assert "ZZNOCACHEUNSETTLED" in stale

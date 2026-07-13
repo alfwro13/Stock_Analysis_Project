@@ -257,6 +257,19 @@ class TestAssembleMarketsPayload:
         assert dual["future"]["ticker"] == "ES=F"
         assert dual["spot"]["is_active"] != dual["future"]["is_active"]
 
+    def test_dual_instrument_sides_carry_their_own_staleness_and_sparkline(self):
+        # Additive fields (2026-07-13) letting the Markets page render spot and future as two
+        # independent side-by-side cards, each colored by its own freshness rather than the
+        # resolved/active side's — see markets_engine.assemble_markets_payload().
+        payload = markets_engine.assemble_markets_payload("static")
+        us_region = next(r for r in payload["regions"] if r["region"] == "US")
+        tile = next(t for t in us_region["tiles"] if t["registry_ticker"] == "^GSPC")
+        dual = tile["dual_instrument"]
+        assert "is_stale" in dual["spot"]
+        assert "is_stale" in dual["future"]
+        assert "sparkline" in dual["spot"]
+        assert "sparkline" in dual["future"]
+
     def test_non_dual_instrument_tile_has_no_dual_instrument_data(self):
         payload = markets_engine.assemble_markets_payload("static")
         commodities = next(r for r in payload["regions"] if r["region"] == "Commodities_FX")

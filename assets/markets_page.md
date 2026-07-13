@@ -15,7 +15,7 @@
 3. [Region/Session Classification](#3-regionsession-classification)
 4. [Dynamic Ordering Algorithm](#4-dynamic-ordering-algorithm)
 5. [Static View](#5-static-view)
-6. [Spot/Future Auto-Swap](#6-spotfuture-auto-swap)
+6. [Spot/Future Tiles](#6-spotfuture-tiles)
 7. [Sparkline Persistence](#7-sparkline-persistence)
 8. [Market Pulse Integration](#8-market-pulse-integration)
 8b. [ETF Crash-Alert Benchmark Resolution](#8b-etf-crash-alert-benchmark-resolution)
@@ -88,18 +88,20 @@ Each tile also carries its **own** `market_state` (`markets_engine.get_exchange_
 
 ---
 
-## 6. Spot/Future Auto-Swap
+## 6. Spot/Future Tiles
 
-Five registry rows carry a paired front-month future: S&P 500 (`^GSPC`/`ES=F`), Nasdaq 100 (`^NDX`/`NQ=F`), Dow Jones (`^DJI`/`YM=F`), Russell 2000 (`^RUT`/`RTY=F`), and Nikkei 225 (`^N225`/`NIY=F`). Each gets **one tile**, not two.
+Five registry rows carry a paired front-month future: S&P 500 (`^GSPC`/`ES=F`), Nasdaq 100 (`^NDX`/`NQ=F`), Dow Jones (`^DJI`/`YM=F`), Russell 2000 (`^RUT`/`RTY=F`), and Nikkei 225 (`^N225`/`NIY=F`).
 
-`markets_engine.resolve_tile(row) -> (ticker, display_name, is_future)` is gated on the row's **own** `exchange` column, not aggregated region state (precise per-ticker, avoids ambiguity when a region straddles an open/closed tier boundary):
+`markets_engine.resolve_tile(row) -> (ticker, display_name, is_future)` still computes which instrument is "primary" right now (used by the Market Pulse widget, see below, and by `registry_lookup_tickers()`/`select_pulse_tickers()`), gated on the row's **own** `exchange` column, not aggregated region state:
 
 - Spot ticker/name while `market_pulse.is_exchange_open(row.exchange, include_premarket=False)` is `True` (strict regular session).
 - Future ticker/name during pre-market **and** while fully closed — futures are the more informative pre-market instrument; cash pre-market prints are thin to nonexistent.
 
-This is what produces "US futures shown at UK lunchtime" without a separate futures section: the S&P 500/Nasdaq/Dow/Russell tiles on the Markets page (and, if selected, on Market Pulse) simply swap to their futures ticker once NYSE's regular session ends and until it reopens.
+**The Markets page itself renders both as two adjacent tiles, not one auto-swapping tile** (changed 2026-07-13 — the merged tile made it ambiguous which instrument a price/color belonged to, and tied the futures tile's grey/live coloring to the spot exchange's session, which meant a live, updating future rendered "closed" during pre-market, the exact window it exists to represent). `markets_engine.assemble_markets_payload()`'s per-row `dual_instrument.spot`/`.future` sub-objects (originally added for the Home Assistant integration's independent sensors) now also carry their own `is_stale`/`sparkline` fields, and `static/js/markets.js`'s `marketsTileHTML()` renders both sides unconditionally, labeled "Index" and "Futures". The futures card is colored purely by its own data freshness (`is_stale`) — it never greys out for "market closed", since a future has no such concept in this app's model — while the index card keeps the existing market-state-based grey/live coloring.
 
-A direct hit on a future ticker's own `/index/{ticker}` URL (e.g. `/index/ES=F`) redirects (302) to its paired spot ticker's detail page — one detail page per index.
+The compact **Market Pulse widget** (Portfolio/Watchlist/Stock Detail) is unchanged and still shows a single auto-swapping tile per index via `resolve_tile()`/`select_pulse_tickers()` — it has room for one summary tile per index, not a pair.
+
+A direct hit on a future ticker's own `/index/{ticker}` URL (e.g. `/index/ES=F`) renders that future's own detail page (its own `market_pulse_cache`/`quant_signals`/parquet data, keyed by the future ticker itself) with a banner linking back to its paired spot's page — it no longer redirects (302) to the spot page. The spot's own `/index/{ticker}` page still shows its pre-existing "cash market closed" banner when the future is currently primary, now linking directly to the future's own page instead of implying (without actually swapping any data) that the spot page itself had switched instruments.
 
 ---
 

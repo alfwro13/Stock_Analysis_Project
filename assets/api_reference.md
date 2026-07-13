@@ -28,6 +28,7 @@
 18. [Market Regime (HMM + Market Stress IF)](#18-market-regime-hmm--market-stress-if)
 19. [Accounts](#19-accounts)
 24. [Markets](#24-markets)
+25. [Glossary Learning](#25-glossary-learning)
 
 ---
 
@@ -3667,7 +3668,11 @@ Returns every enabled `market_ticker_registry` row grouped by region, in the res
             "market_state": "open",
             "is_stale": false,
             "stale_data": false,
-            "sparkline": [[1751234400.0, 5270.1], [1751234520.0, 5271.4]]
+            "sparkline": [[1751234400.0, 5270.1], [1751234520.0, 5271.4]],
+            "dual_instrument": {
+              "spot": {"ticker": "^GSPC", "display_name": "US S&P 500", "price": 5287.42, "change_pts": 12.55, "change_pct": 0.24, "is_positive": true, "is_active": true, "is_stale": false, "sparkline": [[1751234400.0, 5270.1]]},
+              "future": {"ticker": "ES=F", "display_name": "S&P 500 Futures", "price": 5291.0, "change_pts": 8.0, "change_pct": 0.15, "is_positive": true, "is_active": false, "is_stale": false, "sparkline": [[1751234400.0, 5288.0]]}
+            }
           }
         ]
       }
@@ -3676,7 +3681,7 @@ Returns every enabled `market_ticker_registry` row grouped by region, in the res
 }
 ```
 
-`region` is one of `Europe`, `US`, `Asia`, `Commodities_FX`. `state` (region-level) is `open` (every constituent exchange open), `partial` ("Some Open" — at least one but not all open), `pre`, or `closed` (always `open` for `Commodities_FX`, which has no exchange gating). `is_future` is `true` when the tile has auto-swapped from its spot ticker to its paired front-month future (only possible for the 5 dual-instrument indexes — S&P 500, Nasdaq 100, Dow, Russell 2000, Nikkei 225). `market_state` (tile-level) is that tile's own exchange's `open`/`pre`/`closed` state, independent of the region aggregate. `stale_data` is `true` only when `market_state == "open"` but the cache hasn't refreshed within the freshness window — a genuine data problem, distinct from `is_stale` alone (which is also `true`, expectedly, whenever a closed market's cache simply hasn't changed). `sparkline` is today's session intraday points (oldest first); it holds the last session's points, not an empty array, when the market is closed.
+`region` is one of `Europe`, `US`, `Asia`, `Commodities_FX`. `state` (region-level) is `open` (every constituent exchange open), `partial` ("Some Open" — at least one but not all open), `pre`, or `closed` (always `open` for `Commodities_FX`, which has no exchange gating). `is_future` is `true` when the tile's top-level fields (`price`/`change_pct`/etc.) have resolved to its paired front-month future rather than its spot ticker (only possible for the 5 dual-instrument indexes — S&P 500, Nasdaq 100, Dow, Russell 2000, Nikkei 225); this resolved value still backs the compact Market Pulse widget's single auto-swapping tile. `market_state` (tile-level) is that tile's own exchange's `open`/`pre`/`closed` state, independent of the region aggregate. `stale_data` is `true` only when `market_state == "open"` but the cache hasn't refreshed within the freshness window — a genuine data problem, distinct from `is_stale` alone (which is also `true`, expectedly, whenever a closed market's cache simply hasn't changed). `sparkline` is today's session intraday points (oldest first); it holds the last session's points, not an empty array, when the market is closed. `dual_instrument` is `null` for a plain ticker; for one of the 5 dual-instrument indexes it carries **both** instruments' own price/change/staleness/sparkline simultaneously — the Markets page renders these as two adjacent tiles (labeled "Index" and "Futures") rather than relying on the top-level auto-swapped fields, so a live future is never miscolored by its spot exchange's closed session.
 
 ---
 
@@ -3738,6 +3743,52 @@ Same body shape as `POST` (minus `ticker`, taken from the path). `404` if the ti
 #### `DELETE /api/markets/registry/{ticker}`
 
 Soft-deletes (`enabled=0`) — preserves history in `market_pulse_cache`, `market_pulse_sparkline`, and any downloaded parquet. `404` if the ticker isn't in the registry.
+
+---
+
+## 25. Glossary Learning
+
+Spaced-repetition study system for the Glossary, reachable only via the 🎓 Learn button on `/glossary` — see `assets/glossary_learning.md` for the full design.
+
+### `GET /api/learn/overview`
+
+Returns per-level progress and global counters.
+
+```json
+{
+  "status": "success",
+  "levels": [
+    {"section_id": "market-fundamentals", "title": "Market Fundamentals", "total": 14, "studied": 5, "learned": 1, "unlocked": true}
+  ],
+  "due_count": 3,
+  "weak_terms": ["Market Capitalisation (Market Cap)"],
+  "total_learned": 12
+}
+```
+
+### `POST /api/learn/session`
+
+Query param `size` (default 10, 1-30). Builds a study batch: due reviews first, then new terms from the lowest unlocked incomplete level.
+
+```json
+{
+  "status": "success",
+  "cards": [
+    {"term_key": "market-capitalisation", "term_title": "Market Capitalisation (Market Cap)",
+     "mode": "mcq", "question": "...", "options": ["...", "...", "...", "..."], "answer": "..."}
+  ]
+}
+```
+
+### `POST /api/learn/answer`
+
+Body: `{"term_key": "market-capitalisation", "grade": "good"}` — `grade` is one of `good`/`hard`/`fail`. Applies the Leitner-box update and returns the new state.
+
+```json
+{"status": "success", "term_key": "market-capitalisation", "box": 2, "due_at": "2026-07-16 12:00:00", "term_status": "learning"}
+```
+
+`400` if `grade` is invalid or `term_key` doesn't match a seeded card.
 
 ---
 

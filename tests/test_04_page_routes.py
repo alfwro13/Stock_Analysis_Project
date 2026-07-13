@@ -103,6 +103,20 @@ def test_glossary_page_loads(client):
     _assert_page_ok(client, "/glossary", label="Glossary")
 
 
+@pytest.mark.pages
+def test_glossary_page_has_learn_button(client):
+    """The Glossary page must link to the Glossary Learning page (button next to the header)."""
+    resp = client.get("/glossary")
+    assert resp.status_code == 200
+    assert '/glossary/learn' in resp.text
+
+
+@pytest.mark.pages
+def test_glossary_learn_page_loads(client):
+    """GET /glossary/learn must load the Glossary Learning study page."""
+    _assert_page_ok(client, "/glossary/learn", label="Glossary Learning")
+
+
 # ── Screener Pages ────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
@@ -179,12 +193,14 @@ def test_markets_page_rejects_invalid_view_cookie(client):
 # ── Index Detail (Markets page registry) ────────────────────────────────────────
 
 @pytest.mark.pages
-def test_index_detail_future_ticker_redirects_to_spot(client):
-    """A direct hit on a future ticker's own URL redirects to its paired spot ticker's page —
-    one detail page per index, not one per instrument."""
+def test_index_detail_future_ticker_renders_its_own_page(client):
+    """A direct hit on a future ticker's own URL renders that future's own detail page (the
+    Markets page's tiles now link straight to it) rather than redirecting to its paired spot."""
     resp = client.get("/index/ES=F", follow_redirects=False)
-    assert resp.status_code == 302
-    assert resp.headers["location"] == "/index/%5EGSPC"
+    assert resp.status_code == 200
+    assert "S&amp;P 500 Futures (ES=F)" in resp.text
+    assert "Futures contract for" in resp.text
+    assert '/index/^GSPC">US S&amp;P 500 (^GSPC)' in resp.text
 
 
 @pytest.mark.pages
@@ -214,9 +230,8 @@ def test_index_detail_shows_futures_banner_when_cash_market_closed(client):
     with patch("page_routes_macro.markets_engine.resolve_tile", return_value=("ES=F", "S&P 500 Futures", True)):
         resp = client.get("/index/%5EGSPC")
     assert resp.status_code == 200
-    assert "Currently showing" in resp.text
-    assert "(ES=F)" in resp.text
-    assert "cash market closed" in resp.text
+    assert "Cash market closed" in resp.text
+    assert '/index/ES=F">S&amp;P 500 Futures (ES=F)' in resp.text
 
 
 @pytest.mark.pages
@@ -521,6 +536,7 @@ def test_no_page_route_returns_500(client):
         ("/settings",           "Settings"),
         ("/notifications",      "Notifications"),
         ("/glossary",           "Glossary"),
+        ("/glossary/learn",     "Glossary Learning"),
         ("/market-screener",    "Market Screener"),
         ("/market-reports",     "Market Reports"),
         ("/market-sentiment",   "Market Sentiment"),

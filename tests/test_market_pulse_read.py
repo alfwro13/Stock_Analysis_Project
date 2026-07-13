@@ -364,7 +364,35 @@ class TestIsTickerQuoteSettled:
     def test_delegates_to_is_quote_settled_for_resolved_exchange(self):
         with patch("market_pulse.is_quote_settled", return_value=False) as mock_settled:
             assert _mp.is_ticker_quote_settled("^FTSE") is False
-        mock_settled.assert_called_once_with("LSE")
+        mock_settled.assert_called_once_with("LSE", include_premarket=False)
+
+    def test_future_ticker_honors_premarket_unlike_its_spot_row(self):
+        # ES=F shares ^GSPC's NYSE exchange (see TestResolveTickerExchange above), but must
+        # gate on include_premarket=True — futures trade near-continuously and are shown
+        # specifically during the spot exchange's pre-market window, so gating the future's
+        # refresh on the spot's *regular* session settling would mean it can never refresh
+        # while it's actually the tile being displayed (found 2026-07-13).
+        with patch("market_pulse.is_quote_settled", return_value=True) as mock_settled:
+            assert _mp.is_ticker_quote_settled("ES=F") is True
+        mock_settled.assert_called_once_with("NYSE", include_premarket=True)
+
+    def test_registry_future_tickers_can_be_precomputed(self):
+        prebuilt_exchanges = {"ES=F": "NYSE"}
+        prebuilt_futures = set()
+        with patch("market_pulse.is_quote_settled", return_value=True) as mock_settled:
+            _mp.is_ticker_quote_settled(
+                "ES=F", registry_exchange_map=prebuilt_exchanges, registry_future_tickers=prebuilt_futures,
+            )
+        mock_settled.assert_called_once_with("NYSE", include_premarket=False)
+
+
+class TestBuildRegistryFutureTickers:
+    def test_returns_every_future_ticker_in_registry(self):
+        future_tickers = _mp.build_registry_future_tickers()
+        assert "ES=F" in future_tickers
+
+    def test_spot_ticker_itself_is_not_included(self):
+        assert "^GSPC" not in _mp.build_registry_future_tickers()
 
 
 # ── registry_tickers_needing_refresh ──────────────────────────────────────────

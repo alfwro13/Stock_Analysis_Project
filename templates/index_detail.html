@@ -28,10 +28,16 @@
     <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">&#8592; Back</a>
 </nav>
 <p class="text-muted mb-3">Type: {{ type_label }} | Currency: {{ currency }}</p>
-{% if showing_future %}
+{% if is_future_page %}
+<div class="sentiment-widgets mb-3">
+    <div class="sentiment-widget risk-summary-row risk-summary-green">
+        Futures contract for <a href="/index/{{ spot_ticker }}">{{ spot_display_name }} ({{ spot_ticker }})</a>.
+    </div>
+</div>
+{% elif showing_future %}
 <div class="sentiment-widgets mb-3">
     <div class="sentiment-widget risk-summary-row risk-summary-yellow">
-        Currently showing: {{ future_display_name }} ({{ future_ticker }}) — cash market closed, live pricing has swapped to the front-month future.
+        Cash market closed — see live pricing on <a href="/index/{{ future_ticker }}">{{ future_display_name }} ({{ future_ticker }})</a>.
     </div>
 </div>
 {% endif %}

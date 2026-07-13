@@ -6,7 +6,7 @@ from typing import Dict, Any, List
 
 import pandas as pd
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
@@ -334,20 +334,29 @@ async def market_sentiment_page(request: Request):
 async def index_detail(request: Request, ticker: str):
     ticker = normalize_ticker(ticker)
     registry_row = get_ticker_registry_row(ticker)
+    is_future_page = False
+    spot_of_future = None
     if registry_row is None:
-        # Not a canonical (spot) registry ticker — check whether it's a paired future instead,
-        # so a direct hit on e.g. /index/ES=F lands on the one detail page for that index
-        # (spot/future is a single tile per AGENTS.md's Markets page rule) rather than 404ing.
+        # Not a canonical (spot) registry ticker — check whether it's a paired future instead.
+        # The Markets page now links straight to the future's own ticker (spot and future render
+        # as two separate tiles, not one auto-swapping tile), so this renders the future's own
+        # detail page directly rather than redirecting to its spot counterpart.
         future_row = get_ticker_registry_row_by_future(ticker)
         if future_row is not None:
-            return RedirectResponse(f"/index/{future_row['ticker']}", status_code=302)
+            is_future_page = True
+            spot_of_future = future_row
+            registry_row = future_row
 
     showing_future = False
     future_display_name = None
-    if registry_row and registry_row.get("future_ticker"):
+    if registry_row and registry_row.get("future_ticker") and not is_future_page:
         _, _, showing_future = markets_engine.resolve_tile(registry_row)
         if showing_future:
             future_display_name = registry_row.get("future_display_name") or registry_row["display_name"]
+
+    display_name = ticker
+    if registry_row:
+        display_name = (registry_row.get("future_display_name") or registry_row["display_name"]) if is_future_page else registry_row["display_name"]
 
     conn = get_connection()
     try:
@@ -360,7 +369,7 @@ async def index_detail(request: Request, ticker: str):
         pulse_row = cursor.fetchone()
         pulse = dict(pulse_row) if pulse_row else {
             "price": None, "change_pts": None, "change_pct": None,
-            "is_positive": None, "name": registry_row["display_name"] if registry_row else ticker,
+            "is_positive": None, "name": display_name,
         }
 
         cursor.execute("""
@@ -383,8 +392,10 @@ async def index_detail(request: Request, ticker: str):
 
     price_action = None
     # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
+    # — but a future's own page must never fall back to its spot row's baseline (a different
+    # instrument's price scale), so it correctly shows the "no data yet" placeholder instead.
     _ticker_parquet = HISTORICAL_DIR / f"{ticker}.parquet"
-    _baseline_name = registry_row.get("baseline_parquet") if registry_row else None
+    _baseline_name = registry_row.get("baseline_parquet") if (registry_row and not is_future_page) else None
     parquet_path = _ticker_parquet if _ticker_parquet.exists() else (HISTORICAL_DIR / _baseline_name if _baseline_name else None)
     try:
         df_macro = pd.read_parquet(parquet_path) if parquet_path else pd.DataFrame()
@@ -423,8 +434,11 @@ async def index_detail(request: Request, ticker: str):
         request=request, name="index_detail.html",
         context={
             "ticker":        ticker,
-            "display_name":  registry_row["display_name"] if registry_row else ticker,
+            "display_name":  display_name,
             "asset_type":    registry_row["asset_type"] if registry_row else None,
+            "is_future_page": is_future_page,
+            "spot_ticker":   spot_of_future["ticker"] if is_future_page else None,
+            "spot_display_name": spot_of_future["display_name"] if is_future_page else None,
             "showing_future": showing_future,
             "future_ticker": registry_row.get("future_ticker") if registry_row else None,
             "future_display_name": future_display_name,

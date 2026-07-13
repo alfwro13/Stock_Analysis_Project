@@ -201,6 +201,12 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
                         "change_pct": spot_cached.get("change_pct", 0.0),
                         "is_positive": spot_cached.get("is_positive", True),
                         "is_active": not is_future,
+                        # Additive fields (AGENTS.md: safe for the HA integration, read via
+                        # .get()) letting the Markets page render spot and future as two
+                        # independent side-by-side cards, each colored by its own freshness
+                        # rather than by whichever side resolve_tile() currently treats as active.
+                        "is_stale": spot_cached.get("is_stale", True),
+                        "sparkline": market_pulse.get_intraday_points(row["ticker"]),
                     },
                     "future": {
                         "ticker": row["future_ticker"],
@@ -210,6 +216,8 @@ def assemble_markets_payload(view: str) -> Dict[str, Any]:
                         "change_pct": future_cached.get("change_pct", 0.0),
                         "is_positive": future_cached.get("is_positive", True),
                         "is_active": is_future,
+                        "is_stale": future_cached.get("is_stale", True),
+                        "sparkline": market_pulse.get_intraday_points(row["future_ticker"]),
                     },
                 }
 
