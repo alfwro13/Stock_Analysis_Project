@@ -40,6 +40,22 @@ function learnLevelRowHTML(level) {
     `;
 }
 
+function learnSetBackLink(inLearningMode) {
+    const link = document.getElementById('learnBackLink');
+    if (inLearningMode) {
+        link.textContent = '← Back to Dashboard';
+        link.href = '/glossary/learn';
+        link.onclick = (e) => {
+            e.preventDefault();
+            learnBackToDashboard();
+        };
+    } else {
+        link.textContent = '← Back to Glossary';
+        link.href = '/glossary';
+        link.onclick = null;
+    }
+}
+
 async function learnStartSession(sectionId, size) {
     const params = new URLSearchParams();
     params.set('size', size || 10);
@@ -56,6 +72,7 @@ async function learnStartSession(sectionId, size) {
     document.getElementById('learnDashboard').style.display = 'none';
     document.getElementById('learnSession').style.display = 'block';
     document.getElementById('learnSummary').style.display = 'none';
+    learnSetBackLink(true);
     learnRenderCard();
 }
 
@@ -159,6 +176,7 @@ function learnBackToDashboard() {
     document.getElementById('learnSummary').style.display = 'none';
     document.getElementById('learnSession').style.display = 'none';
     document.getElementById('learnDashboard').style.display = 'block';
+    learnSetBackLink(false);
     learnLoadOverview();
 }
 
