@@ -1,7 +1,6 @@
 let learnSessionCards = [];
 let learnSessionIndex = 0;
 let learnSessionResults = { good: 0, hard: 0, fail: 0 };
-let learnRevealed = false;
 
 async function learnLoadOverview() {
     const response = await fetch('/api/learn/overview');
@@ -14,6 +13,9 @@ async function learnLoadOverview() {
 
     const levelsEl = document.getElementById('learnLevels');
     levelsEl.innerHTML = result.levels.map(learnLevelRowHTML).join('');
+    levelsEl.querySelectorAll('.learn-level-clickable').forEach(row => {
+        row.addEventListener('click', () => learnStartSession(row.dataset.sectionId, parseInt(row.dataset.total, 10)));
+    });
 
     const startBtn = document.getElementById('learnStartBtn');
     const nothingToStudy = result.due_count === 0 && !result.levels.some(l => l.unlocked && l.studied < l.total);
@@ -24,8 +26,9 @@ async function learnLoadOverview() {
 function learnLevelRowHTML(level) {
     const pct = level.total > 0 ? Math.round((level.studied / level.total) * 100) : 0;
     const lockedClass = level.unlocked ? '' : 'learn-level-locked';
+    const clickableClass = level.unlocked ? 'learn-level-clickable' : '';
     return `
-        <div class="learn-level-row ${lockedClass}">
+        <div class="learn-level-row ${lockedClass} ${clickableClass}" data-section-id="${escapeHtml(level.section_id)}" data-total="${level.total}">
             <div class="d-flex justify-content-between">
                 <span>${level.unlocked ? '' : '🔒 '}${escapeHtml(level.title)}</span>
                 <span class="text-muted">${level.studied}/${level.total} studied &middot; ${level.learned} learned</span>
@@ -37,8 +40,12 @@ function learnLevelRowHTML(level) {
     `;
 }
 
-async function learnStartSession() {
-    const response = await fetch('/api/learn/session', { method: 'POST' });
+async function learnStartSession(sectionId, size) {
+    const params = new URLSearchParams();
+    params.set('size', size || 10);
+    if (sectionId) params.set('section_id', sectionId);
+
+    const response = await fetch(`/api/learn/session?${params.toString()}`, { method: 'POST' });
     const result = await response.json();
     if (!response.ok || result.status !== 'success' || result.cards.length === 0) return;
 
@@ -56,7 +63,6 @@ function learnRenderCard() {
     const card = learnSessionCards[learnSessionIndex];
     document.getElementById('learnSessionProgress').textContent =
         `${learnSessionIndex + 1} / ${learnSessionCards.length}`;
-    learnRevealed = false;
 
     const cardEl = document.getElementById('learnCard');
     if (card.mode === 'mcq') {
@@ -85,7 +91,6 @@ function learnRenderCard() {
             </div>
         `;
         document.getElementById('learnRevealBtn').addEventListener('click', () => {
-            learnRevealed = true;
             document.getElementById('learnRecallAnswer').style.display = 'block';
             document.getElementById('learnRevealBtn').style.display = 'none';
         });
@@ -95,7 +100,7 @@ function learnRenderCard() {
     }
 }
 
-function learnAnswerMCQ(card, clickedBtn) {
+async function learnAnswerMCQ(card, clickedBtn) {
     const cardEl = document.getElementById('learnCard');
     cardEl.querySelectorAll('.learn-option-btn').forEach(btn => {
         btn.disabled = true;
@@ -103,7 +108,33 @@ function learnAnswerMCQ(card, clickedBtn) {
     });
     const correct = clickedBtn.dataset.answer === card.answer;
     if (!correct) clickedBtn.classList.add('learn-option-incorrect');
-    setTimeout(() => learnSubmitAnswer(card.term_key, correct ? 'good' : 'fail'), 700);
+
+    const grade = correct ? 'good' : 'fail';
+    learnSessionResults[grade] += 1;
+    await fetch('/api/learn/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term_key: card.term_key, grade }),
+    });
+
+    const feedback = document.createElement('div');
+    feedback.className = 'learn-feedback mt-3';
+    feedback.innerHTML = `
+        <p class="mb-1 ${correct ? 'text-success' : 'text-danger'}"><strong>${correct ? 'Correct!' : 'Not quite.'}</strong></p>
+        <p class="mb-3">${escapeHtml(card.answer)}</p>
+        <button type="button" class="btn btn-primary" id="learnNextBtn">Next</button>
+    `;
+    cardEl.appendChild(feedback);
+    document.getElementById('learnNextBtn').addEventListener('click', learnAdvance);
+}
+
+function learnAdvance() {
+    learnSessionIndex += 1;
+    if (learnSessionIndex >= learnSessionCards.length) {
+        learnShowSummary();
+    } else {
+        learnRenderCard();
+    }
 }
 
 async function learnSubmitAnswer(termKey, grade) {
@@ -113,13 +144,7 @@ async function learnSubmitAnswer(termKey, grade) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ term_key: termKey, grade }),
     });
-
-    learnSessionIndex += 1;
-    if (learnSessionIndex >= learnSessionCards.length) {
-        learnShowSummary();
-    } else {
-        learnRenderCard();
-    }
+    learnAdvance();
 }
 
 function learnShowSummary() {
@@ -139,7 +164,7 @@ function learnBackToDashboard() {
 
 document.addEventListener('DOMContentLoaded', () => {
     learnLoadOverview();
-    document.getElementById('learnStartBtn').addEventListener('click', learnStartSession);
+    document.getElementById('learnStartBtn').addEventListener('click', () => learnStartSession());
     document.getElementById('learnBackBtn').addEventListener('click', learnBackToDashboard);
-    document.getElementById('learnAgainBtn').addEventListener('click', learnStartSession);
+    document.getElementById('learnAgainBtn').addEventListener('click', () => learnStartSession());
 });

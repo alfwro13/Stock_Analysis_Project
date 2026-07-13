@@ -154,3 +154,63 @@ def test_level_2_locked_until_80pct_of_level_1_studied():
     finally:
         if conn:
             conn.close()
+
+
+@pytest.mark.db
+def test_build_session_with_section_id_returns_only_that_sections_cards():
+    conn = None
+    try:
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM learn_term_state")
+        conn.commit()
+
+        import learn_cards_seed
+        expected_total = sum(1 for c in learn_cards_seed.CARDS if c["section_id"] == "candlesticks")
+
+        session = engine.build_session(size=30, now=NOW, section_id="candlesticks")
+        assert len(session) == expected_total
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
+def test_build_session_with_section_id_bypasses_level_lock():
+    """A locked (not-yet-unlocked) section must still be sessionable when explicitly requested."""
+    conn = None
+    try:
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM learn_term_state")
+        conn.commit()
+
+        overview_result = engine.overview(now=NOW)
+        levels_by_id = {lvl["section_id"]: lvl for lvl in overview_result["levels"]}
+        assert levels_by_id["candlesticks"]["unlocked"] is False
+
+        session = engine.build_session(size=5, now=NOW, section_id="candlesticks")
+        assert len(session) > 0
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
+def test_build_session_with_section_id_prioritises_due_before_new():
+    conn = None
+    try:
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM learn_term_state")
+        conn.execute(
+            "INSERT INTO learn_term_state (term_key, box, due_at, total_reviews) VALUES (?, 3, ?, 1)",
+            ("hammer-bullish-rejection", "2025-12-31 00:00:00")
+        )
+        conn.commit()
+
+        session = engine.build_session(size=1, now=NOW, section_id="candlesticks")
+        assert session[0]["term_key"] == "hammer-bullish-rejection"
+        assert session[0]["mode"] == "recall"
+    finally:
+        if conn:
+            conn.execute("DELETE FROM learn_term_state WHERE term_key = 'hammer-bullish-rejection'")
+            conn.commit()
+            conn.close()

@@ -891,6 +891,18 @@ def test_post_learn_session_returns_cards(client):
 
 
 @pytest.mark.api
+def test_post_learn_session_with_section_id_scopes_to_that_section(client):
+    resp = client.post("/api/learn/session?section_id=candlesticks&size=30")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert data.get("status") == "success"
+
+    import learn_cards_seed
+    expected_total = sum(1 for c in learn_cards_seed.CARDS if c["section_id"] == "candlesticks")
+    assert len(data["cards"]) == expected_total
+
+
+@pytest.mark.api
 def test_post_learn_answer_creates_state_and_advances_box(client):
     resp = client.post("/api/learn/answer", json={"term_key": "market-capitalisation", "grade": "good"})
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"

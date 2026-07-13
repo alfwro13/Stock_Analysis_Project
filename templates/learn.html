@@ -9,14 +9,17 @@
 </div>
 
 <div id="learnDashboard">
-    <div class="learn-summary-row mb-3">
-        <span class="badge text-bg-primary" id="learnDueBadge">Due: 0</span>
-        <span class="badge text-bg-warning" id="learnWeakBadge">Weak: 0</span>
-        <span class="badge text-bg-success" id="learnLearnedBadge">Learned: 0</span>
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <div class="learn-summary-row">
+            <span class="badge text-bg-primary" id="learnDueBadge">Due: 0</span>
+            <span class="badge text-bg-warning" id="learnWeakBadge">Weak: 0</span>
+            <span class="badge text-bg-success" id="learnLearnedBadge">Learned: 0</span>
+        </div>
+        <button type="button" class="btn btn-primary" id="learnStartBtn">Start Session</button>
     </div>
-    <div id="learnLevels"></div>
-    <button type="button" class="btn btn-primary mt-3" id="learnStartBtn">Start Session</button>
-    <div id="learnEmptyState" class="text-muted mt-2" style="display:none;">All caught up — nothing due right now.</div>
+    <div id="learnEmptyState" class="text-muted mb-2" style="display:none;">All caught up — nothing due right now.</div>
+    <p class="text-muted small mb-2">Click a level to practice just that section.</p>
+    <div id="learnLevels" class="learn-levels-grid"></div>
 </div>
 
 <div id="learnSession" style="display:none;">

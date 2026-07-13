@@ -233,9 +233,9 @@ async def api_learn_overview(request: Request):
 
 @api_router.post("/learn/session")
 @limiter.limit("15/minute")
-async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30)):
+async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30), section_id: Optional[str] = Query(None)):
     try:
-        cards = glossary_learn_engine.build_session(size=size)
+        cards = glossary_learn_engine.build_session(size=size, section_id=section_id)
         return JSONResponse(content={"status": "success", "cards": cards})
     except Exception as e:
         logger.exception("learn/session failed")

@@ -3768,7 +3768,7 @@ Returns per-level progress and global counters.
 
 ### `POST /api/learn/session`
 
-Query param `size` (default 10, 1-30). Builds a study batch: due reviews first, then new terms from the lowest unlocked incomplete level.
+Query params: `size` (default 10, 1-30) and optional `section_id`. With no `section_id`, builds a study batch across the whole course: due reviews first, then new terms from the lowest unlocked incomplete level. With `section_id` set (clicking a level tile on the dashboard), the session is scoped to just that section's cards — due reviews in that section first, then the rest — and bypasses the level-unlock check, since the operator explicitly chose it.
 
 ```json
 {

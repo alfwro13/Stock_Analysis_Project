@@ -65,11 +65,23 @@ terminology before the fundamentals are covered.
 
 ## Session composition
 
-`glossary_learn_engine.build_session(size=10)`:
+`glossary_learn_engine.build_session(size=10, section_id=None)`:
 1. Due reviews first (`due_at <= now`), oldest debt first.
 2. Remaining slots filled with unstudied terms from the lowest unlocked, incomplete level.
 3. Each item includes `mode` (`mcq`/`recall`), the question, and (for `mcq`) four shuffled
    options. Grading happens client-side (single-user app) via `POST /api/learn/answer`.
+
+**Per-section practice:** clicking an unlocked level tile on the dashboard (`static/js/learn.js`,
+`learnStartSession(sectionId, size)`) passes `section_id` through to `build_session()`, which
+switches to a section-scoped path — due reviews in that section first, then the rest of its
+cards — and does not apply the level-unlock filter (the operator explicitly chose that section,
+so there's nothing to gate). Locked levels are not clickable in the UI.
+
+**Answer review:** a multiple-choice answer is submitted to `POST /api/learn/answer` the instant
+it's picked (so SRS state updates immediately even if the tab is closed), but the UI holds on
+the same card — highlighting the correct option, showing its full answer text, and waiting for
+an explicit "Next" click — rather than auto-advancing, so a wrong answer doesn't flash past
+before it can be read.
 
 ## Adding a new glossary term — checklist
 

@@ -183,12 +183,45 @@ def overview(now: datetime = None) -> dict:
             conn.close()
 
 
-def build_session(size: int = 10, now: datetime = None) -> list:
+def _serialize_session(cards: list) -> list:
+    session = []
+    for card in cards:
+        box = card.get("box") or 0
+        mode = mode_for_box(box)
+        item = {
+            "term_key": card["term_key"],
+            "term_title": card["term_title"],
+            "mode": mode,
+            "question": card["question"],
+            "answer": card["answer"],
+        }
+        if mode == "mcq":
+            options = json.loads(card["distractors"]) + [card["answer"]]
+            random.shuffle(options)
+            item["options"] = options
+        session.append(item)
+    return session
+
+
+def build_session(size: int = 10, now: datetime = None, section_id: str = None) -> list:
     now = now or datetime.now(timezone.utc)
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
+
+        if section_id:
+            cursor.execute('''
+                SELECT c.*, s.box, s.due_at FROM learn_cards c
+                LEFT JOIN learn_term_state s ON s.term_key = c.term_key
+                WHERE c.section_id = ?
+            ''', (section_id,))
+            rows = [dict(r) for r in cursor.fetchall()]
+            now_str = _fmt(now)
+            due = sorted((r for r in rows if r["due_at"] and r["due_at"] <= now_str), key=lambda r: r["due_at"])
+            others = sorted((r for r in rows if not (r["due_at"] and r["due_at"] <= now_str)), key=lambda r: r["term_key"])
+            cards = (due + others)[:size]
+            return _serialize_session(cards)
 
         cursor.execute('''
             SELECT c.*, s.box FROM learn_cards c
@@ -203,17 +236,17 @@ def build_session(size: int = 10, now: datetime = None) -> list:
         if remaining > 0:
             unlocked = _level_unlocked_map(cursor)
             due_keys = {c["term_key"] for c in cards}
-            for section_id, _ in learn_cards_seed.LEVELS:
+            for lvl_section_id, _ in learn_cards_seed.LEVELS:
                 if remaining <= 0:
                     break
-                if not unlocked.get(section_id, False):
+                if not unlocked.get(lvl_section_id, False):
                     continue
                 cursor.execute('''
                     SELECT c.* FROM learn_cards c
                     LEFT JOIN learn_term_state s ON s.term_key = c.term_key
                     WHERE c.section_id = ? AND (s.total_reviews IS NULL OR s.total_reviews = 0)
                     ORDER BY c.term_key
-                ''', (section_id,))
+                ''', (lvl_section_id,))
                 for row in cursor.fetchall():
                     if remaining <= 0:
                         break
@@ -225,25 +258,7 @@ def build_session(size: int = 10, now: datetime = None) -> list:
                     due_keys.add(row["term_key"])
                     remaining -= 1
 
-        session = []
-        for card in cards:
-            box = card.get("box") or 0
-            mode = mode_for_box(box)
-            item = {
-                "term_key": card["term_key"],
-                "term_title": card["term_title"],
-                "mode": mode,
-                "question": card["question"],
-            }
-            if mode == "mcq":
-                options = json.loads(card["distractors"]) + [card["answer"]]
-                random.shuffle(options)
-                item["options"] = options
-                item["answer"] = card["answer"]
-            else:
-                item["answer"] = card["answer"]
-            session.append(item)
-        return session
+        return _serialize_session(cards)
     finally:
         if conn:
             conn.close()
