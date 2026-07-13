@@ -104,6 +104,8 @@ Stock_Analysis_Project/
 ├── profile_engine.py         # Asset profile cache (sector, country, exchange)
 ├── time_engine.py            # Central time/timezone module (all market-hours logic)
 ├── utils.py                  # Shared utilities
+├── glossary_learn_engine.py  # GUI name: "Glossary Learning" — Leitner-box SRS math, session builder, overview (see /glossary/learn)
+├── learn_cards_seed.py       # Git-tracked seed content for Glossary Learning: LEVELS + CARDS (one curated card per glossary term-box)
 │
 ├── templates/                # Jinja2 HTML templates
 │   ├── base.html             # Shared Bootstrap 5 shell — migrated pages {% extends %} it
@@ -192,6 +194,8 @@ All tables join on `ticker` as the primary key unless noted.
 | `treasury_bills` | UK Treasury bill holdings (Trading accounts) — face value, discount purchase price, maturity date, auto-reinvest reminder flag, status (Open/Matured) |
 | `holding_price_limits` | Optional low/high price target per (account, ticker) — Position Targets on the Stock Detail page and Home Assistant's Low/High Limit entities read/write the same rows; built-in accounts only, including the singleton Watchlist account |
 | `backup_history` | Audit log of every Backup & Recovery run (scheduled or manual) — trigger type, location, components, filename, size, status |
+| `learn_cards` | Curated Glossary Learning study cards, one per glossary term-box — upserted from the git-tracked `learn_cards_seed.py` on every `init_db()` run |
+| `learn_term_state` | Per-term Leitner-box spaced-repetition progress (box, due date, streak, lapses) for Glossary Learning — never touched by re-seeding |
 
 Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_schema.py:migrate_db()` (ALTER TABLE on existing tables). All callers continue to `from database import init_db, migrate_db` — `database.py` re-exports both.
 
@@ -386,6 +390,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 ### Glossary (`templates/glossary.html`)
 - When a new user-facing concept, metric, score, signal, or algorithm is introduced, add a `<div class="term-box">` entry under the appropriate `<details>` section. Follow the existing style exactly (see surrounding entries).
 - When a concept is renamed or removed, update or delete its entry.
+- **Every new term-box must also get a Glossary Learning card in the same task.** Add a matching entry to `learn_cards_seed.CARDS` (`term_key`, `section_id`, `term_title` — must exactly match the term-box's title text, `question`, `answer`, exactly 3 `distractors`); a new glossary section needs a new `learn_cards_seed.LEVELS` entry too. This is not optional busywork — `tests/test_glossary_learn_seed.py` enforces a strict 1:1 mapping between glossary term-boxes and seed cards in both directions, so `./run_tests.sh` fails if a term-box is added without a card (or a card is left behind after a term-box is removed/renamed). See `assets/glossary_learning.md` for the full checklist and card-authoring guidance.
 
 ### Asset documentation (`assets/`)
 - Identify which markdown files in `assets/` describe the area you changed. Update them to reflect the new behaviour, new DB tables, new config keys, new scheduler jobs, or new API endpoints.
