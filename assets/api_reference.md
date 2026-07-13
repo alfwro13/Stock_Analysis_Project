@@ -674,6 +674,8 @@ Full one-time initialisation sequence:
 6. Train the XGBoost volatility magnitude model
 7. Run inference for today's date
 
+Steps 4–6 persist their trained models to `models/macro_hmm.joblib`, `models/macro_rf.joblib`, and `models/macro_xgb.joblib`; `MacroAIEngine.__init__` loads them back on every subsequent instantiation (including inside `/macro/run-pipeline`, which otherwise builds a fresh, untrained instance).
+
 Only needs to be run once. Runs asynchronously — may take 5–15 minutes.
 
 **Request body:** none  

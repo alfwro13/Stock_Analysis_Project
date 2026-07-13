@@ -10,6 +10,7 @@ do not require a trained ML model:
   _ensure_training_log_table()— DB schema
   training guards             — early-return paths when data is insufficient
   run_macro_inference()       — no-events and untrained-model paths
+  _load_persisted_models()    — joblib load-on-init round trip
 """
 
 import sys
@@ -17,11 +18,13 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import joblib
 import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import macro_ai_engine
 from macro_ai_engine import MacroAIEngine
 
 
@@ -30,7 +33,7 @@ from macro_ai_engine import MacroAIEngine
 # ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def engine():
+def engine(tmp_path):
     """MacroAIEngine backed by an in-memory SQLite — no network, no disk."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -66,7 +69,11 @@ def engine():
     """)
     conn.commit()
 
-    with patch("macro_ai_engine.get_connection", return_value=conn):
+    # Isolate from any real trained models on disk so fixture state is deterministic.
+    with patch("macro_ai_engine.get_connection", return_value=conn), \
+         patch.object(macro_ai_engine, "MACRO_HMM_PATH", tmp_path / "no_hmm.joblib"), \
+         patch.object(macro_ai_engine, "MACRO_RF_PATH", tmp_path / "no_rf.joblib"), \
+         patch.object(macro_ai_engine, "MACRO_XGB_PATH", tmp_path / "no_xgb.joblib"):
         eng = MacroAIEngine()
     eng.conn = conn  # ensure fixture connection is used
     yield eng
@@ -229,3 +236,47 @@ class TestRunMacroInference:
             "SELECT ai_volatility_warning FROM macro_calendar WHERE event_id=1"
         ).fetchone()
         assert row["ai_volatility_warning"] is None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 6. _load_persisted_models() — models/*.joblib load-on-init round trip
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestLoadPersistedModels:
+
+    def test_loads_hmm_bundle_when_file_present(self, engine, tmp_path):
+        hmm_path = tmp_path / "macro_hmm.joblib"
+        joblib.dump({"model": "fake_hmm", "scaler": "fake_scaler", "state_order": np.array([1, 0, 2])}, hmm_path)
+        with patch.object(macro_ai_engine, "MACRO_HMM_PATH", hmm_path):
+            engine.hmm_model = None
+            engine._load_persisted_models()
+        assert engine.hmm_model == "fake_hmm"
+        assert engine.hmm_scaler == "fake_scaler"
+        np.testing.assert_array_equal(engine.hmm_state_order, [1, 0, 2])
+
+    def test_loads_rf_and_xgb_when_files_present(self, engine, tmp_path):
+        rf_path = tmp_path / "macro_rf.joblib"
+        xgb_path = tmp_path / "macro_xgb.joblib"
+        joblib.dump("fake_rf", rf_path)
+        joblib.dump("fake_xgb", xgb_path)
+        with patch.object(macro_ai_engine, "MACRO_RF_PATH", rf_path), \
+             patch.object(macro_ai_engine, "MACRO_XGB_PATH", xgb_path):
+            engine._load_persisted_models()
+        assert engine.rf_model == "fake_rf"
+        assert engine.xgb_model == "fake_xgb"
+
+    def test_no_op_when_no_files_present(self, engine, tmp_path):
+        with patch.object(macro_ai_engine, "MACRO_HMM_PATH", tmp_path / "missing_hmm.joblib"), \
+             patch.object(macro_ai_engine, "MACRO_RF_PATH", tmp_path / "missing_rf.joblib"), \
+             patch.object(macro_ai_engine, "MACRO_XGB_PATH", tmp_path / "missing_xgb.joblib"):
+            engine._load_persisted_models()
+        assert engine.hmm_model is None
+        assert engine.rf_model is None
+        assert engine.xgb_model is None
+
+    def test_corrupt_file_logs_and_does_not_raise(self, engine, tmp_path):
+        bad_path = tmp_path / "macro_xgb.joblib"
+        bad_path.write_text("not a real joblib file")
+        with patch.object(macro_ai_engine, "MACRO_XGB_PATH", bad_path):
+            engine._load_persisted_models()  # must not raise
+        assert engine.xgb_model is None

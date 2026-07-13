@@ -126,6 +126,7 @@ A stacked model architecture that evaluates systemic market risk.
 * **Flow:** * **HMM (Hidden Markov Model):** Reads structural `macro_indicators` to predict the hidden regime state (`ai_hmm_state` in `market_regimes`).
   * **Random Forest:** Reads `macro_calendar` forecasts to predict the probability of Wall Street being wrong (`ai_consensus_miss_prob`).
   * **XGBoost (Stacking):** Consumes the HMM state and RF probability to predict the exact percentage shock an upcoming event will have on the S&P 500 (`ai_volatility_warning`).
+* **Persistence:** all three models are persisted to `models/macro_hmm.joblib` (bundles the fitted `GaussianHMM`, its `StandardScaler`, and the canonical state-order remap), `models/macro_rf.joblib`, and `models/macro_xgb.joblib` on successful training, and loaded back in `MacroAIEngine.__init__`. Added 2026-07-13 — previously nothing was persisted, so `POST /macro/run-pipeline` (which constructs a fresh `MacroAIEngine`) always ran inference against untrained models unless `/macro/init-pipeline` had just trained them in the same process, logging `"XGBoost Volatility model is untrained. Bypassing stacked inference."` on every run.
 
 ---
 

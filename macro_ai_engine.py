@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import joblib
 import pandas as pd
 import numpy as np
 import xgboost as xgb
@@ -13,6 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import TimeSeriesSplit, cross_val_score
 from sklearn.preprocessing import StandardScaler
 
+from config import BASE_DIR
 from constants import (
     MACRO_CAL_MIN_TRAIN_ROWS,
     MACRO_CV_N_SPLITS,
@@ -32,6 +34,12 @@ from database import get_connection
 
 logger = logging.getLogger(__name__)
 
+MODELS_DIR = BASE_DIR / "models"
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
+MACRO_HMM_PATH = MODELS_DIR / "macro_hmm.joblib"
+MACRO_RF_PATH = MODELS_DIR / "macro_rf.joblib"
+MACRO_XGB_PATH = MODELS_DIR / "macro_xgb.joblib"
+
 
 class MacroAIEngine:
     def __init__(self) -> None:
@@ -44,8 +52,32 @@ class MacroAIEngine:
         self.rf_model: Optional[RandomForestClassifier] = None
         self.xgb_model: Optional[xgb.XGBRegressor] = None
 
+        self._load_persisted_models()
+
     def close(self) -> None:
         self.conn.close()
+
+    def _load_persisted_models(self) -> None:
+        try:
+            if MACRO_HMM_PATH.exists():
+                bundle = joblib.load(MACRO_HMM_PATH)
+                self.hmm_model = bundle["model"]
+                self.hmm_scaler = bundle["scaler"]
+                self.hmm_state_order = bundle["state_order"]
+        except Exception:
+            logger.exception("Failed to load persisted HMM regime model from %s.", MACRO_HMM_PATH)
+
+        try:
+            if MACRO_RF_PATH.exists():
+                self.rf_model = joblib.load(MACRO_RF_PATH)
+        except Exception:
+            logger.exception("Failed to load persisted RF consensus-miss model from %s.", MACRO_RF_PATH)
+
+        try:
+            if MACRO_XGB_PATH.exists():
+                self.xgb_model = joblib.load(MACRO_XGB_PATH)
+        except Exception:
+            logger.exception("Failed to load persisted XGBoost volatility model from %s.", MACRO_XGB_PATH)
 
     def _log_training_score(self, model_name: str, n_samples: int, cv_mean: float, cv_std: Optional[float], metric: str) -> None:
         try:
@@ -120,6 +152,8 @@ class MacroAIEngine:
             self.hmm_state_order = np.argsort(self.hmm_model.means_[:, 2])
             logger.info(f"HMM state canonical order (raw->canonical): {dict(enumerate(self.hmm_state_order))}")
 
+            joblib.dump({"model": self.hmm_model, "scaler": self.hmm_scaler, "state_order": self.hmm_state_order}, MACRO_HMM_PATH)
+
             logger.info("Successfully trained Hidden Markov Model for Regime Clustering.")
         except Exception:
             logger.exception("Failed to train Regime Clustering (HMM).")
@@ -157,6 +191,7 @@ class MacroAIEngine:
             # Restrict depth to prevent overfitting on sparse early data
             self.rf_model = RandomForestClassifier(n_estimators=MACRO_RF_N_ESTIMATORS, max_depth=MACRO_RF_MAX_DEPTH, random_state=42)
             self.rf_model.fit(X, y)
+            joblib.dump(self.rf_model, MACRO_RF_PATH)
 
             logger.info(f"Successfully trained Random Forest Consensus Miss model on {len(X)} historical events.")
         except Exception:
@@ -263,6 +298,7 @@ class MacroAIEngine:
                 random_state=42
             )
             self.xgb_model.fit(X, y)
+            joblib.dump(self.xgb_model, MACRO_XGB_PATH)
 
             logger.info(f"Successfully trained Stacking XGBoost Volatility model on {len(X)} historical events.")
         except Exception:
