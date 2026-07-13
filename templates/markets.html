@@ -25,6 +25,7 @@
 
 <script>
 window.MARKETS_DEFAULT_VIEW = {{ default_view | tojson }};
+window.MARKETS_HIDE_US_FUTURES = {{ hide_us_futures | tojson }};
 window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
 </script>
 <script src="/static/js/markets.js?v={{ css_version }}"></script>

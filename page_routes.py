@@ -829,10 +829,14 @@ async def markets_page(request: Request):
     default_view = request.cookies.get("markets_view", "dynamic")
     if default_view not in ("dynamic", "static"):
         default_view = "dynamic"
+    hide_us_futures = request.cookies.get("markets_hide_us_futures") == "1"
     return templates.TemplateResponse(
         request=request,
         name="markets.html",
-        context={"unread_count": get_unread_count(), "default_view": default_view, "config": load_config()},
+        context={
+            "unread_count": get_unread_count(), "default_view": default_view,
+            "hide_us_futures": hide_us_futures, "config": load_config(),
+        },
     )
 
 

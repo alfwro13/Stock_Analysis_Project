@@ -190,6 +190,20 @@ def test_markets_page_rejects_invalid_view_cookie(client):
     assert 'window.MARKETS_DEFAULT_VIEW = "dynamic"' in resp.text
 
 
+@pytest.mark.pages
+def test_markets_page_defaults_to_showing_futures_with_no_cookie(client):
+    resp = client.get("/markets")
+    assert resp.status_code == 200
+    assert "window.MARKETS_HIDE_US_FUTURES = false" in resp.text
+
+
+@pytest.mark.pages
+def test_markets_page_respects_hide_us_futures_cookie(client):
+    resp = client.get("/markets", cookies={"markets_hide_us_futures": "1"})
+    assert resp.status_code == 200
+    assert "window.MARKETS_HIDE_US_FUTURES = true" in resp.text
+
+
 # ── Index Detail (Markets page registry) ────────────────────────────────────────
 
 @pytest.mark.pages

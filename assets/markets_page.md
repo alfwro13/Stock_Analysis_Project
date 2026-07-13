@@ -101,6 +101,8 @@ Five registry rows carry a paired front-month future: S&P 500 (`^GSPC`/`ES=F`), 
 
 The compact **Market Pulse widget** (Portfolio/Watchlist/Stock Detail) is unchanged and still shows a single auto-swapping tile per index via `resolve_tile()`/`select_pulse_tickers()` — it has room for one summary tile per index, not a pair.
 
+**Hide Futures checkbox (added 2026-07-13):** the US region header carries a "Hide Futures" checkbox (`static/js/markets.js`) that drops the futures side of all four US dual-instrument tiles (S&P 500, Nasdaq 100, Dow, Russell 2000) client-side — it re-renders from the already-fetched `marketsLastRegionsData` rather than re-fetching, and is scoped to `tile.region === 'US'` only, so the Nikkei 225 futures tile in the Asia section is unaffected. State persists via a `markets_hide_us_futures` cookie (`1`/absent), read server-side in `page_routes.markets_page()` and exposed as `window.MARKETS_HIDE_US_FUTURES`, mirroring the existing `markets_view` cookie pattern.
+
 A direct hit on a future ticker's own `/index/{ticker}` URL (e.g. `/index/ES=F`) renders that future's own detail page (its own `market_pulse_cache`/`quant_signals`/parquet data, keyed by the future ticker itself) with a banner linking back to its paired spot's page — it no longer redirects (302) to the spot page. The spot's own `/index/{ticker}` page still shows its pre-existing "cash market closed" banner when the future is currently primary, now linking directly to the future's own page instead of implying (without actually swapping any data) that the spot page itself had switched instruments.
 
 ---

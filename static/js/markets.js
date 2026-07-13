@@ -2,6 +2,8 @@ let marketsPollInterval;
 let marketsTickInterval;
 let marketsLastFetchTime = null;
 let marketsCurrentView = window.MARKETS_DEFAULT_VIEW || 'dynamic';
+let marketsHideUsFutures = window.MARKETS_HIDE_US_FUTURES || false;
+let marketsLastRegionsData = null;
 const MARKETS_REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000);
 
 const MARKETS_REGION_LABELS = {
@@ -94,13 +96,14 @@ function marketsTileHTML(tile) {
         // Spot and future are always shown side by side (not auto-swapped into one tile) so it's
         // never ambiguous which instrument a price belongs to.
         const spot = tile.dual_instrument.spot;
-        const future = tile.dual_instrument.future;
         const spotVisual = marketsCardVisualState(spot.is_positive, tile.invert_color, isForex, spot.is_stale, tile.market_state === 'open');
+        const spotCardHTML = marketsCardHTML(spot.ticker, spot.display_name, spot.price, spot.change_pct, tile.currency, spot.sparkline, tile.sentiment_score, 'Index', spotVisual);
+
+        if (tile.region === 'US' && marketsHideUsFutures) return spotCardHTML;
+
+        const future = tile.dual_instrument.future;
         const futureVisual = marketsCardVisualState(future.is_positive, tile.invert_color, isForex, future.is_stale, null);
-        return (
-            marketsCardHTML(spot.ticker, spot.display_name, spot.price, spot.change_pct, tile.currency, spot.sparkline, tile.sentiment_score, 'Index', spotVisual) +
-            marketsCardHTML(future.ticker, future.display_name, future.price, future.change_pct, tile.currency, future.sparkline, undefined, 'Futures', futureVisual)
-        );
+        return spotCardHTML + marketsCardHTML(future.ticker, future.display_name, future.price, future.change_pct, tile.currency, future.sparkline, undefined, 'Futures', futureVisual);
     }
 
     const marketOpen = tile.market_state === 'open';
@@ -116,15 +119,32 @@ function marketsRegionSectionHTML(region) {
     // status that was never actually checked, so the badge is only shown for the three
     // regions whose state is derived from real exchange hours.
     const badgeHTML = region.region === 'Commodities_FX' ? '' : marketsStateBadgeHTML(region.state);
+    const hideFuturesCheckHTML = region.region === 'US' ? `
+        <div class="form-check form-check-inline ms-2">
+            <input class="form-check-input" type="checkbox" id="markets-hide-us-futures"${marketsHideUsFutures ? ' checked' : ''}>
+            <label class="form-check-label" for="markets-hide-us-futures">Hide Futures</label>
+        </div>` : '';
     return `
         <div class="markets-region-section">
             <div class="markets-region-header">
                 <h3>${label}</h3>
                 ${badgeHTML}
+                ${hideFuturesCheckHTML}
             </div>
             <div class="markets-tile-grid">${tilesHTML}</div>
         </div>
     `;
+}
+
+function renderMarketsRegions(regions) {
+    const container = document.getElementById('markets-regions-container');
+    if (container) container.innerHTML = regions.map(marketsRegionSectionHTML).join('');
+}
+
+function setMarketsHideUsFutures(hide) {
+    marketsHideUsFutures = hide;
+    document.cookie = 'markets_hide_us_futures=' + (hide ? '1' : '0') + ';path=/;max-age=31536000';
+    if (marketsLastRegionsData) renderMarketsRegions(marketsLastRegionsData);
 }
 
 function formatMarketsAge(ms) {
@@ -151,10 +171,8 @@ async function fetchMarketsData() {
         const text = document.getElementById('markets-pulse-text');
 
         if (response.ok && result.status === 'success') {
-            const container = document.getElementById('markets-regions-container');
-            if (container) {
-                container.innerHTML = result.data.regions.map(marketsRegionSectionHTML).join('');
-            }
+            marketsLastRegionsData = result.data.regions;
+            renderMarketsRegions(marketsLastRegionsData);
             marketsLastFetchTime = Date.now();
             updateMarketsLastUpdatedText();
             const anyStale = result.data.regions.some(r => r.tiles.some(t => t.stale_data));
@@ -195,6 +213,11 @@ document.addEventListener('DOMContentLoaded', function () {
     setMarketsView(marketsCurrentView);
     document.querySelectorAll('.change-period-btn[data-view]').forEach(function (btn) {
         btn.addEventListener('click', function () { setMarketsView(this.dataset.view); });
+    });
+    document.getElementById('markets-regions-container').addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'markets-hide-us-futures') {
+            setMarketsHideUsFutures(e.target.checked);
+        }
     });
     marketsPollInterval = setInterval(fetchMarketsData, MARKETS_REFRESH_RATE_MS);
     marketsTickInterval = setInterval(updateMarketsLastUpdatedText, 1000);
