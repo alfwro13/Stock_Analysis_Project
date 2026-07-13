@@ -226,6 +226,27 @@ class TestGetAllCachedPulse:
         assert ASSET_TICKER not in result
 
 
+# ── get_cached_change_pct ───────────────────────────────────────────────────────
+
+class TestGetCachedChangePct:
+    def teardown_method(self):
+        _clear(ASSET_TICKER)
+
+    def test_returns_cached_change_pct(self):
+        _seed_pulse(ASSET_TICKER, change_pct=-9.0)
+        assert _mp.get_cached_change_pct(ASSET_TICKER) == -9.0
+
+    def test_unknown_ticker_returns_none(self):
+        _clear(ASSET_TICKER)
+        assert _mp.get_cached_change_pct(ASSET_TICKER) is None
+
+    def test_survives_market_closed_state(self):
+        """The core contract this function exists for: a value cached while a foreign exchange
+        was open must still be readable after that exchange has since closed for the day."""
+        _seed_pulse(ASSET_TICKER, change_pct=-9.0, last_updated=time.time() - 3600 * 12)
+        assert _mp.get_cached_change_pct(ASSET_TICKER) == -9.0
+
+
 # ── closed-market / needs_refresh behaviour ───────────────────────────────────
 
 class TestClosedMarketStaleness:

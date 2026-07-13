@@ -406,6 +406,24 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     return cache
 
 
+def get_cached_change_pct(ticker: str) -> Optional[float]:
+    """Last-known change_pct for one ticker — persists past market close, so a benchmark whose
+    exchange is currently shut still has a meaningful figure instead of nothing at all."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT change_pct FROM market_pulse_cache WHERE ticker = ?", (ticker,))
+        row = cursor.fetchone()
+        return row['change_pct'] if row and row['change_pct'] is not None else None
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to read cached change_pct for %s: %s", ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def _select_active_pulse_tickers(config_data: dict) -> Dict[str, str]:
     """Static mode: today's is_pulse_tile picked list. Dynamic mode: markets_engine's own
     region-ordering logic, so Market Pulse can mirror what the Markets page currently shows.

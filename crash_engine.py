@@ -10,6 +10,7 @@ import ta
 
 from utils import clamp_beta
 from yahoo_engine import yahoo_engine
+from database import get_ticker_registry_row_by_exchange
 import market_pulse
 import markets_engine
 
@@ -65,6 +66,26 @@ class CrashEngine:
             return None
         return markets_engine.resolve_benchmark_for_holdings(holdings)
 
+    def _resolve_benchmark_change(
+        self, benchmark_row: dict[str, Any], live_ticker: str | None = None
+    ) -> tuple[float | None, bool]:
+        """(change_pct, is_live) for a registry benchmark. Prefers a live intraday figure
+        (orchestrator-injected, then a direct fetch while the exchange is open); falls back to
+        market_pulse_cache's last-known change_pct — the same figure the Markets page tiles
+        show — which persists after that exchange closes, so a benchmark whose market has
+        already finished its session still has real context instead of "unavailable"."""
+        bench_ticker = benchmark_row['ticker']
+        lookup_ticker = live_ticker or bench_ticker
+        injected = self.benchmark_changes.get(lookup_ticker)
+        if injected is not None:
+            return injected, True
+        # _fetch_live_change_pct already no-ops when the exchange is shut, so no separate gate
+        # is needed here — it either returns a live figure or None, cleanly falling through.
+        live = self._fetch_live_change_pct(lookup_ticker, benchmark_row.get('exchange'))
+        if live is not None:
+            return live, True
+        return market_pulse.get_cached_change_pct(bench_ticker), False
+
     def _generate_context_report(
         self,
         ticker: str,
@@ -76,8 +97,15 @@ class CrashEngine:
         report = []
         company_name = asset_meta.get('company_name', ticker)
 
-        benchmark_row = self._resolve_etf_benchmark(asset_meta)
         is_etf = asset_meta.get('quote_type') == 'ETF'
+        benchmark_row = self._resolve_etf_benchmark(asset_meta)
+        # A non-ETF (or an ETF with no resolvable holdings-derived index — see below) always
+        # compares against the S&P 500 via the registry's own NYSE row (^GSPC), so this is one
+        # code path rather than a separate SPY-specific branch.
+        live_ticker = None
+        if benchmark_row is None and not is_etf:
+            benchmark_row = get_ticker_registry_row_by_exchange("NYSE")
+            live_ticker = "SPY"  # already bulk-fetched every cycle; ^GSPC is not
 
         if is_etf and benchmark_row is None:
             # No relevant single index could be resolved from the ETF's cached holdings
@@ -85,42 +113,19 @@ class CrashEngine:
             # rather than default to a misleading S&P 500 comparison.
             pass
         elif benchmark_row is not None:
-            bench_ticker = benchmark_row['ticker']
             bench_name = benchmark_row['display_name']
-            bench_exchange = benchmark_row.get('exchange')
-            bench_drop = self.benchmark_changes.get(bench_ticker)
-            if bench_drop is None:
-                bench_drop = self._fetch_live_change_pct(bench_ticker, bench_exchange)
+            bench_drop, is_live = self._resolve_benchmark_change(benchmark_row, live_ticker=live_ticker)
+            tracks_phrase = "the market it tracks" if is_etf else "the broader market"
+            label = bench_name if is_live else f"{bench_name}, last session"
 
             if bench_drop is None:
-                report.append(f"{bench_name} is currently closed; benchmark context unavailable for this alert.")
+                report.append(f"No recent {bench_name} data is available for benchmark context on this alert.")
             elif bench_drop <= -1.5:
-                report.append(f"The broader market this ETF tracks is currently experiencing a heavy sell-off ({bench_name}: {bench_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated issues.")
+                report.append(f"{tracks_phrase.capitalize()} is currently experiencing a heavy sell-off ({label}: {bench_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated issues.")
             elif bench_drop >= 0:
-                report.append(f"This appears to be an isolated (idiosyncratic) event. While {company_name} is crashing, the market it tracks remains green/flat ({bench_name}: {bench_drop:.2f}%).")
+                report.append(f"This appears to be an isolated (idiosyncratic) event. While {company_name} is crashing, {tracks_phrase} remains green/flat ({label}: {bench_drop:.2f}%).")
             else:
-                report.append(f"The market this ETF tracks is slightly weak ({bench_name}: {bench_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
-        else:
-            if self.spy_change_pct is not None:
-                spy_drop: float | None = self.spy_change_pct
-            elif market_pulse.is_exchange_open("NYSE"):
-                logger.warning(
-                    "spy_change_pct not injected for %s — falling back to live SPY fetch. "
-                    "This is expected only outside the orchestrator (tests, ad-hoc scripts).",
-                    ticker,
-                )
-                spy_drop = self._fetch_market_context()
-            else:
-                spy_drop = None
-
-            if spy_drop is None:
-                report.append("US market is currently closed; S&P 500 context unavailable for this alert.")
-            elif spy_drop <= -1.5:
-                report.append(f"The broader market is currently experiencing a heavy sell-off (S&P 500: {spy_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated company issues.")
-            elif spy_drop >= 0:
-                report.append(f"This appears to be an isolated (idiosyncratic) event. While {company_name} is crashing, the broader market remains green/flat (S&P 500: {spy_drop:.2f}%).")
-            else:
-                report.append(f"The broader market is slightly weak (S&P 500: {spy_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
+                report.append(f"{tracks_phrase.capitalize()} is slightly weak ({label}: {bench_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
 
         # Use df_hist (already loaded by orchestrator) to avoid a per-crash HTTP call.
         try:

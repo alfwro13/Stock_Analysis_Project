@@ -189,25 +189,37 @@ class TestSpyMarketContext:
         prices = [100.0] * 55 + [100.0]
         return pd.DataFrame({"Close": prices})
 
-    def test_us_market_closed_skips_fetch_and_shows_unavailable_note(self):
+    def test_us_market_closed_no_cache_shows_unavailable_note(self):
         eng = _engine()
         eng.spy_change_pct = None
         df = self._context_df()
-        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False) as mock_open, \
-             patch.object(eng, "_fetch_market_context") as mock_fetch:
+        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False), \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=None) as mock_cached:
             report = eng._generate_context_report("LCJP.L", -4.0, df, {"company_name": "Test"})
-        mock_fetch.assert_not_called()
-        assert "US market is currently closed" in report
+        mock_cached.assert_called_once_with("^GSPC")
+        assert "No recent US S&P 500 data is available" in report
+
+    def test_us_market_closed_falls_back_to_last_session_cached_change(self):
+        """Core fix: a foreign/US benchmark that has already closed for the day must still show
+        its last completed session's move (from market_pulse_cache, same source as the Markets
+        page) instead of reporting unavailable — this is what a real KOSPI-closed alert needed."""
+        eng = _engine()
+        eng.spy_change_pct = None
+        df = self._context_df()
+        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False), \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=-9.0):
+            report = eng._generate_context_report("LCJP.L", -4.0, df, {"company_name": "Test"})
+        assert "US S&P 500, last session: -9.00%" in report
 
     def test_us_market_open_calls_live_fetch_when_not_injected(self):
         eng = _engine()
         eng.spy_change_pct = None
         df = self._context_df()
-        with patch("crash_engine.market_pulse.is_exchange_open", return_value=True), \
-             patch.object(eng, "_fetch_market_context", return_value=None) as mock_fetch:
+        with patch.object(eng, "_fetch_live_change_pct", return_value=None) as mock_fetch, \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=None):
             report = eng._generate_context_report("TEST", -4.0, df, {"company_name": "Test"})
-        mock_fetch.assert_called_once()
-        assert "US market is currently closed" in report
+        mock_fetch.assert_called_once_with("SPY", "NYSE")
+        assert "No recent US S&P 500 data is available" in report
 
     def test_etf_with_unresolved_benchmark_omits_comparison_sentence(self):
         """Per operator direction: an ETF whose holdings aren't cached yet, or don't map to a
@@ -255,7 +267,7 @@ class TestSpyMarketContext:
         mock_fetch.assert_called_once_with("^N225", "TSE")
         assert "-3.00%" in report
 
-    def test_etf_benchmark_market_closed_shows_index_specific_note(self):
+    def test_etf_benchmark_market_closed_no_cache_shows_unavailable_note(self):
         eng = _engine()
         eng.benchmark_changes = {}
         df = self._context_df()
@@ -267,9 +279,29 @@ class TestSpyMarketContext:
         with patch(
             "crash_engine.markets_engine.resolve_benchmark_for_holdings",
             return_value={"ticker": "^N225", "display_name": "Nikkei 225", "exchange": "TSE"},
-        ), patch.object(eng, "_fetch_live_change_pct", return_value=None):
+        ), patch.object(eng, "_fetch_live_change_pct", return_value=None), \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=None):
             report = eng._generate_context_report("VAPX.L", -4.0, df, meta)
-        assert "Nikkei 225 is currently closed" in report
+        assert "No recent Nikkei 225 data is available" in report
+
+    def test_etf_benchmark_market_closed_falls_back_to_last_session_cached_change(self):
+        """The KOSPI real-world case: the exchange the ETF tracks has already closed, but its
+        last session's move (cached from Markets page traffic) is still the relevant context."""
+        eng = _engine()
+        eng.benchmark_changes = {}
+        df = self._context_df()
+        meta = {
+            "company_name": "Korea Heavy ETF",
+            "quote_type": "ETF",
+            "top_holdings": json.dumps([{"symbol": "005930.KS", "name": "Samsung", "weight": 0.2}]),
+        }
+        with patch(
+            "crash_engine.markets_engine.resolve_benchmark_for_holdings",
+            return_value={"ticker": "^KS11", "display_name": "KOSPI", "exchange": "KRX"},
+        ), patch.object(eng, "_fetch_live_change_pct", return_value=None), \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=-9.0):
+            report = eng._generate_context_report("KODEX.L", -4.0, df, meta)
+        assert "KOSPI, last session: -9.00%" in report
 
     def test_non_etf_ticker_keeps_sp500_comparison_even_with_holdings_resolver_available(self):
         eng = _engine()

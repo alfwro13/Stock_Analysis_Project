@@ -367,7 +367,10 @@ class IntradayOrchestrator:
                 return None
 
             m_df.dropna(subset=['Close'], inplace=True)
-            if len(m_df) < 5 or self._seconds_since(m_df.index[-1]) > _STALE_SECONDS:
+            # 2 bars, not 5 — matches the per-ticker session_open bar-count requirement (line
+            # ~716) so a benchmark comparison is available as early in the session as the crash
+            # trigger itself can fire, instead of leaving a ~20-minute dead zone after open.
+            if len(m_df) < 2 or self._seconds_since(m_df.index[-1]) > _STALE_SECONDS:
                 return None
 
             m_open = float(m_df['Close'].iloc[0])
