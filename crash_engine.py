@@ -274,7 +274,6 @@ class CrashEngine:
 
         if is_session_crash or (is_dropping_fast and is_breaking_sma) or is_below_atr:
             reason = []
-            context_report = ""
 
             if is_session_crash:
                 if gap_pct is not None and since_open_pct is not None:
@@ -286,8 +285,11 @@ class CrashEngine:
                     )
                 else:
                     reason.append(f"SESSION CRASH / GAP DOWN: Dropped {abs(intraday_drop_pct):.2f}% today.")
-                context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta, df_hist)
-            
+
+            # Not gated on is_session_crash — every trigger type (multi-day bleed, ATR floor
+            # break) benefits from the same benchmark/volume/news context, not just a same-day gap.
+            context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta, df_hist)
+
             if is_dropping_fast and not is_session_crash:
                 reason.append(f"Multi-Day Bleed: Dropped {abs(price_drop_pct):.2f}% in {self.drop_days}d")
             if is_breaking_sma and not is_session_crash:
