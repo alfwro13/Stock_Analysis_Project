@@ -10,6 +10,7 @@ import pytest
 import database as _db
 from universe_fundamentals_engine import (
     _compute_fundamental_score, _clean, _needs_holdings_refresh, sync_etf_holdings_cache,
+    _upsert_fundamentals,
 )
 
 
@@ -291,3 +292,60 @@ class TestSyncEtfHoldingsCache:
         with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings") as mock_fetch:
             sync_etf_holdings_cache([])
         mock_fetch.assert_not_called()
+
+
+class TestUpsertFundamentalsDoesNotWipeOtherEnginesColumns:
+    """INSERT OR REPLACE used to reset every column not in this statement to its schema default,
+    silently wiping top_holdings/sector_weightings/holdings_updated_at (this module's own other
+    writer, sync_etf_holdings_cache) and piotroski_f_score/altman_z_score/beneish_m_score/
+    forensic_last_updated (scheduler_jobs.py's monthly Forensic job) on every weekly sync run.
+    Fixed via ON CONFLICT DO UPDATE with an explicit column list (found/fixed 2026-07-13)."""
+
+    TICKER = "TST_UPSERT_WIPE"
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker=?", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_second_write_preserves_other_engines_columns(self):
+        conn = _db.get_connection()
+        conn.execute(
+            "INSERT INTO stock_signals (ticker, top_holdings, sector_weightings, holdings_updated_at, "
+            "piotroski_f_score, altman_z_score, beneish_m_score, forensic_last_updated, setup_tags) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (self.TICKER, '[{"symbol": "NVDA", "weight": 0.1}]', '[{"name": "Technology", "weight": 1.0}]',
+             "2026-07-01 00:00:00", 7.0, 3.2, -2.1, "2026-07-01 00:00:00", '["Quality Compounder"]'),
+        )
+        conn.commit()
+        conn.close()
+
+        _upsert_fundamentals(self.TICKER, {"shortName": "Test Co", "sector": "Technology", "country": "United States"})
+
+        conn = _db.get_connection()
+        row = conn.execute(
+            "SELECT company_name, top_holdings, sector_weightings, holdings_updated_at, piotroski_f_score, "
+            "altman_z_score, beneish_m_score, forensic_last_updated, setup_tags FROM stock_signals WHERE ticker=?",
+            (self.TICKER,),
+        ).fetchone()
+        conn.close()
+
+        assert row["company_name"] == "Test Co"  # confirms the upsert actually ran, not a no-op
+        assert row["top_holdings"] == '[{"symbol": "NVDA", "weight": 0.1}]'
+        assert row["sector_weightings"] == '[{"name": "Technology", "weight": 1.0}]'
+        assert row["holdings_updated_at"] == "2026-07-01 00:00:00"
+        assert row["piotroski_f_score"] == 7.0
+        assert row["altman_z_score"] == 3.2
+        assert row["beneish_m_score"] == -2.1
+        assert row["forensic_last_updated"] == "2026-07-01 00:00:00"
+        assert row["setup_tags"] == '["Quality Compounder"]'
+
+    def test_first_insert_still_creates_a_row(self):
+        _upsert_fundamentals(self.TICKER, {"shortName": "Test Co", "sector": "Technology", "country": "United States"})
+        conn = _db.get_connection()
+        row = conn.execute("SELECT company_name FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()
+        conn.close()
+        assert row["company_name"] == "Test Co"

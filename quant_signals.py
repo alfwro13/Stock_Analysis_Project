@@ -511,9 +511,7 @@ class QuantEngine:
             total_assets = info.get('totalAssets', None)
             nav_price = info.get('navPrice', None)
             expense_ratio = info.get('expenseRatio', info.get('annualReportExpenseRatio', None))
-            top_holdings = json.dumps(info.get('holdings', []))
-            sector_weightings = json.dumps(info.get('sectorWeightings', []))
-            
+
             trailing_pe = info.get('trailingPE', None)
             forward_pe = info.get('forwardPE', None)
             peg_ratio = info.get('pegRatio', None)
@@ -711,7 +709,7 @@ class QuantEngine:
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                 price_to_sales, free_cash_flow,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-                ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
+                ytd_return, total_assets, nav_price, expense_ratio,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                 short_interest, institutional_ownership, beta, yield_correlation,
                 score, signal, notes_html, tags_json
@@ -735,7 +733,7 @@ class QuantEngine:
                    profit_margin: Optional[float], roe: Optional[float], revenue_growth: Optional[float],
                    debt_to_equity: Optional[float], current_ratio: Optional[float], operating_cash_flow: Optional[float],
                    ytd_return: Optional[float], total_assets: Optional[float], nav_price: Optional[float],
-                   expense_ratio: Optional[float], top_holdings: str, sector_weightings: str,
+                   expense_ratio: Optional[float],
                    dividend_yield: Optional[float], ex_dividend_date: Optional[str], target_price: Optional[float],
                    analyst_rating: str, next_earnings_date: str, short_interest: Optional[float],
                    institutional_ownership: Optional[float], beta: Optional[float], yield_correlation: Optional[float],
@@ -763,15 +761,20 @@ class QuantEngine:
             try:
                 cursor = conn.cursor()
                 
+                # ON CONFLICT DO UPDATE (not INSERT OR REPLACE) — the latter resets every column
+                # NOT in this statement to its schema default, silently wiping out top_holdings/
+                # sector_weightings/holdings_updated_at (universe_fundamentals_engine.py) and
+                # piotroski_f_score/altman_z_score/beneish_m_score/forensic_last_updated
+                # (scheduler_jobs.py's monthly Forensic job) on every single quant scan run.
                 query = '''
-                    INSERT OR REPLACE INTO stock_signals (
+                    INSERT INTO stock_signals (
                         ticker, last_updated, company_name, sector, country, currency, quote_type,
                         current_price, ma_5_day, ma_10_day, ma_21_day, ma_50_day, ma_200_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
                         fifty_two_week_low, fifty_two_week_high,
                         trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                         price_to_sales, free_cash_flow,
                         profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-                        ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
+                        ytd_return, total_assets, nav_price, expense_ratio,
                         dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                         short_interest, institutional_ownership, beta, yield_correlation,
                         composite_score, overall_signal, educational_notes, setup_tags
@@ -782,11 +785,34 @@ class QuantEngine:
                         ?, ?, ?, ?, ?,
                         ?, ?,
                         ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?,
                         ?, ?, ?, ?
                     )
+                    ON CONFLICT(ticker) DO UPDATE SET
+                        last_updated=excluded.last_updated, company_name=excluded.company_name, sector=excluded.sector,
+                        country=excluded.country, currency=excluded.currency, quote_type=excluded.quote_type,
+                        current_price=excluded.current_price, ma_5_day=excluded.ma_5_day, ma_10_day=excluded.ma_10_day,
+                        ma_21_day=excluded.ma_21_day, ma_50_day=excluded.ma_50_day, ma_200_day=excluded.ma_200_day,
+                        trend_50d=excluded.trend_50d, trend_200d=excluded.trend_200d, rsi_14=excluded.rsi_14,
+                        atr_stop_loss=excluded.atr_stop_loss,
+                        fifty_two_week_low=excluded.fifty_two_week_low, fifty_two_week_high=excluded.fifty_two_week_high,
+                        trailing_pe=excluded.trailing_pe, forward_pe=excluded.forward_pe, peg_ratio=excluded.peg_ratio,
+                        peter_lynch_peg=excluded.peter_lynch_peg, price_to_book=excluded.price_to_book,
+                        price_to_sales=excluded.price_to_sales, free_cash_flow=excluded.free_cash_flow,
+                        profit_margin=excluded.profit_margin, roe=excluded.roe, revenue_growth=excluded.revenue_growth,
+                        debt_to_equity=excluded.debt_to_equity, current_ratio=excluded.current_ratio,
+                        operating_cash_flow=excluded.operating_cash_flow,
+                        ytd_return=excluded.ytd_return, total_assets=excluded.total_assets, nav_price=excluded.nav_price,
+                        expense_ratio=excluded.expense_ratio,
+                        dividend_yield=excluded.dividend_yield, ex_dividend_date=excluded.ex_dividend_date,
+                        target_price=excluded.target_price, analyst_rating=excluded.analyst_rating,
+                        next_earnings_date=excluded.next_earnings_date,
+                        short_interest=excluded.short_interest, institutional_ownership=excluded.institutional_ownership,
+                        beta=excluded.beta, yield_correlation=excluded.yield_correlation,
+                        composite_score=excluded.composite_score, overall_signal=excluded.overall_signal,
+                        educational_notes=excluded.educational_notes, setup_tags=excluded.setup_tags
                 '''
 
                 timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -797,7 +823,7 @@ class QuantEngine:
                     _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
                     _clean(price_to_sales), _clean(free_cash_flow),
                     _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio), _clean(operating_cash_flow),
-                    _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
+                    _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio),
                     _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
                     _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
                     int(score), signal, notes, tags_json

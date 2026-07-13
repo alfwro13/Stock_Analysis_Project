@@ -249,8 +249,12 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     try:
         conn = get_connection()
         cursor = conn.cursor()
+        # ON CONFLICT DO UPDATE (not INSERT OR REPLACE) — the latter resets every column NOT in
+        # this statement to its schema default, silently wiping out top_holdings/sector_weightings/
+        # holdings_updated_at and piotroski_f_score/altman_z_score/beneish_m_score/
+        # forensic_last_updated, which are owned by other engines' own targeted UPDATEs.
         cursor.execute("""
-            INSERT OR REPLACE INTO stock_signals (
+            INSERT INTO stock_signals (
                 ticker, last_updated, company_name, sector, country, currency, quote_type,
                 current_price,
                 fifty_two_week_low, fifty_two_week_high,
@@ -260,7 +264,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 operating_cash_flow, dividend_yield, ex_dividend_date,
                 target_price, analyst_rating, next_earnings_date,
                 short_interest, institutional_ownership, beta,
-                composite_score, overall_signal, educational_notes, setup_tags,
+                composite_score, overall_signal, educational_notes,
                 score_method
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?,
@@ -272,9 +276,28 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
-                ?, ?, ?, ?,
+                ?, ?, ?,
                 ?
             )
+            ON CONFLICT(ticker) DO UPDATE SET
+                last_updated=excluded.last_updated, company_name=excluded.company_name, sector=excluded.sector,
+                country=excluded.country, currency=excluded.currency, quote_type=excluded.quote_type,
+                current_price=excluded.current_price,
+                fifty_two_week_low=excluded.fifty_two_week_low, fifty_two_week_high=excluded.fifty_two_week_high,
+                trailing_pe=excluded.trailing_pe, forward_pe=excluded.forward_pe, peg_ratio=excluded.peg_ratio,
+                peter_lynch_peg=excluded.peter_lynch_peg, price_to_book=excluded.price_to_book,
+                price_to_sales=excluded.price_to_sales, free_cash_flow=excluded.free_cash_flow,
+                profit_margin=excluded.profit_margin, roe=excluded.roe, revenue_growth=excluded.revenue_growth,
+                debt_to_equity=excluded.debt_to_equity, current_ratio=excluded.current_ratio,
+                operating_cash_flow=excluded.operating_cash_flow, dividend_yield=excluded.dividend_yield,
+                ex_dividend_date=excluded.ex_dividend_date,
+                target_price=excluded.target_price, analyst_rating=excluded.analyst_rating,
+                next_earnings_date=excluded.next_earnings_date,
+                short_interest=excluded.short_interest, institutional_ownership=excluded.institutional_ownership,
+                beta=excluded.beta,
+                composite_score=excluded.composite_score, overall_signal=excluded.overall_signal,
+                educational_notes=excluded.educational_notes,
+                score_method=excluded.score_method
         """, (
             ticker, timestamp, company_name, sector, country, currency, quote_type,
             _clean(current_price),
@@ -285,7 +308,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
             _clean(operating_cash_flow), _clean(dividend_yield), ex_dividend_date,
             _clean(target_price), analyst_rating, next_earnings_date,
             _clean(short_interest), _clean(institutional_ownership), _clean(beta),
-            int(score), signal, notes_html, '[]',
+            int(score), signal, notes_html,
             'UNIVERSE_FUNDAMENTALS',
         ))
         conn.commit()
