@@ -650,6 +650,10 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
 
     watchlist_tickers = get_watchlist_tickers()
 
+    from db_accounts import get_all_holding_price_limits, get_watchlist_account
+    watchlist_account_id = get_watchlist_account()['id']
+    all_holding_limits = get_all_holding_price_limits()
+
     watchlist_data = []
     for row in db_rows:
         row_dict = dict(row)
@@ -687,10 +691,16 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             row_dict['trap_phase_label'] = phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None
             row_dict['bubble_flag_label'] = flag_label(row_dict.get('bubble_flag'))
 
+            limits = all_holding_limits.get((watchlist_account_id, row_dict['ticker']), {})
+            row_dict['low_target'] = limits.get('low_limit')
+            row_dict['high_target'] = limits.get('high_limit')
+
             watchlist_data.append(row_dict)
 
     watchlist_data.sort(key=lambda x: x['ticker'])
     sectors = sorted({row['sector'] or 'Unclassified' for row in watchlist_data})
+
+    has_targets_set = any(row['low_target'] is not None or row['high_target'] is not None for row in watchlist_data)
 
     present_signals = {row['overall_signal'].upper() for row in watchlist_data if row.get('overall_signal')}
 
@@ -733,6 +743,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "present_signals": present_signals,
             "present_tags": present_tags,
             "present_score_buckets": present_score_buckets,
+            "has_targets_set": has_targets_set,
             "global_updated": global_updated,
             "embed": embed,
             "embed_token": embed_token,

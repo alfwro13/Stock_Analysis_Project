@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import display_price as fmt_target_price %}
 
 {% block title %}Quantamental - Watchlist{% endblock %}
 
@@ -100,6 +101,14 @@
             {% endfor %}
         </select>
     </div>
+    {% if has_targets_set %}
+    <div class="col-6 col-md-auto">
+        <select id="targetFilter" class="form-select">
+            <option value="ALL">All Rows</option>
+            <option value="HAS_TARGET">Has Target Set</option>
+        </select>
+    </div>
+    {% endif %}
     <div class="col-12 col-md-auto ms-md-auto xray-link-container d-none d-md-flex">
         <a href="#" id="heatmap-link" class="xray-link-btn" onclick="toggleHeatmap(); return false;">&#9638; Heatmap</a>
         <a href="/score-history?filter=watchlist&ref=/watchlist" class="xray-link-btn ms-2">&#128200; Score History</a>
@@ -131,6 +140,8 @@
             <th><abbr title="Piotroski F-Score (0-9): count of accounting-quality tests passed. Below 4 signals financial distress.">Piotroski</abbr></th>
             <th><abbr title="Altman Z-Score: bankruptcy-risk model. Below 1.81 signals distress risk.">Altman Z</abbr></th>
             <th><abbr title="Beneish M-Score: earnings-manipulation likelihood. Above -1.78 signals possible manipulation.">Beneish M</abbr></th>
+            <th><abbr title="Position Targets: the buy-side alert price set on this ticker's Watchlist row (Stock Detail page).">Low Target</abbr></th>
+            <th><abbr title="Position Targets: the sell-side alert price set on this ticker's Watchlist row (Stock Detail page).">High Target</abbr></th>
             <th>Setups & Tags</th>
             <th>Signal</th>
         </tr>
@@ -138,7 +149,7 @@
     <tbody>
         {% for item in watchlist %}
         {% set cp = cached_pulse.get(item.ticker) %}
-        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ cp.change_pct|float if cp and cp.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ cp.change_pct|float if cp and cp.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}" data-has-target="{{ '1' if (item.low_target is not none or item.high_target is not none) else '0' }}">
             <td data-sort="{{ item.ticker }}" class="num-cell">
                 <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% if embed_token %}&embed_token={{ embed_token }}{% endif %}{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 {% if freetrade_only and not item.is_freetrade %}
@@ -252,6 +263,8 @@
                     <span class="{{ 'metric-poor' if item.beneish_m_score > -1.78 else 'metric-excellent' }}">{{ "{:,.2f}".format(item.beneish_m_score) }}</span>
                 {% else %}N/A{% endif %}
             </td>
+            <td data-sort="{{ item.low_target if item.low_target is not none else -999 }}" class="num-cell">{{ fmt_target_price(item.low_target, item.currency) }}</td>
+            <td data-sort="{{ item.high_target if item.high_target is not none else -999 }}" class="num-cell">{{ fmt_target_price(item.high_target, item.currency) }}</td>
             <td class="max-w-150">
                 <div class="inline-block">
                     <abbr title="Quality Grade: composite ROE/debt/PE/PEG grade (A=high-quality compounder, D=loss-making or over-leveraged)." class="no-decoration-abbr">

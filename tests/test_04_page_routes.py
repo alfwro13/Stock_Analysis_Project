@@ -563,6 +563,51 @@ def test_watchlist_filters_only_show_present_values(client):
             conn.close()
 
 
+@pytest.mark.pages
+def test_watchlist_target_column_and_filter(client):
+    """A ticker with a Watchlist-account Low/High Target set gets data-has-target="1" and the
+    dynamic 'Has Target Set' filter option appears; without any target set anywhere, it doesn't."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type)
+            VALUES ('ZZTARGET', 50.0, 'USD', 'EQUITY')
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "ZZTARGET", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        assert 'id="targetFilter"' not in resp.text
+
+        upsert_holding_price_limit(wl["id"], "ZZTARGET", low_limit=40.0, high_limit=60.0)
+
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'id="targetFilter"' in body
+        assert 'value="HAS_TARGET"' in body
+        assert 'data-has-target="1"' in body
+        assert "40.00" in body and "60.00" in body
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZTARGET"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZTARGET'")
+            conn.execute("DELETE FROM holding_price_limits WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZTARGET"))
+            conn.commit()
+        finally:
+            conn.close()
+
+
 # ── Safety net: no page returns 500 ──────────────────────────────────────────
 
 @pytest.mark.pages

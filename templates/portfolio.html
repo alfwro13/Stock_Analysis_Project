@@ -333,6 +333,7 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
 <script src="/static/js/heatmap_treemap.js?v={{ css_version }}"></script>

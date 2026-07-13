@@ -942,7 +942,7 @@ $(document).ready(function () {
     $('#tagFilter').on('change', function () {
         var val = $(this).val();
         if (val === 'ALL') { table.column(19).search('').draw(); }
-        else { table.column(19).search(val).draw(); }
+        else { table.column(19).search(exactTagSearchPattern(val), true, false).draw(); }
     });
 
     $('.change-period-btn').on('click', function () {

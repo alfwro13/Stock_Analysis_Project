@@ -38,7 +38,8 @@ $(document).ready(function () {
             { responsivePriority: 1, targets: 0 },    // Ticker — always visible
             { responsivePriority: 2, targets: -1 },   // Signal — always visible
             { responsivePriority: 3, targets: 2 },    // Price
-            { responsivePriority: 4, targets: 16 }     // Score
+            { responsivePriority: 4, targets: 16 },    // Score
+            { visible: false, targets: [20, 21] }     // Low/High Target — shown only via targetFilter
         ]
     });
     window._watchlistTable = table;
@@ -62,22 +63,22 @@ $(document).ready(function () {
 
     $('#signalFilter').on('change', function () {
         var val = $(this).val();
-        if (val === 'ALL') { table.column(21).search('').draw(); }
-        else { table.column(21).search('^' + val + '$', true, false).draw(); }
+        if (val === 'ALL') { table.column(23).search('').draw(); }
+        else { table.column(23).search('^' + val + '$', true, false).draw(); }
     });
 
     $('#tagFilter').on('change', function () {
         $('#candleFilter').val('ALL');
         var val = $(this).val();
-        if (val === 'ALL') { table.column(20).search('').draw(); }
-        else { table.column(20).search(val).draw(); }
+        if (val === 'ALL') { table.column(22).search('').draw(); }
+        else { table.column(22).search(exactTagSearchPattern(val), true, false).draw(); }
     });
 
     $('#candleFilter').on('change', function () {
         $('#tagFilter').val('ALL');
         var val = $(this).val();
-        if (val === 'ALL') { table.column(20).search('').draw(); }
-        else { table.column(20).search(val, false, false).draw(); }
+        if (val === 'ALL') { table.column(22).search('').draw(); }
+        else { table.column(22).search(exactTagSearchPattern(val), true, false).draw(); }
     });
 
     var scoreMin = null, scoreMax = null;
@@ -109,6 +110,24 @@ $(document).ready(function () {
 
     $('#sectorFilter').on('change', function () {
         sectorSelected = $(this).val();
+        table.draw();
+    });
+
+    var targetOnly = false;
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+        if (settings.nTable.id !== 'dataTable') return true;
+        if (!targetOnly) return true;
+        var node = table.row(dataIndex).node();
+        return Boolean(node) && node.dataset.hasTarget === '1';
+    });
+
+    $('#targetFilter').on('change', function () {
+        targetOnly = $(this).val() === 'HAS_TARGET';
+        table.column(17).visible(!targetOnly);
+        table.column(18).visible(!targetOnly);
+        table.column(19).visible(!targetOnly);
+        table.column(20).visible(targetOnly);
+        table.column(21).visible(targetOnly);
         table.draw();
     });
 });
