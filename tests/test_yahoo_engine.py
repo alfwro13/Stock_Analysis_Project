@@ -713,6 +713,29 @@ class TestGetFxRate:
             assert self.eng.get_fx_rate("GBPUSD=X") is None
 
 
+class _FundsDataAccessedAfterClose:
+    """Simulates yfinance's lazy top_holdings/sector_weightings properties, which trigger their
+    own network fetch on first access — raises exactly like curl_cffi's real SessionClosed error
+    if accessed after the yahoo_connection_boundary session context has already exited."""
+
+    def __init__(self, session_state, top_holdings=None, sector_weightings=None):
+        self._session_state = session_state
+        self._top_holdings = top_holdings
+        self._sector_weightings = sector_weightings
+
+    @property
+    def top_holdings(self):
+        if self._session_state["closed"]:
+            raise RuntimeError("Session is closed, cannot send request.")
+        return self._top_holdings
+
+    @property
+    def sector_weightings(self):
+        if self._session_state["closed"]:
+            raise RuntimeError("Session is closed, cannot send request.")
+        return self._sector_weightings
+
+
 class TestGetFundHoldings:
 
     def setup_method(self):
@@ -731,6 +754,75 @@ class TestGetFundHoldings:
 
         assert result is not None
         assert len(result) == 2
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_top_holdings_read_before_session_closes(self, mock_ctx):
+        """Regression test: top_holdings must be read inside the connection boundary, not after
+        it exits — reading it after would raise SessionClosed on every real call (found 2026-07-13,
+        the reason stock_signals.top_holdings stayed empty for every held ETF)."""
+        session_state = {"closed": False}
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+
+        def _exit(*_args):
+            session_state["closed"] = True
+            return False
+
+        mock_ctx.return_value.__exit__ = _exit
+        holdings_df = pd.DataFrame({"Symbol": ["NVDA", "MSFT"], "holdingPercent": [15.0, 12.0]})
+        fake_funds = _FundsDataAccessedAfterClose(session_state, top_holdings=holdings_df)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.get_funds_data.return_value = fake_funds
+            result = self.eng.get_fund_holdings("SMGB.L")
+
+        assert result is not None
+        assert len(result) == 2
+
+
+class TestGetFundSectorWeightings:
+
+    def setup_method(self):
+        self.eng = YahooEngine()
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_dict(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        weights = {"technology": 0.38, "financial_services": 0.12}
+        fake_funds = MagicMock(sector_weightings=weights)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.get_funds_data.return_value = fake_funds
+            result = self.eng.get_fund_sector_weightings("GSPX.L")
+
+        assert result == weights
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_sector_weightings_read_before_session_closes(self, mock_ctx):
+        session_state = {"closed": False}
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+
+        def _exit(*_args):
+            session_state["closed"] = True
+            return False
+
+        mock_ctx.return_value.__exit__ = _exit
+        weights = {"technology": 0.38, "financial_services": 0.12}
+        fake_funds = _FundsDataAccessedAfterClose(session_state, sector_weightings=weights)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.get_funds_data.return_value = fake_funds
+            result = self.eng.get_fund_sector_weightings("GSPX.L")
+
+        assert result == weights
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_on_exception(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("net")):
+            assert self.eng.get_fund_sector_weightings("GSPX.L") is None
 
 
 class TestGetTickerActions:

@@ -409,13 +409,32 @@ class YahooEngine:
             with _yf_singleton_lock:
                 with yahoo_connection_boundary(f"Fund Holdings: {ticker}") as session:
                     funds_data = yf.Ticker(ticker, session=session).get_funds_data()
-            if funds_data is not None:
-                df = funds_data.top_holdings
-                if df is not None and not df.empty:
-                    self._set(key, df, _TTLS["fund_holdings"])
-                    return df
+                    # top_holdings is a lazy property that triggers its own network fetch —
+                    # must be read before the session context above closes it.
+                    df = funds_data.top_holdings if funds_data is not None else None
+            if df is not None and not df.empty:
+                self._set(key, df, _TTLS["fund_holdings"])
+                return df
         except Exception:
             logger.error("get_fund_holdings failed for %s", ticker, exc_info=True)
+        return None
+
+    def get_fund_sector_weightings(self, ticker: str) -> Optional[dict]:
+        """Fund sector weightings dict (snake_case GICS-style keys, sums to ~1.0), cached 24 h."""
+        key = f"fund_sector_weightings:{ticker}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        try:
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Fund Sector Weightings: {ticker}") as session:
+                    funds_data = yf.Ticker(ticker, session=session).get_funds_data()
+                    weights = funds_data.sector_weightings if funds_data is not None else None
+            if weights:
+                self._set(key, weights, _TTLS["fund_holdings"])
+                return weights
+        except Exception:
+            logger.error("get_fund_sector_weightings failed for %s", ticker, exc_info=True)
         return None
 
     def get_ticker_actions(self, ticker: str) -> Optional[pd.DataFrame]:

@@ -94,8 +94,8 @@
             {% for holding in top_holdings[:10] %}
             <tr class="border-bottom-muted">
                 <td class="py-5"><a href="/stock/{{ holding.symbol }}" class="ticker-link">{{ holding.symbol }}</a></td>
-                <td class="py-5 text-light">{{ holding.holdingName[:15] }}...</td>
-                <td class="text-right-py5">{{ (holding.holdingPercent * 100)|round(2) }}%</td>
+                <td class="py-5 text-light">{{ holding.name[:15] if holding.name else '' }}...</td>
+                <td class="text-right-py5">{{ (holding.weight * 100)|round(2) }}%</td>
             </tr>
             {% endfor %}
         </table>
@@ -110,13 +110,11 @@
                 <th class="text-left-pb5">Sector</th>
                 <th class="text-right-pb5">Weight</th>
             </tr>
-            {% for sector_dict in sector_weightings %}
-                {% for key, val in sector_dict.items() %}
-                <tr class="border-bottom-muted">
-                    <td class="py-5 text-light text-capitalize">{{ key | replace('_', ' ') }}</td>
-                    <td class="text-right-py5">{{ (val * 100)|round(2) }}%</td>
-                </tr>
-                {% endfor %}
+            {% for sector in sector_weightings %}
+            <tr class="border-bottom-muted">
+                <td class="py-5 text-light">{{ sector.name }}</td>
+                <td class="text-right-py5">{{ (sector.weight * 100)|round(2) }}%</td>
+            </tr>
             {% endfor %}
         </table>
     </div>

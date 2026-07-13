@@ -294,6 +294,24 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
             conn.close()
 
 
+# yfinance's funds_data.sector_weightings keys, mapped to the same Title Case sector names
+# already used everywhere else in the app (asset_profiles.sector uses this exact vocabulary),
+# so an ETF's look-through sector blends into the same pie slices as its underlying stocks.
+_SECTOR_KEY_LABELS = {
+    "realestate": "Real Estate",
+    "consumer_cyclical": "Consumer Cyclical",
+    "basic_materials": "Basic Materials",
+    "consumer_defensive": "Consumer Defensive",
+    "technology": "Technology",
+    "communication_services": "Communication Services",
+    "financial_services": "Financial Services",
+    "utilities": "Utilities",
+    "industrials": "Industrials",
+    "energy": "Energy",
+    "healthcare": "Healthcare",
+}
+
+
 def _needs_holdings_refresh(top_holdings: Optional[str], holdings_updated_at: Optional[str]) -> bool:
     if not top_holdings or not holdings_updated_at:
         return True
@@ -305,7 +323,7 @@ def _needs_holdings_refresh(top_holdings: Optional[str], holdings_updated_at: Op
 
 
 def sync_etf_holdings_cache(tickers: List[str]) -> None:
-    """DB-caches ETF top-holdings so crash_engine resolves a benchmark from cache, not a live fetch."""
+    """DB-caches ETF/mutual-fund top-holdings and sector weightings for crash_engine and xray_engine's fund look-through."""
     if not tickers:
         return
 
@@ -316,7 +334,7 @@ def sync_etf_holdings_cache(tickers: List[str]) -> None:
         placeholders = ",".join("?" * len(tickers))
         cursor.execute(
             f"SELECT ticker, top_holdings, holdings_updated_at FROM stock_signals "
-            f"WHERE ticker IN ({placeholders}) AND quote_type = 'ETF'",
+            f"WHERE ticker IN ({placeholders}) AND quote_type IN ('ETF', 'MUTUALFUND')",
             tickers,
         )
         etf_rows = cursor.fetchall()
@@ -330,31 +348,45 @@ def sync_etf_holdings_cache(tickers: List[str]) -> None:
             continue
         try:
             df = yahoo_engine.get_fund_holdings(ticker)
-            if df is None or df.empty:
+            holdings = []
+            if df is not None and not df.empty:
+                holdings = [
+                    {
+                        "symbol": symbol,
+                        "name": r.get('Name'),
+                        "weight": _clean(r.get('Holding Percent')) or 0.0,
+                    }
+                    for symbol, r in df.head(10).iterrows()
+                ]
+
+            raw_weights = yahoo_engine.get_fund_sector_weightings(ticker)
+            sector_weightings = []
+            if raw_weights:
+                sector_weightings = [
+                    {"name": _SECTOR_KEY_LABELS.get(key, key), "weight": _clean(weight) or 0.0}
+                    for key, weight in raw_weights.items()
+                    if _clean(weight)
+                ]
+
+            if not holdings and not sector_weightings:
                 continue
-            holdings = [
-                {
-                    "symbol": symbol,
-                    "name": r.get('Name'),
-                    "weight": _clean(r.get('Holding Percent')) or 0.0,
-                }
-                for symbol, r in df.head(10).iterrows()
-            ]
+
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             conn = None
             try:
                 conn = get_connection()
                 conn.execute(
-                    "UPDATE stock_signals SET top_holdings = ?, holdings_updated_at = ? WHERE ticker = ?",
-                    (json.dumps(holdings), timestamp, ticker),
+                    "UPDATE stock_signals SET top_holdings = ?, sector_weightings = ?, holdings_updated_at = ? "
+                    "WHERE ticker = ?",
+                    (json.dumps(holdings), json.dumps(sector_weightings), timestamp, ticker),
                 )
                 conn.commit()
             finally:
                 if conn:
                     conn.close()
-            logger.info("[%s] ETF top holdings cached.", ticker)
+            logger.info("[%s] Fund top holdings and sector weightings cached.", ticker)
         except Exception as e:
-            logger.error("[%s] ETF holdings fetch failed: %s", ticker, e)
+            logger.error("[%s] Fund holdings/sector fetch failed: %s", ticker, e)
 
         # Polite rate limiting — yfinance is not a paid API
         time.sleep(0.4)

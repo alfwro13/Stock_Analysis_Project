@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any
 
 from config import load_config, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 from database import get_connection
-from xray_engine import GhostfolioXRayClient
+from xray_engine import GhostfolioXRayClient, _builtin_account_holdings
 from fundamentals_helpers import get_instrument_type
 
 logger = logging.getLogger(__name__)
@@ -76,26 +76,30 @@ def get_ideal_allocation(regime_label: str) -> Dict[str, float]:
 
 
 def _get_portfolio_asset_class_weights() -> tuple:
-    """Returns (weights_dict, None) on success or (None, error_message) when Ghostfolio is unavailable."""
-    if not GHOSTFOLIO_URL or not GHOSTFOLIO_TOKEN:
-        return None, "Ghostfolio is not configured — add your URL and access token in Settings."
+    """Returns (weights, None) on success or (None, error) when no holdings exist — Ghostfolio if configured, else built-in Trading accounts (AGENTS.md rule 14)."""
+    holdings: List[Dict] = []
+    total_value = 0.0
 
-    config = load_config()
-    active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
-    if not active_ids:
-        return None, "No Ghostfolio accounts are marked active — select at least one in Settings."
+    if GHOSTFOLIO_URL and GHOSTFOLIO_TOKEN:
+        config = load_config()
+        active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
+        if active_ids:
+            client = GhostfolioXRayClient()
+            if client.authenticate():
+                holdings, total_value = client.get_holdings(active_ids)
 
-    client = GhostfolioXRayClient()
-    if not client.authenticate():
-        return None, "Could not authenticate with Ghostfolio — check your access token in Settings."
-
-    holdings, total_value = client.get_holdings(active_ids)
     if not holdings or total_value <= 0:
-        return None, "No holdings returned from Ghostfolio."
+        holdings = _builtin_account_holdings(None)
+        total_value = sum(h["value"] for h in holdings)
+
+    if not holdings or total_value <= 0:
+        return None, "No portfolio holdings found — add a Trading account holding or configure Ghostfolio in Settings."
 
     holding_values: Dict[str, float] = {}
     for h in holdings:
         itype = get_instrument_type(h.get("asset_class", ""), h.get("asset_sub_class", ""))
+        if itype == "Cash & Equivalents":
+            continue  # left uncounted so it falls through to the "cash" complement below
         macro_class = _INSTRUMENT_TO_CLASS.get(itype, "equities")
         holding_values[macro_class] = holding_values.get(macro_class, 0.0) + h["value"]
 

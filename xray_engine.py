@@ -15,6 +15,7 @@ from data_engine import load_or_fetch_daily_history
 from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
+from treasury_bill_engine import parse_tbill_buy_txn_id
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -842,25 +843,119 @@ def _asset_profile_map(tickers: List[str]) -> Dict[str, Dict]:
             conn.close()
 
 
+def _fund_composition_map(tickers: List[str]) -> Dict[str, Dict]:
+    """stock_signals.top_holdings/sector_weightings for ETF/MUTUALFUND tickers — the fund look-through data blended into built-in holdings' sector/geographic exposure below."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, top_holdings, sector_weightings FROM stock_signals "
+            f"WHERE ticker IN ({placeholders}) AND quote_type IN ('ETF', 'MUTUALFUND')",
+            tickers,
+        ).fetchall()
+        return {row["ticker"]: dict(row) for row in rows}
+    except Exception as e:
+        logger.error("X-ray fund composition lookup failed: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _fund_sector_breakdown(sector_weightings_json: Optional[str]) -> Optional[List[Dict]]:
+    if not sector_weightings_json:
+        return None
+    try:
+        raw = json.loads(sector_weightings_json)
+    except (TypeError, ValueError):
+        return None
+    entries = [{"name": s["name"], "weight": float(s["weight"])} for s in raw if s.get("weight")]
+    return entries or None
+
+
+def _fund_geo_breakdown(top_holdings_json: Optional[str], underlying_profiles: Dict[str, Dict]) -> Optional[List[Dict]]:
+    """Approximates a fund's country split from its top-10 holdings' own countries, rescaled to 100% of the resolvable subset — Yahoo has no direct country-breakdown field for funds."""
+    if not top_holdings_json:
+        return None
+    try:
+        raw = json.loads(top_holdings_json)
+    except (TypeError, ValueError):
+        return None
+
+    country_weights: Dict[str, float] = {}
+    for h in raw:
+        profile = underlying_profiles.get(h.get("symbol"), {})
+        country_name = profile.get("country")
+        if not country_name:
+            continue
+        weight = float(h.get("weight") or 0)
+        country_weights[country_name] = country_weights.get(country_name, 0.0) + weight
+
+    total = sum(country_weights.values())
+    if total <= 0:
+        return None
+
+    entries = []
+    for country_name, weight in country_weights.items():
+        code, continent = _country_code_continent(country_name)
+        entries.append({"name": country_name, "code": code, "continent": continent, "weight": weight / total})
+    return entries
+
+
 def _builtin_account_holdings(account_id: Optional[int]) -> List[Dict]:
     # No Ghostfolio look-through data exists for built-in holdings — sector/country come from
-    # asset_profiles as a single 100%-weight bucket per holding, not a weighted breakdown.
+    # asset_profiles as a single 100%-weight bucket per holding, unless a fund composition
+    # breakdown is available below (ETF/MUTUALFUND tickers only).
     rows = market_values_for_xray(account_id)
     if not rows:
         return []
-    profiles = _asset_profile_map([r["ticker"] for r in rows])
+    tickers = [r["ticker"] for r in rows]
+    profiles = _asset_profile_map(tickers)
+    fund_composition = _fund_composition_map(tickers)
+
+    underlying_symbols = set()
+    for comp in fund_composition.values():
+        if not comp.get("top_holdings"):
+            continue
+        try:
+            underlying_symbols.update(
+                h["symbol"] for h in json.loads(comp["top_holdings"]) if h.get("symbol")
+            )
+        except (TypeError, ValueError):
+            continue
+    underlying_profiles = _asset_profile_map(list(underlying_symbols)) if underlying_symbols else {}
+
     holdings: List[Dict] = []
     for r in rows:
-        profile = profiles.get(r["ticker"], {})
-        sector = profile.get("sector") or "Unknown"
-        country_name = profile.get("country")
-        code, continent = _country_code_continent(country_name)
-        asset_class = (profile.get("quote_type") or "EQUITY").upper()
+        ticker = r["ticker"]
+        # Treasury Bills have no real Yahoo listing — asset_profiles never has a row for them,
+        # so they'd otherwise silently fall through to the "EQUITY" default below.
+        if parse_tbill_buy_txn_id(ticker) is not None:
+            asset_class = "CASH"
+            sectors = [{"name": "Cash & Equivalents", "weight": 1.0}]
+            countries = [{"name": "Cash & Equivalents", "code": "", "continent": "Cash & Equivalents", "weight": 1.0}]
+        else:
+            profile = profiles.get(ticker, {})
+            asset_class = (profile.get("quote_type") or "EQUITY").upper()
+            comp = fund_composition.get(ticker, {})
+
+            sectors = _fund_sector_breakdown(comp.get("sector_weightings"))
+            if sectors is None:
+                sectors = [{"name": profile.get("sector") or "Unknown", "weight": 1.0}]
+
+            countries = _fund_geo_breakdown(comp.get("top_holdings"), underlying_profiles)
+            if countries is None:
+                country_name = profile.get("country")
+                code, continent = _country_code_continent(country_name)
+                countries = [{"name": country_name or "Unknown", "code": code, "continent": continent, "weight": 1.0}]
         value = r["market_value"]
         quantity = r["shares"]
         holdings.append({
-            "symbol": r["ticker"],
-            "name": r["company_name"] or r["ticker"],
+            "symbol": ticker,
+            "name": r["company_name"] or ticker,
             "asset_class": asset_class,
             "asset_sub_class": "",
             "currency": r["currency"] or "",
@@ -871,8 +966,8 @@ def _builtin_account_holdings(account_id: Optional[int]) -> List[Dict]:
             "market_price": r["market_price"] or 0.0,
             "gross_perf": round(value - r["total_investment"], 2),
             "gross_perf_pct": round((value / r["total_investment"] - 1), 4) if r["total_investment"] else 0.0,
-            "sectors": [{"name": sector, "weight": 1.0}],
-            "countries": [{"name": country_name or "Unknown", "code": code, "continent": continent, "weight": 1.0}],
+            "sectors": sectors,
+            "countries": countries,
             "weight": 0.0,
         })
     return holdings
@@ -1228,7 +1323,11 @@ def assemble_xray_report(account_id: str) -> Dict:
                 )
         except Exception:
             logger.debug("Could not compute risk cache age, skipping staleness check", exc_info=True)
-    uncovered = [h["symbol"] for h in holdings_sorted if h.get("beta") is None and risk_cache]
+    ignored_tickers = ignored_tickers_set(load_config())
+    uncovered = [
+        h["symbol"] for h in holdings_sorted
+        if h.get("beta") is None and risk_cache and not is_excluded_from_yahoo_fetch(h["symbol"], ignored_tickers)
+    ]
     if uncovered:
         data_warnings.append(
             f"{len(uncovered)} holding(s) not in risk cache "

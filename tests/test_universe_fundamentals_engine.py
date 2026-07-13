@@ -206,7 +206,9 @@ class TestSyncEtfHoldingsCache:
     def teardown_method(self):
         conn = _db.get_connection()
         try:
-            conn.execute("DELETE FROM stock_signals WHERE ticker IN ('TST_ETF', 'TST_EQUITY')")
+            conn.execute(
+                "DELETE FROM stock_signals WHERE ticker IN ('TST_ETF', 'TST_EQUITY', 'TST_MUTUALFUND')"
+            )
             conn.commit()
         finally:
             conn.close()
@@ -217,7 +219,8 @@ class TestSyncEtfHoldingsCache:
             {"Name": ["Toyota"], "Holding Percent": [0.12]},
             index=pd.Index(["7203.T"], name="Symbol"),
         )
-        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings", return_value=df):
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings", return_value=df), \
+             patch("universe_fundamentals_engine.yahoo_engine.get_fund_sector_weightings", return_value=None):
             sync_etf_holdings_cache(["TST_ETF"])
 
         conn = _db.get_connection()
@@ -230,6 +233,46 @@ class TestSyncEtfHoldingsCache:
         assert row["holdings_updated_at"] is not None
         holdings = json.loads(row["top_holdings"])
         assert holdings == [{"symbol": "7203.T", "name": "Toyota", "weight": 0.12}]
+
+    def test_fetches_and_caches_sector_weightings_for_etf(self):
+        _upsert_stock_signal("TST_ETF", "ETF")
+        raw_weights = {"technology": 0.386, "financial_services": 0.115, "energy": 0.0}
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings", return_value=None), \
+             patch("universe_fundamentals_engine.yahoo_engine.get_fund_sector_weightings", return_value=raw_weights):
+            sync_etf_holdings_cache(["TST_ETF"])
+
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT sector_weightings FROM stock_signals WHERE ticker='TST_ETF'"
+            ).fetchone()
+        finally:
+            conn.close()
+        weights = json.loads(row["sector_weightings"])
+        # zero-weight sectors (energy) are dropped; snake_case keys map to Title Case names
+        assert weights == [
+            {"name": "Technology", "weight": 0.386},
+            {"name": "Financial Services", "weight": 0.115},
+        ]
+
+    def test_fetches_holdings_for_mutualfund_ticker(self):
+        _upsert_stock_signal("TST_MUTUALFUND", "MUTUALFUND")
+        df = pd.DataFrame(
+            {"Name": ["NVIDIA"], "Holding Percent": [0.04]},
+            index=pd.Index(["NVDA"], name="Symbol"),
+        )
+        with patch("universe_fundamentals_engine.yahoo_engine.get_fund_holdings", return_value=df), \
+             patch("universe_fundamentals_engine.yahoo_engine.get_fund_sector_weightings", return_value=None):
+            sync_etf_holdings_cache(["TST_MUTUALFUND"])
+
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT top_holdings FROM stock_signals WHERE ticker='TST_MUTUALFUND'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert json.loads(row["top_holdings"]) == [{"symbol": "NVDA", "name": "NVIDIA", "weight": 0.04}]
 
     def test_skips_non_etf_ticker(self):
         _upsert_stock_signal("TST_EQUITY", "EQUITY")

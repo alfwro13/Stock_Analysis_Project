@@ -209,8 +209,17 @@ def update_macro_indicators() -> None:
         cpi_start = start_dt - timedelta(days=395)
         df_cpi_raw = fetch_fred_api(session, 'CPIAUCSL', cpi_start, end_dt, fred_api_key)
         if not df_cpi_raw.empty and 'CPIAUCSL' in df_cpi_raw.columns:
-            monthly_cpi = df_cpi_raw['CPIAUCSL'].resample('ME').last().dropna()
+            # fetch_fred_api's index is each observation's date + a flat 30-day publication lag.
+            # Resampling on that shifted index directly causes ~5 of every 12 months to collide
+            # into the same calendar-month bucket (months have different lengths, the shift doesn't),
+            # silently dropping them and desyncing pct_change(12) from a true 12-calendar-month span.
+            # Undo the shift to resample on the true observation months, then reapply it to the
+            # resulting month-end labels (matching fetch_ons_taxonomy_data's own MonthEnd+30d convention).
+            true_dated = df_cpi_raw.copy()
+            true_dated.index = true_dated.index - pd.DateOffset(days=30)
+            monthly_cpi = true_dated['CPIAUCSL'].resample('ME').last().dropna()
             cpi_yoy = (monthly_cpi.pct_change(periods=12) * 100).dropna()
+            cpi_yoy.index = cpi_yoy.index + pd.DateOffset(days=30)
             cpi_yoy_window = cpi_yoy[cpi_yoy.index >= pd.Timestamp(start_dt.date())]
             if not cpi_yoy_window.empty:
                 dfs.append(cpi_yoy_window.rename('CPIAUCSL').to_frame())

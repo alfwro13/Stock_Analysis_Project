@@ -327,6 +327,10 @@ def get_instrument_type(asset_class: str, asset_sub_class: str) -> str:
         return "Commodity"
     if cls == "FIXED_INCOME":
         return "Fixed Income"
+    if cls == "CASH":
+        return "Cash & Equivalents"
+    if cls == "MUTUALFUND":
+        return "Mutual Fund"
     if cls:
         return cls.title()
     return "Other"

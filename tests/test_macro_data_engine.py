@@ -284,11 +284,14 @@ class TestUpdateMacroIndicators:
     def test_cpi_yoy_conversion_stores_percentage_not_raw_index(self):
         """13 months of raw CPI index values (~310-322) must be stored as YoY % (~3.9), not the index.
 
+        cpi_df's index mimics fetch_fred_api's real output shape: each observation dated on the
+        1st of its month, shifted by the same flat 30-day publication lag fetch_fred_api applies.
         now_local is fixed to 2023-12-31 so start_dt ≈ 2022-01-02, making the mock
         data window (2022-01 to 2023-01) fall within the 730-day fetch range.
         """
-        dates = pd.date_range("2022-01-31", periods=13, freq="ME")
-        cpi_df = pd.DataFrame({"CPIAUCSL": [310.0 + i for i in range(13)]}, index=dates)
+        raw_dates = pd.date_range("2022-01-01", periods=13, freq="MS")
+        lagged_dates = raw_dates + pd.DateOffset(days=30)
+        cpi_df = pd.DataFrame({"CPIAUCSL": [310.0 + i for i in range(13)]}, index=lagged_dates)
 
         def fred_side_effect(session, series_id, *args, **kwargs):
             return cpi_df if series_id == "CPIAUCSL" else pd.DataFrame()
@@ -303,19 +306,68 @@ class TestUpdateMacroIndicators:
                 mock_te.now_local.return_value = datetime(2023, 12, 31)
                 update_macro_indicators()
 
+            # Last raw month-end bucket (2023-01-31) + the reapplied 30-day publication lag.
             conn = _db_module.get_connection()
             row = conn.execute(
-                "SELECT us_cpi_inflation FROM macro_indicators WHERE date='2023-01-31'"
+                "SELECT us_cpi_inflation FROM macro_indicators WHERE date='2023-03-02'"
             ).fetchone()
             conn.close()
             assert row is not None and row["us_cpi_inflation"] is not None
             val = row["us_cpi_inflation"]
-            # (322 - 310) / 310 * 100 ≈ 3.87%: must be small %, not the raw index ~322
-            assert abs(val) < 50, f"Expected YoY %%, got raw index value {val}"
-            assert abs(val) > 0.5
+            # (322 - 310) / 310 * 100 ≈ 3.87%: must be the true 12-month change, not inflated
+            assert val == pytest.approx(3.871, abs=0.01), f"Expected true 12-month YoY ~3.87%%, got {val}"
         finally:
             cleanup = _db_module.get_connection()
-            cleanup.execute("DELETE FROM macro_indicators WHERE date BETWEEN '2022-01-01' AND '2023-02-01'")
+            cleanup.execute("DELETE FROM macro_indicators WHERE date BETWEEN '2022-01-01' AND '2023-04-01'")
+            cleanup.commit()
+            cleanup.close()
+
+    def test_cpi_yoy_survives_month_length_bucket_collisions(self):
+        """24 months of raw CPI observations (1st-of-month + flat 30-day lag) must resample into
+        24 distinct calendar-month buckets, not collapse via bucket collisions.
+
+        Regression test: fetch_fred_api's flat +30-day shift applied before month-end resampling
+        causes ~5 of every 12 months to land in the same bucket as their neighbour and get dropped
+        by dropna(), so pct_change(periods=12) ends up comparing ~18-20 real months apart instead of
+        12 — silently inflating the reported YoY%. A steady 0.3%-per-month raw index growth must
+        yield a true 12-month YoY of ~3.66% (1.003**12 - 1), not a larger, collapsed-window figure.
+        """
+        raw_dates = pd.date_range("2021-06-01", periods=24, freq="MS")
+        lagged_dates = raw_dates + pd.DateOffset(days=30)
+        values = [300.0 * (1.003 ** i) for i in range(24)]
+        cpi_df = pd.DataFrame({"CPIAUCSL": values}, index=lagged_dates)
+
+        def fred_side_effect(session, series_id, *args, **kwargs):
+            return cpi_df if series_id == "CPIAUCSL" else pd.DataFrame()
+
+        try:
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
+                 patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.time_engine") as mock_te:
+                mock_te.now_local.return_value = datetime(2023, 6, 1)
+                update_macro_indicators()
+
+            conn = _db_module.get_connection()
+            rows = conn.execute(
+                "SELECT date, us_cpi_inflation FROM macro_indicators "
+                "WHERE us_cpi_inflation IS NOT NULL AND date BETWEEN '2021-06-01' AND '2023-08-01' "
+                "ORDER BY date"
+            ).fetchall()
+            conn.close()
+            values_out = [r["us_cpi_inflation"] for r in rows]
+            expected_yoy = (1.003 ** 12 - 1) * 100
+            assert values_out, "Expected at least one computed YoY row"
+            for v in values_out:
+                assert v == pytest.approx(expected_yoy, abs=0.05), (
+                    f"Expected true 12-month YoY ~{expected_yoy:.2f}%%, got {v} "
+                    "(a collapsed/mis-bucketed series would compare a longer window and read higher)"
+                )
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date BETWEEN '2021-06-01' AND '2023-08-01'")
             cleanup.commit()
             cleanup.close()
 

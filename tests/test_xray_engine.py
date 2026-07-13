@@ -242,6 +242,8 @@ class TestGetInstrumentType:
         ("EQUITY",       "STOCK",    "Equity"),
         ("COMMODITY",    "",         "Commodity"),
         ("FIXED_INCOME", "",         "Fixed Income"),
+        ("CASH",         "",         "Cash & Equivalents"),
+        ("MUTUALFUND",   "",         "Mutual Fund"),
         ("",             "",         "Other"),
         ("REAL_ESTATE",  "",         "Real_Estate"),
     ])
@@ -1344,6 +1346,179 @@ class TestRunXrayPrecomputeExcludesSyntheticTickers:
         symbols = {h["symbol"] for h in mock_compute.call_args[0][0]}
         assert T1 in symbols
         assert "ZZIGNORED" not in symbols
+
+
+class TestTreasuryBillXrayClassification:
+    """Treasury Bills structurally can never have a beta (no Yahoo listing) or a real sector/
+    country — they must be classified as Cash & Equivalents, not fall through to the default
+    "EQUITY" classification, and must never trigger the "not in risk cache" data warning."""
+
+    def test_tbill_holding_classified_as_cash_and_equivalents(self):
+        import treasury_bill_engine as tbe
+
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        _seed_risk_cache([(T1, 1.0, 0.18, "2026-06-03")])
+        aid = create_account("XrayTBillClassAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        bill = tbe.buy_treasury_bill(aid, "2026-01-05", 1000.0, 996.16, "2026-02-02")
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        tbill_holding = next(h for h in result["holdings"] if h["symbol"] == bill["ticker"])
+        assert tbill_holding["asset_class"] == "CASH"
+        assert tbill_holding["instrument_type"] == "Cash & Equivalents"
+
+    def test_tbill_holding_never_triggers_uncovered_risk_cache_warning(self):
+        import treasury_bill_engine as tbe
+
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        _seed_risk_cache([(T1, 1.0, 0.18, "2026-06-03")])
+        aid = create_account("XrayTBillWarnAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        bill = tbe.buy_treasury_bill(aid, "2026-01-05", 1000.0, 996.16, "2026-02-02")
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        assert not any(bill["ticker"] in w for w in result["data_warnings"])
+
+    def test_tbill_sector_and_geo_bucketed_as_cash_and_equivalents(self):
+        import treasury_bill_engine as tbe
+
+        aid = create_account("XrayTBillBucketAcc", "GBP")
+        tbe.buy_treasury_bill(aid, "2026-01-05", 1000.0, 996.16, "2026-02-02")
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        sectors = {s["name"] for s in result["sector_allocation"]}
+        regions = {g["name"] for g in result["geographic_allocation"]}
+        assert "Cash & Equivalents" in sectors
+        assert "Cash & Equivalents" in regions
+        assert "Unclassified" not in sectors
+        assert "Other" not in regions
+
+
+def _seed_fund_signal(ticker, price, currency, quote_type, top_holdings=None, sector_weightings=None):
+    conn = db.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_signals "
+        "(ticker, current_price, currency, quote_type, top_holdings, sector_weightings) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (ticker, price, currency, quote_type, top_holdings, sector_weightings),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestFundSectorGeoLookThrough:
+    """ETFs/mutual funds have no single sector/country from Yahoo — xray_engine must blend in
+    the cached fund look-through data (universe_fundamentals_engine.sync_etf_holdings_cache())
+    instead of bucketing the whole holding as Unclassified/Other."""
+
+    def test_etf_sector_weightings_blend_into_sector_allocation(self):
+        ticker = "XRAY_ETF1"
+        _seed_fund_signal(
+            ticker, 100.0, "GBP", "ETF",
+            sector_weightings=json.dumps([
+                {"name": "Technology", "weight": 0.6},
+                {"name": "Healthcare", "weight": 0.4},
+            ]),
+        )
+        aid = create_account("XrayFundSectorAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        sectors = {s["name"]: s["weight"] for s in result["sector_allocation"]}
+        assert "Unclassified" not in sectors
+        assert "Unknown" not in sectors
+        assert sectors["Technology"] == pytest.approx(0.6, abs=0.01)
+        assert sectors["Healthcare"] == pytest.approx(0.4, abs=0.01)
+
+    def test_etf_top_holdings_countries_blend_into_geographic_allocation(self):
+        ticker = "XRAY_ETF2"
+        _seed_fund_signal(
+            ticker, 100.0, "GBP", "ETF",
+            top_holdings=json.dumps([
+                {"symbol": "XRAY_UNDER_US", "name": "US Co", "weight": 0.6},
+                {"symbol": "XRAY_UNDER_UK", "name": "UK Co", "weight": 0.4},
+            ]),
+        )
+        _seed_asset_profile("XRAY_UNDER_US", "Technology", "United States")
+        _seed_asset_profile("XRAY_UNDER_UK", "Financials", "United Kingdom")
+        aid = create_account("XrayFundGeoAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        regions = {g["name"]: g["weight"] for g in result["geographic_allocation"]}
+        assert "Other" not in regions
+        assert regions["North America"] == pytest.approx(0.6, abs=0.01)
+        assert regions["Europe"] == pytest.approx(0.4, abs=0.01)
+
+    def test_etf_top_holdings_partial_coverage_rescaled_to_full_weight(self):
+        """Only 1 of 2 top holdings has a resolvable country — its weight must be rescaled to
+        100%, not left at its raw 50% share (the operator's chosen "scale up known coverage" design)."""
+        ticker = "XRAY_ETF3"
+        _seed_fund_signal(
+            ticker, 100.0, "GBP", "ETF",
+            top_holdings=json.dumps([
+                {"symbol": "XRAY_UNDER_KNOWN", "name": "Known Co", "weight": 0.5},
+                {"symbol": "XRAY_UNDER_UNKNOWN", "name": "Unknown Co", "weight": 0.5},
+            ]),
+        )
+        _seed_asset_profile("XRAY_UNDER_KNOWN", "Technology", "Japan")
+        aid = create_account("XrayFundGeoRescaleAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        regions = {g["name"]: g["weight"] for g in result["geographic_allocation"]}
+        assert regions["Asia"] == pytest.approx(1.0, abs=0.02)
+        assert "Other" not in regions
+
+    def test_no_cached_composition_falls_back_to_unclassified(self):
+        ticker = "XRAY_ETF4"
+        _seed_fund_signal(ticker, 100.0, "GBP", "ETF")  # no top_holdings/sector_weightings cached yet
+        aid = create_account("XrayFundNoDataAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        sectors = {s["name"] for s in result["sector_allocation"]}
+        regions = {g["name"] for g in result["geographic_allocation"]}
+        assert "Unknown" in sectors
+        assert "Other" in regions
+
+    def test_mutualfund_quote_type_also_gets_look_through(self):
+        ticker = "XRAY_MUTUALFUND1"
+        _seed_fund_signal(
+            ticker, 100.0, "GBP", "MUTUALFUND",
+            sector_weightings=json.dumps([{"name": "Technology", "weight": 1.0}]),
+        )
+        aid = create_account("XrayMutualFundAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        sectors = {s["name"]: s["weight"] for s in result["sector_allocation"]}
+        assert sectors["Technology"] == pytest.approx(1.0, abs=0.01)
 
 
 class TestGetScopeReturnSeries:
