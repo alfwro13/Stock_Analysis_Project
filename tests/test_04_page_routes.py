@@ -370,6 +370,48 @@ def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_gbp_target_input_prefilled_in_pounds_not_pence(client):
+    """A GBp (LSE pence) holding_price_limits row stored as raw pence (e.g. 637) must
+    prefill the Position Targets input box in pounds (6.37), matching the ML suggestion's
+    units — not the raw pence value, which previously redisplayed as 0.06 after a user
+    typed the suggested pounds figure and it was saved unconverted."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZGBPTARGET.L', 637.0, 'GBp', 'EQUITY')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZGBPTARGET.L", currency="GBp", quote_type="EQUITY")
+    upsert_holding_price_limit(wl["id"], "ZZGBPTARGET.L", low_limit=637.0, high_limit=650.0)
+
+    try:
+        resp = client.get("/stock/ZZGBPTARGET.L", follow_redirects=True)
+        assert resp.status_code < 500
+        assert 'value="6.37"' in resp.text
+        assert 'value="6.5"' in resp.text
+        assert 'value="637.0"' not in resp.text
+        assert 'value="650.0"' not in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZGBPTARGET.L"))
+            conn.execute("DELETE FROM holding_price_limits WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZGBPTARGET.L"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZGBPTARGET.L'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_watchlist_ticker_link_propagates_embed_token(client):
     """When /watchlist is loaded with ?embed=true&embed_token=..., its ticker links to
     /stock/{ticker} must carry the same embed_token — otherwise clicking through from an

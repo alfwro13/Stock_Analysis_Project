@@ -448,6 +448,7 @@ function _targetInputValue(id) {
     if (raw === '') return null;
     var num = parseFloat(raw);
     if (isNaN(num) || num <= 0) return null;
+    if (window.STOCK_CURRENCY === 'GBp') num = num * 100.0;
     return num;
 }
 

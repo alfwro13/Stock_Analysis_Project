@@ -149,23 +149,26 @@
                         <label class="form-check-label" for="targetSetForAll">Set for all accounts</label>
                     </div>
 
+                    {% set target_display_currency = 'GBP' if stock.currency == 'GBp' else stock.currency %}
                     <div id="targetAllAccountsRow" class="sub-account-row d-none">
                         <div class="sub-account-name">All Accounts</div>
-                        <label class="target-input-label" for="target-low-all">Low</label>
+                        <label class="target-input-label" for="target-low-all">Low ({{ target_display_currency }})</label>
                         <input type="number" step="any" min="0" class="target-input" id="target-low-all" placeholder="0">
-                        <label class="target-input-label" for="target-high-all">High</label>
+                        <label class="target-input-label" for="target-high-all">High ({{ target_display_currency }})</label>
                         <input type="number" step="any" min="0" class="target-input" id="target-high-all" placeholder="0">
                     </div>
 
                     <div id="targetPerAccountRows">
                         {% for acc in target_accounts %}
                         {% set limits = holding_price_limits.get(acc.account_id, {}) %}
+                        {% set low_display = (limits.low_limit / 100.0) if (limits.low_limit is not none and stock.currency == 'GBp') else limits.low_limit %}
+                        {% set high_display = (limits.high_limit / 100.0) if (limits.high_limit is not none and stock.currency == 'GBp') else limits.high_limit %}
                         <div class="sub-account-row" data-account-id="{{ acc.account_id }}">
                             <div class="sub-account-name">{{ acc.name }}</div>
-                            <label class="target-input-label" for="target-low-{{ acc.account_id }}">Low</label>
-                            <input type="number" step="any" min="0" class="target-input" id="target-low-{{ acc.account_id }}" placeholder="0" value="{{ limits.low_limit if limits.low_limit is not none else '' }}">
-                            <label class="target-input-label" for="target-high-{{ acc.account_id }}">High</label>
-                            <input type="number" step="any" min="0" class="target-input" id="target-high-{{ acc.account_id }}" placeholder="0" value="{{ limits.high_limit if limits.high_limit is not none else '' }}">
+                            <label class="target-input-label" for="target-low-{{ acc.account_id }}">Low ({{ target_display_currency }})</label>
+                            <input type="number" step="any" min="0" class="target-input" id="target-low-{{ acc.account_id }}" placeholder="0" value="{{ low_display if low_display is not none else '' }}">
+                            <label class="target-input-label" for="target-high-{{ acc.account_id }}">High ({{ target_display_currency }})</label>
+                            <input type="number" step="any" min="0" class="target-input" id="target-high-{{ acc.account_id }}" placeholder="0" value="{{ high_display if high_display is not none else '' }}">
                         </div>
                         {% endfor %}
                     </div>
