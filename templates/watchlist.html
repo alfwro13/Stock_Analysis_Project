@@ -263,8 +263,8 @@
                     <span class="{{ 'metric-poor' if item.beneish_m_score > -1.78 else 'metric-excellent' }}">{{ "{:,.2f}".format(item.beneish_m_score) }}</span>
                 {% else %}N/A{% endif %}
             </td>
-            <td data-sort="{{ item.low_target if item.low_target is not none else -999 }}" class="num-cell">{{ fmt_target_price(item.low_target, item.currency) }}</td>
-            <td data-sort="{{ item.high_target if item.high_target is not none else -999 }}" class="num-cell">{{ fmt_target_price(item.high_target, item.currency) }}</td>
+            <td data-sort="{{ item.low_target if item.low_target is not none else -999 }}" class="num-cell">{% if item.low_target is not none %}{{ fmt_target_price(item.low_target, item.currency) }}{% else %}-{% endif %}</td>
+            <td data-sort="{{ item.high_target if item.high_target is not none else -999 }}" class="num-cell">{% if item.high_target is not none %}{{ fmt_target_price(item.high_target, item.currency) }}{% else %}-{% endif %}</td>
             <td class="max-w-150">
                 <div class="inline-block">
                     <abbr title="Quality Grade: composite ROE/debt/PE/PEG grade (A=high-quality compounder, D=loss-making or over-leveraged)." class="no-decoration-abbr">
