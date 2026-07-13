@@ -27,7 +27,8 @@ class AIContagionEngine:
     Requires two-tier confirmation: at least one bellwether drops > LEADER_THRESHOLD_PCT
     AND at least one ETF drops > ETF_CONFIRMATION_THRESHOLD_PCT. Returns a single event
     dict keyed against synthetic ticker "SECTOR" — the scheduler wrapper runs this through
-    the existing _evaluate_alert_gate() dedup logic before dispatching.
+    the shared daily-count dedup gate (_evaluate_daily_alert_gate(), MAX_ALERTS_PER_DAY)
+    before dispatching.
     """
 
     def __init__(self, config: dict) -> None:

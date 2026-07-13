@@ -677,13 +677,16 @@ def run_ai_contagion_job():
             return
 
         orch = IntradayOrchestrator()
+        max_per_day = int(
+            config.get("NOTIFICATIONS", {}).get("AI_CONTAGION", {}).get("MAX_ALERTS_PER_DAY", 1)
+        )
 
         for event in candidates:
-            suppress = orch._evaluate_alert_gate(
-                "AIContagion", event["ticker"], event["price"], event["reason"], conn
+            suppress = orch._evaluate_daily_alert_gate(
+                "AIContagion", event["ticker"], conn, max_per_day=max_per_day
             )
             if suppress:
-                logger.info("AIContagion: alert suppressed by gate (cooldown/rearm).")
+                logger.info("AIContagion: alert suppressed by daily gate (max_per_day=%s).", max_per_day)
                 continue
 
             if notify(

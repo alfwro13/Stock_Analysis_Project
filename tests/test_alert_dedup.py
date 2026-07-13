@@ -451,6 +451,10 @@ class TestEvaluateDailyAlertGate:
 
     def teardown_method(self):
         _clear_holding_limit_alert_state()
+        conn = _conn()
+        conn.execute("DELETE FROM alert_state WHERE engine = 'AIContagion' AND ticker = 'SECTOR'")
+        conn.commit()
+        conn.close()
 
     def test_no_prior_state_fires(self, orch, db_conn):
         assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_LOW, db_conn) is False
@@ -475,6 +479,21 @@ class TestEvaluateDailyAlertGate:
         """Same underlying ticker; low and high targets must not share dedup state."""
         orch.record_alert_fired("HoldingLimit", HOLDING_KEY_LOW, 100.0, LOW_REASON, db_conn)
         assert orch._evaluate_daily_alert_gate("HoldingLimit", HOLDING_KEY_HIGH, db_conn) is False
+
+    def test_max_per_day_above_one_allows_multiple_fires(self, orch, db_conn):
+        """AI Contagion reuses this gate with a configurable max_per_day instead of the
+        implicit default of 1."""
+        orch.record_alert_fired("AIContagion", "SECTOR", 100.0, LOW_REASON, db_conn)
+        assert orch._evaluate_daily_alert_gate("AIContagion", "SECTOR", db_conn, max_per_day=3) is False
+        orch.record_alert_fired("AIContagion", "SECTOR", 99.0, LOW_REASON, db_conn)
+        assert orch._evaluate_daily_alert_gate("AIContagion", "SECTOR", db_conn, max_per_day=3) is False
+        orch.record_alert_fired("AIContagion", "SECTOR", 98.0, LOW_REASON, db_conn)
+        assert orch._evaluate_daily_alert_gate("AIContagion", "SECTOR", db_conn, max_per_day=3) is True
+
+    def test_max_per_day_resets_on_new_day(self, orch, db_conn):
+        fp = orch._condition_fingerprint(LOW_REASON)
+        _seed_alert_state("AIContagion", "SECTOR", fp, 100.0, YESTERDAY + " 10:00:00", 0, YESTERDAY, fire_count=5)
+        assert orch._evaluate_daily_alert_gate("AIContagion", "SECTOR", db_conn, max_per_day=1) is False
 
 
 class TestDispatchHoldingLimitAlerts:

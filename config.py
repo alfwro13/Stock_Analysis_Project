@@ -333,9 +333,7 @@ DEFAULT_CONFIG = {
             "VOLUME_SPIKE_MULTIPLIER": 1.8,
             "BELLWETHER_TICKERS": ["NVDA", "AMD", "MSFT", "META", "GOOGL", "AAPL", "AVGO"],
             "ETF_BASKET": ["SMH", "SOXX", "QQQ"],
-            "COOLDOWN_MINUTES": 60,
-            "RETRIGGER_PERCENT": 1.5,
-            "REARM_PERCENT": 2.5
+            "MAX_ALERTS_PER_DAY": 1
         },
         "TRAP_MONITOR_ALERTS": {
             "COOLDOWN_MINUTES": 120,

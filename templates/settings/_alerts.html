@@ -197,16 +197,9 @@
                     </div>
                     <div class="flex-gap-15 mb-10">
                         <div class="form-group flex-1">
-                            <label>Cooldown (Minutes)</label>
-                            <input type="number" id="AI_CONTAGION_COOLDOWN" class="form-control" value="{{ ac_cfg.COOLDOWN_MINUTES | default(60) }}" min="15">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Retrigger % (Worsened)</label>
-                            <input type="number" id="AI_CONTAGION_RETRIGGER" class="form-control" value="{{ ac_cfg.RETRIGGER_PERCENT | default(1.5) }}" step="0.1">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Re-arm % (Recovered)</label>
-                            <input type="number" id="AI_CONTAGION_REARM" class="form-control" value="{{ ac_cfg.REARM_PERCENT | default(2.5) }}" step="0.1">
+                            <label>Max Alerts Per Day</label>
+                            <input type="number" id="AI_CONTAGION_MAX_PER_DAY" class="form-control" value="{{ ac_cfg.MAX_ALERTS_PER_DAY | default(1) }}" min="1" step="1">
+                            <p class="text-muted-desc">Caps notifications at this many per calendar day (UTC); resets at midnight UTC regardless of how recently the last one fired.</p>
                         </div>
                     </div>
                 </div>

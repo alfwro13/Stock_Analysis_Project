@@ -307,9 +307,7 @@ async function saveSettings(silent = false) {
                     .split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
                 "ETF_BASKET": document.getElementById('AI_CONTAGION_ETFS').value
                     .split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
-                "COOLDOWN_MINUTES": parseFloat(document.getElementById('AI_CONTAGION_COOLDOWN').value),
-                "RETRIGGER_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_RETRIGGER').value),
-                "REARM_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_REARM').value)
+                "MAX_ALERTS_PER_DAY": parseInt(document.getElementById('AI_CONTAGION_MAX_PER_DAY').value)
             },
             "TRAP_MONITOR_ALERTS": {
                 "COOLDOWN_MINUTES": parseFloat(document.getElementById('TRAP_COOLDOWN').value),

@@ -192,6 +192,7 @@ class NotificationItemConfig(BaseModel):
     COOLDOWN_MINUTES: Optional[float] = None
     RETRIGGER_PERCENT: Optional[float] = None
     REARM_PERCENT: Optional[float] = None
+    MAX_ALERTS_PER_DAY: Optional[int] = None
     LEADER_THRESHOLD_PCT: Optional[float] = None
     ETF_CONFIRMATION_THRESHOLD_PCT: Optional[float] = None
     VOLUME_SPIKE_MULTIPLIER: Optional[float] = None

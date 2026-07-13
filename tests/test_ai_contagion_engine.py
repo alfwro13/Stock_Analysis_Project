@@ -347,3 +347,49 @@ class TestSharesLivePriceOnEveryScan:
         assert result == []
         assert row is not None
         assert row["price"] == pytest.approx(98.0)
+
+
+# ── run_ai_contagion_job() — MAX_ALERTS_PER_DAY gating ─────────────────────────
+
+class TestRunAiContagionJobDailyGate:
+    """The scheduler wrapper gates via _evaluate_daily_alert_gate() (max_per_day from
+    NOTIFICATIONS.AI_CONTAGION.MAX_ALERTS_PER_DAY, default 1) rather than the
+    worsened/recovered/cooldown model — see AGENTS.md rule 19's AI Contagion exception."""
+
+    _EVENT = {
+        "ticker": "SECTOR", "price": None, "reason": "AI_SECTOR_CONTAGION",
+        "leader_shocks": [], "severity_score": 0.5,
+    }
+
+    def teardown_method(self):
+        conn = _get_conn()
+        conn.execute("DELETE FROM alert_state WHERE engine = 'AIContagion' AND ticker = 'SECTOR'")
+        conn.commit()
+        conn.close()
+
+    def test_second_alert_same_day_suppressed_at_default_limit(self):
+        import scheduler_jobs
+
+        with patch("ai_contagion_engine.AIContagionEngine.scan", return_value=[self._EVENT]), \
+             patch("ai_contagion_engine.record_scan_snapshot"), \
+             patch("scheduler_jobs.load_config", return_value=_CFG), \
+             patch("scheduler_jobs.notify", return_value=True) as mock_notify:
+            scheduler_jobs.run_ai_contagion_job()
+            scheduler_jobs.run_ai_contagion_job()
+
+        mock_notify.assert_called_once()
+
+    def test_configured_max_per_day_allows_more_than_one(self):
+        import scheduler_jobs
+
+        cfg = json.loads(json.dumps(_CFG))
+        cfg["NOTIFICATIONS"]["AI_CONTAGION"]["MAX_ALERTS_PER_DAY"] = 2
+
+        with patch("ai_contagion_engine.AIContagionEngine.scan", return_value=[self._EVENT]), \
+             patch("ai_contagion_engine.record_scan_snapshot"), \
+             patch("scheduler_jobs.load_config", return_value=cfg), \
+             patch("scheduler_jobs.notify", return_value=True) as mock_notify:
+            scheduler_jobs.run_ai_contagion_job()
+            scheduler_jobs.run_ai_contagion_job()
+
+        assert mock_notify.call_count == 2
