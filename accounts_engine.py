@@ -756,11 +756,12 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
 
     now = time.time()
     registry_exchange_map = market_pulse.build_registry_exchange_map()
+    registry_future_tickers = market_pulse.build_registry_future_tickers()
     stale = []
     for t in tickers:
         if t in cache_map and now - cache_map[t] <= refresh_rate:
             continue
-        if t in cache_map and not market_pulse.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map):
+        if t in cache_map and not market_pulse.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map, registry_future_tickers):
             logger.debug("Refresh skipped for %s — quote not yet settled since open.", t)
             continue
         stale.append(t)

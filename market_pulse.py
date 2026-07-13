@@ -222,6 +222,18 @@ def build_registry_exchange_map(registry_rows: Optional[List[Dict[str, Any]]] = 
     return exchange_map
 
 
+def build_registry_future_tickers(registry_rows: Optional[List[Dict[str, Any]]] = None) -> set:
+    """Every enabled registry row's future_ticker. Tracked separately from
+    build_registry_exchange_map()'s ticker->exchange map because a future contract's settlement
+    gate must honor pre-market (it trades near-continuously and exists specifically to represent
+    pre-market price movement) while its underlying spot instrument's gate must not — see
+    is_ticker_quote_settled(). A caller that already fetched get_ticker_registry() for its own use
+    should pass registry_rows to avoid a repeat query."""
+    if registry_rows is None:
+        registry_rows = get_ticker_registry(enabled_only=True)
+    return {row["future_ticker"] for row in registry_rows if row.get("future_ticker")}
+
+
 def resolve_ticker_exchange(ticker: str, currency: str = "", registry_exchange_map: Optional[Dict[str, str]] = None) -> str:
     """The exchange to gate `ticker`'s quote freshness on. Prefers market_ticker_registry's own
     `exchange` column (indexes/commodities/FX tracked by the Markets page/Market Pulse — the
@@ -237,13 +249,25 @@ def resolve_ticker_exchange(ticker: str, currency: str = "", registry_exchange_m
     return ticker_exchange(ticker, currency)
 
 
-def is_ticker_quote_settled(ticker: str, currency: str = "", registry_exchange_map: Optional[Dict[str, str]] = None) -> bool:
+def is_ticker_quote_settled(
+    ticker: str,
+    currency: str = "",
+    registry_exchange_map: Optional[Dict[str, str]] = None,
+    registry_future_tickers: Optional[set] = None,
+) -> bool:
     """is_quote_settled() resolved against `ticker`'s own exchange rather than a caller-supplied
     one — the single canonical per-ticker settlement check, shared by every needs_refresh path
     (accounts_engine.tickers_needing_refresh(), get_cached_pulse_from_db(),
     registry_tickers_needing_refresh()) instead of each reimplementing its own exchange
-    resolution. See AGENTS.md rule 16/17."""
-    return is_quote_settled(resolve_ticker_exchange(ticker, currency, registry_exchange_map))
+    resolution. See AGENTS.md rule 16/17. A registry row's future_ticker honors pre-market (see
+    build_registry_future_tickers()) so a futures tile isn't stuck requiring its underlying spot
+    exchange's regular session — the exact session during which resolve_tile() shows the spot
+    ticker instead, which left futures tickers refreshing only once a session, then frozen for the
+    rest of the day including the pre-market window they're meant to represent (found 2026-07-13)."""
+    if registry_future_tickers is None:
+        registry_future_tickers = build_registry_future_tickers()
+    honor_premarket = ticker in registry_future_tickers
+    return is_quote_settled(resolve_ticker_exchange(ticker, currency, registry_exchange_map), include_premarket=honor_premarket)
 
 
 def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
@@ -316,6 +340,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
             conn.close()
 
     registry_exchange_map = build_registry_exchange_map()
+    registry_future_tickers = build_registry_future_tickers()
     now = time.time()
     stale = []
     for t in tickers:
@@ -324,7 +349,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
             continue
         if now - last_updated_map[t] <= max_age_seconds:
             continue
-        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map):
+        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map, registry_future_tickers=registry_future_tickers):
             stale.append(t)
     return stale
 
@@ -467,6 +492,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
     current_time: float = time.time()
     registry_exchange_map = build_registry_exchange_map(registry_rows)
+    registry_future_tickers = build_registry_future_tickers(registry_rows)
 
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
 
@@ -482,7 +508,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             age = current_time - row['last_updated']
             has_data = row['last_updated'] > 0 and row['price'] != 0.0
             is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
-            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map)
+            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers)
             needs_refresh: bool = False if not settled else (not has_data or age > int(refresh_rate))
             data_obj: Dict[str, Any] = {
                 "ticker": t,
