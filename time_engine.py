@@ -217,21 +217,35 @@ def localize_naive_to_utc(dt_naive: datetime, exchange: str) -> datetime:
     return dt_naive.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
+def _local_today(tz: ZoneInfo):
+    return datetime.now(timezone.utc).astimezone(tz).date()
+
+
 def market_window_utc(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
 ) -> tuple[dtime, dtime]:
-    """Return (open_utc, close_utc) as naive UTC times for today, honouring DST."""
+    """Return (open_utc, close_utc) as naive UTC times for today, honouring DST and any
+    early-close/half-day the exchange_calendars-backed override reports (e.g. NYSE's
+    post-Thanksgiving 13:00 ET close) — falls back to the static exchange_hours.json hours when
+    no calendar mapping exists for *exchange*, or today isn't a valid trading session for it."""
     if exchange is None:
         exchange = _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
 
     info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[_FALLBACK_EXCHANGE])
     tz = ZoneInfo(info["tz"])
-    today = datetime.now(timezone.utc).date()
+    today = _local_today(tz)
+    override = _session_window_override(exchange, today)
 
-    open_key = "premarket_open" if (include_premarket and "premarket_open" in info) else "open"
-    open_local  = datetime.combine(today, _parse_hm(info[open_key]),  tzinfo=tz)
-    close_local = datetime.combine(today, _parse_hm(info["close"]), tzinfo=tz)
+    if include_premarket and "premarket_open" in info:
+        # exchange_calendars models no extended/premarket session, so this stays static.
+        open_local = datetime.combine(today, _parse_hm(info["premarket_open"]), tzinfo=tz)
+    elif override is not None:
+        open_local = override[0]
+    else:
+        open_local = datetime.combine(today, _parse_hm(info["open"]), tzinfo=tz)
+
+    close_local = override[1] if override is not None else datetime.combine(today, _parse_hm(info["close"]), tzinfo=tz)
 
     open_utc  = open_local.astimezone(timezone.utc).time().replace(tzinfo=None)
     close_utc = close_local.astimezone(timezone.utc).time().replace(tzinfo=None)
@@ -263,6 +277,23 @@ def _get_exchange_calendar(exchange: str):
     return cal
 
 
+def _session_window_override(exchange: str, local_date):
+    """Today's (open, close) as tz-aware UTC Timestamps from exchange_calendars — None if no
+    calendar mapping exists for *exchange*, or *local_date* isn't a valid trading session for it
+    (holiday/weekend), so the caller falls back to the static exchange_hours.json hours."""
+    calendar = _get_exchange_calendar(exchange)
+    if calendar is None:
+        return None
+    try:
+        session = pd.Timestamp(local_date)
+        if not calendar.is_session(session):
+            return None
+        return calendar.session_open(session), calendar.session_close(session)
+    except Exception as exc:
+        logger.error("Failed to resolve session window for %s on %s: %s", exchange, local_date, exc)
+        return None
+
+
 def is_exchange_holiday(exchange: Optional[str] = None) -> bool:
     """True if *exchange* is closed today for a scheduled holiday, per exchange_calendars.
     Unmapped exchanges fail open (return False) rather than blocking the caller."""
@@ -271,7 +302,7 @@ def is_exchange_holiday(exchange: Optional[str] = None) -> bool:
     calendar = _get_exchange_calendar(exchange)
     if calendar is None:
         return False
-    local_date = datetime.now(timezone.utc).astimezone(ZoneInfo(exchange_tz(exchange))).date()
+    local_date = _local_today(ZoneInfo(exchange_tz(exchange)))
     return not calendar.is_session(pd.Timestamp(local_date))
 
 

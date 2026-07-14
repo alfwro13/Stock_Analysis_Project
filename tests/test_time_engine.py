@@ -2,6 +2,7 @@
 import json
 import pytest
 from datetime import datetime, time as dtime, timezone
+from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
 import time_engine
@@ -154,10 +155,61 @@ class TestMarketWindowUtc:
         assert open_regular == open_premarket
 
     def test_unknown_exchange_falls_back_to_nyse(self):
-        open_utc, close_utc = market_window_utc("INVALID_EXCHANGE")
-        nyse_open, nyse_close = market_window_utc("NYSE")
+        # Pinned to an ordinary NYSE day: NYSE now sources its window from exchange_calendars,
+        # which would diverge from this static-only fallback on a real NYSE early-close day.
+        with patch("time_engine.datetime", _fake_datetime(_SUMMER_UTC)):
+            open_utc, close_utc = market_window_utc("INVALID_EXCHANGE")
+            nyse_open, nyse_close = market_window_utc("NYSE")
         assert open_utc == nyse_open
         assert close_utc == nyse_close
+
+
+# ---------------------------------------------------------------------------
+# market_window_utc — exchange_calendars session override (early closes, half-days)
+# ---------------------------------------------------------------------------
+
+class TestSessionWindowOverride:
+    def test_calendar_hours_match_static_hours_for_all_mapped_exchanges(self):
+        """Regression guard: catches the static exchange_hours.json entry silently drifting
+        away from exchange_calendars' real session hours again (as it had for BOVESPA/OMXH/
+        OSE/TASE before this feature), on an ordinary trading day with no early close."""
+        with patch("time_engine.datetime", _fake_datetime(_SUMMER_UTC)):
+            for exchange in time_engine._EXCHANGE_CALENDAR_CODES:
+                open_utc, close_utc = market_window_utc(exchange)
+                info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[time_engine._FALLBACK_EXCHANGE])
+                tz = ZoneInfo(info["tz"])
+                today = _SUMMER_UTC.astimezone(tz).date()
+                expected_open = datetime.combine(today, time_engine._parse_hm(info["open"]), tzinfo=tz).astimezone(timezone.utc).time()
+                expected_close = datetime.combine(today, time_engine._parse_hm(info["close"]), tzinfo=tz).astimezone(timezone.utc).time()
+                assert open_utc == expected_open, f"{exchange}: open mismatch"
+                assert close_utc == expected_close, f"{exchange}: close mismatch"
+
+    def test_nyse_early_close_day_after_thanksgiving(self):
+        day_after_thanksgiving = datetime(2026, 11, 27, 12, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(day_after_thanksgiving)):
+            open_utc, close_utc = market_window_utc("NYSE")
+        assert open_utc == dtime(14, 30)
+        assert close_utc == dtime(18, 0), "NYSE closes early (13:00 ET) the day after Thanksgiving"
+
+    def test_nyse_early_close_christmas_eve(self):
+        christmas_eve = datetime(2026, 12, 24, 12, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(christmas_eve)):
+            _, close_utc = market_window_utc("NYSE")
+        assert close_utc == dtime(18, 0), "NYSE closes early (13:00 ET) on Christmas Eve"
+
+    def test_is_market_open_false_after_early_close_but_before_old_normal_close(self):
+        # 19:00 UTC on 2026-11-27 is after the real 18:00 UTC early close, but still before the
+        # old (pre-calendar) normal 21:00 UTC close — the exact window this feature fixes.
+        after_early_close = datetime(2026, 11, 27, 19, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(after_early_close)):
+            assert is_market_open("NYSE") is False
+
+    def test_falls_back_to_static_hours_when_no_calendar_mapping(self):
+        with patch("time_engine._get_exchange_calendar", return_value=None):
+            with patch("time_engine.datetime", _fake_datetime(_SUMMER_UTC)):
+                open_utc, close_utc = market_window_utc("NYSE")
+        assert open_utc == dtime(13, 30)
+        assert close_utc == dtime(20, 0)
 
 
 # ---------------------------------------------------------------------------
