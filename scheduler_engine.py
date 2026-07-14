@@ -673,16 +673,23 @@ def reload_scheduler():
         logger.error("Failed to schedule Intraday Dip Radar scan: %s", e)
 
     # Always-on, DB-only (no Yahoo calls) — safe at a 1-minute cadence, independent of the
-    # heavier Yahoo-fetching Crash/Moonshot scan's own INTERVAL_MINUTES.
+    # heavier Yahoo-fetching Crash/Moonshot scan's own INTERVAL_MINUTES. Window is capped at
+    # NYSE's close (20:00 UTC, i.e. hour up to and including 20) rather than padded further, so
+    # this job stops recomputing account_performance_cache before the 22:30 BST Update Pipeline
+    # writes stock_signals — the previous 07:00-21:59 UTC window left a ~2h dead zone after
+    # market_pulse_cache goes stale (Crash & Moonshot's own local-time END_TIME cutoff) during
+    # which this job kept re-baking whatever current_price_map() resolved to, letting a stale
+    # nightly write win the race purely by being newer. See accounts_engine.current_price_map()'s
+    # docstring for the companion guard.
     try:
         scheduler.add_job(
             run_account_performance_refresh_job,
-            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='*/1', timezone=timezone.utc),
+            CronTrigger(day_of_week='mon-fri', hour='7-20', minute='*/1', timezone=timezone.utc),
             id='account_performance_refresh_job',
             replace_existing=True,
             misfire_grace_time=60,
         )
-        logger.info("Account Performance Refresh scheduled mon-fri 07:00–21:59 UTC every 1 min.")
+        logger.info("Account Performance Refresh scheduled mon-fri 07:00–20:59 UTC every 1 min.")
     except Exception as e:
         logger.error("Failed to schedule Account Performance Refresh: %s", e)
 

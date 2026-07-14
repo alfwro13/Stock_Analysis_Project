@@ -375,6 +375,30 @@ def test_is_daily_bar_still_forming_false_when_market_closed_and_both_dates_lag_
     assert is_daily_bar_still_forming(yesterday, yesterday) is False
 
 
+@pytest.mark.config
+def test_is_daily_bar_still_forming_false_when_exchange_confirmed_closed():
+    """Regression test (found 2026-07-13): a same-day post-close fetch (e.g. the nightly Update
+    Pipeline, run well after the relevant exchange has closed) produces the exact same date
+    signature as a genuine mid-session fetch -- both daily and live feed dates equal today. An
+    explicit exchange_currently_open=False must override the date-only heuristic so a fully
+    final close is never mistaken for still-forming just because the fetch happened later the
+    same UTC calendar day."""
+    from datetime import datetime, timezone
+    from utils import is_daily_bar_still_forming
+    today = datetime.now(timezone.utc).date()
+    assert is_daily_bar_still_forming(today, today, exchange_currently_open=False) is False
+
+
+@pytest.mark.config
+def test_is_daily_bar_still_forming_true_when_exchange_confirmed_open():
+    """exchange_currently_open=True (or omitted) preserves the existing date-only behaviour for
+    callers that already only run while the exchange is confirmed open."""
+    from datetime import datetime, timezone
+    from utils import is_daily_bar_still_forming
+    today = datetime.now(timezone.utc).date()
+    assert is_daily_bar_still_forming(today, today, exchange_currently_open=True) is True
+
+
 # ── Constants sanity checks ───────────────────────────────────────────────────
 
 @pytest.mark.config

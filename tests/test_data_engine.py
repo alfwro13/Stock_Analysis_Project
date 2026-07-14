@@ -452,10 +452,47 @@ class TestDropInProgressLastBar:
 
         assert len(_drop_in_progress_last_bar(daily, live)) == 1
 
+    def test_keeps_last_row_when_ticker_exchange_confirmed_closed(self):
+        """Regression test (found 2026-07-13): passing a ticker resolves its exchange via
+        time_engine and consults is_market_open — a closed exchange must keep today's bar even
+        though its date matches both the live feed's date and today's real calendar date."""
+        from datetime import datetime, timezone
+        from unittest.mock import patch as _patch
+        from data_engine import _drop_in_progress_last_bar
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        daily = _ohlcv(["2026-07-01", today], [100.0, 105.0])
+        live = _ohlcv([f"{today} 09:30", f"{today} 10:00"], [104.0, 105.0])
+
+        with _patch("data_engine.time_engine.is_market_open", return_value=False) as mocked:
+            result = _drop_in_progress_last_bar(daily, live, "AMD")
+
+        mocked.assert_called_once_with("NYSE")
+        assert len(result) == 2
+        assert result["Close"].iloc[-1] == 105.0
+
+    def test_trims_last_row_when_ticker_exchange_confirmed_open(self):
+        """Same date collision as above, but with the exchange confirmed still open — the bar
+        genuinely is still forming and must be trimmed."""
+        from datetime import datetime, timezone
+        from unittest.mock import patch as _patch
+        from data_engine import _drop_in_progress_last_bar
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        daily = _ohlcv(["2026-07-01", today], [100.0, 105.0])
+        live = _ohlcv([f"{today} 09:30", f"{today} 10:00"], [104.0, 105.0])
+
+        with _patch("data_engine.time_engine.is_market_open", return_value=True):
+            result = _drop_in_progress_last_bar(daily, live, "AMD")
+
+        assert len(result) == 1
+        assert result["Close"].iloc[-1] == 100.0
+
 
 def test_bulk_download_historical_trims_in_progress_last_bar(tmp_path):
     """The bulk 2Y historical refresh must not persist today's still-forming bar as if it were
-    a completed close — regression for the root cause of the AMD 24h-change flip-flop bug."""
+    a completed close — regression for the root cause of the AMD 24h-change flip-flop bug.
+    NYSE is mocked open to isolate this from the exchange-open regression test below."""
     import pandas as pd
     from datetime import datetime, timedelta, timezone
     from data_engine import DataEngine
@@ -471,12 +508,44 @@ def test_bulk_download_historical_trims_in_progress_last_bar(tmp_path):
         patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
         patch("data_engine.get_mutual_fund_tickers", return_value=set()),
         patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
+        patch("data_engine.time_engine.is_market_open", return_value=True),
     ):
         engine.bulk_download_historical(["AMD"])
 
     saved = pd.read_parquet(tmp_path / "AMD.parquet")
     assert len(saved) == 1
     assert saved["Close"].iloc[-1] == 517.82
+
+
+def test_bulk_download_historical_keeps_todays_close_when_exchange_already_closed(tmp_path):
+    """Regression test (found 2026-07-13): a same-day fetch that happens AFTER the exchange has
+    closed (e.g. the 22:30 nightly Update Pipeline) produces the same date signature as a
+    mid-session fetch — both daily and live feed dates equal today. Without an exchange-open
+    signal, this wrongly trimmed the genuinely final close every night, permanently rolling
+    stock_signals.current_price one trading day stale. With NYSE mocked closed, today's real
+    close must be kept."""
+    import pandas as pd
+    from datetime import datetime, timedelta, timezone
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    today = datetime.now(timezone.utc).date().isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    daily_df = _ohlcv([yesterday, today], [517.82, 560.86])
+    live_df = _ohlcv([f"{today} 09:30", f"{today} 15:45"], [560.86, 566.0])
+
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
+        patch("data_engine.get_mutual_fund_tickers", return_value=set()),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
+        patch("data_engine.time_engine.is_market_open", return_value=False),
+    ):
+        engine.bulk_download_historical(["AMD"])
+
+    saved = pd.read_parquet(tmp_path / "AMD.parquet")
+    assert len(saved) == 2
+    assert saved["Close"].iloc[-1] == 560.86
 
 
 def test_bulk_download_historical_keeps_completed_close_unchanged(tmp_path):
@@ -521,6 +590,7 @@ def test_fetch_and_save_data_trims_in_progress_last_bar(tmp_path):
         patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
         patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
         patch("data_engine.yahoo_engine.get_ticker_info", return_value={}),
+        patch("data_engine.time_engine.is_market_open", return_value=True),
     ):
         result = engine.fetch_and_save_data("AMD")
 

@@ -68,7 +68,7 @@ def clamp_beta(raw: Any, lo: float = 0.5, hi: float = 2.0, default: float = 1.0)
         return default
 
 
-def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any) -> bool:
+def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any, exchange_currently_open: Optional[bool] = None) -> bool:
     """True when the daily feed's last date is on/after the live feed's last date AND is today's
     actual calendar date — Yahoo's daily endpoint often returns today's still-forming session as
     the 'close' when queried mid-session. Comparing against the live feed's date alone produces a
@@ -77,7 +77,21 @@ def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any) -> boo
     though daily has already correctly caught up to a genuinely completed prior close. Requiring
     the daily bar's own date to also be >= real "today" rules that case out. Found 2026-07-08:
     fetch_and_save_data() was silently trimming a just-fetched, fully-closed prior-day bar every
-    pre-market morning, permanently discarding that day's verified close."""
+    pre-market morning, permanently discarding that day's verified close.
+
+    A same-UTC-calendar-day fetch that happens *after* the exchange has already closed (e.g. the
+    22:30 nightly Update Pipeline) produces the exact same date signature as a genuine mid-session
+    fetch — both have daily/live/today all equal — so the date-only check alone cannot tell them
+    apart. exchange_currently_open, when supplied (time_engine.is_market_open(exchange) for the
+    ticker in question), is the authoritative answer: False means the session has genuinely ended,
+    so the bar can never be "still forming" regardless of date collision. Callers that only ever
+    run while the exchange is confirmed open (the intraday scanners, already gated upstream) can
+    omit it — the date-only check is exact in that context. Found 2026-07-13: data_engine.py's
+    nightly bulk/single-ticker fetchers passed no exchange signal at all, so every night's Update
+    Pipeline run trimmed that day's just-completed, fully-final close off the daily parquet,
+    permanently rolling stock_signals.current_price and quant_signals one trading day stale."""
+    if exchange_currently_open is False:
+        return False
     from datetime import datetime, timezone
     today = datetime.now(timezone.utc).date()
     return last_daily_date >= last_live_date and last_daily_date >= today

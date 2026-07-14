@@ -31,6 +31,10 @@ _EPS = 1e-9
 
 _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
 
+# See current_price_map()'s docstring — must comfortably exceed the ~1-2h gap between Crash &
+# Moonshot's daily END_TIME cutoff and the nightly Update Pipeline's stock_signals write.
+_STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS = 6 * 3600
+
 
 def is_unresolved_ticker(ticker: Optional[str]) -> bool:
     """Ghostfolio reports a raw asset UUID as `symbol` for custom/manual assets with no real market ticker."""
@@ -590,11 +594,21 @@ def delete_transaction_with_pair(txn_id: int) -> bool:
 
 def current_price_map(tickers: list) -> dict:
     """Live-aware: prefers `market_pulse_cache`'s price over `stock_signals.current_price`
-    whenever the cache row is newer than stock_signals' own last update — not gated by an
-    absolute-age cutoff, since the background jobs that keep market_pulse_cache warm (the
-    10-minute intraday scan, on-demand refresh triggers) run far coarser than the UI's own
+    unless the cache row is missing, or has fallen more than
+    _STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS behind stock_signals' own last update — not gated by
+    an absolute-age cutoff on market_pulse_cache itself, since the background jobs that keep it
+    warm (the intraday scan, on-demand refresh triggers) run far coarser than the UI's own
     REFRESH_RATE, and a price a few minutes old is still far better than the once-nightly
-    stock_signals snapshot it would otherwise fall back to."""
+    stock_signals snapshot it would otherwise fall back to. The minimum-gap requirement (rather
+    than a bare "whichever timestamp is newer" comparison) exists because Crash & Moonshot
+    (the only job that keeps market_pulse_cache warm for held tickers, not just Dip Radar's
+    armed watch-list) stops for the day at its own configured END_TIME while
+    stock_signals gets a fresh write ~1-2h later from the nightly Update Pipeline — a bare
+    "newer wins" comparison would flip to the nightly price for that gap every single night even
+    though market_pulse_cache is still correctly holding the day's real close, not stale.
+    Found 2026-07-13: this let a corrupted stock_signals.current_price (see
+    utils.is_daily_bar_still_forming's exchange-open fix) silently overwrite a correct, frozen
+    market_pulse_cache price every night purely by winning a timestamp race."""
     if not tickers:
         return {}
     from account_scraper_engine import latest_price, parse_pension_account_id
@@ -648,7 +662,7 @@ def current_price_map(tickers: list) -> dict:
         for r in cursor.fetchall():
             live = live_prices.get(r["ticker"])
             price = r["current_price"]
-            if live and live[1] >= _epoch(r["last_updated"]):
+            if live and _epoch(r["last_updated"]) - live[1] <= _STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS:
                 price = live[0]
             result[r["ticker"]] = (price, r["currency"])
     except Exception as e:

@@ -10,17 +10,19 @@ from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
+import time_engine
 
 from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
 
 
-def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.DataFrame]) -> pd.DataFrame:
-    """Yahoo's daily endpoint often includes today's still-forming bar when queried mid-session; trim it so the stored daily history never stores a partial-session close as if it were final (same comparison market_pulse.fetch_and_save_pulse already makes against its own live feed)."""
+def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.DataFrame], ticker: Optional[str] = None) -> pd.DataFrame:
+    """Yahoo's daily endpoint often includes today's still-forming bar when queried mid-session; trim it so the stored daily history never stores a partial-session close as if it were final (same comparison market_pulse.fetch_and_save_pulse already makes against its own live feed). Unlike the intraday scanners' own use of is_daily_bar_still_forming(), this runs at arbitrary times of day (nightly Update Pipeline, on-demand single-ticker fetch) rather than only while an exchange is confirmed open, so ticker must be passed to resolve whether its exchange has already closed for the day — otherwise a same-day post-close fetch is indistinguishable from a genuine mid-session one."""
     if df_live is None or df_live.empty or len(df_daily) < 2:
         return df_daily
-    if is_daily_bar_still_forming(df_daily.index[-1].date(), df_live.index[-1].date()):
+    exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker)) if ticker else None
+    if is_daily_bar_still_forming(df_daily.index[-1].date(), df_live.index[-1].date(), exchange_open):
         return df_daily.iloc[:-1]
     return df_daily
 
@@ -131,7 +133,7 @@ class DataEngine:
                 for col in ('Open', 'High', 'Low'):
                     mask = (df[col] == 0) & (df['Close'] > 0)
                     df.loc[mask, col] = df.loc[mask, 'Close']
-                df = _drop_in_progress_last_bar(df, live_dfs.get(ticker))
+                df = _drop_in_progress_last_bar(df, live_dfs.get(ticker), ticker)
                 if not df.empty:
                     df.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
         except Exception as e:
@@ -207,7 +209,7 @@ class DataEngine:
                 for col in ('Open', 'High', 'Low'):
                     mask = (df_daily[col] == 0) & (df_daily['Close'] > 0)
                     df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
-                df_daily = _drop_in_progress_last_bar(df_daily, df_live)
+                df_daily = _drop_in_progress_last_bar(df_daily, df_live, ticker)
                 if not df_daily.empty:
                     df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
                     persisted = True

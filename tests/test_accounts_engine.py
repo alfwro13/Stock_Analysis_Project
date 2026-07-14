@@ -1392,6 +1392,30 @@ def test_current_price_map_falls_back_to_stock_signals_when_cache_older_than_sig
 
 
 @pytest.mark.db
+def test_current_price_map_keeps_cache_price_when_signals_only_marginally_newer():
+    """Regression test (found 2026-07-13): Crash & Moonshot freezes market_pulse_cache at its
+    own configured END_TIME (e.g. 21:00 local), but the nightly Update Pipeline writes a fresh
+    stock_signals timestamp ~1-2h later. A bare "whichever timestamp is newer" comparison flipped
+    to the nightly price for that gap every single night — even when market_pulse_cache was still
+    correctly holding the day's real close — because stock_signals' write is trivially newer.
+    Within _STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS, the cache price must still win."""
+    import time
+    from datetime import datetime, timezone
+
+    aid = create_account("NightlyRaceAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZRACE", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_market_pulse("ZZRACE", 150.0, time.time() - 7200)  # frozen 2h ago (Crash & Moonshot's cutoff)
+    _seed_stock_signal(
+        "ZZRACE", 100.0, "GBP",
+        last_updated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),  # just written
+    )
+
+    prices = accounts_engine.current_price_map(["ZZRACE"])
+    assert prices["ZZRACE"] == (150.0, "GBP")
+
+
+@pytest.mark.db
 def test_current_price_map_falls_back_when_no_cache_row():
     aid = create_account("NoCachePriceAcc", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZNOCACHE", currency="GBP",
