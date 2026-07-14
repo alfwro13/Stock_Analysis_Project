@@ -1,7 +1,7 @@
 pytest>=8.3.0
 fastapi==0.139.0
 python-dotenv>=1.0.0
-slowapi>=0.1.9
+slowapi>=0.1.10
 starlette-csrf>=3.0.0
 python-multipart
 uvicorn==0.46.0
