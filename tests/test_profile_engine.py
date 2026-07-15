@@ -78,9 +78,18 @@ class TestRunProfileAudit:
             mock_time.sleep.assert_not_called()
 
     def test_empty_db_does_not_fetch_yahoo(self):
-        """With no tickers to process, yahoo_engine.get_ticker_info must never be called."""
+        """With no tickers to process, yahoo_engine.get_ticker_info must never be called.
+
+        Mocks get_connection (like test_empty_queue_does_not_call_sleep above) rather than
+        relying on the real shared session DB being empty: other test modules insert rows into
+        stock_signals/market_universe/quant_signals without cleaning up, so this test was flaky
+        depending on run order (found 2026-07-15)."""
+        from unittest.mock import MagicMock
         from profile_engine import run_profile_audit
-        with patch("profile_engine.yahoo_engine") as mock_ye:
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.fetchall.return_value = []
+        with patch("profile_engine.get_connection", return_value=mock_conn), \
+             patch("profile_engine.yahoo_engine") as mock_ye:
             run_profile_audit(limit=10)
             mock_ye.get_ticker_info.assert_not_called()
 
