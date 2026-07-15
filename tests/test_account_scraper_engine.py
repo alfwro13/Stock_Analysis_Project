@@ -63,10 +63,20 @@ def test_fetch_and_extract_http_error():
 
 
 def test_fetch_and_extract_network_exception():
+    """The raw exception text must not reach the caller (CWE-209) — only a generic message."""
     with patch("requests.get", side_effect=Exception("connection refused")):
         result = scraper.fetch_and_extract("http://example.test/x.html", "#gf-price")
     assert result["status"] == "error"
-    assert "connection refused" in result["message"]
+    assert "connection refused" not in result["message"]
+
+
+def test_fetch_and_extract_selector_error_keeps_detail():
+    """A ValueError from extract_price (bad selector/no number) is a deliberate, developer-authored
+    validation message, not an internal-detail leak, so it's still surfaced to the caller verbatim."""
+    with patch("requests.get", return_value=_mock_resp(200, '<div id="gf-price">n/a</div>')):
+        result = scraper.fetch_and_extract("http://example.test/x.html", "#gf-price")
+    assert result["status"] == "error"
+    assert "no number" in result["message"]
 
 
 @pytest.mark.db
