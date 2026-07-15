@@ -19,6 +19,7 @@ LEVELS = [
     ("technicals", "Technical Analysis"),
     ("fundamentals", "Company Valuation"),
     ("strategies", "Trading Strategies"),
+    ("behavioral-finance", "Investor Psychology"),
     ("machine-learning", "AI & Risk Metrics"),
     ("earnings-vol", "Earnings Volatility"),
     ("dip-radar", "Dip Radar"),
@@ -175,7 +176,8 @@ CARDS = [
         ],
         "explanation": """<p>A <strong>dividend</strong> is a cash payment a company makes to its shareholders, typically from its profits. Not all companies pay dividends — fast-growing companies (like many tech companies) reinvest all profits back into the business instead. Mature, cash-generative companies (utilities, banks, consumer staples) tend to pay regular dividends, often quarterly.</p>
 <p>The <strong>dividend yield</strong> is the annual dividend payment divided by the current share price, expressed as a percentage. If a stock is at £10 and pays £0.50 per year in dividends, the yield is 5%. A high yield sounds attractive, but beware: a rising yield often means the <em>share price has fallen</em>, which can signal the dividend is about to be cut. A "dividend trap" is when a company looks like it's offering 8–10% yield but then cuts its dividend as profits deteriorate.</p>
-<p>When a stock goes <strong>ex-dividend</strong> (ex-div), buyers on that day and after are no longer entitled to the upcoming dividend. The share price usually drops by roughly the dividend amount on ex-div day — this is mechanical, not a sign of company trouble.</p>""",
+<p>When a stock goes <strong>ex-dividend</strong> (ex-div), buyers on that day and after are no longer entitled to the upcoming dividend. The share price usually drops by roughly the dividend amount on ex-div day — this is mechanical, not a sign of company trouble.</p>
+<p>The <strong>payout ratio</strong> (dividends paid ÷ net income) shows how much of a company's profit is being handed back to shareholders versus retained for growth. Below 60% generally leaves comfortable room for the dividend to be sustained and even grown; above 80% leaves little buffer if profits dip even slightly. Checking the payout ratio against <em>free cash flow</em> rather than earnings is more reliable, since it's cash — not accounting profit — that actually funds the payment. A <strong>Dividend Aristocrat</strong> is a company that has raised its dividend for at least 25 consecutive years — a track record that, on its own, says a lot about the durability of the underlying business through multiple economic cycles.</p>""",
     },
     {
         "term_key": "stock-market-indices",
@@ -232,6 +234,36 @@ CARDS = [
         "explanation": """<p>Some major indexes — the S&amp;P 500, Nasdaq 100, Dow Jones, Russell 2000, and Nikkei 225 — trade two ways: a <strong>cash/spot</strong> price only available while that exchange's regular session is open, and a <strong>futures</strong> contract that trades almost continuously, including outside regular hours. The Markets page shows both as two adjacent tiles, labeled "Index" and "Futures", so it's never ambiguous which instrument a price belongs to — the futures tile is colored purely by how fresh its own data is (it has no "market closed" state of its own, since it trades near-continuously), while the index tile still greys out while its cash market is shut. A "Hide Futures" checkbox in the United States section header (saved in a cookie, so it stays hidden on your next visit) drops the four US futures tiles (S&amp;P 500, Nasdaq 100, Dow, Russell 2000) if you'd rather only see the cash indexes — it has no effect on the Nikkei 225 futures tile in the Asia section. The compact Market Pulse widget (Portfolio/Watchlist/Stock Detail) is different: it shows only one of the two, automatically swapping to the futures price and label whenever the cash market is closed or in pre-market, since it has room for a single summary tile per index rather than a pair.</p>""",
     },
     {
+        "term_key": "futures-contracts",
+        "section_id": "market-fundamentals",
+        "term_title": "Futures Contracts — Obligations, Not Options",
+        "question": "What is the key difference between a futures contract and an options contract?",
+        "answer": "A futures contract is a binding obligation for both parties, while an option only gives the holder the right, not the obligation, to act",
+        "distractors": [
+            "Futures can only be traded on weekends, options only on weekdays",
+            "Options always cost more upfront than an equivalent futures contract",
+            "Futures have no expiration date, unlike options",
+        ],
+        "explanation": """<p>A <strong>futures contract</strong> — like the ones shown alongside spot indexes in the Spot/Futures Tiles above — is an agreement to buy or sell an asset at a fixed price on a specific future date. The critical difference from an option: a future is a binding <em>obligation</em> for both sides, not a right one side can choose to walk away from. Futures are exchange-traded and standardised (unlike a private, customised <strong>forward contract</strong>), and gains/losses are settled daily against the account (<strong>mark-to-market</strong>) rather than only at expiry.</p>
+<p>Futures trade on margin — a relatively small deposit controls a much larger contract value, so price moves are amplified into much larger percentage gains or losses on the capital actually posted. <strong>Hedgers</strong> use futures to lock in a price and offset a real, existing exposure (an airline locking in fuel costs); <strong>speculators</strong> use them purely to bet on price direction without ever wanting the underlying asset delivered; <strong>arbitrageurs</strong> trade the gap between the futures price and the spot price itself.</p>
+<p>The relationship between the futures price and the expected future spot price has a name: <strong>contango</strong> is when futures trade above the current spot price (normal for most financial futures, reflecting the cost of carrying the position over time), <strong>backwardation</strong> is the reverse. This matters most for anyone repeatedly "rolling" a futures position forward as each contract nears expiry — in contango, each roll is systematically a small loss, which is why a futures-based ETF can underperform the spot index it's meant to track over long periods even when the spot index itself is flat.</p>""",
+    },
+    {
+        "term_key": "short-selling-leverage",
+        "section_id": "market-fundamentals",
+        "term_title": "Short Selling & Leverage",
+        "question": "Why is a short seller's potential loss described as theoretically unlimited?",
+        "answer": "There is no ceiling on how high a share price can rise before the short seller is forced to buy it back",
+        "distractors": [
+            "Short sellers are required to hold the position for at least one year",
+            "Brokers charge an unlimited fee for every short position",
+            "Short selling is only available on stocks with unlimited trading volume",
+        ],
+        "explanation": """<p><strong>Short selling</strong> bets on a price decline by reversing the usual buy-then-sell order: borrow shares (via your broker), sell them immediately at today's price, then later buy them back to return to the lender — profiting if the buyback price is lower than the original sale price. Unlike a normal long position, where the most you can lose is what you paid, a short position's loss is theoretically unlimited, because there's no ceiling on how high a share price can rise before you're forced to buy it back.</p>
+<p>A <strong>short squeeze</strong> is what happens when a heavily-shorted stock starts rising: short sellers facing mounting losses rush to buy back shares to close their positions, and that forced buying itself pushes the price higher still, forcing yet more shorts to cover — a self-reinforcing spiral upward. This is the mechanic behind every Bull Trap and Bear Trap pattern described in the Trading Strategies section: both are, at their core, a batch of short sellers or recent buyers being forced out of a crowded position.</p>
+<p><strong>Leverage</strong> — trading with borrowed money via a margin account — magnifies gains and losses in direct proportion to how much is borrowed. Margin accounts require maintaining minimum equity (typically an initial requirement around 50%, with a maintenance floor around 25%); if the account's equity falls below that floor, a <strong>margin call</strong> forces you to deposit more cash or have the position liquidated automatically, often at the worst possible moment in a fast decline.</p>""",
+    },
+    {
         "term_key": "what-is-a-portfolio",
         "section_id": "market-fundamentals",
         "term_title": "What Is a Portfolio?",
@@ -243,8 +275,83 @@ CARDS = [
             "Correlation between assets always reaches exactly 0 during a crash",
         ],
         "explanation": """<p>A <strong>portfolio</strong> is your complete collection of investments — every stock, ETF, bond, and cash position you hold. The concept of portfolio management is about more than picking good individual stocks; it is about how all your holdings interact with each other to produce a combined risk and return profile.</p>
-<p><strong>Diversification</strong> is the central principle: spreading holdings across different companies, sectors, geographies, and asset classes so that a single bad event does not devastate everything at once. When oil companies fall because of an oversupply shock, utility companies or gold holdings might hold steady or rise. This non-correlation between assets is what makes a diversified portfolio less volatile than any individual holding within it.</p>
+<p><strong>Diversification</strong> is the central principle: spreading holdings across different companies, sectors, geographies, and asset classes so that a single bad event does not devastate everything at once. When oil companies fall because of an oversupply shock, utility companies or gold holdings might hold steady or rise. This non-correlation between assets is what makes a diversified portfolio less volatile than any individual holding within it. As a rule of thumb, around 15–20 well-spread stocks eliminates most of the risk that's specific to individual companies (the remaining risk is the market-wide risk no amount of stock-picking diversifies away); beyond that, adding more holdings keeps diversifying but with rapidly diminishing returns. Diversifying by <strong>factor</strong> — blending value, growth, momentum, quality, and small/large-cap exposure — is a deeper layer of the same idea, since these factors also tend to take turns outperforming and underperforming each other.</p>
 <p><strong>Correlation</strong> is the measure of how closely two assets move together. A correlation of +1.0 means they move in perfect lockstep; −1.0 means they move in exact opposites; 0 means they are independent. Truly low-correlation assets are rare — during market crashes, most correlations converge toward 1.0 as panic selling hits everything. This is the "diversification breaks down when you need it most" problem, which this app's Stress Tester and X-ray engine are specifically designed to illuminate.</p>""",
+    },
+    {
+        "term_key": "modern-portfolio-theory",
+        "section_id": "market-fundamentals",
+        "term_title": "Modern Portfolio Theory — Risk-Return Tradeoff",
+        "question": "What does it mean for a portfolio to sit 'below' the Efficient Frontier?",
+        "answer": "It's taking on more risk than necessary for its expected return, or getting less return than possible for its risk level — free improvement is available",
+        "distractors": [
+            "The portfolio contains only bonds and no equities",
+            "The portfolio has underperformed the S&P 500 for at least one calendar year",
+            "The portfolio's total value has fallen below its original cost basis",
+        ],
+        "explanation": """<p><strong>Modern Portfolio Theory (MPT)</strong> is the foundational idea behind treating a portfolio as a single system rather than a pile of separate bets: total portfolio risk isn't just the average of each holding's own volatility, it also depends heavily on how those holdings move <em>relative to each other</em> (their correlation, see "What Is a Portfolio?" above). Because of this, combining assets that don't move in lockstep can lower the portfolio's overall risk without necessarily lowering its expected return — sometimes called diversification's "free lunch," since you're not giving anything up to get it.</p>
+<p>Plotting every possible portfolio's risk against its expected return traces out the <strong>Efficient Frontier</strong> — the set of portfolios offering the best possible return for a given level of risk (or the lowest risk for a given return). Any portfolio sitting below that frontier is leaving free return on the table for the risk it's taking. This is exactly what this app's Portfolio Optimizer tool computes directly from your own holdings — see its own glossary section for the Min-Variance and Max-Sharpe portfolios it derives from the frontier.</p>
+<p>MPT distinguishes <strong>strategic allocation</strong> (your long-term target mix across asset classes, driven by goals and risk tolerance — the single biggest driver of long-run returns) from <strong>tactical allocation</strong> (smaller, shorter-term tilts away from that target to exploit a specific view). The theory's well-known weakness: it assumes correlations and expected returns are stable and that markets behave "normally" — assumptions that hold reasonably well in calm periods and break down precisely during the crises where risk management matters most.</p>""",
+    },
+    {
+        "term_key": "portfolio-rebalancing",
+        "section_id": "market-fundamentals",
+        "term_title": "Portfolio Rebalancing",
+        "question": "Why does a portfolio drift away from its target allocation even without you making any trades?",
+        "answer": "Winning positions grow as a share of the portfolio and losing ones shrink, purely through market price movement",
+        "distractors": [
+            "Brokers automatically adjust allocations every quarter without notice",
+            "Target allocations are legally required to change every year",
+            "Dividends are automatically reinvested into a different asset class",
+        ],
+        "explanation": """<p>Over time, winning positions grow as a share of a portfolio and losing ones shrink, so even a portfolio built to a careful target allocation drifts away from it purely through market movement — a 60/40 stock/bond split can silently become 75/25 after a strong few years for stocks. <strong>Rebalancing</strong> is periodically selling some of what's grown and buying more of what's shrunk to bring the mix back to target, which mechanically enforces a "sell high, buy low" discipline regardless of what the market is doing at the time.</p>
+<p>Two common triggers: <strong>calendar-based</strong> rebalancing (review and reset on a fixed schedule — monthly, quarterly, annually) is simple and predictable, while <strong>threshold-based</strong> rebalancing (reset only once an allocation has drifted beyond a set band, e.g. ±5% from target) trades that predictability for reacting only when drift has become meaningful, generating less unnecessary trading.</p>
+<p>In a taxable account, rebalancing isn't free — selling an appreciated position can trigger a taxable capital gain, so many investors tolerate a wider drift band in taxable accounts than in tax-advantaged ones, or prefer to rebalance by directing new contributions toward the underweight asset rather than selling the overweight one outright.</p>""",
+    },
+    {
+        "term_key": "position-sizing",
+        "section_id": "market-fundamentals",
+        "term_title": "Position Sizing — How Much to Risk Per Trade",
+        "question": "Why does this app's Position Sizing tool give a volatile stock a smaller position than a calm one, for the same risk percentage?",
+        "answer": "Because sizing is volatility-adjusted (ATR-based) — a wider stop distance on a volatile stock means fewer shares are needed to risk the same fixed amount of money",
+        "distractors": [
+            "Volatile stocks are excluded from position sizing entirely",
+            "The tool always assigns exactly the same number of shares regardless of price",
+            "Volatile stocks require a higher percentage of the account to be risked",
+        ],
+        "explanation": """<p><strong>Position sizing</strong> answers a different question from "should I buy this stock" — it answers "how many shares." Two positions in the same stock can have wildly different risk depending purely on size: a £500 position and a £5,000 position in an identical stock that falls 10% lose £50 and £500 respectively, from the exact same decision. Sizing, not stock-picking, is often the single biggest lever an investor actually controls trade-by-trade.</p>
+<p>This app's own Position Sizing tool (Settings → Position Sizing Defaults) uses a <strong>fixed-fractional, volatility-adjusted</strong> method: you set a fixed percentage of your account to risk per trade (e.g. 1%), and the number of shares is sized so that if the stock falls to its <a href="#technicals">ATR Stop-Loss</a>, the loss equals exactly that fixed percentage — a volatile stock (wide ATR) gets a smaller position, a calm stock (narrow ATR) gets a larger one, for the same amount of pounds at risk either way. This is a deliberately more conservative, easier-to-reason-about relative of the famous <strong>Kelly Criterion</strong> (<code>f = (bp − q) / b</code>, sizing a bet as a fraction of capital based on your edge and win probability) — Kelly's theoretically "optimal" full-size bet is aggressive enough that most practitioners only ever risk a fraction of it ("half-Kelly" or smaller), because Kelly assumes your edge estimate is exactly correct, and real-world edge estimates rarely are.</p>
+<p>The practical benefit of any fixed-fractional approach: no single trade, even a full stop-out, can meaningfully damage the account, which is what actually lets you survive a losing streak long enough for a real edge (if you have one) to show up in the results.</p>""",
+    },
+    {
+        "term_key": "value-investing-margin-of-safety",
+        "section_id": "market-fundamentals",
+        "term_title": "Value Investing — Margin of Safety",
+        "question": "What is the purpose of Benjamin Graham's 'margin of safety' concept?",
+        "answer": "Buying well below estimated intrinsic value so that being somewhat wrong, or an unexpected setback, doesn't turn into a loss",
+        "distractors": [
+            "Guaranteeing a fixed minimum annual return on every purchase",
+            "Ensuring a stock's price never falls below its purchase price",
+            "A legal requirement brokers must disclose before executing a trade",
+        ],
+        "explanation": """<p><strong>Value investing</strong> means buying a stock for meaningfully less than what the underlying business is actually worth, then waiting for the market to notice. The central idea, popularised by Benjamin Graham, is the <strong>margin of safety</strong>: only buy when the price sits well below your estimate of intrinsic value — often 30–50% below — so that being somewhat wrong about that estimate, or an unexpected setback, doesn't turn into a loss. Graham imagined the market as "Mr. Market," a manic-depressive business partner who quotes you a wildly different price every day; a value investor's job is to buy from him when he's fearful and sell to him when he's euphoric, not to trust his mood as information about what the business is actually worth.</p>
+<p>Warren Buffett extended Graham's purely numbers-driven screen (low P/E, low P/B, years of consistent earnings) toward business quality: his preference shifted to "a wonderful company at a fair price" over "a mediocre company at a bargain price," placing heavy weight on durable competitive advantages (see Economic Moats) and staying within his own circle of competence.</p>
+<p>The central risk is a <strong>value trap</strong> — a stock that looks statistically cheap but is cheap because the business is genuinely deteriorating, not because the market is being irrational. Distinguishing "temporarily out of favour" from "structurally broken" is the hard part of value investing, and is exactly why this app's Financial Safety and Forensic Screener checks exist alongside pure valuation metrics like PEG.</p>""",
+    },
+    {
+        "term_key": "growth-investing",
+        "section_id": "market-fundamentals",
+        "term_title": "Growth Investing",
+        "question": "Why are growth stocks more sensitive to rising interest rates than value stocks?",
+        "answer": "More of their valuation comes from profits expected far in the future, and higher rates discount those distant profits more heavily",
+        "distractors": [
+            "Growth stocks are legally required to hold more cash reserves",
+            "Growth companies always carry more short-term debt than value companies",
+            "Interest rates only affect companies that pay a dividend",
+        ],
+        "explanation": """<p>Where value investing pays a low price for the business as it is today, <strong>growth investing</strong> pays a premium price for what the business is expected to become — accepting a high P/E (often 30–50+) in exchange for revenue growing well above the market average, a large addressable market still to capture, and a business model that scales (margins improve as revenue grows, rather than staying flat).</p>
+<p>The trade-off is asymmetric risk: because so much of a growth stock's valuation rests on future growth actually materialising, even a modest earnings miss or a slowdown in growth rate can trigger an outsized price decline — the market isn't just repricing one disappointing quarter, it's repricing the whole growth story. Growth stocks are also more sensitive to interest rates than value stocks, since a larger share of their value comes from profits far in the future, and higher rates discount those distant profits more heavily.</p>
+<p>Value and growth aren't mutually exclusive philosophies so much as two ends of a spectrum — many real portfolios (and this app's own Quality Compounder / GARP Tenbagger report-screen tags) deliberately blend elements of both, looking for growth that isn't yet fully priced in rather than picking one camp exclusively.</p>""",
     },
     {
         "term_key": "common-vs-preferred-stock",
@@ -612,6 +719,21 @@ CARDS = [
 <p>A <strong>breakout</strong> is price decisively moving above resistance; a <strong>breakdown</strong> is price decisively moving below support — both are more meaningful when accompanied by above-average volume, confirming genuine participation rather than a low-conviction wobble. A broken level frequently <strong>flips role</strong>: former resistance often becomes new support once price has broken above it (and vice versa on the downside), because the same trader psychology that defended the level before now works in the opposite direction.</p>""",
     },
     {
+        "term_key": "momentum-investing-trend-following",
+        "section_id": "technicals",
+        "term_title": "Momentum Investing & Trend Following",
+        "question": "What is the main risk of momentum-based trading strategies?",
+        "answer": "A momentum crash — because many participants chase the same crowded trend, the eventual reversal can be sharp and violent",
+        "distractors": [
+            "Momentum strategies are illegal to use in most stock markets",
+            "Momentum only works on bonds, never on individual stocks",
+            "Momentum strategies always require holding a position for at least 10 years",
+        ],
+        "explanation": """<p><strong>Momentum</strong> is the observation that stocks which have performed well recently tend to keep performing well for a while longer, and vice versa for losers — the opposite of what a purely efficient market would predict, but one of the most persistently documented patterns in market history. Every indicator in this section (moving averages, RSI, MACD, the Stochastic Oscillator) is, at its core, a different way of measuring the same underlying thing: is this stock's momentum currently positive or negative, and how strong is it?</p>
+<p>The behavioural explanation for why momentum persists rather than getting arbitraged away instantly: investors <strong>under-react</strong> to new information at first (it takes time for good or bad news to fully sink in and be repriced), large institutions tend to build or unwind big positions gradually rather than all at once (creating sustained directional flow), and <strong>herding</strong> — investors following the crowd rather than acting independently — reinforces whichever direction is already moving.</p>
+<p>The key risk is a <strong>momentum crash</strong>: because many participants are chasing the same trend using similar signals, momentum trades can become crowded, and when the trend finally exhausts itself the unwind can be fast and violent — sharper than the drift up ever was. This is exactly why this app pairs momentum indicators (RSI, MACD) with volatility-aware position sizing (ATR Stop-Loss) rather than trading momentum signals on their own.</p>""",
+    },
+    {
         "term_key": "stochastic-oscillator",
         "section_id": "technicals",
         "term_title": "Stochastic Oscillator",
@@ -758,6 +880,65 @@ CARDS = [
 <p><strong>Assets</strong> split into current (cash, receivables, inventory — convertible to cash within a year) and non-current (property, equipment, intangibles like patents and goodwill). <strong>Liabilities</strong> split the same way: current (accounts payable, short-term loans, due within a year) and non-current (long-term debt). <strong>Equity</strong> is what's left over — share capital raised from investors plus retained earnings accumulated over the company's life, minus any shares the company has bought back.</p>
 <p>Two ratios read directly off the balance sheet do most of the work: the <strong>Current Ratio</strong> (current assets ÷ current liabilities) checks whether near-term obligations are covered by near-term resources, and <strong>Debt-to-Equity</strong> (covered above) checks how leveraged the company is. Both feed directly into the Financial Safety check above — this term-box is the "why" behind that metric, the balance sheet is the "where" it comes from.</p>""",
     },
+    {
+        "term_key": "cash-flow-statement",
+        "section_id": "fundamentals",
+        "term_title": "The Cash Flow Statement — Where the Real Cash Went",
+        "question": "Why do many investors trust Free Cash Flow more than net income?",
+        "answer": "It strips out non-cash accounting items and timing effects, tracking only actual cash the business generated after capital spending — much harder to flatter with accounting choices",
+        "distractors": [
+            "Free Cash Flow is always a larger number than net income",
+            "Free Cash Flow is required by regulators to be audited twice",
+            "Free Cash Flow excludes revenue from the calculation entirely",
+        ],
+        "explanation": """<p>Net income (from the income statement) is an accounting figure — it includes non-cash items like depreciation and can be shifted by the timing of invoices and payments. The <strong>cash flow statement</strong> strips all of that out and tracks only actual cash moving in and out of the business, split into three buckets: <strong>operating</strong> (cash generated by the core business — the one that matters most), <strong>investing</strong> (capital spent on or raised from long-term assets, e.g. buying equipment or making acquisitions), and <strong>financing</strong> (cash raised or returned via debt, share issuance, buybacks, and dividends).</p>
+<p><strong>Free Cash Flow (FCF)</strong> — operating cash flow minus capital expenditure — is what's genuinely left over to pay down debt, pay dividends, buy back shares, or reinvest, after keeping the business running. It's one of the hardest numbers to fake, which is why many investors trust it more than net income.</p>
+<p>A useful sanity check: compare net income to operating cash flow over several years. If net income is consistently higher than operating cash flow, profits are being booked faster than cash is actually being collected — a classic early warning sign worth investigating, and one of the signals the Forensic Screener's accounting-quality checks are built around.</p>""",
+    },
+    {
+        "term_key": "profitability-efficiency-ratios",
+        "section_id": "fundamentals",
+        "term_title": "Profitability & Efficiency Ratios — ROA, ROIC & Margins",
+        "question": "Why is ROA useful alongside ROE, even though both measure profitability?",
+        "answer": "ROA measures profit against total assets regardless of financing, so it can't be inflated simply by taking on more debt the way ROE can",
+        "distractors": [
+            "ROA and ROE always produce identical results for any company",
+            "ROA only applies to companies with no debt at all",
+            "ROA is calculated using next year's forecast earnings instead of actual results",
+        ],
+        "explanation": """<p>Beyond ROE (used in the Quality Grade below), a few other ratios round out the profitability picture. <strong>Return on Assets (ROA)</strong> (net income ÷ average total assets) shows how efficiently the company turns its total asset base into profit, regardless of how much of that base is debt-funded — useful alongside ROE because a company can pump up ROE just by taking on more debt, without actually running the business any better. <strong>Return on Invested Capital (ROIC)</strong> goes further, comparing after-tax operating profit to the total capital (debt + equity) invested in the business; a company earning ROIC consistently above its cost of capital is genuinely creating value, not just growing for growth's sake.</p>
+<p><strong>Gross margin</strong> ((revenue − cost of goods sold) ÷ revenue) reflects pricing power and production efficiency. <strong>Operating margin</strong> (operating income ÷ revenue) reflects cost control after operating expenses. <strong>Net margin</strong> (net income ÷ revenue) is the final, all-in profitability figure. Comparing all three over time reveals where a company's profitability is actually coming from — rising gross margin but falling operating margin, for instance, means the cost problem is in overheads, not production.</p>""",
+    },
+    {
+        "term_key": "valuation-methods-dcf-comps-ddm",
+        "section_id": "fundamentals",
+        "term_title": "Valuation Methods — DCF, Comparables & Dividend Discount",
+        "question": "What is the main weakness of a Discounted Cash Flow (DCF) valuation?",
+        "answer": "The result is extremely sensitive to the growth and discount rate assumptions, so a small change in either can swing the estimated value significantly",
+        "distractors": [
+            "DCF can only be applied to companies that pay a dividend",
+            "DCF ignores the company's future cash flows entirely",
+            "DCF always produces a lower value than comparable company analysis",
+        ],
+        "explanation": """<p>A <strong>Discounted Cash Flow (DCF)</strong> model estimates intrinsic value directly: forecast the company's free cash flow for several years, add a terminal value for everything beyond that, then discount it all back to today's money using a discount rate (typically the weighted average cost of capital). It's the most theoretically rigorous method, but the output is extremely sensitive to the growth and discount rate assumptions — a small change in either can swing the answer by a large margin, so a DCF is only as good as its inputs.</p>
+<p><strong>Comparable company analysis ("comps")</strong> is the pragmatic alternative: instead of forecasting anything, value the company using the multiples (P/E, EV/EBITDA, P/S) that similar publicly traded peers currently trade at. It's fast and reflects real current market pricing, but it inherits whatever the market currently believes — including bubbles, if the whole peer group is overvalued together.</p>
+<p>The <strong>Dividend Discount Model (DDM)</strong> values a stock purely as the present value of its expected future dividends — in its simplest form (the Gordon Growth Model), <code>Value = Next Year's Dividend ÷ (Discount Rate − Growth Rate)</code>. It only really works for mature, stable dividend payers (utilities, established banks); it has nothing useful to say about a non-dividend-paying growth company.</p>""",
+    },
+    {
+        "term_key": "economic-moats",
+        "section_id": "fundamentals",
+        "term_title": "Economic Moats — Sustainable Competitive Advantage",
+        "question": "What does a 'switching cost' moat actually protect a company from?",
+        "answer": "Customers leaving for a cheaper competitor, because the disruption or expense of switching outweighs the potential savings",
+        "distractors": [
+            "Government regulators imposing new taxes on the industry",
+            "Currency exchange rate fluctuations affecting overseas revenue",
+            "Employees leaving to join a competing company",
+        ],
+        "explanation": """<p>An <strong>economic moat</strong> is whatever protects a company's profits from being competed away — the reason it can keep earning high returns on capital for years without a rival simply copying it and undercutting the price. Warren Buffett popularised the term as a castle-and-moat metaphor: the wider the moat, the harder it is for competitors to storm the castle.</p>
+<p>Four common sources of moat: <strong>network effects</strong> (the product gets more valuable as more people use it — a card payment network, a marketplace); <strong>switching costs</strong> (leaving is expensive or disruptive enough that customers stay even when a cheaper option exists — enterprise software, a bank you've used for years); <strong>cost advantages</strong> (structurally lower costs from scale or a proprietary process let the company underprice rivals and still be profitable); and <strong>intangible assets</strong> (a strong brand, patents, or a regulatory licence that a competitor can't simply replicate).</p>
+<p>A company with a genuine moat can sustain a high ROIC (see the Profitability & Efficiency Ratios box above) for far longer than one without — which is exactly why moat and ROIC tend to be discussed together: ROIC is the measurable symptom, the moat is the underlying cause.</p>""",
+    },
     # --- strategies ---
     {
         "term_key": "macd-reversal",
@@ -879,6 +1060,37 @@ CARDS = [
 <p>The concept, popularised by William O'Neil and his CANSLIM method, is straightforward: if you're going to own individual stocks rather than just the index, you want stocks that are outperforming the market — not just rising because a rising tide is lifting all boats. A Market Leader rises faster than the index in bull markets and falls less (or continues rising) when the market corrects. That relative strength reflects genuine investor demand and institutional accumulation.</p>
 <p>Practically: during a market rally, owning market leaders means your portfolio outperforms. During a correction, market leaders often signal their strength by refusing to fall as much as the broad market. When even market leaders start declining at the rate of the index, it is often an early warning that the rally is faltering.</p>""",
     },
+    # --- behavioral-finance ---
+    {
+        "term_key": "cognitive-biases-investing",
+        "section_id": "behavioral-finance",
+        "term_title": "Cognitive Biases That Sabotage Investors",
+        "question": "What is the 'disposition effect'?",
+        "answer": "Selling winning positions too early to lock in gains, while holding losing positions far too long hoping they'll recover",
+        "distractors": [
+            "Only buying stocks that have already doubled in price",
+            "A legal requirement to disclose all trades within 24 hours",
+            "Only trading stocks within your own home country",
+        ],
+        "explanation": """<p>Every metric and signal elsewhere in this glossary assumes you'll actually act on what it tells you — in practice, a handful of well-documented mental shortcuts quietly push investors toward the opposite of what the data suggests. <strong>Loss aversion</strong> is the root of several of them: the pain of losing £1,000 feels stronger than the pleasure of gaining £1,000, which alone explains a lot of otherwise irrational behaviour.</p>
+<p><strong>Confirmation bias</strong> is seeking out information that supports a position you already hold and dismissing anything that contradicts it — the reason a losing thesis can survive long after the original evidence for it has stopped being true. The <strong>disposition effect</strong> is its natural companion: selling winners too early to "lock in" the good feeling, while holding losers far too long hoping they'll "get back to even" — the exact opposite of the discipline this app's ATR Stop-Loss and Position Targets are designed to enforce mechanically.</p>
+<p><strong>Anchoring</strong> is over-weighting the first number you saw — your purchase price, a 52-week high, an analyst target — when deciding what to do next, even though the market has no memory of what you paid. <strong>Overconfidence</strong> and the closely related <strong>illusion of control</strong> lead to believing you can reliably pick winners or time entries/exits, which in practice shows up as excessive trading and undersized attention to risk management. <strong>Recency bias</strong> and <strong>herding</strong> — extrapolating whatever has happened lately, and following what everyone else is doing rather than your own analysis — are what turn an ordinary trend into a crowded, fragile one (see Market Sentiment Cycles below).</p>""",
+    },
+    {
+        "term_key": "market-sentiment-cycles",
+        "section_id": "behavioral-finance",
+        "term_title": "Market Sentiment Cycles — Fear, Greed & Capitulation",
+        "question": "Why do extreme sentiment readings function as contrarian indicators?",
+        "answer": "When nearly everyone already agrees on a direction, there are very few investors left to keep pushing the price further that way",
+        "distractors": [
+            "Sentiment indicators are always wrong, so the opposite is guaranteed to happen",
+            "Extreme sentiment readings are illegal for brokers to publish",
+            "Sentiment has no relationship to price extremes whatsoever",
+        ],
+        "explanation": """<p>Aggregate investor mood swings between extremes far more than fundamentals actually change day to day, and that swing is itself a tradeable signal. Near market tops, <strong>excessive optimism</strong> shows up as complacency, rising margin debt, and widespread public participation from inexperienced investors chasing recent gains — the exact conditions this app's Bubble Radar tool screens for. Near market bottoms, <strong>excessive pessimism</strong> shows up as panic selling, heavy media coverage of losses, and capitulation (see the Capitulation term-box in Trading Strategies) — conditions the Dip Radar and Trap Monitor are built to detect.</p>
+<p>A full speculative <strong>mania</strong> tends to follow a recognisable arc: a genuine development creates real opportunity (displacement), attracts increasing capital as early gains prove out (boom), then draws in the general public purely because prices are rising (euphoria) — at which point the buying is driven by the price action itself rather than anything fundamental, right before the reversal.</p>
+<p>Because sentiment extremes are measurable, they double as <strong>contrarian indicators</strong>: survey-based gauges (like the CNN Fear &amp; Greed Index this app's Market Sentiment page already tracks), volatility-based gauges (the VIX), and positioning data (elevated margin debt, skewed put/call ratios) all tend to cluster at genuine price extremes. This doesn't mean sentiment extremes mark the exact top or bottom — only that when nearly everyone already agrees on a direction, there are very few investors left to push the price further that way.</p>""",
+    },
     # --- machine-learning ---
     {
         "term_key": "ml-confidence-score",
@@ -895,6 +1107,21 @@ CARDS = [
 <p>The model is a <strong>Soft-Voting Ensemble</strong>, which means it combines two separate models — XGBoost and Random Forest — and averages their probability estimates rather than taking a hard yes/no vote. This makes it more robust because the two models have different strengths: XGBoost is better at learning non-linear interactions between features; Random Forest is better at avoiding overfitting to recent noise.</p>
 <p><strong>XGBoost</strong> (eXtreme Gradient Boosting) builds a sequence of small decision trees where each tree learns from the mistakes of the previous ones — a technique called gradient boosting. <strong>Random Forest</strong> builds hundreds of independent decision trees on random subsets of data and features, then averages their predictions. Neither model "knows" finance — they learn statistical patterns from 18 technical and fundamental features (RSI, MACD, volume ratios, SMA distances, etc.) across thousands of past observations.</p>
 <p>A score of 75% does not mean "this stock will definitely go up 3% in 10 days." It means: of all historical situations where the model saw this same combination of signals, the stock gained more than {{ prediction_threshold_pct }}% in the next {{ prediction_horizon }} days about 75% of the time. Markets are inherently unpredictable — even a perfect model would be wrong 25–30% of the time just due to randomness.</p>""",
+    },
+    {
+        "term_key": "quant-algo-trading-backtesting-overfitting",
+        "section_id": "machine-learning",
+        "term_title": "Quantitative & Algorithmic Trading — Backtesting & Overfitting",
+        "question": "Why is out-of-sample testing important when validating a quantitative trading rule?",
+        "answer": "It tests the rule against data it was never tuned against, guarding against overfitting to patterns that were only real by chance in the historical data used to build it",
+        "distractors": [
+            "It's a legal requirement before any strategy can be published",
+            "It guarantees the strategy will be profitable in live trading",
+            "It only matters for strategies that trade options, not stocks",
+        ],
+        "explanation": """<p><strong>Quantitative investing</strong> is what this whole section is an example of: replacing individual stock-picking judgement with systematic, rules-based signals derived from data — <strong>factor investing</strong> (value, momentum, quality, size, low-volatility — each a return driver identified by academic research) is the classic version, and this app's ML Confidence Score, Isolation Forest anomaly detection, and Market Regime classification are all more modern extensions of the same idea.</p>
+<p>Any quantitative strategy lives or dies on <strong>backtesting</strong> — testing the rule against historical data before trusting it with real money. The central danger is <strong>overfitting</strong> (also called data mining): with enough trial and error across enough historical data, it's always possible to find a rule that would have worked brilliantly in the past purely by chance, with no real predictive power going forward. Guarding against this means testing on data the rule was never tuned against (<strong>out-of-sample testing</strong>) and re-testing sequentially forward through time rather than all at once (<strong>walk-forward analysis</strong>) — this app's own ETF Predictor and Bubble Radar accuracy tracking (comparing predictions to what actually happened afterward) exists for exactly this reason: a model is only trustworthy once it's been checked against outcomes it couldn't have seen in advance.</p>
+<p>A second real-world risk is <strong>factor crowding</strong>: once a genuine edge becomes widely known and many investors chase the same signal simultaneously, the returns to that signal shrink or the strategy becomes prone to sudden, correlated unwinds (a variant of the momentum crash described in the Technical Analysis section) — a reminder that even a statistically sound signal is not a permanent, risk-free edge.</p>""",
     },
     {
         "term_key": "value-at-risk-95",

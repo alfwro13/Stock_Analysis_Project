@@ -6,7 +6,7 @@ there is deliberately no separate navbar entry.
 
 ## Why
 
-The Glossary (`templates/glossary/_*.html`) holds ~157 curated explanations of the app's
+The Glossary (`templates/glossary/_*.html`) holds ~172 curated explanations of the app's
 concepts, metrics, and engines, but reading a definition once rarely makes it stick. Glossary
 Learning turns every term-box into a study card and schedules reviews using a **Leitner box**
 system — a well-established spaced-repetition method — so weak terms resurface more often than
@@ -56,12 +56,12 @@ All timestamps are UTC (`datetime.now(timezone.utc)`), matching the app-wide tim
 
 ## Course structure
 
-Terms are grouped into 22 levels matching the glossary's own accordion sections
+Terms are grouped into 23 levels matching the glossary's own accordion sections
 (`learn_cards_seed.LEVELS`), ordered from foundational to advanced: Market Fundamentals →
-Candlestick Anatomy → Technical Analysis → Company Valuation → Trading Strategies → AI & Risk
-Metrics → … → System Methodology. A level unlocks once at least 80% of the previous level's
-terms have been studied at least once, so the course can't jump straight to advanced engine
-terminology before the fundamentals are covered.
+Candlestick Anatomy → Technical Analysis → Company Valuation → Trading Strategies →
+Investor Psychology → AI & Risk Metrics → … → System Methodology. A level unlocks once at least
+80% of the previous level's terms have been studied at least once, so the course can't jump
+straight to advanced engine terminology before the fundamentals are covered.
 
 ## Session composition
 
