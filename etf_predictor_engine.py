@@ -724,6 +724,7 @@ def fill_actuals_for_config(config_id: int) -> None:
         return
     etf_ticker = config["etf_ticker"]
     try:
+        etf_exchange = detect_etf_info(etf_ticker)["exchange"]
         hist = yahoo_engine.get_price_history([etf_ticker], period="5d", interval="1d")
         etf_df = hist.get(etf_ticker)
         if etf_df is None or etf_df.empty or "Open" not in etf_df.columns:
@@ -735,8 +736,12 @@ def fill_actuals_for_config(config_id: int) -> None:
             etf_df.index = etf_df.index.tz_localize(None)
 
         today = datetime.now(timezone.utc).date()
-        today_str = today.isoformat()
+        exchange_open_now = time_engine.is_market_open(etf_exchange)
 
+        # Backfill every day in the window, not just the latest — a single missed run
+        # (Yahoo error, restart, misfire) must not permanently strand that day's actual
+        # close, since fill_etf_actual's own actual_open IS NULL guard makes re-filling
+        # an already-filled day a no-op.
         for idx_ts in etf_df.index:
             row_date = idx_ts.date()
             if row_date > today:
@@ -745,13 +750,12 @@ def fill_actuals_for_config(config_id: int) -> None:
             if open_val and float(open_val) > 0:
                 fill_etf_actual(config_id, row_date.isoformat(), float(open_val), "next_open")
 
-        # us_open_impact: close of reference day fills that day's impact prediction
-        if len(etf_df) >= 1:
-            last_close_row = etf_df.iloc[-1]
-            last_close_date = etf_df.index[-1].date().isoformat()
-            close_val = float(last_close_row.get("Close", 0) or 0)
-            if close_val > 0:
-                fill_etf_actual(config_id, last_close_date, close_val, "us_open_impact")
+            if row_date == today and exchange_open_now:
+                continue  # today's bar is still forming — its Close isn't final yet
+            if "Close" in etf_df.columns:
+                close_val = float(etf_df.loc[idx_ts, "Close"] or 0)
+                if close_val > 0:
+                    fill_etf_actual(config_id, row_date.isoformat(), close_val, "us_open_impact")
     except Exception as exc:
         logger.warning("fill_actuals_for_config %s failed: %s", config_id, exc)
 

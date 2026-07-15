@@ -9,8 +9,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import database as _db
 from etf_predictor_engine import (
     detect_fx_pair,
+    fill_actuals_for_config,
     find_unknown_exchange_tickers,
     get_next_open_date,
     _compute_bias_corrected_prediction,
@@ -448,3 +450,104 @@ class TestComputeBlendedPrediction:
             result = _compute_blended_prediction(1, "next_open", holdings, regression, 100.0)
         # Holdings (near-zero MAE) should dominate the blend, pulling the result close to 2.0%
         assert result["change_pct"] > 1.5
+
+
+# ── fill_actuals_for_config ────────────────────────────────────────────────────
+
+def _make_config(etf_ticker="FBAK.L"):
+    cid = _db.create_etf_predictor_config(
+        name="Backfill Test", etf_ticker=etf_ticker,
+        constituents=[{"ticker": "A", "weight": 1.0}],
+    )
+    return cid
+
+
+def _seed_prediction(cid, target_date, prediction_type):
+    _db.log_etf_prediction(cid, {
+        "predicted_price": 100.0,
+        "predicted_change_pct": 1.0,
+        "last_etf_close": 99.0,
+        "signal_source": "daily_close",
+        "data_source": "holdings",
+        "fx_rate": 1.0,
+        "holdings_engine": {"predicted_price": 100.0},
+        "regression_engine": None,
+        "constituent_snapshot": "[]",
+        "as_of_utc": f"{target_date} 10:00 UTC",
+        "next_open_date": target_date,
+        "prediction_type": prediction_type,
+    })
+
+
+def _actual_open(cid, target_date, prediction_type):
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT actual_open FROM etf_predictor_predictions "
+            "WHERE config_id=? AND target_date=? AND prediction_type=?",
+            (cid, target_date, prediction_type)
+        ).fetchone()
+        return row["actual_open"] if row else None
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+class TestFillActualsForConfig:
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM etf_predictor_predictions WHERE config_id IN "
+                         "(SELECT id FROM etf_predictor_configs WHERE name='Backfill Test')")
+            conn.execute("DELETE FROM etf_predictor_configs WHERE name='Backfill Test'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_backfills_every_day_not_just_the_latest(self):
+        cid = _make_config()
+        _seed_prediction(cid, "2020-01-03", "us_open_impact")
+        _seed_prediction(cid, "2020-01-04", "us_open_impact")
+
+        idx = pd.to_datetime(["2020-01-03", "2020-01-04"])
+        df = pd.DataFrame({"Open": [100.0, 101.0], "Close": [100.5, 101.5]}, index=idx)
+
+        with patch("etf_predictor_engine.detect_etf_info", return_value={"exchange": "LSE", "currency": "GBP", "name": "FBAK.L"}), \
+             patch("etf_predictor_engine.yahoo_engine.get_price_history", return_value={"FBAK.L": df}), \
+             patch("etf_predictor_engine.time_engine.is_market_open", return_value=False):
+            fill_actuals_for_config(cid)
+
+        # A single missed post-job on 01-03 must not strand it once a later run catches up.
+        assert _actual_open(cid, "2020-01-03", "us_open_impact") == pytest.approx(100.5)
+        assert _actual_open(cid, "2020-01-04", "us_open_impact") == pytest.approx(101.5)
+
+    def test_skips_still_forming_close_while_exchange_open(self):
+        cid = _make_config()
+        today_str = datetime.now(timezone.utc).date().isoformat()
+        _seed_prediction(cid, today_str, "us_open_impact")
+
+        idx = pd.to_datetime([today_str])
+        df = pd.DataFrame({"Open": [100.0], "Close": [102.0]}, index=idx)
+
+        with patch("etf_predictor_engine.detect_etf_info", return_value={"exchange": "LSE", "currency": "GBP", "name": "FBAK.L"}), \
+             patch("etf_predictor_engine.yahoo_engine.get_price_history", return_value={"FBAK.L": df}), \
+             patch("etf_predictor_engine.time_engine.is_market_open", return_value=True):
+            fill_actuals_for_config(cid)
+
+        # Exchange still open → today's Close is a partial/in-progress bar, must stay unfilled.
+        assert _actual_open(cid, today_str, "us_open_impact") is None
+
+    def test_fills_todays_close_once_exchange_has_closed(self):
+        cid = _make_config()
+        today_str = datetime.now(timezone.utc).date().isoformat()
+        _seed_prediction(cid, today_str, "us_open_impact")
+
+        idx = pd.to_datetime([today_str])
+        df = pd.DataFrame({"Open": [100.0], "Close": [102.0]}, index=idx)
+
+        with patch("etf_predictor_engine.detect_etf_info", return_value={"exchange": "LSE", "currency": "GBP", "name": "FBAK.L"}), \
+             patch("etf_predictor_engine.yahoo_engine.get_price_history", return_value={"FBAK.L": df}), \
+             patch("etf_predictor_engine.time_engine.is_market_open", return_value=False):
+            fill_actuals_for_config(cid)
+
+        assert _actual_open(cid, today_str, "us_open_impact") == pytest.approx(102.0)
