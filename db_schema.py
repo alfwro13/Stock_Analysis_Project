@@ -53,6 +53,11 @@ def _seed_exchange_hours_json() -> None:
             logger.info("Created default exchange_hours.json at %s", _EXCHANGE_HOURS_PATH)
         except Exception as exc:
             logger.warning("Could not write exchange_hours.json: %s", exc)
+        # time_engine caches its exchange registry at import time, which on a fresh install
+        # happens before this function ever runs (main.py/conftest.py import chains reach
+        # time_engine before calling init_db()) — without this, time_engine stays pinned to
+        # its incomplete built-in fallback (NYSE/LSE/XETRA/TSE only) for the rest of the process.
+        time_engine.reload_exchange_registry()
         return
 
     # Backfill exchanges/fields added to _DEFAULT_EXCHANGE_HOURS after this file was first
@@ -74,6 +79,7 @@ def _seed_exchange_hours_json() -> None:
             logger.info("Backfilled new default fields into exchange_hours.json")
     except Exception as exc:
         logger.warning("Could not backfill exchange_hours.json: %s", exc)
+    time_engine.reload_exchange_registry()
 
 
 # Seed rows for market_ticker_registry — the single source of truth for every index/commodity/FX

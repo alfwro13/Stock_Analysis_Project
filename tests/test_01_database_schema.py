@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # We use database.get_connection() so tests share the same redirected path.
 import database as _db
 import db_schema
+import time_engine
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -707,6 +708,28 @@ def test_seed_exchange_hours_json_backfills_new_fields_without_overwriting_exist
     assert result["LSE"]["quote_delay_minutes"] == 15
     assert result["LSE"]["open"] == "07:45", "operator-edited field must survive the backfill"
     assert "XETRA" in result, "an exchange added to defaults after the file was first seeded must be backfilled"
+
+
+@pytest.mark.db
+def test_seed_exchange_hours_json_refreshes_time_engine_cache_on_fresh_install(tmp_path):
+    """time_engine caches its exchange registry at import time; on a fresh install (no
+    exchange_hours.json yet) that import can happen before init_db() ever runs, pinning
+    time_engine to its incomplete built-in fallback (NYSE/LSE/XETRA/TSE only) for the rest of
+    the process unless _seed_exchange_hours_json() explicitly tells it to reload."""
+    path = tmp_path / "exchange_hours.json"
+    assert not path.exists()
+
+    with patch("time_engine._EXCHANGE_HOURS_PATH", str(path)):
+        time_engine.reload_exchange_registry()
+        assert "KRX" not in time_engine.EXCHANGE_HOURS, "precondition: simulating the pre-seed fallback state"
+
+        with patch("db_schema._EXCHANGE_HOURS_PATH", str(path)):
+            db_schema._seed_exchange_hours_json()
+
+        assert "KRX" in time_engine.EXCHANGE_HOURS
+        assert time_engine.ticker_exchange_from_suffix("005930.KS") == "KRX"
+
+    time_engine.reload_exchange_registry()
 
 
 @pytest.mark.db
