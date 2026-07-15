@@ -279,7 +279,11 @@ class TestClosedMarketStaleness:
 
     def test_between_refresh_rate_and_display_floor_needs_refresh_but_not_stale(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 130)  # 130s > 60s but < 300s floor
-        with patch("market_pulse.is_trading_session", return_value=True):
+        # needs_refresh is gated by is_quote_settled() (per-ticker exchange), not
+        # is_trading_session() — see TestNeedsRefreshPerTickerExchange. Both must be mocked so
+        # this test is deterministic regardless of the real exchange's wall-clock open state.
+        with patch("market_pulse.is_trading_session", return_value=True), \
+             patch("market_pulse.is_quote_settled", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is False
@@ -287,7 +291,8 @@ class TestClosedMarketStaleness:
 
     def test_beyond_display_floor_is_stale(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 301)  # beyond the 5-minute floor
-        with patch("market_pulse.is_trading_session", return_value=True):
+        with patch("market_pulse.is_trading_session", return_value=True), \
+             patch("market_pulse.is_quote_settled", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is True
