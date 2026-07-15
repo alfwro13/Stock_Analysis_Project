@@ -1,0 +1,33 @@
+<div class="accordion-item glossary-section" id="pairs-spread-monitor">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-pairs-spread"
+                aria-expanded="false" aria-controls="collapse-pairs-spread">
+            &#128200; Pairs Spread Monitor — Statistical Arbitrage
+        </button>
+    </h2>
+    <div id="collapse-pairs-spread" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Pairs Spread Monitor Detects</span>
+                <p>Every other alert engine in this app — Trap Monitor, Bubble Radar, AI Contagion, Crash/Moonshot — looks at one ticker at a time. <strong>Pairs Spread Monitor</strong> instead looks at the <em>relationship</em> between two tickers that have historically moved together, and flags when that relationship has temporarily broken down.</p>
+                <p>Two stocks that are usually highly correlated (e.g. two companies in the same sector) can drift apart for a session or two — one rallies on company-specific news while the other lags — before typically converging back toward their historical relationship. This is the classic <strong>pairs trading / statistical arbitrage</strong> setup: a mean-reversion signal that is structurally different from any single-ticker technical or fundamental read.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Correlation Threshold &amp; Same-Currency Pairing</span>
+                <p>Before two tickers are even considered a "pair," their trailing 252-day daily-return <strong>Pearson correlation</strong> must clear a configurable threshold (default 0.7). This filters the full portfolio-and-watchlist universe down to only the pairs that have a genuine, statistically meaningful historical relationship — pairing two unrelated stocks would produce a spread with no real reason to revert.</p>
+                <p>Pairs are also restricted to <strong>tickers quoted in the same currency</strong> (GBX pence and GBP pounds are treated as the same currency, since both describe UK-listed stocks). A US stock and a UK stock might be genuinely correlated, but their price ratio would also be pulled around by the GBP/USD exchange rate — mixing a real equity-relationship signal with FX noise. Restricting to same-currency pairs keeps the signal clean.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Log-Spread Z-Score</span>
+                <p>For each correlated pair, the monitor computes the <strong>log-spread</strong> — <code>log(price_a) − log(price_b)</code> — every trading day over the same trailing 252-day window. Using a log ratio rather than a raw price difference means the measure is unit-invariant: it doesn't matter whether either ticker happens to be quoted in pence or pounds, or trades at £5 or £500, only how the two prices move <em>relative</em> to each other.</p>
+                <p>The <strong>z-score</strong> is how many standard deviations today's log-spread sits from that window's own mean. A z-score of 0 means the pair is trading exactly at its historical relationship; a large positive or negative z-score means one leg has become unusually "rich" or "cheap" relative to the other. An alert fires when the absolute z-score crosses a configurable threshold (default 2.0).</p>
+                <div class="rule">Dedup/cooldown follows the same worsened/recovered/cooldown model as Trap Monitor — a repeat alert for the same pair requires either a fresh divergence direction or a materially wider z-score after cooldown, not just a re-run of an unchanged condition.</div>
+            </div>
+
+        </div>
+    </div>
+</div>

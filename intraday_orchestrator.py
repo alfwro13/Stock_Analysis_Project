@@ -188,6 +188,8 @@ class IntradayOrchestrator:
             key = "MARKET_STRESS_ALERTS"
         elif engine == "TrapMonitor":
             key = "TRAP_MONITOR_ALERTS"
+        elif engine == "PairsSpreadMonitor":
+            key = "PAIRS_SPREAD_MONITOR_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})

@@ -625,6 +625,23 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Bubble Radar Scan: %s", e)
 
+    pairs_spread_cfg = scheduling.get("PAIRS_SPREAD_MONITOR", {})
+    if pairs_spread_cfg.get("ENABLED", False):
+        try:
+            days = ",".join(pairs_spread_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
+            time_str = pairs_spread_cfg.get("TIME", "19:10")
+            run_h, run_m = map(int, time_str.split(":"))
+            scheduler.add_job(
+                run_pairs_spread_monitor_job,
+                CronTrigger(day_of_week=days, hour=run_h, minute=run_m, timezone=user_tz),
+                id="pairs_spread_monitor_job",
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Pairs Spread Monitor scheduled for %s at %s.", days, time_str)
+        except Exception as e:
+            logger.error("Failed to schedule Pairs Spread Monitor: %s", e)
+
     forensic_fetch_cfg = scheduling.get("FORENSIC_QUARTERLY_FETCH", {})
     if forensic_fetch_cfg.get("ENABLED", False):
         try:
@@ -854,7 +871,7 @@ from scheduler_jobs import (
     run_xray_risk_cache_job, run_anomaly_training_job, run_intraday_dip_scan,
     run_intraday_dip_reset, _build_contagion_feed_text, _build_contagion_message,
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job,
-    run_bubble_radar_job, register_etf_predictor_jobs, unregister_etf_predictor_jobs,
+    run_bubble_radar_job, run_pairs_spread_monitor_job, register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,

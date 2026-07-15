@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Pairs Spread Monitor{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128200; Pairs Spread Monitor</h1>
+<p class="page-subtitle mb-4">
+    Flags portfolio/watchlist pairs (same currency only) that already show a strong rolling
+    <abbr title="Pearson correlation of daily returns over the trailing 252-day window.">correlation</abbr>
+    and whose
+    <abbr title="log(close_a) - log(close_b) — a currency-unit-invariant measure of relative price divergence.">price log-spread</abbr>
+    has diverged from its own trailing-year mean by more than the configured z-score threshold — a
+    mean-reversion signal distinct from any single-ticker alert in this app.
+</p>
+
+<div class="mb-3">
+    <a href="/tools" class="btn btn-outline-secondary btn-sm">&#8592; Back to Tools</a>
+</div>
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <button id="psm-run-now-btn" class="btn btn-update" onclick="runPairsSpreadScanNow()">&#9654; Run Scan Now</button>
+    <span id="psm-run-status" class="text-muted"></span>
+</div>
+
+<div class="sentiment-module module-cyan">
+    <div class="p-3 pb-0">
+        <h3 class="tm-ticker-heading">
+            Monitored Pairs
+            <span id="psm-count" class="tm-ticker-count"></span>
+        </h3>
+    </div>
+    <div class="overflow-auto p-3">
+        <table id="psm-table" class="tm-table w-100">
+            <thead>
+                <tr>
+                    <th class="tm-th-blue tm-th-left">Pair</th>
+                    <th class="tm-th-blue tm-th-center"><abbr title="Pearson correlation of daily returns over the trailing 252-day window.">Correlation</abbr></th>
+                    <th class="tm-th-amber tm-th-center"><abbr title="How many standard deviations the current log-spread is from its trailing-year mean.">Z-Score</abbr></th>
+                    <th class="tm-th-muted tm-th-left">Direction</th>
+                    <th class="tm-th-muted tm-th-center">Currency</th>
+                    <th class="tm-th-dimmed tm-th-right">Scanned</th>
+                </tr>
+            </thead>
+            <tbody id="psm-tbody">
+                <tr>
+                    <td colspan="6" class="text-center p-4 text-muted">
+                        No scan data yet. Click "Run Scan Now" or enable the scheduled job in Settings.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="chart-wrapper d-none mt-3" id="psm-chart-wrapper">
+    <button class="fullscreen-btn" onclick="toggleFullscreen('psm-chart-wrapper')">&#9638; Fullscreen</button>
+    <div id="psm-chart"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
+<script src="/static/js/pairs_spread_monitor.js?v={{ css_version }}"></script>
+{% endblock %}

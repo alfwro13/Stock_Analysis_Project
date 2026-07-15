@@ -29,6 +29,7 @@
 19. [Accounts](#19-accounts)
 24. [Markets](#24-markets)
 25. [Glossary Learning](#25-glossary-learning)
+26. [Pairs Spread Monitor](#26-pairs-spread-monitor)
 
 ---
 
@@ -3890,6 +3891,57 @@ Body: `{"term_key": "market-capitalisation", "grade": "good"}` — `grade` is on
 ```
 
 `400` if `grade` is invalid or `term_key` doesn't match a seeded card.
+
+---
+
+## 26. Pairs Spread Monitor
+
+Statistical arbitrage / mean-reversion monitor over portfolio + watchlist tickers. See `assets/pairs_spread_monitor.md` for the full algorithm and configuration reference.
+
+### `GET /pairs-spread`
+
+HTML page. Tools-menu page listing all currently-monitored pairs (correlation, z-score, direction), with a click-to-expand log-spread chart per pair.
+
+### `GET /api/pairs-spread/results`
+
+Returns all rows from `pairs_spread_results` (the latest scan only), sorted by absolute z-score (most divergent first).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "pair_key": "AAPL:MSFT", "ticker_a": "AAPL", "ticker_b": "MSFT", "currency": "USD",
+      "correlation": 0.82, "zscore": 2.41, "spread_mean": 0.0012, "spread_std": 0.031,
+      "last_spread": 0.0863, "direction": "AAPL rich vs MSFT", "scan_ts": "2026-07-15 19:10:00"
+    }
+  ]
+}
+```
+
+### `POST /api/pairs-spread/run`
+
+Triggers a background scan immediately. Returns `{"status": "success"}` immediately; results appear in `/api/pairs-spread/results` within a few seconds.
+
+### `GET /api/pairs-spread/chart/{ticker_a}/{ticker_b}`
+
+Recomputes the aligned log-spread series (plus mean and ±2σ bands) from parquet on demand — not persisted, since it's fully derivable from the same daily-history parquet every other chart in the app already reads. `404` if there isn't enough overlapping price history for the pair.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "chart": {
+    "ticker_a": "AAPL", "ticker_b": "MSFT",
+    "dates": ["2025-07-15", "2025-07-16", "..."],
+    "log_spread": [0.081, 0.079, "..."],
+    "mean": 0.0012, "upper_2sd": 0.0632, "lower_2sd": -0.0608
+  }
+}
+```
 
 ---
 

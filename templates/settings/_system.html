@@ -901,6 +901,67 @@
                 <div id="bubble-radar-msg" class="mt-10"></div>
             </div>
 
+            <div class="settings-panel border-left-cyan" id="pairs-spread-monitor-card">
+                <h4 class="settings-panel-header text-cyan">&#128200; Pairs Spread Monitor</h4>
+                <p class="settings-desc">
+                    Scans your portfolio and watchlist (same-currency pairs only) for tickers that already show a
+                    <abbr title="Pearson correlation of daily returns over the trailing 252-day window.">strong rolling correlation</abbr>,
+                    then flags pairs whose
+                    <abbr title="log(close_a) - log(close_b), a currency-unit-invariant measure of relative price divergence.">price log-spread</abbr>
+                    has diverged from its own trailing-year mean by more than the z-score threshold below —
+                    a mean-reversion signal distinct from any single-ticker alert in this app.
+                    Results appear at the <a href="/pairs-spread" class="text-cyan">Pairs Spread Monitor tools page</a>.
+                </p>
+
+                {% set pairs_sched = config.SCHEDULING.PAIRS_SPREAD_MONITOR if config.SCHEDULING.PAIRS_SPREAD_MONITOR else {} %}
+                {% set pairs_cfg = config.NOTIFICATIONS.PAIRS_SPREAD_MONITOR_ALERTS if config.NOTIFICATIONS.PAIRS_SPREAD_MONITOR_ALERTS else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PAIRS_SPREAD_ENABLED" {% if pairs_sched.ENABLED %}checked{% endif %}>
+                    <label for="PAIRS_SPREAD_ENABLED">Enable post-market scan</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Active Days</label>
+                        <select id="PAIRS_SPREAD_FREQ" class="form-select">
+                            {% set joined = pairs_sched.DAYS | join(',') if pairs_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                            <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
+                            <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Scan Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <input type="time" id="PAIRS_SPREAD_TIME" class="form-control" value="{{ pairs_sched.TIME | default('19:10') }}">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum absolute Pearson correlation for a pair to be monitored.">Correlation threshold</abbr></label>
+                        <input type="number" id="PAIRS_SPREAD_CORRELATION_THRESHOLD" class="form-control" value="{{ pairs_sched.CORRELATION_THRESHOLD | default(0.7) }}" min="0" max="1" step="0.05">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Absolute log-spread z-score required to fire an alert.">Z-score threshold</abbr></label>
+                        <input type="number" id="PAIRS_SPREAD_ZSCORE_THRESHOLD" class="form-control" value="{{ pairs_sched.ZSCORE_THRESHOLD | default(2.0) }}" min="0.5" step="0.1">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Alert cooldown (min)</label>
+                        <input type="number" id="PAIRS_SPREAD_COOLDOWN" class="form-control" value="{{ pairs_cfg.COOLDOWN_MINUTES | default(120) }}" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Retrigger % move</label>
+                        <input type="number" id="PAIRS_SPREAD_RETRIGGER" class="form-control" value="{{ pairs_cfg.RETRIGGER_PERCENT | default(15.0) }}" step="0.1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Re-arm % recovery</label>
+                        <input type="number" id="PAIRS_SPREAD_REARM" class="form-control" value="{{ pairs_cfg.REARM_PERCENT | default(50.0) }}" step="0.1">
+                    </div>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerPairsSpreadScan()">&#9654; Run Scan Now</button>
+                </div>
+                <div id="pairs-spread-monitor-msg" class="mt-10"></div>
+            </div>
+
             <div class="settings-panel border-left-cyan" id="forensic-screener-card">
                 <h4 class="settings-panel-header text-cyan">&#128269; Forensic Screener</h4>
                 <p class="settings-desc">

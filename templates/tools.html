@@ -118,5 +118,12 @@
         <a href="/treasury-auctions" class="guide-card-link">Launch Tool →</a>
     </div>
 
+    <div class="guide-card">
+        <h4>&#128200; Pairs Spread Monitor</h4>
+        <p>Flags portfolio/watchlist pairs (same currency only) that already show a strong rolling <abbr title="Pearson correlation of daily returns over the trailing 252-day window.">correlation</abbr> and whose <abbr title="log(close_a) - log(close_b) — a currency-unit-invariant measure of relative price divergence.">price log-spread</abbr> has stretched more than a z-score threshold away from its own trailing-year mean.</p>
+        <div class="why-use-it">Use to spot pairs that have historically moved together but have temporarily diverged — a classic mean-reversion setup no single-ticker alert in this app can see.</div>
+        <a href="/pairs-spread" class="guide-card-link">Launch Tool →</a>
+    </div>
+
 </div>
 {% endblock %}

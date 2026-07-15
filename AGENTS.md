@@ -79,6 +79,7 @@ Stock_Analysis_Project/
 ├── ai_prediction_engine.py   # XGBoost + RF soft-voting ensemble
 ├── ai_contagion_engine.py    # AI sector contagion monitor (10-ticker ecosystem)
 ├── bull_bear_trap_engine.py  # Post-crash lifecycle detector (Bull Trap, Bear Trap, Capitulation, Wyckoff)
+├── pairs_spread_engine.py    # Pairs Spread Monitor: portfolio/watchlist pairs correlation + log-spread z-score
 ├── anomaly_engine.py         # Unsupervised anomaly detection per ticker
 ├── xray_engine.py            # Portfolio X-ray / risk diagnostics
 ├── crash_engine.py           # Intraday crash detection
@@ -182,6 +183,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `xray_dividend_cache` | Per-ticker dividend yield cache for X-ray |
 | `ai_contagion_snapshots` | AI sector contagion scan results (payload JSON + alert flag) |
 | `trap_monitor_results` | Latest trap scan result per ticker — phase label + four signal levels; powers `/trap-monitor` |
+| `pairs_spread_results` | Latest Pairs Spread Monitor scan — one row per correlated same-currency pair (correlation, log-spread z-score, direction); full-replaced each scan; powers `/pairs-spread` |
 | `news_articles` | Full-text news articles with sentiment scores |
 | `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
 | `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
@@ -538,6 +540,7 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 | ETF Price Predictor | `/etf-predictor` | Generic morning price predictor for any ETF; configure constituent tickers and weights, predicts next-session open via holdings-weighted basket return and OLS regression with FX adjustment; tracks accuracy over time |
 | Monte Carlo Wealth Simulator | `/monte-carlo` | Projects portfolio wealth over 10/20/30 years using 1,000 correlated GBM paths (Cholesky of `xray_correlation_matrix`); percentile fan (P5–P95) in nominal and real terms; probability of reaching a target wealth. On-demand only — no scheduler job. Engine: `monte_carlo_engine.py` |
 | Portfolio Tearsheet | `/performance-analytics` | Native performance-analytics report covering the [quantstats](https://github.com/ranaroussi/quantstats) library's metric set — Sortino/Calmar/Omega ratios, drawdown duration analytics, distribution/tail stats, and win/loss statistics — computed entirely from cached return history with no external dependency. Complements the X-ray panel's Sharpe/VaR/CVaR/skew rather than duplicating them; both draw on the same `xray_returns_cache`-derived return series. On-demand only — no scheduler job. Engine: `performance_analytics_engine.py` |
+| Pairs Spread Monitor | `/pairs-spread` | Statistical arbitrage / mean-reversion signal over correlated same-currency portfolio+watchlist pairs (trailing 252-day return correlation ≥ configurable threshold), flagging when a pair's log-spread diverges from its own trailing-year mean by more than a configurable z-score threshold. The only alert engine that evaluates a *relationship* between two tickers rather than one ticker in isolation. Scheduled job `pairs_spread_monitor_job` (default Mon–Fri 19:10 local); alerts via the standard `IntradayOrchestrator._evaluate_alert_gate()` worsened/recovered/cooldown model, keyed on a composite `ticker_a:ticker_b` pair key (rule 19). Engine: `pairs_spread_engine.py` |
 
 ---
 

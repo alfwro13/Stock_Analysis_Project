@@ -228,6 +228,11 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Constraint:** `UNIQUE(ticker, scan_date)` — `INSERT OR IGNORE` keeps the first result of each day.
 * **Written by:** `bull_bear_trap_engine.TrapEngine._save_results()` → `database.log_trap_phase()`. Actuals filled daily by `trap_accuracy_fill_job` via `bull_bear_trap_engine.fill_trap_phase_actuals()`.
 
+#### `pairs_spread_results`
+* **Purpose:** Latest Pairs Spread Monitor scan result — one row per correlated same-currency pair from the portfolio+watchlist universe. Fully replaced (not upserted) on every scan, so a pair that drops out of the correlation threshold disappears rather than lingering with a stale `scan_ts`. Powers `/pairs-spread`.
+* **Key Columns:** `pair_key` (PK, `"{ticker_a}:{ticker_b}"` alphabetically ordered), `ticker_a`, `ticker_b`, `currency` (normalized — GBp/GBP collapse to `GBP`), `correlation` (Pearson, trailing 252-day daily returns), `zscore` (log-spread deviation from its own trailing-year mean), `spread_mean`, `spread_std`, `last_spread`, `direction` (which leg is "rich"), `scan_ts`.
+* **Written by:** `pairs_spread_engine.PairsSpreadEngine.run_scan()` → `PairsSpreadEngine._save_results()`, called by the `pairs_spread_monitor_job` scheduler job. The underlying log-spread time series itself is never persisted — `pairs_spread_engine.build_chart_series()` recomputes it on demand from `data/historical/*.parquet` for the chart endpoint.
+
 #### `bubble_radar_metrics`
 * **Purpose:** Daily snapshot of the Bubble Risk Score and its seven component metrics for every ticker that has been scanned. One row per (ticker, scan_date); re-scans upsert the same row.
 * **Key Columns:** `ticker`, `scan_date` (YYYY-MM-DD UTC), `bubble_score` (REAL 0–100), `flag` (NULL / `'watch'` / `'bubble'`), `sma_ext_pct` (% above 200-day SMA), `rsi_avg_20d`, `ps_ratio`, `peg_ratio`, `fcf_yield` (FCF/market-cap × 100), `riskfree_rate` (DFII10 used at scan time), `iv_call_skew` (NULL for non-US tickers), `spy_rsp_spread` (20-day return spread).

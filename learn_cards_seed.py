@@ -28,6 +28,7 @@ LEVELS = [
     ("earnings-vol", "Earnings Volatility"),
     ("dip-radar", "Dip Radar"),
     ("bubble-radar", "Bubble Radar"),
+    ("pairs-spread-monitor", "Pairs Spread Monitor"),
     ("forensic-screener", "Forensic Screener"),
     ("fx-drag", "FX Drag Analyzer"),
     ("performance-analytics", "Portfolio Tearsheet"),
@@ -1589,6 +1590,49 @@ CARDS = [
         "explanation": """<p><strong>Bubble Watch</strong> (yellow flag) means the stock is showing early signs of valuation overextension across some of the seven metrics, but has not yet crossed all the highest-confidence thresholds. Think of it as "elevated, worth monitoring, but not yet alarming."</p>
 <p><strong>Bubble Risk</strong> (red flag) means the composite score has crossed the upper threshold and multiple independent metrics are simultaneously in extreme territory. This is the "the lights are flashing" state — not a sell signal, but a strong prompt to ask whether you have an exit strategy and whether your current position size reflects the elevated risk.</p>
 <p>Both thresholds are configurable in Settings because investors have different risk tolerances and time horizons. A long-term, diversified investor might set higher thresholds than a more active trader who is more sensitive to short-term valuation extremes.</p>""",
+    },
+    # --- pairs-spread-monitor ---
+    {
+        "term_key": "what-pairs-spread-monitor-detects",
+        "section_id": "pairs-spread-monitor",
+        "term_title": "What Pairs Spread Monitor Detects",
+        "question": "How does Pairs Spread Monitor differ from every other alert engine in this app?",
+        "answer": "It looks at the relationship between two tickers, not just one ticker in isolation",
+        "distractors": [
+            "It only works on cryptocurrency pairs",
+            "It requires a live options feed to function",
+            "It replaces Trap Monitor and Crash/Moonshot rather than complementing them",
+        ],
+        "explanation": """<p>Every other alert engine in this app — Trap Monitor, Bubble Radar, AI Contagion, Crash/Moonshot — looks at one ticker at a time. <strong>Pairs Spread Monitor</strong> instead looks at the <em>relationship</em> between two tickers that have historically moved together, and flags when that relationship has temporarily broken down.</p>
+<p>Two stocks that are usually highly correlated (e.g. two companies in the same sector) can drift apart for a session or two — one rallies on company-specific news while the other lags — before typically converging back toward their historical relationship. This is the classic <strong>pairs trading / statistical arbitrage</strong> setup: a mean-reversion signal that is structurally different from any single-ticker technical or fundamental read.</p>""",
+    },
+    {
+        "term_key": "correlation-threshold-same-currency-pairing",
+        "section_id": "pairs-spread-monitor",
+        "term_title": "Correlation Threshold & Same-Currency Pairing",
+        "question": "Why does Pairs Spread Monitor only pair tickers quoted in the same currency?",
+        "answer": "A cross-currency pair's price ratio would also be pulled around by the FX rate, mixing FX noise into the equity-relationship signal",
+        "distractors": [
+            "Yahoo Finance does not provide cross-currency price data",
+            "Different currencies cannot be correlated by definition",
+            "It is a regulatory requirement in the UK",
+        ],
+        "explanation": """<p>Before two tickers are even considered a "pair," their trailing 252-day daily-return <strong>Pearson correlation</strong> must clear a configurable threshold (default 0.7). This filters the full portfolio-and-watchlist universe down to only the pairs that have a genuine, statistically meaningful historical relationship — pairing two unrelated stocks would produce a spread with no real reason to revert.</p>
+<p>Pairs are also restricted to <strong>tickers quoted in the same currency</strong> (GBX pence and GBP pounds are treated as the same currency, since both describe UK-listed stocks). A US stock and a UK stock might be genuinely correlated, but their price ratio would also be pulled around by the GBP/USD exchange rate — mixing a real equity-relationship signal with FX noise. Restricting to same-currency pairs keeps the signal clean.</p>""",
+    },
+    {
+        "term_key": "log-spread-z-score",
+        "section_id": "pairs-spread-monitor",
+        "term_title": "Log-Spread Z-Score",
+        "question": "Why does Pairs Spread Monitor use log(price_a) − log(price_b) rather than a raw price difference?",
+        "answer": "It's unit-invariant — the measure doesn't depend on whether a ticker is quoted in pence or pounds, or trades at a high or low absolute price",
+        "distractors": [
+            "It is required for the correlation calculation to work at all",
+            "It converts both prices into a common currency automatically",
+            "It removes the need for a trailing lookback window",
+        ],
+        "explanation": """<p>For each correlated pair, the monitor computes the <strong>log-spread</strong> — <code>log(price_a) − log(price_b)</code> — every trading day over the same trailing 252-day window. Using a log ratio rather than a raw price difference means the measure is unit-invariant: it doesn't matter whether either ticker happens to be quoted in pence or pounds, or trades at £5 or £500, only how the two prices move <em>relative</em> to each other.</p>
+<p>The <strong>z-score</strong> is how many standard deviations today's log-spread sits from that window's own mean. A z-score of 0 means the pair is trading exactly at its historical relationship; a large positive or negative z-score means one leg has become unusually "rich" or "cheap" relative to the other. An alert fires when the absolute z-score crosses a configurable threshold (default 2.0).</p>""",
     },
     # --- forensic-screener ---
     {
