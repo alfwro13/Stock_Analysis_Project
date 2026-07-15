@@ -62,7 +62,7 @@ async function loadWorkflowMonitor() {
         container.innerHTML = svg;
         _workflowLoaded = true;
     } catch (e) {
-        if (container) container.innerHTML = `<p class="text-red text-sm">Failed to load workflow graph: ${e.message}</p>`;
+        if (container) container.innerHTML = `<p class="text-red text-sm">Failed to load workflow graph: ${escapeHtml(e.message)}</p>`;
     }
 }
 
@@ -163,7 +163,7 @@ var _wfNodes = ${nodeJson};
 </html>`);
         win.document.close();
     } catch (e) {
-        if (win.document.body) win.document.body.innerHTML = `<p style="color:#ef5350;padding:16px">Failed to render graph: ${e.message}</p>`;
+        if (win.document.body) win.document.body.innerHTML = `<p style="color:#ef5350;padding:16px">Failed to render graph: ${escapeHtml(e.message)}</p>`;
     }
 }
 

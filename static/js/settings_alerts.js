@@ -109,9 +109,9 @@ async function loadDipRadarMonitors() {
         }
         container.innerHTML = monitors.map(m => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3a3a;">
-                <span class="text-orange font-bold">${m.ticker}</span>
+                <span class="text-orange font-bold">${escapeHtml(m.ticker)}</span>
                 <span style="color:${m.is_active ? '#00ff00' : '#888'};font-size:13px;">${m.is_active ? '● Active' : '○ Inactive'}</span>
-                ${m.is_active ? `<button class="btn-test mt-0" style="padding:4px 10px;font-size:12px;" onclick="disableDipMonitor('${m.ticker}')">Disable</button>` : '<span style="color:#555;font-size:12px;">—</span>'}
+                ${m.is_active ? `<button class="btn-test mt-0" style="padding:4px 10px;font-size:12px;" data-ticker="${escapeHtml(m.ticker)}" onclick="disableDipMonitor(this.dataset.ticker)">Disable</button>` : '<span style="color:#555;font-size:12px;">—</span>'}
             </div>`).join('');
     } catch (e) {
         container.innerHTML = '<p style="color:#f44336;font-size:13px;">Failed to load monitors.</p>';
@@ -141,9 +141,9 @@ async function triggerAIContagionScan() {
         const resp = await fetch('/api/ai-contagion/trigger', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
-        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
     } catch (err) {
-        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
         setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
     }
@@ -159,9 +159,9 @@ async function triggerTrapMonitorScan() {
         const resp = await fetch('/api/trap-monitor/run', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
-        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
     } catch (err) {
-        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
         setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
     }
@@ -177,9 +177,9 @@ async function triggerForensicFetch() {
         const resp = await fetch('/api/forensic-scores/run-fetch', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
-        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
     } catch (err) {
-        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
         setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Fetch Now"; }, 3000);
     }
@@ -195,9 +195,9 @@ async function triggerForensicScore() {
         const resp = await fetch('/api/forensic-scores/run-score', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
-        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
     } catch (err) {
-        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
         setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scores Now"; }, 3000);
     }
@@ -213,9 +213,9 @@ async function triggerBubbleRadarScan() {
         const resp = await fetch('/api/bubble-radar/run', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
-        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
     } catch (err) {
-        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
         setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
     }

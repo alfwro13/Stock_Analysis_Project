@@ -99,7 +99,7 @@ async function _wlRunSearch(query) {
             </button>
         `).join('') + '</div>';
     } catch (e) {
-        results.innerHTML = `<span class="msg-error">Search failed: ${e.message}</span>`;
+        results.innerHTML = `<span class="msg-error">Search failed: ${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -120,7 +120,7 @@ async function addTickerToWatchlist(ticker) {
             status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to add ticker.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
