@@ -22,7 +22,7 @@ from sentiment_engine import (
     get_ftse_gbp_html,
 )
 import markets_engine
-from utils import normalize_ticker
+from utils import normalize_ticker, safe_ticker_filename
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -394,9 +394,10 @@ async def index_detail(request: Request, ticker: str):
     # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
     # — but a future's own page must never fall back to its spot row's baseline (a different
     # instrument's price scale), so it correctly shows the "no data yet" placeholder instead.
-    _ticker_parquet = HISTORICAL_DIR / f"{ticker}.parquet"
+    _safe_ticker = safe_ticker_filename(ticker)
+    _ticker_parquet = HISTORICAL_DIR / f"{_safe_ticker}.parquet" if _safe_ticker else None
     _baseline_name = registry_row.get("baseline_parquet") if (registry_row and not is_future_page) else None
-    parquet_path = _ticker_parquet if _ticker_parquet.exists() else (HISTORICAL_DIR / _baseline_name if _baseline_name else None)
+    parquet_path = _ticker_parquet if (_ticker_parquet and _ticker_parquet.exists()) else (HISTORICAL_DIR / _baseline_name if _baseline_name else None)
     try:
         df_macro = pd.read_parquet(parquet_path) if parquet_path else pd.DataFrame()
         if df_macro.empty:
@@ -418,7 +419,9 @@ async def index_detail(request: Request, ticker: str):
         macro_html = f"<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>{type(e).__name__}: {e}</span></div>"
 
     try:
-        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+        if not _safe_ticker:
+            raise FileNotFoundError
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{_safe_ticker}_intraday.parquet")
         s1 = price_action['s1'] if price_action else None
         s2 = price_action['s2'] if price_action else None
         mkt_tz = intraday_market_tz(ticker, currency)

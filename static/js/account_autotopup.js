@@ -46,9 +46,9 @@ async function saveAutoTopupConfig() {
             status.innerHTML = '<span class="msg-success">Saved.</span>';
             if (typeof loadAccounts === 'function') loadAccounts();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to save.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to save.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }

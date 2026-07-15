@@ -115,10 +115,10 @@ async function confirmAutotopup(accountId, pendingId) {
         if (data.status === 'success') {
             location.reload();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to confirm.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to confirm.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -135,10 +135,10 @@ async function dismissAutotopup(accountId, pendingId) {
         if (data.status === 'success') {
             location.reload();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to dismiss.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to dismiss.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -194,12 +194,12 @@ async function submitReconcile() {
             _reconcileCashModal().hide();
             if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else if (data.status === 'success') {
-            status.innerHTML = `<span class="msg-success">${data.message || 'Already balanced.'}</span>`;
+            status.innerHTML = `<span class="msg-success">${escapeHtml(data.message || 'Already balanced.')}</span>`;
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 

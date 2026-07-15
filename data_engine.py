@@ -12,7 +12,7 @@ from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 import time_engine
 
-from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch  # noqa: F401 — normalize_ticker re-exported for callers
+from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
 
@@ -171,10 +171,14 @@ class DataEngine:
         logger.info(f"Drip-feeding Fundamental JSONs for {len(tickers)} assets...")
         for i, ticker in enumerate(tickers):
             try:
+                safe_ticker = safe_ticker_filename(ticker)
+                if not safe_ticker:
+                    logger.warning("Skipping fundamentals fetch for unsafe ticker %r.", ticker)
+                    continue
                 fundamentals = yahoo_engine.get_ticker_info(ticker)
 
                 if fundamentals:
-                    with open(FUNDAMENTALS_DIR / f"{ticker}.json", 'w') as f:
+                    with open(FUNDAMENTALS_DIR / f"{safe_ticker}.json", 'w') as f:
                         json.dump(fundamentals, f, default=str)
 
                 if i > 0 and i % 50 == 0:
@@ -189,6 +193,10 @@ class DataEngine:
     def fetch_and_save_data(self, ticker: str) -> bool:
         """Legacy single-ticker fetcher used by manual UI refresh."""
         logger.info(f"Processing Data for single ticker {ticker}...")
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            logger.error("Refusing to fetch unsafe ticker %r.", ticker)
+            return False
         try:
             persisted = False
 
@@ -198,7 +206,7 @@ class DataEngine:
                 df_intraday = _intraday.get(ticker, pd.DataFrame())
                 if not df_intraday.empty:
                     self._strip_tz(df_intraday)
-                    df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                    df_intraday.to_parquet(INTRADAY_DIR / f"{safe_ticker}_intraday.parquet", engine='pyarrow')
                     persisted = True
                     df_live = df_intraday
 
@@ -211,12 +219,12 @@ class DataEngine:
                     df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
                 df_daily = _drop_in_progress_last_bar(df_daily, df_live, ticker)
                 if not df_daily.empty:
-                    df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
+                    df_daily.to_parquet(HISTORICAL_DIR / f"{safe_ticker}.parquet", engine='pyarrow')
                     persisted = True
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
             if fundamentals:
-                with open(FUNDAMENTALS_DIR / f"{ticker}.json", 'w') as f:
+                with open(FUNDAMENTALS_DIR / f"{safe_ticker}.json", 'w') as f:
                     json.dump(fundamentals, f, default=str)
 
             if not persisted:
@@ -252,7 +260,11 @@ def fetch_and_save_single_ticker(ticker: str) -> bool:
 
 def load_or_fetch_daily_history(ticker: str) -> Optional[pd.DataFrame]:
     """Reads the daily parquet this ticker's own nightly fetch already wrote; only hits Yahoo (and caches the result) when no parquet exists yet for it."""
-    path = HISTORICAL_DIR / f"{ticker}.parquet"
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        logger.error("Refusing to load history for unsafe ticker %r.", ticker)
+        return None
+    path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
     if not path.exists():
         try:
             data = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")

@@ -29,8 +29,8 @@ function _localHhmToUtc(hhmm) {
 }
 
 function _etfConstituentRowHtml(ticker = '', weight = '') {
-    const t = ticker ? ` value="${ticker}"` : '';
-    const w = weight !== '' ? ` value="${weight}"` : '';
+    const t = ticker ? ` value="${escapeHtml(ticker)}"` : '';
+    const w = weight !== '' ? ` value="${escapeHtml(String(weight))}"` : '';
     return `<div class="etf-constituent-row flex-gap-15 mb-10">
         <input type="text" class="etf-c-ticker" placeholder="Ticker"${t} style="flex:1;text-transform:uppercase;">
         <input type="number" class="etf-c-weight" placeholder="Weight %" step="0.01" min="0" style="width:100px;"${w}>
@@ -44,15 +44,15 @@ function _etfEditFormHtml(cfg) {
     ).join('');
     return `
     <div id="etf-edit-form-${cfg.id}" style="display:none;margin-top:12px;background:#111;padding:14px;border-radius:6px;">
-        <h6 style="color:#b366ff;margin:0 0 10px;">Edit: ${cfg.etf_ticker}</h6>
+        <h6 style="color:#b366ff;margin:0 0 10px;">Edit: ${escapeHtml(cfg.etf_ticker)}</h6>
         <div class="flex-gap-15">
             <div class="form-group flex-1 mb-0">
                 <label>Name</label>
-                <input type="text" id="etf-edit-name-${cfg.id}" value="${cfg.name.replace(/"/g,'&quot;')}">
+                <input type="text" id="etf-edit-name-${cfg.id}" value="${escapeHtml(cfg.name)}">
             </div>
             <div class="form-group flex-1 mb-0">
                 <label>ETF Ticker</label>
-                <input type="text" id="etf-edit-ticker-${cfg.id}" value="${cfg.etf_ticker}" style="text-transform:uppercase;">
+                <input type="text" id="etf-edit-ticker-${cfg.id}" value="${escapeHtml(cfg.etf_ticker)}" style="text-transform:uppercase;">
             </div>
         </div>
         <div style="margin-top:12px;background:#1a1a1a;padding:10px;border-radius:5px;border:1px solid #2a2a2a;">
@@ -121,8 +121,8 @@ async function loadEtfPredictors() {
             <div id="etf-cfg-${cfg.id}" style="background:#1e1e1e;padding:12px;border-radius:5px;margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
                     <div>
-                        <strong style="color:#b366ff;">${cfg.etf_ticker}</strong>
-                        <span style="color:#ccc;margin-left:8px;">${cfg.name}</span>
+                        <strong style="color:#b366ff;">${escapeHtml(cfg.etf_ticker)}</strong>
+                        <span style="color:#ccc;margin-left:8px;">${escapeHtml(cfg.name)}</span>
                         <span style="color:#666;font-size:12px;margin-left:8px;">${cfg.constituents.length} constituents</span>
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -137,18 +137,18 @@ async function loadEtfPredictors() {
                         <button type="button" class="btn-test mt-0" style="font-size:11px;padding:4px 10px;background:#2a3a5a;" onclick="toggleEtfEditForm(${cfg.id})">&#9998; Edit</button>
                         <button type="button" class="btn-test mt-0" style="font-size:11px;padding:4px 10px;" onclick="runEtfNow(${cfg.id})">&#9654; Run</button>
                         <a href="/etf-predictor/${cfg.id}" class="btn-test mt-0" style="font-size:11px;padding:4px 10px;color:#fff;text-decoration:none;">View</a>
-                        <button type="button" class="btn-danger" style="font-size:11px;padding:4px 10px;" onclick="deleteEtfPredictor(${cfg.id}, '${cfg.etf_ticker}')">Delete</button>
+                        <button type="button" class="btn-danger" style="font-size:11px;padding:4px 10px;" onclick="deleteEtfPredictor(${cfg.id})">Delete</button>
                     </div>
                 </div>
                 <div style="margin-top:8px;font-size:12px;color:#888;">
                     Pre: ${_utcHhmToLocal(cfg.pre_run_time)} ${_etfTzAbbr()} &nbsp;|&nbsp; Post: ${_utcHhmToLocal(cfg.post_run_time)} ${_etfTzAbbr()}
-                    &nbsp;|&nbsp; ${cfg.constituents.map(h => h.ticker).join(', ')}
+                    &nbsp;|&nbsp; ${cfg.constituents.map(h => escapeHtml(h.ticker)).join(', ')}
                 </div>
                 <div id="etf-status-${cfg.id}" class="status-msg-sm" style="margin-top:6px;"></div>
                 ${_etfEditFormHtml(cfg)}
             </div>`).join('');
     } catch (e) {
-        list.innerHTML = `<span class="msg-error">Failed to load: ${e.message}</span>`;
+        list.innerHTML = `<span class="msg-error">Failed to load: ${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -173,7 +173,7 @@ function importEtfJson(containerId, textareaId, statusId) {
     if (!raw) { if (statusEl) statusEl.innerHTML = '<span class="msg-error">Paste JSON first.</span>'; return; }
     let parsed;
     try { parsed = JSON.parse(raw); } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span class="msg-error">Invalid JSON: ${e.message}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="msg-error">Invalid JSON: ${escapeHtml(e.message)}</span>`;
         return;
     }
     let rows = [];
@@ -237,23 +237,23 @@ async function checkEtfConfig(tickerInputId, containerId, statusId) {
             body: JSON.stringify({ etf_ticker: etfTicker, constituents })
         });
         const data = await r.json();
-        if (data.status !== 'success') { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${data.message || 'Validation failed.'}</span>`; return; }
+        if (data.status !== 'success') { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Validation failed.')}</span>`; return; }
         const etfOk = data.etf.valid;
         const badTickers = data.constituents.filter(c => !c.valid).map(c => c.ticker);
         const warnWeight = !data.weight_ok;
         const lines = [];
         lines.push(etfOk
-            ? `<span class="msg-success">ETF ${data.etf.ticker}: &#10003; ${data.etf.name || 'found'}</span>`
-            : `<span class="msg-error">ETF ${data.etf.ticker}: &#10007; not found on Yahoo Finance</span>`);
+            ? `<span class="msg-success">ETF ${escapeHtml(data.etf.ticker)}: &#10003; ${escapeHtml(data.etf.name || 'found')}</span>`
+            : `<span class="msg-error">ETF ${escapeHtml(data.etf.ticker)}: &#10007; not found on Yahoo Finance</span>`);
         if (badTickers.length)
-            lines.push(`<span class="msg-error">Unknown tickers: ${badTickers.join(', ')}</span>`);
+            lines.push(`<span class="msg-error">Unknown tickers: ${badTickers.map(escapeHtml).join(', ')}</span>`);
         else
             lines.push(`<span class="msg-success">All ${data.constituents.length} constituent(s) found &#10003;</span>`);
         lines.push(warnWeight
             ? `<span class="msg-warning">Total weight = ${data.total_weight.toFixed(2)} — consider normalising to 100%</span>`
             : `<span class="msg-success">Total weight = ${data.total_weight.toFixed(2)} &#10003;</span>`);
         if (statusEl) statusEl.innerHTML = lines.join('<br>');
-    } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+    } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
 async function saveNewEtfPredictor() {
@@ -282,9 +282,9 @@ async function saveNewEtfPredictor() {
             document.getElementById('add-etf-form').classList.add('d-none');
             loadEtfPredictors();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
-    } catch (e) { status.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+    } catch (e) { status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
 async function saveEtfEdit(id) {
@@ -311,9 +311,9 @@ async function saveEtfEdit(id) {
             if (statusEl) statusEl.innerHTML = '<span class="msg-success">Saved.</span>';
             loadEtfPredictors();
         } else {
-            if (statusEl) statusEl.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
-    } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+    } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
 async function _putEtfConfig(id, overrides) {
@@ -336,7 +336,7 @@ async function toggleEtfEnabled(id, enabled) {
     if (_etfConfigCache[id]) _etfConfigCache[id].enabled = enabled;
     if (el) el.innerHTML = data.status === 'success'
         ? '<span class="msg-success">Updated.</span>'
-        : `<span class="msg-error">${data.message || 'Failed'}</span>`;
+        : `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
 }
 
 async function toggleEtfSchedule(id, auto_schedule) {
@@ -346,7 +346,7 @@ async function toggleEtfSchedule(id, auto_schedule) {
     if (_etfConfigCache[id]) _etfConfigCache[id].auto_schedule = auto_schedule;
     if (el) el.innerHTML = data.status === 'success'
         ? `<span class="msg-success">Schedule ${auto_schedule ? 'enabled' : 'disabled'}.</span>`
-        : `<span class="msg-error">${data.message || 'Failed'}</span>`;
+        : `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
 }
 
 async function runEtfNow(id) {
@@ -357,11 +357,12 @@ async function runEtfNow(id) {
         const data = await r.json();
         if (el) el.innerHTML = data.status === 'success'
             ? '<span class="msg-success">Prediction initiated — check Notifications for result.</span>'
-            : `<span class="msg-error">${data.message || 'Failed'}</span>`;
-    } catch (e) { if (el) el.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+            : `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
+    } catch (e) { if (el) el.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
-async function deleteEtfPredictor(id, ticker) {
+async function deleteEtfPredictor(id) {
+    const ticker = _etfConfigCache[id]?.etf_ticker || 'this ETF';
     if (!confirm(`Delete predictor for ${ticker}? Prediction history will be preserved.`)) return;
     const el = document.getElementById(`etf-status-${id}`);
     if (el) el.innerHTML = '<span class="msg-info">Deleting...</span>';
@@ -369,8 +370,8 @@ async function deleteEtfPredictor(id, ticker) {
         const r = await fetch(`/api/etf-predictors/${id}`, { method: 'DELETE' });
         const data = await r.json();
         if (data.status === 'success') { loadEtfPredictors(); }
-        else { if (el) el.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`; }
-    } catch (e) { if (el) el.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+        else { if (el) el.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`; }
+    } catch (e) { if (el) el.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

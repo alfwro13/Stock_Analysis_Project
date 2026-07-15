@@ -11,6 +11,7 @@ import ta
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection, log_score_event
 from fundamentals_helpers import calculate_peter_lynch_peg
+from utils import safe_ticker_filename
 from constants import (
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
@@ -177,13 +178,19 @@ class QuantEngine:
             self.conn.close()
 
     def load_parquet(self, ticker: str) -> Optional[pd.DataFrame]:
-        filepath = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            return None
+        filepath = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not filepath.exists():
             return None
         return pd.read_parquet(filepath)
 
     def load_fundamentals(self, ticker: str) -> dict:
-        filepath = FUNDAMENTALS_DIR / f"{ticker}.json"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            return {}
+        filepath = FUNDAMENTALS_DIR / f"{safe_ticker}.json"
         if not filepath.exists():
             return {}
         with open(filepath, 'r') as f:

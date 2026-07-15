@@ -8,6 +8,7 @@ from config import FUNDAMENTALS_DIR
 from database import get_connection
 from position_sizing import get_position_sizing_config
 from portfolio_service import get_rate_to_base
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +61,9 @@ def _load_fundamentals_extra(ticker: str) -> dict:
         "insider_ownership": None, "payout_ratio": None, "ex_dividend_date_fmt": None,
         "average_volume_fmt": None, "full_time_employees_fmt": None, "website": None,
     }
-    path = FUNDAMENTALS_DIR / f"{ticker}.json"
-    if not path.exists():
+    safe_ticker = safe_ticker_filename(ticker)
+    path = FUNDAMENTALS_DIR / f"{safe_ticker}.json" if safe_ticker else None
+    if path is None or not path.exists():
         return empty
     try:
         with open(path) as f:

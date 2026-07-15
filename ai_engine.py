@@ -1,4 +1,3 @@
-# ai_engine.py
 import json
 import re
 import logging
@@ -14,6 +13,7 @@ from database import get_connection
 from portfolio_service import get_rate_to_base
 from time_engine import now_local
 from regime_engine import get_latest_regime
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,8 @@ class AIPromptEngine:
         and volume — not just the latest value. Also computes the Volume
         Contraction Ratio (the literal VCP signal: recent vol vs the prior baseline).
         """
-        df_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        df_path = HISTORICAL_DIR / f"{safe_ticker}.parquet" if safe_ticker else None
         metrics: Dict[str, str] = {
             "rsi_path": "N/A",
             "macd_path": "N/A",
@@ -148,7 +149,7 @@ class AIPromptEngine:
             "bb_wband": "N/A",
         }
 
-        if not df_path.exists():
+        if df_path is None or not df_path.exists():
             logger.info(f"[AI ENGINE] No Parquet history for {ticker}; technical trajectory unavailable.")
             return metrics
 

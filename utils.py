@@ -1,9 +1,12 @@
 # Lightweight helpers with no heavy dependencies — safe to import from any module.
 import logging
 import os
+import re
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+_SAFE_TICKER_PATH_RE = re.compile(r"^[A-Za-z0-9^.=_\-]+$")
 
 MERMAID_VERSION = "10.9.1"
 MERMAID_URL = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
@@ -93,6 +96,17 @@ def notify_requirements_drift() -> None:
 
 def normalize_ticker(ticker: str) -> str:
     return str(ticker).strip().upper()
+
+
+def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
+    """Ticker validated free of path-traversal characters, or None if unsafe — the single
+    guard every HISTORICAL_DIR/INTRADAY_DIR/FUNDAMENTALS_DIR filename built from a ticker
+    must pass through, since a ticker can originate from user-typed input (e.g. an account
+    transaction) rather than only the trusted market universe."""
+    ticker = str(ticker) if ticker is not None else ""
+    if not ticker or not _SAFE_TICKER_PATH_RE.match(ticker):
+        return None
+    return ticker
 
 
 def ignored_tickers_set(config: Optional[dict] = None) -> set:

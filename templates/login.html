@@ -46,7 +46,8 @@
     const btn  = document.getElementById('loginBtn');
     const err  = document.getElementById('loginError');
     const params = new URLSearchParams(window.location.search);
-    const nextUrl = params.get('next') || '/';
+    const rawNext = params.get('next') || '/';
+    const nextUrl = (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) ? rawNext : '/';
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();

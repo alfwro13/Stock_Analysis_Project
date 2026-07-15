@@ -33,7 +33,7 @@ async function loadAccounts() {
         }
         list.innerHTML = data.accounts.map(_accountCardHtml).join('');
     } catch (e) {
-        if (list) list.innerHTML = `<div class="col-12"><span class="msg-error">Failed to load accounts: ${e.message}</span></div>`;
+        if (list) list.innerHTML = `<div class="col-12"><span class="msg-error">Failed to load accounts: ${escapeHtml(e.message)}</span></div>`;
     }
 }
 
@@ -248,10 +248,10 @@ async function saveAccount() {
             _accountModal().hide();
             loadAccounts();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -321,7 +321,7 @@ async function toggleTransactions(accountId) {
         (data.transactions || []).forEach(t => { _txnCache[t.id] = t; });
         box.innerHTML = _transactionsTableHtml(accountId, data.transactions || []);
     } catch (e) {
-        box.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        box.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -528,7 +528,7 @@ function _lookupTicker() {
                 resultEl.innerHTML = '<span class="msg-error">Ticker not found on Yahoo Finance.</span>';
             }
         } catch (e) {
-            resultEl.innerHTML = `<span class="msg-error">${e.message}</span>`;
+            resultEl.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
         }
     }, 400);
 }
@@ -577,10 +577,10 @@ async function submitTransaction() {
                 _txnModal().hide();
                 if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
             } else {
-                status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+                status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
             }
         } catch (e) {
-            status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
         }
         return;
     }
@@ -620,10 +620,10 @@ async function submitTransaction() {
             }
             if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
