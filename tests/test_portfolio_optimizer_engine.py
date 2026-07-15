@@ -236,6 +236,9 @@ class TestOptimizePortfolio:
             assert w["is_new_addition"] is False
         assert report["efficient_frontier"] is not None
         assert len(report["efficient_frontier"]["points"]) == 25
+        assert report["efficient_frontier"]["current"] is not None
+        assert "return" in report["efficient_frontier"]["current"]
+        assert "volatility" in report["efficient_frontier"]["current"]
 
     def test_watchlist_only_ticker_included_with_zero_current_weight(self):
         _seed_asset_profile(T1, "Company One")

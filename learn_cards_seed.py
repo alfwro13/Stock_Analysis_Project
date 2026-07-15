@@ -1811,41 +1811,42 @@ CARDS = [
             "Deletes any holding with a suggested weight below 5%",
             "Requires a brokerage API key to compute the suggestions",
         ],
-        "explanation": """<p>The <strong>Portfolio Optimizer</strong> computes two textbook "optimal" allocations for a chosen account scope — <strong>Min-Variance</strong> and <strong>Max-Sharpe</strong> — using closed-form matrix algebra rather than a numerical optimization library. It shows the suggested weight for each candidate ticker next to its current weight, so you can compare your actual allocation against the two targets.</p>
+        "explanation": """<p>In plain terms: it looks at how your tickers have actually moved in the past and works out two alternative ways you could have mixed them — one aimed at the smoothest ride, one aimed at the best return for the bumps involved. It then shows those next to what you actually hold today, so you can see how your real mix compares.</p>
+<p>More precisely, the <strong>Portfolio Optimizer</strong> computes two textbook "optimal" allocations for a chosen account scope — <strong>Min-Variance</strong> (the Steadiest Mix) and <strong>Max-Sharpe</strong> (the Best Reward-for-Risk Mix) — using closed-form matrix algebra rather than a numerical optimization library.</p>
 <p>It's informational only: this app has no order execution, so nothing is rebalanced automatically. Held tickers are pre-selected candidates; <a href="/watchlist">Watchlist</a> tickers can be opted in to see them suggested as a brand-new position with a nonzero weight.</p>""",
     },
     {
         "term_key": "min-variance-portfolio",
         "section_id": "portfolio-optimizer",
-        "term_title": "Min-Variance Portfolio",
-        "question": "How is the Min-Variance Portfolio's weight vector computed?",
+        "term_title": "Min-Variance Portfolio (\"Steadiest Mix\")",
+        "question": "How is the Min-Variance (Steadiest Mix) Portfolio's weight vector computed?",
         "answer": "In closed form from the covariance matrix (w ∝ Σ⁻¹ · 1), with no iterative solver",
         "distractors": [
             "By running 1,000 random simulations and picking the smoothest one",
             "By always weighting every candidate ticker equally",
             "By maximizing expected return regardless of risk",
         ],
-        "explanation": """<p>The set of weights that would have produced the <strong>lowest historical volatility</strong> for the selected candidate tickers, derived directly from their covariance matrix.</p>
+        "explanation": """<p>The mix of your selected tickers that would have bounced around the <strong>least</strong> historically — the smoothest ride, not necessarily the highest return.</p>
 <p>This is a closed-form solution — no iterative solver, no shorting or position-size constraints. It answers "if I only cared about the smoothest possible ride, how would I have weighted these holdings?"</p>""",
     },
     {
         "term_key": "max-sharpe-portfolio",
         "section_id": "portfolio-optimizer",
-        "term_title": "Max-Sharpe Portfolio",
-        "question": "What does the Max-Sharpe Portfolio maximize?",
+        "term_title": "Max-Sharpe Portfolio (\"Best Reward-for-Risk Mix\")",
+        "question": "What does the Max-Sharpe (Best Reward-for-Risk) Portfolio maximize?",
         "answer": "Historical return per unit of risk — the tangency point on the efficient frontier",
         "distractors": [
             "Total historical return, regardless of volatility",
             "The number of candidate tickers included",
             "Dividend income only",
         ],
-        "explanation": """<p>The set of weights that would have maximized <strong>historical return per unit of risk</strong> — the tangency portfolio where a line from the risk-free rate is tangent to the efficient frontier.</p>
-<p>Like Min-Variance, this is closed-form and unconstrained. If a candidate's expected return sits below the risk-free rate, or the spread of expected returns across candidates is too thin, the Optimizer surfaces a warning instead of a misleading number.</p>""",
+        "explanation": """<p>The mix of your selected tickers that would have given the <strong>most return for the amount of bumpiness</strong> involved — the best trade-off between reward and risk, not simply the highest return on its own.</p>
+<p>Like the Steadiest Mix, this is closed-form and unconstrained. If a candidate's expected return sits below the risk-free rate, or the spread of expected returns across candidates is too thin, the Optimizer surfaces a warning instead of a misleading number.</p>""",
     },
     {
         "term_key": "efficient-frontier",
         "section_id": "portfolio-optimizer",
-        "term_title": "Efficient Frontier",
+        "term_title": "Efficient Frontier (the curve on the chart)",
         "question": "How does the Portfolio Optimizer trace the efficient frontier without a second optimization pass?",
         "answer": "Two-fund separation — every frontier point is a linear combination of the Min-Variance and Max-Sharpe portfolios",
         "distractors": [
@@ -1853,12 +1854,13 @@ CARDS = [
             "It queries a third-party portfolio-optimization API",
             "It only plots the two named portfolios, not a curve",
         ],
-        "explanation": """<p>The curve of every portfolio that offers the lowest possible risk for a given expected return. The Optimizer traces it using <strong>two-fund separation</strong>: every point on the frontier is a linear combination of the Min-Variance and Max-Sharpe portfolios, so sweeping a blend factor between (and slightly beyond) the two traces the whole curve without a second optimization pass.</p>""",
+        "explanation": """<p>Imagine plotting every possible way of mixing your selected tickers as a dot, with bumpiness on one axis and return on the other. The efficient frontier is the curve connecting the <em>best</em> of those dots — the mixes where you can't get more return without accepting more bumpiness, or less bumpiness without giving up return. Your own portfolio's dot is also shown, so you can see how far it sits from that curve.</p>
+<p>The Optimizer traces the curve using <strong>two-fund separation</strong>: every point on the frontier is a linear combination of the Steadiest Mix and the Best Reward-for-Risk Mix, so sweeping a blend factor between (and slightly beyond) the two traces the whole curve without a second optimization pass.</p>""",
     },
     {
         "term_key": "negative-short-weights",
         "section_id": "portfolio-optimizer",
-        "term_title": "Negative (Short) Weights",
+        "term_title": "Negative (Short) Weights — the \"Model says: avoid\" tag",
         "question": "Why can the Portfolio Optimizer show a negative suggested weight?",
         "answer": "The math is unconstrained (no shorting/position-cap rule), so a negative weight is the true closed-form result and is shown as-is",
         "distractors": [
@@ -1866,7 +1868,7 @@ CARDS = [
             "It means the ticker will be automatically sold short",
             "Negative weights are always clipped to zero before display",
         ],
-        "explanation": """<p>Because the Optimizer is unconstrained — no "no shorting" rule, no per-position cap — a suggested weight can come out negative. This reflects the true closed-form math, not a recommendation to short a position: <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result.</p>""",
+        "explanation": """<p>Occasionally the maths comes back wanting a <em>negative</em> amount of a ticker — in plain terms, betting against it rather than owning it. Because the Optimizer is unconstrained — no "no shorting" rule, no per-position cap — this can happen: it reflects the true closed-form math, not a recommendation to actually short a position, and <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result.</p>""",
     },
     # --- stress-tester ---
     {

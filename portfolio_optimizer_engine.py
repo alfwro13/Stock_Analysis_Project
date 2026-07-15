@@ -247,10 +247,27 @@ def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = N
             "no order execution and cannot act on it."
         )
 
+    current_w = np.array([held.get(t, {}).get("weight", 0.0) for t in resolved_tickers])
+    current_point = None
+    current_sum = float(current_w.sum())
+    if current_sum > 1e-9:
+        if abs(current_sum - 1.0) > 0.01:
+            data_warnings.append(
+                "Your selected candidates don't cover your whole current portfolio (some held "
+                "positions were left unchecked), so the 'Your Portfolio Today' point on the "
+                "chart only reflects the tickers included here, not your full account."
+            )
+        current_point = {
+            "return": round(float(current_w @ mu), 4),
+            "volatility": round(max(float(current_w @ cov @ current_w), 0.0) ** 0.5, 4),
+        }
+
     frontier = (
         _efficient_frontier(result["w_mv"], result["w_ms"], mu, cov)
         if result["w_ms"] is not None else None
     )
+    if frontier is not None:
+        frontier["current"] = current_point
 
     return {
         "status": "success",

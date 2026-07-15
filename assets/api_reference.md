@@ -3002,11 +3002,14 @@ Runs the closed-form **Portfolio Optimizer** for a chosen candidate ticker set a
   "efficient_frontier": {
     "points": [{"return": 0.041, "volatility": 0.089}, "..."],
     "min_variance": {"return": 0.052, "volatility": 0.081},
-    "max_sharpe": {"return": 0.071, "volatility": 0.095}
+    "max_sharpe": {"return": 0.071, "volatility": 0.095},
+    "current": {"return": 0.048, "volatility": 0.104}
   },
   "data_warnings": []
 }
 ```
+
+`efficient_frontier.current` is the requesting account's actual current allocation (using each ticker's real `current_weight`, not a suggested one) plotted on the same return/volatility axes — `null` if none of the resolved candidate tickers are currently held (e.g. every included ticker is a not-yet-held Watchlist addition). If the checked candidate set excludes some of the account's real holdings, a `data_warnings` entry says so, since `current` then only reflects the included tickers, not the whole account.
 
 **Response (fewer than 2 tickers, or fewer than 30 overlapping cached days):**
 

@@ -36,10 +36,14 @@ function renderWeightsTable(weights) {
     var tbody = document.getElementById("po-weights-tbody");
     tbody.innerHTML = weights.map(function (w) {
         var badges = "";
-        if (w.is_new_addition) badges += ' <span class="badge bg-info">New</span>';
-        if (w.is_short) badges += ' <span class="badge bg-danger">Negative</span>';
+        if (w.is_new_addition) {
+            badges += ' <abbr class="badge bg-info" title="You don\'t currently hold this — the model thinks adding it would have helped, based on its past prices.">Not held yet</abbr>';
+        }
+        if (w.is_short) {
+            badges += ' <abbr class="badge bg-danger" title="The maths wants a negative amount of this ticker (like betting against it). You cannot act on this in the app — treat it as a hint that this holding hurt the mix, not an instruction.">Model says: avoid</abbr>';
+        }
         return "<tr>"
-            + "<td>" + w.symbol + badges + "<div class='text-muted small'>" + w.name + "</div></td>"
+            + "<td>" + escapeHtml(w.symbol) + badges + "<div class='text-muted small'>" + escapeHtml(w.name) + "</div></td>"
             + "<td>" + _fmt_pct(w.current_weight) + "</td>"
             + "<td>" + _fmt_pct(w.suggested_weight_mv) + "</td>"
             + "<td>" + _fmt_pct(w.suggested_weight_ms) + "</td>"
@@ -57,29 +61,36 @@ function renderFrontierChart(frontier) {
         {
             x: frontier.points.map(function (p) { return p.volatility * 100; }),
             y: frontier.points.map(function (p) { return p.return * 100; }),
-            mode: "lines", name: "Efficient Frontier",
+            mode: "lines", name: "Best possible mixes",
             line: { color: "#b366ff", width: 2 },
-            hovertemplate: "Vol %{x:.2f}%, Return %{y:.2f}%<extra></extra>",
+            hovertemplate: "Bumpiness %{x:.2f}%, Return %{y:.2f}%<extra></extra>",
         },
         {
             x: [frontier.min_variance.volatility * 100], y: [frontier.min_variance.return * 100],
-            mode: "markers", name: "Min-Variance",
-            marker: { color: "#00ffcc", size: 11, symbol: "diamond" },
+            mode: "markers", name: "Steadiest Mix (Min-Variance)",
+            marker: { color: "#00ffcc", size: 12, symbol: "diamond" },
         },
         {
             x: [frontier.max_sharpe.volatility * 100], y: [frontier.max_sharpe.return * 100],
-            mode: "markers", name: "Max-Sharpe",
-            marker: { color: "#ffaa00", size: 11, symbol: "star" },
+            mode: "markers", name: "Best Reward-for-Risk (Max-Sharpe)",
+            marker: { color: "#ffaa00", size: 12, symbol: "star" },
         },
     ];
+    if (frontier.current) {
+        traces.push({
+            x: [frontier.current.volatility * 100], y: [frontier.current.return * 100],
+            mode: "markers", name: "Your Portfolio Today",
+            marker: { color: "#ffffff", size: 13, symbol: "circle", line: { color: "#000000", width: 1.5 } },
+        });
+    }
     var layout = {
-        title: { text: "Efficient Frontier", x: 0.5, xanchor: "center" },
+        title: { text: "Risk vs. Reward — Where You Are and Where the Model Would Aim", x: 0.5, xanchor: "center" },
         template: "plotly_dark", height: _poChartHeight(),
         margin: { l: 60, r: 20, t: 50, b: 60 },
         legend: { orientation: "h", yanchor: "top", y: -0.15, xanchor: "center", x: 0.5 },
         paper_bgcolor: "#1e1e1e", plot_bgcolor: "#1e1e1e", font: { color: "#ccc" },
-        xaxis: { title: "Annualised Volatility %", ticksuffix: "%", automargin: true, gridcolor: "#333" },
-        yaxis: { title: "Annualised Return %", ticksuffix: "%", automargin: true, gridcolor: "#333" },
+        xaxis: { title: "Bumpiness (yearly ups and downs) →", ticksuffix: "%", automargin: true, gridcolor: "#333" },
+        yaxis: { title: "Yearly Return →", ticksuffix: "%", automargin: true, gridcolor: "#333" },
     };
     Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
 }
@@ -140,18 +151,34 @@ function runOptimization() {
         });
 }
 
+function _candidateRowHtml(c) {
+    return '<div class="form-check po-candidate-row">'
+        + '<input class="form-check-input po-candidate-checkbox" type="checkbox" value="' + escapeHtml(c.symbol) + '" id="po-cand-' + escapeHtml(c.symbol) + '"'
+        + (c.held ? " checked" : "") + ' data-held="' + c.held + '">'
+        + '<label class="form-check-label small" for="po-cand-' + escapeHtml(c.symbol) + '">' + escapeHtml(c.symbol) + "</label>"
+        + "</div>";
+}
+
 function _renderCandidatesList(candidates) {
     var container = document.getElementById("po-candidates-list");
-    container.innerHTML = candidates.map(function (c) {
-        var badge = c.held
-            ? '<span class="badge bg-secondary">Held</span>'
-            : '<span class="badge border border-secondary text-secondary">Watchlist</span>';
-        return '<div class="form-check po-candidate-row">'
-            + '<input class="form-check-input po-candidate-checkbox" type="checkbox" value="' + c.symbol + '"'
-            + (c.held ? " checked" : "") + ' data-held="' + c.held + '">'
-            + '<label class="form-check-label small">' + c.symbol + " " + badge + "</label>"
-            + "</div>";
-    }).join("");
+    var held = candidates.filter(function (c) { return c.held; });
+    var watchlist = candidates.filter(function (c) { return !c.held; });
+
+    var html = "";
+    if (held.length) {
+        html += '<div class="po-candidates-group-label">Your Holdings (' + held.length + ')</div>';
+        html += held.map(_candidateRowHtml).join("");
+    }
+    if (watchlist.length) {
+        html += '<div class="po-candidates-group-label">Watchlist — tick to include (' + watchlist.length + ')</div>';
+        html += watchlist.map(_candidateRowHtml).join("");
+    }
+    container.innerHTML = html;
+
+    var countEl = document.getElementById("po-candidates-count");
+    if (countEl) {
+        countEl.textContent = held.length + " held, " + watchlist.length + " on your Watchlist. Scroll the box below to see them all.";
+    }
 }
 
 function loadCandidates(accountId) {

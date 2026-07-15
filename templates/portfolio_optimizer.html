@@ -9,10 +9,10 @@
 {% block content %}
 <h1 class="mb-1">&#129513; Portfolio Optimizer</h1>
 <p class="text-muted mb-3">
-    Closed-form <abbr title="The portfolio weights that would have produced the lowest historical volatility, computed directly from the covariance matrix — no iterative solver.">Min-Variance</abbr>
-    and <abbr title="The portfolio weights that would have maximized historical return per unit of risk — the tangency point on the efficient frontier.">Max-Sharpe</abbr>
-    suggested weights for your holdings, computed with plain matrix algebra (no shorting/position-cap constraints).
-    Informational only — this app has no order execution, nothing is rebalanced automatically.
+    Compares your current mix of holdings against two "textbook" alternative mixes, worked out purely from how these tickers have actually moved in the past:
+    a <abbr title="The mix of your tickers that would have bounced around the least — the smoothest, steadiest ride, even if the returns weren't the highest.">Steadiest Mix</abbr>
+    and a <abbr title="The mix of your tickers that would have given you the most return for the amount of ups-and-downs you had to put up with.">Best Reward-for-Risk Mix</abbr>.
+    This is a reference point only — nothing here is a buy/sell instruction, and this app cannot place trades or rebalance anything automatically.
 </p>
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
@@ -26,14 +26,15 @@
     <div class="col-12 col-lg-4">
         <div class="card card-bg h-100">
             <div class="card-body">
-                <h6 class="card-title mb-2">Candidate Tickers</h6>
+                <h6 class="card-title mb-2">Which Tickers to Consider</h6>
                 <p class="text-muted small mb-2">
-                    Held tickers are pre-checked. Tick any <abbr title="Watchlist tickers have no current position — including one lets the optimizer suggest it as a brand-new addition with a nonzero suggested weight.">Watchlist</abbr> tickers you also want considered.
+                    Everything you currently hold is ticked automatically. Your <a href="/watchlist">Watchlist</a> tickers are listed too but left unticked — tick any you'd like the model to consider adding as a brand-new position.
                 </p>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="po-select-all-watchlist">
-                    <label class="form-check-label small" for="po-select-all-watchlist">Select all Watchlist tickers</label>
+                    <label class="form-check-label small" for="po-select-all-watchlist">Tick every Watchlist ticker</label>
                 </div>
+                <div id="po-candidates-count" class="po-candidates-count mb-2"></div>
                 <div id="po-candidates-list" class="po-candidates-list mb-3"></div>
                 <button type="button" class="btn btn-primary btn-sm w-100" id="po-run-btn">&#9654; Run Optimization</button>
                 <div id="po-error" class="text-danger small mt-2 d-none"></div>
@@ -49,14 +50,19 @@
         </div>
 
         <div id="po-results" class="d-none">
+            <p class="text-muted small mb-2">
+                For each ticker: what you hold now, versus what the Steadiest Mix and the Best Reward-for-Risk Mix would have suggested instead.
+                A <span class="badge bg-info">Not held yet</span> tag means it's a Watchlist ticker you ticked in — the model thinks adding it would have helped.
+                A <span class="badge bg-danger">Model says: avoid</span> tag means the maths actually wants a <em>negative</em> amount of that ticker (like betting against it) — this app has no way to act on that, so treat it purely as a signal that this holding dragged the mix down, not as an instruction.
+            </p>
             <div class="table-responsive">
                 <table class="table table-hover w-100" id="po-weights-table">
                     <thead>
                         <tr>
                             <th>Ticker</th>
-                            <th>Current Weight</th>
-                            <th><abbr title="Min-Variance suggested weight — the closed-form portfolio with the lowest historical volatility.">Min-Variance</abbr></th>
-                            <th><abbr title="Max-Sharpe suggested weight — the closed-form tangency portfolio with the highest historical return per unit of risk.">Max-Sharpe</abbr></th>
+                            <th>What You Hold Now</th>
+                            <th><abbr title="The steadiest possible mix of these tickers — lowest ups-and-downs historically, not necessarily the highest return.">Steadiest Mix</abbr></th>
+                            <th><abbr title="The mix that historically gave the most return for the amount of ups-and-downs involved.">Best Reward-for-Risk</abbr></th>
                         </tr>
                     </thead>
                     <tbody id="po-weights-tbody"></tbody>
@@ -71,7 +77,9 @@
                 <div class="sentiment-footer">
                     <span class="sentiment-footer-title">How to read this chart:</span>
                     <div class="sentiment-footer-text">
-                        The curve is the <abbr title="Every point is a linear combination of the Min-Variance and Max-Sharpe portfolios — a standard two-fund-separation trick that traces the frontier without a second optimization.">efficient frontier</abbr> swept between and beyond the two named portfolios (markers). Points further left have lower historical volatility for their return; points on the upper-left edge of the curve are the most efficient trade-offs.
+                        <p class="mb-2">Every dot on this chart is one possible way of mixing the tickers you selected. The further <strong>right</strong> a dot sits, the bumpier that mix's year-to-year ride has been historically; the further <strong>up</strong> a dot sits, the more it would have returned per year.</p>
+                        <p class="mb-2">The <strong>white circle</strong> is where your actual portfolio sits today. The <strong>purple curve</strong> is every mix that gave the best possible return for its level of bumpiness — no mix below-and-right of that curve makes sense, since you could always get more return for the same bumpiness (or less bumpiness for the same return) by picking a mix that's on the curve instead.</p>
+                        <p class="mb-0">The <strong>green diamond</strong> is the single steadiest mix on the curve; the <strong>orange star</strong> is the mix that historically gave the best return for its bumpiness. If your white circle sits well below or to the right of the curve, it means — purely based on how these tickers moved in the past — a different mix of the exact same tickers could plausibly have done better. It is not advice to act on; it's a comparison point.</p>
                     </div>
                 </div>
             </div>
@@ -93,31 +101,31 @@
                         <div class="sentiment-module module-default mb-0">
                             <div class="p-3">
                                 <h4 class="text-primary small fw-semibold">1. Choose an Account</h4>
-                                <p class="mb-0 small text-muted lh-base">Select which account (or the global scope) to optimize. This determines both your held tickers and their current weights.</p>
+                                <p class="mb-0 small text-muted lh-base">Pick which account (or "Global") you want to look at. This sets which tickers you hold and how much of each.</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-12 col-md-6 col-xl-3">
                         <div class="sentiment-module module-default mb-0">
                             <div class="p-3">
-                                <h4 class="text-primary small fw-semibold">2. Pick Candidates</h4>
-                                <p class="mb-0 small text-muted lh-base">Held tickers are pre-checked. Optionally tick Watchlist tickers to let the optimizer suggest bringing them in as a brand-new position (0% current weight).</p>
+                                <h4 class="text-primary small fw-semibold">2. Pick Your Tickers</h4>
+                                <p class="mb-0 small text-muted lh-base">Everything you hold is ticked already. Add a Watchlist ticker if you want to see whether the model thinks it's worth considering.</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-12 col-md-6 col-xl-3">
                         <div class="sentiment-module module-default mb-0">
                             <div class="p-3">
-                                <h4 class="text-primary small fw-semibold">3. Read the Weights</h4>
-                                <p class="mb-0 small text-muted lh-base">Suggested weights can be negative — this is the true unconstrained closed-form result, not a shorting recommendation. This app cannot act on it; use it as a reference point only.</p>
+                                <h4 class="text-primary small fw-semibold">3. Read the Table</h4>
+                                <p class="mb-0 small text-muted lh-base">A negative number means the model would want to bet against that ticker — you can't actually do that here, so read it as "this one dragged the mix down," not as an instruction.</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-12 col-md-6 col-xl-3">
                         <div class="sentiment-module module-default mb-0">
                             <div class="p-3">
-                                <h4 class="text-primary small fw-semibold">4. Mind the Candidate Count</h4>
-                                <p class="mb-0 small text-muted lh-base">More candidate tickers relative to overlapping trading days makes the covariance estimate thinner and the weights less stable — a warning appears if the ratio gets too high.</p>
+                                <h4 class="text-primary small fw-semibold">4. Don't Pick Too Many</h4>
+                                <p class="mb-0 small text-muted lh-base">The more tickers you tick, the less reliable the maths gets, since there's only so much price history to learn from. A warning appears if you've ticked too many for how much history is available.</p>
                             </div>
                         </div>
                     </div>
@@ -129,6 +137,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
 <script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio_optimizer.js?v={{ css_version }}"></script>
 {% endblock %}
