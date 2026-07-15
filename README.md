@@ -124,6 +124,12 @@ Before the system can provide Machine Learning predictions, it must build its hi
 This will run securely in the background. It downloads 2 years of daily data for a curated list of ~250 Blue Chip stocks plus your portfolio, engineers the vectorized features, and trains the global ml_ensemble.joblib model. You can track its progress in the Notifications tab.
 
 
+### **5. Keeping Dependencies Updated**
+
+[Dependabot](https://docs.github.com/code-security/dependabot) opens a weekly pull request for any outdated package in `requirements.txt` (`.github/dependabot.yml`). Every pull request — Dependabot's or your own — is automatically checked against the full regression suite by GitHub Actions CI (`.github/workflows/tests.yml`) before it's safe to merge. `assets/dependencies.md` documents what each dependency is actually used for and what to test after a major-version upgrade.
+
+The app itself also checks, on every startup, whether the packages actually installed in your virtual environment still match the pins in `requirements.txt`, and logs/notifies (Settings → Notifications) if they've drifted — for example if `requirements.txt` was updated but `pip install -r requirements.txt` was never re-run. This catches drift regardless of how the server was last restarted.
+
 ## **💻 Usage & The Web UI**
 
 To start the server, simply run the main application file. The system will automatically build the SQLite database on its first boot.

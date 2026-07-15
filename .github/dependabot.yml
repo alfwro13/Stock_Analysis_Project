@@ -9,3 +9,61 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"
+    # Major-version bumps are always left ungrouped (one PR each) regardless
+    # of these groups, since a major bump is exactly the case that needs its
+    # own focused review — see assets/dependencies.md for per-package risk
+    # notes, especially the ML/AI group (silent accuracy drift risk, not a
+    # crash risk) and joblib (pickle-compatibility risk with existing models).
+    groups:
+      web-framework:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "starlette-csrf"
+          - "slowapi"
+          - "python-multipart"
+          - "python-dotenv"
+        update-types:
+          - "minor"
+          - "patch"
+      market-data:
+        patterns:
+          - "yfinance"
+          - "pandas"
+          - "pyarrow"
+          - "requests"
+          - "ta"
+          - "exchange_calendars"
+          - "fake-useragent"
+          - "python-slugify"
+          - "lxml"
+          - "cssselect"
+          - "html5lib"
+          - "trafilatura"
+        update-types:
+          - "minor"
+          - "patch"
+      charts-templating:
+        patterns:
+          - "plotly"
+          - "matplotlib"
+          - "Jinja2"
+          - "markdown"
+        update-types:
+          - "minor"
+          - "patch"
+      ml-ai:
+        patterns:
+          - "scikit-learn"
+          - "xgboost"
+          - "hmmlearn"
+          - "scipy"
+          - "joblib"
+          - "transformers"
+          - "torch"
+        update-types:
+          - "minor"
+          - "patch"

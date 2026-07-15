@@ -595,3 +595,104 @@ def test_clamp_beta_exact_boundary_not_clamped():
     from utils import clamp_beta
     assert clamp_beta(0.5) == pytest.approx(0.5)
     assert clamp_beta(2.0) == pytest.approx(2.0)
+
+
+# ── Requirements drift detection ──────────────────────────────────────────────
+
+def _installed_version(pkg):
+    import importlib.metadata
+    return importlib.metadata.version(pkg)
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_no_mismatch_for_satisfied_exact_pin(tmp_path):
+    from utils import check_requirements_drift
+    version = _installed_version("pytest")
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text(f"pytest=={version}\n")
+    assert check_requirements_drift(str(req_file)) == []
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_detects_exact_pin_mismatch(tmp_path):
+    from utils import check_requirements_drift
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("pytest==0.0.0.dev0\n")
+    mismatches = check_requirements_drift(str(req_file))
+    assert len(mismatches) == 1
+    assert "pytest" in mismatches[0]
+    assert "0.0.0.dev0" in mismatches[0]
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_no_mismatch_for_satisfied_floor(tmp_path):
+    from utils import check_requirements_drift
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("pytest>=0.0.1\n")
+    assert check_requirements_drift(str(req_file)) == []
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_detects_floor_violation(tmp_path):
+    from utils import check_requirements_drift
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("pytest>=9999.0.0\n")
+    mismatches = check_requirements_drift(str(req_file))
+    assert len(mismatches) == 1
+    assert "pytest" in mismatches[0]
+    assert "9999.0.0" in mismatches[0]
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_detects_missing_package(tmp_path):
+    from utils import check_requirements_drift
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("this-package-does-not-exist-anywhere==1.0.0\n")
+    mismatches = check_requirements_drift(str(req_file))
+    assert len(mismatches) == 1
+    assert "not installed" in mismatches[0]
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_ignores_unpinned_package(tmp_path):
+    from utils import check_requirements_drift
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("pytest\n")
+    assert check_requirements_drift(str(req_file)) == []
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_ignores_comments_and_blank_lines(tmp_path):
+    from utils import check_requirements_drift
+    version = _installed_version("pytest")
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text(f"# a comment\n\npytest=={version}  # inline comment\n")
+    assert check_requirements_drift(str(req_file)) == []
+
+
+@pytest.mark.utils
+def test_check_requirements_drift_missing_file_returns_empty_list(tmp_path):
+    from utils import check_requirements_drift
+    assert check_requirements_drift(str(tmp_path / "does_not_exist.txt")) == []
+
+
+@pytest.mark.utils
+def test_notify_requirements_drift_sends_notification_on_mismatch(monkeypatch):
+    import utils
+    monkeypatch.setattr(utils, "check_requirements_drift", lambda: ["pytest: installed 1.0, requirements.txt pins ==2.0"])
+    calls = []
+    monkeypatch.setattr("notification_engine.notify", lambda *a, **kw: calls.append((a, kw)))
+    utils.notify_requirements_drift()
+    assert len(calls) == 1
+    assert calls[0][0][0] == "system_update_status"
+    assert "pytest" in calls[0][0][2]
+
+
+@pytest.mark.utils
+def test_notify_requirements_drift_noop_when_no_mismatch(monkeypatch):
+    import utils
+    monkeypatch.setattr(utils, "check_requirements_drift", lambda: [])
+    calls = []
+    monkeypatch.setattr("notification_engine.notify", lambda *a, **kw: calls.append((a, kw)))
+    utils.notify_requirements_drift()
+    assert calls == []
