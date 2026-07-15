@@ -29,8 +29,8 @@ function _localHhmToUtc(hhmm) {
 }
 
 function _etfConstituentRowHtml(ticker = '', weight = '') {
-    const t = ticker ? ` value="${ticker}"` : '';
-    const w = weight !== '' ? ` value="${weight}"` : '';
+    const t = ticker ? ` value="${escapeHtml(ticker)}"` : '';
+    const w = weight !== '' ? ` value="${escapeHtml(String(weight))}"` : '';
     return `<div class="etf-constituent-row flex-gap-15 mb-10">
         <input type="text" class="etf-c-ticker" placeholder="Ticker"${t} style="flex:1;text-transform:uppercase;">
         <input type="number" class="etf-c-weight" placeholder="Weight %" step="0.01" min="0" style="width:100px;"${w}>

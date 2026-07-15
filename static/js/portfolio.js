@@ -121,7 +121,7 @@ function _exitXrayMode() {
 function switchAccountContext() {
     var selectedId = document.getElementById('accountContextSelector').value;
     if (window._xrayMode) { _loadXray(selectedId); }
-    else { window.location.href = '/portfolio?account_id=' + selectedId; }
+    else { window.location.href = '/portfolio?account_id=' + encodeURIComponent(selectedId); }
 }
 
 // ── Change Period (1D/5D/1M/6M/YTD/1Y) ─────────────────────────────────────────

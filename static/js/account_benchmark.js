@@ -32,7 +32,7 @@ async function openBenchmarkModal(accountId) {
             data.tickers.forEach(t => addBenchmarkTickerRow(t.ticker, t.display_name));
         }
     } catch (e) {
-        document.getElementById('benchmark-config-status').innerHTML = `<span class="msg-error">${e.message}</span>`;
+        document.getElementById('benchmark-config-status').innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
     _benchmarkModal().show();
 }
@@ -62,9 +62,9 @@ async function saveBenchmarkConfig() {
         if (data.status === 'success') {
             status.innerHTML = '<span class="msg-success">Saved.</span>';
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to save.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to save.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }

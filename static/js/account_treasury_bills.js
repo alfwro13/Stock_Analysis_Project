@@ -94,10 +94,10 @@ async function submitBuyTreasuryBill() {
             _treasuryBillModal().hide();
             if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -150,10 +150,10 @@ async function confirmTreasuryBillYtm(accountId, billId) {
         if (data.status === 'success') {
             location.reload();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to confirm.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to confirm.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -170,10 +170,10 @@ async function keepTreasuryBillEstimate(accountId, billId) {
         if (data.status === 'success') {
             location.reload();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -237,10 +237,10 @@ async function submitEditTreasuryBill() {
         if (data.status === 'success') {
             location.reload();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to save.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to save.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }
 
