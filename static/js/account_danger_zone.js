@@ -24,9 +24,9 @@ async function confirmDeleteAccount() {
         if (data.status === 'success') {
             window.location.href = '/accounts';
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to delete account.'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to delete account.')}</span>`;
         }
     } catch (e) {
-        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
     }
 }

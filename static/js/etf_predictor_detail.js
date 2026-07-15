@@ -175,7 +175,7 @@ async function runNow(e) {
         if (data.status === 'success') {
             status.innerHTML = '<span class="msg-success">Prediction initiated &mdash; refresh in a moment.</span>';
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
             btn.disabled = false;
         }
     } catch (err) {
