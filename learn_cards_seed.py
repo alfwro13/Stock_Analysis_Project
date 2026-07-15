@@ -22,6 +22,7 @@ LEVELS = [
     ("forensic-screener", "Forensic Screener"),
     ("fx-drag", "FX Drag Analyzer"),
     ("performance-analytics", "Portfolio Tearsheet"),
+    ("portfolio-optimizer", "Portfolio Optimizer"),
     ("stress-tester", "Stress Tester"),
     ("etf-predictor", "ETF Predictor"),
     ("sovereign-debt-auction", "Sovereign Debt Auction"),
@@ -1099,6 +1100,68 @@ CARDS = [
             "A single number summarising the entire portfolio's lifetime return",
             "The correlation matrix between all portfolio holdings",
             "Only the most recent month's daily returns",
+        ],
+    },
+
+    # --- portfolio-optimizer ---
+    {
+        "term_key": "what-portfolio-optimizer-does",
+        "section_id": "portfolio-optimizer",
+        "term_title": "What the Portfolio Optimizer Does",
+        "question": "What does the Portfolio Optimizer actually do with its suggested weights?",
+        "answer": "Shows them for comparison only — this app has no order execution, so nothing rebalances automatically",
+        "distractors": [
+            "Automatically places buy/sell orders to match the suggested weights",
+            "Deletes any holding with a suggested weight below 5%",
+            "Requires a brokerage API key to compute the suggestions",
+        ],
+    },
+    {
+        "term_key": "min-variance-portfolio",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Min-Variance Portfolio",
+        "question": "How is the Min-Variance Portfolio's weight vector computed?",
+        "answer": "In closed form from the covariance matrix (w ∝ Σ⁻¹ · 1), with no iterative solver",
+        "distractors": [
+            "By running 1,000 random simulations and picking the smoothest one",
+            "By always weighting every candidate ticker equally",
+            "By maximizing expected return regardless of risk",
+        ],
+    },
+    {
+        "term_key": "max-sharpe-portfolio",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Max-Sharpe Portfolio",
+        "question": "What does the Max-Sharpe Portfolio maximize?",
+        "answer": "Historical return per unit of risk — the tangency point on the efficient frontier",
+        "distractors": [
+            "Total historical return, regardless of volatility",
+            "The number of candidate tickers included",
+            "Dividend income only",
+        ],
+    },
+    {
+        "term_key": "efficient-frontier",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Efficient Frontier",
+        "question": "How does the Portfolio Optimizer trace the efficient frontier without a second optimization pass?",
+        "answer": "Two-fund separation — every frontier point is a linear combination of the Min-Variance and Max-Sharpe portfolios",
+        "distractors": [
+            "It re-runs the Monte Carlo Wealth Simulator for each point",
+            "It queries a third-party portfolio-optimization API",
+            "It only plots the two named portfolios, not a curve",
+        ],
+    },
+    {
+        "term_key": "negative-short-weights",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Negative (Short) Weights",
+        "question": "Why can the Portfolio Optimizer show a negative suggested weight?",
+        "answer": "The math is unconstrained (no shorting/position-cap rule), so a negative weight is the true closed-form result and is shown as-is",
+        "distractors": [
+            "It's a display bug and should be reported",
+            "It means the ticker will be automatically sold short",
+            "Negative weights are always clipped to zero before display",
         ],
     },
 

@@ -1,0 +1,44 @@
+<div class="accordion-item glossary-section" id="portfolio-optimizer">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-portfolio-optimizer"
+                aria-expanded="false" aria-controls="collapse-portfolio-optimizer">
+            🧮 Portfolio Optimizer
+        </button>
+    </h2>
+    <div id="collapse-portfolio-optimizer" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What the Portfolio Optimizer Does</span>
+                <p>The <strong>Portfolio Optimizer</strong> computes two textbook "optimal" allocations for a chosen account scope — <strong>Min-Variance</strong> and <strong>Max-Sharpe</strong> — using closed-form matrix algebra rather than a numerical optimization library. It shows the suggested weight for each candidate ticker next to its current weight, so you can compare your actual allocation against the two targets.</p>
+                <p>It's informational only: this app has no order execution, so nothing is rebalanced automatically. Held tickers are pre-selected candidates; <a href="/watchlist">Watchlist</a> tickers can be opted in to see them suggested as a brand-new position with a nonzero weight.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Min-Variance Portfolio</span>
+                <p>The set of weights that would have produced the <strong>lowest historical volatility</strong> for the selected candidate tickers, derived directly from their covariance matrix.</p>
+                <div class="rule">w ∝ Σ⁻¹ · 1, normalized so the weights sum to 1 (Σ = annualised covariance matrix).</div>
+                <p>This is a closed-form solution — no iterative solver, no shorting or position-size constraints. It answers "if I only cared about the smoothest possible ride, how would I have weighted these holdings?"</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Max-Sharpe Portfolio</span>
+                <p>The set of weights that would have maximized <strong>historical return per unit of risk</strong> — the tangency portfolio where a line from the risk-free rate is tangent to the efficient frontier.</p>
+                <div class="rule">w ∝ Σ⁻¹ · (μ − rf), normalized so the weights sum to 1 (μ = annualised expected returns, rf = the app's configured risk-free rate).</div>
+                <p>Like Min-Variance, this is closed-form and unconstrained. If a candidate's expected return sits below the risk-free rate, or the spread of expected returns across candidates is too thin, the Optimizer surfaces a warning instead of a misleading number.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Efficient Frontier</span>
+                <p>The curve of every portfolio that offers the lowest possible risk for a given expected return. The Optimizer traces it using <strong>two-fund separation</strong>: every point on the frontier is a linear combination of the Min-Variance and Max-Sharpe portfolios, so sweeping a blend factor between (and slightly beyond) the two traces the whole curve without a second optimization pass.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Negative (Short) Weights</span>
+                <p>Because the Optimizer is unconstrained — no "no shorting" rule, no per-position cap — a suggested weight can come out negative. This reflects the true closed-form math, not a recommendation to short a position: <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

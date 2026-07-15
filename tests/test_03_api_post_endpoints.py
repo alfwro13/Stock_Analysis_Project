@@ -691,6 +691,73 @@ def test_monte_carlo_rejects_nonpositive_portfolio_value(client):
         assert resp.status_code == 422, f"Expected 422 for pv={bad_value}, got {resp.status_code}"
 
 
+# ── Portfolio Optimizer ─────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_portfolio_optimizer_run_returns_200_for_empty_scope(client):
+    """POST /api/portfolio-optimizer/run must return 200 with status=error (not a 500) for a
+    freshly created account with zero holdings — mirrors optimize_portfolio()'s
+    RuntimeError-to-error-status contract. An unrecognised account_id falls back to the "all"
+    scope (accounts_engine._classify_scope), so a genuinely empty scope must be a real,
+    holdings-free account id, not an arbitrary string."""
+    import database as _db
+
+    account_id = _db.create_account("POA Empty Test", "GBP")
+    resp = client.post("/api/portfolio-optimizer/run", json={"account_id": f"acct:{account_id}"})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert data["status"] == "error"
+
+
+@pytest.mark.api
+def test_portfolio_optimizer_run_full_report(client):
+    """POST /api/portfolio-optimizer/run with two held tickers plus 252 days of cached returns
+    must return closed-form Min-Variance/Max-Sharpe weights and an efficient frontier."""
+    import json as _json_mod
+    import numpy as np
+    import pandas as pd
+    import database as _db
+    from xray_engine import BENCHMARK_SYMBOL
+
+    conn = _db.get_connection()
+    try:
+        for ticker in ("POAT1", "POAT2"):
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+                (ticker, 100.0, "GBP"),
+            )
+        rng = np.random.default_rng(11)
+        dates = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2025-01-01", periods=252)]
+        for ticker, mean, vol in (("POAT1", 0.0004, 0.012), ("POAT2", 0.0003, 0.009)):
+            rets = rng.normal(mean, vol, 252).tolist()
+            conn.execute(
+                """INSERT OR REPLACE INTO xray_returns_cache
+                   (ticker, benchmark, last_updated, dates_json, returns_json)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (ticker, BENCHMARK_SYMBOL, "2026-06-03", _json_mod.dumps(dates), _json_mod.dumps(rets)),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    account_id = _db.create_account("POA Full Test", "GBP")
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="POAT1", currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="POAT2", currency="GBP",
+                         quantity=5, unit_price=50, exchange_rate=1.0)
+
+    with patch("xray_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}, "RISK_FREE_RATE": 0.045}), \
+         patch("portfolio_optimizer_engine.load_config", return_value={"RISK_FREE_RATE": 0.045}):
+        resp = client.post("/api/portfolio-optimizer/run", json={"account_id": f"acct:{account_id}"})
+
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["weights"] is not None
+    assert {w["symbol"] for w in data["weights"]} == {"POAT1", "POAT2"}
+    assert data["efficient_frontier"] is not None
+
+
 # ── Backup & Recovery ────────────────────────────────────────────────────────
 
 @pytest.mark.api

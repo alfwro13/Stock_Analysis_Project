@@ -76,6 +76,7 @@ from macro_ai_engine import MacroAIEngine
 from visuals import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 from monte_carlo_engine import run_simulation as _run_mc_simulation
+from portfolio_optimizer_engine import list_candidates as _po_list_candidates, optimize_portfolio as _po_optimize_portfolio
 
 logger = logging.getLogger(__name__)
 
@@ -991,6 +992,48 @@ async def api_performance_analytics_report(request: Request, account_id: str = "
     """
     try:
         report = assemble_performance_report(account_id)
+        return JSONResponse(content=report)
+    except Exception as e:
+        return _error_500(e)
+
+
+class PortfolioOptimizerRunRequest(BaseModel):
+    account_id: str = "all"
+    include_tickers: List[str] = []
+
+
+@api_router.get("/portfolio-optimizer/accounts")
+@limiter.limit("10/minute")
+async def api_portfolio_optimizer_accounts(request: Request):
+    try:
+        accounts, total = list_scope_accounts_with_values()
+        if not accounts:
+            return JSONResponse(content={"status": "error", "message": "No accounts with holdings configured."})
+        return JSONResponse(content={"status": "success", "accounts": accounts, "total": total})
+    except Exception as e:
+        return _error_500(e)
+
+
+@api_router.get("/portfolio-optimizer/candidates")
+@limiter.limit("10/minute")
+async def api_portfolio_optimizer_candidates(request: Request, account_id: str = "all"):
+    """Held tickers (pre-checked) + full Watchlist ticker list (opt-in) for the candidate checklist."""
+    try:
+        result = _po_list_candidates(account_id)
+        return JSONResponse(content=result)
+    except Exception as e:
+        return _error_500(e)
+
+
+@api_router.post("/portfolio-optimizer/run")
+@limiter.limit("10/minute")
+async def api_portfolio_optimizer_run(request: Request, req: PortfolioOptimizerRunRequest):
+    """
+    Closed-form (numpy-only) Min-Variance / Max-Sharpe suggested weights for the given account
+    scope plus any opted-in Watchlist tickers — informational only, no order execution.
+    """
+    try:
+        report = await asyncio.to_thread(_po_optimize_portfolio, req.account_id, req.include_tickers)
         return JSONResponse(content=report)
     except Exception as e:
         return _error_500(e)

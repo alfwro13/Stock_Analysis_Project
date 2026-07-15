@@ -81,6 +81,11 @@ JOB_GRAPH: dict[str, dict] = {
     # Portfolio Tearsheet — not a scheduled job; pure on-demand computation over the same
     # xray_returns_cache-derived return series X-ray uses, no new artifact produced.
     "performance_analytics_source":  {"label": "Portfolio Tearsheet",                            "category": "manual",      "engine": "performance_analytics_engine.py", "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
+
+    # Portfolio Optimizer — not a scheduled job; closed-form calculation over the same
+    # xray_returns_cache-derived return series X-ray uses (plus a parquet fallback for
+    # never-held Watchlist tickers), no new artifact produced.
+    "portfolio_optimizer_source":    {"label": "Portfolio Optimizer",                            "category": "manual",      "engine": "portfolio_optimizer_engine.py",   "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code

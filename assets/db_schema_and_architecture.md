@@ -374,6 +374,9 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 #### Historical Stress Tester (`stress_engine.py`)
 Results are computed on-demand and returned directly in the API response — **no table is written**. The engine reads per-ticker beta from `xray_risk_cache` and holdings from Ghostfolio's live API, applies pre-calibrated scenario shocks, and returns the monetary impact report. Run the X-ray nightly job first to ensure `xray_risk_cache` is populated with up-to-date betas.
 
+#### Portfolio Optimizer (`portfolio_optimizer_engine.py`)
+Results are computed on-demand and returned directly in the API response — **no table is written**, same as the Monte Carlo Wealth Simulator and Portfolio Tearsheet above. Min-Variance/Max-Sharpe weights are closed-form (`numpy`/`scipy` matrix algebra, no `cvxpy` dependency) over a per-ticker returns matrix read from `xray_returns_cache` (held tickers) with a direct parquet fallback (`xray_engine.fetch_close_returns_from_parquet`) for candidate tickers that have never been held — e.g. an opted-in Watchlist ticker, which the nightly X-ray precompute never populates into `xray_returns_cache`.
+
 ---
 
 ## 5. Scheduler Job Dependency Map (Workflow Monitor)

@@ -105,6 +105,13 @@
     </div>
 
     <div class="guide-card">
+        <h4>🧮 Portfolio Optimizer</h4>
+        <p>Closed-form <abbr title="The portfolio weights that would have produced the lowest historical volatility, computed directly from the covariance matrix — no iterative solver.">Min-Variance</abbr> and <abbr title="The portfolio weights that would have maximized historical return per unit of risk — the tangency point on the efficient frontier.">Max-Sharpe</abbr> suggested weights for your holdings (plus any Watchlist tickers you opt in), computed with plain matrix algebra — no shorting/position-cap constraints, so suggested weights can be negative and are shown as-is, never clipped.</p>
+        <div class="why-use-it">Use to compare your current allocation against two textbook mean-variance targets. Informational only — this app has no order execution, nothing rebalances automatically.</div>
+        <a href="/portfolio-optimizer" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
         <h4>🏛️ Sovereign Debt Auction Monitor</h4>
         <p>Tracks US Treasury auction demand using data from <abbr title="Official US Treasury data API — free, no API key required.">fiscaldata.treasury.gov</abbr>. Compares each auction's <abbr title="Ratio of total bids to amount offered. A declining BTC signals weakening institutional demand for US debt.">bid-to-cover ratio</abbr> and <abbr title="High yield minus median yield in basis points. A large tail means primary dealers absorbed supply at above-market yields.">yield tail</abbr> against a 6-auction rolling baseline per maturity, with direct / indirect / dealer allocation breakdowns.</p>
         <div class="why-use-it">Use to detect early warning signs of rate-shock events — weak auction demand historically precedes rapid yield spikes and equity sell-offs.</div>

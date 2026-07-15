@@ -1089,6 +1089,75 @@ def test_performance_analytics_report_returns_200(client):
             assert chart in data["charts"]
 
 
+# ── Portfolio Optimizer ─────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_portfolio_optimizer_accounts_returns_200(client):
+    """GET /api/portfolio-optimizer/accounts shares the same account-tile builder as Monte
+    Carlo/Tearsheet — must also populate from a built-in Trading account with Ghostfolio disabled."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+            ("POATEST", 100.0, "GBP"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    account_id = _db.create_account("POA Builtin Test", "GBP")
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="POATEST", currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+        resp = client.get("/api/portfolio-optimizer/accounts")
+
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert any(a["id"] == f"acct:{account_id}" for a in data["accounts"])
+
+
+@pytest.mark.api
+def test_portfolio_optimizer_candidates_returns_held_and_watchlist(client):
+    """GET /api/portfolio-optimizer/candidates marks held tickers held=True and Watchlist-only
+    tickers held=False with current_weight 0.0."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+            ("POCTEST", 100.0, "GBP"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    account_id = _db.create_account("POC Builtin Test", "GBP")
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="POCTEST", currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "POCWATCH", company_name="POC Watch Co")
+    try:
+        with patch("xray_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+            resp = client.get(f"/api/portfolio-optimizer/candidates?account_id=acct:{account_id}")
+
+        assert resp.status_code == 200
+        data = _json(resp)
+        assert data["status"] == "success"
+        by_symbol = {c["symbol"]: c for c in data["candidates"]}
+        assert by_symbol["POCTEST"]["held"] is True
+        assert by_symbol["POCWATCH"]["held"] is False
+        assert by_symbol["POCWATCH"]["current_weight"] == 0.0
+    finally:
+        remove_watchlist_ticker(wl["id"], "POCWATCH")
+
+
 # ── Backup & Recovery ──────────────────────────────────────────────────────────
 
 @pytest.mark.api

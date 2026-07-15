@@ -2923,6 +2923,104 @@ Returns the **Portfolio Tearsheet** report for an account scope — native (non-
 
 ---
 
+### `GET /api/portfolio-optimizer/accounts`
+
+Returns the same account-tile list and total as `GET /api/monte-carlo/accounts` — all three account-picker endpoints call the shared `accounts_engine.list_scope_accounts_with_values()`. Used to populate the account-selector bar on the Portfolio Optimizer page.
+
+**Auth:** Required (session cookie).
+
+**Rate limit:** 10 requests/minute.
+
+**Response:** identical shape to `GET /api/monte-carlo/accounts` above.
+
+---
+
+### `GET /api/portfolio-optimizer/candidates`
+
+Returns the candidate-ticker checklist for an account scope: every held ticker (`held: true`, its actual current weight) plus every Watchlist ticker not already held (`held: false`, `current_weight: 0.0`) — powers the Portfolio Optimizer page's checkbox list.
+
+**Auth:** Required (session cookie).
+
+**Rate limit:** 10 requests/minute.
+
+**Query params:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `account_id` | string | `"all"` | `"all"` = every configured source combined; a Ghostfolio account UUID; or `"acct:{id}"` for one built-in Trading account |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "account_id": "acct:5",
+  "candidates": [
+    {"symbol": "VWRL.L", "name": "Vanguard FTSE All-World UCITS ETF", "current_weight": 0.62, "held": true},
+    {"symbol": "IGLT.L", "name": "iShares UK Gilts 0-5yr UCITS ETF", "current_weight": 0.38, "held": true},
+    {"symbol": "AAPL", "name": "Apple Inc.", "current_weight": 0.0, "held": false}
+  ]
+}
+```
+
+**Response (scope has no holdings):** `{"status": "error", "message": "No holdings found for this scope..."}`.
+
+---
+
+### `POST /api/portfolio-optimizer/run`
+
+Runs the closed-form **Portfolio Optimizer** for a chosen candidate ticker set and returns suggested Min-Variance and Max-Sharpe weights plus an efficient-frontier curve. Pure computation via `portfolio_optimizer_engine.optimize_portfolio()` — no `cvxpy`/convex-optimization dependency, no DB writes, no scheduled job. Held tickers use `xray_returns_cache`; any candidate never held (e.g. a Watchlist-only ticker) falls back to a direct parquet read (`xray_engine.fetch_close_returns_from_parquet`).
+
+**Auth:** Required (session cookie).
+
+**Rate limit:** 10 requests/minute.
+
+**Request body:**
+
+```json
+{"account_id": "acct:5", "include_tickers": ["VWRL.L", "IGLT.L", "AAPL"]}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `account_id` | string | `"all"` | Same scope semantics as the other endpoints above |
+| `include_tickers` | array of strings | `[]` | The checked candidate tickers from `GET .../candidates`; must be ≥2 after resolution |
+
+**Response (sufficient data):**
+
+```json
+{
+  "status": "success",
+  "account_id": "acct:5",
+  "weights": [
+    {"symbol": "VWRL.L", "name": "Vanguard FTSE All-World UCITS ETF", "current_weight": 0.62,
+     "suggested_weight_mv": 0.41, "suggested_weight_ms": 0.55, "is_new_addition": false, "is_short": false},
+    {"symbol": "AAPL", "name": "Apple Inc.", "current_weight": 0.0,
+     "suggested_weight_mv": -0.03, "suggested_weight_ms": 0.12, "is_new_addition": true, "is_short": true}
+  ],
+  "risk_free_rate": 0.045,
+  "efficient_frontier": {
+    "points": [{"return": 0.041, "volatility": 0.089}, "..."],
+    "min_variance": {"return": 0.052, "volatility": 0.081},
+    "max_sharpe": {"return": 0.071, "volatility": 0.095}
+  },
+  "data_warnings": []
+}
+```
+
+**Response (fewer than 2 tickers, or fewer than 30 overlapping cached days):**
+
+```json
+{"status": "success", "account_id": "acct:5", "weights": null, "risk_free_rate": null,
+ "efficient_frontier": null, "data_warnings": ["Need at least 2 tickers to optimize a portfolio."]}
+```
+
+**Response (scope has no holdings):** `{"status": "error", "message": "No holdings found for this scope..."}`.
+
+`suggested_weight_mv`/`suggested_weight_ms` are unconstrained closed-form results (`w ∝ Σ⁻¹·1` and `w ∝ Σ⁻¹·(μ−rf)` respectively, each normalized to sum to 1) — no shorting/position-cap constraints, so a weight can be negative (`is_short: true`); it is never clipped. `risk_free_rate` is read from `config.json`'s `RISK_FREE_RATE` key, the same value X-ray/Tearsheet use for their own Sharpe/Sortino/Omega calculations.
+
+---
+
 ## 19. Accounts
 
 Native, database-backed brokerage accounts + transaction ledger (`/accounts`). Coexists with Ghostfolio — built-in account holdings are merged into the Portfolio page alongside any Ghostfolio-synced accounts (see `accounts_engine.get_combined_holdings`). Backed by the `accounts`, `account_transactions`, `account_value_history`, and `account_price_history` SQLite tables. `House`/`Pension` accounts are tracked standalone via the **Account Price Scraper** (a generic URL + CSS-selector price feed, configured from the account's own tile/detail page rather than the Settings page) — see the dedicated endpoints below.

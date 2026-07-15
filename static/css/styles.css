@@ -537,6 +537,8 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .mc-account-tile--active { border-top-color: #6366f1; background: #1a1a2e; }
 .mc-account-tile-name { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
 .mc-account-tile-value { font-size: var(--font-size-h3); font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; }
+.po-candidates-list { max-height: 320px; overflow-y: auto; border: 1px solid #333; border-radius: 6px; padding: 8px 10px; background: #1a1a1a; }
+.po-candidate-row { padding: 3px 0; }
 .text-accent-cyan { color: #00ffcc; }
 .text-accent-purple { color: #b366ff; }
 /* --- 19. Algorithmic Breakdown Lists & Risk Warnings --- */

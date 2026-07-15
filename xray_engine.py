@@ -304,23 +304,27 @@ class GhostfolioXRayClient:
             return {"dividend_yield_pct": 0.0, "dividend_in_base_currency": 0.0}
 
 
+def fetch_close_returns_from_parquet(symbols: List[str]) -> pd.DataFrame:
+    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet)."""
+    if not symbols:
+        return pd.DataFrame()
+    closes: Dict[str, pd.Series] = {}
+    for t in symbols:
+        df = load_or_fetch_daily_history(t)
+        if df is not None and "Close" in df.columns:
+            closes[t] = df["Close"].tail(252)
+    if not closes:
+        return pd.DataFrame()
+    prices = pd.DataFrame(closes)
+    prices = prices.dropna(axis=1, how="all")
+    return prices.pct_change().dropna(how="all")
+
+
 class XRayRiskComputer:
     # Benchmark SWDA.L is always fetched independently — never assumed to be a portfolio holding.
 
     def _fetch_returns(self, symbols: List[str]) -> pd.DataFrame:
-        """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet)."""
-        if not symbols:
-            return pd.DataFrame()
-        closes: Dict[str, pd.Series] = {}
-        for t in symbols:
-            df = load_or_fetch_daily_history(t)
-            if df is not None and "Close" in df.columns:
-                closes[t] = df["Close"].tail(252)
-        if not closes:
-            return pd.DataFrame()
-        prices = pd.DataFrame(closes)
-        prices = prices.dropna(axis=1, how="all")
-        return prices.pct_change().dropna(how="all")
+        return fetch_close_returns_from_parquet(symbols)
 
     def _compute_beta(
         self, asset_rets: pd.Series, bench_rets: pd.Series
@@ -506,17 +510,19 @@ def run_xray_precompute() -> bool:
 
 
 
-def get_scope_return_series(
-    holdings: List[Dict], total_value: float
-) -> Tuple[Optional[pd.Series], Optional[pd.Series], List[str]]:
-    """Weighted daily-return series (portfolio, benchmark) for an already-resolved scope,
-    derived from xray_returns_cache. Single source of truth for assemble_xray_report() and
-    performance_analytics_engine.py — None/None if fewer than 30 overlapping cached days."""
+def get_scope_returns_matrix(
+    tickers: List[str], include_benchmark: bool = True
+) -> Tuple[Optional[pd.DataFrame], List[str]]:
+    """Per-ticker daily-return DataFrame (dates x tickers) read from xray_returns_cache and
+    date-aligned via dropna, before any weighting/blending — the shared read path behind
+    get_scope_return_series() (portfolio-level blend) and portfolio_optimizer_engine.py (needs
+    the raw per-ticker matrix). None if fewer than 2 tickers resolve or fewer than 30 overlapping
+    cached days."""
     data_warnings: List[str] = []
-    portfolio_symbols = [h["symbol"] for h in holdings if h.get("weight", 0) > 0]
-    if not portfolio_symbols:
-        return None, None, data_warnings
-    returns_tickers = list(set(portfolio_symbols + [BENCHMARK_SYMBOL]))
+    tickers = list({t for t in tickers if t})
+    if not tickers:
+        return None, data_warnings
+    returns_tickers = list(set(tickers + ([BENCHMARK_SYMBOL] if include_benchmark else [])))
 
     conn = None
     returns_cache: Dict[str, Tuple[List[str], List[float]]] = {}
@@ -539,23 +545,41 @@ def get_scope_return_series(
         if conn:
             conn.close()
 
-    if BENCHMARK_SYMBOL not in returns_cache:
-        return None, None, data_warnings
+    if include_benchmark and BENCHMARK_SYMBOL not in returns_cache:
+        return None, data_warnings
 
     series_map: Dict[str, pd.Series] = {}
-    for h in holdings:
-        sym = h["symbol"]
-        if sym in returns_cache and h.get("weight", 0) > 0:
+    for sym in tickers:
+        if sym in returns_cache:
             dates, rets = returns_cache[sym]
             series_map[sym] = pd.Series(rets, index=pd.to_datetime(dates))
-    bench_dates, bench_rets_raw = returns_cache[BENCHMARK_SYMBOL]
-    series_map[BENCHMARK_SYMBOL] = pd.Series(bench_rets_raw, index=pd.to_datetime(bench_dates))
+    if include_benchmark and BENCHMARK_SYMBOL in returns_cache:
+        bench_dates, bench_rets_raw = returns_cache[BENCHMARK_SYMBOL]
+        series_map[BENCHMARK_SYMBOL] = pd.Series(bench_rets_raw, index=pd.to_datetime(bench_dates))
 
-    if len(series_map) < 2:
-        return None, None, data_warnings
+    min_series = 2 if include_benchmark else 1
+    if len(series_map) < min_series:
+        return None, data_warnings
 
     combined_df = pd.DataFrame(series_map).dropna(how="any")
     if len(combined_df) < 30:
+        return None, data_warnings
+
+    return combined_df, data_warnings
+
+
+def get_scope_return_series(
+    holdings: List[Dict], total_value: float
+) -> Tuple[Optional[pd.Series], Optional[pd.Series], List[str]]:
+    """Weighted daily-return series (portfolio, benchmark) for an already-resolved scope,
+    derived from xray_returns_cache. Single source of truth for assemble_xray_report() and
+    performance_analytics_engine.py — None/None if fewer than 30 overlapping cached days."""
+    portfolio_symbols = [h["symbol"] for h in holdings if h.get("weight", 0) > 0]
+    if not portfolio_symbols:
+        return None, None, []
+
+    combined_df, data_warnings = get_scope_returns_matrix(portfolio_symbols, include_benchmark=True)
+    if combined_df is None:
         return None, None, data_warnings
 
     weights = pd.Series({

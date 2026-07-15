@@ -946,6 +946,15 @@ async def performance_analytics_page(request: Request):
     )
 
 
+@page_router.get("/portfolio-optimizer", response_class=HTMLResponse)
+async def portfolio_optimizer_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="portfolio_optimizer.html",
+        context={"unread_count": get_unread_count()},
+    )
+
+
 @page_router.get("/treasury-auctions", response_class=HTMLResponse)
 async def treasury_auctions_page(request: Request):
     conn = None
