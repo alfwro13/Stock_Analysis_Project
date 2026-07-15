@@ -488,6 +488,7 @@ def test_no_endpoint_returns_500(client):
         "/api/intraday-monitor/analysis/AAPL",
         "/api/trap-monitor/results",
         "/api/macro-regime-allocation",
+        "/api/pairs-spread/results",
     ]
     failures = []
     for url in get_endpoints:
@@ -667,6 +668,28 @@ def test_trap_monitor_results_empty_on_fresh_db(client):
     assert data["results"] == [], (
         "Expected empty list on fresh DB, got: " + str(data["results"])
     )
+
+
+# ── Pairs Spread Monitor ──────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_pairs_spread_results_returns_200(client):
+    """GET /api/pairs-spread/results must return 200 with a 'results' list."""
+    resp = client.get("/api/pairs-spread/results")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "success", f"Expected success status: {data}"
+    assert "results" in data, f"Missing 'results' key: {data}"
+    assert isinstance(data["results"], list), "'results' must be a list"
+
+
+@pytest.mark.api
+def test_pairs_spread_chart_returns_404_for_unknown_pair(client):
+    """GET /api/pairs-spread/chart/{a}/{b} must 404, not 500, when there's no overlapping history."""
+    resp = client.get("/api/pairs-spread/chart/NOSUCHTICKERA/NOSUCHTICKERB")
+    assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "error"
 
 
 # ── Log Viewer API ────────────────────────────────────────────────────────────

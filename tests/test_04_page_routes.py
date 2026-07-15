@@ -703,6 +703,7 @@ def test_no_page_route_returns_500(client):
         ("/score-history",      "Score History"),
         ("/treasury-auctions",  "Sovereign Debt Auction Monitor"),
         ("/yahoo-api-usage",    "Yahoo Finance API Usage"),
+        ("/pairs-spread",       "Pairs Spread Monitor"),
     ]
     failures = []
     for url, label in pages:
@@ -723,6 +724,14 @@ def test_no_page_route_returns_500(client):
 def test_trap_monitor_page_loads(client):
     """GET /trap-monitor must load with an empty results table without crashing."""
     _assert_page_ok(client, "/trap-monitor", label="Trap Monitor")
+
+
+# ── Pairs Spread Monitor ──────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_pairs_spread_monitor_page_loads(client):
+    """GET /pairs-spread must load with an empty results table without crashing."""
+    _assert_page_ok(client, "/pairs-spread", label="Pairs Spread Monitor")
 
 
 # ── Sovereign Debt Auction Monitor ────────────────────────────────────────────

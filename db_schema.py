@@ -905,6 +905,22 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pairs_spread_results (
+                pair_key      TEXT PRIMARY KEY,
+                ticker_a      TEXT NOT NULL,
+                ticker_b      TEXT NOT NULL,
+                currency      TEXT,
+                correlation   REAL,
+                zscore        REAL,
+                spread_mean   REAL,
+                spread_std    REAL,
+                last_spread   REAL,
+                direction     TEXT,
+                scan_ts       TEXT NOT NULL
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS trap_phase_history (
                 id                    INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker                TEXT NOT NULL,

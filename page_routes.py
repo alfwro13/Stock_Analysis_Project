@@ -896,6 +896,18 @@ async def trap_monitor_page(request: Request):
     )
 
 
+@page_router.get("/pairs-spread", response_class=HTMLResponse)
+async def pairs_spread_monitor_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="pairs_spread_monitor.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/forensic-screener", response_class=HTMLResponse)
 async def forensic_screener_page(request: Request):
     from scheduler_engine import get_all_job_last_runs

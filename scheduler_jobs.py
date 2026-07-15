@@ -9,6 +9,7 @@ from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
 from database import get_account, get_connection, get_universe_tickers
+from db_helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import run_earnings_vol_scan
@@ -713,17 +714,6 @@ def run_ai_contagion_job():
         record_job_run('ai_contagion_job')
 
 
-def _get_ticker_currency_map(tickers: list, conn) -> dict:
-    if not tickers:
-        return {}
-    placeholders = ",".join("?" * len(tickers))
-    rows = conn.execute(
-        f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})",
-        tickers,
-    ).fetchall()
-    return {r["ticker"]: r["currency"] for r in rows}
-
-
 def run_trap_monitor_job():
     from bull_bear_trap_engine import TrapEngine
     config = load_config()
@@ -741,7 +731,7 @@ def run_trap_monitor_job():
         orch = IntradayOrchestrator()
 
         candidate_tickers = [row["ticker"] for row in results if row.get("phase", "NEUTRAL") in alert_phases]
-        currency_map = _get_ticker_currency_map(candidate_tickers, conn)
+        currency_map = get_ticker_currency_map(candidate_tickers, conn)
 
         for row in results:
             phase = row.get("phase", "NEUTRAL")
@@ -828,6 +818,58 @@ def run_bubble_radar_job():
     finally:
         _mark_job_done(job_label("bubble_radar_job"))
         record_job_run("bubble_radar_job")
+
+
+def run_pairs_spread_monitor_job():
+    from pairs_spread_engine import PairsSpreadEngine
+    config = load_config()
+    _mark_job_started(job_label("pairs_spread_monitor_job"))
+    conn = None
+    try:
+        conn = get_connection()
+        engine = PairsSpreadEngine(config)
+        results = engine.run_scan()
+
+        if not results:
+            log_sched_notification("Info", "Pairs Spread Monitor: no correlated pairs found.")
+            return
+
+        orch = IntradayOrchestrator()
+        fired = 0
+        for row in results:
+            if abs(row["zscore"]) < engine.zscore_threshold:
+                continue
+
+            pair_key = row["pair_key"]
+            reason = f"PAIRS SPREAD {row['direction']}"
+            suppress = orch._evaluate_alert_gate("PairsSpreadMonitor", pair_key, abs(row["zscore"]), reason, conn)
+            if suppress:
+                continue
+
+            feed_text = (
+                f"**{row['ticker_a']}/{row['ticker_b']}** — z-score {row['zscore']:+.2f} | "
+                f"correlation {row['correlation']:.2f} | {row['direction']}"
+            )
+            msg_lines = [
+                f"📐 **PAIRS SPREAD MONITOR: {row['ticker_a']} / {row['ticker_b']}**",
+                "",
+                f"Spread z-score: {row['zscore']:+.2f} (threshold {engine.zscore_threshold:.2f})",
+                f"Correlation: {row['correlation']:.2f}",
+                row["direction"],
+            ]
+            if notify("pairs_spread_alert", "PairsSpreadMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
+                orch.record_alert_fired("PairsSpreadMonitor", pair_key, abs(row["zscore"]), reason, conn)
+                fired += 1
+
+        log_sched_notification("Success", f"Pairs Spread Monitor complete — {len(results)} pair(s) monitored, {fired} alert(s) fired.")
+    except Exception as e:
+        logger.error("Pairs Spread Monitor job failed: %s", e)
+        log_sched_notification("Error", f"Pairs Spread Monitor job failed: {e}")
+    finally:
+        if conn:
+            conn.close()
+        _mark_job_done(job_label("pairs_spread_monitor_job"))
+        record_job_run("pairs_spread_monitor_job")
 
 
 def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:

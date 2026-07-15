@@ -220,3 +220,21 @@ async function triggerBubbleRadarScan() {
         setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
     }
 }
+
+async function triggerPairsSpreadScan() {
+    const btn = document.querySelector('button[onclick="triggerPairsSpreadScan()"]');
+    const msgEl = document.getElementById('pairs-spread-monitor-msg');
+    btn.disabled = true;
+    btn.innerText = "⏳ Scanning...";
+    msgEl.innerHTML = '';
+    try {
+        const resp = await fetch('/api/pairs-spread/run', { method: 'POST' });
+        const data = await resp.json();
+        const color = data.status === 'success' ? '#4caf50' : '#f44336';
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
+    } catch (err) {
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
+    } finally {
+        setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
+    }
+}

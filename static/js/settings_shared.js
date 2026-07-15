@@ -233,6 +233,15 @@ async function saveSettings(silent = false) {
                 "WATCH_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_WATCH_THRESHOLD').value) || 70,
                 "FLAG_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_FLAG_THRESHOLD').value) || 85
             },
+            "PAIRS_SPREAD_MONITOR": {
+                "ENABLED": document.getElementById('PAIRS_SPREAD_ENABLED').checked,
+                "DAYS": document.getElementById('PAIRS_SPREAD_FREQ').value === 'mon-sun'
+                    ? ['mon','tue','wed','thu','fri','sat','sun']
+                    : ['mon','tue','wed','thu','fri'],
+                "TIME": document.getElementById('PAIRS_SPREAD_TIME').value,
+                "CORRELATION_THRESHOLD": parseFloat(document.getElementById('PAIRS_SPREAD_CORRELATION_THRESHOLD').value) || 0.7,
+                "ZSCORE_THRESHOLD": parseFloat(document.getElementById('PAIRS_SPREAD_ZSCORE_THRESHOLD').value) || 2.0
+            },
             "FORENSIC_QUARTERLY_FETCH": {
                 "ENABLED": document.getElementById('FORENSIC_QUARTERLY_FETCH_ENABLED').checked,
                 "DAY_OF_MONTH": 1,
@@ -315,6 +324,11 @@ async function saveSettings(silent = false) {
                 "REARM_PERCENT": parseFloat(document.getElementById('TRAP_REARM').value),
                 "PROXY_TICKERS": document.getElementById('TRAP_PROXY_TICKERS').value
                     .split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
+            },
+            "PAIRS_SPREAD_MONITOR_ALERTS": {
+                "COOLDOWN_MINUTES": parseFloat(document.getElementById('PAIRS_SPREAD_COOLDOWN').value),
+                "RETRIGGER_PERCENT": parseFloat(document.getElementById('PAIRS_SPREAD_RETRIGGER').value),
+                "REARM_PERCENT": parseFloat(document.getElementById('PAIRS_SPREAD_REARM').value)
             }
         },
         "NOTIFICATION_ROUTING": (function() {

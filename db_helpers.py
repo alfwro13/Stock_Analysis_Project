@@ -140,6 +140,20 @@ def get_next_earnings_dates(tickers: List[str]) -> dict:
             conn.close()
 
 
+def get_ticker_currency_map(tickers: List[str], conn) -> dict:
+    """{ticker: currency} from stock_signals for `tickers`, using a caller-supplied connection
+    (e.g. a job's already-open conn). Raw currency as stored (GBp/GBP not normalized) — callers
+    needing pence/pounds collapsed into one bucket must do that themselves."""
+    if not tickers:
+        return {}
+    placeholders = ",".join("?" * len(tickers))
+    rows = conn.execute(
+        f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})",
+        tickers,
+    ).fetchall()
+    return {r["ticker"]: r["currency"] for r in rows}
+
+
 def upsert_quant_signal(
     ticker: str,
     date: str,

@@ -163,6 +163,54 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
         return _error_500(e)
 
 
+@analysis_router.get("/pairs-spread/results")
+@limiter.limit("20/minute")
+async def get_pairs_spread_results(request: Request):
+    """Returns all monitored pairs from the latest scan, ordered by absolute z-score (most divergent first)."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM pairs_spread_results")
+        rows = [dict(r) for r in cursor.fetchall()]
+        rows.sort(key=lambda r: abs(r.get("zscore") or 0), reverse=True)
+        return JSONResponse(content={"status": "success", "results": rows})
+    except Exception as e:
+        logger.error("pairs-spread/results failed: %s", e)
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
+@analysis_router.post("/pairs-spread/run")
+@limiter.limit("4/minute")
+async def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Pairs Spread Monitor scan in the background."""
+    try:
+        from scheduler_engine import run_pairs_spread_monitor_job
+        background_tasks.add_task(run_pairs_spread_monitor_job)
+        return JSONResponse(content={"status": "success", "message": "Pairs Spread Monitor scan triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Pairs Spread Monitor scan: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.get("/pairs-spread/chart/{ticker_a}/{ticker_b}")
+@limiter.limit("20/minute")
+async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str):
+    """Returns the aligned log-spread series + mean/±2σ bands for one pair, recomputed on demand from parquet."""
+    try:
+        from pairs_spread_engine import build_chart_series
+        data = build_chart_series(normalize_ticker(ticker_a), normalize_ticker(ticker_b))
+        if data is None:
+            return JSONResponse(content={"status": "error", "message": "Not enough overlapping price history for this pair."}, status_code=404)
+        return JSONResponse(content={"status": "success", "chart": data})
+    except Exception as e:
+        logger.error("pairs-spread/chart failed: %s", e)
+        return _error_500(e)
+
+
 @analysis_router.get("/forensic-scores")
 @limiter.limit("20/minute")
 async def get_forensic_scores(request: Request):
