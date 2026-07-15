@@ -219,13 +219,15 @@ def get_backup_status() -> dict:
 
 
 def restore_backup(filename: str) -> dict:
-    if not filename or "/" in filename or ".." in filename:
+    if not filename or "/" in filename or "\\" in filename or filename in (".", ".."):
         raise ValueError("Invalid backup filename.")
 
     cfg = load_config().get("SCHEDULING", {}).get("BACKUP", {})
     try:
         backup_dir = _resolve_backup_dir(cfg)
-        archive_path = backup_dir / filename
+        archive_path = (backup_dir / filename).resolve()
+        if not archive_path.is_relative_to(backup_dir.resolve()):
+            raise ValueError("Invalid backup filename.")
         if not archive_path.exists():
             raise FileNotFoundError(f"Backup file not found: {filename}")
 

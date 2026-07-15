@@ -8,6 +8,7 @@ import pandas as pd
 from config import HISTORICAL_DIR, BASE_CURRENCY
 from database import get_connection
 from db_accounts import get_accounts, get_transactions
+from utils import safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,10 @@ def _ytd_days() -> int:
 
 
 def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:
-    parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        return None
+    parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
     if not parquet_path.exists():
         return None
 
@@ -136,7 +140,10 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
         gbp_exposure = None
         if gbpusd_now and gbpusd_now > 0 and shares and buy_price_usd:
             try:
-                parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+                safe_ticker = safe_ticker_filename(ticker)
+                if not safe_ticker:
+                    raise ValueError(f"Unsafe ticker: {ticker!r}")
+                parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
                 df = pd.read_parquet(parquet_path)
                 current_price_usd = float(df["Close"].iloc[-1])
                 gbp_exposure = round((shares * current_price_usd) / gbpusd_now, 2)
@@ -221,7 +228,10 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
             continue
         vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy = stats
 
-        parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            continue
+        parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         try:
             df = pd.read_parquet(parquet_path)
             current_price_usd = float(df["Close"].iloc[-1])

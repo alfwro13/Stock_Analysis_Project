@@ -357,8 +357,10 @@ async def list_importable_csvs():
 async def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks):
     if not request.filename.endswith('.csv'):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
+    if "/" in request.filename or "\\" in request.filename or request.filename in (".", ".."):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
     file_path = (IMPORT_DIR / request.filename).resolve()
-    if not str(file_path).startswith(str(IMPORT_DIR.resolve())):
+    if not file_path.is_relative_to(IMPORT_DIR.resolve()):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
     conn = None
     try:
