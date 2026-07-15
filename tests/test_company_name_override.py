@@ -120,13 +120,21 @@ def test_name_override_clear(client):
     """POST with empty display_name deletes the override row."""
     ticker = "OVRD.TEST"
 
-    client.post(f"/api/ticker/{ticker}/name-override", json={"display_name": "To be cleared"})
-    client.post(f"/api/ticker/{ticker}/name-override", json={"display_name": ""})
+    try:
+        client.post(f"/api/ticker/{ticker}/name-override", json={"display_name": "To be cleared"})
+        client.post(f"/api/ticker/{ticker}/name-override", json={"display_name": ""})
 
-    row = _conn().execute(
-        "SELECT display_name FROM company_name_overrides WHERE ticker = ?", (ticker,)
-    ).fetchone()
-    assert row is None
+        row = _conn().execute(
+            "SELECT display_name FROM company_name_overrides WHERE ticker = ?", (ticker,)
+        ).fetchone()
+        assert row is None
+    finally:
+        conn = _conn()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 # ── Stock detail page resolution ──────────────────────────────────────────────
@@ -145,9 +153,18 @@ def test_stock_detail_shows_override(client):
     conn.commit()
     conn.close()
 
-    resp = client.get(f"/stock/{ticker}")
-    assert resp.status_code == 200
-    assert "Renamed Corp" in resp.text
+    try:
+        resp = client.get(f"/stock/{ticker}")
+        assert resp.status_code == 200
+        assert "Renamed Corp" in resp.text
+    finally:
+        conn = _conn()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+            conn.execute("DELETE FROM company_name_overrides WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 @pytest.mark.api
@@ -164,9 +181,17 @@ def test_stock_detail_shows_original_after_clear(client):
     conn.commit()
     conn.close()
 
-    client.post(f"/api/ticker/{ticker}/name-override", json={"display_name": ""})
+    try:
+        client.post(f"/api/ticker/{ticker}/name-override", json={"display_name": ""})
 
-    resp = client.get(f"/stock/{ticker}")
-    assert resp.status_code == 200
-    assert "Original Name" in resp.text
-    assert "Temp Override" not in resp.text
+        resp = client.get(f"/stock/{ticker}")
+        assert resp.status_code == 200
+        assert "Original Name" in resp.text
+        assert "Temp Override" not in resp.text
+    finally:
+        conn = _conn()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            conn.close()

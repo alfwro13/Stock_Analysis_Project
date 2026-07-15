@@ -1020,6 +1020,13 @@ def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disa
     with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/monte-carlo/accounts")
 
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'MCTEST'")
+        conn.commit()
+    finally:
+        conn.close()
+
     assert resp.status_code == 200
     data = _json(resp)
     assert data["status"] == "success"
@@ -1063,6 +1070,13 @@ def test_performance_analytics_accounts_uses_builtin_trading_accounts_when_ghost
 
     with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/performance-analytics/accounts")
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'PAETEST'")
+        conn.commit()
+    finally:
+        conn.close()
 
     assert resp.status_code == 200
     data = _json(resp)
