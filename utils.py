@@ -25,6 +25,72 @@ def ensure_workflow_assets() -> None:
         logger.warning("Could not fetch Mermaid bundle (%s); Workflow Monitor graph unavailable until fetched.", e)
 
 
+def check_requirements_drift(req_path: Optional[str] = None) -> list[str]:
+    """Compares installed package versions against requirements.txt pins. The only existing
+    reinstall path (api_routes_system.py's git-pull -> _requirements_changed_pending -> restart
+    flow) tracks that flag in an in-memory global, so it's lost on any restart that doesn't go
+    through the Settings 'Pull Latest from GitHub' + Restart buttons — a crash, `systemctl
+    restart`, a server reboot, or a manual `git pull` on the server. This runs at every startup
+    instead, independent of how the process came up, so drift is never silently invisible."""
+    import re
+    import importlib.metadata
+    from packaging.version import Version, InvalidVersion
+
+    if req_path is None:
+        req_path = os.path.join(os.path.dirname(__file__), "requirements.txt")
+    mismatches: list[str] = []
+    try:
+        with open(req_path) as f:
+            lines = f.readlines()
+    except OSError as e:
+        logger.warning("Could not read requirements.txt for drift check: %s", e)
+        return mismatches
+
+    for raw_line in lines:
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(==|>=)?\s*([A-Za-z0-9_.\-]*)$", line)
+        if not m:
+            continue
+        name, op, pinned = m.group(1), m.group(2), m.group(3)
+        try:
+            installed = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            mismatches.append(f"{name}: not installed (requirements.txt requires '{line}')")
+            continue
+        if not op or not pinned:
+            continue
+        try:
+            installed_v, pinned_v = Version(installed), Version(pinned)
+        except InvalidVersion:
+            continue
+        if op == "==" and installed_v != pinned_v:
+            mismatches.append(f"{name}: installed {installed}, requirements.txt pins =={pinned}")
+        elif op == ">=" and installed_v < pinned_v:
+            mismatches.append(f"{name}: installed {installed}, requirements.txt requires >={pinned}")
+    return mismatches
+
+
+def notify_requirements_drift() -> None:
+    """Startup check (main.py lifespan) — logs and sends an in-app/log notification when
+    installed packages disagree with requirements.txt. Detect-only: does not run pip install,
+    to avoid adding a network call and installer run to every boot."""
+    mismatches = check_requirements_drift()
+    if not mismatches:
+        return
+    detail = "\n".join(mismatches)
+    logger.warning("requirements.txt drift detected: %s", detail)
+    from notification_engine import notify
+    notify(
+        "system_update_status",
+        "Warning",
+        "Installed packages don't match requirements.txt:\n" + detail
+        + "\n\nRun: pip install -r requirements.txt",
+        level="warning",
+    )
+
+
 def normalize_ticker(ticker: str) -> str:
     return str(ticker).strip().upper()
 
