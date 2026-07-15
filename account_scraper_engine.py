@@ -51,9 +51,12 @@ def fetch_and_extract(url: str, selector: str, headers: Optional[dict] = None) -
         resp.raise_for_status()
         price = extract_price(resp.text, selector)
         return {"status": "success", "price": price}
-    except Exception as e:
+    except ValueError as e:
         logger.error("fetch_and_extract failed for %s (%s): %s", url, selector, e)
         return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error("fetch_and_extract failed for %s (%s): %s", url, selector, e, exc_info=True)
+        return {"status": "error", "message": "Failed to fetch or parse the page. Check server logs for details."}
 
 
 def test_scrape(url: str, selector: str, headers: Optional[dict] = None) -> dict:
