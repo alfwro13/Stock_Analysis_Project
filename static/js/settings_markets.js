@@ -124,7 +124,7 @@ async function loadRegistryList() {
             </div>`;
         }).join('');
     } catch (e) {
-        list.innerHTML = `<span class="msg-error">Failed to load: ${e.message}</span>`;
+        list.innerHTML = `<span class="msg-error">Failed to load: ${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -173,9 +173,9 @@ async function saveNewRegistryTicker() {
             document.getElementById('reg-new-display-name').value = '';
             loadRegistryList();
         } else {
-            status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
-    } catch (e) { status.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+    } catch (e) { status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
 async function saveRegistryEdit(ticker) {
@@ -194,9 +194,9 @@ async function saveRegistryEdit(ticker) {
             if (statusEl) statusEl.innerHTML = '<span class="msg-success">Saved.</span>';
             loadRegistryList();
         } else {
-            if (statusEl) statusEl.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
-    } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${e.message}</span>`; }
+    } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
 async function deleteRegistryTicker(ticker) {
