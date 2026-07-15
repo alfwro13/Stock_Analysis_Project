@@ -329,8 +329,8 @@ async def get_screener_data(request: Request):
             data.append(r)
         return JSONResponse(content={"data": data})
     except Exception as e:
-        logger.error(f"Failed to fetch screener data: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e), "data": []})
+        logger.error("Failed to fetch screener data: %s", e, exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "An internal error occurred. Check server logs for details.", "data": []})
     finally:
         if conn:
             conn.close()
@@ -570,8 +570,8 @@ async def get_news_feed(
         articles = [dict(row) for row in cursor.fetchall()]
         return JSONResponse(content={"articles": articles, "total": total})
     except Exception as e:
-        logger.error(f"GET /api/news-feed failed: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error("GET /api/news-feed failed: %s", e, exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "An internal error occurred. Check server logs for details."})
     finally:
         conn.close()
 
@@ -893,8 +893,8 @@ async def logs_tail(lines: int = Query(default=500, ge=1, le=5000), full: bool =
         tail = [ln.rstrip("\n") for ln in selected]
         return JSONResponse({"status": "success", "lines": tail})
     except Exception as e:
-        logger.error("logs/tail failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        logger.error("logs/tail failed: %s", e, exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "An internal error occurred. Check server logs for details."})
 
 
 @api_router.get("/logs/stream")

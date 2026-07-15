@@ -350,8 +350,8 @@ async def list_importable_csvs():
         logger.info(f"Scan found {len(files)} CSV files in {IMPORT_DIR}")
         return JSONResponse(content={"status": "success", "files": files})
     except Exception as e:
-        logger.error(f"Failed to list import directory {IMPORT_DIR}: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": f"Failed to list import directory: {str(e)}"})
+        logger.error("Failed to list import directory %s: %s", IMPORT_DIR, e, exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to list import directory. Check server logs for details."})
 
 @triggers_router.post("/universe/import/server")
 async def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks):
@@ -408,8 +408,8 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
             "message": f"Successfully sideloaded {len(records)} assets from '{request.filename}' into the local Market Universe."
         })
     except Exception as e:
-        logger.error(f"Fatal error executing CSV parser for {request.filename}: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": f"Fatal error executing CSV parser: {str(e)}"})
+        logger.error("Fatal error executing CSV parser for %s: %s", request.filename, e, exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Fatal error executing CSV parser. Check server logs for details."})
     finally:
         if conn:
             conn.close()

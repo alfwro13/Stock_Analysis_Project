@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_SAFE_TICKER_PATH_RE = re.compile(r"^[A-Za-z0-9^.=\-]+$")
+_SAFE_TICKER_PATH_RE = re.compile(r"^[A-Za-z0-9^.=_\-]+$")
 
 MERMAID_VERSION = "10.9.1"
 MERMAID_URL = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"

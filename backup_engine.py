@@ -239,9 +239,8 @@ def restore_backup(filename: str) -> dict:
         notify("backup_status", "Success", msg, level="info")
         return {"status": "success", "message": msg}
     except Exception as e:
-        msg = f"Restore failed: {e}"
-        logger.error("Restore failed: %s", e)
-        notify("backup_status", "Error", msg, level="error")
-        return {"status": "error", "message": msg}
+        logger.error("Restore failed: %s", e, exc_info=True)
+        notify("backup_status", "Error", f"Restore failed: {e}", level="error")
+        return {"status": "error", "message": "Restore failed. Check server logs for details."}
     finally:
         _release_backup_dir(cfg)
