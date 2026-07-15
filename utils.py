@@ -162,14 +162,21 @@ def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any, exchan
     A same-UTC-calendar-day fetch that happens *after* the exchange has already closed (e.g. the
     22:30 nightly Update Pipeline) produces the exact same date signature as a genuine mid-session
     fetch — both have daily/live/today all equal — so the date-only check alone cannot tell them
-    apart. exchange_currently_open, when supplied (time_engine.is_market_open(exchange) for the
-    ticker in question), is the authoritative answer: False means the session has genuinely ended,
-    so the bar can never be "still forming" regardless of date collision. Callers that only ever
-    run while the exchange is confirmed open (the intraday scanners, already gated upstream) can
-    omit it — the date-only check is exact in that context. Found 2026-07-13: data_engine.py's
-    nightly bulk/single-ticker fetchers passed no exchange signal at all, so every night's Update
-    Pipeline run trimmed that day's just-completed, fully-final close off the daily parquet,
-    permanently rolling stock_signals.current_price and quant_signals one trading day stale."""
+    apart. exchange_currently_open, when supplied (time_engine.is_market_open(exchange) /
+    market_pulse.is_exchange_open(exchange) for the ticker in question), is the authoritative
+    answer: False means the session has genuinely ended, so the bar can never be "still forming"
+    regardless of date collision. A caller may omit it only if every path that reaches this
+    function is provably gated on the exchange already being confirmed open earlier in the same
+    call — e.g. intraday_bottom_engine.run_scan() and intraday_orchestrator.py's scan loop, which
+    both `continue` past is_exchange_open()/is_quote_settled() checks before ever calling this
+    (verified 2026-07-15) — not merely "usually called during market hours". Found 2026-07-13:
+    data_engine.py's nightly bulk/single-ticker fetchers passed no exchange signal at all, so
+    every night's Update Pipeline run trimmed that day's just-completed, fully-final close off the
+    daily parquet, permanently rolling stock_signals.current_price and quant_signals one trading
+    day stale. Found 2026-07-15: market_pulse.fetch_and_save_pulse() had the same gap — it's
+    reachable from age-based staleness refreshes and on-demand single-ticker fetches with no
+    exchange-open precondition at all, so it now resolves and passes the ticker's own exchange
+    state too."""
     if exchange_currently_open is False:
         return False
     from datetime import datetime, timezone
