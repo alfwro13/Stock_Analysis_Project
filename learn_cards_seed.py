@@ -13,6 +13,10 @@ partial, then add a matching entry here (section_id must be an existing LEVELS e
 or a new one). See assets/glossary_learning.md for the full checklist.
 """
 
+from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
+
+_PREDICTION_THRESHOLD_PCT = int(PREDICTION_RETURN_THRESHOLD * 100)  # matches page_routes.py's glossary context
+
 LEVELS = [
     ("market-fundamentals", "Market Fundamentals"),
     ("candlesticks", "Candlestick Anatomy"),
@@ -1103,10 +1107,10 @@ CARDS = [
             "XGBoost cannot process technical indicators, only fundamental data",
             "Random Forest is used only as a fallback when XGBoost fails to run",
         ],
-        "explanation": """<p>Every stock in the universe receives a <strong>ML Confidence Score</strong> — a number between 0% and 100% that represents how likely a machine learning model thinks the stock will gain more than {{ prediction_threshold_pct }}% over the next {{ prediction_horizon }} trading days (roughly two calendar weeks), measured from the close on the day of the scan to the close {{ prediction_horizon }} days later.</p>
+        "explanation": f"""<p>Every stock in the universe receives a <strong>ML Confidence Score</strong> — a number between 0% and 100% that represents how likely a machine learning model thinks the stock will gain more than {_PREDICTION_THRESHOLD_PCT}% over the next {PREDICTION_HORIZON_DAYS} trading days (roughly two calendar weeks), measured from the close on the day of the scan to the close {PREDICTION_HORIZON_DAYS} days later.</p>
 <p>The model is a <strong>Soft-Voting Ensemble</strong>, which means it combines two separate models — XGBoost and Random Forest — and averages their probability estimates rather than taking a hard yes/no vote. This makes it more robust because the two models have different strengths: XGBoost is better at learning non-linear interactions between features; Random Forest is better at avoiding overfitting to recent noise.</p>
 <p><strong>XGBoost</strong> (eXtreme Gradient Boosting) builds a sequence of small decision trees where each tree learns from the mistakes of the previous ones — a technique called gradient boosting. <strong>Random Forest</strong> builds hundreds of independent decision trees on random subsets of data and features, then averages their predictions. Neither model "knows" finance — they learn statistical patterns from 18 technical and fundamental features (RSI, MACD, volume ratios, SMA distances, etc.) across thousands of past observations.</p>
-<p>A score of 75% does not mean "this stock will definitely go up 3% in 10 days." It means: of all historical situations where the model saw this same combination of signals, the stock gained more than {{ prediction_threshold_pct }}% in the next {{ prediction_horizon }} days about 75% of the time. Markets are inherently unpredictable — even a perfect model would be wrong 25–30% of the time just due to randomness.</p>""",
+<p>A score of 75% does not mean "this stock will definitely go up 3% in 10 days." It means: of all historical situations where the model saw this same combination of signals, the stock gained more than {_PREDICTION_THRESHOLD_PCT}% in the next {PREDICTION_HORIZON_DAYS} days about 75% of the time. Markets are inherently unpredictable — even a perfect model would be wrong 25–30% of the time just due to randomness.</p>""",
     },
     {
         "term_key": "quant-algo-trading-backtesting-overfitting",
