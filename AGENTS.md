@@ -371,14 +371,16 @@ First boot auto-creates `config.json` and initialises the DB schema.
 
 ## Testing
 
-Always run the full regression suite after any code change:
+Run the full regression suite once, at the end of the task, before marking work done:
 
 ```bash
-./run_tests.sh              # full suite (~2052 tests)
+./run_tests.sh              # full suite (~3400 tests)
 ./run_tests.sh --fast       # skip slow page-render tests
 ./run_tests.sh --db-only    # DB schema tests only
 ./run_tests.sh --api-only   # API endpoint tests only
 ```
+
+One full run per task is sufficient — do not re-run the full suite after every individual fix within a multi-fix task. `.github/workflows/tests.yml` already runs the full suite on every push to `main` and every pull request (see rule 20), so a pushed/PR'd change gets a second independent run regardless; running it repeatedly locally mid-task mostly burns time (~10 minutes a run) without adding coverage the final local run and CI don't already provide. If you're actively debugging a specific failure and want a fast local signal before the final full run, `./run_tests.sh --fast` or a targeted `pytest tests/test_foo.py` is cheaper than a full run — use judgement rather than defaulting to the full suite on every step.
 
 Tests live in `tests/`. Fixtures and the test client are in `tests/conftest.py`. Do not mock the database in tests — the suite uses a real in-memory SQLite instance spun up per session.
 
@@ -426,7 +428,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 - **Do not add error handling** for scenarios that cannot happen — trust framework guarantees.
 - **Do not create new files** unless strictly necessary; prefer editing existing modules unless the existing files have grown to big in which case consider all options for splitting them into smaler ones
 - **Do not introduce abstractions** beyond what the task requires.
-- **Run `./run_tests.sh`** after every change and fix failures before marking work done.
+- **Run `./run_tests.sh`** once at the end of the task and fix failures before marking work done — see the Testing section for why not more often.
 - **Tooltips:** Use `<abbr title="Explanation text.">Label</abbr>` — wrap the label itself, no custom JS tooltip systems, no icon, no `style` attribute on the `<abbr>`. The global CSS in `static/css/styles.css` already applies `text-decoration: underline dotted #666`, `cursor: pointer`, and `color: inherit` to all `abbr` elements. Never override these inline. Keep tooltip text to 1–2 sentences matching existing examples (e.g. Support 1, RSI, ATR).
 - **Styles belong in `static/css/styles.css`:** Do not write inline `style="..."` attributes. Check whether a CSS class already exists before adding anything. Only use inline styles in JS-generated HTML (e.g. dynamic `innerHTML`) where class-based styling is impractical, and even then keep it minimal.
 - **No hardcoded `font-size` values for UI layout elements in `styles.css`.** All user-visible text sizes must reference a CSS custom property declared in the `:root` block (e.g. `font-size: var(--font-size-body)`). The ten variables are `--font-size-nav`, `--font-size-table` (screener/report tables), `--font-size-dt-table` (Portfolio/Watchlist DataTables — uses an explicit `td`/`th` rule, not inheritance), `--font-size-form`, `--font-size-btn`, `--font-size-section`, `--font-size-body`, `--font-size-h1`, `--font-size-h2`, `--font-size-h3`; their runtime values come from `GET /api/ui-theme.css` which reads `UI_PREFERENCES` from `config.json`. Exception: intentional data-visualisation sizes (large numeric KPI tiles, score displays, chart annotation text) may use explicit `px` values when they are purposely non-configurable.
