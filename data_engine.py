@@ -173,7 +173,7 @@ class DataEngine:
             try:
                 safe_ticker = safe_ticker_filename(ticker)
                 if not safe_ticker:
-                    logger.warning(f"Skipping fundamentals fetch for unsafe ticker {ticker!r}.")
+                    logger.warning("Skipping fundamentals fetch for unsafe ticker %r.", ticker)
                     continue
                 fundamentals = yahoo_engine.get_ticker_info(ticker)
 
@@ -195,7 +195,7 @@ class DataEngine:
         logger.info(f"Processing Data for single ticker {ticker}...")
         safe_ticker = safe_ticker_filename(ticker)
         if not safe_ticker:
-            logger.error(f"Refusing to fetch unsafe ticker {ticker!r}.")
+            logger.error("Refusing to fetch unsafe ticker %r.", ticker)
             return False
         try:
             persisted = False
