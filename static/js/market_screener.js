@@ -26,7 +26,7 @@ $(document).ready(function() {
 
     if (targetSector || reqBullishCross || reqAbove50d) {
         let filterLabels = [];
-        if (targetSector) filterLabels.push(`Sector: ${targetSector}`);
+        if (targetSector) filterLabels.push(`Sector: ${escapeHtml(targetSector)}`);
         if (reqBullishCross) filterLabels.push('Golden MACD Crosses Only');
         if (reqAbove50d) filterLabels.push('Price > 50D SMA');
 
