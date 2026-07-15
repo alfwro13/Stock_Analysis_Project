@@ -358,7 +358,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 
 #### `learn_cards`
 * **Purpose:** Curated study cards for the Glossary Learning feature (spaced-repetition study system, reachable via the 🎓 Learn button on `/glossary`). One row per glossary term-box.
-* **Key Columns:** `term_key` (PK, stable slug), `section_id` (glossary accordion id), `level_order` (course ordering, 1-21), `term_title` (must exactly match the glossary `term-title` text — enforced by `tests/test_glossary_learn_seed.py`), `question`, `answer`, `distractors` (JSON array of 3 wrong answers), `updated_at`.
+* **Key Columns:** `term_key` (PK, stable slug), `section_id` (glossary accordion id), `level_order` (course ordering, 1-22), `term_title` (must exactly match the glossary `term-title` text — enforced by `tests/test_glossary_learn_seed.py`), `question`, `answer`, `distractors` (JSON array of 3 wrong answers), `explanation` (HTML, the term-box's own prose copied verbatim — shown after answering so the quiz surfaces the actual material, not just the answer string), `candle_html` (nullable HTML, the term-box's rendered `.candle-display` markup for candlestick-pattern cards — shown as part of the question itself), `updated_at`.
 * **Seeding:** git-tracked `learn_cards_seed.py` (`LEVELS` + `CARDS`) is upserted into this table on every `init_db()` run via `db_schema._seed_learn_cards()`, so content edits propagate on restart. Rows whose `term_key` is no longer in the seed are pruned.
 * **Full design:** `assets/glossary_learning.md`.
 

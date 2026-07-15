@@ -6,7 +6,7 @@ there is deliberately no separate navbar entry.
 
 ## Why
 
-The Glossary (`templates/glossary/_*.html`) holds ~139 curated explanations of the app's
+The Glossary (`templates/glossary/_*.html`) holds ~157 curated explanations of the app's
 concepts, metrics, and engines, but reading a definition once rarely makes it stick. Glossary
 Learning turns every term-box into a study card and schedules reviews using a **Leitner box**
 system — a well-established spaced-repetition method — so weak terms resurface more often than
@@ -56,7 +56,7 @@ All timestamps are UTC (`datetime.now(timezone.utc)`), matching the app-wide tim
 
 ## Course structure
 
-Terms are grouped into 21 levels matching the glossary's own accordion sections
+Terms are grouped into 22 levels matching the glossary's own accordion sections
 (`learn_cards_seed.LEVELS`), ordered from foundational to advanced: Market Fundamentals →
 Candlestick Anatomy → Technical Analysis → Company Valuation → Trading Strategies → AI & Risk
 Metrics → … → System Methodology. A level unlocks once at least 80% of the previous level's
@@ -79,9 +79,26 @@ so there's nothing to gate). Locked levels are not clickable in the UI.
 
 **Answer review:** a multiple-choice answer is submitted to `POST /api/learn/answer` the instant
 it's picked (so SRS state updates immediately even if the tab is closed), but the UI holds on
-the same card — highlighting the correct option, showing its full answer text, and waiting for
-an explicit "Next" click — rather than auto-advancing, so a wrong answer doesn't flash past
-before it can be read.
+the same card — highlighting the correct option and waiting for an explicit "Next" click —
+rather than auto-advancing, so a wrong answer doesn't flash past before it can be read. Both
+modes then show the card's `explanation` — the source glossary term-box's own prose, reused
+verbatim — not just the bare answer string, so a wrong guess (or a "Fuzzy"/"Didn't know" recall)
+surfaces the actual material rather than a one-line fact to memorise by rote. Cards for
+candlestick patterns also carry `candle_html` (the term-box's rendered `.candle-display` markup,
+extracted at seed-build time), which `static/js/learn.js` renders as part of the question itself
+so the pattern being asked about is visible while answering, not only afterward.
+
+## `explanation` / `candle_html` fields
+
+Both are populated once, in `learn_cards_seed.py`, by copying the source-of-truth content
+straight out of the matching `templates/glossary/_*.html` term-box (its `<p>` paragraphs for
+`explanation`; its `<div class="candle-display">…</div>` block for `candle_html`, on the handful
+of candlestick cards that have one) — there is no runtime HTML scraping or templating, and no
+separate prose is authored for the Learn feature. This keeps the glossary term-box as the single
+source of truth: editing a term-box's explanation and re-running the (one-off, not scheduled)
+extraction is how `explanation` stays in sync, exactly like `question`/`answer`/`distractors`
+are hand-maintained today. `learn_cards.explanation` is `NOT NULL DEFAULT ''`; `candle_html` is
+nullable and only set for cards with a matching candle visual.
 
 ## Adding a new glossary term — checklist
 
@@ -91,7 +108,9 @@ When a new `<div class="term-box">` is added to any `templates/glossary/_*.html`
    (an existing `LEVELS` entry, or a new one added to `LEVELS` if it's a new section),
    `term_title` (must exactly match the term-box's `<span class="term-title">` text, including
    punctuation — entity-decoded and whitespace-normalized for comparison), `question`, `answer`,
-   and exactly 3 `distractors`.
+   exactly 3 `distractors`, and `explanation` (the term-box's own `<p>` prose, copied verbatim —
+   see "`explanation` / `candle_html` fields" above). Add `candle_html` too if the term-box has a
+   `.candle-display` block.
 2. Restart the app — `_seed_learn_cards()` upserts the new card on the next `init_db()` run.
 3. `tests/test_glossary_learn_seed.py`'s coverage tests enforce this 1:1 — a term-box with no
    seed card (or a seed card with no matching term-box) fails the suite, so forgetting this step

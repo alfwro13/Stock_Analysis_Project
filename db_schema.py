@@ -170,16 +170,19 @@ def _seed_learn_cards(cursor) -> None:
         seeded_keys.append(card["term_key"])
         cursor.execute('''
             INSERT INTO learn_cards (
-                term_key, section_id, level_order, term_title, question, answer, distractors
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                term_key, section_id, level_order, term_title, question, answer, distractors,
+                explanation, candle_html
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(term_key) DO UPDATE SET
                 section_id=excluded.section_id, level_order=excluded.level_order,
                 term_title=excluded.term_title, question=excluded.question,
                 answer=excluded.answer, distractors=excluded.distractors,
+                explanation=excluded.explanation, candle_html=excluded.candle_html,
                 updated_at=datetime('now')
         ''', (
             card["term_key"], card["section_id"], level_order[card["section_id"]],
-            card["term_title"], card["question"], card["answer"], json.dumps(card["distractors"])
+            card["term_title"], card["question"], card["answer"], json.dumps(card["distractors"]),
+            card["explanation"], card.get("candle_html")
         ))
     if seeded_keys:
         placeholders = ",".join("?" for _ in seeded_keys)
@@ -1203,6 +1206,8 @@ def init_db() -> None:
                 question     TEXT NOT NULL,
                 answer       TEXT NOT NULL,
                 distractors  TEXT NOT NULL,
+                explanation  TEXT NOT NULL DEFAULT '',
+                candle_html  TEXT,
                 updated_at   TEXT DEFAULT (datetime('now'))
             )
         ''')
@@ -1961,6 +1966,19 @@ def migrate_db(conn, cursor) -> None:
                 cursor.execute(ddl)
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed on etf_predictor_predictions: %s", e)
+
+    cursor.execute("PRAGMA table_info(learn_cards)")
+    existing_learn_card_columns = [info['name'] for info in cursor.fetchall()]
+    for col, ddl in (
+        ('explanation', "ALTER TABLE learn_cards ADD COLUMN explanation TEXT NOT NULL DEFAULT ''"),
+        ('candle_html', "ALTER TABLE learn_cards ADD COLUMN candle_html TEXT"),
+    ):
+        if col not in existing_learn_card_columns:
+            try:
+                logger.info("[MIGRATION] Adding column: %s to learn_cards...", col)
+                cursor.execute(ddl)
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on learn_cards: %s", e)
 
     try:
         conn.commit()

@@ -18,6 +18,13 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Common Stock vs Preferred Stock</span>
+                <p>Almost every share this app tracks is <strong>common stock</strong> — the standard form of ownership described above: voting rights on major company decisions, a dividend only if and when the board declares one, and the lowest-ranking claim on assets if the company is wound up (behind every creditor and behind preferred shareholders).</p>
+                <p><strong>Preferred stock</strong> is a hybrid instrument, part share and part bond. It pays a fixed dividend that must be paid before common shareholders receive anything, and it sits ahead of common stock (though behind bonds and other debt) in a liquidation. In exchange for that priority, preferred shares usually carry no voting rights, and many are <strong>callable</strong> — the company can buy them back at a set price — which caps how much their price can rise even if the business does very well.</p>
+                <p>The practical takeaway: common stock gives you unlimited upside and the highest risk; preferred stock trades some of that upside for a bond-like, more predictable income stream and a safer place in the capital structure.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Bonds — Government and Corporate IOUs</span>
                 <p>A <strong>bond</strong> is a loan you make to a government or company. Instead of asking a bank, the borrower issues bonds and sells them to thousands of investors. In return, they promise to pay you a fixed annual interest payment (called the <strong>coupon</strong>) and return your original money (the <strong>face value</strong> or <strong>principal</strong>) when the bond matures — typically in 2, 5, 10, or 30 years.</p>
                 <p>Example: You buy a UK government bond (called a <strong>Gilt</strong>) with a £1,000 face value, 5% coupon, and 10-year maturity. You receive £50 per year for 10 years, then get your £1,000 back. Simple. The complication comes when you want to sell the bond before it matures — other buyers will only pay what makes the yield competitive with current interest rates. If rates rise, your old 5% bond is less attractive, so its market price falls. If rates fall, your bond is more attractive, so its market price rises. This is why <strong>bond prices and interest rates move in opposite directions</strong> — one of the most important relationships in all of finance.</p>
@@ -75,6 +82,14 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Order Types — Market, Limit &amp; Stop</span>
+                <p>A <strong>market order</strong> says "buy/sell right now, at whatever the current price is." It fills almost instantly during trading hours but gives you no control over the exact price — on a fast-moving or illiquid stock, the fill can be noticeably worse than the price you saw a second earlier.</p>
+                <p>A <strong>limit order</strong> says "buy/sell, but only at this price or better." A buy limit only fills at your price or lower; a sell limit only fills at your price or higher. You get certainty on price, at the cost of certainty on execution — if the market never reaches your limit, the order simply never fills.</p>
+                <p>A <strong>stop order</strong> (stop-loss) sits dormant until the price touches a trigger level, at which point it converts into a market order. It's the standard way to cap a loss automatically without watching the screen — set a stop below your entry, and a sharp decline sells you out at (approximately) that level rather than continuing to ride the position down.</p>
+                <div class="rule">This app's ATR Stop-Loss and Position Targets (Set Targets) features both work on the same underlying idea as a stop order: a predefined exit level you decide on in advance, before emotion is involved.</div>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Options — Calls &amp; Puts</span>
                 <p>An <strong>option</strong> is a contract that gives you the <em>right, but not the obligation</em> to buy or sell a specific stock at a specific price (the <strong>strike price</strong>) before a specific date (the <strong>expiry</strong>). You pay an upfront fee called the <strong>premium</strong> to own this right.</p>
                 <p>There are two types:</p>
@@ -107,6 +122,13 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Market Regulation &amp; Investor Protection</span>
+                <p>Stock markets are regulated to keep them fair and to make sure investors get accurate information. In the US, the <strong>Securities and Exchange Commission (SEC)</strong> is the primary regulator — it requires public companies to file regular disclosures (an annual <strong>10-K</strong>, quarterly <strong>10-Q</strong>s, and an <strong>8-K</strong> within days of any material event) and enforces rules against fraud and insider trading. <strong>FINRA</strong>, a self-regulatory body, oversees the brokers and dealers who execute trades. In the UK, the equivalent role is split between the <strong>Financial Conduct Authority (FCA)</strong>, which regulates firms and market conduct, and the London Stock Exchange's own listing rules for disclosure.</p>
+                <p>If a broker itself fails financially, investor protection schemes step in — the US <strong>SIPC</strong> covers up to $500,000 per customer, and the UK <strong>FSCS</strong> covers up to £85,000. Crucially, neither scheme protects you against your investments simply losing value — they only protect against the broker/custodian going bust while holding your assets.</p>
+                <p>None of this eliminates investment risk — a company can still fail, and its share price can still go to zero — but it does mean a public company can't legally hide its financial condition from you indefinitely, and gives you recourse if a broker mishandles your account.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Dynamic View — "Follow the Sun" Ordering</span>
                 <p>The <a href="/markets">Markets page</a> can order its regional sections (Europe, US, Asia-Pacific, Commodities &amp; FX) two ways. <strong>Static view</strong> is a fixed order — Europe, then US, then Asia, then Commodities &amp; FX — that never changes. <strong>Dynamic view</strong> (the default) reorders those sections by which region's trading session is most relevant right now: at 5am UK time, Asia-Pacific ranks first while Europe (still closed) sits below it; by mid-morning UK time, Europe ranks first as its markets open; around UK lunchtime, the US moves to the top as New York opens. Commodities &amp; FX trade near-continuously, so in dynamic view that section always sits directly beneath whichever region currently ranks first, rather than being buried at the bottom.</p>
                 <p>The same dynamic-view concept is also available for the Market Pulse tiles shown on Portfolio, Watchlist, and Stock Detail pages (Settings → Markets &amp; Market Pulse) — off by default, so Market Pulse keeps its familiar fixed tile set unless you turn it on.</p>
@@ -128,6 +150,20 @@
                 <p><strong>Diversification</strong> is the central principle: spreading holdings across different companies, sectors, geographies, and asset classes so that a single bad event does not devastate everything at once. When oil companies fall because of an oversupply shock, utility companies or gold holdings might hold steady or rise. This non-correlation between assets is what makes a diversified portfolio less volatile than any individual holding within it.</p>
                 <p><strong>Correlation</strong> is the measure of how closely two assets move together. A correlation of +1.0 means they move in perfect lockstep; −1.0 means they move in exact opposites; 0 means they are independent. Truly low-correlation assets are rare — during market crashes, most correlations converge toward 1.0 as panic selling hits everything. This is the "diversification breaks down when you need it most" problem, which this app's Stress Tester and X-ray engine are specifically designed to illuminate.</p>
                 <div class="rule">This app's X-ray engine computes your live portfolio correlation matrix and beta-weighted exposures so you can see where your true risks are concentrated, not just where your money is allocated.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Compound Growth — Why Time Is Your Biggest Edge</span>
+                <p><strong>Compounding</strong> is what happens when investment returns start earning returns of their own. £1,000 growing at 5% a year under <em>simple</em> interest earns a flat £50 every year. Under <em>compound</em> growth, year one still earns £50 — but year two earns 5% of £1,050 (£52.50), year three earns 5% of £1,102.50, and so on. The gap between simple and compound growth is small at first and enormous after two or three decades, because the base amount doing the compounding keeps growing.</p>
+                <p>Two variables drive the outcome: <strong>time</strong> and <strong>rate of return</strong>. Time matters more than most people expect — someone who invests £200/month starting at 25 can end up with more at retirement than someone investing double that (£400/month) starting at 45, purely because the earlier money had more years to compound. Rate matters too: £1,000 held for 30 years grows to roughly £4,300 at 5%, but to roughly £17,400 at 10% — a doubling of the rate more than quadruples the outcome over that horizon.</p>
+                <p>Two things quietly work against compounding: <strong>fees</strong> (even a 1% annual fee, compounded over decades, removes a surprisingly large chunk of the final total) and <strong>inflation</strong> (a return that doesn't beat inflation isn't growing real purchasing power, however good the headline number looks). Reinvesting dividends and interest — rather than withdrawing them — is what actually keeps the compounding engine running.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Risk Tolerance — How Much Volatility Can You Stomach?</span>
+                <p><strong>Risk tolerance</strong> is how much portfolio volatility and drawdown you can handle without abandoning your plan — a mix of psychological willingness (can you emotionally sit through a 30% decline without panic-selling?) and financial capacity (can you actually afford one, given your time horizon, income stability, and emergency savings?). The two don't always agree: someone with a long time horizon and stable income may have high financial capacity for risk but low emotional tolerance for watching their balance swing, or vice versa. Planning around the lower of the two is usually the safer default.</p>
+                <p>Risk tolerance sits on a spectrum, from <strong>risk-averse</strong> (capital preservation first — cash, short-dated bonds) through <strong>conservative</strong> and <strong>moderate</strong> (a blended stock/bond split, often used as a default balanced allocation) to <strong>aggressive</strong> and <strong>speculative</strong> (equity-heavy or concentrated positions accepting large swings for higher expected return). A longer time horizon, stable income, and a solid emergency fund generally support sitting further along the aggressive end, since there's less chance of being forced to sell at a bad moment.</p>
+                <p>A simple practical check some investors use: picture your current allocation losing a third of its value in a matter of weeks — if that scenario would make you sell everything (crystallising the loss) rather than sit tight, your actual risk tolerance is lower than your portfolio currently assumes, regardless of what a questionnaire might have said beforehand.</p>
             </div>
 
         </div>

@@ -194,6 +194,8 @@ def _serialize_session(cards: list) -> list:
             "mode": mode,
             "question": card["question"],
             "answer": card["answer"],
+            "explanation": card["explanation"],
+            "candle_html": card["candle_html"],
         }
         if mode == "mcq":
             options = json.loads(card["distractors"]) + [card["answer"]]

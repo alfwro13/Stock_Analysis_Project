@@ -82,10 +82,12 @@ function learnRenderCard() {
         `${learnSessionIndex + 1} / ${learnSessionCards.length}`;
 
     const cardEl = document.getElementById('learnCard');
+    const candleBlock = card.candle_html || '';
     if (card.mode === 'mcq') {
         cardEl.innerHTML = `
             <div class="learn-term-title">${escapeHtml(card.term_title)}</div>
             <p>${escapeHtml(card.question)}</p>
+            ${candleBlock}
             <div class="learn-options">
                 ${card.options.map(opt => `<button type="button" class="btn btn-outline-secondary learn-option-btn" data-answer="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('')}
             </div>
@@ -97,9 +99,11 @@ function learnRenderCard() {
         cardEl.innerHTML = `
             <div class="learn-term-title">${escapeHtml(card.term_title)}</div>
             <p>${escapeHtml(card.question)}</p>
+            ${candleBlock}
             <button type="button" class="btn btn-outline-primary" id="learnRevealBtn">Reveal Answer</button>
             <div id="learnRecallAnswer" class="mt-3" style="display:none;">
                 <p><strong>${escapeHtml(card.answer)}</strong></p>
+                <div class="learn-explanation">${card.explanation}</div>
                 <div class="learn-grade-buttons">
                     <button type="button" class="btn btn-outline-danger" data-grade="fail">Didn't know</button>
                     <button type="button" class="btn btn-outline-warning" data-grade="hard">Fuzzy</button>
@@ -138,8 +142,9 @@ async function learnAnswerMCQ(card, clickedBtn) {
     feedback.className = 'learn-feedback mt-3';
     feedback.innerHTML = `
         <p class="mb-1 ${correct ? 'text-success' : 'text-danger'}"><strong>${correct ? 'Correct!' : 'Not quite.'}</strong></p>
-        <p class="mb-3">${escapeHtml(card.answer)}</p>
-        <button type="button" class="btn btn-primary" id="learnNextBtn">Next</button>
+        <p class="mb-2">${escapeHtml(card.answer)}</p>
+        <div class="learn-explanation">${card.explanation}</div>
+        <button type="button" class="btn btn-primary mt-2" id="learnNextBtn">Next</button>
     `;
     cardEl.appendChild(feedback);
     document.getElementById('learnNextBtn').addEventListener('click', learnAdvance);

@@ -77,3 +77,15 @@ def test_glossary_coverage_no_orphan_seed_cards():
     seed_titles = {_normalize(c["term_title"]) for c in learn_cards_seed.CARDS}
     orphans = seed_titles - glossary_titles
     assert not orphans, f"seed cards with no matching glossary term-box: {orphans}"
+
+
+def test_every_card_has_a_nonempty_explanation():
+    for card in learn_cards_seed.CARDS:
+        assert card.get("explanation", "").strip(), card["term_key"]
+
+
+def test_candle_html_cards_contain_candle_display_markup():
+    for card in learn_cards_seed.CARDS:
+        candle_html = card.get("candle_html")
+        if candle_html is not None:
+            assert "candle-display" in candle_html, card["term_key"]

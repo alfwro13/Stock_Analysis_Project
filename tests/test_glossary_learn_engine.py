@@ -112,6 +112,7 @@ def test_build_session_returns_new_cards_from_first_level():
             assert card["mode"] == "mcq"
             assert "options" in card
             assert card["answer"] in card["options"]
+            assert card["explanation"].strip()
     finally:
         if conn:
             conn.close()
@@ -209,6 +210,7 @@ def test_build_session_with_section_id_prioritises_due_before_new():
         session = engine.build_session(size=1, now=NOW, section_id="candlesticks")
         assert session[0]["term_key"] == "hammer-bullish-rejection"
         assert session[0]["mode"] == "recall"
+        assert "candle-display" in session[0]["candle_html"]
     finally:
         if conn:
             conn.execute("DELETE FROM learn_term_state WHERE term_key = 'hammer-bullish-rejection'")

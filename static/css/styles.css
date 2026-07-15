@@ -1533,3 +1533,5 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .learn-option-incorrect { border-color: var(--bs-danger) !important; color: var(--bs-danger) !important; }
 .learn-grade-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .learn-feedback { border-top: 1px solid #444; padding-top: 14px; }
+.learn-explanation { color: #ccc; line-height: 1.6; margin-bottom: 14px; }
+.learn-explanation p:last-child { margin-bottom: 0; }

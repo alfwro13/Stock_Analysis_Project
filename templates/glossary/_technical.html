@@ -10,6 +10,26 @@
         <div class="accordion-body">
 
             <div class="term-box">
+                <span class="term-title">What Is Technical Analysis?</span>
+                <p><strong>Technical analysis</strong> studies a stock's own price and volume history to judge where it might go next, rather than studying the business behind it. It rests on three assumptions: that the current price already reflects everything publicly known about the company (so the chart itself is a summary of collective opinion); that prices move in identifiable trends rather than randomly; and that recurring chart patterns work because human reactions to fear and greed repeat fairly consistently across different stocks and eras.</p>
+                <p>It's a complement to fundamental analysis, not a replacement for it — fundamentals help answer <em>what</em> to own, technicals help answer <em>when</em> to enter, exit, or size a position. Every indicator in this section (moving averages, RSI, ATR, volume profile, and the rest) is a different lens on the same two raw inputs: price and volume.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Stock Chart Types — Line, Bar &amp; Candlestick</span>
+                <p>Every price chart plots time along the bottom (horizontal) axis and price up the left (vertical) axis — the differences between chart types are purely about how much detail each bar of time shows. A <strong>line chart</strong> is the simplest: it plots only the closing price each period and connects the dots, which is easy to read for a long-term trend but hides everything that happened intraday.</p>
+                <p>A <strong>bar chart (OHLC)</strong> shows all four data points for each period — open, high, low, close — as a single vertical tick with small horizontal notches for the open (left) and close (right). A <strong>candlestick chart</strong> encodes the exact same four numbers, open/high/low/close, but as a filled body (open-to-close) with thin wicks above and below (the session's high and low) — see the Candlestick Anatomy section for the full detail on reading one. Candlesticks are the most widely used format because the coloured body makes it instantly obvious, at a glance across many bars, whether each session closed up or down.</p>
+                <p>The chosen <strong>timeframe</strong> (minutes, days, weeks, years) changes the story a chart tells — a stock can look like a strong uptrend on a 1-year chart and a choppy range on a 1-day chart. Always match the timeframe to your actual holding period; a day-trader's 5-minute chart is close to meaningless for someone holding a position for years, and vice versa.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Support &amp; Resistance</span>
+                <p><strong>Support</strong> is a price level where buying pressure has historically been strong enough to halt or reverse a decline — a "floor." <strong>Resistance</strong> is the mirror image, a price level where selling pressure has historically capped an advance — a "ceiling." Both exist because of market memory: traders who watched a stock bounce from £40 before tend to buy again if it revisits £40, and traders who watched it stall at £60 before tend to sell into that level again.</p>
+                <p>These levels are best thought of as <em>zones</em>, not exact lines — price rarely reverses at the precise same tick twice. They're identified from prior swing highs/lows, from trendlines connecting a series of highs or lows, and from widely-watched moving averages (the 50-day and 200-day are common dynamic support/resistance levels in their own right, see Moving Averages below).</p>
+                <p>A <strong>breakout</strong> is price decisively moving above resistance; a <strong>breakdown</strong> is price decisively moving below support — both are more meaningful when accompanied by above-average volume, confirming genuine participation rather than a low-conviction wobble. A broken level frequently <strong>flips role</strong>: former resistance often becomes new support once price has broken above it (and vice versa on the downside), because the same trader psychology that defended the level before now works in the opposite direction.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
                 <p>A <strong>Moving Average (MA)</strong> smooths out day-to-day price noise to reveal the underlying trend direction. It is computed by averaging the closing price over the last N days, then recalculating that average each new trading day as the oldest data point drops out and the newest comes in — the "window" moves forward through time.</p>
                 <p>Different time periods serve different purposes:</p>
@@ -42,6 +62,12 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Stochastic Oscillator</span>
+                <p>Where RSI measures the speed of recent gains vs losses, the <strong>Stochastic Oscillator</strong> measures something slightly different: where the current close sits relative to the high-low range of the last 14 periods. The main line, <strong>%K</strong>, is <code>(Close − Lowest Low) ÷ (Highest High − Lowest Low) × 100</code> — a value of 90 means the close is near the top of its recent range, 10 means it's near the bottom. <strong>%D</strong> is a 3-period moving average of %K, plotted alongside it as a signal line.</p>
+                <p>Readings above 80 are considered overbought, below 20 oversold — similar thresholds to RSI's 70/30, just on a different underlying calculation. The most common trading signal is a <strong>%K/%D crossover</strong> while both lines are in extreme territory: %K crossing above %D below the 20 line is read as a potential bullish turn, %K crossing below %D above the 80 line as a potential bearish turn. Like RSI, it can stay pinned at an extreme through a strong trend, so it's best combined with a trend filter (such as the 50-day or 200-day moving average) rather than traded in isolation.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">ATR Stop-Loss (Average True Range)</span>
                 <p>The <strong>Average True Range (ATR)</strong> measures a stock's average daily price range — how much it typically moves from high to low in a single session. It accounts for overnight gaps by using "true range" (the greatest of: today's high minus today's low, today's high minus yesterday's close, yesterday's close minus today's low). ATR is purely a volatility measure — it tells you how much a stock moves, not which direction.</p>
                 <p>A high ATR means the stock is volatile and makes big daily moves — stop-losses need to be wider to avoid being triggered by normal noise. A low ATR means the stock is calm — tighter stops are viable. Using ATR to set stop-losses makes them <em>adaptive</em> to the stock's own behaviour rather than applying the same fixed percentage to every position.</p>
@@ -66,6 +92,20 @@
                 <p>In a healthy uptrend, price typically oscillates between Z = −1.5 and Z = +2. When Z drops to −2 or below while the stock is still above its 200-day SMA (confirming the long-term uptrend is intact), the pullback has overshot the normal range — a mean-reversion opportunity. When Z exceeds +3 alongside RSI above 75, the price is extended to the upside and a correction is likely.</p>
                 <div class="rule">KC Entry Signal: Z-score ∈ (−3, −2) AND price above 200-day SMA — a mean-reversion buy setup inside a healthy long-term uptrend.</div>
                 <div class="rule">KC Exit Signal: Z-score &gt; +3 AND RSI &gt; 75 — price overextended upward, elevated reversion risk.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Bollinger Bands</span>
+                <p><strong>Bollinger Bands</strong> are the other widely-used volatility envelope alongside the Keltner Channel above, and it's worth knowing how they differ. A middle band (typically a 20-day simple moving average) sits between an upper and lower band, each set 2 <strong>standard deviations</strong> of recent closing prices away from that middle band. Because the bands are built from statistical dispersion of price rather than ATR, they widen and narrow purely based on how scattered recent closes have been.</p>
+                <p>A <strong>band squeeze</strong> — the upper and lower bands pulling close together — signals unusually low volatility and often precedes a sharp directional move once volatility returns, though it says nothing about which direction that move will be. Price touching or briefly poking outside a band isn't automatically a reversal signal; in a strong trend, price can "walk the band," repeatedly touching the upper band on the way up (or the lower band on the way down) for an extended period.</p>
+                <p>The practical difference from the Keltner Channel used elsewhere in this app: Bollinger Bands react to how volatile prices have <em>statistically</em> been, while ATR-based bands react to how far price has <em>actually</em> travelled bar-to-bar — ATR tends to stay steadier through a strong trend, which is why this app's own mean-reversion signals are built on the Keltner Channel rather than Bollinger Bands.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Classic Chart Patterns — Reversal &amp; Continuation</span>
+                <p>Beyond the single- and multi-candle patterns in the Candlestick Anatomy section, technical analysts also look for larger shapes that form over many sessions or weeks. <strong>Reversal patterns</strong> signal an existing trend is ending: a <strong>Head and Shoulders</strong> (three peaks, the middle one highest) marks a top and completes on a break below the "neckline" joining the two troughs between the peaks; its mirror image, the <strong>Inverse Head and Shoulders</strong>, marks a bottom. A <strong>Double Top</strong> (two roughly equal peaks) or <strong>Double Bottom</strong> (two roughly equal troughs) is a simpler, more common version of the same idea — confirmed when price breaks the level between the two extremes.</p>
+                <p><strong>Continuation patterns</strong> signal a pause within an ongoing trend before it resumes. A <strong>triangle</strong> forms as the trading range narrows — an <strong>ascending triangle</strong> (flat resistance, rising support) leans bullish, a <strong>descending triangle</strong> (falling resistance, flat support) leans bearish, and a <strong>symmetrical triangle</strong> (both lines converging) is directionally neutral until it breaks. A <strong>flag</strong> or <strong>pennant</strong> is a brief, tight consolidation right after a sharp move (the "pole"), usually resolving in the same direction the pole was heading. A <strong>Cup and Handle</strong> is a longer, U-shaped consolidation (the cup) followed by a shallow pullback (the handle) before a bullish breakout.</p>
+                <p>Across all of these, the same two confirmation rules that apply to candlestick patterns apply here too: volume should expand on the actual breakout (confirming real participation, not a false move), and the pattern is more trustworthy at a well-established support/resistance level or after a sustained trend than in the middle of a directionless range.</p>
             </div>
 
             <div class="term-box">
