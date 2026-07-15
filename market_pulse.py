@@ -655,7 +655,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         if "UK10YG" in tickers_to_fetch:
             handle_gilt = True
             tickers_to_fetch = [t for t in tickers_to_fetch if t != "UK10YG"]
-            
+
+        registry_exchange_map = build_registry_exchange_map()
         daily_dfs: dict = {}
         live_dfs: dict = {}
 
@@ -729,7 +730,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
                 else:
                     current_price = float(t_live['Close'].iloc[-1])
-                    if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date()) and len(t_daily) >= 2:
+                    exchange_open = is_exchange_open(resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map))
+                    if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), exchange_open) and len(t_daily) >= 2:
                         prev_close = float(t_daily['Close'].iloc[-2])
                         prev_close_date = t_daily.index[-2].date()
                     else:

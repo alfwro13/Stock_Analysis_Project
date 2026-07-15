@@ -319,11 +319,13 @@ class TestNormalIntradayPath:
         assert row["price"] == pytest.approx(101.75)
 
     def test_normal_ticker_change_vs_prev_daily_close(self):
-        """Change is live_price - daily[-2] when daily[-1] >= today."""
+        """Change is live_price - daily[-2] when daily[-1] >= today and the exchange is
+        confirmed still open — exchange state is mocked so this doesn't depend on the real
+        wall-clock/weekend at test-run time (see TestExchangeClosedStillFormingGate)."""
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)   # change = 101 - 98 = +3.0 vs daily[-2]
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2:
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -341,6 +343,40 @@ class TestNormalIntradayPath:
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] > before
+
+
+class TestExchangeClosedStillFormingGate:
+    """Regression (2026-07-15): fetch_and_save_pulse() is reachable at arbitrary times of day
+    (age-based staleness refreshes, on-demand single-ticker fetch, HA refresh-now) rather than
+    only while its ticker's exchange is confirmed open, so it must thread a real exchange-open
+    signal into is_daily_bar_still_forming() the same way data_engine._drop_in_progress_last_bar()
+    already does — otherwise a same-UTC-day post-close refresh looks identical to a genuine
+    mid-session one and prev_close is wrongly taken from daily[-2] instead of the already-final
+    daily[-1]."""
+
+    def teardown_method(self):
+        _clear_cache(NORMAL_TICKER)
+
+    def test_keeps_last_daily_close_as_prev_close_when_exchange_confirmed_closed(self):
+        daily = _flat_daily_df([98.0, 100.0])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=False):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        # Exchange confirmed closed -> daily[-1]=100.0 is already the final close, not still forming.
+        assert row["change_pts"] == pytest.approx(1.0, abs=0.01)
+
+    def test_uses_prev_daily_close_when_exchange_confirmed_open(self):
+        daily = _flat_daily_df([98.0, 100.0])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
 
 
 class TestMarketStateProxy:
@@ -539,7 +575,9 @@ class TestStaleDailyHistoryFallback:
             index=[today_bday + pd.Timedelta(hours=6)],
         )
         p1, p2 = _pulse_patches(self.TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1158.37}):
+        with p1, p2, \
+             patch("market_pulse.is_exchange_open", return_value=True), \
+             patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1158.37}):
             _mp.fetch_and_save_pulse([self.TICKER])
 
         row = _read_cache(self.TICKER)
