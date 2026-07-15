@@ -161,8 +161,8 @@
                     <div id="targetPerAccountRows">
                         {% for acc in target_accounts %}
                         {% set limits = holding_price_limits.get(acc.account_id, {}) %}
-                        {% set low_display = (limits.low_limit / 100.0) if (limits.low_limit is not none and stock.currency == 'GBp') else limits.low_limit %}
-                        {% set high_display = (limits.high_limit / 100.0) if (limits.high_limit is not none and stock.currency == 'GBp') else limits.high_limit %}
+                        {% set low_display = (limits.get('low_limit') / 100.0) if (limits.get('low_limit') is not none and stock.currency == 'GBp') else limits.get('low_limit') %}
+                        {% set high_display = (limits.get('high_limit') / 100.0) if (limits.get('high_limit') is not none and stock.currency == 'GBp') else limits.get('high_limit') %}
                         <div class="sub-account-row" data-account-id="{{ acc.account_id }}">
                             <div class="sub-account-name">{{ acc.name }}</div>
                             <label class="target-input-label" for="target-low-{{ acc.account_id }}">Low ({{ target_display_currency }})</label>

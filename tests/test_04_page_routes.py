@@ -426,6 +426,43 @@ def test_stock_detail_gbp_target_input_prefilled_in_pounds_not_pence(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_gbp_ticker_no_target_set_does_not_crash(client):
+    """A GBp (LSE pence) watchlist ticker with no holding_price_limits row at all must not
+    500 — limits.get('low_limit') is None (real None), not Jinja Undefined, so the pence
+    conversion's `is not none` check must correctly skip the division."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZNOTARGET.L', 637.0, 'GBp', 'EQUITY')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZNOTARGET.L", currency="GBp", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/stock/ZZNOTARGET.L", follow_redirects=True)
+        assert resp.status_code < 500
+        assert "Position Targets" in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZNOTARGET.L"))
+            conn.execute("DELETE FROM holding_price_limits WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZNOTARGET.L"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZNOTARGET.L'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_watchlist_ticker_link_propagates_embed_token(client):
     """When /watchlist is loaded with ?embed=true&embed_token=..., its ticker links to
     /stock/{ticker} must carry the same embed_token — otherwise clicking through from an
