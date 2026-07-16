@@ -671,6 +671,70 @@ class TestPruneAlertState:
         orch._prune_alert_state(db_conn)  # must not throw
 
 
+# ── regression: a suppressed check must not go stale enough to be pruned ──────
+
+class TestSuppressedGateRefreshesStateDate:
+    """Found 2026-07-16: an unchanged, still-suppressed condition never touched state_date, so
+    after 7 days of correctly staying silent, _prune_alert_state deleted its row and the next
+    scan saw "no prior state" (Case 1) and fired as if brand new — producing a ~weekly repeat of
+    a byte-identical Trap Monitor alert for MSFT/META. _evaluate_alert_gate must now touch
+    state_date on every suppressed path, and _prune_alert_state must then leave that row alone."""
+
+    TICKER = "_STATE_TOUCH_TEST"
+    TRAP_REASON = "TRAP MONITOR ACTIVE SELLOFF"
+
+    def teardown_method(self):
+        conn = _conn()
+        conn.execute("DELETE FROM alert_state WHERE ticker = ?", (self.TICKER,))
+        conn.commit()
+        conn.close()
+
+    def test_case4c_suppression_bumps_state_date_to_today(self, orch, db_conn):
+        fp = orch._condition_fingerprint(self.TRAP_REASON)
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        eight_days_ago = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+        _seed_alert_state("TrapMonitor", self.TICKER, fp, -4.5, old_ts, 0, eight_days_ago)
+        # Unchanged ema_distance → Case 4c suppress, not a retrigger.
+        result = orch._evaluate_alert_gate("TrapMonitor", self.TICKER, -4.53, self.TRAP_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("TrapMonitor", self.TICKER)
+        assert row["state_date"] == TODAY
+
+    def test_cannot_compare_suppression_bumps_state_date_to_today(self, orch, db_conn):
+        eight_days_ago = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+        _seed_alert_state("TrapMonitor", self.TICKER, orch._condition_fingerprint(self.TRAP_REASON),
+                          None, eight_days_ago + " 10:00:00", 0, eight_days_ago)
+        result = orch._evaluate_alert_gate("TrapMonitor", self.TICKER, -4.53, self.TRAP_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("TrapMonitor", self.TICKER)
+        assert row["state_date"] == TODAY
+
+    def test_touched_row_survives_prune_and_stays_suppressed_next_day(self, orch, db_conn):
+        """End-to-end: an 8-day-old but still-relevant row is (a) not pruned after being touched
+        by a suppressed check, and (b) still correctly suppresses an unchanged condition."""
+        fp = orch._condition_fingerprint(self.TRAP_REASON)
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        eight_days_ago = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+        _seed_alert_state("TrapMonitor", self.TICKER, fp, -4.5, old_ts, 0, eight_days_ago)
+
+        orch._evaluate_alert_gate("TrapMonitor", self.TICKER, -4.53, self.TRAP_REASON, db_conn)
+        orch._prune_alert_state(db_conn)
+        assert _read_alert_state("TrapMonitor", self.TICKER) is not None
+
+        # Same unchanged condition again — must still suppress, not fire as "no prior state".
+        result = orch._evaluate_alert_gate("TrapMonitor", self.TICKER, -4.53, self.TRAP_REASON, db_conn)
+        assert result is True
+
+    def test_row_never_touched_still_prunes_after_7_days(self, orch, db_conn):
+        """A genuinely dormant row (delisted ticker, no scan touching it at all) must still age
+        out — only a row that keeps getting suppress-checked is protected."""
+        eight_days_ago = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+        _seed_alert_state("TrapMonitor", self.TICKER, "abc", -4.5,
+                          eight_days_ago + " 10:00:00", 0, eight_days_ago)
+        orch._prune_alert_state(db_conn)
+        assert _read_alert_state("TrapMonitor", self.TICKER) is None
+
+
 # ── N3: Macro engine uses dedicated config and explicit direction ──────────────
 
 class TestMacroEngine:

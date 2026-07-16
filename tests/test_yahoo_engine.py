@@ -278,6 +278,62 @@ class TestGetPriceHistory:
         # Different period → different key → two downloads
         assert mock_dl.call_count == 2
 
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_empty_result_tracked_but_no_alert_before_threshold(self, mock_ctx, mock_dl, mock_notify):
+        """Regression (2026-07-16): MSFT/META silently fell out of the nightly bulk download for
+        weeks with zero notification — get_price_history had no gap tracker at all, unlike
+        get_intraday's _track_intraday_gap_misses. This mirrors that same pattern for daily history."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = pd.DataFrame()
+
+        result = self.eng.get_price_history(["MSFT"], force_refresh=True)
+        assert result == {}
+        assert "MSFT" in self.eng._history_gap_since
+        assert "MSFT" not in self.eng._history_gap_alerted
+        mock_notify.assert_not_called()
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_persistent_gap_fires_one_aggregated_alert(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = pd.DataFrame()
+        # Simulate both tickers having been empty for longer than the alert threshold already.
+        self.eng._history_gap_since["MSFT"] = time.time() - 31 * 3600
+        self.eng._history_gap_since["META"] = time.time() - 45 * 3600
+
+        self.eng.get_price_history(["MSFT", "META"], force_refresh=True)
+
+        assert "MSFT" in self.eng._history_gap_alerted
+        assert "META" in self.eng._history_gap_alerted
+        mock_notify.assert_called_once()
+        args, kwargs = mock_notify.call_args
+        assert args[0] == "yahoo_history_gap_alert"
+        assert "MSFT" in args[2] and "META" in args[2]
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_recovery_clears_gap_and_fires_recovery_notice(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["MSFT"])
+        self.eng._history_gap_since["MSFT"] = time.time() - 31 * 3600
+        self.eng._history_gap_alerted.add("MSFT")
+
+        self.eng.get_price_history(["MSFT"], force_refresh=True)
+
+        assert "MSFT" not in self.eng._history_gap_alerted
+        assert "MSFT" not in self.eng._history_gap_since
+        mock_notify.assert_called_once()
+        args, kwargs = mock_notify.call_args
+        assert args[0] == "yahoo_history_gap_alert"
+        assert "MSFT" in args[2]
+
 
 # ─── TestGetIntraday ─────────────────────────────────────────────────────────
 
