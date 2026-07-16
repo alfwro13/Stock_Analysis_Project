@@ -1,0 +1,32 @@
+<div class="accordion-item glossary-section" id="predicted-movers">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-predicted-movers"
+                aria-expanded="false" aria-controls="collapse-predicted-movers">
+            &#128302; Predicted Movers — Predicted vs Actual Ranking
+        </button>
+    </h2>
+    <div id="collapse-predicted-movers" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Predicted Movers Detects</span>
+                <p>The Market Reports leaders/laggards rank tickers by <strong>actual</strong> historical price movement — what already happened. <strong>Predicted Movers</strong> instead ranks by what the ML model currently <em>expects</em> to happen: the midpoint of the ML Quantile Price Band (Q10/Q90, a 10-trading-day-forward price range) versus the ticker's current price, expressed as a percentage move.</p>
+                <p>This is purely a new way of sorting and viewing data the app already computes every night — no new model, no new prediction. Gainers are the tickers with the highest predicted upside, Losers the lowest (most negative), and Movers the largest predicted move in either direction.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Predicted Movers Scope: Leaderboard vs Accuracy Page</span>
+                <p>The leaderboard has the same Portfolio+Watchlist / Universe scope toggle as Pairs Spread Monitor. Unlike that monitor, though, there's nothing to scan or trigger here — both scopes are answered by a live database query over data the nightly ML Inference job already wrote, so the page has no "Run Scan Now" button.</p>
+                <p>The linked <strong>Prediction Accuracy</strong> page is Portfolio+Watchlist only, with no scope toggle — tracking daily prediction accuracy across the entire multi-thousand-ticker market universe would be a large amount of data nobody is actually holding or watching, so only tickers you actually own or follow get their predictions logged and graded.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Prediction Accuracy: Direction Match vs Within-Band Match</span>
+                <p>Each day, the predicted price band for every Portfolio+Watchlist ticker is snapshotted. Roughly 10 trading days later, once the outcome is known, that prediction is graded two independent ways: <strong>direction match</strong> — did the actual price move the same way (up or down) as the predicted midpoint? — and <strong>within-band match</strong> — did the actual price land anywhere inside the predicted Q10–Q90 range, regardless of which way the midpoint pointed?</p>
+                <p>A prediction can't be graded until its ~10-trading-day horizon has actually passed, so the accuracy page always shows a mix of "Resolved" and "Pending" rows — a newly-tracked ticker shows no accuracy percentage at all for its first couple of weeks. This is expected: the horizon is what the model was trained to predict, so there's no way to grade it sooner.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Predicted Movers{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128302; Predicted Movers</h1>
+<p class="page-subtitle mb-4">
+    Ranks tickers by ML-<strong>predicted</strong> forward price move — the midpoint of the
+    <abbr title="10-trading-day-forward 10th/90th percentile price band from the quantile regression model.">ML Quantile Price Band</abbr>
+    versus the current price — not actual historical movement. Predictions are scored nightly;
+    see the <a href="/predicted-movers/accuracy">Prediction Accuracy</a> page for how reliable
+    they've actually been.
+</p>
+
+<div class="mb-3">
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">&#8592; Back to Reports</a>
+    <a href="/predicted-movers/accuracy" class="btn btn-outline-secondary btn-sm">View Prediction Accuracy &#8594;</a>
+</div>
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Scope">
+        <input type="radio" class="btn-check" name="pm-scope" id="pm-scope-pw" value="portfolio_watchlist" checked>
+        <label class="btn btn-outline-primary btn-sm" for="pm-scope-pw">Portfolio + Watchlist</label>
+        <input type="radio" class="btn-check" name="pm-scope" id="pm-scope-universe" value="universe">
+        <label class="btn btn-outline-primary btn-sm" for="pm-scope-universe">Universe</label>
+    </div>
+    <div class="btn-group" role="group" aria-label="Sort">
+        <input type="radio" class="btn-check" name="pm-sort" id="pm-sort-movers" value="movers" checked>
+        <label class="btn btn-outline-secondary btn-sm" for="pm-sort-movers">Top Movers</label>
+        <input type="radio" class="btn-check" name="pm-sort" id="pm-sort-gainers" value="gainers">
+        <label class="btn btn-outline-secondary btn-sm" for="pm-sort-gainers">Gainers</label>
+        <input type="radio" class="btn-check" name="pm-sort" id="pm-sort-losers" value="losers">
+        <label class="btn btn-outline-secondary btn-sm" for="pm-sort-losers">Losers</label>
+    </div>
+</div>
+
+<div class="sentiment-module module-cyan">
+    <div class="p-3 pb-0">
+        <h3 class="tm-ticker-heading">
+            Predicted Movers
+            <span id="pm-count" class="tm-ticker-count"></span>
+        </h3>
+    </div>
+    <div class="overflow-auto p-3">
+        <table id="pm-table" class="tm-table w-100">
+            <thead>
+                <tr>
+                    <th class="tm-th-blue tm-th-left">Ticker</th>
+                    <th class="tm-th-muted tm-th-left">Company</th>
+                    <th class="tm-th-muted tm-th-right">Current Price</th>
+                    <th class="tm-th-amber tm-th-right"><abbr title="Predicted move from current price to the quantile band midpoint, over the next ~10 trading days.">Predicted Move %</abbr></th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="10th percentile of the predicted 10-trading-day-forward price.">Q10</abbr></th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="90th percentile of the predicted 10-trading-day-forward price.">Q90</abbr></th>
+                    <th class="tm-th-dimmed tm-th-right">Quant Signals Date</th>
+                </tr>
+            </thead>
+            <tbody id="pm-tbody">
+                <tr>
+                    <td colspan="7" class="text-center p-4 text-muted">Loading…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/predicted_movers.js?v={{ css_version }}"></script>
+{% endblock %}

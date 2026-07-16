@@ -489,6 +489,8 @@ def test_no_endpoint_returns_500(client):
         "/api/trap-monitor/results",
         "/api/macro-regime-allocation",
         "/api/pairs-spread/results",
+        "/api/predicted-movers/leaderboard",
+        "/api/predicted-movers/accuracy",
     ]
     failures = []
     for url in get_endpoints:
@@ -706,6 +708,55 @@ def test_pairs_spread_chart_returns_404_for_unknown_pair(client):
     assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
     data = _json(resp)
     assert data.get("status") == "error"
+
+
+# ── Predicted Movers ──────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_predicted_movers_leaderboard_returns_200(client):
+    """GET /api/predicted-movers/leaderboard must return 200 with a 'results' list."""
+    resp = client.get("/api/predicted-movers/leaderboard")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "success", f"Expected success status: {data}"
+    assert "results" in data, f"Missing 'results' key: {data}"
+    assert isinstance(data["results"], list), "'results' must be a list"
+
+
+@pytest.mark.api
+def test_predicted_movers_leaderboard_accepts_universe_scope_and_all_sorts(client):
+    """GET /api/predicted-movers/leaderboard must accept scope=universe and every sort mode."""
+    for scope in ("portfolio_watchlist", "universe"):
+        for sort in ("gainers", "losers", "movers"):
+            resp = client.get(f"/api/predicted-movers/leaderboard?scope={scope}&sort={sort}")
+            assert resp.status_code == 200, f"scope={scope} sort={sort} → {resp.status_code}"
+            assert _json(resp).get("status") == "success"
+
+
+@pytest.mark.api
+def test_predicted_movers_leaderboard_rejects_invalid_scope(client):
+    """GET /api/predicted-movers/leaderboard?scope=bogus must 422, not 500."""
+    resp = client.get("/api/predicted-movers/leaderboard?scope=bogus")
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_predicted_movers_leaderboard_rejects_invalid_sort(client):
+    """GET /api/predicted-movers/leaderboard?sort=bogus must 422, not 500."""
+    resp = client.get("/api/predicted-movers/leaderboard?sort=bogus")
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_predicted_movers_accuracy_returns_200(client):
+    """GET /api/predicted-movers/accuracy must return 200 with by_ticker/overall shape."""
+    resp = client.get("/api/predicted-movers/accuracy")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "success", f"Expected success status: {data}"
+    assert "by_ticker" in data
+    assert "overall" in data
+    assert isinstance(data["by_ticker"], list)
 
 
 # ── Log Viewer API ────────────────────────────────────────────────────────────

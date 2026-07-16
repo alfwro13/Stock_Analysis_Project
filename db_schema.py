@@ -940,6 +940,24 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS predicted_movers_history (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker               TEXT NOT NULL,
+                predicted_date       TEXT NOT NULL,
+                predicted_ts         TEXT NOT NULL,
+                close_price          REAL,
+                price_q10            REAL NOT NULL,
+                price_q90            REAL NOT NULL,
+                target_date          TEXT NOT NULL,
+                actual_price         REAL,
+                actual_date          TEXT,
+                direction_correct    INTEGER,
+                within_band_correct  INTEGER,
+                UNIQUE(ticker, predicted_date)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS price_hmm_states (
                 date      TEXT PRIMARY KEY,
                 state     INTEGER NOT NULL,
