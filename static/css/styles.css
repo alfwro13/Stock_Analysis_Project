@@ -193,6 +193,7 @@ th:hover { background-color: #3d3d3d; }
 /* --- 5. Form Controls & Buttons --- */
 .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
 .change-period-group { flex-wrap: wrap; }
+.extended-hours-toggle { display: flex; align-items: center; white-space: nowrap; }
 .filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: var(--font-size-form); }
 .filter-select { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; font-size: var(--font-size-form); cursor: pointer; }
 .context-selector { padding: 8px 12px; border-radius: 5px; border: 1px solid #4da6ff; background-color: #1a2636; color: #fff; font-weight: bold; font-size: var(--font-size-form); cursor: pointer; outline: none; transition: border-color 0.3s; }
@@ -460,6 +461,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .action-buttons, .controls-container, .notification-actions { flex-direction: column; gap: 10px; }
   .filter-input, .filter-select { width: 100%; }
   .change-period-group { width: 100%; justify-content: center; }
+  .extended-hours-toggle { width: 100%; justify-content: center; }
   .fullscreen-btn { display: none; }
 }
 @media (max-width: 768px) {

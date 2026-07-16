@@ -215,6 +215,22 @@ function updateAssetPrices(assets) {
 
             priceEl.innerText = formattedPrice;
 
+            const extEl = document.getElementById('extended-' + asset.ticker);
+            if (extEl) {
+                if (asset.extended_session && window.SHOW_EXTENDED_HOURS) {
+                    let extPrice = parseFloat(asset.extended_price);
+                    if (currencyCode === 'GBp') extPrice = extPrice / 100.0;
+                    const extLabel = asset.extended_session === 'pre' ? 'Pre-Market' : 'After Hours';
+                    const extChangePct = Number(asset.extended_change_pct);
+                    const extSign = extChangePct >= 0 ? '+' : '';
+                    extEl.innerText = '(' + extLabel + ': ' + symbol + extPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + extSign + extChangePct.toFixed(2) + '%)';
+                    extEl.classList.remove('d-none');
+                } else {
+                    extEl.innerText = '';
+                    extEl.classList.add('d-none');
+                }
+            }
+
             // 1D change_pct/is_positive is always the value this poll response carries,
             // regardless of which Change Period button is currently selected on the
             // Portfolio page — keep it fresh on the row so switching back to 1D doesn't

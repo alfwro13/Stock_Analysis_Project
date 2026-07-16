@@ -567,7 +567,7 @@ Fetches live pulse data for a custom list of tickers and caches the results. Ret
 }
 ```
 
-Each item contains: `ticker`, `name`, `price`, `change_pts`, `change_pct`, `is_positive`, `last_updated`, `is_stale`, `invert_color`, `asset_type`, `is_pulse_mobile`, `currency` (the last four sourced from `market_ticker_registry` — see §24 Markets).
+Each item contains: `ticker`, `name`, `price`, `change_pts`, `change_pct`, `is_positive`, `last_updated`, `is_stale`, `invert_color`, `asset_type`, `is_pulse_mobile`, `currency` (the last four sourced from `market_ticker_registry` — see §24 Markets), plus `extended_price`/`extended_change_pts`/`extended_change_pct`/`extended_session` (`"pre"`/`"post"`/`null`). `price`/`change_pts`/`change_pct` are always the regular-session (closing) price/change straight from Yahoo's own `regularMarketPrice`/`regularMarketChange*` fields — never an extended-hours tick. The `extended_*` fields are populated only when Yahoo's own `marketState` says a pre-market or after-hours session is genuinely active for that ticker (`market_pulse.fetch_and_save_pulse()`/`yahoo_engine.get_quote_snapshot()`); they are for display only (the Portfolio page's "Show After Market Data" toggle, and the Stock Detail page's always-shown Pre-Market/After Hours line) and are never used in any P&L, totals, or Home Assistant calculation.
 
 Which tickers appear is controlled by `UI_PREFERENCES.MARKET_PULSE_DYNAMIC` (Settings → Markets & Market Pulse): `false` (default) returns the `is_pulse_tile=1` registry rows in `pulse_sort_order`; `true` mirrors the Markets page's own dynamic region ordering (`markets_engine.select_pulse_tickers()`). Both modes are capped by `MARKET_PULSE_DESKTOP_COUNT`/`MARKET_PULSE_MOBILE_COUNT`.
 

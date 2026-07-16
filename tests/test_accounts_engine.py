@@ -1427,6 +1427,37 @@ def test_current_price_map_falls_back_when_no_cache_row():
 
 
 @pytest.mark.db
+def test_current_price_map_never_returns_extended_hours_price():
+    """Regression: current_price_map() (and everything downstream — P&L, totals, Home Assistant)
+    must only ever see market_pulse_cache.price, never extended_price, even when an after-hours
+    tick is cached alongside it."""
+    import time
+
+    aid = create_account("ExtHoursAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZEXTHRS", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZEXTHRS", 100.0, "GBP", last_updated=_yesterday_utc_str())
+
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache "
+            "(ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
+            "extended_price, extended_change_pts, extended_change_pct, extended_session) "
+            "VALUES (?, ?, ?, 0, 0, 1, ?, ?, 0, 0, ?)",
+            ("ZZEXTHRS", "ZZEXTHRS", 150.0, time.time(), 999.0, "post"),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+    prices = accounts_engine.current_price_map(["ZZEXTHRS"])
+    assert prices["ZZEXTHRS"] == (150.0, "GBP")
+
+
+@pytest.mark.db
 def test_total_value_is_cash_plus_equity():
     aid = create_account("TotalValueAcc", "GBP", initial_cash=500.0)
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTOTVAL", currency="GBP",

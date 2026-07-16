@@ -196,6 +196,15 @@ function changePeriod(period) {
     }
 }
 
+// ── Show After Market Data toggle (display-only — never affects P&L/totals) ───────────────────
+function toggleExtendedHours(checked) {
+    window.SHOW_EXTENDED_HOURS = checked;
+    document.cookie = 'portfolio_show_extended=' + (checked ? 'true' : 'false') + ';path=/;max-age=31536000';
+    document.querySelectorAll('.extended-hours-cell').forEach(function (el) {
+        el.classList.toggle('d-none', !checked);
+    });
+}
+
 // ── Live Unrealized P&L recompute (keeps summary row + Global Value/P&L columns
 // in sync with the same live-price poll that already refreshes Price/Change) ──
 function _baseCurrencySymbol() {

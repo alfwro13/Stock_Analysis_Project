@@ -81,6 +81,15 @@ def _flat_live_df(price: float) -> pd.DataFrame:
     )
 
 
+@pytest.fixture(autouse=True)
+def _default_quote_snapshot():
+    """get_quote_snapshot defaults to unavailable for every test in this file, so pre-existing
+    tests keep exercising the same daily/live diffing fallback path they always have — tests
+    of the new Yahoo-quote-snapshot primary path override this with their own inner patch."""
+    with patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=None):
+        yield
+
+
 def _pulse_patches(ticker, daily_df, live_df):
     """Return a pair of patch context managers for yahoo_engine inside market_pulse."""
     daily_rv = {ticker: daily_df} if not daily_df.empty else {}
@@ -89,6 +98,25 @@ def _pulse_patches(ticker, daily_df, live_df):
         patch("market_pulse.yahoo_engine.get_price_history", return_value=daily_rv),
         patch("market_pulse.yahoo_engine.get_intraday",      return_value=live_rv),
     )
+
+
+def _snapshot(regular_price, regular_change=None, regular_change_pct=None, market_state=None,
+              regular_previous_close=None, pre_price=None, pre_change=None, pre_change_pct=None,
+              post_price=None, post_change=None, post_change_pct=None):
+    """Builds a yahoo_engine.get_quote_snapshot()-shaped dict for tests."""
+    return {
+        "market_state": market_state,
+        "regular_price": regular_price,
+        "regular_change": regular_change,
+        "regular_change_pct": regular_change_pct,
+        "regular_previous_close": regular_previous_close,
+        "pre_market_price": pre_price,
+        "pre_market_change": pre_change,
+        "pre_market_change_pct": pre_change_pct,
+        "post_market_price": post_price,
+        "post_market_change": post_change,
+        "post_market_change_pct": post_change_pct,
+    }
 
 
 class TestDailyOnlyInstrument:
@@ -379,65 +407,113 @@ class TestExchangeClosedStillFormingGate:
         assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
 
 
-class TestMarketStateProxy:
-    """fetch_and_save_pulse() must additionally capture live Yahoo marketState for the two
-    exchange-status proxy tickers (^GSPC/^FTSE), and leave it untouched for everything else."""
+class TestQuoteSnapshotSessionTagging:
+    """fetch_and_save_pulse() must source price/change_pts/change_pct purely from Yahoo's own
+    regularMarketPrice/regularMarketChange* fields when its quote snapshot is available — never
+    an extended-hours tick — and populate the separate extended_* columns only when Yahoo's own
+    marketState says a pre/post session is genuinely active. This is the core regression
+    coverage for never mixing closing price with pre/post-market data in the same column."""
 
     def teardown_method(self):
-        _clear_cache("^GSPC", NORMAL_TICKER)
+        _clear_cache(NORMAL_TICKER, "^GSPC")
 
-    def test_proxy_ticker_gets_market_state_written(self):
+    def test_regular_session_writes_pure_regular_price_no_extended(self):
         daily = _flat_daily_df([100.0, 100.5])
         live = _flat_live_df(101.0)
-        p1, p2 = _pulse_patches("^GSPC", daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state", return_value="CLOSED"):
-            _mp.fetch_and_save_pulse(["^GSPC"])
-
-        row = _read_cache("^GSPC")
-        assert row["market_state"] == "CLOSED"
-
-    def test_non_proxy_ticker_market_state_stays_null(self):
-        daily = _flat_daily_df([100.0, 100.5])
-        live = _flat_live_df(101.0)
+        snap = _snapshot(101.0, regular_change=0.5, regular_change_pct=0.5, market_state="REGULAR")
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state") as mock_state:
+        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
-            mock_state.assert_not_called()
 
         row = _read_cache(NORMAL_TICKER)
-        assert row["market_state"] is None
+        assert row["price"] == pytest.approx(101.0)
+        assert row["change_pct"] == pytest.approx(0.5)
+        assert row["market_state"] == "REGULAR"
+        assert row["extended_price"] is None
+        assert row["extended_session"] is None
 
-    def test_price_refresh_preserves_previously_written_market_state(self):
-        """Regression: switching the price write from INSERT OR REPLACE to an upsert that
-        preserves unspecified columns — a plain REPLACE would silently wipe market_state back
-        to NULL on every subsequent price refresh."""
+    def test_pre_market_tick_never_contaminates_regular_price_column(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.5)  # would have been misread as "the price" before this fix
+        snap = _snapshot(
+            100.5, regular_change=0.0, regular_change_pct=0.0, market_state="PRE",
+            pre_price=101.5, pre_change=1.0, pre_change_pct=1.0,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["price"] == pytest.approx(100.5), "Pre-market tick leaked into the regular price column"
+        assert row["change_pct"] == pytest.approx(0.0)
+        assert row["extended_price"] == pytest.approx(101.5)
+        assert row["extended_change_pct"] == pytest.approx(1.0)
+        assert row["extended_session"] == "pre"
+
+    def test_post_market_tick_never_contaminates_regular_price_column(self):
+        daily = _flat_daily_df([100.0, 102.0])
+        live = _flat_live_df(101.0)
+        snap = _snapshot(
+            102.0, regular_change=2.0, regular_change_pct=2.0, market_state="POST",
+            post_price=101.0, post_change=-1.0, post_change_pct=-0.98,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["price"] == pytest.approx(102.0), "After-hours tick leaked into the regular price column"
+        assert row["change_pct"] == pytest.approx(2.0)
+        assert row["extended_price"] == pytest.approx(101.0)
+        assert row["extended_session"] == "post"
+
+    def test_closed_state_clears_extended_even_if_stale_fields_present(self):
+        """Yahoo can carry a stale postMarketPrice into a CLOSED payload — must never surface it."""
         daily = _flat_daily_df([100.0, 100.5])
         live = _flat_live_df(101.0)
+        snap = _snapshot(
+            100.5, regular_change=0.5, regular_change_pct=0.5, market_state="CLOSED",
+            post_price=99.0, post_change=-1.5, post_change_pct=-1.5,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["extended_price"] is None
+        assert row["extended_session"] is None
+
+    def test_market_state_written_for_any_ticker_not_just_proxies(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        snap = _snapshot(101.0, regular_change=1.0, regular_change_pct=1.0, market_state="REGULAR")
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["market_state"] == "REGULAR"
+
+    def test_price_refresh_preserves_previously_written_market_state_on_snapshot_failure(self):
+        """Regression: a transient quote-snapshot failure on a later refresh must not wipe a
+        previously-known market_state back to NULL."""
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        snap = _snapshot(101.0, regular_change=1.0, regular_change_pct=1.0, market_state="REGULAR")
         p1, p2 = _pulse_patches("^GSPC", daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state", return_value="REGULAR"):
+        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
             _mp.fetch_and_save_pulse(["^GSPC"])
 
-        # Second refresh: market_state fetch itself fails/returns nothing this time.
+        # Second refresh: the quote snapshot itself is unavailable this time.
         daily2 = _flat_daily_df([100.5, 102.0])
         live2 = _flat_live_df(102.5)
         p3, p4 = _pulse_patches("^GSPC", daily2, live2)
-        with p3, p4, patch("market_pulse.yahoo_engine.get_market_state", return_value=None):
+        with p3, p4, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=None):
             _mp.fetch_and_save_pulse(["^GSPC"])
 
         row = _read_cache("^GSPC")
         assert row["price"] == pytest.approx(102.5)
         assert row["market_state"] == "REGULAR"
-
-    def test_market_state_fetch_failure_does_not_block_price_write(self):
-        daily = _flat_daily_df([100.0, 100.5])
-        live = _flat_live_df(101.0)
-        p1, p2 = _pulse_patches("^GSPC", daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state", side_effect=RuntimeError("boom")):
-            _mp.fetch_and_save_pulse(["^GSPC"])
-
-        row = _read_cache("^GSPC")
-        assert row["price"] == pytest.approx(101.0)
-        assert row["market_state"] is None
 
 
 class TestFallbackSingleHistory:
