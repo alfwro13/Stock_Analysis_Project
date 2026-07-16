@@ -598,6 +598,16 @@ def test_pairs_spread_run_returns_success(client):
     assert data.get("status") == "success", f"Expected success, got: {data}"
 
 
+@pytest.mark.api
+def test_pairs_spread_run_universe_returns_success(client):
+    """POST /api/pairs-spread/run-universe must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None):
+        resp = client.post("/api/pairs-spread/run-universe")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "success", f"Expected success, got: {data}"
+
+
 # ── Forensic Screener ──────────────────────────────────────────────────────────
 
 @pytest.mark.api

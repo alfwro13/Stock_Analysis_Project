@@ -1617,7 +1617,7 @@ CARDS = [
             "Different currencies cannot be correlated by definition",
             "It is a regulatory requirement in the UK",
         ],
-        "explanation": """<p>Before two tickers are even considered a "pair," their trailing 252-day daily-return <strong>Pearson correlation</strong> must clear a configurable threshold (default 0.7). This filters the full portfolio-and-watchlist universe down to only the pairs that have a genuine, statistically meaningful historical relationship — pairing two unrelated stocks would produce a spread with no real reason to revert.</p>
+        "explanation": """<p>Before two tickers are even considered a "pair," their trailing 252-day daily-return <strong>Pearson correlation</strong> must clear a configurable threshold (default 0.7). This filters the scanned ticker universe down to only the pairs that have a genuine, statistically meaningful historical relationship — pairing two unrelated stocks would produce a spread with no real reason to revert.</p>
 <p>Pairs are also restricted to <strong>tickers quoted in the same currency</strong> (GBX pence and GBP pounds are treated as the same currency, since both describe UK-listed stocks). A US stock and a UK stock might be genuinely correlated, but their price ratio would also be pulled around by the GBP/USD exchange rate — mixing a real equity-relationship signal with FX noise. Restricting to same-currency pairs keeps the signal clean.</p>""",
     },
     {
@@ -1633,6 +1633,20 @@ CARDS = [
         ],
         "explanation": """<p>For each correlated pair, the monitor computes the <strong>log-spread</strong> — <code>log(price_a) − log(price_b)</code> — every trading day over the same trailing 252-day window. Using a log ratio rather than a raw price difference means the measure is unit-invariant: it doesn't matter whether either ticker happens to be quoted in pence or pounds, or trades at £5 or £500, only how the two prices move <em>relative</em> to each other.</p>
 <p>The <strong>z-score</strong> is how many standard deviations today's log-spread sits from that window's own mean. A z-score of 0 means the pair is trading exactly at its historical relationship; a large positive or negative z-score means one leg has become unusually "rich" or "cheap" relative to the other. An alert fires when the absolute z-score crosses a configurable threshold (default 2.0).</p>""",
+    },
+    {
+        "term_key": "pairs-spread-scope",
+        "section_id": "pairs-spread-monitor",
+        "term_title": "Scope: Portfolio + Watchlist vs Universe",
+        "question": "Why does the Universe scope never trigger a notification, even when a pair crosses the z-score threshold?",
+        "answer": "It's a manually-triggered, non-repeating scan, and the alert dedup/cooldown model assumes a recurring scan cadence",
+        "distractors": [
+            "Universe scope pairs are never statistically significant enough to alert on",
+            "Notifications are technically impossible for tickers not in stock_signals",
+            "Universe scope only runs once, at first server startup",
+        ],
+        "explanation": """<p>By default the monitor scans your <strong>Portfolio + Watchlist</strong> — a small, fast scan that runs automatically on a schedule and fires alerts. A <strong>Universe</strong> scope is also available, scanning the full market universe (thousands of tickers) for correlated pairs you don't currently hold or watch.</p>
+<p>Universe is <strong>on-demand only</strong> — triggered manually from the report page, never run automatically. A full-universe correlation scan is expensive (many more tickers means many more candidate pairs to check), and firing alerts off a scan the operator didn't ask for and may not repeat again soon would defeat the point of the alert dedup/cooldown model, which assumes a recurring scan cadence. Universe results are shown on the page but never trigger a notification.</p>""",
     },
     # --- forensic-screener ---
     {

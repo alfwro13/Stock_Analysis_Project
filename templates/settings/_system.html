@@ -910,7 +910,9 @@
                     <abbr title="log(close_a) - log(close_b), a currency-unit-invariant measure of relative price divergence.">price log-spread</abbr>
                     has diverged from its own trailing-year mean by more than the z-score threshold below —
                     a mean-reversion signal distinct from any single-ticker alert in this app.
-                    Results appear at the <a href="/pairs-spread" class="text-cyan">Pairs Spread Monitor tools page</a>.
+                    This schedule covers the Portfolio + Watchlist scope only — a full market
+                    Universe scan is on-demand only, triggered from the page itself.
+                    Results appear at the <a href="/pairs-spread" class="text-cyan">Pairs Spread Monitor report</a>.
                 </p>
 
                 {% set pairs_sched = config.SCHEDULING.PAIRS_SPREAD_MONITOR if config.SCHEDULING.PAIRS_SPREAD_MONITOR else {} %}

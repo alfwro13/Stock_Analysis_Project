@@ -704,6 +704,7 @@ def test_no_page_route_returns_500(client):
         ("/treasury-auctions",  "Sovereign Debt Auction Monitor"),
         ("/yahoo-api-usage",    "Yahoo Finance API Usage"),
         ("/pairs-spread",       "Pairs Spread Monitor"),
+        ("/reports",            "Reports"),
     ]
     failures = []
     for url, label in pages:
@@ -732,6 +733,28 @@ def test_trap_monitor_page_loads(client):
 def test_pairs_spread_monitor_page_loads(client):
     """GET /pairs-spread must load with an empty results table without crashing."""
     _assert_page_ok(client, "/pairs-spread", label="Pairs Spread Monitor")
+
+
+def test_pairs_spread_monitor_page_links_back_to_reports(client):
+    """GET /pairs-spread must link back to the Reports hub, not the old Tools hub."""
+    resp = client.get("/pairs-spread")
+    assert resp.status_code == 200
+    assert b'href="/reports"' in resp.content
+
+
+# ── Reports Menu ───────────────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_reports_page_loads(client):
+    """GET /reports must load the reports launcher page without a server error."""
+    _assert_page_ok(client, "/reports", label="Reports")
+
+
+def test_reports_page_links_to_pairs_spread(client):
+    """GET /reports must link to the Pairs Spread Monitor report."""
+    resp = client.get("/reports")
+    assert resp.status_code == 200
+    assert b'href="/pairs-spread"' in resp.content
 
 
 # ── Sovereign Debt Auction Monitor ────────────────────────────────────────────

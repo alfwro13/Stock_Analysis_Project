@@ -4,11 +4,12 @@ tests/test_pairs_spread_engine.py — Pairs Spread Monitor Tests
 Covers:
   • _normalize_currency()          — GBp/GBP collapse to one bucket
   • compute_spread_zscore()        — known synthetic spread produces the expected z-score/direction
-  • build_chart_series()           — chart payload shape
-  • PairsSpreadEngine._get_universe() — portfolio + watchlist union, ignored tickers filtered
+  • build_chart_series()           — normalized-price chart payload shape
+  • PairsSpreadEngine._get_universe() — portfolio+watchlist scope vs universe scope
   • PairsSpreadEngine.run_scan()   — correlation threshold + currency bucketing end to end,
-                                     full-replace persistence into pairs_spread_results
+                                     full-replace-per-scope persistence into pairs_spread_results
   • run_pairs_spread_monitor_job() — alert gate fires above threshold, suppressed below
+  • run_pairs_spread_universe_scan() — never dispatches alerts regardless of z-score
 """
 
 import sys
@@ -24,6 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import database as db
 from pairs_spread_engine import (
     PairsSpreadEngine,
+    SCOPE_PORTFOLIO_WATCHLIST,
+    SCOPE_UNIVERSE,
     _normalize_currency,
     compute_spread_zscore,
     build_chart_series,
@@ -33,6 +36,7 @@ T_A = "PSM_A"
 T_B = "PSM_B"
 T_C = "PSM_C"
 T_D = "PSM_D"
+T_E = "PSM_E"
 
 
 def _make_df(closes: list) -> pd.DataFrame:
@@ -123,6 +127,13 @@ class TestComputeSpreadZscore:
                    side_effect=lambda t: short_a if t == T_A else short_b):
             assert compute_spread_zscore(T_A, T_B) is None
 
+    def test_accepts_preloaded_closes_without_fetching(self):
+        close_a, close_b = _correlated_pair()
+        with patch("pairs_spread_engine.load_or_fetch_daily_history") as mock_load:
+            result = compute_spread_zscore(T_A, T_B, _make_df(close_a)["Close"], _make_df(close_b)["Close"])
+        mock_load.assert_not_called()
+        assert result is not None
+
 
 class TestBuildChartSeries:
     def test_chart_payload_shape(self):
@@ -134,24 +145,41 @@ class TestBuildChartSeries:
         assert chart is not None
         assert chart["ticker_a"] == T_A
         assert chart["ticker_b"] == T_B
-        assert len(chart["dates"]) == len(chart["log_spread"])
-        assert chart["upper_2sd"] > chart["mean"] > chart["lower_2sd"]
+        assert len(chart["dates"]) == len(chart["normalized_a"]) == len(chart["normalized_b"])
+        assert len(chart["close_a"]) == len(chart["close_b"]) == len(chart["dates"])
+        # Both series are indexed to 100 at the start of the window.
+        assert chart["normalized_a"][0] == pytest.approx(100.0)
+        assert chart["normalized_b"][0] == pytest.approx(100.0)
+        assert chart["correlation"] is not None
+        assert chart["zscore"] is not None
+
+    def test_none_when_history_missing(self):
+        with patch("pairs_spread_engine.load_or_fetch_daily_history", return_value=None):
+            assert build_chart_series(T_A, T_B) is None
 
 
 class TestGetUniverse:
-    def test_unions_portfolio_and_watchlist(self):
+    def test_portfolio_watchlist_scope_unions_both(self):
         engine = PairsSpreadEngine({})
         with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}}), \
              patch("pairs_spread_engine.get_watchlist_tickers", return_value=[T_B]):
-            universe = engine._get_universe()
+            universe = engine._get_universe(SCOPE_PORTFOLIO_WATCHLIST)
         assert universe == sorted([T_A, T_B])
 
     def test_ignored_ticker_excluded(self):
         engine = PairsSpreadEngine({"IGNORED_TICKERS": [T_A]})
         with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}}), \
              patch("pairs_spread_engine.get_watchlist_tickers", return_value=[T_B]):
-            universe = engine._get_universe()
+            universe = engine._get_universe(SCOPE_PORTFOLIO_WATCHLIST)
         assert universe == [T_B]
+
+    def test_universe_scope_uses_market_universe_not_holdings(self):
+        engine = PairsSpreadEngine({})
+        with patch("pairs_spread_engine.get_universe_tickers", return_value=[T_A, T_B]), \
+             patch("pairs_spread_engine.get_combined_holdings", return_value={T_C: {}}), \
+             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[T_D]):
+            universe = engine._get_universe(SCOPE_UNIVERSE)
+        assert universe == sorted([T_A, T_B])
 
 
 class TestRunScan:
@@ -173,26 +201,26 @@ class TestRunScan:
 
         return _loader
 
-    def test_correlated_same_currency_pair_saved(self):
-        loader = self._seed_universe_and_prices()
-        engine = PairsSpreadEngine({})
+    def _run(self, engine, loader, scope=SCOPE_PORTFOLIO_WATCHLIST):
         with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}, T_C: {}, T_D: {}}), \
              patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]), \
              patch("pairs_spread_engine.load_or_fetch_daily_history", side_effect=loader), \
              patch("xray_engine.load_or_fetch_daily_history", side_effect=loader):
-            results = engine.run_scan()
+            return engine.run_scan(scope=scope)
+
+    def test_correlated_same_currency_pair_saved(self):
+        loader = self._seed_universe_and_prices()
+        engine = PairsSpreadEngine({})
+        results = self._run(engine, loader)
 
         pairs = {r["pair_key"] for r in results}
-        assert f"{T_A}:{T_B}" in pairs, "Highly correlated same-currency pair must be flagged"
+        assert f"{SCOPE_PORTFOLIO_WATCHLIST}:{T_A}:{T_B}" in pairs, "Highly correlated same-currency pair must be flagged"
+        assert all(r["scope"] == SCOPE_PORTFOLIO_WATCHLIST for r in results)
 
     def test_uncorrelated_pair_excluded(self):
         loader = self._seed_universe_and_prices()
         engine = PairsSpreadEngine({})
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}, T_C: {}, T_D: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]), \
-             patch("pairs_spread_engine.load_or_fetch_daily_history", side_effect=loader), \
-             patch("xray_engine.load_or_fetch_daily_history", side_effect=loader):
-            results = engine.run_scan()
+        results = self._run(engine, loader)
 
         pairs = {(r["ticker_a"], r["ticker_b"]) for r in results}
         assert not any(T_C in p for p in pairs), "Uncorrelated ticker must never appear in a pair"
@@ -200,42 +228,53 @@ class TestRunScan:
     def test_cross_currency_pair_excluded(self):
         loader = self._seed_universe_and_prices()
         engine = PairsSpreadEngine({})
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}, T_C: {}, T_D: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]), \
-             patch("pairs_spread_engine.load_or_fetch_daily_history", side_effect=loader), \
-             patch("xray_engine.load_or_fetch_daily_history", side_effect=loader):
-            results = engine.run_scan()
+        results = self._run(engine, loader)
 
         pairs = {(r["ticker_a"], r["ticker_b"]) for r in results}
         assert not any(T_D in p for p in pairs), "GBP ticker must never pair with a USD ticker"
 
-    def test_results_persisted_and_full_replace(self):
+    def test_results_persisted_and_full_replace_scoped(self):
         loader = self._seed_universe_and_prices()
         engine = PairsSpreadEngine({})
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}, T_C: {}, T_D: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]), \
-             patch("pairs_spread_engine.load_or_fetch_daily_history", side_effect=loader), \
-             patch("xray_engine.load_or_fetch_daily_history", side_effect=loader):
-            engine.run_scan()
+        self._run(engine, loader)
 
         conn = db.get_connection()
         try:
             row = conn.execute(
-                "SELECT * FROM pairs_spread_results WHERE pair_key = ?", (f"{T_A}:{T_B}",)
+                "SELECT * FROM pairs_spread_results WHERE pair_key = ?",
+                (f"{SCOPE_PORTFOLIO_WATCHLIST}:{T_A}:{T_B}",),
             ).fetchone()
         finally:
             conn.close()
         assert row is not None
         assert row["correlation"] > 0.7
+        assert row["scope"] == SCOPE_PORTFOLIO_WATCHLIST
 
-        # Empty universe on the next scan must clear stale rows (full-replace semantics).
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]):
-            engine.run_scan()
+        # A universe scan must not clear the portfolio_watchlist scope's rows.
+        with patch("pairs_spread_engine.get_universe_tickers", return_value=[]):
+            engine.run_scan(scope=SCOPE_UNIVERSE)
 
         conn = db.get_connection()
         try:
-            count = conn.execute("SELECT COUNT(*) AS c FROM pairs_spread_results").fetchone()["c"]
+            still_there = conn.execute(
+                "SELECT COUNT(*) AS c FROM pairs_spread_results WHERE scope = ?",
+                (SCOPE_PORTFOLIO_WATCHLIST,),
+            ).fetchone()["c"]
+        finally:
+            conn.close()
+        assert still_there > 0, "Universe scan must not clear portfolio_watchlist scope's rows"
+
+        # Empty universe on the next portfolio_watchlist scan must clear its own stale rows.
+        with patch("pairs_spread_engine.get_combined_holdings", return_value={}), \
+             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]):
+            engine.run_scan(scope=SCOPE_PORTFOLIO_WATCHLIST)
+
+        conn = db.get_connection()
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) AS c FROM pairs_spread_results WHERE scope = ?",
+                (SCOPE_PORTFOLIO_WATCHLIST,),
+            ).fetchone()["c"]
         finally:
             conn.close()
         assert count == 0
@@ -243,9 +282,10 @@ class TestRunScan:
 
 class TestRunPairsSpreadMonitorJob:
     @staticmethod
-    def _row(ticker_a, ticker_b, zscore, correlation=0.9):
+    def _row(ticker_a, ticker_b, zscore, correlation=0.9, scope=SCOPE_PORTFOLIO_WATCHLIST):
         return {
-            "pair_key": f"{ticker_a}:{ticker_b}", "ticker_a": ticker_a, "ticker_b": ticker_b,
+            "pair_key": f"{scope}:{ticker_a}:{ticker_b}", "scope": scope,
+            "ticker_a": ticker_a, "ticker_b": ticker_b,
             "currency": "USD", "correlation": correlation, "zscore": zscore,
             "spread_mean": 0.0, "spread_std": 0.1, "last_spread": zscore * 0.1,
             "direction": f"{ticker_a} rich vs {ticker_b}",
@@ -291,3 +331,27 @@ class TestRunPairsSpreadMonitorJob:
             scheduler_jobs.run_pairs_spread_monitor_job()
 
         mock_notify.assert_not_called()
+
+    def test_run_scan_called_with_portfolio_watchlist_scope(self):
+        import scheduler_jobs
+        with patch("pairs_spread_engine.PairsSpreadEngine.run_scan", return_value=[]) as mock_scan, \
+             patch("scheduler_jobs.notify", return_value=True):
+            scheduler_jobs.run_pairs_spread_monitor_job()
+        mock_scan.assert_called_once_with(scope=SCOPE_PORTFOLIO_WATCHLIST)
+
+
+class TestRunPairsSpreadUniverseScan:
+    def test_never_calls_notify_even_above_threshold(self):
+        import scheduler_jobs
+        with patch("pairs_spread_engine.PairsSpreadEngine.run_scan",
+                   return_value=[TestRunPairsSpreadMonitorJob._row(T_A, T_B, 5.0, scope=SCOPE_UNIVERSE)]), \
+             patch("scheduler_jobs.notify", return_value=True) as mock_notify:
+            scheduler_jobs.run_pairs_spread_universe_scan()
+
+        mock_notify.assert_not_called()
+
+    def test_run_scan_called_with_universe_scope(self):
+        import scheduler_jobs
+        with patch("pairs_spread_engine.PairsSpreadEngine.run_scan", return_value=[]) as mock_scan:
+            scheduler_jobs.run_pairs_spread_universe_scan()
+        mock_scan.assert_called_once_with(scope=SCOPE_UNIVERSE)

@@ -154,6 +154,28 @@ def get_ticker_currency_map(tickers: List[str], conn) -> dict:
     return {r["ticker"]: r["currency"] for r in rows}
 
 
+def get_company_names(tickers: List[str]) -> dict:
+    """{ticker: company_name} from stock_signals for `tickers`. Opens its own connection —
+    for batch-enriching a result set at the API/page layer, not inside an already-open job txn."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, company_name FROM stock_signals WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+        return {r["ticker"]: r["company_name"] for r in rows if r["company_name"]}
+    except Exception as e:
+        logger.error("Failed to fetch company names: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
 def upsert_quant_signal(
     ticker: str,
     date: str,

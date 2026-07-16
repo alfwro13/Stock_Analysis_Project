@@ -684,6 +684,22 @@ def test_pairs_spread_results_returns_200(client):
 
 
 @pytest.mark.api
+def test_pairs_spread_results_accepts_universe_scope(client):
+    """GET /api/pairs-spread/results?scope=universe must return 200, not the default scope's error."""
+    resp = client.get("/api/pairs-spread/results?scope=universe")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "success"
+
+
+@pytest.mark.api
+def test_pairs_spread_results_rejects_invalid_scope(client):
+    """GET /api/pairs-spread/results?scope=bogus must 422 (FastAPI Query pattern validation), not 500."""
+    resp = client.get("/api/pairs-spread/results?scope=bogus")
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
 def test_pairs_spread_chart_returns_404_for_unknown_pair(client):
     """GET /api/pairs-spread/chart/{a}/{b} must 404, not 500, when there's no overlapping history."""
     resp = client.get("/api/pairs-spread/chart/NOSUCHTICKERA/NOSUCHTICKERB")

@@ -6,7 +6,7 @@ from typing import List, Optional
 import pandas as pd
 import numpy as np
 import time_engine
-from fastapi import APIRouter, BackgroundTasks, Path as PathParam, Request
+from fastapi import APIRouter, BackgroundTasks, Path as PathParam, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -165,15 +165,26 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
 
 @analysis_router.get("/pairs-spread/results")
 @limiter.limit("20/minute")
-async def get_pairs_spread_results(request: Request):
-    """Returns all monitored pairs from the latest scan, ordered by absolute z-score (most divergent first)."""
+async def get_pairs_spread_results(
+    request: Request,
+    scope: str = Query(default="portfolio_watchlist", pattern=r"^(portfolio_watchlist|universe)$"),
+):
+    """Returns all monitored pairs from the latest scan for `scope`, ordered by absolute z-score (most divergent first), enriched with company names."""
+    from db_helpers import get_company_names
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pairs_spread_results")
+        cursor.execute("SELECT * FROM pairs_spread_results WHERE scope = ?", (scope,))
         rows = [dict(r) for r in cursor.fetchall()]
         rows.sort(key=lambda r: abs(r.get("zscore") or 0), reverse=True)
+
+        tickers = sorted({r["ticker_a"] for r in rows} | {r["ticker_b"] for r in rows})
+        names = get_company_names(tickers)
+        for r in rows:
+            r["company_name_a"] = names.get(r["ticker_a"])
+            r["company_name_b"] = names.get(r["ticker_b"])
+
         return JSONResponse(content={"status": "success", "results": rows})
     except Exception as e:
         logger.error("pairs-spread/results failed: %s", e)
@@ -186,7 +197,7 @@ async def get_pairs_spread_results(request: Request):
 @analysis_router.post("/pairs-spread/run")
 @limiter.limit("4/minute")
 async def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTasks):
-    """Manually triggers a Pairs Spread Monitor scan in the background."""
+    """Manually triggers a Pairs Spread Monitor scan (Portfolio + Watchlist scope) in the background."""
     try:
         from scheduler_engine import run_pairs_spread_monitor_job
         background_tasks.add_task(run_pairs_spread_monitor_job)
@@ -196,10 +207,23 @@ async def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTa
         return _error_500(e)
 
 
+@analysis_router.post("/pairs-spread/run-universe")
+@limiter.limit("2/minute")
+async def run_pairs_spread_universe(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers an on-demand-only full market-universe Pairs Spread scan in the background. No scheduled equivalent — too expensive to run nightly."""
+    try:
+        from scheduler_engine import run_pairs_spread_universe_scan
+        background_tasks.add_task(run_pairs_spread_universe_scan)
+        return JSONResponse(content={"status": "success", "message": "Pairs Spread Monitor universe scan triggered — this can take a minute or two."})
+    except Exception as e:
+        logger.error("Failed to trigger Pairs Spread Monitor universe scan: %s", e)
+        return _error_500(e)
+
+
 @analysis_router.get("/pairs-spread/chart/{ticker_a}/{ticker_b}")
 @limiter.limit("20/minute")
 async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str):
-    """Returns the aligned log-spread series + mean/±2σ bands for one pair, recomputed on demand from parquet."""
+    """Returns aligned normalized price series for both tickers plus correlation/z-score, recomputed on demand from parquet."""
     try:
         from pairs_spread_engine import build_chart_series
         data = build_chart_series(normalize_ticker(ticker_a), normalize_ticker(ticker_b))
