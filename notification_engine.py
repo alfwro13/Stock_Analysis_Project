@@ -53,6 +53,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "ha_refresh_now_status":   {"label": "Home Assistant Refresh Now",      "job_id": None,                     "default": dict(_NO_TALK)},
     "stale_price_alert":       {"label": "Stale Price Alert",               "job_id": None,                     "default": dict(_ON)},
     "yahoo_intraday_gap_alert": {"label": "Yahoo Intraday Data Gap",        "job_id": None,                     "default": dict(_ON)},
+    "yahoo_history_gap_alert": {"label": "Yahoo Daily History Data Gap",    "job_id": None,                     "default": dict(_ON)},
 }
 
 CATEGORY_LABELS = {

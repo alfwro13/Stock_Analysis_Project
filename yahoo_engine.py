@@ -58,6 +58,7 @@ _TTLS: dict[str, int] = {
 
 
 _INTRADAY_GAP_ALERT_MINUTES = 30  # how long a ticker must be empty before it's "persistent", not a blip
+_HISTORY_GAP_ALERT_MINUTES = 1800  # 30h — daily bars only refresh ~once/night, so this is "missed a nightly run", not a blip
 
 
 class YahooEngine:
@@ -72,6 +73,13 @@ class YahooEngine:
         self._intraday_gap_since: dict[str, float] = {}
         self._intraday_gap_alerted: set[str] = set()
         self._intraday_gap_lock = threading.Lock()
+        # Mirrors the intraday gap tracker above, for the daily-history endpoint — closes the gap that let
+        # MSFT/META silently fall out of the nightly bulk download for weeks with no notification at all
+        # (found 2026-07-16: is_daily_bar_still_forming and current_price_map guard against a still-forming
+        # bar, but nothing previously detected a ticker simply missing from the bulk yf.download result).
+        self._history_gap_since: dict[str, float] = {}
+        self._history_gap_alerted: set[str] = set()
+        self._history_gap_lock = threading.Lock()
 
     def _ttl(self, data_type: str, interval: str = "") -> int:
         if data_type == "intraday":
@@ -153,7 +161,65 @@ class YahooEngine:
             except Exception:
                 logger.error("get_price_history failed for %s", missing, exc_info=True)
 
+            gap_tickers = [t for t in missing if result.get(t) is None]
+            hit_tickers = [t for t in missing if result.get(t) is not None]
+            if gap_tickers:
+                self._track_history_gap_misses(gap_tickers)
+            if hit_tickers:
+                self._track_history_gap_hits(hit_tickers)
+
         return {t: df for t, df in result.items() if df is not None}
+
+    def _track_history_gap_misses(self, tickers: list[str]) -> None:
+        """Records the first time each ticker's daily-history fetch came back empty; once a ticker
+        has been empty continuously for _HISTORY_GAP_ALERT_MINUTES, fires one aggregated notification
+        covering every ticker that just crossed that threshold — mirrors _track_intraday_gap_misses."""
+        now = time.time()
+        newly_persistent: list[tuple[str, float]] = []
+        with self._history_gap_lock:
+            for t in tickers:
+                since = self._history_gap_since.setdefault(t, now)
+                age_min = (now - since) / 60
+                if age_min >= _HISTORY_GAP_ALERT_MINUTES and t not in self._history_gap_alerted:
+                    self._history_gap_alerted.add(t)
+                    newly_persistent.append((t, age_min))
+        if newly_persistent:
+            self._notify_history_gap(newly_persistent)
+
+    def _track_history_gap_hits(self, tickers: list[str]) -> None:
+        """Clears gap tracking for tickers whose fetch just succeeded; fires one aggregated
+        recovery notification for any that had previously crossed the alert threshold."""
+        recovered = []
+        with self._history_gap_lock:
+            for t in tickers:
+                self._history_gap_since.pop(t, None)
+                if t in self._history_gap_alerted:
+                    self._history_gap_alerted.discard(t)
+                    recovered.append(t)
+        if recovered:
+            self._notify_history_gap_recovered(recovered)
+
+    @staticmethod
+    def _notify_history_gap(newly_persistent: list[tuple[str, float]]) -> None:
+        lines = ", ".join(f"{t} ({int(age / 60)}h)" for t, age in sorted(newly_persistent))
+        plural = "s" if len(newly_persistent) > 1 else ""
+        notify(
+            "yahoo_history_gap_alert", "Warning",
+            f"Yahoo Finance has returned no daily historical data for {len(newly_persistent)} ticker{plural} "
+            f"for at least {_HISTORY_GAP_ALERT_MINUTES // 60} hours: {lines}. Their daily parquet, quant "
+            f"score, and any alerts derived from them are frozen at their last successful fetch until this recovers.",
+            level="warning",
+        )
+
+    @staticmethod
+    def _notify_history_gap_recovered(recovered: list[str]) -> None:
+        plural = "s" if len(recovered) > 1 else ""
+        notify(
+            "yahoo_history_gap_alert", "Info",
+            f"Yahoo Finance daily historical data has resumed for {len(recovered)} ticker{plural}: "
+            f"{', '.join(sorted(recovered))}.",
+            level="info",
+        )
 
     def get_intraday(
         self,

@@ -124,6 +124,15 @@ class AIContagionEngine:
             if len(unique_dates) < 2:
                 return None
 
+            # If Yahoo hasn't posted a single bar for today yet (a lagging premarket feed right at
+            # the scan's early start, or a ticker-specific gap), the frame's last row is still
+            # yesterday's close — silently reusing it would recompute yesterday's already-alerted
+            # drawdown as if it were fresh. Found 2026-07-16: this produced byte-identical AI
+            # Contagion alerts days apart (2026-07-03 and 2026-07-06 both reported the exact same
+            # per-ticker percentages to 2 decimal places).
+            if unique_dates[-1] != datetime.now(timezone.utc).date():
+                return None
+
             current_price = float(df["Close"].iloc[-1])
             prev_df = df[df["_date"] == unique_dates[-2]]
             if prev_df.empty:

@@ -80,6 +80,10 @@ function _psmRenderStats(chart) {
 
 function _psmRenderChart(chart) {
     const el = document.getElementById('psm-chart');
+    // Plotly.newPlot() only clears/manages nodes it created itself — it doesn't reliably
+    // remove unrelated leftover markup (e.g. the "Loading…" placeholder set in
+    // _psmOpenChart), which would otherwise stick around as a sibling under the chart.
+    el.innerHTML = '';
     const traces = [
         { x: chart.dates, y: chart.normalized_a, type: 'scatter', mode: 'lines', name: chart.ticker_a, line: { color: '#3987e5' } },
         { x: chart.dates, y: chart.normalized_b, type: 'scatter', mode: 'lines', name: chart.ticker_b, line: { color: '#c98500' } },
