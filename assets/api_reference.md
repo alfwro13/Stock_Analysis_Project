@@ -3896,15 +3896,19 @@ Body: `{"term_key": "market-capitalisation", "grade": "good"}` — `grade` is on
 
 ## 26. Pairs Spread Monitor
 
-Statistical arbitrage / mean-reversion monitor over portfolio + watchlist tickers. See `assets/pairs_spread_monitor.md` for the full algorithm and configuration reference.
+Statistical arbitrage / mean-reversion monitor over pairs of tickers, in either of two scopes (Portfolio + Watchlist, or the full market Universe). See `assets/pairs_spread_monitor.md` for the full algorithm, scope, and configuration reference.
+
+### `GET /reports`
+
+HTML page. Reports-menu hub (guide-card grid, same pattern as `/tools`) — currently lists Pairs Spread Monitor.
 
 ### `GET /pairs-spread`
 
-HTML page. Tools-menu page listing all currently-monitored pairs (correlation, z-score, direction), with a click-to-expand log-spread chart per pair.
+HTML page. Lists all currently-monitored pairs for the selected scope (correlation, z-score, direction, company names), with a Portfolio+Watchlist/Universe scope toggle and a click-to-open chart modal per pair.
 
 ### `GET /api/pairs-spread/results`
 
-Returns all rows from `pairs_spread_results` (the latest scan only), sorted by absolute z-score (most divergent first).
+Query params: `scope` (`portfolio_watchlist` default, or `universe`). Returns all rows from `pairs_spread_results` for that scope (the latest scan only), sorted by absolute z-score (most divergent first), enriched with `company_name_a`/`company_name_b` (joined at read time from `stock_signals.company_name`, `null` if unknown).
 
 **Response**
 
@@ -3913,9 +3917,11 @@ Returns all rows from `pairs_spread_results` (the latest scan only), sorted by a
   "status": "success",
   "results": [
     {
-      "pair_key": "AAPL:MSFT", "ticker_a": "AAPL", "ticker_b": "MSFT", "currency": "USD",
+      "pair_key": "portfolio_watchlist:AAPL:MSFT", "scope": "portfolio_watchlist",
+      "ticker_a": "AAPL", "ticker_b": "MSFT", "currency": "USD",
       "correlation": 0.82, "zscore": 2.41, "spread_mean": 0.0012, "spread_std": 0.031,
-      "last_spread": 0.0863, "direction": "AAPL rich vs MSFT", "scan_ts": "2026-07-15 19:10:00"
+      "last_spread": 0.0863, "direction": "AAPL rich vs MSFT", "scan_ts": "2026-07-15 19:10:00",
+      "company_name_a": "Apple Inc.", "company_name_b": "Microsoft Corporation"
     }
   ]
 }
@@ -3923,11 +3929,15 @@ Returns all rows from `pairs_spread_results` (the latest scan only), sorted by a
 
 ### `POST /api/pairs-spread/run`
 
-Triggers a background scan immediately. Returns `{"status": "success"}` immediately; results appear in `/api/pairs-spread/results` within a few seconds.
+Triggers a background Portfolio + Watchlist scan immediately (the same scan the scheduled job runs). Returns `{"status": "success"}` immediately; results appear in `GET /api/pairs-spread/results?scope=portfolio_watchlist` within a few seconds.
+
+### `POST /api/pairs-spread/run-universe`
+
+Triggers an on-demand-only full market-universe scan in the background — no scheduled equivalent, since this scans the entire `market_universe` ticker set (thousands of tickers) and can take up to a couple of minutes. Never fires alerts (see `assets/pairs_spread_monitor.md` §5). Returns `{"status": "success"}` immediately; results appear in `GET /api/pairs-spread/results?scope=universe` once the scan finishes.
 
 ### `GET /api/pairs-spread/chart/{ticker_a}/{ticker_b}`
 
-Recomputes the aligned log-spread series (plus mean and ±2σ bands) from parquet on demand — not persisted, since it's fully derivable from the same daily-history parquet every other chart in the app already reads. `404` if there isn't enough overlapping price history for the pair.
+Recomputes aligned price history for both tickers from parquet on demand — not persisted, since it's fully derivable from the same daily-history parquet every other chart in the app already reads. Both series are also returned indexed to 100 at the start of the window, which is what the chart modal actually plots (an intuitive "which one moved" overlay, not the raw log-spread). `404` if there isn't enough overlapping price history for the pair.
 
 **Response**
 
@@ -3937,8 +3947,9 @@ Recomputes the aligned log-spread series (plus mean and ±2σ bands) from parque
   "chart": {
     "ticker_a": "AAPL", "ticker_b": "MSFT",
     "dates": ["2025-07-15", "2025-07-16", "..."],
-    "log_spread": [0.081, 0.079, "..."],
-    "mean": 0.0012, "upper_2sd": 0.0632, "lower_2sd": -0.0608
+    "close_a": [210.5, 211.2, "..."], "close_b": [415.0, 413.8, "..."],
+    "normalized_a": [100.0, 100.33, "..."], "normalized_b": [100.0, 99.71, "..."],
+    "correlation": 0.82, "zscore": 2.41
   }
 }
 ```

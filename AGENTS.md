@@ -79,7 +79,7 @@ Stock_Analysis_Project/
 ├── ai_prediction_engine.py   # XGBoost + RF soft-voting ensemble
 ├── ai_contagion_engine.py    # AI sector contagion monitor (10-ticker ecosystem)
 ├── bull_bear_trap_engine.py  # Post-crash lifecycle detector (Bull Trap, Bear Trap, Capitulation, Wyckoff)
-├── pairs_spread_engine.py    # Pairs Spread Monitor: portfolio/watchlist pairs correlation + log-spread z-score
+├── pairs_spread_engine.py    # Pairs Spread Monitor: Portfolio+Watchlist/Universe pairs correlation + log-spread z-score
 ├── anomaly_engine.py         # Unsupervised anomaly detection per ticker
 ├── xray_engine.py            # Portfolio X-ray / risk diagnostics
 ├── crash_engine.py           # Intraday crash detection
@@ -183,7 +183,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `xray_dividend_cache` | Per-ticker dividend yield cache for X-ray |
 | `ai_contagion_snapshots` | AI sector contagion scan results (payload JSON + alert flag) |
 | `trap_monitor_results` | Latest trap scan result per ticker — phase label + four signal levels; powers `/trap-monitor` |
-| `pairs_spread_results` | Latest Pairs Spread Monitor scan — one row per correlated same-currency pair (correlation, log-spread z-score, direction); full-replaced each scan; powers `/pairs-spread` |
+| `pairs_spread_results` | Latest Pairs Spread Monitor scan — one row per correlated same-currency pair (correlation, log-spread z-score, direction), tagged with `scope` (`portfolio_watchlist` or `universe`); full-replaced per scope on each scan; powers `/pairs-spread` |
 | `news_articles` | Full-text news articles with sentiment scores |
 | `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
 | `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
@@ -541,7 +541,16 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 | ETF Price Predictor | `/etf-predictor` | Generic morning price predictor for any ETF; configure constituent tickers and weights, predicts next-session open via holdings-weighted basket return and OLS regression with FX adjustment; tracks accuracy over time |
 | Monte Carlo Wealth Simulator | `/monte-carlo` | Projects portfolio wealth over 10/20/30 years using 1,000 correlated GBM paths (Cholesky of `xray_correlation_matrix`); percentile fan (P5–P95) in nominal and real terms; probability of reaching a target wealth. On-demand only — no scheduler job. Engine: `monte_carlo_engine.py` |
 | Portfolio Tearsheet | `/performance-analytics` | Native performance-analytics report covering the [quantstats](https://github.com/ranaroussi/quantstats) library's metric set — Sortino/Calmar/Omega ratios, drawdown duration analytics, distribution/tail stats, and win/loss statistics — computed entirely from cached return history with no external dependency. Complements the X-ray panel's Sharpe/VaR/CVaR/skew rather than duplicating them; both draw on the same `xray_returns_cache`-derived return series. On-demand only — no scheduler job. Engine: `performance_analytics_engine.py` |
-| Pairs Spread Monitor | `/pairs-spread` | Statistical arbitrage / mean-reversion signal over correlated same-currency portfolio+watchlist pairs (trailing 252-day return correlation ≥ configurable threshold), flagging when a pair's log-spread diverges from its own trailing-year mean by more than a configurable z-score threshold. The only alert engine that evaluates a *relationship* between two tickers rather than one ticker in isolation. Scheduled job `pairs_spread_monitor_job` (default Mon–Fri 19:10 local); alerts via the standard `IntradayOrchestrator._evaluate_alert_gate()` worsened/recovered/cooldown model, keyed on a composite `ticker_a:ticker_b` pair key (rule 19). Engine: `pairs_spread_engine.py` |
+
+---
+
+## Reports Menu (`/reports`)
+
+A dedicated landing page for cross-ticker/cross-holding analysis — reports that look across the portfolio, watchlist, or wider market universe, distinct from the Tools Menu's single-ticker/single-run analytical tools. Accessible via the navbar (`📊 Reports`). New reports are added as `guide-card` entries in `templates/reports.html` with a corresponding route in `page_routes.py`, following the exact same hub-page pattern as `/tools`. `/market-reports` (sector trends, mean reversion, leaders/laggards, dividend harvest, quality compounders/on-sale, GARP tenbaggers; engine `reports_engine.py`) predates this hub and is planned to migrate in as a card here, but has not yet moved — as of now it remains reachable only via a button on `/markets`, not from the navbar or this hub.
+
+| Report | Route | Description |
+|---|---|---|
+| Pairs Spread Monitor | `/pairs-spread` | Statistical arbitrage / mean-reversion signal over correlated same-currency pairs (trailing 252-day return correlation ≥ configurable threshold), flagging when a pair's log-spread diverges from its own trailing-year mean by more than a configurable z-score threshold. The only alert engine that evaluates a *relationship* between two tickers rather than one ticker in isolation. Two scopes, toggled on the page: **Portfolio + Watchlist** (scheduled job `pairs_spread_monitor_job`, default Mon–Fri 19:10 local; alerts via the standard `IntradayOrchestrator._evaluate_alert_gate()` worsened/recovered/cooldown model, keyed on a composite `{scope}:ticker_a:ticker_b` pair key per rule 19) and **Universe** (full market universe via `db_helpers.get_universe_tickers()`, on-demand only — no scheduled job, no alerting, since a full-universe scan is expensive and the alert dedup model assumes a recurring cadence; represented in the Workflow Monitor as the `pairs_spread_universe_source` non_job entry). `pairs_spread_results.scope` keeps the two scopes' results from clobbering each other on scan. Company names are joined in at the API layer (`db_helpers.get_company_names()`), not stored on the table. Engine: `pairs_spread_engine.py` |
 
 ---
 

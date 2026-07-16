@@ -35,6 +35,7 @@
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/earnings-volatility') %} active{% endif %}" href="/earnings-volatility">📅 Earnings Volatility</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/market-sentiment') %} active{% endif %}" href="/market-sentiment">🌡️ Market Sentiment</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/tools') %} active{% endif %}" href="/tools">🔧 Tools</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/reports') %} active{% endif %}" href="/reports">📊 Reports</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/settings') %} active{% endif %}" href="/settings">⚙️ Settings</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/glossary') %} active{% endif %}" href="/glossary">📚 Glossary</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/notifications') %} active{% endif %}" href="/notifications">🔔 Notifications {% if unread_count | default(0) > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a></li>

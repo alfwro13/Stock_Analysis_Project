@@ -821,14 +821,14 @@ def run_bubble_radar_job():
 
 
 def run_pairs_spread_monitor_job():
-    from pairs_spread_engine import PairsSpreadEngine
+    from pairs_spread_engine import PairsSpreadEngine, SCOPE_PORTFOLIO_WATCHLIST
     config = load_config()
     _mark_job_started(job_label("pairs_spread_monitor_job"))
     conn = None
     try:
         conn = get_connection()
         engine = PairsSpreadEngine(config)
-        results = engine.run_scan()
+        results = engine.run_scan(scope=SCOPE_PORTFOLIO_WATCHLIST)
 
         if not results:
             log_sched_notification("Info", "Pairs Spread Monitor: no correlated pairs found.")
@@ -870,6 +870,25 @@ def run_pairs_spread_monitor_job():
             conn.close()
         _mark_job_done(job_label("pairs_spread_monitor_job"))
         record_job_run("pairs_spread_monitor_job")
+
+
+def run_pairs_spread_universe_scan():
+    """On-demand only (no scheduler job, no alerting) — a full market-universe correlation
+    scan is too expensive to run automatically every night, and firing alerts off a scan the
+    operator didn't ask for and may not repeat would defeat the dedup/cooldown model, which
+    assumes a recurring scan cadence."""
+    from pairs_spread_engine import PairsSpreadEngine, SCOPE_UNIVERSE
+    config = load_config()
+    _mark_job_started(job_label("pairs_spread_universe_source"))
+    try:
+        engine = PairsSpreadEngine(config)
+        results = engine.run_scan(scope=SCOPE_UNIVERSE)
+        log_sched_notification("Success", f"Pairs Spread Monitor (Universe): {len(results)} pair(s) found.")
+    except Exception as e:
+        logger.error("Pairs Spread Monitor universe scan failed: %s", e)
+        log_sched_notification("Error", f"Pairs Spread Monitor (Universe) scan failed: {e}")
+    finally:
+        _mark_job_done(job_label("pairs_spread_universe_source"))
 
 
 def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:

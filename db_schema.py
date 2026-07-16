@@ -907,6 +907,7 @@ def init_db() -> None:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pairs_spread_results (
                 pair_key      TEXT PRIMARY KEY,
+                scope         TEXT NOT NULL DEFAULT 'portfolio_watchlist',
                 ticker_a      TEXT NOT NULL,
                 ticker_b      TEXT NOT NULL,
                 currency      TEXT,
@@ -2001,6 +2002,15 @@ def migrate_db(conn, cursor) -> None:
                 cursor.execute(ddl)
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed on learn_cards: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(pairs_spread_results)")
+        existing_pairs_spread_columns = [info['name'] for info in cursor.fetchall()]
+        if 'scope' not in existing_pairs_spread_columns:
+            logger.info("[MIGRATION] Adding column: scope to pairs_spread_results...")
+            cursor.execute("ALTER TABLE pairs_spread_results ADD COLUMN scope TEXT NOT NULL DEFAULT 'portfolio_watchlist'")
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add scope to pairs_spread_results: %s", e)
 
     try:
         conn.commit()

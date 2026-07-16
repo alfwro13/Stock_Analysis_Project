@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Reports{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Quantamental Reports</h1>
+<p class="text-secondary mb-4">Cross-ticker and cross-holding analysis — reports that look across your portfolio, watchlist, or the wider market universe, rather than at a single stock in isolation.</p>
+
+<div class="tools-grid">
+
+    <div class="guide-card">
+        <h4>&#128200; Pairs Spread Monitor</h4>
+        <p>Flags correlated pairs (same currency only) whose <abbr title="log(close_a) - log(close_b) — a currency-unit-invariant measure of relative price divergence.">price log-spread</abbr> has stretched more than a z-score threshold away from its own trailing-year mean. Covers your portfolio and watchlist by default, with an on-demand full market universe scan available too.</p>
+        <div class="why-use-it">Use to spot pairs that have historically moved together but have temporarily diverged — a classic mean-reversion setup no single-ticker alert in this app can see.</div>
+        <a href="/pairs-spread" class="guide-card-link">Launch Report →</a>
+    </div>
+
+</div>
+{% endblock %}

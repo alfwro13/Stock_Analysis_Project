@@ -9,22 +9,30 @@
 {% block content %}
 <h1 class="mb-1">&#128200; Pairs Spread Monitor</h1>
 <p class="page-subtitle mb-4">
-    Flags portfolio/watchlist pairs (same currency only) that already show a strong rolling
-    <abbr title="Pearson correlation of daily returns over the trailing 252-day window.">correlation</abbr>
-    and whose
+    Flags correlated pairs (same currency only) whose
     <abbr title="log(close_a) - log(close_b) — a currency-unit-invariant measure of relative price divergence.">price log-spread</abbr>
     has diverged from its own trailing-year mean by more than the configured z-score threshold — a
     mean-reversion signal distinct from any single-ticker alert in this app.
 </p>
 
 <div class="mb-3">
-    <a href="/tools" class="btn btn-outline-secondary btn-sm">&#8592; Back to Tools</a>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">&#8592; Back to Reports</a>
 </div>
 
-<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+<div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Scope">
+        <input type="radio" class="btn-check" name="psm-scope" id="psm-scope-pw" value="portfolio_watchlist" checked>
+        <label class="btn btn-outline-primary btn-sm" for="psm-scope-pw">Portfolio + Watchlist</label>
+        <input type="radio" class="btn-check" name="psm-scope" id="psm-scope-universe" value="universe">
+        <label class="btn btn-outline-primary btn-sm" for="psm-scope-universe">Universe</label>
+    </div>
     <button id="psm-run-now-btn" class="btn btn-update" onclick="runPairsSpreadScanNow()">&#9654; Run Scan Now</button>
     <span id="psm-run-status" class="text-muted"></span>
 </div>
+<p id="psm-universe-note" class="text-muted text-sm mb-3 d-none">
+    Universe scans the full market universe (~thousands of tickers) and are on demand only —
+    not run automatically overnight. This can take up to a minute or two.
+</p>
 
 <div class="sentiment-module module-cyan">
     <div class="p-3 pb-0">
@@ -38,6 +46,7 @@
             <thead>
                 <tr>
                     <th class="tm-th-blue tm-th-left">Pair</th>
+                    <th class="tm-th-muted tm-th-left">Companies</th>
                     <th class="tm-th-blue tm-th-center"><abbr title="Pearson correlation of daily returns over the trailing 252-day window.">Correlation</abbr></th>
                     <th class="tm-th-amber tm-th-center"><abbr title="How many standard deviations the current log-spread is from its trailing-year mean.">Z-Score</abbr></th>
                     <th class="tm-th-muted tm-th-left">Direction</th>
@@ -47,7 +56,7 @@
             </thead>
             <tbody id="psm-tbody">
                 <tr>
-                    <td colspan="6" class="text-center p-4 text-muted">
+                    <td colspan="7" class="text-center p-4 text-muted">
                         No scan data yet. Click "Run Scan Now" or enable the scheduled job in Settings.
                     </td>
                 </tr>
@@ -56,9 +65,22 @@
     </div>
 </div>
 
-<div class="chart-wrapper d-none mt-3" id="psm-chart-wrapper">
-    <button class="fullscreen-btn" onclick="toggleFullscreen('psm-chart-wrapper')">&#9638; Fullscreen</button>
-    <div id="psm-chart"></div>
+<div class="modal fade" id="psm-chart-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="psm-chart-modal-title">Pair Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="psm-chart-stats" class="mb-3"></div>
+                <div class="chart-wrapper" id="psm-chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('psm-chart-wrapper')">&#9638; Fullscreen</button>
+                    <div id="psm-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
