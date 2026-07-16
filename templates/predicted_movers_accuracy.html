@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Predicted Movers Accuracy{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#127919; Predicted Movers Accuracy</h1>
+<p class="page-subtitle mb-4">
+    Per-ticker track record for Portfolio + Watchlist predictions, graded two ways once each
+    prediction's ~10-trading-day target date has passed: whether the actual price moved the
+    same direction as predicted, and whether it landed within the predicted
+    <abbr title="10th/90th percentile price band from the quantile regression model.">quantile band</abbr>.
+    A prediction can't be graded until its target date passes, so newly-logged tickers show
+    "Pending" with no accuracy % for the first couple of weeks.
+</p>
+
+<div class="mb-3">
+    <a href="/predicted-movers" class="btn btn-outline-secondary btn-sm">&#8592; Back to Predicted Movers</a>
+</div>
+
+<div class="row g-2 mb-3" id="pma-summary">
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">Total</h6><div id="pma-summary-total">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">Resolved</h6><div id="pma-summary-resolved">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">Pending</h6><div id="pma-summary-pending">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">Direction Accuracy</h6><div id="pma-summary-direction">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">Within-Band Accuracy</h6><div id="pma-summary-band">&mdash;</div></div></div></div>
+</div>
+
+<div class="sentiment-module module-cyan">
+    <div class="p-3 pb-0">
+        <h3 class="tm-ticker-heading">
+            Per-Ticker Accuracy
+            <span id="pma-count" class="tm-ticker-count"></span>
+        </h3>
+    </div>
+    <div class="overflow-auto p-3">
+        <table id="pma-table" class="tm-table w-100">
+            <thead>
+                <tr>
+                    <th class="tm-th-blue tm-th-left">Ticker</th>
+                    <th class="tm-th-muted tm-th-left">Company</th>
+                    <th class="tm-th-muted tm-th-right">Total</th>
+                    <th class="tm-th-muted tm-th-right">Resolved</th>
+                    <th class="tm-th-muted tm-th-right">Pending</th>
+                    <th class="tm-th-amber tm-th-right">Direction Accuracy %</th>
+                    <th class="tm-th-amber tm-th-right">Within-Band Accuracy %</th>
+                </tr>
+            </thead>
+            <tbody id="pma-tbody">
+                <tr>
+                    <td colspan="7" class="text-center p-4 text-muted">Loading…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/predicted_movers_accuracy.js?v={{ css_version }}"></script>
+{% endblock %}

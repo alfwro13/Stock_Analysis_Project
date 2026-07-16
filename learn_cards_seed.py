@@ -29,6 +29,7 @@ LEVELS = [
     ("dip-radar", "Dip Radar"),
     ("bubble-radar", "Bubble Radar"),
     ("pairs-spread-monitor", "Pairs Spread Monitor"),
+    ("predicted-movers", "Predicted Movers"),
     ("forensic-screener", "Forensic Screener"),
     ("fx-drag", "FX Drag Analyzer"),
     ("performance-analytics", "Portfolio Tearsheet"),
@@ -1678,6 +1679,49 @@ CARDS = [
         ],
         "explanation": """<p>By default the monitor scans your <strong>Portfolio + Watchlist</strong> — a small, fast scan that runs automatically on a schedule and fires alerts. A <strong>Universe</strong> scope is also available, scanning the full market universe (thousands of tickers) for correlated pairs you don't currently hold or watch.</p>
 <p>Universe is <strong>on-demand only</strong> — triggered manually from the report page, never run automatically. A full-universe correlation scan is expensive (many more tickers means many more candidate pairs to check), and firing alerts off a scan the operator didn't ask for and may not repeat again soon would defeat the point of the alert dedup/cooldown model, which assumes a recurring scan cadence. Universe results are shown on the page but never trigger a notification.</p>""",
+    },
+    # --- predicted-movers ---
+    {
+        "term_key": "what-predicted-movers-detects",
+        "section_id": "predicted-movers",
+        "term_title": "What Predicted Movers Detects",
+        "question": "How does Predicted Movers differ from the Market Reports leaders/laggards?",
+        "answer": "It ranks by the model's predicted forward move, not by actual historical price movement",
+        "distractors": [
+            "It trains a brand-new model just for this leaderboard",
+            "It only shows tickers that have already crashed",
+            "It replaces the ML Quantile Price Bands with a simpler point forecast",
+        ],
+        "explanation": """<p>The Market Reports leaders/laggards rank tickers by <strong>actual</strong> historical price movement — what already happened. <strong>Predicted Movers</strong> instead ranks by what the ML model currently <em>expects</em> to happen: the midpoint of the ML Quantile Price Band (Q10/Q90, a 10-trading-day-forward price range) versus the ticker's current price, expressed as a percentage move.</p>
+<p>This is purely a new way of sorting and viewing data the app already computes every night — no new model, no new prediction. Gainers are the tickers with the highest predicted upside, Losers the lowest (most negative), and Movers the largest predicted move in either direction.</p>""",
+    },
+    {
+        "term_key": "predicted-movers-scope",
+        "section_id": "predicted-movers",
+        "term_title": "Predicted Movers Scope: Leaderboard vs Accuracy Page",
+        "question": "Why does the Prediction Accuracy page have no Universe scope, unlike the leaderboard?",
+        "answer": "Tracking daily prediction accuracy across the entire multi-thousand-ticker universe would be a large amount of data for tickers nobody actually holds or watches",
+        "distractors": [
+            "Universe-scope tickers never receive a quantile prediction",
+            "The accuracy page requires a live options feed only available for held tickers",
+            "It is a temporary limitation that will be removed once storage improves",
+        ],
+        "explanation": """<p>The leaderboard has the same Portfolio+Watchlist / Universe scope toggle as Pairs Spread Monitor. Unlike that monitor, though, there's nothing to scan or trigger here — both scopes are answered by a live database query over data the nightly ML Inference job already wrote, so the page has no "Run Scan Now" button.</p>
+<p>The linked <strong>Prediction Accuracy</strong> page is Portfolio+Watchlist only, with no scope toggle — tracking daily prediction accuracy across the entire multi-thousand-ticker market universe would be a large amount of data nobody is actually holding or watching, so only tickers you actually own or follow get their predictions logged and graded.</p>""",
+    },
+    {
+        "term_key": "predicted-movers-direction-vs-band-match",
+        "section_id": "predicted-movers",
+        "term_title": "Prediction Accuracy: Direction Match vs Within-Band Match",
+        "question": "Why does the Prediction Accuracy page always show a mix of \"Resolved\" and \"Pending\" rows?",
+        "answer": "A prediction can't be graded until its ~10-trading-day horizon has actually passed",
+        "distractors": [
+            "Pending rows are predictions that failed to log correctly",
+            "The page refreshes every 10 minutes and Pending means it hasn't reloaded yet",
+            "Resolved and Pending refer to whether Nextcloud alerts are enabled",
+        ],
+        "explanation": """<p>Each day, the predicted price band for every Portfolio+Watchlist ticker is snapshotted. Roughly 10 trading days later, once the outcome is known, that prediction is graded two independent ways: <strong>direction match</strong> — did the actual price move the same way (up or down) as the predicted midpoint? — and <strong>within-band match</strong> — did the actual price land anywhere inside the predicted Q10–Q90 range, regardless of which way the midpoint pointed?</p>
+<p>A prediction can't be graded until its ~10-trading-day horizon has actually passed, so the accuracy page always shows a mix of "Resolved" and "Pending" rows — a newly-tracked ticker shows no accuracy percentage at all for its first couple of weeks. This is expected: the horizon is what the model was trained to predict, so there's no way to grade it sooner.</p>""",
     },
     # --- forensic-screener ---
     {

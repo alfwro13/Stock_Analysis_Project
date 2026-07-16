@@ -917,6 +917,30 @@ async def pairs_spread_monitor_page(request: Request):
     )
 
 
+@page_router.get("/predicted-movers", response_class=HTMLResponse)
+async def predicted_movers_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="predicted_movers.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
+@page_router.get("/predicted-movers/accuracy", response_class=HTMLResponse)
+async def predicted_movers_accuracy_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="predicted_movers_accuracy.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/forensic-screener", response_class=HTMLResponse)
 async def forensic_screener_page(request: Request):
     from scheduler_engine import get_all_job_last_runs

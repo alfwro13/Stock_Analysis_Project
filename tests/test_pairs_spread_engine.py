@@ -159,25 +159,19 @@ class TestBuildChartSeries:
 
 
 class TestGetUniverse:
-    def test_portfolio_watchlist_scope_unions_both(self):
+    def test_portfolio_watchlist_scope_delegates_to_shared_helper(self):
         engine = PairsSpreadEngine({})
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[T_B]):
+        with patch("pairs_spread_engine.get_portfolio_watchlist_tickers",
+                   return_value=[T_A, T_B]) as mock_helper:
             universe = engine._get_universe(SCOPE_PORTFOLIO_WATCHLIST)
-        assert universe == sorted([T_A, T_B])
-
-    def test_ignored_ticker_excluded(self):
-        engine = PairsSpreadEngine({"IGNORED_TICKERS": [T_A]})
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[T_B]):
-            universe = engine._get_universe(SCOPE_PORTFOLIO_WATCHLIST)
-        assert universe == [T_B]
+        mock_helper.assert_called_once_with()
+        assert universe == [T_A, T_B]
 
     def test_universe_scope_uses_market_universe_not_holdings(self):
         engine = PairsSpreadEngine({})
         with patch("pairs_spread_engine.get_universe_tickers", return_value=[T_A, T_B]), \
-             patch("pairs_spread_engine.get_combined_holdings", return_value={T_C: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[T_D]):
+             patch("pairs_spread_engine.get_portfolio_watchlist_tickers",
+                   return_value=[T_C, T_D]):
             universe = engine._get_universe(SCOPE_UNIVERSE)
         assert universe == sorted([T_A, T_B])
 
@@ -202,8 +196,8 @@ class TestRunScan:
         return _loader
 
     def _run(self, engine, loader, scope=SCOPE_PORTFOLIO_WATCHLIST):
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}, T_C: {}, T_D: {}}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]), \
+        with patch("pairs_spread_engine.get_portfolio_watchlist_tickers",
+                   return_value=sorted([T_A, T_B, T_C, T_D])), \
              patch("pairs_spread_engine.load_or_fetch_daily_history", side_effect=loader), \
              patch("xray_engine.load_or_fetch_daily_history", side_effect=loader):
             return engine.run_scan(scope=scope)
@@ -265,8 +259,7 @@ class TestRunScan:
         assert still_there > 0, "Universe scan must not clear portfolio_watchlist scope's rows"
 
         # Empty universe on the next portfolio_watchlist scan must clear its own stale rows.
-        with patch("pairs_spread_engine.get_combined_holdings", return_value={}), \
-             patch("pairs_spread_engine.get_watchlist_tickers", return_value=[]):
+        with patch("pairs_spread_engine.get_portfolio_watchlist_tickers", return_value=[]):
             engine.run_scan(scope=SCOPE_PORTFOLIO_WATCHLIST)
 
         conn = db.get_connection()

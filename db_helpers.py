@@ -50,6 +50,25 @@ def get_universe_tickers() -> List[str]:
             conn.close()
 
 
+def get_portfolio_watchlist_tickers() -> List[str]:
+    """Union of Portfolio + Watchlist tickers, uppercased/sorted, ignored-ticker-filtered — the
+    shared scope-union logic for any engine offering a Portfolio+Watchlist scope (Pairs Spread
+    Monitor, Predicted Movers). Local imports avoid a circular import: database.py imports this
+    module at module level, and accounts_engine.py imports database.py at module level."""
+    from accounts_engine import get_combined_holdings
+    from database import get_watchlist_tickers
+    from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
+
+    ignored = ignored_tickers_set(load_config())
+    tickers: set = set()
+    tickers.update(get_combined_holdings().keys())
+    tickers.update(get_watchlist_tickers())
+    return sorted(
+        t.upper() for t in tickers
+        if t and not is_excluded_from_yahoo_fetch(t, ignored)
+    )
+
+
 def get_mutual_fund_tickers(tickers: List[str]) -> set:
     """Subset of `tickers` classified MUTUALFUND — these have no intraday trading (one NAV
     print per day), so Yahoo Finance always returns empty for 5m bars. Checks asset_profiles
@@ -376,6 +395,98 @@ def get_trap_phase_accuracy() -> dict:
     except Exception as e:
         logger.error("get_trap_phase_accuracy failed: %s", e)
         return {"phases": [], "overall": {}}
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_unresolved_predicted_movers(cutoff: str) -> list:
+    """Every predicted_movers_history row whose ~10-trading-day target has passed but hasn't
+    been resolved yet — scanned in full each run (catch-up discipline), not just the newest."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT id, ticker, close_price, price_q10, price_q90, target_date
+               FROM predicted_movers_history
+               WHERE direction_correct IS NULL AND target_date <= ?
+               ORDER BY target_date""",
+            (cutoff,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_unresolved_predicted_movers failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def batch_update_predicted_movers_actuals(
+    payloads: list[tuple[int, float, str, int, int]],
+) -> None:
+    """Single-transaction update; each payload is
+    (row_id, actual_price, actual_date, direction_correct, within_band_correct)."""
+    if not payloads:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        for row_id, actual_price, actual_date, direction_correct, within_band_correct in payloads:
+            conn.execute(
+                """UPDATE predicted_movers_history
+                   SET actual_price=?, actual_date=?, direction_correct=?, within_band_correct=?
+                   WHERE id=?""",
+                (actual_price, actual_date, direction_correct, within_band_correct, row_id),
+            )
+        conn.commit()
+    except Exception as e:
+        logger.error("batch_update_predicted_movers_actuals failed (%d rows): %s", len(payloads), e)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_predicted_movers_accuracy() -> dict:
+    """Per-ticker + overall direction-match / within-band-match hit rates. `resolved` counts
+    rows whose ~10-trading-day target_date has passed and been graded; `pending` are still
+    within that window. Accuracy percentages are computed over resolved rows only."""
+    conn = None
+    try:
+        conn = get_connection()
+        by_ticker = [
+            dict(r) for r in conn.execute(
+                """SELECT
+                    ticker,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN direction_correct IS NOT NULL THEN 1 ELSE 0 END) AS resolved,
+                    SUM(CASE WHEN direction_correct IS NULL THEN 1 ELSE 0 END) AS pending,
+                    ROUND(AVG(CASE WHEN direction_correct IS NOT NULL
+                              THEN direction_correct END) * 100, 1) AS direction_accuracy,
+                    ROUND(AVG(CASE WHEN within_band_correct IS NOT NULL
+                              THEN within_band_correct END) * 100, 1) AS within_band_accuracy
+                   FROM predicted_movers_history
+                   GROUP BY ticker
+                   ORDER BY ticker"""
+            ).fetchall()
+        ]
+        overall = dict(conn.execute(
+            """SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN direction_correct IS NOT NULL THEN 1 ELSE 0 END) AS resolved,
+                SUM(CASE WHEN direction_correct IS NULL THEN 1 ELSE 0 END) AS pending,
+                ROUND(AVG(CASE WHEN direction_correct IS NOT NULL
+                          THEN direction_correct END) * 100, 1) AS direction_accuracy,
+                ROUND(AVG(CASE WHEN within_band_correct IS NOT NULL
+                          THEN within_band_correct END) * 100, 1) AS within_band_accuracy
+               FROM predicted_movers_history"""
+        ).fetchone())
+        return {"by_ticker": by_ticker, "overall": overall}
+    except Exception as e:
+        logger.error("get_predicted_movers_accuracy failed: %s", e)
+        return {"by_ticker": [], "overall": {}}
     finally:
         if conn:
             conn.close()

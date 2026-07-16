@@ -7,10 +7,9 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from accounts_engine import get_combined_holdings
 from data_engine import load_or_fetch_daily_history
-from database import get_connection, get_watchlist_tickers
-from db_helpers import get_ticker_currency_map, get_universe_tickers
+from database import get_connection
+from db_helpers import get_portfolio_watchlist_tickers, get_ticker_currency_map, get_universe_tickers
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 from xray_engine import fetch_close_returns_from_parquet
 
@@ -134,14 +133,11 @@ class PairsSpreadEngine:
     def _get_universe(self, scope: str) -> list[str]:
         if scope == SCOPE_UNIVERSE:
             tickers: set[str] = set(get_universe_tickers())
-        else:
-            tickers = set()
-            tickers.update(get_combined_holdings().keys())
-            tickers.update(get_watchlist_tickers())
-        return sorted(
-            t.upper() for t in tickers
-            if t and not is_excluded_from_yahoo_fetch(t, self.ignored_tickers)
-        )
+            return sorted(
+                t.upper() for t in tickers
+                if t and not is_excluded_from_yahoo_fetch(t, self.ignored_tickers)
+            )
+        return get_portfolio_watchlist_tickers()
 
     @staticmethod
     def _currency_map(tickers: list[str], conn) -> dict:
