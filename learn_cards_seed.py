@@ -240,6 +240,20 @@ CARDS = [
         "explanation": """<p>Some major indexes — the S&amp;P 500, Nasdaq 100, Dow Jones, Russell 2000, and Nikkei 225 — trade two ways: a <strong>cash/spot</strong> price only available while that exchange's regular session is open, and a <strong>futures</strong> contract that trades almost continuously, including outside regular hours. The Markets page shows both as two adjacent tiles, labeled "Index" and "Futures", so it's never ambiguous which instrument a price belongs to — the futures tile is colored purely by how fresh its own data is (it has no "market closed" state of its own, since it trades near-continuously), while the index tile still greys out while its cash market is shut. A "Hide Futures" checkbox in the United States section header (saved in a cookie, so it stays hidden on your next visit) drops the four US futures tiles (S&amp;P 500, Nasdaq 100, Dow, Russell 2000) if you'd rather only see the cash indexes — it has no effect on the Nikkei 225 futures tile in the Asia section. The compact Market Pulse widget (Portfolio/Watchlist/Stock Detail) is different: it shows only one of the two, automatically swapping to the futures price and label whenever the cash market is closed or in pre-market, since it has room for a single summary tile per index rather than a pair.</p>""",
     },
     {
+        "term_key": "pre-market-after-hours-price",
+        "section_id": "market-fundamentals",
+        "term_title": "Pre-Market / After-Hours Price",
+        "question": "How does this app decide whether a price shown is the regular closing price or a pre-market/after-hours tick?",
+        "answer": "It reads Yahoo Finance's own marketState flag directly — it never guesses the session from the time of day",
+        "distractors": [
+            "It compares the price against yesterday's close and assumes any big move must be extended-hours",
+            "It infers the session from the server's local wall-clock time",
+            "It always treats the most recent tick as the regular closing price, whatever session it came from",
+        ],
+        "explanation": """<p>US exchanges trade a stock two extra ways outside the regular 9:30am–4pm ET session: <strong>pre-market</strong> (before the open) and <strong>after-hours</strong> (after the close). These extended sessions have far lower trading volume than the regular session, so a pre-market or after-hours price can move sharply on relatively little volume and often settles back once the regular session resumes — it's a genuine, real trade, but not yet a broad consensus price the way the regular session's close is.</p>
+<p>Because of that, this app treats extended-hours prices as <strong>display-only, never as market data</strong>: your <strong>Market Price</strong> column, P&amp;L, and portfolio totals always use the last completed regular-session price — never a pre-market or after-hours tick — sourced directly from Yahoo Finance's own <code>marketState</code> flag rather than guessed from the time of day, so it's never ambiguous which one you're looking at. On the <strong>Stock Detail</strong> page, whenever Yahoo reports an active pre-market or after-hours session for that ticker, its price is shown on its own line labeled "Pre-Market" or "After Hours". On the <strong>Portfolio</strong> page, a "Show After Market Data" switch next to the Change Period buttons reveals the same figure in brackets under each holding's Market Price when available, purely for information.</p>""",
+    },
+    {
         "term_key": "futures-contracts",
         "section_id": "market-fundamentals",
         "term_title": "Futures Contracts — Obligations, Not Options",

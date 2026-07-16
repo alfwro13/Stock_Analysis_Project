@@ -390,7 +390,10 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache")
+        cursor.execute(
+            "SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
+            "extended_price, extended_change_pts, extended_change_pct, extended_session FROM market_pulse_cache"
+        )
         rows = cursor.fetchall()
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to read pulse cache: %s", e)
@@ -411,7 +414,11 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
             "change_pts": row['change_pts'],
             "change_pct": row['change_pct'],
             "is_positive": bool(row['is_positive']),
-            "is_stale": is_stale
+            "is_stale": is_stale,
+            "extended_price": row['extended_price'],
+            "extended_change_pts": row['extended_change_pts'],
+            "extended_change_pct": row['extended_change_pct'],
+            "extended_session": row['extended_session'],
         }
     return cache
 
@@ -487,7 +494,11 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
         if all_tickers:
             placeholders = ','.join('?' for _ in all_tickers)
 
-            cursor.execute(f"SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})", all_tickers)
+            cursor.execute(
+                f"SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
+                f"extended_price, extended_change_pts, extended_change_pct, extended_session "
+                f"FROM market_pulse_cache WHERE ticker IN ({placeholders})", all_tickers
+            )
             rows = cursor.fetchall()
 
             query = f"""
@@ -552,6 +563,10 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "asset_type": asset_type,
                 "is_pulse_mobile": is_pulse_mobile,
                 "currency": currency,
+                "extended_price": row['extended_price'],
+                "extended_change_pts": row['extended_change_pts'],
+                "extended_change_pct": row['extended_change_pct'],
+                "extended_session": row['extended_session'],
             }
         else:
             data_obj = {
@@ -568,6 +583,10 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "asset_type": asset_type,
                 "is_pulse_mobile": is_pulse_mobile,
                 "currency": currency,
+                "extended_price": None,
+                "extended_change_pts": None,
+                "extended_change_pct": None,
+                "extended_session": None,
             }
 
         if t in pulse_index_tickers:
@@ -724,37 +743,70 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         )
                     continue
 
-                if t_live.empty:
-                    # Daily-priced instrument (e.g. mutual fund) — use most recent daily close.
-                    current_price = float(t_daily['Close'].iloc[-1])
-                    prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
-                else:
-                    current_price = float(t_live['Close'].iloc[-1])
-                    exchange_open = is_exchange_open(resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map))
-                    if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), exchange_open) and len(t_daily) >= 2:
-                        prev_close = float(t_daily['Close'].iloc[-2])
-                        prev_close_date = t_daily.index[-2].date()
+                # Session (regular/pre/post) always comes from Yahoo's own marketState, never guessed from the clock.
+                snapshot = yahoo_engine.get_quote_snapshot(ticker)
+                market_state: Optional[str] = None
+                extended_price: Optional[float] = None
+                extended_change_pts: Optional[float] = None
+                extended_change_pct: Optional[float] = None
+                extended_session: Optional[str] = None
+
+                if snapshot and snapshot.get('regular_price') is not None:
+                    current_price = float(snapshot['regular_price'])
+                    market_state = snapshot.get('market_state')
+
+                    if snapshot.get('regular_change') is not None and snapshot.get('regular_change_pct') is not None:
+                        change_pts = float(snapshot['regular_change'])
+                        change_pct = float(snapshot['regular_change_pct'])
                     else:
-                        prev_close = float(t_daily['Close'].iloc[-1])
-                        prev_close_date = t_daily.index[-1].date()
+                        prev_close = snapshot.get('regular_previous_close')
+                        prev_close = float(prev_close) if prev_close is not None else float(t_daily['Close'].iloc[-1])
+                        change_pts = current_price - prev_close
+                        change_pct = (change_pts / prev_close) * 100.0 if prev_close else 0.0
 
-                    # Yahoo's daily chart-history endpoint can silently drop rows out of the
-                    # middle of the requested window for some symbols (seen on ^KS200: period="5d"
-                    # returned only 2 rows with a 6-day gap between them, even once the endpoint
-                    # "caught up" and its last row again matched today) — checking only the
-                    # feed's last date isn't enough once it re-includes today, since the row
-                    # actually used as prev_close can still be several sessions further back.
-                    # When that row is implausibly old next to the live feed, prefer the
-                    # quoteSummary endpoint's own previousClose (a separate Yahoo endpoint, not
-                    # similarly affected) instead.
-                    if (t_live.index[-1].date() - prev_close_date).days > 3:
-                        info = yahoo_engine.get_ticker_info(ticker)
-                        info_prev_close = info.get("regularMarketPreviousClose") if info else None
-                        if info_prev_close:
-                            prev_close = float(info_prev_close)
+                    if market_state in _PRE_MARKET_STATES and snapshot.get('pre_market_price') is not None:
+                        extended_price = float(snapshot['pre_market_price'])
+                        extended_change_pts = float(snapshot['pre_market_change']) if snapshot.get('pre_market_change') is not None else None
+                        extended_change_pct = float(snapshot['pre_market_change_pct']) if snapshot.get('pre_market_change_pct') is not None else None
+                        extended_session = 'pre'
+                    elif market_state in _POST_MARKET_STATES and snapshot.get('post_market_price') is not None:
+                        extended_price = float(snapshot['post_market_price'])
+                        extended_change_pts = float(snapshot['post_market_change']) if snapshot.get('post_market_change') is not None else None
+                        extended_change_pct = float(snapshot['post_market_change_pct']) if snapshot.get('post_market_change_pct') is not None else None
+                        extended_session = 'post'
+                else:
+                    # Self-healing fallback when Yahoo's quote snapshot is unavailable — extended_* stays cleared, never guessed.
+                    if t_live.empty:
+                        # Daily-priced instrument (e.g. mutual fund) — use most recent daily close.
+                        current_price = float(t_daily['Close'].iloc[-1])
+                        prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
+                    else:
+                        current_price = float(t_live['Close'].iloc[-1])
+                        exchange_open = is_exchange_open(resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map))
+                        if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), exchange_open) and len(t_daily) >= 2:
+                            prev_close = float(t_daily['Close'].iloc[-2])
+                            prev_close_date = t_daily.index[-2].date()
+                        else:
+                            prev_close = float(t_daily['Close'].iloc[-1])
+                            prev_close_date = t_daily.index[-1].date()
 
-                change_pts: float = current_price - prev_close
-                change_pct: float = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
+                        # Yahoo's daily chart-history endpoint can silently drop rows out of the
+                        # middle of the requested window for some symbols (seen on ^KS200: period="5d"
+                        # returned only 2 rows with a 6-day gap between them, even once the endpoint
+                        # "caught up" and its last row again matched today) — checking only the
+                        # feed's last date isn't enough once it re-includes today, since the row
+                        # actually used as prev_close can still be several sessions further back.
+                        # When that row is implausibly old next to the live feed, prefer the
+                        # quoteSummary endpoint's own previousClose (a separate Yahoo endpoint, not
+                        # similarly affected) instead.
+                        if (t_live.index[-1].date() - prev_close_date).days > 3:
+                            info = yahoo_engine.get_ticker_info(ticker)
+                            info_prev_close = info.get("regularMarketPreviousClose") if info else None
+                            if info_prev_close:
+                                prev_close = float(info_prev_close)
+
+                    change_pts = current_price - prev_close
+                    change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
                 if abs(change_pct) > 50.0:
                     logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
@@ -765,16 +817,23 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
                 cursor.execute('''
                     INSERT INTO market_pulse_cache
-                    (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
+                     market_state, extended_price, extended_change_pts, extended_change_pct, extended_session)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker) DO UPDATE SET
                         name = excluded.name,
                         price = excluded.price,
                         change_pts = excluded.change_pts,
                         change_pct = excluded.change_pct,
                         is_positive = excluded.is_positive,
-                        last_updated = excluded.last_updated
-                ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time))
+                        last_updated = excluded.last_updated,
+                        market_state = COALESCE(excluded.market_state, market_pulse_cache.market_state),
+                        extended_price = excluded.extended_price,
+                        extended_change_pts = excluded.extended_change_pts,
+                        extended_change_pct = excluded.extended_change_pct,
+                        extended_session = excluded.extended_session
+                ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time,
+                      market_state, extended_price, extended_change_pts, extended_change_pct, extended_session))
 
                 # Full replace, not append — the mini sparkline is inherently "today's session".
                 # Skipped when t_live is empty (market closed) so the last session's line persists
@@ -792,17 +851,6 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         )
                     except Exception as e:
                         logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
-
-                if ticker in _MARKET_STATUS_PROXY.values():
-                    try:
-                        state = yahoo_engine.get_market_state(ticker)
-                        if state:
-                            cursor.execute(
-                                "UPDATE market_pulse_cache SET market_state = ? WHERE ticker = ?",
-                                (state, ticker),
-                            )
-                    except Exception as e:
-                        logger.error("[MARKET PULSE] Failed to fetch market_state for %s: %s", ticker, e)
 
             except Exception as e:
                 logger.error(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")

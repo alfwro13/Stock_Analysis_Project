@@ -402,7 +402,11 @@ def init_db() -> None:
                 change_pct REAL,
                 is_positive BOOLEAN,
                 last_updated REAL,
-                market_state TEXT
+                market_state TEXT,
+                extended_price REAL,
+                extended_change_pts REAL,
+                extended_change_pct REAL,
+                extended_session TEXT
             )
         ''')
 
@@ -1350,6 +1354,19 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE market_pulse_cache ADD COLUMN market_state TEXT")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on market_pulse_cache: %s", e)
+
+    cursor.execute("PRAGMA table_info(market_pulse_cache)")
+    existing_pulse_columns = [info['name'] for info in cursor.fetchall()]
+    for extended_col, col_type in (
+        ('extended_price', 'REAL'), ('extended_change_pts', 'REAL'),
+        ('extended_change_pct', 'REAL'), ('extended_session', 'TEXT'),
+    ):
+        if extended_col not in existing_pulse_columns:
+            try:
+                logger.info("[MIGRATION] Adding column: %s to market_pulse_cache...", extended_col)
+                cursor.execute(f"ALTER TABLE market_pulse_cache ADD COLUMN {extended_col} {col_type}")
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on market_pulse_cache.%s: %s", extended_col, e)
 
     cursor.execute("PRAGMA table_info(accounts)")
     existing_account_columns = [info['name'] for info in cursor.fetchall()]

@@ -17,6 +17,7 @@ window.ENABLE_LIVE_ASSETS = {% if not embed and config and config.UI_PREFERENCES
 window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000{% else %}60000{% endif %};
 window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
 window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
+window.SHOW_EXTENDED_HOURS = {% if show_extended %}true{% else %}false{% endif %};
 window.EMBED_MODE = {% if embed %}true{% else %}false{% endif %};
 window.EMBED_TOKEN = {{ embed_token | tojson }};
 </script>
@@ -113,6 +114,13 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
         <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="ytd">YTD</button>
         <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1y">1Y</button>
     </div>
+    <div class="form-check form-switch extended-hours-toggle">
+        <input class="form-check-input" type="checkbox" role="switch" id="showExtendedToggle"
+               {% if show_extended %}checked{% endif %} onchange="toggleExtendedHours(this.checked)">
+        <label class="form-check-label" for="showExtendedToggle">
+            <abbr title="Shows the latest pre-market or after-hours tick in brackets under Price — for information only, never used in P&amp;L or totals.">Show After Market Data</abbr>
+        </label>
+    </div>
 </div>
 
 <div id="heatmap-panel" class="heatmap-panel"></div>
@@ -189,6 +197,15 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
                         N/A
                     {% endif %}
                 </span>
+                <br>
+                <small id="extended-{{ item.ticker }}" class="cell-sub extended-hours-cell {% if not show_extended %}d-none{% endif %}">
+                    {% if cp and cp.extended_session %}
+                        {% set esym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
+                        {% set eval = (cp.extended_price / 100.0) if item.currency == 'GBp' else cp.extended_price %}
+                        {% set esign = '+' if (cp.extended_change_pct or 0) >= 0 else '' %}
+                        ({{ 'Pre-Market' if cp.extended_session == 'pre' else 'After Hours' }}: {{ esym }}{{ "{:,.2f}".format(eval) }} {{ esign }}{{ "{:,.2f}".format(cp.extended_change_pct|float) }}%)
+                    {% endif %}
+                </small>
             </td>
 
             <td data-sort="{{ item.change_pct if item.change_pct is not none else 0 }}" class="num-cell">

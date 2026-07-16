@@ -53,7 +53,7 @@ _TTLS: dict[str, int] = {
     "annual_financials":     86400,  # 24 h — annual statements change quarterly
     "isin_search":           86400,  # 24 h — ISIN→ticker mapping is stable
     "ticker_search":          3600,  # 1 h — company-name/ticker autocomplete
-    "market_state":            300,  # 5 min — needs to reflect the live open/closed transition
+    "quote_snapshot":          300,  # 5 min — needs to reflect the live open/closed transition
 }
 
 
@@ -352,25 +352,35 @@ class YahooEngine:
             logger.error("get_ticker_info failed for %s", ticker, exc_info=True)
         return None
 
-    def get_market_state(self, ticker: str) -> Optional[str]:
-        """Live yfinance marketState ('REGULAR'/'PRE'/'POST'/'CLOSED'/...), cached 5 min —
-        deliberately much shorter than get_ticker_info's 6h TTL since this must reflect the
-        live open/closed transition, including exchange holidays get_ticker_info's cache would
-        otherwise mask for hours."""
-        key = f"market_state:{ticker}"
+    def get_quote_snapshot(self, ticker: str) -> Optional[dict]:
+        """Yahoo's own marketState/regularMarketPrice/preMarketPrice/postMarketPrice fields in one call, cached 5 min — never guess session from wall-clock time."""
+        key = f"quote_snapshot:{ticker}"
         cached = self._get(key)
         if cached is not None:
             return cached
         try:
             with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Market State: {ticker}") as session:
+                with yahoo_connection_boundary(f"Quote Snapshot: {ticker}") as session:
                     info = yf.Ticker(ticker, session=session).info
-            state = info.get("marketState") if info else None
-            if state:
-                self._set(key, state, _TTLS["market_state"])
-                return state
+            if not info or info.get("regularMarketPrice") is None:
+                return None
+            snapshot = {
+                "market_state": info.get("marketState"),
+                "regular_price": info.get("regularMarketPrice"),
+                "regular_change": info.get("regularMarketChange"),
+                "regular_change_pct": info.get("regularMarketChangePercent"),
+                "regular_previous_close": info.get("regularMarketPreviousClose"),
+                "pre_market_price": info.get("preMarketPrice"),
+                "pre_market_change": info.get("preMarketChange"),
+                "pre_market_change_pct": info.get("preMarketChangePercent"),
+                "post_market_price": info.get("postMarketPrice"),
+                "post_market_change": info.get("postMarketChange"),
+                "post_market_change_pct": info.get("postMarketChangePercent"),
+            }
+            self._set(key, snapshot, _TTLS["quote_snapshot"])
+            return snapshot
         except Exception:
-            logger.error("get_market_state failed for %s", ticker, exc_info=True)
+            logger.error("get_quote_snapshot failed for %s", ticker, exc_info=True)
         return None
 
     def get_options_expirations(self, ticker: str) -> Optional[list]:

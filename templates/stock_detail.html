@@ -220,6 +220,12 @@
                             -
                         {% endif %}
                     </span>
+                    <span id="extended-{{ stock.ticker }}" class="ml-15 cell-sub {% if not (cp and cp.extended_session) %}d-none{% endif %}">
+                        {% if cp and cp.extended_session %}
+                            {% set esign = '+' if (cp.extended_change_pct or 0) >= 0 else '' %}
+                            ({{ 'Pre-Market' if cp.extended_session == 'pre' else 'After Hours' }}: {{ display_price(cp.extended_price, stock.currency) }} {{ esign }}{{ cp.extended_change_pct|round(2) }}%)
+                        {% endif %}
+                    </span>
                 </div>
                 <div id="refresh-status" class="live-refresh-status"></div>
 
@@ -710,6 +716,7 @@
     window.STOCK_CURRENT_PRICE = {{ stock.current_price | tojson }};
     window.STOCK_ATR_PCT     = {{ stock.atr_pct | tojson }};
     window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
+    window.SHOW_EXTENDED_HOURS = true;
     window.REFRESH_RATE_MS   = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
     window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
     window.BASE_CURRENCY     = "{{ position_sizing.base_currency }}";

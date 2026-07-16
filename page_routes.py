@@ -344,6 +344,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     change_period = request.cookies.get("portfolio_change_period", "1d")
     if change_period not in CHANGE_PERIODS:
         change_period = "1d"
+    show_extended = request.cookies.get("portfolio_show_extended", "false") == "true"
 
     for row_dict in portfolio_data:
         row_dict['market_value_base'] = None
@@ -427,7 +428,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "cached_pulse": live_pulse,
             "macro_regime": macro_regime,
             "position_sizing": position_sizing_context,
-            "change_period": change_period
+            "change_period": change_period,
+            "show_extended": show_extended
         }
     )
 

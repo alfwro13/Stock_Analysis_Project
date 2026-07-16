@@ -484,21 +484,44 @@ class TestGetTickerInfo:
         assert result is None
 
 
-class TestGetMarketState:
+class TestGetQuoteSnapshot:
 
     def setup_method(self):
         self.eng = YahooEngine()
 
     @patch("yahoo_engine.yahoo_connection_boundary")
-    def test_returns_market_state(self, mock_ctx):
+    def test_returns_regular_and_market_state(self, mock_ctx):
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
-            mock_tk_cls.return_value.info = {"marketState": "REGULAR"}
-            result = self.eng.get_market_state("^GSPC")
+            mock_tk_cls.return_value.info = {
+                "marketState": "REGULAR", "regularMarketPrice": 101.5,
+                "regularMarketChange": 1.5, "regularMarketChangePercent": 1.5,
+            }
+            result = self.eng.get_quote_snapshot("AAPL")
 
-        assert result == "REGULAR"
+        assert result["market_state"] == "REGULAR"
+        assert result["regular_price"] == 101.5
+        assert result["regular_change"] == 1.5
+        assert result["pre_market_price"] is None
+        assert result["post_market_price"] is None
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_pre_market_fields(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {
+                "marketState": "PRE", "regularMarketPrice": 100.0,
+                "preMarketPrice": 100.8, "preMarketChange": 0.8, "preMarketChangePercent": 0.8,
+            }
+            result = self.eng.get_quote_snapshot("AAPL")
+
+        assert result["market_state"] == "PRE"
+        assert result["pre_market_price"] == 100.8
+        assert result["post_market_price"] is None
 
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_caches_result(self, mock_ctx):
@@ -506,34 +529,34 @@ class TestGetMarketState:
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
-            mock_tk_cls.return_value.info = {"marketState": "CLOSED"}
-            self.eng.get_market_state("^GSPC")
-            self.eng.get_market_state("^GSPC")
+            mock_tk_cls.return_value.info = {"marketState": "CLOSED", "regularMarketPrice": 100.0}
+            self.eng.get_quote_snapshot("^GSPC")
+            self.eng.get_quote_snapshot("^GSPC")
             assert mock_tk_cls.call_count == 1
 
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_cache_key_independent_from_get_ticker_info(self, mock_ctx):
-        """A prior get_ticker_info() call for the same ticker must not satisfy get_market_state()
+        """A prior get_ticker_info() call for the same ticker must not satisfy get_quote_snapshot()
         from its (much longer-lived) cache entry."""
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
-            mock_tk_cls.return_value.info = {"marketState": "REGULAR", "symbol": "^GSPC"}
+            mock_tk_cls.return_value.info = {"marketState": "REGULAR", "regularMarketPrice": 100.0, "symbol": "^GSPC"}
             self.eng.get_ticker_info("^GSPC")
-            result = self.eng.get_market_state("^GSPC")
+            result = self.eng.get_quote_snapshot("^GSPC")
 
-        assert result == "REGULAR"
+        assert result["market_state"] == "REGULAR"
         assert mock_tk_cls.call_count == 2
 
     @patch("yahoo_engine.yahoo_connection_boundary")
-    def test_returns_none_when_marketstate_missing(self, mock_ctx):
+    def test_returns_none_when_regular_market_price_missing(self, mock_ctx):
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
             mock_tk_cls.return_value.info = {"symbol": "^GSPC"}
-            result = self.eng.get_market_state("^GSPC")
+            result = self.eng.get_quote_snapshot("^GSPC")
 
         assert result is None
 
@@ -543,7 +566,7 @@ class TestGetMarketState:
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("no data")):
-            result = self.eng.get_market_state("BAD")
+            result = self.eng.get_quote_snapshot("BAD")
 
         assert result is None
 
