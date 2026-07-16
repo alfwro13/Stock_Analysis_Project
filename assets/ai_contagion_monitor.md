@@ -58,6 +58,14 @@ Both calls use the existing `yahoo_engine` cache layer. Intraday failures are ca
 
 ---
 
+## 3a. Flash-Crash Detection & Alerting (`AIContagionEngine.scan()`)
+
+Runs on the scheduled `ai_contagion_job` (default mon-fri 08:20–18:00 UTC, every 20 min). Requires two-tier confirmation: at least one bellwether drops past `LEADER_THRESHOLD_PCT` **and** at least one ETF confirms past `ETF_CONFIRMATION_THRESHOLD_PCT`, both measured as drawdown from the previous trading day's close using 15-min bars (`period="2d"`, `prepost=True`).
+
+`_evaluate_ticker()` requires the frame's most recent bar to actually be **today** (`datetime.now(timezone.utc).date()`) before treating it as current — added 2026-07-16. Without this check, a ticker whose 15-min feed hadn't posted a single bar for today yet (a lagging premarket print right at the scan's early 08:20 UTC start, or a ticker-specific gap) would have its last row still be yesterday's close, and the function would silently recompute yesterday's already-alerted drawdown as if it were a fresh event. Confirmed on production: the alert fired with byte-identical per-ticker percentages on 2026-07-03 and 2026-07-06. Dedup itself is a once-per-UTC-day count (`_evaluate_daily_alert_gate`, `NOTIFICATIONS.AI_CONTAGION.MAX_ALERTS_PER_DAY`) rather than the worsened/recovered model, per AGENTS.md rule 19 — so this staleness check is the only thing standing between a data gap and a spurious "new" alert.
+
+---
+
 ## 4. Key Files
 
 | File | Role |

@@ -42,11 +42,19 @@ _CFG = {
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _make_intraday_df(prev_close: float, curr_close: float, volume: float = 500_000.0) -> pd.DataFrame:
-    """Minimal 2-day 15-min DataFrame suitable for _evaluate_ticker."""
+def _make_intraday_df(prev_close: float, curr_close: float, volume: float = 500_000.0,
+                       today: datetime = None) -> pd.DataFrame:
+    """Minimal 2-day 15-min DataFrame suitable for _evaluate_ticker. Defaults the "current" day
+    to real UTC today, since _evaluate_ticker now requires the frame's last date to actually be
+    today (see the stale-data-reuse fix, 2026-07-16) — pass an explicit `today` to build a
+    deliberately-stale frame for that regression test."""
+    today = today or datetime.now(timezone.utc)
+    yesterday = today - timedelta(days=1)
     idx = pd.DatetimeIndex([
-        "2026-01-01 15:00:00", "2026-01-01 15:15:00",
-        "2026-01-02 15:00:00", "2026-01-02 15:15:00",
+        yesterday.replace(hour=15, minute=0, second=0, microsecond=0),
+        yesterday.replace(hour=15, minute=15, second=0, microsecond=0),
+        today.replace(hour=15, minute=0, second=0, microsecond=0),
+        today.replace(hour=15, minute=15, second=0, microsecond=0),
     ])
     return pd.DataFrame(
         {"Close": [prev_close, prev_close, curr_close - 0.5, curr_close], "Volume": [volume] * 4},
@@ -227,6 +235,55 @@ class TestScanTwoTier:
         finally:
             conn.close()
         assert result[0]["intraday_pct"] < 0
+
+
+# ── stale-data-reuse guard (2026-07-16) ───────────────────────────────────────
+
+class TestStaleFrameGuard:
+    """_evaluate_ticker must not treat a frame whose last bar isn't actually today as fresh —
+    otherwise a lagging premarket feed silently reuses yesterday's already-alerted drawdown."""
+
+    def _make_stale_basket(self, leader_drop_pct: float, etf_drop_pct: float) -> dict:
+        """Every ticker's frame's last bar is yesterday (or older), not real UTC today."""
+        stale_today = datetime.now(timezone.utc) - timedelta(days=1)
+        prev = 100.0
+        return {
+            "NVDA": _make_intraday_df(prev, prev * (1 - leader_drop_pct), today=stale_today),
+            "AMD":  _make_intraday_df(prev, prev * (1 - leader_drop_pct), today=stale_today),
+            "SMH":  _make_intraday_df(prev, prev * (1 - etf_drop_pct), today=stale_today),
+        }
+
+    def test_stale_frame_produces_no_candidate(self):
+        basket = self._make_stale_basket(0.05, 0.03)
+        engine = AIContagionEngine(_CFG)
+        conn = _get_conn()
+        try:
+            with (
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
+                patch.object(engine, "_fetch_basket_data", return_value=basket),
+                patch.object(engine, "_check_volume_spike", return_value=False),
+            ):
+                result = engine.scan()
+        finally:
+            conn.close()
+        assert result == []
+
+    def test_fresh_frame_still_produces_candidate(self):
+        """Control: the same shock, with a genuinely fresh last bar, still fires — the guard
+        must not be so strict it blocks real same-day events."""
+        basket = self._make_basket = TestScanTwoTier()._make_basket(0.05, 0.03)
+        engine = AIContagionEngine(_CFG)
+        conn = _get_conn()
+        try:
+            with (
+                patch("ai_contagion_engine.is_quote_settled", return_value=True),
+                patch.object(engine, "_fetch_basket_data", return_value=basket),
+                patch.object(engine, "_check_volume_spike", return_value=False),
+            ):
+                result = engine.scan()
+        finally:
+            conn.close()
+        assert len(result) == 1
 
 
 # ── record_scan_snapshot() ────────────────────────────────────────────────────

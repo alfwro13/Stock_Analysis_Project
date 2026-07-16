@@ -199,6 +199,16 @@ class IntradayOrchestrator:
             "rearm_percent": float(block.get("REARM_PERCENT", 3.0)),
         }
 
+    @staticmethod
+    def _touch_alert_state_date(engine: str, ticker: str, today: str, cursor: sqlite3.Cursor) -> None:
+        """Bumps state_date to today without touching fingerprint/last_price/armed/last_fired_utc —
+        keeps an ongoing, correctly-suppressed condition from aging out of _prune_alert_state's 7-day
+        cutoff purely because it hasn't needed to fire again."""
+        cursor.execute(
+            "UPDATE alert_state SET state_date = ? WHERE engine = ? AND ticker = ?",
+            (today, engine, ticker),
+        )
+
     def _evaluate_alert_gate(
         self,
         engine: str,
@@ -237,6 +247,8 @@ class IntradayOrchestrator:
             # Case 4: same condition, suppressed. Need price to make decisions.
             last_price = row["last_price"]
             if current_price is None or last_price in (None, 0):
+                self._touch_alert_state_date(engine, ticker, today, cursor)
+                conn.commit()
                 return True  # can't compare; stay safe and suppress
 
             if engine == "TrapMonitor":
@@ -285,7 +297,14 @@ class IntradayOrchestrator:
             if cooldown_ok and worsened_pct >= settings["retrigger_percent"]:
                 return False  # fire: enough time passed AND it materially worsened
 
-            # Case 4c: still inside suppression window.
+            # Case 4c: still inside suppression window. Touch state_date so an ongoing-but-unchanged
+            # condition is treated as "still live" by _prune_alert_state — otherwise a condition that
+            # simply never fires again (because it's genuinely not worsening) goes >7 days without its
+            # row being written and gets pruned, and the next scan sees "no prior state" (Case 1) and
+            # fires as if brand new even though nothing changed. Found 2026-07-16: this produced a ~weekly
+            # repeat of byte-identical Trap Monitor alerts for MSFT/META.
+            self._touch_alert_state_date(engine, ticker, today, cursor)
+            conn.commit()
             return True
 
         except Exception as e:
