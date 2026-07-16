@@ -469,7 +469,10 @@ CARDS = [
                         <div class="candle">
                             <div class="wick h-100 t-0"></div>
                             <div class="body-green h-30 t-10"></div>
-                        </div>""",
+                        </div>
+                    </div>
+                    <div class="candle-explanation">Sellers drove price down hard during the session, but institutional buyers rejected the lows and pushed it back up before the close. The tiny body near the top and long lower wick is the rejection signal.</div>
+                </div>""",
     },
     {
         "term_key": "bullish-engulfing",
@@ -490,7 +493,14 @@ CARDS = [
                         <div class="candle">
                             <div class="wick h-60 t-20"></div>
                             <div class="body-red h-40 t-30"></div>
-                        </div>""",
+                        </div>
+                        <div class="candle">
+                            <div class="wick h-100 t-0"></div>
+                            <div class="body-green h-80 t-10"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">Day 2's green body completely swallows Day 1's red body — buyers so aggressively overwhelmed sellers that they erased the prior day's entire decline and more.</div>
+                </div>""",
     },
     {
         "term_key": "morning-star-3-candle",
@@ -529,7 +539,20 @@ CARDS = [
                             <div class="wick h-20 t-0"></div>
                             <div class="body-green h-50 t-20"></div>
                             <div class="wick h-10 t-70"></div>
-                        </div>""",
+                        </div>
+                        <div class="candle">
+                            <div class="wick h-15 t-0"></div>
+                            <div class="body-green h-65 t-15"></div>
+                            <div class="wick h-10 t-80"></div>
+                        </div>
+                        <div class="candle">
+                            <div class="wick h-10 t-0"></div>
+                            <div class="body-green h-80 t-10"></div>
+                            <div class="wick h-10 t-90"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">Three consecutive strong green candles, each opening within the prior body and closing at or near its high. Sustained institutional buying — not a one-day spike.</div>
+                </div>""",
     },
     {
         "term_key": "harami-cross",
@@ -567,7 +590,15 @@ CARDS = [
                         <div class="candle">
                             <div class="wick h-60 t-10"></div>
                             <div class="body-red h-50 t-30"></div>
-                        </div>""",
+                        </div>
+                        <div class="candle">
+                            <div class="wick h-20 t-0"></div>
+                            <div class="body-green h-60 t-20"></div>
+                            <div class="wick h-20 t-80"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">Day 2 opens below Day 1's close (weakness) but fights back above Day 1's midpoint — buyers are clearly defending the low. A weaker signal than Engulfing but still meaningful buyer interest.</div>
+                </div>""",
     },
     # --- technicals ---
     {

@@ -15,6 +15,23 @@ import learn_cards_seed
 GLOSSARY_DIR = Path(__file__).parent.parent / "templates" / "glossary"
 
 TERM_TITLE_RE = re.compile(r'<span class="term-title">(.*?)</span>', re.DOTALL)
+TERM_BOX_RE = re.compile(
+    r'<span class="term-title">(.*?)</span>(.*?)(?=<div class="term-box">|\Z)', re.DOTALL
+)
+
+
+def _glossary_candle_html_by_title() -> dict:
+    result = {}
+    for path in GLOSSARY_DIR.glob("_*.html"):
+        content = path.read_text(encoding="utf-8")
+        for title, body in TERM_BOX_RE.findall(content):
+            if 'class="candle-display"' not in body:
+                continue
+            start = body.index('<div class="candle-display">')
+            end = body.index("</div>", body.index("candle-explanation", start))
+            end = body.index("</div>", end + 6) + len("</div>")
+            result[_normalize(title)] = body[start:end].strip()
+    return result
 
 
 def _normalize(text: str) -> str:
@@ -89,3 +106,24 @@ def test_candle_html_cards_contain_candle_display_markup():
         candle_html = card.get("candle_html")
         if candle_html is not None:
             assert "candle-display" in candle_html, card["term_key"]
+
+
+def test_candle_html_is_well_formed():
+    for card in learn_cards_seed.CARDS:
+        candle_html = card.get("candle_html")
+        if candle_html is not None:
+            opens = len(re.findall(r"<div", candle_html))
+            closes = len(re.findall(r"</div>", candle_html))
+            assert opens == closes, f"{card['term_key']}: unbalanced <div> tags in candle_html"
+            assert candle_html.strip().endswith("</div>"), card["term_key"]
+
+
+def test_candle_html_matches_glossary_term_box_markup():
+    glossary_candle_html = _glossary_candle_html_by_title()
+    for card in learn_cards_seed.CARDS:
+        candle_html = card.get("candle_html")
+        if candle_html is None:
+            continue
+        title = _normalize(card["term_title"])
+        assert title in glossary_candle_html, card["term_key"]
+        assert candle_html.strip() == glossary_candle_html[title], card["term_key"]
