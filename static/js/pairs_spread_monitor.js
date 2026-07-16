@@ -70,8 +70,11 @@ function _psmRenderStats(chart) {
     const corr = chart.correlation != null ? chart.correlation.toFixed(2) : '—';
     const z = chart.zscore != null ? (chart.zscore >= 0 ? '+' : '') + chart.zscore.toFixed(2) : '—';
     el.innerHTML = `
-        <span class="badge text-bg-secondary me-2">Correlation: ${corr}</span>
-        <span class="badge text-bg-secondary">Z-Score: ${z}</span>
+        <div class="mb-2">
+            <span class="badge text-bg-secondary me-2"><abbr title="Pearson correlation of daily returns over the trailing 252-day window. Ranges from -1 (always move oppositely) to +1 (always move together); 0 means no relationship. This pair only appears here because it cleared the configured threshold (default 0.7).">Correlation</abbr>: ${corr}</span>
+            <span class="badge text-bg-secondary"><abbr title="How many standard deviations today's log-spread is from its own trailing-year average. Near 0 means the pair is trading at its normal historical relationship; a magnitude of 2 or more is a statistically unusual divergence — the kind of move this monitor alerts on.">Z-Score</abbr>: ${z}</span>
+        </div>
+        <p class="text-muted text-sm mb-0">Both lines are indexed to 100 at the start of the window, so you can see at a glance which ticker has done better. A correlated pair that pulls apart like this is expected to eventually converge back together — that's the mean-reversion signal this monitor is built to catch.</p>
     `;
 }
 
