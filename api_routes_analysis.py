@@ -235,6 +235,37 @@ async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str)
         return _error_500(e)
 
 
+@analysis_router.get("/predicted-movers/leaderboard")
+@limiter.limit("20/minute")
+async def get_predicted_movers_leaderboard(
+    request: Request,
+    scope: str = Query(default="portfolio_watchlist", pattern=r"^(portfolio_watchlist|universe)$"),
+    sort: str = Query(default="movers", pattern=r"^(gainers|losers|movers)$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    """Returns tickers ranked by ML-predicted 10-trading-day forward % move (quantile band midpoint vs current price) for `scope`, sorted by `sort`."""
+    try:
+        from predicted_movers_engine import get_leaderboard
+        results = get_leaderboard(scope=scope, sort_mode=sort, limit=limit)
+        return JSONResponse(content={"status": "success", "results": results})
+    except Exception as e:
+        logger.error("predicted-movers/leaderboard failed: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.get("/predicted-movers/accuracy")
+@limiter.limit("20/minute")
+async def get_predicted_movers_accuracy_data(request: Request):
+    """Returns per-ticker + overall direction-match and within-band-match hit rates for logged Portfolio+Watchlist predictions."""
+    try:
+        from predicted_movers_engine import get_accuracy_summary
+        data = get_accuracy_summary()
+        return JSONResponse(content={"status": "success", **data})
+    except Exception as e:
+        logger.error("predicted-movers/accuracy failed: %s", e)
+        return _error_500(e)
+
+
 @analysis_router.get("/forensic-scores")
 @limiter.limit("20/minute")
 async def get_forensic_scores(request: Request):

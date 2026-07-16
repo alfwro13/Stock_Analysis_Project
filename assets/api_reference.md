@@ -3954,6 +3954,62 @@ Recomputes aligned price history for both tickers from parquet on demand — not
 }
 ```
 
+## 27. Predicted Movers
+
+Leaderboard ranking tickers by ML-predicted 10-trading-day forward price move (quantile regression band midpoint vs current price), plus a linked prediction-accuracy scorecard for Portfolio + Watchlist tickers. See `assets/predicted_movers.md` for the full algorithm, scope, and scoring-timeline reference.
+
+### `GET /predicted-movers`
+
+HTML page. Leaderboard table for the selected scope, with a Portfolio+Watchlist/Universe scope toggle and a Gainers/Losers/Movers sort toggle. No scan trigger — this is a live query recomputed on every load.
+
+### `GET /predicted-movers/accuracy`
+
+HTML page. Per-ticker prediction accuracy scorecard for Portfolio + Watchlist tickers only (no scope toggle) — total/resolved/pending counts, direction-match %, within-band-match %.
+
+### `GET /api/predicted-movers/leaderboard`
+
+Query params: `scope` (`portfolio_watchlist` default, or `universe`), `sort` (`movers` default, or `gainers`/`losers`), `limit` (default `200`, max `1000`). Returns tickers ranked by predicted % move for `scope`, ordered per `sort`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "AAPL", "company_name": "Apple Inc.",
+      "current_price": 210.50, "currency": "USD",
+      "quant_signals_date": "2026-07-15",
+      "close_price": 208.90, "price_q10": 205.00, "price_q90": 228.00,
+      "predicted_mid": 216.50, "predicted_move_pct": 2.85
+    }
+  ]
+}
+```
+
+### `GET /api/predicted-movers/accuracy`
+
+Returns per-ticker + overall direction-match and within-band-match hit rates for logged Portfolio + Watchlist predictions. `resolved`/`pending` reflect whether each prediction's ~10-trading-day target date has passed; accuracy percentages are computed over resolved rows only.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "by_ticker": [
+    {
+      "ticker": "AAPL", "company_name": "Apple Inc.",
+      "total": 12, "resolved": 9, "pending": 3,
+      "direction_accuracy": 66.7, "within_band_accuracy": 77.8
+    }
+  ],
+  "overall": {
+    "total": 12, "resolved": 9, "pending": 3,
+    "direction_accuracy": 66.7, "within_band_accuracy": 77.8
+  }
+}
+```
+
 ---
 
 *Generated: 2026-06-06 · Quantamental Dashboard*

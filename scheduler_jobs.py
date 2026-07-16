@@ -466,6 +466,10 @@ def run_ml_inference():
         if tickers:
             update_daily_ml_predictions(tickers)
             score_quantile_predictions(tickers)
+            from predicted_movers_engine import backfill_actual_outcomes, log_predictions
+            resolved = backfill_actual_outcomes()
+            logged = log_predictions()
+            logger.info("Predicted Movers: logged %d new predictions, resolved %d outcomes.", logged, resolved)
         logger.info("Daily ML Inference complete.")
         log_sched_notification("Success", "Daily ML Inference completed successfully.")
     except Exception as e:
