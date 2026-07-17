@@ -399,7 +399,33 @@ def test_is_daily_bar_still_forming_true_when_exchange_confirmed_open():
     assert is_daily_bar_still_forming(today, today, exchange_currently_open=True) is True
 
 
+def test_trading_days_forward_weekday_offset():
+    """2024-01-02 is a Tuesday; 10 business days forward is 2024-01-16 (a Tuesday)."""
+    from utils import trading_days_forward
+    assert trading_days_forward("2024-01-02", 10) == "2024-01-16"
+
+
+def test_trading_days_forward_weekend_anchor_rolls_forward_first():
+    """2024-01-06 is a Saturday; np.busday_offset rolls forward to the next business day
+    (Monday 2024-01-08) before counting 10 business days."""
+    from utils import trading_days_forward
+    assert trading_days_forward("2024-01-06", 10) == "2024-01-22"
+
+
+def test_trading_days_forward_small_horizon():
+    # 2024-01-02 is a Tuesday; 1 business day forward is 2024-01-03 (Wednesday).
+    from utils import trading_days_forward
+    assert trading_days_forward("2024-01-02", 1) == "2024-01-03"
+
+
 # ── Constants sanity checks ───────────────────────────────────────────────────
+
+@pytest.mark.config
+def test_earnings_drift_horizons_are_positive_and_ascending():
+    from constants import EARNINGS_DRIFT_HORIZONS
+    assert list(EARNINGS_DRIFT_HORIZONS) == sorted(EARNINGS_DRIFT_HORIZONS)
+    assert all(isinstance(h, int) and h > 0 for h in EARNINGS_DRIFT_HORIZONS)
+
 
 @pytest.mark.config
 def test_ml_horizon_is_positive_integer():

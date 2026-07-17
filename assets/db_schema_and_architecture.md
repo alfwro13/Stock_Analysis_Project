@@ -49,8 +49,9 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
   - `'deep_sync_s1'` … `'deep_sync_s5'` — per-stage checkpoints for the Universe Deep Sync pipeline (`universe_deep_sync_engine.py`); Stage 3 uses `'universe_deep_sync'` above
 
 #### `earnings_volatility`
-* **Purpose:** The options arbitrage ledger.
-* **Key Columns:** `ticker` (PK), `next_earnings_date`, `implied_move_pct`, `historical_avg_move_pct`, `edge_score`.
+* **Purpose:** The options arbitrage ledger, plus signed post-earnings drift stats for the long-term-investor framing of `/earnings-volatility`. One row per tracked ticker with earnings in the next 14 days; `implied_move_pct`/`edge_score`/`options_volume` are NULL when the ticker has no liquid ATM options quote (the row is still written as long as drift stats were computable).
+* **Key Columns:** `ticker` (PK), `next_earnings_date`, `implied_move_pct` (isolated straddle move, NULL if no liquid quote), `historical_avg_move_pct` (unsigned 1-day), `edge_score` (NULL if no liquid quote), `options_volume` (NULL if no liquid quote), `drift_avg_pct_1d`/`drift_up_count_1d`/`drift_sample_size_1d`, `drift_avg_pct_5d`/`drift_up_count_5d`/`drift_sample_size_5d`, `drift_avg_pct_20d`/`drift_up_count_20d`/`drift_sample_size_20d` (signed average % change, count of positive events, and sample size out of the last 4 earnings events, at each horizon).
+* **Written by:** `earnings_vol_engine.run_earnings_vol_scan()`, called by the `weekend_earnings_vol_scan_job` scheduler job.
 
 ### System, Macro & AI Models Tables
 
@@ -241,6 +242,12 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `id` (PK autoincrement), `ticker`, `predicted_date` (the `quant_signals.date` the prediction was scored on), `predicted_ts` (UTC ISO), `close_price` (price at prediction time), `price_q10`/`price_q90` (the predicted band, snapshotted at logging time — `quant_signals`' own copy is overwritten nightly with no history), `target_date` (~10 trading days forward, `numpy.busday_offset` approximation), `actual_price`/`actual_date` (first `quant_signals` close on/after `target_date`, NULL until resolved), `direction_correct` (0/1, NULL until resolved — did the actual move match the predicted direction), `within_band_correct` (0/1, NULL until resolved — did the actual price land within `[price_q10, price_q90]`).
 * **Constraint:** `UNIQUE(ticker, predicted_date)` — `INSERT OR IGNORE` keeps a same-day rerun a safe no-op.
 * **Written by:** `predicted_movers_engine.log_predictions()` (logs today's prediction) and `predicted_movers_engine.backfill_actual_outcomes()` (resolves past predictions whose `target_date` has passed), both called from `run_ml_inference()` (`ml_inference_job`) immediately after `score_quantile_predictions()` — must run the same day the quantile bands are scored, since `quant_signals.price_q10`/`price_q90` are overwritten in place with no history retained.
+
+#### `earnings_drift_predictions`
+* **Purpose:** Append-only log of post-earnings drift predictions (one row per ticker per earnings event), each with three independent horizons (1/5/20 trading days after the earnings print), alongside their eventual actual outcomes once resolved. Powers `/earnings-volatility/accuracy`.
+* **Key Columns:** `id` (PK autoincrement), `ticker`, `earnings_date`, `predicted_ts` (UTC ISO, refreshed on each daily re-log until resolution begins), `pre_earnings_close` (the baseline price, refreshed daily as earnings approaches to converge on the actual last close before the print), `sample_size` (number of past earnings events the 1-day drift stat was based on), `predicted_pct_1d`/`target_date_1d`/`actual_price_1d`/`actual_date_1d`/`direction_correct_1d` and the same triple for `_5d`/`_20d` (signed predicted % move, target resolution date, actual price/date once resolved, and 0/1 direction match, all independently NULL until that horizon resolves).
+* **Constraint:** `UNIQUE(ticker, earnings_date)` — `ON CONFLICT ... DO UPDATE ... WHERE direction_correct_1d IS NULL` lets a daily re-run refresh the baseline right up until the first horizon starts resolving, without ever clobbering a row that has begun resolving.
+* **Written by:** `earnings_vol_engine.log_near_earnings_predictions()` (logs/refreshes predictions for tickers with earnings in the next few days) and `earnings_vol_engine.backfill_earnings_drift_outcomes()` (resolves past predictions per horizon), both called from `run_overnight_quant_scan()` (`overnight_quant_scan_job`) after the daily quant scan writes that day's verified close.
 
 #### `bubble_radar_metrics`
 * **Purpose:** Daily snapshot of the Bubble Risk Score and its seven component metrics for every ticker that has been scanned. One row per (ticker, scan_date); re-scans upsert the same row.

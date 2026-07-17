@@ -138,6 +138,16 @@ def is_excluded_from_yahoo_fetch(ticker: str, ignored: Optional[set] = None) -> 
     return normalize_ticker(ticker) in ignored
 
 
+def trading_days_forward(date_str: str, n_days: int) -> str:
+    """Approximate 'n_days trading days forward' of date_str using numpy's Mon-Fri business-day
+    calendar (no exchange-holiday awareness) — acceptable wherever the consumer resolves the
+    target date via a "first actual close on/after target_date" lookup, which self-corrects for
+    the few-day slack a missed holiday introduces."""
+    import numpy as np
+    d = np.datetime64(date_str, "D")
+    return str(np.busday_offset(d, n_days, roll="forward"))
+
+
 def clamp_beta(raw: Any, lo: float = 0.5, hi: float = 2.0, default: float = 1.0) -> float:
     """Guards against empty strings / SQLite None for the beta column, which raises ValueError inside float()."""
     try:

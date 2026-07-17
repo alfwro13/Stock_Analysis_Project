@@ -4012,4 +4012,56 @@ Returns per-ticker + overall direction-match and within-band-match hit rates for
 
 ---
 
+## 28. Earnings Volatility Accuracy
+
+Track record for the post-earnings drift predictions logged by `earnings_vol_engine.log_near_earnings_predictions()` (piggybacked onto the daily `overnight_quant_scan_job`) and resolved by `backfill_earnings_drift_outcomes()`. See `assets/earnings_volatility.md` for the full algorithm and scheduling detail.
+
+### `GET /earnings-volatility/accuracy`
+
+HTML page. Summary tiles (total / per-horizon resolved+accuracy), a chart of the average post-earnings price path, and a per-ticker accuracy table.
+
+### `GET /api/earnings-volatility/accuracy`
+
+Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days for logged post-earnings drift predictions. `resolved_Nd`/pending reflect whether each horizon's target date has passed; accuracy percentages are computed over resolved rows only.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "by_ticker": [
+    {
+      "ticker": "AAPL", "company_name": "Apple Inc.",
+      "total": 4,
+      "resolved_1d": 4, "accuracy_1d": 75.0,
+      "resolved_5d": 3, "accuracy_5d": 66.7,
+      "resolved_20d": 1, "accuracy_20d": 100.0
+    }
+  ],
+  "overall": {
+    "total": 4,
+    "resolved_1d": 4, "accuracy_1d": 75.0,
+    "resolved_5d": 3, "accuracy_5d": 66.7,
+    "resolved_20d": 1, "accuracy_20d": 100.0
+  }
+}
+```
+
+### `GET /api/earnings-volatility/drift-path`
+
+Returns the average post-earnings price path (-5 to +20 trading days, offset 0 = pre-earnings close) across every tracked ticker's past earnings events, computed live from parquet history.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "offsets": [-5, -4, "...", 0, 1, 5, 20],
+  "avg_pct": [-1.2, -0.8, "...", 0.0, 1.5, 2.1, 4.3],
+  "sample_size": [18, 20, "...", 22, 22, 20, 12]
+}
+```
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

@@ -2,7 +2,7 @@
 tests/test_predicted_movers_engine.py — Predicted Movers Tests
 
 Covers:
-  • _target_date()                    — ~10-trading-day-forward business-day offset
+  • utils.trading_days_forward()      — ~10-trading-day-forward business-day offset
   • get_leaderboard()                 — sort modes, missing-price drop, empty scope
   • log_predictions()                 — insert + same-day idempotency
   • backfill_actual_outcomes()        — resolves direction/within-band correctness from
@@ -21,16 +21,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
 import db_helpers
+from constants import PREDICTION_HORIZON_DAYS
 from predicted_movers_engine import (
     SORT_GAINERS,
     SORT_LOSERS,
     SORT_MOVERS,
-    _target_date,
     backfill_actual_outcomes,
     get_accuracy_summary,
     get_leaderboard,
     log_predictions,
 )
+from utils import trading_days_forward
+
+
+def _target_date(predicted_date: str) -> str:
+    return trading_days_forward(predicted_date, PREDICTION_HORIZON_DAYS)
 
 T_A = "PM_A"
 T_B = "PM_B"
@@ -69,6 +74,9 @@ def _seed_predicted_movers_row(ticker, predicted_date, close_price, price_q10, p
 
 
 class TestTargetDate:
+    """log_predictions() delegates to the shared utils.trading_days_forward() (see
+    tests/test_utils.py for the underlying business-day-offset math itself)."""
+
     def test_weekday_offset_is_ten_business_days_forward(self):
         # 2024-01-02 is a Tuesday; 10 business days forward is 2024-01-16 (a Tuesday).
         assert _target_date("2024-01-02") == "2024-01-16"

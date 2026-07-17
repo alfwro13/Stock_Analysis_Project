@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Earnings Volatility Accuracy{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128202; Earnings Volatility Accuracy</h1>
+<p class="page-subtitle mb-4">
+    Track record for the post-earnings drift predictions logged shortly before each ticker's
+    earnings date, graded at 1, 5, and 20 trading days after the print: did the price move the
+    same direction as the ticker's own historical average drift predicted? A horizon can't be
+    graded until its target date passes, so newly-logged tickers show "Pending" for a while.
+</p>
+
+<div class="mb-3">
+    <a href="/earnings-volatility" class="btn btn-outline-secondary btn-sm">&#8592; Back to Earnings Volatility</a>
+</div>
+
+<div class="row g-2 mb-3" id="edp-summary">
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">Total</h6><div id="edp-summary-total">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">1D Accuracy</h6><div id="edp-summary-1d">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">5D Accuracy</h6><div id="edp-summary-5d">&mdash;</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card h-100"><div class="card-body text-center p-2"><h6 class="card-title mb-1">20D Accuracy</h6><div id="edp-summary-20d">&mdash;</div></div></div></div>
+</div>
+
+<div class="chart-wrapper" id="edp-chart-wrapper">
+    <button class="fullscreen-btn" onclick="toggleFullscreen('edp-chart-wrapper')">&#9638; Fullscreen</button>
+    <div id="edp-chart"></div>
+</div>
+
+<div class="sentiment-module module-cyan mt-3">
+    <div class="p-3 pb-0">
+        <h3 class="tm-ticker-heading">
+            Per-Ticker Accuracy
+            <span id="edp-count" class="tm-ticker-count"></span>
+        </h3>
+    </div>
+    <div class="overflow-auto p-3">
+        <table id="edp-table" class="tm-table w-100">
+            <thead>
+                <tr>
+                    <th class="tm-th-blue tm-th-left">Ticker</th>
+                    <th class="tm-th-muted tm-th-left">Company</th>
+                    <th class="tm-th-muted tm-th-right">Total</th>
+                    <th class="tm-th-amber tm-th-right">1D Resolved</th>
+                    <th class="tm-th-amber tm-th-right">1D Accuracy %</th>
+                    <th class="tm-th-amber tm-th-right">5D Resolved</th>
+                    <th class="tm-th-amber tm-th-right">5D Accuracy %</th>
+                    <th class="tm-th-amber tm-th-right">20D Resolved</th>
+                    <th class="tm-th-amber tm-th-right">20D Accuracy %</th>
+                </tr>
+            </thead>
+            <tbody id="edp-tbody">
+                <tr>
+                    <td colspan="9" class="text-center p-4 text-muted">Loading…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
+<script src="/static/js/earnings_volatility_accuracy.js?v={{ css_version }}"></script>
+{% endblock %}

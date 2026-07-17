@@ -492,6 +492,208 @@ def get_predicted_movers_accuracy() -> dict:
             conn.close()
 
 
+def get_latest_quantile_bands(tickers: list) -> list:
+    """Latest quant_signals row per ticker with non-null price_q10/price_q90 — the same
+    inline correlated-subquery idiom used elsewhere in the codebase for 'latest row per
+    ticker' (ai_prediction_engine.py, page_routes.py, market_pulse.py). Shared by
+    predicted_movers_engine.py and the /earnings-volatility page, both of which need the
+    general-purpose ML Quantile Price Band for a ticker."""
+    if not tickers:
+        return []
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"""SELECT qs.ticker, qs.date, qs.close_price, qs.price_q10, qs.price_q90
+                FROM quant_signals qs
+                WHERE qs.ticker IN ({placeholders})
+                  AND qs.price_q10 IS NOT NULL AND qs.price_q90 IS NOT NULL
+                  AND qs.date = (
+                      SELECT MAX(qs2.date) FROM quant_signals qs2
+                      WHERE qs2.ticker = qs.ticker
+                        AND qs2.price_q10 IS NOT NULL AND qs2.price_q90 IS NOT NULL
+                  )""",
+            tickers,
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_latest_quantile_bands failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def log_earnings_drift_prediction(
+    ticker: str, earnings_date: str, predicted_ts: str, pre_earnings_close: float,
+    sample_size: Optional[int],
+    predicted_pct_1d: Optional[float], target_date_1d: str,
+    predicted_pct_5d: Optional[float], target_date_5d: str,
+    predicted_pct_20d: Optional[float], target_date_20d: str,
+) -> None:
+    """Logs (or, while unresolved, refreshes) a post-earnings drift prediction. Uses ON CONFLICT
+    DO UPDATE rather than INSERT OR REPLACE (mirrors quant_signals.py's own reasoning for the
+    same choice) so a daily re-run in the days before earnings can re-anchor pre_earnings_close
+    to a fresher close without a bare REPLACE resetting id/actual_* columns — and the WHERE guard
+    ensures a row that has already started resolving is never clobbered by a stale re-run."""
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO earnings_drift_predictions
+               (ticker, earnings_date, predicted_ts, pre_earnings_close, sample_size,
+                predicted_pct_1d, target_date_1d,
+                predicted_pct_5d, target_date_5d,
+                predicted_pct_20d, target_date_20d)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(ticker, earnings_date) DO UPDATE SET
+                   predicted_ts = excluded.predicted_ts,
+                   pre_earnings_close = excluded.pre_earnings_close,
+                   sample_size = excluded.sample_size,
+                   predicted_pct_1d = excluded.predicted_pct_1d,
+                   target_date_1d = excluded.target_date_1d,
+                   predicted_pct_5d = excluded.predicted_pct_5d,
+                   target_date_5d = excluded.target_date_5d,
+                   predicted_pct_20d = excluded.predicted_pct_20d,
+                   target_date_20d = excluded.target_date_20d
+               WHERE earnings_drift_predictions.direction_correct_1d IS NULL""",
+            (ticker, earnings_date, predicted_ts, pre_earnings_close, sample_size,
+             predicted_pct_1d, target_date_1d,
+             predicted_pct_5d, target_date_5d,
+             predicted_pct_20d, target_date_20d),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("log_earnings_drift_prediction failed for %s on %s: %s", ticker, earnings_date, e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_unresolved_earnings_drift(cutoff: str) -> list:
+    """Every earnings_drift_predictions row with at least one horizon whose target_date has
+    passed but hasn't been resolved yet — 3-horizon generalization of
+    get_unresolved_trap_phases's 2-cutoff pattern. Scanned in full each run (catch-up
+    discipline), not just the newest."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT id, ticker, pre_earnings_close,
+                      predicted_pct_1d, target_date_1d, direction_correct_1d,
+                      predicted_pct_5d, target_date_5d, direction_correct_5d,
+                      predicted_pct_20d, target_date_20d, direction_correct_20d
+               FROM earnings_drift_predictions
+               WHERE (direction_correct_1d IS NULL AND target_date_1d <= ?)
+                  OR (direction_correct_5d IS NULL AND target_date_5d <= ?)
+                  OR (direction_correct_20d IS NULL AND target_date_20d <= ?)
+               ORDER BY earnings_date""",
+            (cutoff, cutoff, cutoff),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_unresolved_earnings_drift failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def batch_update_earnings_drift_actuals(
+    payloads: list,
+) -> None:
+    """Single-transaction update; each payload is (row_id, horizon, actual_price, actual_date,
+    direction_correct). horizon in {1, 5, 20} selects the
+    actual_price_{h}d/actual_date_{h}d/direction_correct_{h}d column triple — byte-for-byte the
+    pattern in batch_update_trap_phase_actuals."""
+    if not payloads:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        for row_id, horizon, actual_price, actual_date, direction_correct in payloads:
+            price_col = f"actual_price_{horizon}d"
+            date_col = f"actual_date_{horizon}d"
+            correct_col = f"direction_correct_{horizon}d"
+            conn.execute(
+                f"UPDATE earnings_drift_predictions SET {price_col}=?, {date_col}=?, {correct_col}=? WHERE id=?",
+                (actual_price, actual_date, direction_correct, row_id),
+            )
+        conn.commit()
+    except Exception as e:
+        logger.error("batch_update_earnings_drift_actuals failed (%d rows): %s", len(payloads), e)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_earnings_drift_accuracy() -> dict:
+    """Per-ticker + overall direction-match hit rates at 1/5/20 trading days — exact SQL shape
+    of get_trap_phase_accuracy(), grouped by ticker instead of phase."""
+    conn = None
+    try:
+        conn = get_connection()
+        by_ticker = [
+            dict(r) for r in conn.execute(
+                """SELECT
+                    ticker,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN direction_correct_1d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_1d,
+                    ROUND(AVG(CASE WHEN direction_correct_1d IS NOT NULL
+                              THEN direction_correct_1d END) * 100, 1) AS accuracy_1d,
+                    SUM(CASE WHEN direction_correct_5d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_5d,
+                    ROUND(AVG(CASE WHEN direction_correct_5d IS NOT NULL
+                              THEN direction_correct_5d END) * 100, 1) AS accuracy_5d,
+                    SUM(CASE WHEN direction_correct_20d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_20d,
+                    ROUND(AVG(CASE WHEN direction_correct_20d IS NOT NULL
+                              THEN direction_correct_20d END) * 100, 1) AS accuracy_20d
+                   FROM earnings_drift_predictions
+                   GROUP BY ticker
+                   ORDER BY ticker"""
+            ).fetchall()
+        ]
+        overall = dict(conn.execute(
+            """SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN direction_correct_1d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_1d,
+                ROUND(AVG(CASE WHEN direction_correct_1d IS NOT NULL
+                          THEN direction_correct_1d END) * 100, 1) AS accuracy_1d,
+                SUM(CASE WHEN direction_correct_5d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_5d,
+                ROUND(AVG(CASE WHEN direction_correct_5d IS NOT NULL
+                          THEN direction_correct_5d END) * 100, 1) AS accuracy_5d,
+                SUM(CASE WHEN direction_correct_20d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_20d,
+                ROUND(AVG(CASE WHEN direction_correct_20d IS NOT NULL
+                          THEN direction_correct_20d END) * 100, 1) AS accuracy_20d
+               FROM earnings_drift_predictions"""
+        ).fetchone())
+        return {"by_ticker": by_ticker, "overall": overall}
+    except Exception as e:
+        logger.error("get_earnings_drift_accuracy failed: %s", e)
+        return {"by_ticker": [], "overall": {}}
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_earnings_drift_tickers() -> list:
+    """Distinct tickers already tracked in earnings_drift_predictions — default scope for
+    earnings_vol_engine.get_average_drift_path()."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute("SELECT DISTINCT ticker FROM earnings_drift_predictions ORDER BY ticker").fetchall()
+        return [r["ticker"] for r in rows]
+    except Exception as e:
+        logger.error("get_earnings_drift_tickers failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 _REGISTRY_COLUMNS = (
     "ticker", "display_name", "region", "asset_type", "exchange", "currency",
     "future_ticker", "future_display_name", "invert_color", "is_pulse_tile",

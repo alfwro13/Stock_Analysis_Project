@@ -4,6 +4,9 @@
 PREDICTION_HORIZON_DAYS     = 10    # trading days from T+1 entry to T+10 exit
 PREDICTION_RETURN_THRESHOLD = 0.03  # 3% return required for a positive label
 
+# ── Earnings Volatility drift prediction ───────────────────────────────────────
+EARNINGS_DRIFT_HORIZONS = (1, 5, 20)  # trading days after earnings for signed drift stats + predictions
+
 # ── Market regime classification ───────────────────────────────────────────────
 REGIME_CRASH_VOL    = 35.0  # annualised vol % at or above which regime = Crash
 REGIME_VOLATILE_VOL = 20.0  # annualised vol % at or above which regime = Volatile
