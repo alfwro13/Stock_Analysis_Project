@@ -47,7 +47,14 @@ This engine **only** scans assets present in your **Portfolio** and **Watchlist*
 
 ---
 
-### 🚀 5. How to Run & Populate the Data
+### 🔁 5. Resilience — Retrying Yahoo Fetch Failures
+
+Yahoo's `guce.yahoo.com` consent-gate endpoint has been observed intermittently refusing connections mid-scan when hit at too tight a cadence across 100+ sequential tickers (each ticker involves 2-3 Yahoo calls: earnings dates, options expirations, options chain). Two things guard against this:
+
+* **Slower cadence:** the gap between tickers was widened from a random 0.5-1.5s to a random 2.5-5.0s, to stay well under whatever rate Yahoo's gate is reacting to.
+* **A single retry pass:** `run_earnings_vol_scan()` tracks which tickers were due to be scanned (earnings within 14 days) but failed — a genuine fetch failure, not a ticker correctly skipped because its earnings aren't due yet — and returns that list. `run_weekend_earnings_scan()` (`scheduler_jobs.py`) schedules a one-off job (`earnings_vol_retry_job`, ~12 minutes later, `DateTrigger`) that re-runs the scan for just those tickers. If a ticker still fails on retry, it's left for the next scheduled weekly scan — there is no further re-scheduling, so a ticker with genuinely no Yahoo earnings-dates data doesn't retry forever. This retry job is unpersisted (in-memory job store, like all jobs in this app) — a server restart within that 12-minute window silently drops it, which is an acceptable trade-off for a data-freshness nicety rather than load-bearing data.
+
+### 🚀 6. How to Run & Populate the Data
 
 The Historical Avg Move, Drift, and Options Mispricing data on the main page are computed weekly by `weekend_earnings_vol_scan_job`. The near-earnings prediction logging and outcome backfill for the Accuracy page run daily as part of `overnight_quant_scan_job` — no separate trigger exists for those two steps, since they're small, cheap piggyback steps on an already-scheduled job.
 

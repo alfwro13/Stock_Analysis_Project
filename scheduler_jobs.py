@@ -1,9 +1,10 @@
 import logging
 import threading as _threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import time_engine
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from accounts_engine import refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts
 from backup_engine import run_backup
 from config import load_config
@@ -341,7 +342,8 @@ def run_weekend_earnings_scan():
         logger.info("Earnings volatility scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers()
-        run_earnings_vol_scan(all_tickers)
+        failed_tickers = run_earnings_vol_scan(all_tickers)
+        _schedule_earnings_vol_retry(failed_tickers)
         logger.info("Earnings volatility scan complete.")
         log_sched_notification("Success", "Earnings Volatility Scan completed successfully.")
     except Exception as e:
@@ -350,6 +352,59 @@ def run_weekend_earnings_scan():
     finally:
         _mark_job_done(job_label("weekend_earnings_vol_scan_job"))
         record_job_run('weekend_earnings_vol_scan_job')
+
+
+_EARNINGS_VOL_RETRY_DELAY_MINUTES = 12
+
+
+def _schedule_earnings_vol_retry(tickers: list) -> None:
+    """One-off retry ~12 minutes later for tickers the main scan couldn't reach (Yahoo fetch
+    failure, not a legitimate 'no earnings due' skip) — Yahoo's guce.yahoo.com consent gate has
+    been observed intermittently refusing connections mid-scan across 100+ sequential tickers.
+    Single retry pass only (no re-scheduling on repeat failure), so a ticker with no earnings
+    data on Yahoo doesn't loop forever. In-memory job store: a restart before this fires drops
+    it silently, same as any other unpersisted APScheduler job in this app — acceptable for a
+    resilience nicety, not load-bearing data."""
+    if not tickers:
+        return
+    run_date = datetime.now(timezone.utc) + timedelta(minutes=_EARNINGS_VOL_RETRY_DELAY_MINUTES)
+    try:
+        scheduler.add_job(
+            _run_earnings_vol_retry_job,
+            DateTrigger(run_date=run_date, timezone=timezone.utc),
+            id='earnings_vol_retry_job',
+            kwargs={'tickers': tickers},
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+        logger.info("Earnings volatility retry scheduled for %d ticker(s) at %s.", len(tickers), run_date)
+    except Exception as e:
+        logger.error("Failed to schedule earnings volatility retry: %s", e)
+
+
+def _run_earnings_vol_retry_job(tickers: list) -> None:
+    job_name = job_label("earnings_vol_retry_job")
+    _mark_job_started(job_name)
+    try:
+        logger.info("Retrying earnings volatility scan for %d previously-failed ticker(s).", len(tickers))
+        still_failed = run_earnings_vol_scan(tickers)
+        if still_failed:
+            logger.warning("Earnings volatility retry: %d ticker(s) still failed after retry: %s",
+                            len(still_failed), still_failed)
+            log_sched_notification(
+                "Warning",
+                f"Earnings Volatility retry: {len(still_failed)}/{len(tickers)} ticker(s) still "
+                f"unreachable — will pick up on the next scheduled scan.",
+            )
+        else:
+            log_sched_notification("Success", f"Earnings Volatility retry resolved all {len(tickers)} ticker(s).")
+    except Exception as e:
+        logger.error("Earnings volatility retry job failed: %s", e)
+        log_sched_notification("Error", f"Earnings Volatility retry failed: {e}")
+    finally:
+        _mark_job_done(job_name)
+        record_job_run('earnings_vol_retry_job')
+
 
 def run_weekend_universe_routine():
     _mark_job_started(job_label("universe_routine_job"))
