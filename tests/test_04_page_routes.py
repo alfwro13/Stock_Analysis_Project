@@ -128,9 +128,45 @@ def test_market_screener_page_loads(client):
 # ── Analysis Pages ────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
-def test_market_reports_page_loads(client):
-    """GET /market-reports must load the market analysis reports page."""
-    _assert_page_ok(client, "/market-reports", label="Market Reports")
+def test_quality_compounders_page_loads(client):
+    """GET /quality-compounders must load the Quality Compounders report page."""
+    _assert_page_ok(client, "/quality-compounders", label="Quality Compounders")
+
+
+@pytest.mark.pages
+def test_garp_tenbaggers_page_loads(client):
+    """GET /garp-tenbaggers must load the GARP Tenbaggers report page."""
+    _assert_page_ok(client, "/garp-tenbaggers", label="GARP Tenbaggers")
+
+
+@pytest.mark.pages
+def test_quality_on_sale_page_loads(client):
+    """GET /quality-on-sale must load the Quality on Sale report page."""
+    _assert_page_ok(client, "/quality-on-sale", label="Quality on Sale")
+
+
+@pytest.mark.pages
+def test_sector_trends_page_loads(client):
+    """GET /sector-trends must load the Sector Trends report page."""
+    _assert_page_ok(client, "/sector-trends", label="Sector Trends")
+
+
+@pytest.mark.pages
+def test_relative_strength_leaders_page_loads(client):
+    """GET /relative-strength-leaders must load the Relative Strength Leaders report page."""
+    _assert_page_ok(client, "/relative-strength-leaders", label="Relative Strength Leaders")
+
+
+@pytest.mark.pages
+def test_mean_reversion_page_loads(client):
+    """GET /mean-reversion must load the Mean Reversion Screener report page."""
+    _assert_page_ok(client, "/mean-reversion", label="Mean Reversion")
+
+
+@pytest.mark.pages
+def test_dividend_harvest_page_loads(client):
+    """GET /dividend-harvest must load the Dividend Harvest report page."""
+    _assert_page_ok(client, "/dividend-harvest", label="Dividend Harvest")
 
 
 @pytest.mark.pages
@@ -682,7 +718,13 @@ def test_no_page_route_returns_500(client):
         ("/glossary",           "Glossary"),
         ("/glossary/learn",     "Glossary Learning"),
         ("/market-screener",    "Market Screener"),
-        ("/market-reports",     "Market Reports"),
+        ("/quality-compounders", "Quality Compounders"),
+        ("/garp-tenbaggers",    "GARP Tenbaggers"),
+        ("/quality-on-sale",    "Quality on Sale"),
+        ("/sector-trends",      "Sector Trends"),
+        ("/relative-strength-leaders", "Relative Strength Leaders"),
+        ("/mean-reversion",     "Mean Reversion"),
+        ("/dividend-harvest",   "Dividend Harvest"),
         ("/market-sentiment",   "Market Sentiment"),
         ("/earnings-volatility","Earnings Volatility"),
         ("/earnings-volatility/accuracy","Earnings Volatility Accuracy"),

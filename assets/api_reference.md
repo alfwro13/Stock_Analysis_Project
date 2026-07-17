@@ -575,7 +575,7 @@ Which tickers appear is controlled by `UI_PREFERENCES.MARKET_PULSE_DYNAMIC` (Set
 
 ## 7. Reports
 
-All report endpoints return a `data` array. The array may be empty if the database has insufficient data to generate ranked results.
+All report endpoints return a `data` array. The array may be empty if the database has insufficient data to generate ranked results. Each endpoint backs its own standalone page (see `assets/reports_page.md`) rather than a single combined `/market-reports` page.
 
 ### `GET /api/reports/quality-compounders`
 

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Quality on Sale{% endblock %}
+
+{% block content %}
+<h1 class="mb-1 text-warning">💎 Quality on Sale — 52-Week Low Bargains</h1>
+<p class="page-subtitle mb-3">The "Structural Value" Screener. High-quality businesses the market has thrown out with the bathwater — price near a 52-week low, but fundamentals still intact.</p>
+
+<div class="mb-3">
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">&#8592; Back to Reports</a>
+</div>
+
+<div class="report-section section-accent-warning">
+    <p><strong>How to use:</strong> Finds companies that have spent months falling — yet remain profitable, low-debt, and high-return on equity.<br>
+       <strong>When to use:</strong> Use this to systematically deploy idle cash during corrections.<br>
+       <strong>The Benefit:</strong> Long-term investors make their money buying quality businesses when the market is fearful. This report surfaces those moments automatically.</p>
+
+    <table id="qosTable" class="table table-hover w-100">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Company Name</th>
+                <th>Sector</th>
+                <th>Close Price</th>
+                <th><abbr title="How far the current price is above the 52-week low (lower = closer to the floor)">% Above 52w Low</abbr></th>
+                <th><abbr title="Return on Equity (>10%) — proof the business is still capital-efficient">ROE</abbr></th>
+                <th><abbr title="Debt to Equity ratio (<1.5x) — low financial risk">Debt/Eq</abbr></th>
+                <th><abbr title="Profit Margin (>5%) — still generating real profit">Margin</abbr></th>
+                <th><abbr title="Trailing P/E (<25) — not overvalued">P/E</abbr></th>
+                <th><abbr title="System Quant Score (>=50)">Quant Score</abbr></th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div class="footer-notes">
+        <strong class="text-light">Key Metrics Explained:</strong>
+        <ul class="explanation-list">
+            <li>
+                <strong class="text-accent-blue">% Above 52-Week Low:</strong>
+                A value of 2% means the stock is only 2% above its annual floor.
+                <em>The lower this number, the more "on sale" the stock currently is. We cap at 15% to keep only the most beaten-down candidates.</em>
+            </li>
+            <li>
+                <strong class="text-accent-blue">ROE — Return on Equity (&gt;10%):</strong>
+                A falling stock price does not always mean a failing business. We require &gt;10% to confirm the business has not deteriorated.
+                <em>This is the core "quality" gate. A company with ROE &lt;10% is likely falling for a fundamental reason, not a temporary one.</em>
+            </li>
+            <li>
+                <strong class="text-accent-blue">Debt/Equity — Debt to Equity Ratio (&lt;1.5x):</strong>
+                When a stock is falling, you want confidence the company can survive the downturn.
+                <em>High-debt companies near 52-week lows are especially dangerous — a revenue shortfall can trigger a debt spiral.</em>
+            </li>
+            <li>
+                <strong class="text-accent-blue">Profit Margin (&gt;5%):</strong>
+                A margin above 5% confirms the business is generating real profit.
+                <em>Thin or negative margins near a 52-week low are a classic "falling knife" profile.</em>
+            </li>
+            <li>
+                <strong class="text-accent-blue">Trailing P/E (&lt;25):</strong>
+                A P/E below 25 ensures we are buying at a price that reflects the earnings reality, not lingering optimism from a prior bull run.
+            </li>
+            <li>
+                <strong class="text-accent-blue">Quant Score (&ge;50):</strong>
+                Acts as a final cross-check: a stock can pass all four fundamental gates above yet still fail the quant score if there is hidden weakness in its technicals.
+            </li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/quality_on_sale.js?v={{ css_version }}"></script>
+{% endblock %}

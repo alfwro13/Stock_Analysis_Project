@@ -114,7 +114,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 ### Stage 2 — DataTables-heavy pages
 - ☑ `portfolio` (`/portfolio`, `portfolio.js`, embed mode, X-ray panel)
 - ☑ `market_screener` (`/market-screener`, `market_screener.js`) · ☑ `market_sentiment` (`/market-sentiment`, `market_sentiment.js`)
-- ☑ `market_reports` (`/market-reports`, `market_reports.js`, 7 tables + custom filter bars)
+- ☑ `market_reports` (originally `/market-reports`, `market_reports.js`, 7 tables + custom filter bars) — split 2026-07-17 into 7 standalone report pages under the `/reports` hub, see `assets/reports_page.md`
 
 ### Stage 3 — Chart-heavy pages (vendor Plotly into `static/vendor/plotly/` here)
 - ☑ `market_regime` (`/market-regime`, `market_regime.js`) · ☑ `stress_test` (`/stress-test`, `stress_test.js`)

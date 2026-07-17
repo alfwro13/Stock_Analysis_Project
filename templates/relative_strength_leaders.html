@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Relative Strength Leaders{% endblock %}
+
+{% block content %}
+<h1 class="mb-1 text-accent-cyan">Relative Strength Leaders</h1>
+<p class="page-subtitle mb-3">The top 500 strongest <abbr title="The speed of price changes">momentum</abbr> stocks in the entire market (Above <abbr title="50-Day Simple Moving Average">50D SMA</abbr>, sorted by highest <abbr title="Relative Strength Index">RSI</abbr> and <abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram).</p>
+
+<div class="mb-3">
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">&#8592; Back to Reports</a>
+</div>
+
+<div class="report-section section-accent-cyan">
+    <p><strong>How to use:</strong> These are the "MVP" stocks — the top athletes currently outperforming the market.<br>
+       <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money.<br>
+       <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high <abbr title="Relative Strength Index">RSI</abbr> and positive <abbr title="Moving Average Convergence Divergence Histogram">MACD Histograms</abbr>, you are holding the winners that often go up more during bull runs.</p>
+
+    <div class="mb-3">
+        <select id="leadersExchangeFilter" class="form-select w-auto d-inline-block">
+            <option value="ALL">All Exchanges</option>
+        </select>
+    </div>
+
+    <table id="leadersTable" class="table table-hover w-100">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Company Name</th>
+                <th>Sector</th>
+                <th>Exchange</th>
+                <th>Country</th>
+                <th>Close Price</th>
+                <th><abbr title="Relative Strength Index (14-Day)">RSI (14)</abbr></th>
+                <th><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr></th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div class="footer-notes">
+        <strong class="text-light">Key Metrics Explained:</strong>
+        <ul class="explanation-list">
+            <li><strong class="text-accent-blue"><abbr title="Relative Strength Index">RSI</abbr> (14):</strong> True market leaders can sustain elevated RSI levels for long periods. A high RSI here confirms massive institutional buying pressure.</li>
+            <li><strong class="text-accent-blue"><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr>:</strong> A positive and growing bar means upward price acceleration is increasing.</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/relative_strength_leaders.js?v={{ css_version }}"></script>
+{% endblock %}

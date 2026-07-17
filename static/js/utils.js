@@ -9,3 +9,28 @@ function escapeRegExp(s) {
 function exactTagSearchPattern(val) {
     return '(^|\\s)' + escapeRegExp(val) + '(\\s|$)';
 }
+
+function formatCurrency(value, currencyCode) {
+    if (value === null || value === undefined) return 'N/A';
+    let num = parseFloat(value);
+    if (isNaN(num)) return 'N/A';
+
+    let symbol = '$';
+    if (currencyCode === 'GBp') {
+        num = num / 100.0;
+        symbol = '£';
+    } else if (currencyCode === 'GBP') {
+        symbol = '£';
+    } else if (currencyCode === 'EUR') {
+        symbol = '€';
+    } else if (currencyCode && currencyCode !== 'USD') {
+        return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
+    }
+    return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function showTableError(tableSelector, colSpan) {
+    $(tableSelector + ' tbody').html(
+        '<tr><td colspan="' + colSpan + '" class="table-error-cell">⚠️ Failed to load data. Please refresh the page or try again.</td></tr>'
+    );
+}

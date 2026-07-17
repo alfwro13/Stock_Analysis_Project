@@ -833,15 +833,66 @@ async def market_screener_page(request: Request):
     )
 
 
-@page_router.get("/market-reports", response_class=HTMLResponse)
-async def market_reports_page(request: Request):
+@page_router.get("/quality-compounders", response_class=HTMLResponse)
+async def quality_compounders_page(request: Request):
     return templates.TemplateResponse(
         request=request,
-        name="market_reports.html",
-        context={
-            "unread_count": get_unread_count(),
-            "config": load_config()
-        }
+        name="quality_compounders.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
+    )
+
+
+@page_router.get("/garp-tenbaggers", response_class=HTMLResponse)
+async def garp_tenbaggers_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="garp_tenbaggers.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
+    )
+
+
+@page_router.get("/quality-on-sale", response_class=HTMLResponse)
+async def quality_on_sale_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="quality_on_sale.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
+    )
+
+
+@page_router.get("/sector-trends", response_class=HTMLResponse)
+async def sector_trends_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="sector_trends.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
+    )
+
+
+@page_router.get("/relative-strength-leaders", response_class=HTMLResponse)
+async def relative_strength_leaders_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="relative_strength_leaders.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
+    )
+
+
+@page_router.get("/mean-reversion", response_class=HTMLResponse)
+async def mean_reversion_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="mean_reversion.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
+    )
+
+
+@page_router.get("/dividend-harvest", response_class=HTMLResponse)
+async def dividend_harvest_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="dividend_harvest.html",
+        context={"unread_count": get_unread_count(), "config": load_config()}
     )
 
 

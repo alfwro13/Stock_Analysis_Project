@@ -2,8 +2,9 @@
 
 Predicted Movers ranks tickers by ML-**predicted** forward price move — the midpoint of the
 10-trading-day-forward quantile regression price band (`price_q10`/`price_q90`) versus current
-price — as opposed to the Market Reports leaders/laggards, which rank by *actual* historical
-movement. A second, linked page tracks how reliable those predictions have actually been.
+price — as opposed to the Relative Strength Leaders report (`/relative-strength-leaders`), which
+ranks by *actual* historical movement. A second, linked page tracks how reliable those
+predictions have actually been.
 
 Page routes: `GET /predicted-movers` (leaderboard), `GET /predicted-movers/accuracy` (linked
 from the Reports hub, `/reports`, via the leaderboard page)
