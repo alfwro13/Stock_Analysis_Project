@@ -1,10 +1,57 @@
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from config import load_config
 from database import get_connection
 
 logger = logging.getLogger(__name__)
+
+LIVE_PRICE_OVERRIDE_MAX_GAP_SECONDS = 6 * 3600
+
+
+def parse_utc_epoch(stored_utc: Optional[str]) -> float:
+    """Parses a `"%Y-%m-%d %H:%M:%S"` UTC timestamp (SQLite storage format) to a Unix epoch."""
+    if not stored_utc:
+        return 0.0
+    try:
+        return datetime.strptime(stored_utc, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def resolve_live_price(
+    live_price: Optional[float],
+    live_last_updated_epoch: Optional[float],
+    fallback_price: Optional[float],
+    fallback_last_updated_utc: Optional[str],
+    max_gap_seconds: int = LIVE_PRICE_OVERRIDE_MAX_GAP_SECONDS,
+) -> "tuple[Optional[float], bool]":
+    """Picks between a live-cache price (e.g. `market_pulse_cache`) and a slower-cadence fallback
+    (e.g. `stock_signals.current_price`), trusting the live price only while it isn't stuck more
+    than `max_gap_seconds` behind the fallback's own last write. A live price that predates the
+    fallback by more than the gap means the live source has stopped updating for this ticker
+    while the fallback kept moving — trusting it then risks showing a long-stale, possibly wildly
+    wrong number instead of falling back to the slower-but-current source. See
+    accounts_engine.current_price_map()'s original docstring for the full reasoning (a bare
+    "whichever timestamp is newer" comparison flips sources every night purely by winning a
+    timestamp race, even when the live cache is still correctly holding the day's real close).
+    A missing fallback (no row for this ticker in the fallback source) always keeps the live
+    price — there's nothing to compare against, so the gap-check can't apply.
+
+    Returns `(price, used_fallback)` rather than a bare price — callers that also display a
+    change_pts/change_pct computed relative to the live price need to know when the price they're
+    showing came from the fallback instead, so they can drop those now-inconsistent figures rather
+    than inferring the switch by comparing the returned value back against the live price (which
+    would silently miss the case where both sources happen to agree on the exact same number)."""
+    if fallback_price is None:
+        return live_price, False
+    if live_price is None or not live_last_updated_epoch:
+        return fallback_price, True
+    fallback_epoch = parse_utc_epoch(fallback_last_updated_utc)
+    if fallback_epoch - live_last_updated_epoch <= max_gap_seconds:
+        return live_price, False
+    return fallback_price, True
 
 
 def log_score_event(ticker: str, date: str, score: int, signal: str, close_price: Optional[float]) -> None:

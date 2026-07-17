@@ -8,6 +8,7 @@ import pandas as pd
 import notification_engine
 from config import load_config, HISTORICAL_DIR
 from database import get_connection, get_mutual_fund_tickers, get_ticker_registry
+from db_helpers import resolve_live_price
 from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
@@ -386,13 +387,22 @@ def get_intraday_points(ticker: str, max_points: int = _SPARKLINE_MAX_POINTS) ->
 
 
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
-    """Returns all pulse data from DB for Jinja template pre-rendering."""
+    """Returns all pulse data from DB for Jinja template pre-rendering. A ticker's
+    market_pulse_cache row can go stuck (no background job keeps it warm outside market hours,
+    or a ticker is newly held before its first live fetch), so its price is only trusted while
+    it isn't stuck more than resolve_live_price()'s gap behind stock_signals' own last update —
+    same protection accounts_engine.current_price_map() already applies to the P&L math, applied
+    here to what's actually displayed. A ticker falling back loses its change_pct/change_pts too,
+    since those are computed relative to the same stuck snapshot and would misleadingly imply a
+    day-over-day move for the fallback price that never happened."""
     conn = get_connection()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
-            "extended_price, extended_change_pts, extended_change_pct, extended_session FROM market_pulse_cache"
+            "SELECT c.ticker, c.name, c.price, c.change_pts, c.change_pct, c.is_positive, c.last_updated, "
+            "c.extended_price, c.extended_change_pts, c.extended_change_pct, c.extended_session, "
+            "s.current_price AS fallback_price, s.last_updated AS fallback_last_updated "
+            "FROM market_pulse_cache c LEFT JOIN stock_signals s ON s.ticker = c.ticker"
         )
         rows = cursor.fetchall()
     except Exception as e:
@@ -407,12 +417,13 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     cache: Dict[str, Dict[str, Any]] = {}
     for row in rows:
         is_stale = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
+        price, used_fallback = resolve_live_price(row['price'], row['last_updated'], row['fallback_price'], row['fallback_last_updated'])
         cache[row['ticker']] = {
             "ticker": row['ticker'],
             "name": row['name'],
-            "price": row['price'],
-            "change_pts": row['change_pts'],
-            "change_pct": row['change_pct'],
+            "price": price,
+            "change_pts": None if used_fallback else row['change_pts'],
+            "change_pct": None if used_fallback else row['change_pct'],
             "is_positive": bool(row['is_positive']),
             "is_stale": is_stale,
             "extended_price": row['extended_price'],
@@ -488,6 +499,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     rows: List[Any] = []
     sentiment_scores: Dict[str, float] = {}
     equity_currency_map: Dict[str, str] = {}
+    fallback_price_map: Dict[str, Any] = {}
     try:
         cursor = conn.cursor()
 
@@ -520,8 +532,13 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
 
         if requested_assets:
             placeholders = ','.join('?' for _ in requested_assets)
-            cursor.execute(f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})", requested_assets)
-            equity_currency_map = {r['ticker']: r['currency'] for r in cursor.fetchall()}
+            cursor.execute(
+                f"SELECT ticker, currency, current_price, last_updated FROM stock_signals WHERE ticker IN ({placeholders})",
+                requested_assets
+            )
+            signals_rows = cursor.fetchall()
+            equity_currency_map = {r['ticker']: r['currency'] for r in signals_rows}
+            fallback_price_map = {r['ticker']: (r['current_price'], r['last_updated']) for r in signals_rows}
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to read pulse from DB: %s", e)
         return {"indexes": [], "assets": []}
@@ -549,12 +566,14 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
             settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers)
             needs_refresh: bool = False if not settled else (not has_data or age > int(refresh_rate))
+            fallback = fallback_price_map.get(t)
+            price, used_fallback = resolve_live_price(row['price'], row['last_updated'], fallback[0] if fallback else None, fallback[1] if fallback else None)
             data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],
-                "price": row['price'],
-                "change_pts": row['change_pts'],
-                "change_pct": row['change_pct'],
+                "price": price,
+                "change_pts": None if used_fallback else row['change_pts'],
+                "change_pct": None if used_fallback else row['change_pct'],
                 "is_positive": bool(row['is_positive']),
                 "is_stale": is_stale,
                 "needs_refresh": needs_refresh,

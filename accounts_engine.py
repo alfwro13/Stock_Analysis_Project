@@ -13,6 +13,7 @@ import pandas as pd
 import time_engine
 import market_pulse
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
+from db_helpers import resolve_live_price
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
@@ -661,9 +662,13 @@ def current_price_map(tickers: list) -> dict:
         )
         for r in cursor.fetchall():
             live = live_prices.get(r["ticker"])
-            price = r["current_price"]
-            if live and _epoch(r["last_updated"]) - live[1] <= _STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS:
-                price = live[0]
+            price, _ = resolve_live_price(
+                live[0] if live else None,
+                live[1] if live else None,
+                r["current_price"],
+                r["last_updated"],
+                _STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS,
+            )
             result[r["ticker"]] = (price, r["currency"])
     except Exception as e:
         logger.error("Failed to load current prices: %s", e)
@@ -671,17 +676,6 @@ def current_price_map(tickers: list) -> dict:
         if conn:
             conn.close()
     return result
-
-
-def _epoch(stored_utc: Optional[str]) -> float:
-    """Parses a `"%Y-%m-%d %H:%M:%S"` UTC timestamp (SQLite storage format) to a Unix epoch,
-    for comparing against market_pulse_cache's own epoch-float `last_updated`."""
-    if not stored_utc:
-        return 0.0
-    try:
-        return datetime.strptime(stored_utc, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
-    except ValueError:
-        return 0.0
 
 
 def held_tickers_lightweight() -> list:
