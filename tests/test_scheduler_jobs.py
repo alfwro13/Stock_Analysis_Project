@@ -5,6 +5,8 @@ Covers:
   • run_ml_inference() — wires predicted_movers_engine.log_predictions() and
                           backfill_actual_outcomes() into the existing job, in order,
                           only when there are tickers to process.
+  • run_overnight_quant_scan() — wires earnings_vol_engine.log_near_earnings_predictions()
+                                  and backfill_earnings_drift_outcomes() into the existing job.
 """
 
 import sys
@@ -44,3 +46,22 @@ class TestRunMlInferenceWiresPredictedMovers:
 
         mock_backfill.assert_not_called()
         mock_log.assert_not_called()
+
+
+class TestRunOvernightQuantScanWiresEarningsDrift:
+    def test_calls_log_near_earnings_and_backfill(self):
+        call_order = []
+        with patch("scheduler_jobs.DataEngine") as mock_engine_cls, \
+             patch("scheduler_jobs.run_daily_quant_scan"), \
+             patch("scheduler_jobs.update_all_tail_risks"), \
+             patch("scheduler_jobs.log_near_earnings_predictions",
+                   side_effect=lambda tickers: call_order.append("log") or 0) as mock_log, \
+             patch("scheduler_jobs.backfill_earnings_drift_outcomes",
+                   side_effect=lambda: call_order.append("backfill") or 0) as mock_backfill, \
+             patch("scheduler_jobs.log_sched_notification"):
+            mock_engine_cls.return_value.get_all_tickers.return_value = ["AAPL"]
+            scheduler_jobs.run_overnight_quant_scan()
+
+        mock_log.assert_called_once_with(["AAPL"])
+        mock_backfill.assert_called_once_with()
+        assert call_order == ["log", "backfill"]

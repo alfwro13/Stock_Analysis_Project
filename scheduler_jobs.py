@@ -12,7 +12,7 @@ from database import get_account, get_connection, get_universe_tickers
 from db_helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
-from earnings_vol_engine import run_earnings_vol_scan
+from earnings_vol_engine import backfill_earnings_drift_outcomes, log_near_earnings_predictions, run_earnings_vol_scan
 from market_pulse import is_quote_settled
 from freetrade_engine import sync_freetrade_universe
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -322,6 +322,9 @@ def run_overnight_quant_scan():
         run_daily_quant_scan(all_tickers)
         logger.info("Overnight tail risk computation initiated.")
         update_all_tail_risks(all_tickers, scan_type='tail_risk_daily')
+        logged = log_near_earnings_predictions(all_tickers)
+        resolved = backfill_earnings_drift_outcomes()
+        logger.info("Earnings Drift: logged/refreshed %d, resolved %d outcomes.", logged, resolved)
         logger.info("Overnight quant scan complete.")
         log_sched_notification("Success", "Overnight Quant Scan completed successfully.")
     except Exception as e:

@@ -773,8 +773,9 @@ async def news_page(request: Request):
 async def earnings_volatility_page(request: Request):
     today_str = time_engine.now_local().strftime('%Y-%m-%d')
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         query = """
             SELECT * FROM earnings_volatility
@@ -785,13 +786,31 @@ async def earnings_volatility_page(request: Request):
         rows = cursor.fetchall()
         earnings_data = [dict(row) for row in rows]
     finally:
-        conn.close()
+        if conn:
+            conn.close()
+
+    from db_helpers import get_latest_quantile_bands
+    quant_bands = {r["ticker"]: r for r in get_latest_quantile_bands([r["ticker"] for r in earnings_data])}
+    for row in earnings_data:
+        row["quant_band"] = quant_bands.get(row["ticker"])
 
     return templates.TemplateResponse(
         request=request,
         name="earnings_volatility.html",
         context={
             "earnings_data": earnings_data,
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
+
+@page_router.get("/earnings-volatility/accuracy", response_class=HTMLResponse)
+async def earnings_volatility_accuracy_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="earnings_volatility_accuracy.html",
+        context={
             "unread_count": get_unread_count(),
             "config": load_config()
         }

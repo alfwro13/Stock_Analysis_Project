@@ -146,6 +146,12 @@ def test_earnings_volatility_page_loads(client):
 
 
 @pytest.mark.pages
+def test_earnings_volatility_accuracy_page_loads(client):
+    """GET /earnings-volatility/accuracy must load the prediction accuracy scorecard."""
+    _assert_page_ok(client, "/earnings-volatility/accuracy", label="Earnings Volatility Accuracy")
+
+
+@pytest.mark.pages
 def test_options_sandbox_page_loads(client):
     """GET /options-sandbox must load the options payoff calculator."""
     _assert_page_ok(client, "/options-sandbox", label="Options Sandbox")
@@ -679,6 +685,7 @@ def test_no_page_route_returns_500(client):
         ("/market-reports",     "Market Reports"),
         ("/market-sentiment",   "Market Sentiment"),
         ("/earnings-volatility","Earnings Volatility"),
+        ("/earnings-volatility/accuracy","Earnings Volatility Accuracy"),
         ("/options-sandbox",    "Options Sandbox"),
         ("/news",               "News Feed"),
         ("/tools",              "Tools"),

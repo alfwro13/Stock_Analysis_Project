@@ -12,13 +12,14 @@ from database import get_connection
 from db_helpers import (
     batch_update_predicted_movers_actuals,
     get_company_names,
+    get_latest_quantile_bands,
     get_portfolio_watchlist_tickers,
     get_predicted_movers_accuracy,
     get_unresolved_predicted_movers,
     get_universe_tickers,
 )
 from pairs_spread_engine import SCOPE_PORTFOLIO_WATCHLIST, SCOPE_UNIVERSE
-from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, trading_days_forward
 
 logger = logging.getLogger(__name__)
 
@@ -40,37 +41,6 @@ def _get_scope_tickers(scope: str) -> list[str]:
     return get_portfolio_watchlist_tickers()
 
 
-def _latest_quantile_rows(tickers: list[str]) -> list[dict]:
-    """Latest quant_signals row per ticker with non-null price_q10/price_q90 — the same
-    inline correlated-subquery idiom used elsewhere in the codebase for 'latest row per
-    ticker' (ai_prediction_engine.py, page_routes.py, market_pulse.py)."""
-    if not tickers:
-        return []
-    conn = None
-    try:
-        conn = get_connection()
-        placeholders = ",".join("?" * len(tickers))
-        rows = conn.execute(
-            f"""SELECT qs.ticker, qs.date, qs.close_price, qs.price_q10, qs.price_q90
-                FROM quant_signals qs
-                WHERE qs.ticker IN ({placeholders})
-                  AND qs.price_q10 IS NOT NULL AND qs.price_q90 IS NOT NULL
-                  AND qs.date = (
-                      SELECT MAX(qs2.date) FROM quant_signals qs2
-                      WHERE qs2.ticker = qs.ticker
-                        AND qs2.price_q10 IS NOT NULL AND qs2.price_q90 IS NOT NULL
-                  )""",
-            tickers,
-        ).fetchall()
-        return [dict(r) for r in rows]
-    except Exception as e:
-        logger.error("_latest_quantile_rows failed: %s", e)
-        return []
-    finally:
-        if conn:
-            conn.close()
-
-
 def get_leaderboard(
     scope: str = SCOPE_PORTFOLIO_WATCHLIST,
     sort_mode: str = SORT_MOVERS,
@@ -83,7 +53,7 @@ def get_leaderboard(
     if not tickers:
         return []
 
-    quantile_rows = _latest_quantile_rows(tickers)
+    quantile_rows = get_latest_quantile_bands(tickers)
     if not quantile_rows:
         return []
 
@@ -122,16 +92,6 @@ def get_leaderboard(
     return results[:limit]
 
 
-def _target_date(predicted_date: str) -> str:
-    """Approximate 'PREDICTION_HORIZON_DAYS trading days forward' of predicted_date using
-    numpy's Mon-Fri business-day calendar (no exchange-holiday awareness). Acceptable because
-    the only consumer is backfill_actual_outcomes()'s 'first quant_signals close on/after
-    target_date' lookup, which self-corrects for the few-day slack a missed holiday
-    introduces."""
-    d = np.datetime64(predicted_date, "D")
-    return str(np.busday_offset(d, PREDICTION_HORIZON_DAYS, roll="forward"))
-
-
 def log_predictions(tickers: Optional[list[str]] = None) -> int:
     """Logs today's quantile prediction for each Portfolio+Watchlist ticker into
     predicted_movers_history — must run the same day score_quantile_predictions() runs, since
@@ -142,7 +102,7 @@ def log_predictions(tickers: Optional[list[str]] = None) -> int:
     if not tickers:
         return 0
 
-    rows = _latest_quantile_rows(tickers)
+    rows = get_latest_quantile_bands(tickers)
     if not rows:
         return 0
 
@@ -152,7 +112,7 @@ def log_predictions(tickers: Optional[list[str]] = None) -> int:
     try:
         conn = get_connection()
         for row in rows:
-            target_date = _target_date(row["date"])
+            target_date = trading_days_forward(row["date"], PREDICTION_HORIZON_DAYS)
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO predicted_movers_history
                    (ticker, predicted_date, predicted_ts, close_price, price_q10, price_q90, target_date)

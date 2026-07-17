@@ -4,6 +4,9 @@
 PREDICTION_HORIZON_DAYS     = 10    # trading days from T+1 entry to T+10 exit
 PREDICTION_RETURN_THRESHOLD = 0.03  # 3% return required for a positive label
 
+# ── Earnings Volatility drift prediction ───────────────────────────────────────
+EARNINGS_DRIFT_HORIZONS = (1, 5, 20)  # trading days after earnings for signed drift stats + predictions
+
 # ── Market regime classification ───────────────────────────────────────────────
 REGIME_CRASH_VOL    = 35.0  # annualised vol % at or above which regime = Crash
 REGIME_VOLATILE_VOL = 20.0  # annualised vol % at or above which regime = Volatile
@@ -60,7 +63,7 @@ IF_STRESS_ALERT_THRESHOLD = 0.75   # score in [0,1] above which the alert check 
 IF_STRESS_ALERT_DAYS      = 2      # consecutive days above threshold before firing
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.120"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.121"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

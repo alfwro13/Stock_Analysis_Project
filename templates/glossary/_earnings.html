@@ -36,6 +36,12 @@
                 <div class="rule">IMPORTANT CAVEAT: Historical average moves use only 4 past observations — a very small sample. A single outlier earnings reaction (say, a +40% move on an acquisition rumour) can distort the historical average significantly. Always treat edge scores as a starting point for further research, not a mechanical signal to trade on.</div>
             </div>
 
+            <div class="term-box">
+                <span class="term-title">Post-Earnings Drift</span>
+                <p>The Historical Average Move above is <strong>unsigned</strong> — it tells you how big past earnings reactions have been, but not which direction. Post-Earnings Drift is the <strong>signed</strong> (directional) version, tracked at three horizons: 1, 5, and 20 trading days after the pre-earnings close. For each horizon, the engine looks at the ticker's last (up to) 4 earnings events and reports the average signed % change and how many of those events were positive — e.g. "3 of 4 up, average +2.1%" at 1 day, "+4.3%" at 20 days.</p>
+                <p>This is a purely historical, ticker-specific baseline — it says nothing about <em>why</em> a stock tends to drift a certain way after its earnings, only that it has. The dashboard also logs an explicit prediction shortly before each upcoming earnings date, projecting the pre-earnings close forward using this same signed historical average, and tracks whether the actual price move matched the predicted direction at each horizon once enough time has passed (see the Earnings Volatility Accuracy page). As with the Edge Score above, this is based on a small sample (up to 4 past events) and is a starting point for research, not a guarantee.</p>
+            </div>
+
         </div>
     </div>
 </div>

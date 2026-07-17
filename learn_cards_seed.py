@@ -1417,6 +1417,20 @@ CARDS = [
 <p><strong>Positive edge</strong> (Historical &gt; Implied) means the options are cheap relative to history — the options market is underestimating how much the stock tends to move at earnings. This is a theoretical edge for an options buyer: you're paying less than the expected value of the move. A straddle buyer profits when the stock moves more than the premium cost — if the stock historically moves 12% but you're only paying 8% implied, history suggests this straddle is cheap.</p>
 <p><strong>Negative edge</strong> (Historical &lt; Implied) means the options are expensive — the market is overestimating the expected move. This is a theoretical edge for an options seller: you collect a premium that, based on history, exceeds the typical actual move. Option selling strategies (short straddle, iron condor) are designed to profit when the stock moves less than the implied move suggests.</p>""",
     },
+    {
+        "term_key": "post-earnings-drift",
+        "section_id": "earnings-vol",
+        "term_title": "Post-Earnings Drift",
+        "question": "How does Post-Earnings Drift differ from the Historical Average Move?",
+        "answer": "Drift is signed (directional), showing whether the stock tended to rise or fall, not just the size of the move",
+        "distractors": [
+            "Drift is calculated from options prices instead of historical prices",
+            "Drift only looks at the single most recent earnings report",
+            "Drift measures intraday volatility rather than the closing price",
+        ],
+        "explanation": """<p>The Historical Average Move above is <strong>unsigned</strong> — it tells you how big past earnings reactions have been, but not which direction. Post-Earnings Drift is the <strong>signed</strong> (directional) version, tracked at three horizons: 1, 5, and 20 trading days after the pre-earnings close. For each horizon, the engine looks at the ticker's last (up to) 4 earnings events and reports the average signed % change and how many of those events were positive — e.g. "3 of 4 up, average +2.1%" at 1 day, "+4.3%" at 20 days.</p>
+<p>This is a purely historical, ticker-specific baseline — it says nothing about <em>why</em> a stock tends to drift a certain way after its earnings, only that it has. The dashboard also logs an explicit prediction shortly before each upcoming earnings date, projecting the pre-earnings close forward using this same signed historical average, and tracks whether the actual price move matched the predicted direction at each horizon once enough time has passed (see the Earnings Volatility Accuracy page). As with the Edge Score above, this is based on a small sample (up to 4 past events) and is a starting point for research, not a guarantee.</p>""",
+    },
     # --- dip-radar ---
     {
         "term_key": "intraday-mean-reversion",

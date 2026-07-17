@@ -4,20 +4,39 @@
 
 {% block content %}
 <h1 class="mb-1">Earnings Volatility</h1>
-<p class="text-secondary mb-3">Options Mispricing &amp; Volatility Arbitrage Scanner</p>
+<p class="text-secondary mb-3">Post-Earnings Drift, ML Forecast &amp; Options Mispricing Scanner</p>
 
-<h2>Upcoming Earnings Volatility Edge</h2>
-<p>Quantitative options mispricing evaluation. A positive edge score indicates that the At-The-Money (ATM) Straddle implies a smaller move than historical averages (Options are mathematically underpriced).</p>
+<div class="mb-3">
+    <a href="/earnings-volatility/accuracy" class="btn btn-outline-secondary btn-sm">Prediction Accuracy &rarr;</a>
+</div>
+
+<h2>Upcoming Earnings — What's Happened Before, and What the Model Sees Next</h2>
+<p>For each ticker with earnings in the next 14 days: how it has historically moved 1, 5, and 20 trading days after past earnings reports (signed — up or down, not just magnitude), plus the general-purpose ML Quantile Price Band as a secondary forward-looking reference. The options-focused mispricing scanner remains below, collapsed by default.</p>
+
+<div class="guide-grid mb-3">
+    <div class="guide-card border-top-purple">
+        <h4 class="text-accent-purple"><abbr title="Signed (directional) average price change at 1, 5, and 20 trading days after each of the ticker's last 4 earnings reports, measured from the close right before the report to the close at that horizon.">Post-Earnings Drift</abbr></h4>
+        <p>Shows how many of the last (up to) 4 earnings reports saw the price higher at each horizon, and the average signed move. A ticker that has drifted up 3 of the last 4 times isn't guaranteed to do so again — the sample is small — but it's a useful, ticker-specific historical baseline a generic market average can't give you.</p>
+    </div>
+    <div class="guide-card border-top-blue">
+        <h4 class="text-accent-blue"><abbr title="ML Quantile Regression estimates a statistical price range for the next 10 trading days using the same feature set as the binary ML ensemble. The floor (Q10) and ceiling (Q90) define a confidence corridor — not a guarantee.">ML Quantile Band</abbr></h4>
+        <p>This is the same general-purpose 10-trading-day price band shown on the Stock Detail and Predicted Movers pages. It is <strong>not</strong> earnings-conditioned — it's provided here as a secondary reference point alongside the earnings-specific drift stats.</p>
+    </div>
+</div>
 
 <table id="dataTable" class="table table-hover w-100">
     <thead>
         <tr>
             <th data-priority="1">Ticker</th>
             <th data-priority="2">Next Earnings</th>
-            <th data-priority="4">Implied Move</th>
-            <th data-priority="5">Historical Avg Move</th>
-            <th data-priority="3">Edge Score</th>
-            <th data-priority="6">Options Volume</th>
+            <th data-priority="3">Drift 1D</th>
+            <th data-priority="4">Drift 5D</th>
+            <th data-priority="3">Drift 20D</th>
+            <th data-priority="5">ML Quantile Band</th>
+            <th data-priority="7">Implied Move</th>
+            <th data-priority="8">Historical Avg Move</th>
+            <th data-priority="6">Edge Score</th>
+            <th data-priority="9">Options Volume</th>
         </tr>
     </thead>
     <tbody>
@@ -25,19 +44,41 @@
         <tr>
             <td><a href="/stock/{{ row.ticker }}" class="ticker-link">{{ row.ticker }}</a></td>
             <td>{{ row.next_earnings_date }}</td>
-            <td>{{ "{:,.2f}".format(row.implied_move_pct) }}%</td>
-            <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
-            <td class="{% if row.edge_score > 0 %}text-success{% elif row.edge_score < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
-                {% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%
+            {% for h in [1, 5, 20] %}
+            {% set avg = row["drift_avg_pct_" ~ h ~ "d"] %}
+            {% set up = row["drift_up_count_" ~ h ~ "d"] %}
+            {% set n = row["drift_sample_size_" ~ h ~ "d"] %}
+            <td class="{% if avg is not none and avg > 0 %}text-success{% elif avg is not none and avg < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
+                {% if n %}{{ up }}/{{ n }} up &middot; {% if avg > 0 %}+{% endif %}{{ "{:,.2f}".format(avg) }}%{% else %}&mdash;{% endif %}
             </td>
-            <td>{{ "{:,.0f}".format(row.options_volume) }}</td>
+            {% endfor %}
+            <td>
+                {% if row.quant_band %}
+                {{ "{:,.2f}".format(row.quant_band.price_q10) }} &ndash; {{ "{:,.2f}".format(row.quant_band.price_q90) }}
+                {% else %}&mdash;{% endif %}
+            </td>
+            <td>{% if row.implied_move_pct is not none %}{{ "{:,.2f}".format(row.implied_move_pct) }}%{% else %}&mdash;{% endif %}</td>
+            <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
+            <td class="{% if row.edge_score is none %}text-neutral-bold{% elif row.edge_score > 0 %}text-success{% elif row.edge_score < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
+                {% if row.edge_score is none %}&mdash;{% else %}{% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%{% endif %}
+            </td>
+            <td>{% if row.options_volume is not none %}{{ "{:,.0f}".format(row.options_volume) }}{% else %}&mdash;{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
+<div class="accordion mt-3" id="optionsHelpAccordion">
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#optionsHelp" aria-expanded="false" aria-controls="optionsHelp">
+                📖 How to Read the Options Mispricing Section
+            </button>
+        </h2>
+        <div id="optionsHelp" class="accordion-collapse collapse" data-bs-parent="#optionsHelpAccordion">
+            <div class="accordion-body">
+
 <div class="manual-section">
-        <h2 class="manual-header text-accent-cyan">📖 How to Read This Report</h2>
         <div class="manual-text">
             <p>Trading around earnings is one of the most volatile events in the stock market. Because earnings reports are binary events (a company either beats expectations or misses them), stocks often gap up or down violently. This scanner acts as an <strong>Arbitrage Engine</strong>—it compares what the options market <em>thinks</em> will happen against what has <em>historically</em> happened, looking for mathematical mispricings.</p>
         </div>
@@ -88,11 +129,16 @@
             <div class="guide-card border-top-neutral">
                 <h4 class="text-muted">5. Options Volume</h4>
                 <p>This is the total number of Option contracts that have traded today for the specific strike prices we used in our calculation.</p>
-                <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data.</p>
+                <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data. A ticker with no liquid ATM straddle still appears above with drift/ML-band data — the Implied Move, Edge Score, and Options Volume columns simply show &mdash;.</p>
             </div>
 
         </div>
     </div>
+
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

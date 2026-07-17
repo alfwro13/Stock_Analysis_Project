@@ -494,7 +494,43 @@ def init_db() -> None:
                 historical_avg_move_pct REAL,
                 edge_score REAL,
                 options_volume INTEGER,
-                last_updated TEXT
+                last_updated TEXT,
+                drift_avg_pct_1d REAL,
+                drift_up_count_1d INTEGER,
+                drift_sample_size_1d INTEGER,
+                drift_avg_pct_5d REAL,
+                drift_up_count_5d INTEGER,
+                drift_sample_size_5d INTEGER,
+                drift_avg_pct_20d REAL,
+                drift_up_count_20d INTEGER,
+                drift_sample_size_20d INTEGER
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS earnings_drift_predictions (
+                id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker                 TEXT NOT NULL,
+                earnings_date          TEXT NOT NULL,
+                predicted_ts           TEXT NOT NULL,
+                pre_earnings_close     REAL NOT NULL,
+                sample_size            INTEGER,
+                predicted_pct_1d       REAL,
+                target_date_1d         TEXT,
+                actual_price_1d        REAL,
+                actual_date_1d         TEXT,
+                direction_correct_1d   INTEGER,
+                predicted_pct_5d       REAL,
+                target_date_5d         TEXT,
+                actual_price_5d        REAL,
+                actual_date_5d         TEXT,
+                direction_correct_5d   INTEGER,
+                predicted_pct_20d      REAL,
+                target_date_20d        TEXT,
+                actual_price_20d       REAL,
+                actual_date_20d        TEXT,
+                direction_correct_20d  INTEGER,
+                UNIQUE(ticker, earnings_date)
             )
         ''')
 
@@ -2029,6 +2065,29 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE pairs_spread_results ADD COLUMN scope TEXT NOT NULL DEFAULT 'portfolio_watchlist'")
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to add scope to pairs_spread_results: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(earnings_volatility)")
+        existing_earnings_vol_columns = [info['name'] for info in cursor.fetchall()]
+        for col, ddl in (
+            ('drift_avg_pct_1d', "ALTER TABLE earnings_volatility ADD COLUMN drift_avg_pct_1d REAL"),
+            ('drift_up_count_1d', "ALTER TABLE earnings_volatility ADD COLUMN drift_up_count_1d INTEGER"),
+            ('drift_sample_size_1d', "ALTER TABLE earnings_volatility ADD COLUMN drift_sample_size_1d INTEGER"),
+            ('drift_avg_pct_5d', "ALTER TABLE earnings_volatility ADD COLUMN drift_avg_pct_5d REAL"),
+            ('drift_up_count_5d', "ALTER TABLE earnings_volatility ADD COLUMN drift_up_count_5d INTEGER"),
+            ('drift_sample_size_5d', "ALTER TABLE earnings_volatility ADD COLUMN drift_sample_size_5d INTEGER"),
+            ('drift_avg_pct_20d', "ALTER TABLE earnings_volatility ADD COLUMN drift_avg_pct_20d REAL"),
+            ('drift_up_count_20d', "ALTER TABLE earnings_volatility ADD COLUMN drift_up_count_20d INTEGER"),
+            ('drift_sample_size_20d', "ALTER TABLE earnings_volatility ADD COLUMN drift_sample_size_20d INTEGER"),
+        ):
+            if col not in existing_earnings_vol_columns:
+                try:
+                    logger.info("[MIGRATION] Adding column: %s to earnings_volatility...", col)
+                    cursor.execute(ddl)
+                except Exception as e:
+                    logger.error("[MIGRATION ERROR] Failed on earnings_volatility: %s", e)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add drift columns to earnings_volatility: %s", e)
 
     try:
         conn.commit()
