@@ -721,12 +721,13 @@ def held_tickers_lightweight() -> list:
 def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     """Held tickers whose market_pulse_cache row is older than refresh_rate seconds, while
     either of the two markets this app tracks (`GET /api/system/market-status`'s own scope —
-    UK/US) is open — plus any ticker with NO cached row at all, regardless of market hours.
-    The market-hours gate exists to avoid needlessly re-fetching a ticker whose price can't
-    have moved since the market shut, but that reasoning doesn't apply to a genuinely missing
-    row (a restart or maintenance-prune gap, or a newly-bought ticker) — without this bootstrap
-    exception a ticker with no row stays permanently unrecoverable for the rest of a closure,
-    since normal polling would never trigger a fetch to create the first row.
+    UK/US) is open, in pre-market, or in after-hours (market_pulse.get_exchange_session_state() !=
+    "closed") — plus any ticker with NO cached row at all, regardless of market hours. The
+    fully-closed gate exists to avoid needlessly re-fetching a ticker whose price can't have moved
+    since the market shut, but that reasoning doesn't apply to a genuinely missing row (a restart
+    or maintenance-prune gap, or a newly-bought ticker) — without this bootstrap exception a ticker
+    with no row stays permanently unrecoverable for the rest of a closure, since normal polling
+    would never trigger a fetch to create the first row.
 
     An already-cached (non-missing) ticker is additionally gated on
     market_pulse.is_ticker_quote_settled() — the shared per-ticker exchange resolution +
@@ -765,7 +766,9 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
             conn.close()
 
     missing = [t for t in tickers if t not in cache_map]
-    if not (market_pulse.is_exchange_open("LSE") or market_pulse.is_exchange_open("NYSE")):
+    lse_state = market_pulse.get_exchange_session_state("LSE")
+    nyse_state = market_pulse.get_exchange_session_state("NYSE")
+    if lse_state == "closed" and nyse_state == "closed":
         return missing
 
     now = time.time()

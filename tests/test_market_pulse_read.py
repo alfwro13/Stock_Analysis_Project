@@ -388,9 +388,28 @@ class TestResolveTickerExchange:
 
 class TestIsTickerQuoteSettled:
     def test_delegates_to_is_quote_settled_for_resolved_exchange(self):
-        with patch("market_pulse.is_quote_settled", return_value=False) as mock_settled:
+        with patch("market_pulse.is_quote_settled", return_value=False) as mock_settled, \
+             patch("market_pulse.get_exchange_session_state", return_value="open"):
             assert _mp.is_ticker_quote_settled("^FTSE") is False
         mock_settled.assert_called_once_with("LSE", include_premarket=False)
+
+    def test_active_premarket_session_counts_as_settled_for_ordinary_ticker(self):
+        """Regression (2026-07-17): an ordinary (non-future) ticker whose exchange is genuinely
+        in pre-market or after-hours must also count as settled, so the extended-hours display
+        actually refreshes rather than staying frozen on the last regular-session cache row."""
+        with patch("market_pulse.is_quote_settled", return_value=False), \
+             patch("market_pulse.get_exchange_session_state", return_value="pre"):
+            assert _mp.is_ticker_quote_settled("AAPL") is True
+
+    def test_active_afterhours_session_counts_as_settled_for_ordinary_ticker(self):
+        with patch("market_pulse.is_quote_settled", return_value=False), \
+             patch("market_pulse.get_exchange_session_state", return_value="post"):
+            assert _mp.is_ticker_quote_settled("AAPL") is True
+
+    def test_closed_session_does_not_count_as_settled(self):
+        with patch("market_pulse.is_quote_settled", return_value=False), \
+             patch("market_pulse.get_exchange_session_state", return_value="closed"):
+            assert _mp.is_ticker_quote_settled("AAPL") is False
 
     def test_future_ticker_honors_premarket_unlike_its_spot_row(self):
         # ES=F shares ^GSPC's NYSE exchange (see TestResolveTickerExchange above), but must

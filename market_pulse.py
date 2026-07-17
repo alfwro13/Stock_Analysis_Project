@@ -273,11 +273,21 @@ def is_ticker_quote_settled(
     build_registry_future_tickers()) so a futures tile isn't stuck requiring its underlying spot
     exchange's regular session — the exact session during which resolve_tile() shows the spot
     ticker instead, which left futures tickers refreshing only once a session, then frozen for the
-    rest of the day including the pre-market window they're meant to represent (found 2026-07-13)."""
+    rest of the day including the pre-market window they're meant to represent (found 2026-07-13).
+    A genuinely active pre/post-market session (Yahoo's own marketState, via
+    get_exchange_session_state()) also counts as settled for an ordinary ticker even when it isn't
+    a registry future — this is what keeps the Pre-Market/After Hours display (see
+    yahoo_engine.get_quote_snapshot()) actually live rather than frozen on last session's cache row
+    until the next regular open (found 2026-07-17). This is deliberately narrower than changing
+    is_quote_settled() itself, which alert-firing engines (Crash & Moonshot, AI Contagion) also
+    call and must keep its existing regular/premarket-only semantics for."""
     if registry_future_tickers is None:
         registry_future_tickers = build_registry_future_tickers()
     honor_premarket = ticker in registry_future_tickers
-    return is_quote_settled(resolve_ticker_exchange(ticker, currency, registry_exchange_map), include_premarket=honor_premarket)
+    exchange = resolve_ticker_exchange(ticker, currency, registry_exchange_map)
+    if is_quote_settled(exchange, include_premarket=honor_premarket):
+        return True
+    return get_exchange_session_state(exchange) in ("pre", "post")
 
 
 def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:

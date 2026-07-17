@@ -1743,9 +1743,9 @@ def test_held_tickers_lightweight_excludes_ignored_tickers(monkeypatch):
 def test_tickers_needing_refresh_skips_cached_ticker_when_market_closed(monkeypatch):
     import time
 
-    # Market closed, but a cached (even stale) row exists — no need to re-fetch,
-    # since the price can't have moved since the market shut.
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: False)
+    # Both markets fully closed (no open/pre/post session at all), but a cached (even
+    # stale) row exists — no need to re-fetch, since the price can't have moved.
+    monkeypatch.setattr(accounts_engine.market_pulse, "get_exchange_session_state", lambda exchange: "closed")
     _seed_market_pulse("ZZCLOSEDCACHED", 100.0, time.time() - 200000)
     assert accounts_engine.tickers_needing_refresh(["ZZCLOSEDCACHED"], 60) == []
 
@@ -1754,7 +1754,7 @@ def test_tickers_needing_refresh_skips_cached_ticker_when_market_closed(monkeypa
 def test_tickers_needing_refresh_bootstraps_missing_ticker_even_when_market_closed(monkeypatch):
     # Weekend/restart bootstrap case: a ticker with no cached row at all must still be
     # refreshed even while the market is closed, or it can never self-heal until reopen.
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: False)
+    monkeypatch.setattr(accounts_engine.market_pulse, "get_exchange_session_state", lambda exchange: "closed")
     assert accounts_engine.tickers_needing_refresh(["ZZNOCACHECLOSED"], 60) == ["ZZNOCACHECLOSED"]
 
 
@@ -1763,8 +1763,8 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
     import time
 
     monkeypatch.setattr(
-        accounts_engine.market_pulse, "is_exchange_open",
-        lambda exchange: exchange == "LSE",
+        accounts_engine.market_pulse, "get_exchange_session_state",
+        lambda exchange: "open" if exchange == "LSE" else "closed",
     )
     # Quote-settled gate stubbed True here — this test is about the age/missing logic,
     # not the settle gate (covered separately below).
@@ -1782,13 +1782,29 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
 
 
 @pytest.mark.db
+def test_tickers_needing_refresh_includes_stale_ticker_during_premarket(monkeypatch):
+    """Regression (2026-07-17): a genuinely active pre-market/after-hours session must also
+    count as worth refreshing for an ordinary held ticker, not just a regular open session —
+    otherwise the Pre-Market/After Hours display stays frozen on the last regular-session
+    cache row until the next full open."""
+    import time
+
+    monkeypatch.setattr(accounts_engine.market_pulse, "get_exchange_session_state", lambda exchange: "pre")
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange, include_premarket=False: False)
+    _seed_market_pulse("ZZPREMARKETREF", 100.0, time.time() - 3600)
+
+    stale = accounts_engine.tickers_needing_refresh(["ZZPREMARKETREF"], 60)
+    assert "ZZPREMARKETREF" in stale
+
+
+@pytest.mark.db
 def test_tickers_needing_refresh_skips_stale_ticker_when_quote_not_yet_settled(monkeypatch):
     import time
 
     # Exchange is open (LSE just opened) but its quote isn't trustworthy yet (Yahoo's
     # delayed LSE feed) — a stale cached ticker must NOT be re-fetched until settled,
     # or the fetch would pull a not-yet-representative quote into market_pulse_cache.
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: True)
+    monkeypatch.setattr(accounts_engine.market_pulse, "get_exchange_session_state", lambda exchange: "open")
     monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange, include_premarket=False: False)
     _seed_market_pulse("ZZUNSETTLEDREF", 100.0, time.time() - 3600)
 
@@ -1800,7 +1816,7 @@ def test_tickers_needing_refresh_skips_stale_ticker_when_quote_not_yet_settled(m
 def test_tickers_needing_refresh_bootstraps_missing_ticker_even_when_quote_not_settled(monkeypatch):
     # The missing-row bootstrap exception must bypass the settle gate too — a genuinely
     # missing row can't get worse by fetching it immediately.
-    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: True)
+    monkeypatch.setattr(accounts_engine.market_pulse, "get_exchange_session_state", lambda exchange: "open")
     monkeypatch.setattr(accounts_engine.market_pulse, "is_quote_settled", lambda exchange, include_premarket=False: False)
 
     stale = accounts_engine.tickers_needing_refresh(["ZZNOCACHEUNSETTLED"], 60)
