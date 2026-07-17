@@ -489,3 +489,45 @@ def test_get_registry_spot_future_tickers_skips_missing_future_ticker():
     ]):
         tickers = db_helpers.get_registry_spot_future_tickers()
     assert tickers == ["^FTSE"]
+
+
+# ── resolve_live_price ──────────────────────────────────────────────────────
+
+def test_resolve_live_price_prefers_live_when_within_gap():
+    price, used_fallback = db_helpers.resolve_live_price(297.11, 1000.0, 219.05, "1970-01-01 00:16:40")  # +1000s
+    assert price == 297.11
+    assert used_fallback is False
+
+
+def test_resolve_live_price_falls_back_when_live_stuck_beyond_gap():
+    # fallback ~7 days ahead of the live cache row — mirrors the IBM prod incident
+    # (market_pulse_cache stuck on a week-old price after stock_signals refreshed).
+    live_epoch = 1000.0
+    fallback_epoch_str = "1970-01-08 00:16:40"  # +7 days
+    price, used_fallback = db_helpers.resolve_live_price(297.11, live_epoch, 219.05, fallback_epoch_str)
+    assert price == 219.05
+    assert used_fallback is True
+
+
+def test_resolve_live_price_missing_live_returns_fallback():
+    assert db_helpers.resolve_live_price(None, None, 219.05, "1970-01-01 00:16:40") == (219.05, True)
+    assert db_helpers.resolve_live_price(297.11, 0, 219.05, "1970-01-01 00:16:40") == (219.05, True)
+
+
+def test_resolve_live_price_missing_fallback_timestamp_keeps_live():
+    assert db_helpers.resolve_live_price(297.11, 1000.0, None, None) == (297.11, False)
+
+
+def test_resolve_live_price_identical_values_still_flags_fallback_used():
+    """Regression guard: the fallback flag must come from the function's own decision, not be
+    inferred by comparing the returned price back against the live price — a coincidental exact
+    match between the two sources must not be misread as "the live price was kept"."""
+    price, used_fallback = db_helpers.resolve_live_price(219.05, 1000.0, 219.05, "1970-01-08 00:16:40")
+    assert price == 219.05
+    assert used_fallback is True
+
+
+def test_parse_utc_epoch_roundtrip():
+    assert db_helpers.parse_utc_epoch("1970-01-01 00:16:40") == 1000.0
+    assert db_helpers.parse_utc_epoch(None) == 0.0
+    assert db_helpers.parse_utc_epoch("not-a-date") == 0.0

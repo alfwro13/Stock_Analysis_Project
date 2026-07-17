@@ -64,11 +64,22 @@ def _seed_quant_signal(ticker: str, score: float, date: str = "2026-06-07"):
     c.close()
 
 
+def _seed_stock_signal(ticker: str, price: float, last_updated: str, currency: str = "USD"):
+    c = _conn()
+    c.execute(
+        "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, last_updated) VALUES (?, ?, ?, ?)",
+        (ticker, price, currency, last_updated),
+    )
+    c.commit()
+    c.close()
+
+
 def _clear(*tickers):
     c = _conn()
     for t in tickers:
         c.execute("DELETE FROM market_pulse_cache WHERE ticker = ?", (t,))
         c.execute("DELETE FROM quant_signals WHERE ticker = ?", (t,))
+        c.execute("DELETE FROM stock_signals WHERE ticker = ?", (t,))
     c.commit()
     c.close()
 
@@ -181,6 +192,16 @@ class TestGetCachedPulseFromDb:
         asset_tickers = [r["ticker"] for r in result["assets"]]
         assert ASSET_TICKER not in asset_tickers
 
+    def test_falls_back_to_stock_signals_when_cache_stuck(self):
+        now = time.time()
+        _seed_pulse(ASSET_TICKER, price=297.11, change_pct=35.0, last_updated=now - 7 * 86400)
+        _seed_stock_signal(ASSET_TICKER, price=219.05, last_updated=time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)))
+        with patch("market_pulse.is_trading_session", return_value=False):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+        assert asset["price"] == 219.05
+        assert asset["change_pct"] is None
+
     def test_empty_ticker_list_returns_index_only(self):
         result = _mp.get_cached_pulse_from_db([], refresh_rate=60)
         assert "indexes" in result
@@ -224,6 +245,26 @@ class TestGetAllCachedPulse:
         _clear(ASSET_TICKER)
         result = _mp.get_all_cached_pulse()
         assert ASSET_TICKER not in result
+
+    def test_falls_back_to_stock_signals_when_cache_stuck(self):
+        """Regression coverage: market_pulse_cache stuck on a week-old price after
+        stock_signals refreshed must not surface the stuck price to the Portfolio/Watchlist
+        page — see accounts_engine.current_price_map()'s identical gap-check."""
+        now = time.time()
+        _seed_pulse(ASSET_TICKER, price=297.11, change_pct=35.0, last_updated=now - 7 * 86400)
+        _seed_stock_signal(ASSET_TICKER, price=219.05, last_updated=time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)))
+        result = _mp.get_all_cached_pulse()
+        assert result[ASSET_TICKER]["price"] == 219.05
+        assert result[ASSET_TICKER]["change_pct"] is None
+        assert result[ASSET_TICKER]["change_pts"] is None
+
+    def test_keeps_live_price_when_stock_signals_not_meaningfully_fresher(self):
+        now = time.time()
+        _seed_pulse(ASSET_TICKER, price=297.11, change_pct=0.6, last_updated=now - 60)
+        _seed_stock_signal(ASSET_TICKER, price=219.05, last_updated=time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)))
+        result = _mp.get_all_cached_pulse()
+        assert result[ASSET_TICKER]["price"] == 297.11
+        assert result[ASSET_TICKER]["change_pct"] == 0.6
 
 
 # ── get_cached_change_pct ───────────────────────────────────────────────────────
