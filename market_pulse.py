@@ -779,6 +779,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 extended_change_pts: Optional[float] = None
                 extended_change_pct: Optional[float] = None
                 extended_session: Optional[str] = None
+                skip_price_update = False
 
                 if snapshot and snapshot.get('regular_price') is not None:
                     current_price = float(snapshot['regular_price'])
@@ -803,16 +804,30 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         extended_change_pts = float(snapshot['post_market_change']) if snapshot.get('post_market_change') is not None else None
                         extended_change_pct = float(snapshot['post_market_change_pct']) if snapshot.get('post_market_change_pct') is not None else None
                         extended_session = 'post'
+                elif t_live.empty:
+                    # Daily-priced instrument (e.g. mutual fund) — use most recent daily close.
+                    # No live intraday feed exists for these, so there's no prepost tick to leak.
+                    current_price = float(t_daily['Close'].iloc[-1])
+                    prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
+                    change_pts = current_price - prev_close
+                    change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
                 else:
-                    # Self-healing fallback when Yahoo's quote snapshot is unavailable — extended_* stays cleared, never guessed.
-                    if t_live.empty:
-                        # Daily-priced instrument (e.g. mutual fund) — use most recent daily close.
-                        current_price = float(t_daily['Close'].iloc[-1])
-                        prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
+                    # Quote snapshot failed but a live intraday feed exists — its last bar was fetched
+                    # with prepost=True, so it's only safe to treat as "the price" while the exchange
+                    # is confirmed in regular session right now. Outside regular hours that same feed
+                    # can only be a pre/post-market tick, which must never land in the settled
+                    # price/change_pts/change_pct columns (see AGENTS.md "never mix session data").
+                    exchange = resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map)
+                    if not is_exchange_open(exchange):
+                        logger.warning(
+                            "Skipping price/change update for %s: quote snapshot unavailable and %s "
+                            "isn't in regular session — the only available tick could be pre/post-market.",
+                            ticker, exchange,
+                        )
+                        skip_price_update = True
                     else:
                         current_price = float(t_live['Close'].iloc[-1])
-                        exchange_open = is_exchange_open(resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map))
-                        if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), exchange_open) and len(t_daily) >= 2:
+                        if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), True) and len(t_daily) >= 2:
                             prev_close = float(t_daily['Close'].iloc[-2])
                             prev_close_date = t_daily.index[-2].date()
                         else:
@@ -834,35 +849,36 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                             if info_prev_close:
                                 prev_close = float(info_prev_close)
 
-                    change_pts = current_price - prev_close
-                    change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
+                        change_pts = current_price - prev_close
+                        change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
-                if abs(change_pct) > 50.0:
-                    logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
-                    continue
+                if not skip_price_update:
+                    if abs(change_pct) > 50.0:
+                        logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
+                        continue
 
-                name: str = index_tickers.get(ticker, ticker)
-                is_positive: int = int(change_pts >= 0)
+                    name: str = index_tickers.get(ticker, ticker)
+                    is_positive: int = int(change_pts >= 0)
 
-                cursor.execute('''
-                    INSERT INTO market_pulse_cache
-                    (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
-                     market_state, extended_price, extended_change_pts, extended_change_pct, extended_session)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(ticker) DO UPDATE SET
-                        name = excluded.name,
-                        price = excluded.price,
-                        change_pts = excluded.change_pts,
-                        change_pct = excluded.change_pct,
-                        is_positive = excluded.is_positive,
-                        last_updated = excluded.last_updated,
-                        market_state = COALESCE(excluded.market_state, market_pulse_cache.market_state),
-                        extended_price = excluded.extended_price,
-                        extended_change_pts = excluded.extended_change_pts,
-                        extended_change_pct = excluded.extended_change_pct,
-                        extended_session = excluded.extended_session
-                ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time,
-                      market_state, extended_price, extended_change_pts, extended_change_pct, extended_session))
+                    cursor.execute('''
+                        INSERT INTO market_pulse_cache
+                        (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
+                         market_state, extended_price, extended_change_pts, extended_change_pct, extended_session)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(ticker) DO UPDATE SET
+                            name = excluded.name,
+                            price = excluded.price,
+                            change_pts = excluded.change_pts,
+                            change_pct = excluded.change_pct,
+                            is_positive = excluded.is_positive,
+                            last_updated = excluded.last_updated,
+                            market_state = COALESCE(excluded.market_state, market_pulse_cache.market_state),
+                            extended_price = excluded.extended_price,
+                            extended_change_pts = excluded.extended_change_pts,
+                            extended_change_pct = excluded.extended_change_pct,
+                            extended_session = excluded.extended_session
+                    ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time,
+                          market_state, extended_price, extended_change_pts, extended_change_pct, extended_session))
 
                 # Full replace, not append — the mini sparkline is inherently "today's session".
                 # Skipped when t_live is empty (market closed) so the last session's line persists

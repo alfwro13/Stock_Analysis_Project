@@ -91,6 +91,64 @@ def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
     assert row["profit_and_loss"] == row["gain_value"]
 
 
+def _seed_market_pulse_cache(ticker: str, price: float, change_pts: float, change_pct: float,
+                              extended_change_pct: float = None, extended_session: str = None) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT OR REPLACE INTO market_pulse_cache
+               (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
+                extended_change_pct, extended_session)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ticker, ticker, price, change_pts, change_pct, int(change_pts >= 0), 0,
+             extended_change_pct, extended_session),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
+def test_holdings_with_metrics_all_accounts_pre_market_change_pct_populated_only_during_pre_session():
+    _seed_stock_signal("ZZPRE", 100.0, "GBP")
+    _seed_market_pulse_cache("ZZPRE", 100.0, 0.5, 0.5, extended_change_pct=1.25, extended_session="pre")
+    aid = create_account("PreMarketAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPRE", currency="GBP",
+                     quantity=1, unit_price=80, exchange_rate=1.0)
+
+    row = next(r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"] if r["ticker"] == "ZZPRE")
+    assert row["pre_market_change_pct"] == pytest.approx(1.25)
+    assert row["post_market_change_pct"] is None
+
+
+@pytest.mark.db
+def test_holdings_with_metrics_all_accounts_post_market_change_pct_populated_only_during_post_session():
+    _seed_stock_signal("ZZPOST", 100.0, "GBP")
+    _seed_market_pulse_cache("ZZPOST", 100.0, 0.5, 0.5, extended_change_pct=-0.8, extended_session="post")
+    aid = create_account("PostMarketAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPOST", currency="GBP",
+                     quantity=1, unit_price=80, exchange_rate=1.0)
+
+    row = next(r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"] if r["ticker"] == "ZZPOST")
+    assert row["pre_market_change_pct"] is None
+    assert row["post_market_change_pct"] == pytest.approx(-0.8)
+
+
+@pytest.mark.db
+def test_holdings_with_metrics_all_accounts_no_extended_session_gives_both_none():
+    _seed_stock_signal("ZZNONE", 100.0, "GBP")
+    _seed_market_pulse_cache("ZZNONE", 100.0, 0.5, 0.5, extended_change_pct=None, extended_session=None)
+    aid = create_account("NoExtendedAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZNONE", currency="GBP",
+                     quantity=1, unit_price=80, exchange_rate=1.0)
+
+    row = next(r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"] if r["ticker"] == "ZZNONE")
+    assert row["pre_market_change_pct"] is None
+    assert row["post_market_change_pct"] is None
+
+
 @pytest.mark.db
 def test_holdings_with_metrics_all_accounts_tbill_row_gets_fixed_income_and_accretion_change():
     """Treasury Bill rows have no stock_signals/market_pulse_cache row (synthetic ticker,
@@ -127,6 +185,8 @@ def test_holdings_with_metrics_all_accounts_tbill_row_gets_fixed_income_and_accr
     assert tbill_row["market_change_24h"] is not None
     assert tbill_row["market_change_24h"] > 0
     assert tbill_row["market_change_pct_24h"] is not None
+    assert tbill_row["pre_market_change_pct"] is None
+    assert tbill_row["post_market_change_pct"] is None
 
     neighbor_row = next(r for r in holdings if r["ticker"] == "ZZNEIGHBOR")
     assert neighbor_row["asset_class"] == "EQUITY"
