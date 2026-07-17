@@ -183,10 +183,11 @@
 
             {% if ticker_notes %}
             <div class="notes-box mb-3">
-                <div class="flex-between-center flex-wrap gap-2">
-                    <h2 class="m-0 border-none p-0">Notes</h2>
+                <div class="sentiment-module-header" onclick="toggleNotesSection()">
+                    <h2 class="m-0 border-none p-0">Notes <span class="tm-ticker-count">({{ ticker_notes | length }})</span></h2>
+                    <span id="notesToggleIcon" class="accuracy-toggle-icon">&#9654;</span>
                 </div>
-                <div class="ticker-notes-list mt-10">
+                <div id="notesSectionBody" class="ticker-notes-list mt-10 d-none">
                     {% for note in ticker_notes %}
                     <div class="ticker-note-entry" id="note-entry-{{ note.id }}">
                         <div class="ticker-note-meta">
@@ -197,7 +198,10 @@
                                 <a href="javascript:void(0)" onclick="deleteTickerNote({{ note.id }})">Delete</a>
                             </span>
                         </div>
-                        <div class="ticker-note-body" id="note-view-{{ note.id }}">{{ note.note_text }}</div>
+                        <div class="ticker-note-body{{ ' note-truncated' if note.note_text | length > 300 else '' }}" id="note-view-{{ note.id }}">{{ note.note_text }}</div>
+                        {% if note.note_text | length > 300 %}
+                        <a href="javascript:void(0)" class="note-toggle-truncate-link" id="note-toggle-link-{{ note.id }}" onclick="toggleNoteTruncate({{ note.id }})">Show more</a>
+                        {% endif %}
                         <div class="ticker-note-edit-panel d-none" id="note-edit-{{ note.id }}">
                             <textarea class="form-control mb-2" maxlength="1000" id="note-edit-textarea-{{ note.id }}">{{ note.note_text }}</textarea>
                             <button type="button" class="btn btn-sm btn-primary" onclick="saveEditedNote({{ note.id }})">Save</button>

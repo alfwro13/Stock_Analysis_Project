@@ -292,7 +292,10 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .ticker-note-actions a { color: #b388ff; text-decoration: underline dotted; cursor: pointer; margin-right: 10px; }
 .ticker-note-actions a:last-child { margin-right: 0; }
 .ticker-note-body { font-size: var(--font-size-body); line-height: 1.5; white-space: pre-wrap; color: #ccc; }
+.ticker-note-body.note-truncated { max-height: 4.5em; overflow: hidden; }
+.ticker-note-body.note-truncated.note-expanded { max-height: none; }
 .ticker-note-edit-panel { margin-top: 8px; }
+.note-toggle-truncate-link { display: inline-block; margin-top: 4px; color: #b388ff; text-decoration: underline dotted; cursor: pointer; font-size: var(--font-size-body); }
 /* --- Ticker Notes report (JS-rendered table) --- */
 .tn-ticker-row { cursor: pointer; }
 .tn-ticker-row:hover { background-color: #232323; }

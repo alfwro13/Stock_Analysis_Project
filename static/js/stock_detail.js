@@ -604,3 +604,23 @@ function deleteTickerNote(noteId) {
         }
     });
 }
+
+function toggleNotesSection() {
+    var body = document.getElementById('notesSectionBody');
+    var icon = document.getElementById('notesToggleIcon');
+    var visible = !body.classList.contains('d-none');
+    if (visible) {
+        body.classList.add('d-none');
+        icon.innerHTML = '&#9654;';
+    } else {
+        body.classList.remove('d-none');
+        icon.innerHTML = '&#9660;';
+    }
+}
+
+function toggleNoteTruncate(noteId) {
+    var body = document.getElementById('note-view-' + noteId);
+    var link = document.getElementById('note-toggle-link-' + noteId);
+    var expanded = body.classList.toggle('note-expanded');
+    link.textContent = expanded ? 'Show less' : 'Show more';
+}
