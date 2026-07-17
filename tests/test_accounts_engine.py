@@ -588,6 +588,48 @@ def test_backfill_value_history_gbp_pence_holding_not_double_converted(monkeypat
 
 
 @pytest.mark.db
+def test_backfill_value_history_uses_native_currency_not_transaction_currency(monkeypatch, tmp_path):
+    """Regression test (2026-07-17 ISA incident): a Buy entered with currency='GBP' for a ticker
+    Yahoo actually quotes in GBp (pence) must still have its Parquet Close series interpreted as
+    pence, not pounds — the transaction's currency is just how the user chose to enter the trade
+    (resolved to a base-currency cost via its own exchange_rate), not a declaration of the
+    instrument's native quote currency. Using the transaction's currency here valued a real
+    position 100x too high in account_value_history for three days after purchase."""
+    idx = pd.date_range("2025-01-01", "2025-01-10", freq="D")
+    df = pd.DataFrame({"Close": [8800.0 + i for i in range(len(idx))]}, index=idx)  # pence-quoted
+    df.to_parquet(tmp_path / "ZZNATIVECCY.parquet")
+    monkeypatch.setattr(accounts_engine, "HISTORICAL_DIR", tmp_path)
+    _seed_stock_signal("ZZNATIVECCY", 8802.0, "GBp")
+
+    aid = create_account("NativeCcyBackfillAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2025-01-03", ticker="ZZNATIVECCY", currency="GBP",
+                     quantity=2, unit_price=88.02, exchange_rate=1.0)
+
+    accounts_engine.backfill_value_history(aid)
+
+    from database import get_value_history
+    history = {row["snapshot_date"]: row for row in get_value_history(aid)}
+    assert history["2025-01-03"]["equity_value"] == 176.04  # 2 * 8802p -> £88.02/share, not £8802
+
+
+@pytest.mark.db
+def test_value_as_of_date_uses_native_currency_not_transaction_currency(monkeypatch, tmp_path):
+    """_value_as_of_date() counterpart of the backfill regression above."""
+    idx = pd.date_range("2025-01-01", "2025-01-10", freq="D")
+    df = pd.DataFrame({"Close": [8800.0 + i for i in range(len(idx))]}, index=idx)
+    df.to_parquet(tmp_path / "ZZNATIVECCY2.parquet")
+    monkeypatch.setattr(accounts_engine, "HISTORICAL_DIR", tmp_path)
+    _seed_stock_signal("ZZNATIVECCY2", 8802.0, "GBp")
+
+    aid = create_account("NativeCcyAsOfAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2025-01-03", ticker="ZZNATIVECCY2", currency="GBP",
+                     quantity=2, unit_price=88.02, exchange_rate=1.0)
+
+    result = accounts_engine._value_as_of_date(aid, "2025-01-03")
+    assert result["equity_value"] == 176.04
+
+
+@pytest.mark.db
 def test_backfill_value_history_prices_treasury_bill_by_accretion_not_flat_cost():
     """Regression test: a held TBILL-* ticker has no parquet file, so backfill_value_history must
     price it via treasury_bill_engine.accreted_price() (mirroring the live current_price_map()
