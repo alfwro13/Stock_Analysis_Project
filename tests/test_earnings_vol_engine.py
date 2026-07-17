@@ -24,6 +24,14 @@ from earnings_vol_engine import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_real_sleep():
+    """run_earnings_vol_scan() sleeps 2.5-5s between tickers to stay under Yahoo's rate limits
+    in production — no reason to actually wait that long across dozens of test invocations."""
+    with patch("earnings_vol_engine.time.sleep"):
+        yield
+
+
 @pytest.fixture
 def db_path(tmp_path):
     path = tmp_path / "earnings_vol_test.db"
@@ -176,7 +184,7 @@ def _fake_hist(n=40):
 def _run(db_path, tickers):
     with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
          patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
-        run_earnings_vol_scan(tickers)
+        return run_earnings_vol_scan(tickers)
 
 
 class TestCachedEarningsDateFilter:
@@ -228,6 +236,41 @@ class TestCachedEarningsDateFilter:
              patch("earnings_vol_engine.yahoo_engine.get_options_expirations", return_value=None):
             run_earnings_vol_scan(["AAPL"])
         mock_info.assert_not_called()
+
+    def test_fetch_failure_returns_ticker_in_failed_list(self, db_path):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "AAPL", in_window)
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
+             patch("earnings_vol_engine.yahoo_engine.get_options_expirations", return_value=None):
+            failed = run_earnings_vol_scan(["AAPL"])
+        assert failed == ["AAPL"]
+
+    def test_outside_window_ticker_not_in_failed_list(self, db_path):
+        far_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+        _seed(db_path, "MSFT", far_date)
+        failed = _run(db_path, ["MSFT"])
+        assert failed == []
+
+    def test_successful_scan_returns_empty_failed_list(self, db_path):
+        in_window_date = date.today() + timedelta(days=3)
+        e_date_str = in_window_date.strftime("%Y-%m-%d")
+        expiry_str = (in_window_date + timedelta(days=2)).strftime("%Y-%m-%d")
+        _seed(db_path, "OK1", e_date_str)
+        fake_drift = {
+            1: {"avg_pct": 1.0, "avg_abs_pct": 1.0, "up_count": 2, "sample_size": 4},
+            5: {"avg_pct": 1.0, "avg_abs_pct": 1.0, "up_count": 2, "sample_size": 4},
+            20: {"avg_pct": 1.0, "avg_abs_pct": 1.0, "up_count": 2, "sample_size": 4},
+        }
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
+             patch("earnings_vol_engine.get_historical_earnings_drift", return_value=fake_drift), \
+             patch("earnings_vol_engine.get_implied_straddle_move", return_value=(None, 0, None)):
+            failed = run_earnings_vol_scan(["OK1"])
+        assert failed == []
 
     def test_full_scan_writes_edge_row_using_cached_date(self, db_path):
         in_window_date = date.today() + timedelta(days=3)

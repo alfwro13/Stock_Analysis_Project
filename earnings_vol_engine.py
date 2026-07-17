@@ -320,12 +320,18 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         logger.debug("Error calculating implied straddle: %s", e)
         return None, 0, None
 
-def run_earnings_vol_scan(ticker_list: List[str]) -> None:
+def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
+    """Returns the tickers that were due to be scanned (earnings within 14 days) but couldn't
+    be — a Yahoo fetch failure (network error, or genuinely no data available), not a case
+    correctly skipped by the date-window check. Caller may retry these later rather than
+    waiting a full week for the next scheduled run."""
     ticker_list = filter_equity_tickers(ticker_list)
     total_tickers = len(ticker_list)
     if not ticker_list:
         logger.warning("Ticker list is empty. Aborting scan.")
-        return
+        return []
+
+    failed_tickers: List[str] = []
 
     logger.info("Starting earnings volatility scan for %d assets...", total_tickers)
     log_notification("Info", f"Earnings Volatility Scan initiated for {total_tickers} assets.")
@@ -361,6 +367,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
                 if hist.empty or len(hist) < 20:
                     logger.warning("Insufficient underlying price data available for %s. Skipping.", ticker)
+                    failed_tickers.append(ticker)
                     continue
 
                 underlying_price = hist['Close'].iloc[-1]
@@ -370,6 +377,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 historical_hv = hist['Returns'].std() * np.sqrt(252)
 
                 if pd.isna(historical_hv) or historical_hv == 0:
+                    failed_tickers.append(ticker)
                     continue
 
                 drift = get_historical_earnings_drift(ticker)
@@ -377,6 +385,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
                 if hist_move_pct is None:
                     logger.debug("No historical earnings-move data for %s. Skipping.", ticker)
+                    failed_tickers.append(ticker)
                     continue
 
                 # Options leg is optional now the page's primary content is drift/ML-band, not
@@ -435,15 +444,22 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
             except Exception as e:
                 logger.error("Error analyzing %s: %s", ticker, e)
+                failed_tickers.append(ticker)
                 conn.rollback()
             finally:
-                time.sleep(random.uniform(0.5, 1.5))
+                # Wider, randomised gap between tickers — Yahoo's guce.yahoo.com consent gate has
+                # been observed intermittently refusing connections mid-scan when this ran too
+                # tight a cadence across 100+ sequential tickers (each doing 2-3 Yahoo calls).
+                time.sleep(random.uniform(2.5, 5.0))
 
             processed = i + 1
             if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
                 pct = int((processed / total_tickers) * 100)
                 log_notification("Info", f"Earnings Volatility Scan Progress: {pct}% ({processed}/{total_tickers} tickers evaluated).")
 
+        if failed_tickers:
+            logger.warning("Earnings volatility scan: %d ticker(s) failed and may need a retry: %s",
+                            len(failed_tickers), failed_tickers)
         logger.info("Earnings volatility options scan complete.")
         log_notification("Success", f"Earnings Volatility Options Scan completed successfully across {total_tickers} tracked assets.")
 
@@ -453,6 +469,8 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
     finally:
         if conn:
             conn.close()
+
+    return failed_tickers
 
 if __name__ == "__main__":
     # Standalone execution logic for testing
