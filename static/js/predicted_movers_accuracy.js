@@ -22,7 +22,7 @@ function _pmaRenderTable(rows) {
         const tr = document.createElement('tr');
         const resolved = row.resolved || 0;
         tr.innerHTML = `
-            <td class="tm-th-left">${escapeHtml(row.ticker)}</td>
+            <td class="tm-th-left"><a href="/stock/${encodeURIComponent(row.ticker)}" class="ticker-link">${escapeHtml(row.ticker)}</a></td>
             <td class="tm-th-left">${escapeHtml(row.company_name || '—')}</td>
             <td class="tm-th-right">${row.total ?? 0}</td>
             <td class="tm-th-right">${resolved}</td>

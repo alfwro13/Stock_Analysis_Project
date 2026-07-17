@@ -14,7 +14,7 @@ function _pmRenderTable(results) {
         const pct = Number(row.predicted_move_pct) || 0;
         const pctClass = pct >= 0 ? 'text-success' : 'text-danger';
         tr.innerHTML = `
-            <td class="tm-th-left">${escapeHtml(row.ticker)}</td>
+            <td class="tm-th-left"><a href="/stock/${encodeURIComponent(row.ticker)}" class="ticker-link">${escapeHtml(row.ticker)}</a></td>
             <td class="tm-th-left">${escapeHtml(row.company_name || '—')}</td>
             <td class="tm-th-right">${row.current_price != null ? Number(row.current_price).toFixed(2) : '—'} ${escapeHtml(row.currency || '')}</td>
             <td class="tm-th-right ${pctClass}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</td>
