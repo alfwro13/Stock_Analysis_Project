@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Ticker Notes{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128221; Ticker Notes</h1>
+<p class="page-subtitle mb-4">
+    Every ticker with a saved research note — any ticker in the app, not only your portfolio or
+    watchlist. Expand a row to see its full note history.
+</p>
+
+<div class="mb-3">
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">&#8592; Back to Reports</a>
+</div>
+
+<div class="sentiment-module module-cyan">
+    <div class="p-3 pb-0">
+        <h3 class="tm-ticker-heading">
+            Tickers with Notes
+            <span id="tn-count" class="tm-ticker-count"></span>
+        </h3>
+    </div>
+    <div class="overflow-auto p-3">
+        <table id="tn-table" class="tm-table w-100">
+            <thead>
+                <tr>
+                    <th class="tm-th-blue tm-th-left">Ticker</th>
+                    <th class="tm-th-muted tm-th-left">Company</th>
+                    <th class="tm-th-amber tm-th-center">Notes</th>
+                    <th class="tm-th-dimmed tm-th-right">Latest Note</th>
+                </tr>
+            </thead>
+            <tbody id="tn-tbody">
+                <tr>
+                    <td colspan="4" class="text-center p-4 text-muted">Loading…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/ticker_notes.js?v={{ css_version }}"></script>
+{% endblock %}

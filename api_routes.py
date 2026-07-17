@@ -37,6 +37,7 @@ from config import (
 from database import (
     get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
 )
+from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names
 from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
@@ -104,6 +105,9 @@ class PayoffRequest(BaseModel):
 
 class NameOverrideRequest(BaseModel):
     display_name: str
+
+class TickerNoteRequest(BaseModel):
+    note_text: str = Field(..., min_length=1, max_length=1000)
 
 
 @api_router.post("/watchlist/add")
@@ -176,6 +180,58 @@ async def api_set_name_override(ticker: str, req: NameOverrideRequest):
     finally:
         if conn:
             conn.close()
+
+
+@api_router.post("/ticker/{ticker}/notes")
+async def api_add_ticker_note(ticker: str, req: TickerNoteRequest):
+    ticker = normalize_ticker(ticker)
+    try:
+        note_id = add_ticker_note(ticker, req.note_text.strip())
+        if note_id is None:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save note."})
+        return JSONResponse(content={"status": "success", "id": note_id})
+    except Exception as e:
+        logger.exception("add_ticker_note failed for %s", ticker)
+        return _error_500(e)
+
+
+@api_router.put("/ticker/{ticker}/notes/{note_id}")
+async def api_update_ticker_note(ticker: str, note_id: int, req: TickerNoteRequest):
+    ticker = normalize_ticker(ticker)
+    try:
+        updated = update_ticker_note(note_id, ticker, req.note_text.strip())
+        if not updated:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Note not found."})
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.exception("update_ticker_note failed for id %s", note_id)
+        return _error_500(e)
+
+
+@api_router.delete("/ticker/{ticker}/notes/{note_id}")
+async def api_delete_ticker_note(ticker: str, note_id: int):
+    ticker = normalize_ticker(ticker)
+    try:
+        deleted = delete_ticker_note(note_id, ticker)
+        if not deleted:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Note not found."})
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.exception("delete_ticker_note failed for id %s", note_id)
+        return _error_500(e)
+
+
+@api_router.get("/ticker-notes")
+async def api_get_all_ticker_notes():
+    try:
+        entries = get_all_ticker_notes_grouped()
+        company_names = get_company_names([e["ticker"] for e in entries])
+        for entry in entries:
+            entry["company_name"] = company_names.get(entry["ticker"])
+        return JSONResponse(content={"status": "success", "tickers": entries})
+    except Exception as e:
+        logger.exception("get_all_ticker_notes_grouped failed")
+        return _error_500(e)
 
 
 @api_router.post("/index/refresh")

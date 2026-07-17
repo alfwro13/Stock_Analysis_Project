@@ -279,6 +279,27 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .target-suggestion-row { font-size: var(--font-size-body); margin-bottom: 10px; }
 .target-input-label { font-size: var(--font-size-body); color: #888; margin-left: 10px; }
 .target-input { width: 100px; background-color: #121212; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; padding: 4px 8px; font-size: var(--font-size-form); }
+/* --- Ticker Notes --- */
+.notes-btn { background-color: #1e1e1e; color: #b388ff; border: 1px solid #b388ff; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; font-size: var(--font-size-btn); display: flex; align-items: center; gap: 8px; }
+.notes-btn:hover { background-color: #b388ff; color: #121212; box-shadow: 0 0 10px rgba(179, 136, 255, 0.4); }
+.notes-box { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #b388ff; }
+.add-note-panel { margin-top: 15px; padding-top: 15px; border-top: 1px solid #333; }
+.ticker-notes-list { display: flex; flex-direction: column; gap: 16px; }
+.ticker-note-entry { padding-bottom: 16px; border-bottom: 1px solid #2a2a2a; }
+.ticker-note-entry:last-child { border-bottom: none; padding-bottom: 0; }
+.ticker-note-meta { font-size: var(--font-size-body); color: #888; margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ticker-note-updated { font-style: italic; }
+.ticker-note-actions a { color: #b388ff; text-decoration: underline dotted; cursor: pointer; margin-right: 10px; }
+.ticker-note-actions a:last-child { margin-right: 0; }
+.ticker-note-body { font-size: var(--font-size-body); line-height: 1.5; white-space: pre-wrap; color: #ccc; }
+.ticker-note-body.note-truncated { max-height: 4.5em; overflow: hidden; }
+.ticker-note-body.note-truncated.note-expanded { max-height: none; }
+.ticker-note-edit-panel { margin-top: 8px; }
+.note-toggle-truncate-link { display: inline-block; margin-top: 4px; color: #b388ff; text-decoration: underline dotted; cursor: pointer; font-size: var(--font-size-body); }
+/* --- Ticker Notes report (JS-rendered table) --- */
+.tn-ticker-row { cursor: pointer; }
+.tn-ticker-row:hover { background-color: #232323; }
+.tn-note-updated { font-style: italic; color: #888; }
 /* Glossary Hub Enhancements */
 .glossary-wrapper { display: grid; grid-template-columns: 280px 1fr; gap: 30px; margin-top: 20px; align-items: flex-start; }
 .glossary-sidebar { position: sticky; top: 100px; background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
