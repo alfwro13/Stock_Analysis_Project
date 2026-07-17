@@ -97,6 +97,32 @@ class TestBuildStockUrl:
         assert url.endswith("/stock/BARC.L")
 
 
+# ── _settled_close ────────────────────────────────────────────────────────────
+
+class TestSettledClose:
+    """Yahoo's 5m intraday feed returns the still-forming current bucket as its last row; using
+    it directly as "current price" can catch a transient print that revises substantially once
+    the bucket finishes filling. _settled_close() falls back to the prior, fully-closed bar
+    whenever the last bar's own bucket hasn't finished yet."""
+
+    def _bars(self, closes, minutes_ago_last):
+        now = pd.Timestamp.now(tz=timezone.utc)
+        idx = [now - pd.Timedelta(minutes=minutes_ago_last + 5 * (len(closes) - 1 - i)) for i in range(len(closes))]
+        return pd.DataFrame({"Close": closes}, index=pd.DatetimeIndex(idx))
+
+    def test_still_forming_last_bar_falls_back_to_prior_close(self):
+        df = self._bars([100.0, 105.0], minutes_ago_last=1)
+        assert IntradayOrchestrator()._settled_close(df) == 100.0
+
+    def test_settled_last_bar_used_directly(self):
+        df = self._bars([100.0, 105.0], minutes_ago_last=6)
+        assert IntradayOrchestrator()._settled_close(df) == 105.0
+
+    def test_single_row_has_no_fallback(self):
+        df = self._bars([100.0], minutes_ago_last=1)
+        assert IntradayOrchestrator()._settled_close(df) == 100.0
+
+
 # ── _refresh_account_performance_cache ────────────────────────────────────────
 
 class TestRefreshAccountPerformanceCache:
