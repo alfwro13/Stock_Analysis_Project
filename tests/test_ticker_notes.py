@@ -206,6 +206,38 @@ def test_stock_detail_page_without_notes_does_not_crash(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_notes_section_defaults_collapsed(client):
+    from db_helpers import add_ticker_note
+
+    add_ticker_note("ZZPAGENOTE2", "collapsed by default")
+    resp = client.get("/stock/ZZPAGENOTE2", follow_redirects=True)
+    assert resp.status_code == 200
+    assert 'id="notesSectionBody" class="ticker-notes-list mt-10 d-none"' in resp.text
+
+
+@pytest.mark.pages
+def test_stock_detail_long_note_gets_truncate_toggle(client):
+    from db_helpers import add_ticker_note
+
+    add_ticker_note("ZZPAGENOTE3", "x" * 400)
+    resp = client.get("/stock/ZZPAGENOTE3", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "note-truncated" in resp.text
+    assert "Show more" in resp.text
+
+
+@pytest.mark.pages
+def test_stock_detail_short_note_has_no_truncate_toggle(client):
+    from db_helpers import add_ticker_note
+
+    add_ticker_note("ZZPAGENOTE4", "short note")
+    resp = client.get("/stock/ZZPAGENOTE4", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "note-truncated" not in resp.text
+    assert "Show more" not in resp.text
+
+
+@pytest.mark.pages
 def test_ticker_notes_report_page_renders(client):
     resp = client.get("/ticker-notes", follow_redirects=True)
     assert resp.status_code == 200

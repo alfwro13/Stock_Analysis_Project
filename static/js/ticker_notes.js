@@ -7,6 +7,11 @@ function tnRenderNoteEntry(note) {
     const updated = note.updated_at
         ? '<span class="tn-note-updated">(edited ' + escapeHtml(tnFormatTimestamp(note.updated_at)) + ')</span>'
         : '';
+    const isLong = note.note_text.length > 300;
+    const bodyClass = 'ticker-note-body' + (isLong ? ' note-truncated' : '');
+    const toggleLink = isLong
+        ? '<a href="javascript:void(0)" class="note-toggle-truncate-link tn-truncate-link" data-note-id="' + note.id + '">Show more</a>'
+        : '';
     return (
         '<div class="ticker-note-entry" data-note-id="' + note.id + '">' +
             '<div class="ticker-note-meta">' +
@@ -16,7 +21,8 @@ function tnRenderNoteEntry(note) {
                     '<a href="javascript:void(0)" class="tn-delete-link" data-note-id="' + note.id + '">Delete</a>' +
                 '</span>' +
             '</div>' +
-            '<div class="ticker-note-body" id="tn-note-body-' + note.id + '">' + escapeHtml(note.note_text) + '</div>' +
+            '<div class="' + bodyClass + '" id="tn-note-body-' + note.id + '">' + escapeHtml(note.note_text) + '</div>' +
+            toggleLink +
         '</div>'
     );
 }
@@ -134,6 +140,14 @@ document.addEventListener('DOMContentLoaded', function () {
         if (saveEditBtn) {
             const ticker = e.target.closest('.tn-detail-row').dataset.ticker;
             tnSaveEdit(ticker, saveEditBtn.dataset.noteId);
+            return;
+        }
+
+        const truncateLink = e.target.closest('.tn-truncate-link');
+        if (truncateLink) {
+            const bodyEl = document.getElementById('tn-note-body-' + truncateLink.dataset.noteId);
+            const expanded = bodyEl.classList.toggle('note-expanded');
+            truncateLink.textContent = expanded ? 'Show less' : 'Show more';
             return;
         }
 
