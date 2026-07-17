@@ -2346,7 +2346,8 @@ def test_api_holdings_list_status_success(client):
     for key in (
         "account_id", "account_name", "ticker", "shares", "market_value", "total_investment",
         "gain_value", "gain_pct", "profit_and_loss", "accumulated_dividends", "trend_vs_buy",
-        "asset_class", "data_source", "market_change_24h", "market_change_pct_24h", "rsi",
+        "asset_class", "data_source", "market_change_24h", "market_change_pct_24h",
+        "pre_market_change_pct", "post_market_change_pct", "rsi",
         "trend_50d", "trend_200d", "next_earnings_date", "low_limit_set", "high_limit_set",
         "low_limit_reached", "high_limit_reached",
     ):

@@ -43,8 +43,10 @@ def _stock_signals_map(tickers: list) -> dict:
 
 
 def _market_pulse_change_map(tickers: list) -> dict:
-    """Batched market_pulse_cache change_pts/change_pct lookup, mirroring current_price_map()'s
-    own market_pulse_cache query style."""
+    """Batched market_pulse_cache change_pts/change_pct/extended_* lookup, mirroring
+    current_price_map()'s own market_pulse_cache query style. extended_change_pct/extended_session
+    are kept separate from change_pts/change_pct rather than merged, per the "never mix session
+    data" rule — change_pts/change_pct are always the settled regular-session delta."""
     if not tickers:
         return {}
     conn = None
@@ -53,10 +55,19 @@ def _market_pulse_change_map(tickers: list) -> dict:
         cursor = conn.cursor()
         placeholders = ",".join("?" * len(tickers))
         cursor.execute(
-            f"SELECT ticker, change_pts, change_pct FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+            f"""SELECT ticker, change_pts, change_pct, extended_change_pct, extended_session
+                FROM market_pulse_cache WHERE ticker IN ({placeholders})""",
             tickers
         )
-        return {r["ticker"]: {"change_pts": r["change_pts"], "change_pct": r["change_pct"]} for r in cursor.fetchall()}
+        return {
+            r["ticker"]: {
+                "change_pts": r["change_pts"],
+                "change_pct": r["change_pct"],
+                "extended_change_pct": r["extended_change_pct"],
+                "extended_session": r["extended_session"],
+            }
+            for r in cursor.fetchall()
+        }
     except Exception as e:
         logger.error("Failed to load market_pulse_cache change map: %s", e)
         return {}
@@ -117,6 +128,9 @@ def holdings_with_metrics_all_accounts() -> dict:
             asset_class = signals.get("quote_type")
             market_change_24h = pulse.get("change_pts")
             market_change_pct_24h = pulse.get("change_pct")
+            extended_session = pulse.get("extended_session")
+            pre_market_change_pct = pulse.get("extended_change_pct") if extended_session == "pre" else None
+            post_market_change_pct = pulse.get("extended_change_pct") if extended_session == "post" else None
             if tbill_txn_id is not None:
                 asset_class = "Fixed Income"
                 bill = get_treasury_bill_by_ticker(ticker)
@@ -149,6 +163,8 @@ def holdings_with_metrics_all_accounts() -> dict:
                 "data_source": "TBILL" if tbill_txn_id is not None else "YAHOO",
                 "market_change_24h": market_change_24h,
                 "market_change_pct_24h": market_change_pct_24h,
+                "pre_market_change_pct": pre_market_change_pct,
+                "post_market_change_pct": post_market_change_pct,
                 "rsi": signals.get("rsi_14"),
                 "trend_50d": signals.get("trend_50d"),
                 "trend_200d": signals.get("trend_200d"),

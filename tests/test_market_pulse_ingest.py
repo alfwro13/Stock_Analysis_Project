@@ -339,7 +339,7 @@ class TestNormalIntradayPath:
         daily = _flat_daily_df([100.0, 100.5])
         live = _flat_live_df(101.75)
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2:
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -366,7 +366,7 @@ class TestNormalIntradayPath:
 
         before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2:
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -385,7 +385,11 @@ class TestExchangeClosedStillFormingGate:
     def teardown_method(self):
         _clear_cache(NORMAL_TICKER)
 
-    def test_keeps_last_daily_close_as_prev_close_when_exchange_confirmed_closed(self):
+    def test_skips_update_entirely_when_exchange_confirmed_closed(self):
+        """Regression (2026-07-17): with the exchange confirmed closed and no quote snapshot
+        available, the only live-feed tick left (fetched with prepost=True) could be a pre/post
+        -market price — it must never be written into price/change_pts, unlike the previous
+        behavior of treating it as a valid regular-session close."""
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
@@ -393,8 +397,7 @@ class TestExchangeClosedStillFormingGate:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
-        # Exchange confirmed closed -> daily[-1]=100.0 is already the final close, not still forming.
-        assert row["change_pts"] == pytest.approx(1.0, abs=0.01)
+        assert row is None
 
     def test_uses_prev_daily_close_when_exchange_confirmed_open(self):
         daily = _flat_daily_df([98.0, 100.0])
@@ -405,6 +408,41 @@ class TestExchangeClosedStillFormingGate:
 
         row = _read_cache(NORMAL_TICKER)
         assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
+
+
+class TestFallbackFreezesOutsideRegularSession:
+    """Regression (2026-07-17): when get_quote_snapshot() fails and the exchange isn't in regular
+    session, fetch_and_save_pulse() must leave a ticker's price/change_pts/change_pct exactly as
+    they were rather than writing a prepost=True intraday tick into those settled columns — the
+    root cause of a held ticker's market_price/gain/24h-change swinging during pre/post-market."""
+
+    def teardown_method(self):
+        _clear_cache(NORMAL_TICKER)
+
+    def test_existing_settled_price_is_preserved_not_overwritten(self):
+        _seed_cache(NORMAL_TICKER, 100.0, datetime.now(timezone.utc).timestamp() - 3600)
+        daily = _flat_daily_df([98.0, 100.0])
+        live = _flat_live_df(115.0)  # a plausible pre/post-market tick, well away from 100.0
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=False):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["price"] == pytest.approx(100.0), "Pre/post-market tick overwrote the settled price"
+        assert row["change_pts"] == pytest.approx(0.0)
+
+    def test_resumes_updating_once_regular_session_is_confirmed_open(self):
+        """Same ticker, same failing snapshot — once the exchange is confirmed open again, the
+        live feed is trusted again exactly as before this fix."""
+        _seed_cache(NORMAL_TICKER, 100.0, datetime.now(timezone.utc).timestamp() - 3600)
+        daily = _flat_daily_df([98.0, 100.0])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["price"] == pytest.approx(101.0)
 
 
 class TestQuoteSnapshotSessionTagging:
@@ -607,7 +645,9 @@ class TestStaleDailyHistoryFallback:
     def test_falls_back_to_info_previous_close_when_daily_history_is_stale(self):
         stale_daily, live = self._stale_daily_and_live()
         p1, p2 = _pulse_patches(self.TICKER, stale_daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1225.57}):
+        with p1, p2, \
+             patch("market_pulse.is_exchange_open", return_value=True), \
+             patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1225.57}):
             _mp.fetch_and_save_pulse([self.TICKER])
 
         row = _read_cache(self.TICKER)
@@ -619,7 +659,9 @@ class TestStaleDailyHistoryFallback:
         daily = _flat_daily_df([100.0, 100.5])
         live = _flat_live_df(101.0)
         p1, p2 = _pulse_patches(self.TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info") as mock_info:
+        with p1, p2, \
+             patch("market_pulse.is_exchange_open", return_value=True), \
+             patch("market_pulse.yahoo_engine.get_ticker_info") as mock_info:
             _mp.fetch_and_save_pulse([self.TICKER])
         mock_info.assert_not_called()
 
@@ -627,7 +669,9 @@ class TestStaleDailyHistoryFallback:
         """If the .info fallback also can't help, the ticker must still be written (no crash)."""
         stale_daily, live = self._stale_daily_and_live()
         p1, p2 = _pulse_patches(self.TICKER, stale_daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_ticker_info", return_value=None):
+        with p1, p2, \
+             patch("market_pulse.is_exchange_open", return_value=True), \
+             patch("market_pulse.yahoo_engine.get_ticker_info", return_value=None):
             _mp.fetch_and_save_pulse([self.TICKER])
 
         row = _read_cache(self.TICKER)

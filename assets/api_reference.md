@@ -3653,6 +3653,8 @@ Like `portfolio-totals` above, this endpoint also self-triggers a background liv
       "data_source": "YAHOO",
       "market_change_24h": -6.77,
       "market_change_pct_24h": -1.87,
+      "pre_market_change_pct": null,
+      "post_market_change_pct": null,
       "rsi": 46.36,
       "trend_50d": "UP",
       "trend_200d": "UP",
@@ -3670,7 +3672,7 @@ Like `portfolio-totals` above, this endpoint also self-triggers a background liv
 }
 ```
 
-`gain_value`/`profit_and_loss` are the same figure (`market_value - total_investment`, in `BASE_CURRENCY`) exposed under two keys for parity with the prior Ghostfolio-based integration's attribute naming. `market_price`/`market_price_currency` are the instrument's native (uncoverted) price; `market_price_in_base_currency` and `average_buy_price` are both in `BASE_CURRENCY`. `rsi`/`trend_50d`/`trend_200d`/`next_earnings_date`/`asset_class` (from `stock_signals.quote_type`) may be `null` for a ticker the nightly quant scan hasn't priced yet — except for TBILL rows, where `asset_class` is always `"Fixed Income"` and `market_change_24h`/`market_change_pct_24h` are always populated (see above). `low_limit`/`high_limit` come from `holding_price_limits` (see `POST /api/accounts/holding-price-limit` below); `*_reached` compares the native `market_price` against the stored limit.
+`gain_value`/`profit_and_loss` are the same figure (`market_value - total_investment`, in `BASE_CURRENCY`) exposed under two keys for parity with the prior Ghostfolio-based integration's attribute naming. `market_price`/`market_price_currency` are the instrument's native (uncoverted) price; `market_price_in_base_currency` and `average_buy_price` are both in `BASE_CURRENCY`. `market_price`/`gain_value`/`gain_pct`/`market_change_24h`/`market_change_pct_24h` are always derived from Yahoo's regular-session data only (`market_pulse_cache.price`/`change_pts`/`change_pct`) — they never reflect a pre/post-market tick; see `market_pulse.py`'s "never mix session data" fallback-freeze fix (2026-07-17). `pre_market_change_pct`/`post_market_change_pct` (added 2026-07-17) surface `market_pulse_cache.extended_change_pct` — at most one of the two is non-`null` at a time, selected by `extended_session` ('pre'/'post'), and both are `null` outside an active pre/post session or for a ticker with no `market_pulse_cache` row (e.g. TBILL). `rsi`/`trend_50d`/`trend_200d`/`next_earnings_date`/`asset_class` (from `stock_signals.quote_type`) may be `null` for a ticker the nightly quant scan hasn't priced yet — except for TBILL rows, where `asset_class` is always `"Fixed Income"` and `market_change_24h`/`market_change_pct_24h` are always populated (see above). `low_limit`/`high_limit` come from `holding_price_limits` (see `POST /api/accounts/holding-price-limit` below); `*_reached` compares the native `market_price` against the stored limit.
 
 ---
 
