@@ -678,6 +678,36 @@ def current_price_map(tickers: list) -> dict:
     return result
 
 
+def native_currencies(tickers: list) -> dict:
+    """A ticker's actual Yahoo-quoted currency (`stock_signals.currency`), keyed by ticker — e.g.
+    'GBp' for a pence-quoted LSE instrument even if the user entered its Buy transaction priced in
+    GBP. A parquet Close series is always in the ticker's native quote currency regardless of what
+    currency the transaction was entered in (the currency dropdown on the Buy form is purely a
+    data-entry convenience, resolved to a base-currency amount via `exchange_rate` at entry time —
+    it says nothing about which currency Yahoo's own price series uses), so any caller converting a
+    parquet/live price into BASE_CURRENCY must resolve FX from this, never from the ledger's
+    `holding["currency"]`. Found 2026-07-17: `backfill_value_history`/`_value_as_of_date` used
+    `holding["currency"]` for exactly this, so a Buy entered in GBP for a ticker Yahoo actually
+    quotes in GBp valued the position 100x too high the moment the backfill replayed it — a newly
+    bought LSE ETF's ticker-lookup currency autofill had itself briefly returned 'GBP' from Yahoo
+    (a known metadata quirk for freshly-queried instruments) before self-correcting days later."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(tickers))
+        cursor.execute(f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})", tickers)
+        return {r["ticker"]: r["currency"] for r in cursor.fetchall() if r["currency"]}
+    except Exception as e:
+        logger.error("Failed to load native currencies: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
 def held_tickers_lightweight() -> list:
     """Cheap approximation of get_combined_holdings().keys() for callers that only need the
     ticker universe (e.g. deciding what to keep warm in market_pulse_cache) — a single query
@@ -1156,6 +1186,7 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
         account_id, as_of_date=date_str, transactions=transactions
     )
     cash = 0.0 if acc["account_type"] == "Pension" else _cash_balance_as_of(acc, transactions, date_str)
+    ticker_currency = native_currencies(list(open_holdings.keys()))
 
     def _lookup(ticker, holding):
         pension_id = parse_pension_account_id(ticker)
@@ -1178,7 +1209,8 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
         window = series.loc[:date_str]
         if window.empty:
             return None
-        return float(window.iloc[-1]), holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+        currency = ticker_currency.get(ticker) or holding["currency"]
+        return float(window.iloc[-1]), currency, fx_rate_on_date(currency, date_str)
 
     equity, _breakdown = _bucket_equity_by_currency(open_holdings, _lookup)
     contributions = _net_contributions_as_of(acc, transactions, date_str)
@@ -1255,6 +1287,7 @@ def backfill_value_history(account_id: int) -> int:
         except Exception as e:
             logger.warning("backfill_value_history: failed to read parquet for %s: %s", ticker, e)
 
+    ticker_currency = native_currencies(list(price_series.keys()))
     written = 0
     for date_str in pd.date_range(start_date, end_date, freq="D").strftime("%Y-%m-%d"):
         open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(
@@ -1275,7 +1308,10 @@ def backfill_value_history(account_id: int) -> int:
             price = float(window.iloc[-1])
             # fx_rate_on_date already halves GBp->GBP by 0.01 — applying price_in_pence here too
             # would divide by 100 twice (the bug behind a 100x equity undervaluation on backfilled rows).
-            return price, holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+            # Currency is the ticker's own native quote currency (stock_signals), not the ledger's
+            # holding["currency"] — see native_currencies() docstring for why the two can disagree.
+            currency = ticker_currency.get(ticker) or holding["currency"]
+            return price, currency, fx_rate_on_date(currency, date_str)
 
         equity, breakdown = _bucket_equity_by_currency(open_holdings, _lookup)
         contributions = _net_contributions_as_of(acc, transactions, date_str)
