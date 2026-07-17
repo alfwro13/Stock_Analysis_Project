@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 _ALERT_SOURCES = {"Crash": "crash_alert", "Moonshot": "moonshot_alert", "Anomaly": "anomaly_alert", "Macro": "macro_yield_alert", "HoldingLimit": "holding_limit_alert"}
 
 _STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
+_INTRADAY_BAR_SECONDS = 300     # 5m bar width — Yahoo returns the still-filling current bucket as the last row
 _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lookup
 _MACRO_YIELD_SURGE_PCT = 1.5   # intraday yield spike % that fires a systemic macro alert
 _AI_DEFENSE_THRESHOLD = 2.0    # predicted SPY gap % that activates AI Volatility Defense
@@ -382,6 +383,15 @@ class IntradayOrchestrator:
             return (now_utc - ts.tz_convert(timezone.utc)).total_seconds()
         return (now_utc - ts.tz_localize(timezone.utc)).total_seconds()
 
+    def _settled_close(self, df: pd.DataFrame) -> float:
+        """The last row of a 5m bulk fetch is often the still-forming current bucket, whose Close
+        is a transient print that can revise substantially once the bucket finishes filling (seen
+        on MU: a scan mid-bucket wrote a Close ~5% off the settled value moments later). Mirrors
+        the analogous iloc[-2] guard already used for 1m bars in intraday_bottom_engine.py."""
+        if len(df) >= 2 and self._seconds_since(df.index[-1]) < _INTRADAY_BAR_SECONDS:
+            return float(df['Close'].iloc[-2])
+        return float(df['Close'].iloc[-1])
+
     def _bulk_change_pct(self, df_bulk: pd.DataFrame, download_list: List[str], ticker: str) -> Optional[float]:
         """Session open-to-latest % change for one ticker, sliced from the already-fetched bulk 5m frame."""
         try:
@@ -402,7 +412,7 @@ class IntradayOrchestrator:
                 return None
 
             m_open = float(m_df['Close'].iloc[0])
-            m_curr = float(m_df['Close'].iloc[-1])
+            m_curr = self._settled_close(m_df)
             if m_open > 0:
                 return ((m_curr - m_open) / m_open) * 100.0
         except Exception:
@@ -656,8 +666,8 @@ class IntradayOrchestrator:
                     continue
                 
                 m_open = float(m_df['Close'].iloc[0])
-                m_curr = float(m_df['Close'].iloc[-1])
-                
+                m_curr = self._settled_close(m_df)
+
                 if m_open > 0:
                     m_spike = ((m_curr - m_open) / m_open) * 100.0
 
@@ -755,7 +765,7 @@ class IntradayOrchestrator:
                 # Strip TZ before index arithmetic; parquet write deferred until after history validation.
                 df_intraday.index = df_intraday.index.tz_localize(None)
 
-                current_price = float(df_intraday['Close'].iloc[-1])
+                current_price = self._settled_close(df_intraday)
                 session_open = float(df_intraday['Open'].iloc[0]) if 'Open' in df_intraday.columns else None
 
                 asset_meta = metadata.get(ticker, {})
@@ -915,7 +925,7 @@ class IntradayOrchestrator:
                 if self._seconds_since(df_intraday.index[-1]) > _STALE_SECONDS:
                     continue
 
-                current_price = float(df_intraday['Close'].iloc[-1])
+                current_price = self._settled_close(df_intraday)
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
                 ticker_exchange = time_engine.ticker_exchange(ticker, currency)
