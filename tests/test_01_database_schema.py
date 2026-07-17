@@ -86,6 +86,7 @@ EXPECTED_TABLES = [
     "market_pulse_sparkline",
     "learn_cards",
     "learn_term_state",
+    "ticker_notes",
 ]
 
 
@@ -126,6 +127,15 @@ def test_system_notifications_has_required_columns():
     required = {"id", "message_type", "message_text", "is_read", "status", "timestamp"}
     missing = required - cols
     assert not missing, f"system_notifications missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_ticker_notes_has_required_columns():
+    """ticker_notes must have id, ticker, note_text, created_at, updated_at."""
+    cols = _columns("ticker_notes")
+    required = {"id", "ticker", "note_text", "created_at", "updated_at"}
+    missing = required - cols
+    assert not missing, f"ticker_notes missing columns: {missing}"
 
 
 @pytest.mark.db

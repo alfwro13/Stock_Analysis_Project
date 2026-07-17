@@ -1257,6 +1257,17 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ticker_notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker      TEXT NOT NULL,
+                note_text   TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_ticker_notes_ticker ON ticker_notes(ticker)')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS treasury_bills (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 account_id      INTEGER NOT NULL,
@@ -1986,6 +1997,21 @@ def migrate_db(conn, cursor) -> None:
         ''')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create holding_price_limits: %s", e)
+
+    # ticker_notes (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ticker_notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker      TEXT NOT NULL,
+                note_text   TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_ticker_notes_ticker ON ticker_notes(ticker)')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create ticker_notes: %s", e)
 
     # treasury_bills (guard for pre-feature DBs)
     try:

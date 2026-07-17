@@ -950,6 +950,18 @@ async def predicted_movers_page(request: Request):
     )
 
 
+@page_router.get("/ticker-notes", response_class=HTMLResponse)
+async def ticker_notes_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="ticker_notes.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/predicted-movers/accuracy", response_class=HTMLResponse)
 async def predicted_movers_accuracy_page(request: Request):
     return templates.TemplateResponse(
@@ -1654,6 +1666,18 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         from db_accounts import get_holding_price_limits_for_ticker
         holding_price_limits = get_holding_price_limits_for_ticker(ticker)
 
+    from db_helpers import get_ticker_notes
+    ticker_notes = get_ticker_notes(ticker)
+    for note in ticker_notes:
+        note["created_display"] = time_engine.fmt_datetime(
+            datetime.strptime(note["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        )
+        note["updated_display"] = None
+        if note.get("updated_at"):
+            note["updated_display"] = time_engine.fmt_datetime(
+                datetime.strptime(note["updated_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            )
+
     fx_breakdown = None
     if portfolio_math and stock_data and stock_data.get("currency") == "USD":
         now = datetime.now(timezone.utc)
@@ -1822,6 +1846,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             "portfolio_math": portfolio_math,
             "target_accounts": target_accounts,
             "holding_price_limits": holding_price_limits,
+            "ticker_notes": ticker_notes,
             "fx_breakdown": fx_breakdown,
             "days_to_earnings": days_to_earnings,
             "volatility_date": volatility_date,

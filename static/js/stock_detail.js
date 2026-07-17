@@ -540,3 +540,67 @@ function saveNameOverride(reset) {
         }
     });
 }
+
+function toggleAddNotePanel() {
+    var panel = document.getElementById('addNotePanel');
+    if (panel) panel.classList.toggle('d-none');
+}
+
+function saveTickerNote() {
+    var statusEl = document.getElementById('addNoteStatus');
+    var noteText = document.getElementById('newNoteTextarea').value.trim();
+    if (!noteText) return;
+    statusEl.textContent = 'Saving...';
+    fetch('/api/ticker/' + window.STOCK_TICKER + '/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note_text: noteText })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            statusEl.textContent = data.message || 'Failed to save note.';
+        }
+    })
+    .catch(function() { statusEl.textContent = 'Network error saving note.'; });
+}
+
+function toggleEditNotePanel(noteId) {
+    var view = document.getElementById('note-view-' + noteId);
+    var panel = document.getElementById('note-edit-' + noteId);
+    if (view) view.classList.toggle('d-none');
+    if (panel) panel.classList.toggle('d-none');
+}
+
+function saveEditedNote(noteId) {
+    var noteText = document.getElementById('note-edit-textarea-' + noteId).value.trim();
+    if (!noteText) return;
+    fetch('/api/ticker/' + window.STOCK_TICKER + '/notes/' + noteId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note_text: noteText })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert(data.message || 'Failed to save note.');
+        }
+    });
+}
+
+function deleteTickerNote(noteId) {
+    if (!confirm('Delete this note? This cannot be undone.')) return;
+    fetch('/api/ticker/' + window.STOCK_TICKER + '/notes/' + noteId, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert(data.message || 'Failed to delete note.');
+        }
+    });
+}

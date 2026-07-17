@@ -30,6 +30,7 @@ LEVELS = [
     ("bubble-radar", "Bubble Radar"),
     ("pairs-spread-monitor", "Pairs Spread Monitor"),
     ("predicted-movers", "Predicted Movers"),
+    ("ticker-notes", "Ticker Notes"),
     ("forensic-screener", "Forensic Screener"),
     ("fx-drag", "FX Drag Analyzer"),
     ("performance-analytics", "Portfolio Tearsheet"),
@@ -1750,6 +1751,22 @@ CARDS = [
         ],
         "explanation": """<p>Each day, the predicted price band for every Portfolio+Watchlist ticker is snapshotted. Roughly 10 trading days later, once the outcome is known, that prediction is graded two independent ways: <strong>direction match</strong> — did the actual price move the same way (up or down) as the predicted midpoint? — and <strong>within-band match</strong> — did the actual price land anywhere inside the predicted Q10–Q90 range, regardless of which way the midpoint pointed?</p>
 <p>A prediction can't be graded until its ~10-trading-day horizon has actually passed, so the accuracy page always shows a mix of "Resolved" and "Pending" rows — a newly-tracked ticker shows no accuracy percentage at all for its first couple of weeks. This is expected: the horizon is what the model was trained to predict, so there's no way to grade it sooner.</p>""",
+    },
+    # --- ticker-notes ---
+    {
+        "term_key": "ticker-notes",
+        "section_id": "ticker-notes",
+        "term_title": "Ticker Notes",
+        "question": "What makes Ticker Notes different from Position Targets or the Watchlist?",
+        "answer": "A note can be added to any ticker in the app, whether or not it's held or watchlisted",
+        "distractors": [
+            "Notes can only be added to tickers already in your portfolio",
+            "Notes automatically overwrite the previous note for that ticker",
+            "Notes are only visible on the Watchlist page, not Stock Detail",
+        ],
+        "explanation": """<p><strong>Ticker Notes</strong> let you attach free-text research notes to any ticker in the app — not only your portfolio or watchlist holdings, but anything you've come across on the Market Screener or elsewhere. Click <strong>Add Note</strong> on a ticker's Stock Detail page (next to the Refresh and AI buttons) to save an observation, up to 1000 characters. Line breaks and blank lines are preserved exactly as typed.</p>
+<p>Every note is permanently timestamped and kept as its own entry — adding a new note never overwrites an earlier one, so a ticker's notes build up into a running research log over time. Notes can be edited or deleted later from either the Stock Detail page or the Ticker Notes report.</p>
+<p>Once a ticker has at least one note, a <strong>Notes</strong> section appears on its Stock Detail page, above System Verdict, listing every note newest first. The <strong>Ticker Notes</strong> report (Reports → Ticker Notes) lists every ticker with a saved note across the whole app — expand a row to see that ticker's full note history.</p>""",
     },
     # --- forensic-screener ---
     {
