@@ -885,6 +885,108 @@ def soft_delete_ticker_registry_row(ticker: str) -> bool:
             conn.close()
 
 
+def add_ticker_note(ticker: str, note_text: str) -> Optional[int]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            "INSERT INTO ticker_notes (ticker, note_text, created_at) VALUES (?, ?, ?)",
+            (ticker, note_text, now),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except Exception as e:
+        logger.error("add_ticker_note failed for %s: %s", ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_ticker_notes(ticker: str) -> List[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, ticker, note_text, created_at, updated_at FROM ticker_notes "
+            "WHERE ticker = ? ORDER BY created_at DESC, id DESC",
+            (ticker,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_ticker_notes failed for %s: %s", ticker, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_ticker_note(note_id: int, ticker: str, note_text: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            "UPDATE ticker_notes SET note_text = ?, updated_at = ? WHERE id = ? AND ticker = ?",
+            (note_text, now, note_id, ticker),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("update_ticker_note failed for id %s: %s", note_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def delete_ticker_note(note_id: int, ticker: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ticker_notes WHERE id = ? AND ticker = ?", (note_id, ticker))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("delete_ticker_note failed for id %s: %s", note_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_all_ticker_notes_grouped() -> List[dict]:
+    """One entry per ticker with its full note history nested, ordered by each ticker's most
+    recent note — powers the Ticker Notes report (single query, no per-ticker N+1 fetch)."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, ticker, note_text, created_at, updated_at FROM ticker_notes ORDER BY ticker, created_at DESC, id DESC"
+        ).fetchall()
+        grouped: dict = {}
+        order: List[str] = []
+        for r in rows:
+            ticker = r["ticker"]
+            if ticker not in grouped:
+                grouped[ticker] = []
+                order.append(ticker)
+            grouped[ticker].append(dict(r))
+        result = [{"ticker": t, "notes": grouped[t]} for t in order]
+        result.sort(key=lambda e: e["notes"][0]["created_at"], reverse=True)
+        return result
+    except Exception as e:
+        logger.error("get_all_ticker_notes_grouped failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_auction_summary() -> List[dict]:
     """Last 6 Treasury auctions (any maturity) within the last 30 days — the "any weak?" window
     the Treasury Auction Demand banner/sensor is derived from."""

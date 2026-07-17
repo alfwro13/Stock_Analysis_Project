@@ -4064,4 +4064,72 @@ Returns the average post-earnings price path (-5 to +20 trading days, offset 0 =
 
 ---
 
+## 29. Ticker Notes
+
+Free-text research notes attachable to any ticker in the app — not limited to portfolio/watchlist holdings. Each note is its own permanently timestamped entry (edit/delete supported); no scope restriction and no scheduler job.
+
+### `POST /api/ticker/{ticker}/notes`
+
+Adds a new note for `ticker`.
+
+**Request body**
+
+```json
+{ "note_text": "Watching for a breakout above the 200-day SMA." }
+```
+
+`note_text` is required, 1-1000 characters (422 on violation).
+
+**Response**
+
+```json
+{ "status": "success", "id": 42 }
+```
+
+### `PUT /api/ticker/{ticker}/notes/{note_id}`
+
+Edits an existing note's text (same `note_text` validation as create). Returns 404 if `note_id` doesn't exist.
+
+**Response**
+
+```json
+{ "status": "success" }
+```
+
+### `DELETE /api/ticker/{ticker}/notes/{note_id}`
+
+Deletes a note. Returns 404 if `note_id` doesn't exist.
+
+**Response**
+
+```json
+{ "status": "success" }
+```
+
+### `GET /api/ticker-notes`
+
+Every ticker with at least one note, each with its full note history (newest first) — powers the Ticker Notes report (`/ticker-notes`).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "tickers": [
+    {
+      "ticker": "AAPL", "company_name": "Apple Inc.",
+      "notes": [
+        {
+          "id": 42, "ticker": "AAPL",
+          "note_text": "Watching for a breakout above the 200-day SMA.",
+          "created_at": "2026-07-17 09:30:00", "updated_at": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

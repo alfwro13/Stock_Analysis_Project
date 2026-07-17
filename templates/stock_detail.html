@@ -181,6 +181,34 @@
             </div>
             {% endif %}
 
+            {% if ticker_notes %}
+            <div class="notes-box mb-3">
+                <div class="flex-between-center flex-wrap gap-2">
+                    <h2 class="m-0 border-none p-0">Notes</h2>
+                </div>
+                <div class="ticker-notes-list mt-10">
+                    {% for note in ticker_notes %}
+                    <div class="ticker-note-entry" id="note-entry-{{ note.id }}">
+                        <div class="ticker-note-meta">
+                            <span class="ticker-note-date">{{ note.created_display }}</span>
+                            {% if note.updated_display %}<span class="ticker-note-updated">(edited {{ note.updated_display }})</span>{% endif %}
+                            <span class="ticker-note-actions">
+                                <a href="javascript:void(0)" onclick="toggleEditNotePanel({{ note.id }})">Edit</a>
+                                <a href="javascript:void(0)" onclick="deleteTickerNote({{ note.id }})">Delete</a>
+                            </span>
+                        </div>
+                        <div class="ticker-note-body" id="note-view-{{ note.id }}">{{ note.note_text }}</div>
+                        <div class="ticker-note-edit-panel d-none" id="note-edit-{{ note.id }}">
+                            <textarea class="form-control mb-2" maxlength="1000" id="note-edit-textarea-{{ note.id }}">{{ note.note_text }}</textarea>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="saveEditedNote({{ note.id }})">Save</button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="toggleEditNotePanel({{ note.id }})">Cancel</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <div class="summary-box mb-3">
                 <div class="flex-between-center flex-wrap gap-2">
                     <h2 class="m-0 border-none p-0">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
@@ -195,7 +223,14 @@
                             <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', 'Quantamental Deep-Dive', document.getElementById('stockAIBtn'))">Quantamental Deep-Dive</a>
                             <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', 'Earnings Strategy', document.getElementById('stockAIBtn'))">Earnings Strategy</a>
                         </div>
+                        <button id="addNoteBtn" onclick="toggleAddNotePanel()" class="notes-btn">&#128221; Add Note</button>
                     </div>
+                </div>
+
+                <div id="addNotePanel" class="add-note-panel d-none">
+                    <textarea class="form-control mb-2" maxlength="1000" id="newNoteTextarea" placeholder="Write a note about {{ stock.ticker }}…"></textarea>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="saveTickerNote()">Save Note</button>
+                    <span id="addNoteStatus" class="ml-15"></span>
                 </div>
 
                 {% set cp = cached_pulse.get(stock.ticker) %}
