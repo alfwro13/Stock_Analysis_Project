@@ -179,9 +179,19 @@ def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
                WHERE phase != 'NEUTRAL' AND direction_correct_14d IS NULL AND ema_distance IS NOT NULL"""
         ).fetchone()
         pending = pending_row["n"] or 0
+        # Pre-migration rows with a resolved outcome but no features yet — these are what
+        # backfill_historical_features() would recompute (an upper bound: a handful may be
+        # skipped if the parquet has since been revised and the recomputed phase no longer
+        # matches). Surfaced so "0 current" on a freshly-deployed/never-trained instance doesn't
+        # read as "no usable data exists" when a backfill has simply never been triggered yet.
+        backfill_row = conn.execute(
+            """SELECT COUNT(*) AS n FROM trap_phase_history
+               WHERE phase != 'NEUTRAL' AND ema_distance IS NULL AND direction_correct_14d IS NOT NULL"""
+        ).fetchone()
+        backfill_available = backfill_row["n"] or 0
     except Exception as e:
         logger.error("readiness_status failed for %s: %s", engine, e)
-        current, earliest, latest, pending = 0, None, None, 0
+        current, earliest, latest, pending, backfill_available = 0, None, None, 0, 0
     finally:
         if conn:
             conn.close()
@@ -203,8 +213,10 @@ def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
         "current": current,
         "target": target,
         "pending": pending,
+        "backfill_available": backfill_available,
         "hard_min": _HARD_MIN_SAMPLES,
         "can_train": current >= _HARD_MIN_SAMPLES,
+        "can_train_after_backfill": (current + backfill_available) >= _HARD_MIN_SAMPLES,
         "ready_for_active": current >= target,
         "eta_days": eta_days,
         "eta_date": eta_date,

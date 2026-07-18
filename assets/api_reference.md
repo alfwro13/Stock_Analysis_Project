@@ -2087,8 +2087,10 @@ Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readi
     "current": 45,
     "target": 200,
     "pending": 12,
+    "backfill_available": 8,
     "hard_min": 30,
     "can_train": true,
+    "can_train_after_backfill": true,
     "ready_for_active": false,
     "eta_days": 62,
     "eta_date": "2026-09-18"
@@ -2120,6 +2122,8 @@ Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readi
 ```
 
 `readiness.pending` is a leading indicator: phase calls that already have their features recorded but whose 14-day outcome hasn't resolved yet, so they aren't counted in `current` yet but will be automatically once `trap_accuracy_fill_job` resolves them.
+
+`readiness.backfill_available` is a second leading indicator, distinct from `pending`: phase calls whose 14-day outcome is already resolved but whose features haven't been backfilled yet (an upper bound — a handful may be skipped during the actual backfill if the recomputed phase no longer matches, see `POST /api/alert-referee/train` below). This is what makes `can_train_after_backfill` true even when `can_train` (based on `current` alone) is still false — the difference between the two answers "is there anything usable right now if I click Run Training Now" vs. "has a backfill already happened."
 
 ### `POST /api/alert-referee/train`
 
