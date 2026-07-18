@@ -1098,6 +1098,21 @@ CARDS = [
 <p>At least 5 resolved predictions per phase are required before an accuracy percentage is shown, to avoid statistically meaningless figures from very small samples. The accuracy chart on the Trap Monitor page is updated daily as new resolutions come in.</p>""",
     },
     {
+        "term_key": "alert-confidence-referee",
+        "section_id": "strategies",
+        "term_title": "⚖️ Alert Confidence Referee",
+        "question": "How is the Alert Confidence Referee different from the alert cooldown/dedup gate?",
+        "answer": "The dedup gate stops the same condition re-firing; the referee can stop a first-time signal from firing at all",
+        "distractors": [
+            "The referee replaces the dedup gate entirely — only one of them runs at a time",
+            "The referee only applies to alerts that have already fired at least once",
+            "The dedup gate is for Trap Monitor only, the referee is for every other engine",
+        ],
+        "explanation": """<p>The <strong>Alert Confidence Referee</strong> is a secondary classifier that learns from an alert engine's own historical hit/miss record and can veto (suppress) a new alert when it resembles past false positives, instead of firing on every rule-threshold crossing. It is piloted on the Market Trap &amp; Recovery Monitor: it trains on the same Trap Phase History used for the accuracy tracking above — each resolved phase call's technical features (RSI, EMA distance, volume ratios, Bollinger width) paired with whether the phase's predicted direction actually turned out correct.</p>
+<p>This is distinct from the alert cooldown/dedup gate used elsewhere in the system: the dedup gate stops the <em>same</em> condition from re-firing repeatedly once it has already alerted. The referee instead asks whether a <em>first-time</em> signal is even worth firing at all, based on how similar-looking signals have historically resolved.</p>
+<p>The referee runs in one of two modes. <strong>Shadow mode</strong> logs what it would have done — fire or veto, and its confidence — without ever actually suppressing an alert; this is the safer default while a model is still trained on limited history. <strong>Active mode</strong> actually suppresses an alert when its fire-confidence probability falls below the configured veto threshold. Active mode only ever takes effect once enough resolved training samples have accumulated (a configurable minimum) — below that, the referee always stays in Shadow mode regardless of the configured setting, so a veto can never be applied on the strength of too little history.</p>""",
+    },
+    {
         "term_key": "market-leader",
         "section_id": "strategies",
         "term_title": "👑 Market Leader",

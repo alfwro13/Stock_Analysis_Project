@@ -229,10 +229,21 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Phase values:** `ACTIVE_SELLOFF` | `BULL_TRAP_RISK` | `CAPITULATION_FORMING` | `BEAR_TRAP_RISK` | `ACCUMULATION` | `CAUTION` | `NEUTRAL`.
 
 #### `trap_phase_history`
-* **Purpose:** Append-only log of trap phase assignments per ticker per day, used to evaluate prediction accuracy retroactively. One row per (ticker, scan_date) — the first scan of each day is kept.
-* **Key Columns:** `id` (PK autoincrement), `ticker`, `phase`, `scan_date` (YYYY-MM-DD), `scan_ts` (UTC ISO), `close_price` (reference price at scan time), `actual_price_14d` / `actual_date_14d` / `direction_correct_14d` (filled ~14 calendar days later), `actual_price_30d` / `actual_date_30d` / `direction_correct_30d` (filled ~30 calendar days later).
+* **Purpose:** Append-only log of trap phase assignments per ticker per day, used to evaluate prediction accuracy retroactively and — as of July 2026 — as the training set for the Alert Confidence Referee (see below). One row per (ticker, scan_date) — the first scan of each day is kept.
+* **Key Columns:** `id` (PK autoincrement), `ticker`, `phase`, `scan_date` (YYYY-MM-DD), `scan_ts` (UTC ISO), `close_price` (reference price at scan time), `rsi` / `ema_distance` / `bull_trap_vol_ratio` / `cap_vol_zscore` / `wyckoff_bb_width` (the same signal features captured on `trap_monitor_results` at scan time, added July 2026 so a historical row carries the features that drove the phase call, not just the call itself — rows logged before this change have these columns NULL and are excluded from Alert Confidence Referee training), `actual_price_14d` / `actual_date_14d` / `direction_correct_14d` (filled ~14 calendar days later), `actual_price_30d` / `actual_date_30d` / `direction_correct_30d` (filled ~30 calendar days later).
 * **Constraint:** `UNIQUE(ticker, scan_date)` — `INSERT OR IGNORE` keeps the first result of each day.
 * **Written by:** `bull_bear_trap_engine.TrapEngine._save_results()` → `database.log_trap_phase()`. Actuals filled daily by `trap_accuracy_fill_job` via `bull_bear_trap_engine.fill_trap_phase_actuals()`.
+
+#### `alert_referee_models`
+* **Purpose:** One row per Alert Confidence Referee training run — a small `RandomForestClassifier` (isotonic-calibrated via `CalibratedClassifierCV`, mirroring `ai_prediction_engine.py`'s calibration approach) trained on `trap_phase_history`'s resolved, feature-bearing rows. Pilots on the Market Trap & Recovery Monitor only (`engine = 'TrapMonitor'`).
+* **Key Columns:** `id` (PK autoincrement), `engine`, `trained_at` (UTC ISO), `sample_count`, `positive_count` (rows where `direction_correct_14d = 1`), `train_accuracy`, `veto_rate` (fraction of the training set the model would veto at the configured threshold), `effective_mode` (`shadow` | `active` — the mode this training run actually qualified for, given `sample_count` vs. the configured `MIN_TRAINING_SAMPLES`), `model_path` (joblib artifact path).
+* **Written by:** `alert_referee_engine.train_referee_model()`, called from the `alert_referee_training_job` scheduler job or the Settings "Run Training Now" action (`POST /api/alert-referee/train`).
+
+#### `alert_referee_log`
+* **Purpose:** Per-evaluation shadow/active log — every time the referee is consulted before a Trap Monitor alert would fire, its verdict is recorded here, whether or not the veto was actually enforced. This is what lets an operator see "what would the referee have done" while it runs in Shadow mode.
+* **Key Columns:** `id` (PK autoincrement), `engine`, `ticker`, `phase`, `fire_probability` (the calibrated model's confidence the signal is a genuine hit), `vetoed` (0/1 — whether the model recommended a veto, regardless of mode), `mode` (`shadow` | `active` — the effective mode at evaluation time), `model_id` (the `alert_referee_models.id` used, no enforced FK), `scan_ts` (UTC ISO).
+* **Written by:** `alert_referee_engine.log_veto_evaluation()`, called from `alert_referee_engine.evaluate_alert()` on every Trap Monitor phase call the referee is consulted on.
+* **Index:** `idx_alert_referee_log_engine_ticker` on `(engine, ticker)`.
 
 #### `pairs_spread_results`
 * **Purpose:** Latest Pairs Spread Monitor scan result — one row per correlated same-currency pair, per scope (`portfolio_watchlist` or `universe`). Fully replaced per scope (not upserted) on every scan of that scope, so a pair that drops out of the correlation threshold disappears rather than lingering with a stale `scan_ts`, and a Universe scan never clears Portfolio+Watchlist rows or vice versa. Powers `/pairs-spread`.

@@ -121,6 +121,32 @@ async def get_trap_monitor_accuracy(request: Request):
     return JSONResponse(content={"status": "success", **data})
 
 
+@analysis_router.get("/alert-referee/status")
+@limiter.limit("20/minute")
+async def get_alert_referee_status(request: Request):
+    """Returns Alert Confidence Referee readiness, latest trained model, and recent shadow-mode log for the Trap Monitor pilot."""
+    try:
+        from alert_referee_engine import get_referee_summary, TRAP_MONITOR_ENGINE
+        data = get_referee_summary(TRAP_MONITOR_ENGINE)
+        return JSONResponse(content={"status": "success", **data})
+    except Exception as e:
+        logger.error("alert-referee/status failed: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.post("/alert-referee/train")
+@limiter.limit("4/minute")
+async def train_alert_referee(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers Alert Confidence Referee training in the background (the 'Run Now' Settings action)."""
+    try:
+        from scheduler_engine import run_alert_referee_training_job
+        background_tasks.add_task(run_alert_referee_training_job)
+        return JSONResponse(content={"status": "success", "message": "Alert Confidence Referee training triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Alert Confidence Referee training: %s", e)
+        return _error_500(e)
+
+
 @analysis_router.get("/bubble-radar/data")
 @limiter.limit("20/minute")
 async def get_bubble_radar_data(request: Request):

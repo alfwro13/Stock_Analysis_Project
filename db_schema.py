@@ -969,6 +969,11 @@ def init_db() -> None:
                 scan_date             TEXT NOT NULL,
                 scan_ts               TEXT NOT NULL,
                 close_price           REAL,
+                rsi                   REAL,
+                ema_distance          REAL,
+                bull_trap_vol_ratio   REAL,
+                cap_vol_zscore        REAL,
+                wyckoff_bb_width      REAL,
                 actual_price_14d      REAL,
                 actual_date_14d       TEXT,
                 direction_correct_14d INTEGER,
@@ -978,6 +983,35 @@ def init_db() -> None:
                 UNIQUE(ticker, scan_date)
             )
         ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alert_referee_models (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                engine         TEXT NOT NULL,
+                trained_at     TEXT NOT NULL,
+                sample_count   INTEGER NOT NULL,
+                positive_count INTEGER NOT NULL,
+                train_accuracy REAL,
+                veto_rate      REAL,
+                effective_mode TEXT NOT NULL,
+                model_path     TEXT NOT NULL
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alert_referee_log (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                engine           TEXT NOT NULL,
+                ticker           TEXT NOT NULL,
+                phase            TEXT,
+                fire_probability REAL NOT NULL,
+                vetoed           INTEGER NOT NULL,
+                mode             TEXT NOT NULL,
+                model_id         INTEGER,
+                scan_ts          TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_referee_log_engine_ticker ON alert_referee_log(engine, ticker)')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS predicted_movers_history (
@@ -2131,6 +2165,56 @@ def migrate_db(conn, cursor) -> None:
                     logger.error("[MIGRATION ERROR] Failed on earnings_volatility: %s", e)
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to add drift columns to earnings_volatility: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(trap_phase_history)")
+        existing_trap_phase_columns = [info['name'] for info in cursor.fetchall()]
+        for col, ddl in (
+            ('rsi', "ALTER TABLE trap_phase_history ADD COLUMN rsi REAL"),
+            ('ema_distance', "ALTER TABLE trap_phase_history ADD COLUMN ema_distance REAL"),
+            ('bull_trap_vol_ratio', "ALTER TABLE trap_phase_history ADD COLUMN bull_trap_vol_ratio REAL"),
+            ('cap_vol_zscore', "ALTER TABLE trap_phase_history ADD COLUMN cap_vol_zscore REAL"),
+            ('wyckoff_bb_width', "ALTER TABLE trap_phase_history ADD COLUMN wyckoff_bb_width REAL"),
+        ):
+            if col not in existing_trap_phase_columns:
+                try:
+                    logger.info("[MIGRATION] Adding column: %s to trap_phase_history...", col)
+                    cursor.execute(ddl)
+                except Exception as e:
+                    logger.error("[MIGRATION ERROR] Failed on trap_phase_history: %s", e)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add feature columns to trap_phase_history: %s", e)
+
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alert_referee_models (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                engine         TEXT NOT NULL,
+                trained_at     TEXT NOT NULL,
+                sample_count   INTEGER NOT NULL,
+                positive_count INTEGER NOT NULL,
+                train_accuracy REAL,
+                veto_rate      REAL,
+                effective_mode TEXT NOT NULL,
+                model_path     TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alert_referee_log (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                engine           TEXT NOT NULL,
+                ticker           TEXT NOT NULL,
+                phase            TEXT,
+                fire_probability REAL NOT NULL,
+                vetoed           INTEGER NOT NULL,
+                mode             TEXT NOT NULL,
+                model_id         INTEGER,
+                scan_ts          TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_referee_log_engine_ticker ON alert_referee_log(engine, ticker)')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create alert_referee tables: %s", e)
 
     try:
         conn.commit()

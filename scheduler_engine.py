@@ -589,6 +589,24 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Trap accuracy fill job: %s", e)
 
+    referee_sched = scheduling.get("ALERT_REFEREE_TRAINING", {})
+    if referee_sched.get("ENABLED", False):
+        try:
+            referee_days_list = referee_sched.get("DAYS", ["sun"])
+            referee_days = ",".join(referee_days_list) if referee_days_list else "sun"
+            referee_time = referee_sched.get("TIME", "05:00")
+            hour, minute = map(int, referee_time.split(':'))
+            scheduler.add_job(
+                run_alert_referee_training_job,
+                CronTrigger(day_of_week=referee_days, hour=hour, minute=minute, timezone=user_tz),
+                id='alert_referee_training_job',
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Alert Confidence Referee training scheduled for %s at %s.", referee_days, referee_time)
+        except Exception as e:
+            logger.error("Failed to schedule Alert Confidence Referee training: %s", e)
+
     news_cfg = scheduling.get("NEWS_FEED", {})
     if news_cfg.get("ENABLED", False):
         news_freq = news_cfg.get("FREQUENCY", "mon-fri")
@@ -870,7 +888,7 @@ from scheduler_jobs import (
     run_macro_calendar_update, run_central_bank_nlp_check, run_macro_data_update,
     run_xray_risk_cache_job, run_anomaly_training_job, run_intraday_dip_scan,
     run_intraday_dip_reset, _build_contagion_feed_text, _build_contagion_message,
-    run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job,
+    run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,
     register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,

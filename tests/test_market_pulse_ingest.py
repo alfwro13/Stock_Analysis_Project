@@ -542,11 +542,15 @@ class TestQuoteSnapshotSessionTagging:
         with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
             _mp.fetch_and_save_pulse(["^GSPC"])
 
-        # Second refresh: the quote snapshot itself is unavailable this time.
+        # Second refresh: the quote snapshot itself is unavailable this time. The fallback path
+        # re-checks is_exchange_open(), which vetoes on a real exchange holiday/weekend first —
+        # patched here so this test exercises the cached-REGULAR-state fallback it's named for,
+        # independent of what real calendar day the suite happens to run on.
         daily2 = _flat_daily_df([100.5, 102.0])
         live2 = _flat_live_df(102.5)
         p3, p4 = _pulse_patches("^GSPC", daily2, live2)
-        with p3, p4, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=None):
+        with p3, p4, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=None), \
+             patch("market_pulse.is_exchange_holiday", return_value=False):
             _mp.fetch_and_save_pulse(["^GSPC"])
 
         row = _read_cache("^GSPC")

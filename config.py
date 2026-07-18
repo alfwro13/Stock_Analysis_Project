@@ -244,6 +244,14 @@ DEFAULT_CONFIG = {
             "WATCH_THRESHOLD": 70,
             "FLAG_THRESHOLD": 85
         },
+        "ALERT_REFEREE_TRAINING": {
+            "ENABLED": False,
+            "DAYS": ["sun"],
+            "TIME": "05:00",
+            "MODE": "shadow",
+            "VETO_THRESHOLD": 0.3,
+            "MIN_TRAINING_SAMPLES": 200
+        },
         "FORENSIC_QUARTERLY_FETCH": {
             "ENABLED": True,
             "DAY_OF_MONTH": 1,
