@@ -11,15 +11,16 @@
 </div>
 
 <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
-    <button class="filter-btn active" data-filter="all" onclick="setFilter(this)">All</button>
-    <button class="filter-btn" data-filter="Crash" onclick="setFilter(this)">Crash</button>
-    <button class="filter-btn" data-filter="Moonshot" onclick="setFilter(this)">Moonshot</button>
-    <button class="filter-btn" data-filter="Scheduler" onclick="setFilter(this)">Scheduler</button>
-    <button class="filter-btn" data-filter="HoldingLimit" onclick="setFilter(this)">Holding Limit</button>
-    <button class="filter-btn" data-filter="Success" onclick="setFilter(this)">Success</button>
-    <button class="filter-btn" data-filter="Error" onclick="setFilter(this)">Error</button>
-    <button class="filter-btn" data-filter="Warning" onclick="setFilter(this)">Warning</button>
-    <button class="filter-btn" data-filter="Info" onclick="setFilter(this)">Info</button>
+    <button class="filter-btn" id="unread-filter-btn" onclick="toggleUnreadFilter()">Unread Only</button>
+    <button class="filter-btn active" data-filter="all" onclick="toggleTypeFilter(this)">All</button>
+    <button class="filter-btn" data-filter="Crash" onclick="toggleTypeFilter(this)">Crash</button>
+    <button class="filter-btn" data-filter="Moonshot" onclick="toggleTypeFilter(this)">Moonshot</button>
+    <button class="filter-btn" data-filter="Scheduler" onclick="toggleTypeFilter(this)">Scheduler</button>
+    <button class="filter-btn" data-filter="HoldingLimit" onclick="toggleTypeFilter(this)">Holding Limit</button>
+    <button class="filter-btn" data-filter="Success" onclick="toggleTypeFilter(this)">Success</button>
+    <button class="filter-btn" data-filter="Error" onclick="toggleTypeFilter(this)">Error</button>
+    <button class="filter-btn" data-filter="Warning" onclick="toggleTypeFilter(this)">Warning</button>
+    <button class="filter-btn" data-filter="Info" onclick="toggleTypeFilter(this)">Info</button>
 </div>
 
 <div class="notification-list">

@@ -145,7 +145,7 @@ To start the server, simply run the main application file. The system will autom
 
 * Open your web browser and navigate to **http://localhost:8090** (or your server's IP address).  
 * **Settings Tab:** Navigate to ⚙️ Settings to discover your Ghostfolio accounts, set up Nextcloud Talk webhooks, and tweak your algorithmic thresholds.  
-* **Notifications Tab:** View a persistent ledger of all system-generated events (Earnings alerts, Insider trades, System maintenance).  
+* **Notifications Tab:** View a persistent ledger of all system-generated events (Earnings alerts, Insider trades, System maintenance). Filter by one or more event types at once (e.g. Crash and Moonshot together) and/or toggle Unread Only — your filter selection is remembered across visits.  
 * **Update Data:** Click **"↻ Update Analysis"** to trigger the background data engine manually, or rely on your configured APScheduler rules.  
 * **Deep Dive:** Click on any ticker to view the detailed Quantamental analysis, interactive Plotly charts, and live algorithmic candlestick pattern overlays.
 
