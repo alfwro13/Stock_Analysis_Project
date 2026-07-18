@@ -128,12 +128,13 @@ Additional context: if close is more than 7% below EMA, the deep extension is no
 
 ## 4. Ticker Universe
 
-`_get_ticker_list()` unions two sources:
+`_get_ticker_list()` unions up to three sources:
 
 - **Proxy basket** — `NOTIFICATIONS.TRAP_MONITOR_ALERTS.PROXY_TICKERS` (default: `["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]`). Configurable via Settings.
-- **Portfolio** — all tickers from `data/portfolio.json`, gated by `SCHEDULING.TRAP_MONITORS.MONITOR_PORTFOLIO` (default: `True`). Toggle via "Monitor Portfolio Tickers" checkbox in Settings.
+- **Portfolio** — `accounts_engine.get_combined_holdings()` (built-in Trading accounts + Ghostfolio when enabled), gated by `SCHEDULING.TRAP_MONITORS.MONITOR_PORTFOLIO` (default: `True`). Toggle via "Monitor Portfolio Tickers" checkbox in Settings.
+- **Watchlist** — `database.get_watchlist_tickers()`, gated by `SCHEDULING.TRAP_MONITORS.MONITOR_WATCHLIST` (default: `False`). Toggle via "Monitor Watchlist Tickers" checkbox in Settings.
 
-Tickers are skipped if no Parquet file exists at `data/historical/{ticker}.parquet`.
+Each source is filtered through `utils.is_excluded_from_yahoo_fetch()` (synthetic tickers and the Settings-page Ignored Tickers list). Tickers are skipped if no Parquet file exists at `data/historical/{ticker}.parquet` and cannot be fetched.
 
 ---
 
@@ -189,6 +190,7 @@ All keys live under `config.json` / `config.py:DEFAULT_CONFIG`.
 | `CAPITULATION` | `true` | Enable Capitulation detector |
 | `WYCKOFF` | `true` | Enable Wyckoff Accumulation detector |
 | `MONITOR_PORTFOLIO` | `true` | Include portfolio tickers in the scan universe |
+| `MONITOR_WATCHLIST` | `false` | Include watchlist tickers in the scan universe |
 | `FREQUENCY` | `"mon-fri"` | APScheduler day-of-week expression |
 | `START_TIME` | `"08:00"` | Earliest hour to run (local timezone) |
 | `END_TIME` | `"21:00"` | Latest hour to run (local timezone) |

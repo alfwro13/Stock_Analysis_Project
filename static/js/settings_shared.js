@@ -217,6 +217,7 @@ async function saveSettings(silent = false) {
                 "CAPITULATION": document.getElementById('TRAP_CAP_ENABLED').checked,
                 "WYCKOFF": document.getElementById('TRAP_WYK_ENABLED').checked,
                 "MONITOR_PORTFOLIO": document.getElementById('TRAP_MONITOR_PORTFOLIO').checked,
+                "MONITOR_WATCHLIST": document.getElementById('TRAP_MONITOR_WATCHLIST').checked,
                 "FREQUENCY": document.getElementById('TRAP_MONITOR_FREQ').value,
                 "START_TIME": document.getElementById('TRAP_MONITOR_START').value,
                 "END_TIME": document.getElementById('TRAP_MONITOR_END').value,
