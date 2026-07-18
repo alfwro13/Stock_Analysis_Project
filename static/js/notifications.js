@@ -1,15 +1,75 @@
 let lastNotificationId = window.LAST_NOTIFICATION_ID || 0;
-let activeFilter = 'all';
 
-function setFilter(btn) {
-    activeFilter = btn.dataset.filter;
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.notification-list .notification-card').forEach(card => {
+const TYPES_STORAGE_KEY = 'notif_active_types';
+const UNREAD_STORAGE_KEY = 'notif_unread_only';
+
+function loadStoredTypes() {
+    try {
+        const raw = localStorage.getItem(TYPES_STORAGE_KEY);
+        const arr = raw ? JSON.parse(raw) : null;
+        return Array.isArray(arr) ? arr : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function saveActiveTypes() {
+    try {
+        localStorage.setItem(TYPES_STORAGE_KEY, JSON.stringify(Array.from(activeTypes)));
+    } catch (_) {}
+}
+
+function saveUnreadOnly() {
+    try {
+        localStorage.setItem(UNREAD_STORAGE_KEY, String(unreadOnly));
+    } catch (_) {}
+}
+
+const storedTypes = loadStoredTypes();
+let activeTypes = new Set(storedTypes || []);
+let unreadOnly = localStorage.getItem(UNREAD_STORAGE_KEY) === 'true';
+
+function updateFilterButtonStates() {
+    document.querySelectorAll('.filter-btn[data-filter]').forEach(b => {
+        const isActive = b.dataset.filter === 'all' ? activeTypes.size === 0 : activeTypes.has(b.dataset.filter);
+        b.classList.toggle('active', isActive);
+    });
+    const unreadBtn = document.getElementById('unread-filter-btn');
+    if (unreadBtn) unreadBtn.classList.toggle('active', unreadOnly);
+}
+
+function applyFilters() {
+    document.querySelectorAll('.notification-list .notification-card[data-type]').forEach(card => {
         const type = card.dataset.type || '';
-        card.style.display = (activeFilter === 'all' || type === activeFilter) ? '' : 'none';
+        const typeMatch = activeTypes.size === 0 || activeTypes.has(type);
+        const unreadMatch = !unreadOnly || card.classList.contains('unread');
+        card.style.display = (typeMatch && unreadMatch) ? '' : 'none';
     });
 }
+
+function toggleTypeFilter(btn) {
+    const filter = btn.dataset.filter;
+    if (filter === 'all') {
+        activeTypes.clear();
+    } else if (activeTypes.has(filter)) {
+        activeTypes.delete(filter);
+    } else {
+        activeTypes.add(filter);
+    }
+    saveActiveTypes();
+    updateFilterButtonStates();
+    applyFilters();
+}
+
+function toggleUnreadFilter() {
+    unreadOnly = !unreadOnly;
+    saveUnreadOnly();
+    updateFilterButtonStates();
+    applyFilters();
+}
+
+updateFilterButtonStates();
+applyFilters();
 
 setInterval(async () => {
     try {
@@ -28,7 +88,7 @@ setInterval(async () => {
                     const card = document.createElement('div');
                     card.className = 'notification-card unread';
                     card.dataset.type = note.type;
-                    if (activeFilter !== 'all' && note.type !== activeFilter) {
+                    if (!(activeTypes.size === 0 || activeTypes.has(note.type))) {
                         card.style.display = 'none';
                     }
                     card.innerHTML = `
@@ -65,6 +125,7 @@ async function markAllAsRead() {
 
         if (response.ok) {
             document.querySelectorAll('.notification-card.unread').forEach(card => card.classList.remove('unread'));
+            applyFilters();
 
             const badge = document.getElementById('nav-badge');
             if (badge) {
