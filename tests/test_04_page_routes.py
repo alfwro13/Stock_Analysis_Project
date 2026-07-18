@@ -505,6 +505,94 @@ def test_stock_detail_gbp_ticker_no_target_set_does_not_crash(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_stale_pulse_fallback_price_does_not_crash(client):
+    """get_all_cached_pulse() intentionally sets change_pct/is_positive to None when a
+    stuck market_pulse_cache row falls back to stock_signals.current_price (see its own
+    docstring) — cp is still truthy in that case, so the template must not assume
+    cp.change_pct is numeric just because cp exists. Reproduces a real 500 (TypeError:
+    NoneType doesn't define __round__) seen after a market_pulse_cache row went stale."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, last_updated) "
+            "VALUES ('ZZSTALEPULSE', 105.0, 'USD', 'EQUITY', datetime('now'))"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) "
+            "VALUES ('ZZSTALEPULSE', 'ZZ Stale Pulse', 100.0, 5.0, 5.0, 1, 0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZSTALEPULSE", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/stock/ZZSTALEPULSE", follow_redirects=True)
+        assert resp.status_code < 500, (
+            f"Stock detail page crashed on a stale-pulse fallback price: HTTP {resp.status_code}\n"
+            f"Body: {resp.text[:500]}"
+        )
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZSTALEPULSE"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZSTALEPULSE'")
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker = 'ZZSTALEPULSE'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
+def test_watchlist_page_stale_pulse_fallback_price_does_not_crash(client):
+    """Same fallback scenario as test_stock_detail_stale_pulse_fallback_price_does_not_crash,
+    but on the /watchlist table row itself, which reads the same cached_pulse dict."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, last_updated) "
+            "VALUES ('ZZSTALEPULSEWL', 105.0, 'USD', 'EQUITY', datetime('now'))"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) "
+            "VALUES ('ZZSTALEPULSEWL', 'ZZ Stale Pulse WL', 100.0, 5.0, 5.0, 1, 0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZSTALEPULSEWL", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist", follow_redirects=True)
+        assert resp.status_code < 500, (
+            f"Watchlist page crashed on a stale-pulse fallback price: HTTP {resp.status_code}\n"
+            f"Body: {resp.text[:500]}"
+        )
+        assert "ZZSTALEPULSEWL" in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZSTALEPULSEWL"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZSTALEPULSEWL'")
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker = 'ZZSTALEPULSEWL'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_watchlist_ticker_link_propagates_embed_token(client):
     """When /watchlist is loaded with ?embed=true&embed_token=..., its ticker links to
     /stock/{ticker} must carry the same embed_token — otherwise clicking through from an

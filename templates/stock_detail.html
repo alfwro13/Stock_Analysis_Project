@@ -250,7 +250,7 @@
                         {% endif %}
                     </span>
                     <span id="change-{{ stock.ticker }}" class="ml-15 font-bold-16">
-                        {% if cp %}
+                        {% if cp and cp.change_pct is not none %}
                             {% set sign = '+' if cp.is_positive else '' %}
                             <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
                                 {{ sign }}{{ cp.change_pct|round(2) }}%
