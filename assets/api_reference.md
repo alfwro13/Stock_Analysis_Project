@@ -2086,6 +2086,7 @@ Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readi
   "readiness": {
     "current": 45,
     "target": 200,
+    "pending": 12,
     "hard_min": 30,
     "can_train": true,
     "ready_for_active": false,
@@ -2118,9 +2119,11 @@ Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readi
 }
 ```
 
+`readiness.pending` is a leading indicator: phase calls that already have their features recorded but whose 14-day outcome hasn't resolved yet, so they aren't counted in `current` yet but will be automatically once `trap_accuracy_fill_job` resolves them.
+
 ### `POST /api/alert-referee/train`
 
-Triggers Alert Confidence Referee training in the background (the Settings "Run Training Now" action). Training refuses to fit a model below a hard minimum sample count (30 resolved, feature-bearing Trap Monitor phase calls); above that it always trains, but the resulting model only runs in Active (enforcing) mode once the sample count also crosses the configured `MIN_TRAINING_SAMPLES` target — otherwise it runs in Shadow (log-only) mode regardless of the configured mode. Returns `{"status": "success"}` immediately; poll `/api/alert-referee/status` for the outcome.
+Triggers Alert Confidence Referee training in the background (the Settings "Run Training Now" action). Before counting samples or fitting anything, it runs `alert_referee_engine.backfill_historical_features()` — a one-time-safe backfill that recomputes RSI/EMA-distance/volume-ratio/Bollinger-width for any `trap_phase_history` row logged before these columns existed, from the same 2-year parquet history the live scan reads, so already-resolved historical rows become usable training data immediately rather than only accumulating from new scans (idempotent — already-backfilled rows are skipped, so repeat calls are cheap once caught up). Training itself then refuses to fit a model below a hard minimum sample count (30 resolved, feature-bearing Trap Monitor phase calls); above that it always trains, but the resulting model only runs in Active (enforcing) mode once the sample count also crosses the configured `MIN_TRAINING_SAMPLES` target — otherwise it runs in Shadow (log-only) mode regardless of the configured mode. Returns `{"status": "success"}` immediately; poll `/api/alert-referee/status` for the outcome.
 
 ---
 

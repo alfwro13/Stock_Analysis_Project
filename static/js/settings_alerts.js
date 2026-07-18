@@ -196,6 +196,7 @@ function fetchAlertRefereeReadiness() {
             const r = data.readiness || {};
             const current = r.current || 0;
             const target = r.target || 0;
+            const pending = r.pending || 0;
             const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
             let etaText = 'not enough history yet to estimate';
             if (r.ready_for_active) {
@@ -209,6 +210,7 @@ function fetchAlertRefereeReadiness() {
                 : 'No model trained yet.';
             el.innerHTML =
                 `<div class="mb-10">${current} / ${target} resolved signals with recorded features (${pct}%) — ${etaText}.</div>` +
+                `<div class="mb-10 text-muted">${pending} more already have features recorded and are awaiting their 14-day outcome (leading indicator — not yet counted above).</div>` +
                 `<div class="mb-10">${modelLine}</div>` +
                 `<div>Shadow log: ${data.log_total || 0} evaluations recorded, ${data.log_vetoed || 0} would-veto.</div>`;
         })
