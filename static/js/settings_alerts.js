@@ -197,6 +197,7 @@ function fetchAlertRefereeReadiness() {
             const current = r.current || 0;
             const target = r.target || 0;
             const pending = r.pending || 0;
+            const backfillAvailable = r.backfill_available || 0;
             const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
             let etaText = 'not enough history yet to estimate';
             if (r.ready_for_active) {
@@ -204,12 +205,27 @@ function fetchAlertRefereeReadiness() {
             } else if (r.eta_date) {
                 etaText = `~${escapeHtml(r.eta_date)} at the current pace`;
             }
+
+            let statusLine;
+            if (r.can_train) {
+                statusLine = `<span style="color:#4caf50;">✅ Ready to train</span> (${current} resolved samples, minimum is ${r.hard_min}).`;
+            } else if (r.can_train_after_backfill) {
+                statusLine = `<span style="color:#e0a800;">📦 Not yet trained</span> — but ${backfillAvailable} historical signal(s) are ` +
+                    `already resolved and just need their features recomputed. Click "Run Training Now" to backfill and use them immediately.`;
+            } else {
+                statusLine = `<span class="text-muted">⏳ Not enough data yet to train</span> (minimum is ${r.hard_min} resolved samples).`;
+            }
+
             const model = data.latest_model;
             const modelLine = model
                 ? `Last trained ${escapeHtml(model.trained_at)} on ${model.sample_count} samples (train accuracy ${(model.train_accuracy * 100).toFixed(0)}%).`
                 : 'No model trained yet.';
             el.innerHTML =
+                `<div class="mb-10">${statusLine}</div>` +
                 `<div class="mb-10">${current} / ${target} resolved signals with recorded features (${pct}%) — ${etaText}.</div>` +
+                (backfillAvailable > 0
+                    ? `<div class="mb-10 text-muted">${backfillAvailable} more resolved historical signal(s) exist but haven't had their features backfilled yet (not yet counted above).</div>`
+                    : '') +
                 `<div class="mb-10 text-muted">${pending} more already have features recorded and are awaiting their 14-day outcome (leading indicator — not yet counted above).</div>` +
                 `<div class="mb-10">${modelLine}</div>` +
                 `<div>Shadow log: ${data.log_total || 0} evaluations recorded, ${data.log_vetoed || 0} would-veto.</div>`;

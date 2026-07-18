@@ -151,6 +151,32 @@ class TestReadinessStatus:
             status = are.readiness_status(_ENGINE)
         assert status["ready_for_active"] is True
 
+    def test_backfill_available_counts_unbackfilled_resolved_rows(self):
+        _seed_bare_history_row("BARE1", "BULL_TRAP_RISK", "2026-01-01", direction_correct_14d=1)
+        _seed_bare_history_row("BARE2", "ACTIVE_SELLOFF", "2026-01-02", direction_correct_14d=0)
+        status = are.readiness_status(_ENGINE)
+        assert status["current"] == 0
+        assert status["backfill_available"] == 2
+
+    def test_backfill_available_excludes_unresolved_bare_rows(self):
+        _seed_bare_history_row("BARE3", "BULL_TRAP_RISK", "2026-01-01", direction_correct_14d=None)
+        status = are.readiness_status(_ENGINE)
+        assert status["backfill_available"] == 0
+
+    def test_can_train_after_backfill_true_when_backfill_would_cross_hard_min(self):
+        for i in range(are._HARD_MIN_SAMPLES):
+            _seed_bare_history_row(f"BARE{i}", "BULL_TRAP_RISK", f"2026-01-{(i % 28) + 1:02d}", direction_correct_14d=1)
+        status = are.readiness_status(_ENGINE)
+        assert status["can_train"] is False
+        assert status["backfill_available"] == are._HARD_MIN_SAMPLES
+        assert status["can_train_after_backfill"] is True
+
+    def test_can_train_after_backfill_false_when_still_insufficient(self):
+        _seed_bare_history_row("BARE4", "BULL_TRAP_RISK", "2026-01-01", direction_correct_14d=1)
+        status = are.readiness_status(_ENGINE)
+        assert status["can_train"] is False
+        assert status["can_train_after_backfill"] is False
+
 
 class TestTrainRefereeModel:
     def test_insufficient_data_below_hard_minimum(self):
