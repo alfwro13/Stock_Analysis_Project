@@ -127,6 +127,7 @@ class ScheduleItemConfig(BaseModel):
     CAPITULATION: Optional[bool] = None
     WYCKOFF: Optional[bool] = None
     MONITOR_PORTFOLIO: Optional[bool] = None
+    MONITOR_WATCHLIST: Optional[bool] = None
     WATCH_THRESHOLD: Optional[int] = None
     FLAG_THRESHOLD: Optional[int] = None
     LOCATION: Optional[str] = None

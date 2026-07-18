@@ -232,6 +232,7 @@ DEFAULT_CONFIG = {
             "CAPITULATION": True,
             "WYCKOFF": True,
             "MONITOR_PORTFOLIO": True,
+            "MONITOR_WATCHLIST": False,
             "FREQUENCY": "mon-fri",
             "START_TIME": "08:00",
             "END_TIME": "21:00",

@@ -495,6 +495,36 @@ class TestGetTickerList:
         assert "AAPL" in tickers
         assert not any(t.startswith("TBILL-") for t in tickers)
 
+    def test_watchlist_excluded_by_default(self):
+        engine = TrapEngine(_CFG)
+        engine.proxy_tickers = []
+        engine.monitor_portfolio = False
+        assert engine.monitor_watchlist is False
+        with patch("database.get_watchlist_tickers", return_value=["NVDA"]) as mock_wl:
+            tickers = engine._get_ticker_list()
+        mock_wl.assert_not_called()
+        assert "NVDA" not in tickers
+
+    def test_watchlist_included_when_enabled(self):
+        engine = TrapEngine(_CFG)
+        engine.proxy_tickers = []
+        engine.monitor_portfolio = False
+        engine.monitor_watchlist = True
+        with patch("database.get_watchlist_tickers", return_value=["nvda"]):
+            tickers = engine._get_ticker_list()
+        assert "NVDA" in tickers
+
+    def test_watchlist_ignored_ticker_excluded(self):
+        engine = TrapEngine(_CFG)
+        engine.proxy_tickers = []
+        engine.monitor_portfolio = False
+        engine.monitor_watchlist = True
+        engine.ignored_tickers = {"NVDA"}
+        with patch("database.get_watchlist_tickers", return_value=["NVDA", "AMD"]):
+            tickers = engine._get_ticker_list()
+        assert "NVDA" not in tickers
+        assert "AMD" in tickers
+
 
 # ── _detect_bear_trap() ────────────────────────────────────────────────────────
 

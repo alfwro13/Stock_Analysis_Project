@@ -55,6 +55,7 @@ class TrapEngine:
         self.cap_enabled: bool = sched_cfg.get("CAPITULATION", True)
         self.wyckoff_enabled: bool = sched_cfg.get("WYCKOFF", True)
         self.monitor_portfolio: bool = sched_cfg.get("MONITOR_PORTFOLIO", True)
+        self.monitor_watchlist: bool = sched_cfg.get("MONITOR_WATCHLIST", False)
         self.ignored_tickers: set = {str(t).strip().upper() for t in config.get("IGNORED_TICKERS", [])}
 
     def run_scan(self) -> list[dict]:
@@ -387,6 +388,15 @@ class TrapEngine:
                         tickers.add(t.upper())
             except Exception as e:
                 logger.warning("TrapEngine: could not load portfolio tickers: %s", e)
+        if self.monitor_watchlist:
+            try:
+                from database import get_watchlist_tickers
+                from utils import is_excluded_from_yahoo_fetch
+                for t in get_watchlist_tickers():
+                    if not is_excluded_from_yahoo_fetch(t, self.ignored_tickers):
+                        tickers.add(t.upper())
+            except Exception as e:
+                logger.warning("TrapEngine: could not load watchlist tickers: %s", e)
         tickers -= self.ignored_tickers
         return sorted(tickers)
 
