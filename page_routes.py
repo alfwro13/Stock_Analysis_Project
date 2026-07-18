@@ -216,7 +216,7 @@ async def glossary_learn(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="learn.html",
-        context={"unread_count": get_unread_count()}
+        context={"unread_count": get_unread_count(), "config": load_config()}
     )
 
 

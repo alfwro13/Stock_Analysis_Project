@@ -19,7 +19,7 @@ strong ones, without any scores or gamification beyond visible progress.
 | Card content (git-tracked, one entry per glossary term-box) | `learn_cards_seed.py` |
 | DB tables + idempotent seeding | `db_schema.py` (`learn_cards`, `learn_term_state`, `_seed_learn_cards()`) |
 | Leitner-box math, session builder, overview | `glossary_learn_engine.py` |
-| API endpoints | `api_routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`) |
+| API endpoints | `api_routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`, `/api/learn/unlock-all-preference`) |
 | Page route | `page_routes.py` (`GET /glossary/learn`) |
 | Study UI | `templates/learn.html` + `static/js/learn.js` |
 
@@ -74,8 +74,20 @@ straight to advanced engine terminology before the fundamentals are covered.
 **Per-section practice:** clicking an unlocked level tile on the dashboard (`static/js/learn.js`,
 `learnStartSession(sectionId, size)`) passes `section_id` through to `build_session()`, which
 switches to a section-scoped path — due reviews in that section first, then the rest of its
-cards — and does not apply the level-unlock filter (the operator explicitly chose that section,
-so there's nothing to gate). Locked levels are not clickable in the UI.
+cards — and does not apply the level-unlock filter (`build_session()` never checked unlock status
+for an explicit `section_id` in the first place — that gate exists only in the dashboard UI, via
+the `unlocked` flag `overview()` computes). By default, a locked level's tile is greyed out with
+a 🔒 and is not clickable.
+
+**Unlock All toggle:** the `learn.html` dashboard has an "Unlock All" checkbox next to Start
+Session (`static/js/learn.js`: `learnToggleUnlockAll()`) that makes every level tile clickable
+regardless of its computed `unlocked` status, so a level can be jumped into directly without
+first mastering the levels before it. This is a pure front-end display override — it does not
+change `_level_unlocked_map()`, `overview()`'s `unlocked` field, or the general "Start Session"
+button's due/mixed session composition, which still only pulls new cards from unlocked levels in
+course order. The checked state persists across visits via `UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL`
+in `config.json`, written by `POST /api/learn/unlock-all-preference` and read server-side into the
+checkbox's initial `checked` attribute on page load.
 
 **Answer review:** a multiple-choice answer is submitted to `POST /api/learn/answer` the instant
 it's picked (so SRS state updates immediately even if the tab is closed), but the UI holds on

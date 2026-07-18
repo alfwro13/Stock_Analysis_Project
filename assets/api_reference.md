@@ -3952,6 +3952,14 @@ Body: `{"term_key": "market-capitalisation", "grade": "good"}` — `grade` is on
 
 `400` if `grade` is invalid or `term_key` doesn't match a seeded card.
 
+### `POST /api/learn/unlock-all-preference`
+
+Body: `{"enabled": true}`. Persists the dashboard's "Unlock All" checkbox to `UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL` in `config.json`. Purely a front-end display override — when enabled, every level tile becomes clickable regardless of its computed `unlocked` status, so a locked level can be jumped into directly; it does not change `unlocked` in `GET /api/learn/overview` or the due/mixed session composition of `POST /api/learn/session` with no `section_id`.
+
+```json
+{"status": "success"}
+```
+
 ---
 
 ## 26. Pairs Spread Monitor
