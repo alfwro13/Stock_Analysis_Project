@@ -10,7 +10,7 @@ import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 
-from config import BASE_DIR, load_config
+from config import BASE_DIR, HISTORICAL_DIR, load_config
 from database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,94 @@ def _feature_columns() -> list[str]:
     return _FEATURE_COLUMNS + [f"phase_{p}" for p in _ALERT_PHASES]
 
 
+def backfill_historical_features() -> dict:
+    """Recomputes RSI/EMA-distance/volume-ratio/Bollinger-width for trap_phase_history rows
+    logged before these columns existed, from the same 2-year parquet history the live scan
+    itself reads, so already-resolved historical rows become usable training data immediately
+    instead of only accumulating from new scans going forward. Idempotent — already-backfilled
+    rows (ema_distance NOT NULL) are excluded from the candidate query, so a safe no-op once done.
+    Recomputed phase must match the originally-recorded phase before a row is updated — a mismatch
+    means the parquet has since been revised and the recomputed features would no longer describe
+    the outcome that was actually recorded, so that row is left NULL rather than backfilled wrong."""
+    from bull_bear_trap_engine import TrapEngine
+
+    conn = None
+    try:
+        conn = get_connection()
+        rows = [
+            dict(r) for r in conn.execute(
+                """SELECT id, ticker, phase, scan_date FROM trap_phase_history
+                   WHERE ema_distance IS NULL AND phase != 'NEUTRAL'"""
+            ).fetchall()
+        ]
+    except Exception as e:
+        logger.error("backfill_historical_features: failed to load candidate rows: %s", e)
+        return {"status": "error", "message": str(e)}
+    finally:
+        if conn:
+            conn.close()
+
+    if not rows:
+        return {"status": "done", "updated": 0, "skipped": 0, "total_candidates": 0}
+
+    trap_engine = TrapEngine(load_config())
+    by_ticker: dict[str, list] = {}
+    for row in rows:
+        by_ticker.setdefault(row["ticker"], []).append(row)
+
+    updates = []
+    skipped = 0
+    for ticker, ticker_rows in by_ticker.items():
+        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        if not path.exists():
+            skipped += len(ticker_rows)
+            continue
+        try:
+            full_df = pd.read_parquet(path, columns=["Open", "High", "Low", "Close", "Volume"])
+            full_df = full_df.dropna(subset=["Close", "Volume"])
+            full_df = full_df[full_df["Volume"] > 0]
+        except Exception as e:
+            logger.error("backfill_historical_features: failed to load history for %s: %s", ticker, e)
+            skipped += len(ticker_rows)
+            continue
+
+        for row in ticker_rows:
+            as_of = full_df[full_df.index <= pd.Timestamp(row["scan_date"])].tail(60)
+            result = trap_engine._analyse_ticker(ticker, as_of)
+            if result is None or result["phase"] != row["phase"]:
+                skipped += 1
+                continue
+            updates.append((
+                result.get("rsi"), result.get("ema_distance"),
+                result.get("bull_trap_vol_ratio"), result.get("cap_vol_zscore"),
+                result.get("wyckoff_bb_width"), row["id"],
+            ))
+
+    if updates:
+        conn = None
+        try:
+            conn = get_connection()
+            conn.executemany(
+                """UPDATE trap_phase_history
+                   SET rsi=?, ema_distance=?, bull_trap_vol_ratio=?, cap_vol_zscore=?, wyckoff_bb_width=?
+                   WHERE id=?""",
+                updates,
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error("backfill_historical_features: failed to write updates: %s", e)
+            return {"status": "error", "message": str(e)}
+        finally:
+            if conn:
+                conn.close()
+
+    logger.info(
+        "Alert Confidence Referee: backfilled features for %d historical trap_phase_history rows (%d skipped).",
+        len(updates), skipped,
+    )
+    return {"status": "done", "updated": len(updates), "skipped": skipped, "total_candidates": len(rows)}
+
+
 def training_sample_count(engine: str = TRAP_MONITOR_ENGINE) -> int:
     conn = None
     try:
@@ -84,9 +172,16 @@ def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
         ).fetchone()
         current = row["n"] or 0
         earliest, latest = row["earliest"], row["latest"]
+        # Feature-bearing but not yet resolved (14-day outcome still pending) — a leading
+        # indicator so an operator isn't staring at "0" for the full 14-day resolution window.
+        pending_row = conn.execute(
+            """SELECT COUNT(*) AS n FROM trap_phase_history
+               WHERE phase != 'NEUTRAL' AND direction_correct_14d IS NULL AND ema_distance IS NOT NULL"""
+        ).fetchone()
+        pending = pending_row["n"] or 0
     except Exception as e:
         logger.error("readiness_status failed for %s: %s", engine, e)
-        current, earliest, latest = 0, None, None
+        current, earliest, latest, pending = 0, None, None, 0
     finally:
         if conn:
             conn.close()
@@ -107,6 +202,7 @@ def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
     return {
         "current": current,
         "target": target,
+        "pending": pending,
         "hard_min": _HARD_MIN_SAMPLES,
         "can_train": current >= _HARD_MIN_SAMPLES,
         "ready_for_active": current >= target,
@@ -116,6 +212,8 @@ def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
 
 
 def train_referee_model(engine: str = TRAP_MONITOR_ENGINE) -> dict:
+    backfill_historical_features()
+
     conn = None
     try:
         conn = get_connection()

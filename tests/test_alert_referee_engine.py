@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -54,6 +56,38 @@ def _seed_balanced_training_set(n_per_class=20):
     for i in range(n_per_class):
         _seed_history_row(f"POS{i}", "BULL_TRAP_RISK", 1, rsi=35.0 + i * 0.1, ema_distance=-4.0)
         _seed_history_row(f"NEG{i}", "ACTIVE_SELLOFF", 0, rsi=55.0 + i * 0.1, ema_distance=1.0)
+
+
+def _seed_bare_history_row(ticker, phase, scan_date, direction_correct_14d=None):
+    """A row with no feature columns set — the shape a pre-migration/backfill-candidate row has."""
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO trap_phase_history (ticker, phase, scan_date, scan_ts, close_price, direction_correct_14d)
+               VALUES (?, ?, ?, ?, 100.0, ?)""",
+            (ticker, phase, scan_date, f"{scan_date} 12:00:00", direction_correct_14d),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _active_selloff_df(end_date: str) -> pd.DataFrame:
+    """Mirrors test_bull_bear_trap_engine.py's _make_active_selloff_df, dated to end exactly
+    on end_date so it can double as a historical parquet fixture for backfill tests."""
+    stable = list(np.full(8, 100.0))
+    prices = stable[:]
+    p = 100.0
+    for i in range(17):
+        p = p + 0.5 if i % 3 == 1 else p - 2.5
+        prices.append(p)
+    prices = np.array(prices)
+    prices[-1] = prices[-2] - 1.0
+    idx = pd.date_range(end=end_date, periods=25, freq="D")
+    return pd.DataFrame({
+        "Open": prices, "High": prices + 0.5, "Low": prices - 0.5, "Close": prices,
+        "Volume": np.full(25, 1_000_000.0),
+    }, index=idx)
 
 
 @pytest.fixture(autouse=True)
@@ -165,6 +199,92 @@ class TestTrainRefereeModel:
             result = are.train_referee_model(_ENGINE)
         assert result["status"] == "trained"
         assert result["effective_mode"] == "active"
+
+
+class TestBackfillHistoricalFeatures:
+    def test_no_candidates_is_a_cheap_noop(self):
+        result = are.backfill_historical_features()
+        assert result == {"status": "done", "updated": 0, "skipped": 0, "total_candidates": 0}
+
+    def test_skips_ticker_without_parquet(self, tmp_path):
+        _seed_bare_history_row("NOPARQ1", "ACTIVE_SELLOFF", "2026-01-25")
+        with patch("alert_referee_engine.HISTORICAL_DIR", tmp_path):
+            result = are.backfill_historical_features()
+        assert result["updated"] == 0
+        assert result["skipped"] == 1
+        assert are.training_sample_count(_ENGINE) == 0
+
+    def test_fills_features_when_recomputed_phase_matches(self, tmp_path):
+        end_date = "2026-01-25"
+        _seed_bare_history_row("BACKFILL1", "ACTIVE_SELLOFF", end_date)
+        _active_selloff_df(end_date).to_parquet(tmp_path / "BACKFILL1.parquet", engine="pyarrow")
+
+        with patch("alert_referee_engine.HISTORICAL_DIR", tmp_path):
+            result = are.backfill_historical_features()
+
+        assert result["updated"] == 1
+        assert result["skipped"] == 0
+
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT rsi, ema_distance FROM trap_phase_history WHERE ticker='BACKFILL1'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["rsi"] is not None
+        assert row["ema_distance"] is not None
+
+    def test_skips_row_when_recomputed_phase_mismatches(self, tmp_path):
+        end_date = "2026-01-25"
+        # Row claims BULL_TRAP_RISK, but the parquet fixture actually reproduces ACTIVE_SELLOFF —
+        # a stale/revised-data scenario that must never get backfilled with mismatched features.
+        _seed_bare_history_row("MISMATCH1", "BULL_TRAP_RISK", end_date)
+        _active_selloff_df(end_date).to_parquet(tmp_path / "MISMATCH1.parquet", engine="pyarrow")
+
+        with patch("alert_referee_engine.HISTORICAL_DIR", tmp_path):
+            result = are.backfill_historical_features()
+
+        assert result["updated"] == 0
+        assert result["skipped"] == 1
+
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT ema_distance FROM trap_phase_history WHERE ticker='MISMATCH1'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["ema_distance"] is None
+
+    def test_is_idempotent(self, tmp_path):
+        end_date = "2026-01-25"
+        _seed_bare_history_row("BACKFILL2", "ACTIVE_SELLOFF", end_date)
+        _active_selloff_df(end_date).to_parquet(tmp_path / "BACKFILL2.parquet", engine="pyarrow")
+
+        with patch("alert_referee_engine.HISTORICAL_DIR", tmp_path):
+            first = are.backfill_historical_features()
+            second = are.backfill_historical_features()
+
+        assert first["updated"] == 1
+        assert second["total_candidates"] == 0
+
+    def test_already_resolved_row_counts_toward_readiness_after_backfill(self, tmp_path):
+        end_date = "2026-01-25"
+        _seed_bare_history_row("BACKFILL3", "ACTIVE_SELLOFF", end_date, direction_correct_14d=1)
+        _active_selloff_df(end_date).to_parquet(tmp_path / "BACKFILL3.parquet", engine="pyarrow")
+
+        with patch("alert_referee_engine.HISTORICAL_DIR", tmp_path):
+            are.backfill_historical_features()
+
+        assert are.training_sample_count(_ENGINE) == 1
+
+
+class TestTrainRefereeModelBackfillWiring:
+    def test_train_referee_model_backfills_first(self):
+        with patch("alert_referee_engine.backfill_historical_features") as mock_backfill:
+            are.train_referee_model(_ENGINE)
+        mock_backfill.assert_called_once()
 
 
 class TestEvaluateAlert:
