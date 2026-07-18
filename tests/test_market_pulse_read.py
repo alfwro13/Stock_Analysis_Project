@@ -125,8 +125,13 @@ class TestGetCachedPulseFromDb:
         _clear(ASSET_TICKER, INDEX_TICKER)
 
     def test_known_index_ticker_lands_in_indexes(self):
+        """Forces static mode so this test exercises the plain seeded index-ticker set,
+        independent of whether MARKET_PULSE_DYNAMIC happens to be on in the real config —
+        dynamic mode picks its own live, exchange-state-dependent tile set (see
+        TestSelectActivePulseTickers), which is not what this test is about."""
         _seed_pulse(INDEX_TICKER)
-        result = _mp.get_cached_pulse_from_db([], refresh_rate=60)
+        with patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {}}):
+            result = _mp.get_cached_pulse_from_db([], refresh_rate=60)
         index_tickers = [r["ticker"] for r in result["indexes"]]
         assert INDEX_TICKER in index_tickers
 
@@ -377,7 +382,10 @@ class TestNeedsRefreshPerTickerExchange:
         def fake_settled(exchange, include_premarket=False):
             return exchange == "NYSE"
 
-        with patch("market_pulse.is_quote_settled", side_effect=fake_settled):
+        # Static mode forced (see test_known_index_ticker_lands_in_indexes) so both index rows
+        # are guaranteed present regardless of the real config's MARKET_PULSE_DYNAMIC setting.
+        with patch("market_pulse.is_quote_settled", side_effect=fake_settled), \
+             patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {}}):
             result = _mp.get_cached_pulse_from_db([], refresh_rate=60)
         by_ticker = {r["ticker"]: r for r in result["indexes"]}
         assert by_ticker["^FTSE"]["needs_refresh"] is False
