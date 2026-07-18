@@ -205,7 +205,7 @@ def _serialize_session(cards: list) -> list:
     return session
 
 
-def build_session(size: int = 10, now: datetime = None, section_id: str = None) -> list:
+def build_session(size: int = 10, now: datetime = None, section_id: str = None, include_locked: bool = False) -> list:
     now = now or datetime.now(timezone.utc)
     conn = None
     try:
@@ -241,7 +241,7 @@ def build_session(size: int = 10, now: datetime = None, section_id: str = None) 
             for lvl_section_id, _ in learn_cards_seed.LEVELS:
                 if remaining <= 0:
                     break
-                if not unlocked.get(lvl_section_id, False):
+                if not include_locked and not unlocked.get(lvl_section_id, False):
                     continue
                 cursor.execute('''
                     SELECT c.* FROM learn_cards c

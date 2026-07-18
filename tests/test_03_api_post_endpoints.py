@@ -1038,9 +1038,53 @@ def test_post_learn_answer_unknown_term_key_returns_400(client):
 
 
 @pytest.mark.api
-def test_post_learn_unlock_all_preference_persists_flag(client):
+def test_post_learn_preference_persists_unlock_all_flag(client):
     with patch("api_routes.update_config_atomic") as mock_update:
-        resp = client.post("/api/learn/unlock-all-preference", json={"enabled": True})
+        resp = client.post("/api/learn/preference", json={"unlock_all": True})
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
     mock_update.assert_called_once_with({"UI_PREFERENCES": {"GLOSSARY_LEARN_UNLOCK_ALL": True}})
+
+
+@pytest.mark.api
+def test_post_learn_preference_persists_study_all_flag(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/learn/preference", json={"study_all": True})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {"GLOSSARY_LEARN_STUDY_ALL": True}})
+
+
+@pytest.mark.api
+def test_post_learn_preference_with_both_fields_persists_both(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/learn/preference", json={"unlock_all": False, "study_all": True})
+    assert resp.status_code == 200
+    mock_update.assert_called_once_with(
+        {"UI_PREFERENCES": {"GLOSSARY_LEARN_UNLOCK_ALL": False, "GLOSSARY_LEARN_STUDY_ALL": True}}
+    )
+
+
+@pytest.mark.api
+def test_post_learn_session_with_study_all_includes_locked_levels(client):
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM learn_term_state")
+        conn.commit()
+
+        import glossary_learn_engine
+        overview_result = glossary_learn_engine.overview()
+        level1_total = next(
+            lvl["total"] for lvl in overview_result["levels"] if lvl["section_id"] == "market-fundamentals"
+        )
+        assert level1_total < 30, "test assumes level 1 alone can't fill a size=30 session"
+
+        gated_resp = client.post("/api/learn/session?size=30")
+        assert len(gated_resp.json()["cards"]) == level1_total
+
+        unlocked_resp = client.post("/api/learn/session?size=30&study_all=true")
+        assert unlocked_resp.status_code == 200
+        assert len(unlocked_resp.json()["cards"]) == 30
+    finally:
+        conn.close()

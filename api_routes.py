@@ -278,8 +278,9 @@ class GlossaryLearnAnswer(BaseModel):
     grade: str
 
 
-class GlossaryLearnUnlockAllBody(BaseModel):
-    enabled: bool
+class GlossaryLearnPreferenceBody(BaseModel):
+    unlock_all: Optional[bool] = None
+    study_all: Optional[bool] = None
 
 
 @api_router.get("/learn/overview")
@@ -294,9 +295,9 @@ async def api_learn_overview(request: Request):
 
 @api_router.post("/learn/session")
 @limiter.limit("15/minute")
-async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30), section_id: Optional[str] = Query(None)):
+async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30), section_id: Optional[str] = Query(None), study_all: bool = Query(False)):
     try:
-        cards = glossary_learn_engine.build_session(size=size, section_id=section_id)
+        cards = glossary_learn_engine.build_session(size=size, section_id=section_id, include_locked=study_all)
         return JSONResponse(content={"status": "success", "cards": cards})
     except Exception as e:
         logger.exception("learn/session failed")
@@ -318,13 +319,17 @@ async def api_learn_answer(request: Request, body: GlossaryLearnAnswer):
         return _error_500(e)
 
 
-@api_router.post("/learn/unlock-all-preference")
-async def api_learn_unlock_all_preference(body: GlossaryLearnUnlockAllBody):
+@api_router.post("/learn/preference")
+async def api_learn_preference(body: GlossaryLearnPreferenceBody):
     try:
-        update_config_atomic({"UI_PREFERENCES": {"GLOSSARY_LEARN_UNLOCK_ALL": body.enabled}})
+        prefs = body.model_dump(exclude_unset=True, exclude_none=True)
+        config_keys = {"unlock_all": "GLOSSARY_LEARN_UNLOCK_ALL", "study_all": "GLOSSARY_LEARN_STUDY_ALL"}
+        updates = {config_keys[k]: v for k, v in prefs.items()}
+        if updates:
+            update_config_atomic({"UI_PREFERENCES": updates})
         return JSONResponse(content={"status": "success"})
     except Exception as e:
-        logger.exception("learn/unlock-all-preference failed")
+        logger.exception("learn/preference failed")
         return _error_500(e)
 
 

@@ -158,6 +158,29 @@ def test_level_2_locked_until_80pct_of_level_1_studied():
 
 
 @pytest.mark.db
+def test_build_session_include_locked_pulls_from_locked_levels():
+    conn = None
+    try:
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM learn_term_state")
+        conn.commit()
+
+        overview_result = engine.overview(now=NOW)
+        levels_by_id = {lvl["section_id"]: lvl for lvl in overview_result["levels"]}
+        assert levels_by_id["candlesticks"]["unlocked"] is False
+        level1_total = levels_by_id["market-fundamentals"]["total"]
+
+        gated_session = engine.build_session(size=level1_total + 5, now=NOW)
+        assert len(gated_session) == level1_total
+
+        unlocked_session = engine.build_session(size=level1_total + 5, now=NOW, include_locked=True)
+        assert len(unlocked_session) == level1_total + 5
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
 def test_build_session_with_section_id_returns_only_that_sections_cards():
     conn = None
     try:
