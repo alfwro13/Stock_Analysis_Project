@@ -58,10 +58,14 @@ function learnSetBackLink(inLearningMode) {
     }
 }
 
-async function learnStartSession(sectionId, size) {
+async function learnStartSession(sectionId, size, studyAll) {
     const params = new URLSearchParams();
     params.set('size', size || 10);
-    if (sectionId) params.set('section_id', sectionId);
+    if (sectionId) {
+        params.set('section_id', sectionId);
+    } else if (studyAll) {
+        params.set('study_all', 'true');
+    }
 
     const response = await fetch(`/api/learn/session?${params.toString()}`, { method: 'POST' });
     const result = await response.json();
@@ -187,19 +191,29 @@ function learnBackToDashboard() {
     learnLoadOverview();
 }
 
-async function learnToggleUnlockAll(enabled) {
-    await fetch('/api/learn/unlock-all-preference', {
+async function learnSavePreference(prefs) {
+    await fetch('/api/learn/preference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify(prefs),
     });
+}
+
+async function learnToggleUnlockAll(enabled) {
+    await learnSavePreference({ unlock_all: enabled });
     learnLoadOverview();
+}
+
+function learnStartSessionFromDashboard() {
+    const studyAll = document.getElementById('learnStudyAll').checked;
+    learnStartSession(null, null, studyAll);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     learnLoadOverview();
-    document.getElementById('learnStartBtn').addEventListener('click', () => learnStartSession());
+    document.getElementById('learnStartBtn').addEventListener('click', learnStartSessionFromDashboard);
     document.getElementById('learnBackBtn').addEventListener('click', learnBackToDashboard);
-    document.getElementById('learnAgainBtn').addEventListener('click', () => learnStartSession());
+    document.getElementById('learnAgainBtn').addEventListener('click', learnStartSessionFromDashboard);
     document.getElementById('learnUnlockAll').addEventListener('change', (e) => learnToggleUnlockAll(e.target.checked));
+    document.getElementById('learnStudyAll').addEventListener('change', (e) => learnSavePreference({ study_all: e.target.checked }));
 });

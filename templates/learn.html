@@ -22,6 +22,12 @@
                     <abbr title="Makes every level clickable so you can jump straight into any locked level, without changing the normal learning order used by Start Session.">Unlock All</abbr>
                 </label>
             </div>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="learnStudyAll" {% if config.UI_PREFERENCES.GLOSSARY_LEARN_STUDY_ALL %}checked{% endif %}>
+                <label class="form-check-label" for="learnStudyAll">
+                    <abbr title="Lets Start Session and Another Session pull new cards from locked levels too, instead of stopping at the lowest level you haven't unlocked yet through normal progress.">Study All Levels</abbr>
+                </label>
+            </div>
             <button type="button" class="btn btn-primary" id="learnStartBtn">Start Session</button>
         </div>
     </div>

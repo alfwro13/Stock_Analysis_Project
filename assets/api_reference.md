@@ -3930,7 +3930,7 @@ Returns per-level progress and global counters.
 
 ### `POST /api/learn/session`
 
-Query params: `size` (default 10, 1-30) and optional `section_id`. With no `section_id`, builds a study batch across the whole course: due reviews first, then new terms from the lowest unlocked incomplete level. With `section_id` set (clicking a level tile on the dashboard), the session is scoped to just that section's cards — due reviews in that section first, then the rest — and bypasses the level-unlock check, since the operator explicitly chose it.
+Query params: `size` (default 10, 1-30), optional `section_id`, and `study_all` (default `false`). With no `section_id`, builds a study batch across the whole course: due reviews first, then new terms from the lowest unlocked incomplete level — or, with `study_all=true`, from the lowest incomplete level regardless of lock status (still in course order; powers the "Study All Levels" dashboard toggle). With `section_id` set (clicking a level tile on the dashboard), the session is scoped to just that section's cards — due reviews in that section first, then the rest — and bypasses the level-unlock check regardless of `study_all`, since the operator explicitly chose that section.
 
 ```json
 {
@@ -3952,9 +3952,9 @@ Body: `{"term_key": "market-capitalisation", "grade": "good"}` — `grade` is on
 
 `400` if `grade` is invalid or `term_key` doesn't match a seeded card.
 
-### `POST /api/learn/unlock-all-preference`
+### `POST /api/learn/preference`
 
-Body: `{"enabled": true}`. Persists the dashboard's "Unlock All" checkbox to `UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL` in `config.json`. Purely a front-end display override — when enabled, every level tile becomes clickable regardless of its computed `unlocked` status, so a locked level can be jumped into directly; it does not change `unlocked` in `GET /api/learn/overview` or the due/mixed session composition of `POST /api/learn/session` with no `section_id`.
+Body: any of `{"unlock_all": true}`, `{"study_all": true}`, or both — only the fields present are written. Persists the dashboard's "Unlock All" / "Study All Levels" checkboxes to `UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL` / `UI_PREFERENCES.GLOSSARY_LEARN_STUDY_ALL` in `config.json`. `unlock_all` is a pure front-end display override — every level tile becomes clickable regardless of its computed `unlocked` status, but it does not change `unlocked` in `GET /api/learn/overview`. `study_all` instead changes what `POST /api/learn/session` returns — see its `study_all` query param above.
 
 ```json
 {"status": "success"}

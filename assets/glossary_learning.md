@@ -19,7 +19,7 @@ strong ones, without any scores or gamification beyond visible progress.
 | Card content (git-tracked, one entry per glossary term-box) | `learn_cards_seed.py` |
 | DB tables + idempotent seeding | `db_schema.py` (`learn_cards`, `learn_term_state`, `_seed_learn_cards()`) |
 | Leitner-box math, session builder, overview | `glossary_learn_engine.py` |
-| API endpoints | `api_routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`, `/api/learn/unlock-all-preference`) |
+| API endpoints | `api_routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`, `/api/learn/preference`) |
 | Page route | `page_routes.py` (`GET /glossary/learn`) |
 | Study UI | `templates/learn.html` + `static/js/learn.js` |
 
@@ -65,9 +65,11 @@ straight to advanced engine terminology before the fundamentals are covered.
 
 ## Session composition
 
-`glossary_learn_engine.build_session(size=10, section_id=None)`:
+`glossary_learn_engine.build_session(size=10, section_id=None, include_locked=False)`:
 1. Due reviews first (`due_at <= now`), oldest debt first.
-2. Remaining slots filled with unstudied terms from the lowest unlocked, incomplete level.
+2. Remaining slots filled with unstudied terms from the lowest unlocked, incomplete level — or,
+   with `include_locked=True`, from the lowest incomplete level regardless of lock status (still in
+   course order; see "Study All Levels toggle" below).
 3. Each item includes `mode` (`mcq`/`recall`), the question, and (for `mcq`) four shuffled
    options. Grading happens client-side (single-user app) via `POST /api/learn/answer`.
 
@@ -83,11 +85,19 @@ a 🔒 and is not clickable.
 Session (`static/js/learn.js`: `learnToggleUnlockAll()`) that makes every level tile clickable
 regardless of its computed `unlocked` status, so a level can be jumped into directly without
 first mastering the levels before it. This is a pure front-end display override — it does not
-change `_level_unlocked_map()`, `overview()`'s `unlocked` field, or the general "Start Session"
-button's due/mixed session composition, which still only pulls new cards from unlocked levels in
-course order. The checked state persists across visits via `UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL`
-in `config.json`, written by `POST /api/learn/unlock-all-preference` and read server-side into the
-checkbox's initial `checked` attribute on page load.
+change `_level_unlocked_map()` or `overview()`'s `unlocked` field. The checked state persists
+across visits via `UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL` in `config.json`, written by
+`POST /api/learn/preference` and read server-side into the checkbox's initial `checked` attribute
+on page load.
+
+**Study All Levels toggle:** a second checkbox next to Start Session controls whether the general
+"Start Session"/"Another Session" buttons (no `section_id`) may also pull new cards from locked
+levels once the due reviews and current unlocked level(s) run out — `build_session(include_locked=True)`,
+requested via `POST /api/learn/session?study_all=true` (`static/js/learn.js`:
+`learnStartSessionFromDashboard()`). Unlike Unlock All, this does change session composition, but
+still walks `learn_cards_seed.LEVELS` in the same course order — it only removes the stop-at-the-
+lock-boundary condition, it does not reorder or randomize across levels. Persisted the same way, via
+`UI_PREFERENCES.GLOSSARY_LEARN_STUDY_ALL`.
 
 **Answer review:** a multiple-choice answer is submitted to `POST /api/learn/answer` the instant
 it's picked (so SRS state updates immediately even if the tab is closed), but the UI holds on
