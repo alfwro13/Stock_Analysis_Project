@@ -138,6 +138,9 @@ class ScheduleItemConfig(BaseModel):
     INCLUDE_MODELS: Optional[bool] = None
     INCLUDE_DATABASE: Optional[bool] = None
     RETENTION_COUNT: Optional[int] = None
+    MODE: Optional[str] = None
+    VETO_THRESHOLD: Optional[float] = None
+    MIN_TRAINING_SAMPLES: Optional[int] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -167,6 +170,7 @@ class SchedulingConfig(BaseModel):
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
     BACKUP: Optional[ScheduleItemConfig] = None
+    ALERT_REFEREE_TRAINING: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None

@@ -573,6 +573,15 @@ def _set_market_state(ticker: str, state: str | None):
 
 
 class TestIsExchangeOpen:
+    @pytest.fixture(autouse=True)
+    def _not_a_real_holiday(self):
+        # These tests exercise the cached-market-state/heuristic logic, not the holiday veto
+        # itself (that's covered by the dedicated exchange-calendar tests below, which patch
+        # this explicitly) — without this default, every test here would only pass when the
+        # suite happens to run on a genuine NYSE/LSE trading day.
+        with patch("market_pulse.is_exchange_holiday", return_value=False):
+            yield
+
     def teardown_method(self):
         _clear("^GSPC", "^FTSE")
 
@@ -668,6 +677,14 @@ class TestIsExchangeOpen:
 # ── get_exchange_session_state ──────────────────────────────────────────────────
 
 class TestGetExchangeSessionState:
+    @pytest.fixture(autouse=True)
+    def _not_a_real_holiday(self):
+        # Same reasoning as TestIsExchangeOpen — isolate these tests from whatever real
+        # calendar day the suite happens to run on; the holiday veto itself is covered by
+        # test_exchange_calendar_veto_overrides_live_regular_state below.
+        with patch("market_pulse.is_exchange_holiday", return_value=False):
+            yield
+
     def teardown_method(self):
         _clear("^GSPC", "^FTSE", "^HSI")
 

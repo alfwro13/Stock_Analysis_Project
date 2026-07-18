@@ -483,6 +483,11 @@ class TrapEngine:
                 scan_date,
                 row.get("close_price"),
                 row["scan_ts"],
+                rsi=row.get("rsi"),
+                ema_distance=row.get("ema_distance"),
+                bull_trap_vol_ratio=row.get("bull_trap_vol_ratio"),
+                cap_vol_zscore=row.get("cap_vol_zscore"),
+                wyckoff_bb_width=row.get("wyckoff_bb_width"),
             )
 
 

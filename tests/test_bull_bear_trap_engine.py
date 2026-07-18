@@ -314,6 +314,26 @@ class TestSaveResults:
             conn.close()
         assert count == 3
 
+    def test_save_results_populates_trap_phase_history_features(self):
+        self.engine._save_results([self._row("TSTT7")])
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width "
+                "FROM trap_phase_history WHERE ticker = 'TSTT7'"
+            ).fetchone()
+        finally:
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'TSTT7'")
+            conn.execute("DELETE FROM trap_phase_history WHERE ticker = 'TSTT7'")
+            conn.commit()
+            conn.close()
+        assert row is not None
+        assert abs(row["rsi"] - 38.0) < 1e-6
+        assert abs(row["ema_distance"] - (-5.2)) < 1e-6
+        assert abs(row["bull_trap_vol_ratio"] - 0.42) < 1e-6
+        assert abs(row["cap_vol_zscore"] - 1.1) < 1e-6
+        assert abs(row["wyckoff_bb_width"] - 3.5) < 1e-6
+
 
 # ── run_trap_monitor_job() — market-hours alert gating ────────────────────────
 
@@ -390,6 +410,30 @@ class TestRunTrapMonitorJobMarketGating:
             scheduler_jobs.run_trap_monitor_job()
 
         mock_notify.assert_called_once()
+
+    def test_referee_veto_suppresses_alert_before_dedup_gate(self):
+        import scheduler_jobs
+        from alert_referee_engine import RefereeVerdict
+
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM alert_state WHERE engine = 'TrapMonitor'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch(
+            "bull_bear_trap_engine.TrapEngine.run_scan",
+            return_value=[self._row("AAPL")],
+        ), patch("scheduler_jobs.is_quote_settled", return_value=True), \
+           patch("alert_referee_engine.evaluate_alert", return_value=RefereeVerdict(
+               fire_probability=0.1, vetoed=True, mode="active", model_available=True,
+           )) as mock_evaluate, \
+           patch("scheduler_jobs.notify") as mock_notify:
+            scheduler_jobs.run_trap_monitor_job()
+
+        mock_evaluate.assert_called_once()
+        mock_notify.assert_not_called()
 
 
 # ── _load_history() — auto-fetch ──────────────────────────────────────────────
@@ -704,6 +748,25 @@ class TestTrapPhaseHistoryDB:
         assert len(rows) == 1
         assert rows[0]["phase"] == "BULL_TRAP_RISK"
         assert rows[0]["close_price"] == 100.0
+
+    def test_log_trap_phase_stores_referee_feature_columns(self):
+        db.log_trap_phase(
+            "TESTFEAT1", "BULL_TRAP_RISK", "2020-02-01", 100.0, "2020-02-01 10:00:00",
+            rsi=38.5, ema_distance=-4.2, bull_trap_vol_ratio=0.6, cap_vol_zscore=1.2, wyckoff_bb_width=2.5,
+        )
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width "
+                "FROM trap_phase_history WHERE ticker='TESTFEAT1' AND scan_date='2020-02-01'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["rsi"] == 38.5
+        assert row["ema_distance"] == -4.2
+        assert row["bull_trap_vol_ratio"] == 0.6
+        assert row["cap_vol_zscore"] == 1.2
+        assert row["wyckoff_bb_width"] == 2.5
 
     def test_get_unresolved_trap_phases_filters(self):
         db.log_trap_phase("TESTFILT1", "BEAR_TRAP_RISK", "2019-01-01", 50.0, "2019-01-01 10:00:00")

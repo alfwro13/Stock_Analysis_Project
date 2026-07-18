@@ -333,6 +333,75 @@
                 <div id="trap-monitor-msg" class="mt-10"></div>
             </details>
 
+            <details class="settings-card" id="alert-referee-card">
+                <summary>⚖️ Alert Confidence Referee</summary>
+                <p class="settings-desc">
+                    Pilot meta-labeling veto for the <a href="/trap-monitor">Market Trap &amp; Recovery Monitor</a>: a secondary
+                    classifier trained on Trap Monitor's own historical hit/miss record that can suppress a new alert when it
+                    resembles past false positives. Distinct from the Alert Dedup cooldown above — that gate stops the
+                    <em>same</em> condition re-firing; this stops a <em>first-time</em> low-quality signal from firing at all.
+                </p>
+
+                {% set referee_sched = config.SCHEDULING.ALERT_REFEREE_TRAINING if config.SCHEDULING.ALERT_REFEREE_TRAINING else {} %}
+                {% set referee_days = referee_sched.DAYS if referee_sched.DAYS else ['sun'] %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">⏱️ Training Schedule</h4>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="ALERT_REFEREE_ENABLED" {% if referee_sched.ENABLED %}checked{% endif %}>
+                        <label for="ALERT_REFEREE_ENABLED">Enable Alert Confidence Referee</label>
+                    </div>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="referee-training-day" value="mon" {% if 'mon' in referee_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="referee-training-day" value="tue" {% if 'tue' in referee_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="referee-training-day" value="wed" {% if 'wed' in referee_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="referee-training-day" value="thu" {% if 'thu' in referee_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="referee-training-day" value="fri" {% if 'fri' in referee_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="referee-training-day" value="sat" {% if 'sat' in referee_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="referee-training-day" value="sun" {% if 'sun' in referee_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Training Time <span class="text-muted text-xs">(local)</span></label>
+                        <input type="time" id="ALERT_REFEREE_TIME" class="form-control" value="{{ referee_sched.TIME | default('05:00') }}">
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">⚖️ Veto Behavior</h4>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Mode</label>
+                            <select id="ALERT_REFEREE_MODE" class="form-select">
+                                <option value="shadow" {% if referee_sched.MODE != 'active' %}selected{% endif %}>Shadow (log only, never suppresses)</option>
+                                <option value="active" {% if referee_sched.MODE == 'active' %}selected{% endif %}>Active (suppresses low-confidence alerts)</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="If the model's fire-confidence probability is below this value, the alert is vetoed (or would be, in Shadow mode).">Veto Threshold</abbr></label>
+                            <input type="number" id="ALERT_REFEREE_VETO_THRESHOLD" class="form-control" value="{{ referee_sched.VETO_THRESHOLD | default(0.3) }}" step="0.05" min="0" max="1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="Minimum resolved training samples required before Active mode is allowed to actually suppress alerts. Below this, the referee always runs in Shadow mode regardless of the Mode setting above.">Min. Samples for Active Mode</abbr></label>
+                            <input type="number" id="ALERT_REFEREE_MIN_SAMPLES" class="form-control" value="{{ referee_sched.MIN_TRAINING_SAMPLES | default(200) }}" min="30" step="10">
+                        </div>
+                    </div>
+                    <p class="settings-desc-sm text-muted">
+                        Even with Active selected, the referee stays in Shadow mode — it logs what it would have done but never
+                        suppresses an alert — until enough resolved Trap Monitor history has accumulated. See readiness below.
+                    </p>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">📊 Readiness</h4>
+                    <div id="alert-referee-readiness" class="text-muted">Loading…</div>
+                </div>
+
+                <div class="flex-gap-15 mt-10">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerAlertRefereeTraining()">&#9654; Run Training Now</button>
+                </div>
+                <div id="alert-referee-msg" class="mt-10"></div>
+            </details>
+
             <details class="settings-card" id="alerts-briefings-card">
                 <summary>📊 Alerts &amp; Reports</summary>
 

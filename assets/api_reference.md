@@ -2071,6 +2071,64 @@ Returns per-phase prediction accuracy at 14-day and 30-day forward-return horizo
 }
 ```
 
+### `GET /api/alert-referee/status`
+
+Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readiness (resolved training samples vs. the configured minimum, with an ETA projection), the latest trained model's metadata, and a summary of the shadow-mode evaluation log.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "enabled": false,
+  "configured_mode": "shadow",
+  "veto_threshold": 0.3,
+  "min_training_samples": 200,
+  "readiness": {
+    "current": 45,
+    "target": 200,
+    "pending": 12,
+    "backfill_available": 8,
+    "hard_min": 30,
+    "can_train": true,
+    "can_train_after_backfill": true,
+    "ready_for_active": false,
+    "eta_days": 62,
+    "eta_date": "2026-09-18"
+  },
+  "latest_model": {
+    "id": 3,
+    "engine": "TrapMonitor",
+    "trained_at": "2026-07-13 05:00:00",
+    "sample_count": 45,
+    "positive_count": 27,
+    "train_accuracy": 0.7333,
+    "veto_rate": 0.2,
+    "effective_mode": "shadow",
+    "model_path": "models/alert_referee_trapmonitor.joblib"
+  },
+  "log_total": 12,
+  "log_vetoed": 3,
+  "recent_log": [
+    {
+      "ticker": "AAPL",
+      "phase": "BULL_TRAP_RISK",
+      "fire_probability": 0.42,
+      "vetoed": 0,
+      "mode": "shadow",
+      "scan_ts": "2026-07-18 14:30:00"
+    }
+  ]
+}
+```
+
+`readiness.pending` is a leading indicator: phase calls that already have their features recorded but whose 14-day outcome hasn't resolved yet, so they aren't counted in `current` yet but will be automatically once `trap_accuracy_fill_job` resolves them.
+
+`readiness.backfill_available` is a second leading indicator, distinct from `pending`: phase calls whose 14-day outcome is already resolved but whose features haven't been backfilled yet (an upper bound — a handful may be skipped during the actual backfill if the recomputed phase no longer matches, see `POST /api/alert-referee/train` below). This is what makes `can_train_after_backfill` true even when `can_train` (based on `current` alone) is still false — the difference between the two answers "is there anything usable right now if I click Run Training Now" vs. "has a backfill already happened."
+
+### `POST /api/alert-referee/train`
+
+Triggers Alert Confidence Referee training in the background (the Settings "Run Training Now" action). Before counting samples or fitting anything, it runs `alert_referee_engine.backfill_historical_features()` — a one-time-safe backfill that recomputes RSI/EMA-distance/volume-ratio/Bollinger-width for any `trap_phase_history` row logged before these columns existed, from the same 2-year parquet history the live scan reads, so already-resolved historical rows become usable training data immediately rather than only accumulating from new scans (idempotent — already-backfilled rows are skipped, so repeat calls are cheap once caught up). Training itself then refuses to fit a model below a hard minimum sample count (30 resolved, feature-bearing Trap Monitor phase calls); above that it always trains, but the resulting model only runs in Active (enforcing) mode once the sample count also crosses the configured `MIN_TRAINING_SAMPLES` target — otherwise it runs in Shadow (log-only) mode regardless of the configured mode. Returns `{"status": "success"}` immediately; poll `/api/alert-referee/status` for the outcome.
+
 ---
 
 ## 18. Bubble Radar

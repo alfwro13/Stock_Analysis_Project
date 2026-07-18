@@ -778,6 +778,7 @@ def run_ai_contagion_job():
 
 def run_trap_monitor_job():
     from bull_bear_trap_engine import TrapEngine
+    from alert_referee_engine import evaluate_alert
     config = load_config()
     conn = None
     try:
@@ -809,6 +810,14 @@ def run_trap_monitor_job():
             exchange = time_engine.ticker_exchange(ticker, currency)
             if not is_quote_settled(exchange, include_premarket=(exchange == "NYSE")):
                 logger.debug("TrapMonitor: %s — %s market closed or quote not yet settled, suppressing alert.", ticker, exchange)
+                continue
+
+            verdict = evaluate_alert("TrapMonitor", ticker, phase, row, conn)
+            if verdict.vetoed:
+                logger.info(
+                    "TrapMonitor: Alert Confidence Referee vetoed %s (%s), fire probability %.2f.",
+                    ticker, phase, verdict.fire_probability,
+                )
                 continue
 
             reason = f"TRAP MONITOR {phase.replace('_', ' ')}"
@@ -859,6 +868,34 @@ def run_trap_accuracy_fill_job():
     finally:
         _mark_job_done(job_label("trap_accuracy_fill_job"))
         record_job_run("trap_accuracy_fill_job")
+
+
+def run_alert_referee_training_job():
+    from alert_referee_engine import train_referee_model, TRAP_MONITOR_ENGINE
+    _mark_job_started(job_label("alert_referee_training_job"))
+    try:
+        result = train_referee_model(TRAP_MONITOR_ENGINE)
+        status = result.get("status")
+        if status == "trained":
+            log_sched_notification(
+                "Success",
+                f"Alert Confidence Referee: trained on {result['sample_count']} samples "
+                f"(effective mode: {result['effective_mode']}).",
+            )
+        elif status == "insufficient_data":
+            log_sched_notification(
+                "Info",
+                f"Alert Confidence Referee: not enough resolved samples yet "
+                f"({result.get('sample_count', 0)}) — {result.get('message', 'skipping training.')}",
+            )
+        else:
+            log_sched_notification("Error", f"Alert Confidence Referee training failed: {result.get('message')}")
+    except Exception as e:
+        logger.error("Alert Confidence Referee training job failed: %s", e)
+        log_sched_notification("Error", f"Alert Confidence Referee training job failed: {e}")
+    finally:
+        _mark_job_done(job_label("alert_referee_training_job"))
+        record_job_run("alert_referee_training_job")
 
 
 def run_bubble_radar_job():
