@@ -53,6 +53,19 @@ def _fmt_volume(value) -> Optional[str]:
     return str(int(value))
 
 
+def _fmt_price(value, currency: Optional[str], decimals: int = 2, with_symbol: bool = True) -> Optional[str]:
+    """GBp-aware per-share price formatting, matching the inline logic already used
+    throughout portfolio.html/watchlist.html (halve GBp values, show a currency symbol)."""
+    if value is None:
+        return None
+    val = (value / 100.0) if currency == 'GBp' else value
+    if not with_symbol:
+        return f"{val:,.{decimals}f}"
+    sym = '£' if currency in ('GBP', 'GBp') else ('€' if currency == 'EUR' else '$')
+    suffix = f" {currency}" if currency not in ('USD', 'GBP', 'GBp', 'EUR') else ""
+    return f"{sym}{val:,.{decimals}f}{suffix}"
+
+
 def _load_fundamentals_extra(ticker: str) -> dict:
     empty: dict = {
         "market_cap_fmt": None, "trailing_eps": None, "forward_eps": None,

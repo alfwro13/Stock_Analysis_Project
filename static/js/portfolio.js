@@ -1,28 +1,38 @@
 // ── Position sizing cell renderer ─────────────────────────────────────────────
 function renderPositionSizing() {
     document.querySelectorAll('.ps-cell').forEach(function (cell) {
+        var row = cell.closest('tr');
         var entryPrice = parseFloat(cell.dataset.entryPrice);
         var atrPctRaw  = cell.dataset.atrPct;
         var atrPct     = atrPctRaw === '' ? null : parseFloat(atrPctRaw);
         var currency   = cell.dataset.currency || 'USD';
 
         var result = window.PositionSizing.calculateForRow(entryPrice, atrPct, currency);
+        var sharesCell = row ? row.querySelector('[data-col-key="shares"]') : null;
+        var stopCell   = row ? row.querySelector('[data-col-key="stop_price"]') : null;
+        var riskCell   = row ? row.querySelector('[data-col-key="risk_amount"]') : null;
 
         if (result.positionValue != null && result.shares != null && result.shares > 0) {
             cell.textContent = window.PositionSizing.formatCurrency(result.positionValue, window.BASE_CURRENCY);
             cell.setAttribute('data-sort', result.positionValue);
 
-            var sharesCell = cell.nextElementSibling;
-            if (sharesCell && sharesCell.classList.contains('ps-cell-shares')) {
+            if (sharesCell) {
                 sharesCell.textContent = result.shares.toLocaleString();
                 sharesCell.setAttribute('data-sort', result.shares);
             }
+            if (stopCell) {
+                stopCell.textContent = window.PositionSizing.formatCurrency(result.stopPrice, currency);
+                stopCell.setAttribute('data-sort', result.stopPrice);
+            }
+            if (riskCell) {
+                riskCell.textContent = window.PositionSizing.formatCurrency(result.riskAmount, window.BASE_CURRENCY);
+                riskCell.setAttribute('data-sort', result.riskAmount);
+            }
         } else {
             cell.textContent = '—';
-            var sharesCell2 = cell.nextElementSibling;
-            if (sharesCell2 && sharesCell2.classList.contains('ps-cell-shares')) {
-                sharesCell2.textContent = '—';
-            }
+            if (sharesCell) sharesCell.textContent = '—';
+            if (stopCell) stopCell.textContent = '—';
+            if (riskCell) riskCell.textContent = '—';
         }
     });
 }
@@ -907,6 +917,13 @@ function _plotMacroHistory(elId, history) {
 
 // ── DataTables init ───────────────────────────────────────────────────────────
 $(document).ready(function () {
+    var allCols = window.PORTFOLIO_COLUMNS || [];
+    var colPrefs = window.PORTFOLIO_COLUMN_PREFS || { hidden_core_columns: [], shown_optional_columns: [] };
+    var hiddenIndices = [];
+    allCols.forEach(function (col, idx) {
+        if (!ColumnPicker.resolveVisible(col.key, allCols, colPrefs)) hiddenIndices.push(idx);
+    });
+
     var table = $('#dataTable').DataTable({
         responsive: true,
         pageLength: 50,
@@ -925,10 +942,22 @@ $(document).ready(function () {
             { responsivePriority: 5, targets: [13, 14, 15] },
             { responsivePriority: 6, targets: [6, 7, 17] },
             { responsivePriority: 7, targets: [10, 11, 12] },
-            { responsivePriority: 8, targets: [1, 8, 9] }
+            { responsivePriority: 8, targets: [1, 8, 9] },
+            { targets: hiddenIndices, visible: false }
         ]
     });
     window._portfolioTable = table;
+
+    ColumnPicker.init({
+        table: table,
+        scope: 'portfolio',
+        allColumns: allCols,
+        prefs: colPrefs,
+        menuId: 'columnPickerMenu'
+    });
+
+    applyStickyTheadOffset();
+    window.addEventListener('resize', applyStickyTheadOffset);
 
     // Tap anywhere on a row (except the ticker link or the expand triangle itself)
     // to expand/collapse the responsive child row.

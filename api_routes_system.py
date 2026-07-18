@@ -82,6 +82,10 @@ class UIPreferencesConfig(BaseModel):
     MARKET_PULSE_DYNAMIC: Optional[bool] = None
     MARKET_PULSE_DESKTOP_COUNT: Optional[int] = None
     MARKET_PULSE_MOBILE_COUNT: Optional[int] = None
+    PORTFOLIO_HIDDEN_CORE_COLUMNS: Optional[List[str]] = None
+    PORTFOLIO_SHOWN_OPTIONAL_COLUMNS: Optional[List[str]] = None
+    WATCHLIST_HIDDEN_CORE_COLUMNS: Optional[List[str]] = None
+    WATCHLIST_SHOWN_OPTIONAL_COLUMNS: Optional[List[str]] = None
     FONT_SIZE_NAV: Optional[int] = None
     FONT_SIZE_TABLE: Optional[int] = None
     FONT_SIZE_DT_TABLE: Optional[int] = None

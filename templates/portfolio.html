@@ -20,6 +20,8 @@ window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
 window.SHOW_EXTENDED_HOURS = {% if show_extended %}true{% else %}false{% endif %};
 window.EMBED_MODE = {% if embed %}true{% else %}false{% endif %};
 window.EMBED_TOKEN = {{ embed_token | tojson }};
+window.PORTFOLIO_COLUMNS = {{ all_columns | tojson }};
+window.PORTFOLIO_COLUMN_PREFS = {{ column_prefs | tojson }};
 </script>
 
 {% if not embed %}
@@ -48,6 +50,10 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
         <a href="#" id="heatmap-link" class="xray-link-btn ms-2" onclick="toggleHeatmap(); return false;">&#9638; Heatmap</a>
         <a href="/score-history?filter=portfolio&ref=/portfolio" class="xray-link-btn ms-2">&#128200; Score History</a>
         <a href="/performance-analytics" class="xray-link-btn ms-2">&#128202; Tearsheet</a>
+        <div class="dropdown ms-2 column-picker-dropdown">
+            <a href="#" class="xray-link-btn dropdown-toggle" id="columnPickerToggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">&#128203; Columns</a>
+            <div class="dropdown-menu column-picker-menu" id="columnPickerMenu" aria-labelledby="columnPickerToggle"></div>
+        </div>
     </div>
 </div>
 {% endif %}
@@ -128,27 +134,30 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
 <table id="dataTable" class="table table-hover w-100">
     <thead>
         <tr>
-            <th>Ticker</th>
-            <th>Company Name</th>
-            <th>Price</th>
-            <th>Change</th>
-            <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
-            <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
-            <th>50D</th>
-            <th>200D</th>
-            <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
-            <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
-            <th>Stop-Loss</th>
-            <th><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
-            <th><abbr title="Volume Profile exit target: the lowest High Volume Node or Value Area High above the current price — a candidate take-profit level.">Exit Target</abbr></th>
-            <th>RSI</th>
-            <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
-            <th>VaR (95%)</th>
-            <th>Sentiment</th>
-            <th>Earnings</th>
-            <th>Score</th>
-            <th>Setups &amp; Tags</th>
-            <th>Signal</th>
+            <th data-col-key="ticker">Ticker</th>
+            <th data-col-key="company_name">Company Name</th>
+            <th data-col-key="price">Price</th>
+            <th data-col-key="change">Change</th>
+            <th data-col-key="global_value"><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
+            <th data-col-key="global_pnl"><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
+            <th data-col-key="trend_50d">50D</th>
+            <th data-col-key="trend_200d">200D</th>
+            <th data-col-key="peg_ratio"><abbr title="Standard PEG Ratio">PEG</abbr></th>
+            <th data-col-key="pl_peg"><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
+            <th data-col-key="stop_loss">Stop-Loss</th>
+            <th data-col-key="entry_zone"><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
+            <th data-col-key="exit_target"><abbr title="Volume Profile exit target: the lowest High Volume Node or Value Area High above the current price — a candidate take-profit level.">Exit Target</abbr></th>
+            <th data-col-key="rsi">RSI</th>
+            <th data-col-key="ml_conf"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
+            <th data-col-key="var_95">VaR (95%)</th>
+            <th data-col-key="sentiment">Sentiment</th>
+            <th data-col-key="earnings">Earnings</th>
+            <th data-col-key="score">Score</th>
+            <th data-col-key="setup_tags">Setups &amp; Tags</th>
+            <th data-col-key="signal">Signal</th>
+            {% for col in optional_columns %}
+            <th data-col-key="{{ col.key }}">{{ col.label }}</th>
+            {% endfor %}
         </tr>
     </thead>
     <tbody>
@@ -343,6 +352,21 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
                 {% endif %}
             </td>
             <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+            {% for col in item.optional_cols %}
+                {% if col.client %}
+                {% if col.key == 'position_value' %}
+                <td class="ps-cell num-cell" data-col-key="position_value" data-sort="" data-entry-price="{{ item.current_price if item.current_price is not none else '' }}" data-atr-pct="{{ item.atr_pct if item.atr_pct is not none else '' }}" data-currency="{{ item.currency }}">—</td>
+                {% elif col.key == 'shares' %}
+                <td class="ps-cell-shares num-cell" data-col-key="shares" data-sort="">—</td>
+                {% elif col.key == 'stop_price' %}
+                <td class="ps-cell-stop num-cell" data-col-key="stop_price" data-sort="">—</td>
+                {% elif col.key == 'risk_amount' %}
+                <td class="ps-cell-risk num-cell" data-col-key="risk_amount" data-sort="">—</td>
+                {% endif %}
+                {% else %}
+                <td data-col-key="{{ col.key }}" data-sort="{{ col.sort }}" class="num-cell">{{ col.display }}</td>
+                {% endif %}
+            {% endfor %}
         </tr>
         {% endfor %}
     </tbody>
@@ -352,6 +376,7 @@ window.EMBED_TOKEN = {{ embed_token | tojson }};
 {% block scripts %}
 <script src="/static/js/utils.js?v={{ css_version }}"></script>
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
+<script src="/static/js/column_picker.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
 <script src="/static/js/heatmap_treemap.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio_heatmap.js?v={{ css_version }}"></script>

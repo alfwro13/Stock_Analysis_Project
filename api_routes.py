@@ -333,6 +333,28 @@ async def api_learn_preference(body: GlossaryLearnPreferenceBody):
         return _error_500(e)
 
 
+class TableColumnPreferenceBody(BaseModel):
+    scope: str
+    hidden_core_columns: List[str] = []
+    shown_optional_columns: List[str] = []
+
+
+@api_router.post("/ui-preferences/columns")
+async def api_table_column_preference(body: TableColumnPreferenceBody):
+    if body.scope not in ("portfolio", "watchlist"):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "invalid scope"})
+    try:
+        prefix = body.scope.upper()
+        update_config_atomic({"UI_PREFERENCES": {
+            f"{prefix}_HIDDEN_CORE_COLUMNS": body.hidden_core_columns,
+            f"{prefix}_SHOWN_OPTIONAL_COLUMNS": body.shown_optional_columns,
+        }})
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.exception("ui-preferences/columns failed")
+        return _error_500(e)
+
+
 @api_router.get("/screener-data")
 @limiter.limit("20/minute")
 async def get_screener_data(request: Request):
