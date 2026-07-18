@@ -377,7 +377,7 @@
                             </select>
                         </div>
                         <div class="form-group flex-1">
-                            <label><abbr title="If the model's fire-confidence probability is below this value, the alert is vetoed (or would be, in Shadow mode).">Veto Threshold</abbr></label>
+                            <label><abbr title="The model estimates a 0-1 confidence that a signal is genuine. If that confidence is below this value, the alert is vetoed (or would be, in Shadow mode). Lower = more conservative (vetoes only near-certain false positives); higher = more aggressive (vetoes unless strongly confirmed).">Veto Threshold</abbr></label>
                             <input type="number" id="ALERT_REFEREE_VETO_THRESHOLD" class="form-control" value="{{ referee_sched.VETO_THRESHOLD | default(0.3) }}" step="0.05" min="0" max="1">
                         </div>
                         <div class="form-group flex-1">
@@ -385,6 +385,13 @@
                             <input type="number" id="ALERT_REFEREE_MIN_SAMPLES" class="form-control" value="{{ referee_sched.MIN_TRAINING_SAMPLES | default(200) }}" min="30" step="10">
                         </div>
                     </div>
+                    <p class="settings-desc-sm text-muted">
+                        Veto Threshold scale — <strong>0.1&ndash;0.2</strong> very conservative (only near-certain false positives are cut);
+                        <strong>0.3</strong> (default) conservative, needs &gt;70% confidence a signal is wrong before vetoing it;
+                        <strong>0.5</strong> balanced, a plain coin-flip cutoff; <strong>0.6&ndash;0.7</strong> aggressive, needs the model to
+                        actively believe the signal is right; <strong>0.8&ndash;0.9</strong> very aggressive, vetoes almost anything not
+                        strongly confirmed. Raising the number always vetoes a superset of what a lower number vetoes.
+                    </p>
                     <p class="settings-desc-sm text-muted">
                         Even with Active selected, the referee stays in Shadow mode — it logs what it would have done but never
                         suppresses an alert — until enough resolved Trap Monitor history has accumulated. See readiness below.
