@@ -15,7 +15,15 @@
             <span class="badge text-bg-warning" id="learnWeakBadge">Weak: 0</span>
             <span class="badge text-bg-success" id="learnLearnedBadge">Learned: 0</span>
         </div>
-        <button type="button" class="btn btn-primary" id="learnStartBtn">Start Session</button>
+        <div class="d-flex align-items-center gap-2">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="learnUnlockAll" {% if config.UI_PREFERENCES.GLOSSARY_LEARN_UNLOCK_ALL %}checked{% endif %}>
+                <label class="form-check-label" for="learnUnlockAll">
+                    <abbr title="Makes every level clickable so you can jump straight into any locked level, without changing the normal learning order used by Start Session.">Unlock All</abbr>
+                </label>
+            </div>
+            <button type="button" class="btn btn-primary" id="learnStartBtn">Start Session</button>
+        </div>
     </div>
     <div id="learnEmptyState" class="text-muted mb-2" style="display:none;">All caught up — nothing due right now.</div>
     <p class="text-muted small mb-2">Click a level to practice just that section.</p>

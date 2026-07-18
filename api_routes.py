@@ -278,6 +278,10 @@ class GlossaryLearnAnswer(BaseModel):
     grade: str
 
 
+class GlossaryLearnUnlockAllBody(BaseModel):
+    enabled: bool
+
+
 @api_router.get("/learn/overview")
 @limiter.limit("30/minute")
 async def api_learn_overview(request: Request):
@@ -311,6 +315,16 @@ async def api_learn_answer(request: Request, body: GlossaryLearnAnswer):
         return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
     except Exception as e:
         logger.exception("learn/answer failed")
+        return _error_500(e)
+
+
+@api_router.post("/learn/unlock-all-preference")
+async def api_learn_unlock_all_preference(body: GlossaryLearnUnlockAllBody):
+    try:
+        update_config_atomic({"UI_PREFERENCES": {"GLOSSARY_LEARN_UNLOCK_ALL": body.enabled}})
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.exception("learn/unlock-all-preference failed")
         return _error_500(e)
 
 

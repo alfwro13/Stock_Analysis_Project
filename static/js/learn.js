@@ -11,8 +11,9 @@ async function learnLoadOverview() {
     document.getElementById('learnWeakBadge').textContent = `Weak: ${result.weak_terms.length}`;
     document.getElementById('learnLearnedBadge').textContent = `Learned: ${result.total_learned}`;
 
+    const unlockAll = document.getElementById('learnUnlockAll').checked;
     const levelsEl = document.getElementById('learnLevels');
-    levelsEl.innerHTML = result.levels.map(learnLevelRowHTML).join('');
+    levelsEl.innerHTML = result.levels.map(level => learnLevelRowHTML(level, unlockAll)).join('');
     levelsEl.querySelectorAll('.learn-level-clickable').forEach(row => {
         row.addEventListener('click', () => learnStartSession(row.dataset.sectionId, parseInt(row.dataset.total, 10)));
     });
@@ -23,14 +24,15 @@ async function learnLoadOverview() {
     startBtn.disabled = nothingToStudy;
 }
 
-function learnLevelRowHTML(level) {
+function learnLevelRowHTML(level, unlockAll) {
+    const clickable = level.unlocked || unlockAll;
     const pct = level.total > 0 ? Math.round((level.studied / level.total) * 100) : 0;
-    const lockedClass = level.unlocked ? '' : 'learn-level-locked';
-    const clickableClass = level.unlocked ? 'learn-level-clickable' : '';
+    const lockedClass = clickable ? '' : 'learn-level-locked';
+    const clickableClass = clickable ? 'learn-level-clickable' : '';
     return `
         <div class="learn-level-row ${lockedClass} ${clickableClass}" data-section-id="${escapeHtml(level.section_id)}" data-total="${level.total}">
             <div class="d-flex justify-content-between">
-                <span>${level.unlocked ? '' : '🔒 '}${escapeHtml(level.title)}</span>
+                <span>${clickable ? '' : '🔒 '}${escapeHtml(level.title)}</span>
                 <span class="text-muted">${level.studied}/${level.total} studied &middot; ${level.learned} learned</span>
             </div>
             <div class="progress" style="height: 6px;">
@@ -185,9 +187,19 @@ function learnBackToDashboard() {
     learnLoadOverview();
 }
 
+async function learnToggleUnlockAll(enabled) {
+    await fetch('/api/learn/unlock-all-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+    });
+    learnLoadOverview();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     learnLoadOverview();
     document.getElementById('learnStartBtn').addEventListener('click', () => learnStartSession());
     document.getElementById('learnBackBtn').addEventListener('click', learnBackToDashboard);
     document.getElementById('learnAgainBtn').addEventListener('click', () => learnStartSession());
+    document.getElementById('learnUnlockAll').addEventListener('change', (e) => learnToggleUnlockAll(e.target.checked));
 });

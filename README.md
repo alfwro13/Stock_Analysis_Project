@@ -343,7 +343,7 @@ Use these paths in the `ssl_certificate` / `ssl_certificate_key` directives abov
 
 Not a quantitative expert? The dashboard includes a built-in educational glossary page and interactive HTML tooltips that explain exactly what metrics like MACD Reversals, Relative Strength vs S&P 500, Bullish Engulfing patterns, and Peter Lynch PEG mean in plain English.
 
-**🎓 Glossary Learning:** a spaced-repetition study mode, reachable via the Learn button next to the Glossary page header. Every glossary term becomes a study card, scheduled with a Leitner-box reinforcement system so weaker terms come up for review more often than ones you already know — starting with market fundamentals and building up to the app's more advanced engines and metrics. Progress (new/learning/strong/learned/weak) is tracked persistently; there are no points or scores to chase.
+**🎓 Glossary Learning:** a spaced-repetition study mode, reachable via the Learn button next to the Glossary page header. Every glossary term becomes a study card, scheduled with a Leitner-box reinforcement system so weaker terms come up for review more often than ones you already know — starting with market fundamentals and building up to the app's more advanced engines and metrics. Progress (new/learning/strong/learned/weak) is tracked persistently; there are no points or scores to chase. An "Unlock All" checkbox lets you jump straight into any level out of order, without changing the normal course order used by Start Session.
 
 
 ## Support & Disclaimer

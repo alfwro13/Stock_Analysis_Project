@@ -1035,3 +1035,12 @@ def test_post_learn_answer_invalid_grade_returns_400(client):
 def test_post_learn_answer_unknown_term_key_returns_400(client):
     resp = client.post("/api/learn/answer", json={"term_key": "not-a-real-term", "grade": "good"})
     assert resp.status_code == 400
+
+
+@pytest.mark.api
+def test_post_learn_unlock_all_preference_persists_flag(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/learn/unlock-all-preference", json={"enabled": True})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {"GLOSSARY_LEARN_UNLOCK_ALL": True}})
