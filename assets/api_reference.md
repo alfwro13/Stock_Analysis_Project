@@ -2071,6 +2071,57 @@ Returns per-phase prediction accuracy at 14-day and 30-day forward-return horizo
 }
 ```
 
+### `GET /api/alert-referee/status`
+
+Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readiness (resolved training samples vs. the configured minimum, with an ETA projection), the latest trained model's metadata, and a summary of the shadow-mode evaluation log.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "enabled": false,
+  "configured_mode": "shadow",
+  "veto_threshold": 0.3,
+  "min_training_samples": 200,
+  "readiness": {
+    "current": 45,
+    "target": 200,
+    "hard_min": 30,
+    "can_train": true,
+    "ready_for_active": false,
+    "eta_days": 62,
+    "eta_date": "2026-09-18"
+  },
+  "latest_model": {
+    "id": 3,
+    "engine": "TrapMonitor",
+    "trained_at": "2026-07-13 05:00:00",
+    "sample_count": 45,
+    "positive_count": 27,
+    "train_accuracy": 0.7333,
+    "veto_rate": 0.2,
+    "effective_mode": "shadow",
+    "model_path": "models/alert_referee_trapmonitor.joblib"
+  },
+  "log_total": 12,
+  "log_vetoed": 3,
+  "recent_log": [
+    {
+      "ticker": "AAPL",
+      "phase": "BULL_TRAP_RISK",
+      "fire_probability": 0.42,
+      "vetoed": 0,
+      "mode": "shadow",
+      "scan_ts": "2026-07-18 14:30:00"
+    }
+  ]
+}
+```
+
+### `POST /api/alert-referee/train`
+
+Triggers Alert Confidence Referee training in the background (the Settings "Run Training Now" action). Training refuses to fit a model below a hard minimum sample count (30 resolved, feature-bearing Trap Monitor phase calls); above that it always trains, but the resulting model only runs in Active (enforcing) mode once the sample count also crosses the configured `MIN_TRAINING_SAMPLES` target — otherwise it runs in Shadow (log-only) mode regardless of the configured mode. Returns `{"status": "success"}` immediately; poll `/api/alert-referee/status` for the outcome.
+
 ---
 
 ## 18. Bubble Radar

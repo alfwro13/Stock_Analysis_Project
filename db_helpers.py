@@ -310,15 +310,22 @@ def log_trap_phase(
     scan_date: str,
     close_price: Optional[float],
     scan_ts: str,
+    rsi: Optional[float] = None,
+    ema_distance: Optional[float] = None,
+    bull_trap_vol_ratio: Optional[float] = None,
+    cap_vol_zscore: Optional[float] = None,
+    wyckoff_bb_width: Optional[float] = None,
 ) -> None:
     conn = None
     try:
         conn = get_connection()
         conn.execute(
             """INSERT OR IGNORE INTO trap_phase_history
-               (ticker, phase, scan_date, scan_ts, close_price)
-               VALUES (?, ?, ?, ?, ?)""",
-            (ticker, phase, scan_date, scan_ts, close_price),
+               (ticker, phase, scan_date, scan_ts, close_price,
+                rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ticker, phase, scan_date, scan_ts, close_price,
+             rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width),
         )
         conn.commit()
     except Exception as e:

@@ -493,6 +493,7 @@ def test_no_endpoint_returns_500(client):
         "/api/predicted-movers/accuracy",
         "/api/earnings-volatility/accuracy",
         "/api/earnings-volatility/drift-path",
+        "/api/alert-referee/status",
     ]
     failures = []
     for url in get_endpoints:

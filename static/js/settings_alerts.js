@@ -167,6 +167,56 @@ async function triggerTrapMonitorScan() {
     }
 }
 
+async function triggerAlertRefereeTraining() {
+    const btn = document.querySelector('button[onclick="triggerAlertRefereeTraining()"]');
+    const msgEl = document.getElementById('alert-referee-msg');
+    btn.disabled = true;
+    btn.innerText = "⏳ Training...";
+    msgEl.innerHTML = '';
+    try {
+        const resp = await fetch('/api/alert-referee/train', { method: 'POST' });
+        const data = await resp.json();
+        const color = data.status === 'success' ? '#4caf50' : '#f44336';
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
+        setTimeout(fetchAlertRefereeReadiness, 4000);
+    } catch (err) {
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
+    } finally {
+        setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Training Now"; }, 3000);
+    }
+}
+
+function fetchAlertRefereeReadiness() {
+    const el = document.getElementById('alert-referee-readiness');
+    if (!el) return;
+    fetch('/api/alert-referee/status')
+        .then(r => r.json())
+        .then(data => {
+            if (data.status !== 'success') { el.textContent = 'Unable to load readiness.'; return; }
+            const r = data.readiness || {};
+            const current = r.current || 0;
+            const target = r.target || 0;
+            const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+            let etaText = 'not enough history yet to estimate';
+            if (r.ready_for_active) {
+                etaText = 'ready for Active mode';
+            } else if (r.eta_date) {
+                etaText = `~${escapeHtml(r.eta_date)} at the current pace`;
+            }
+            const model = data.latest_model;
+            const modelLine = model
+                ? `Last trained ${escapeHtml(model.trained_at)} on ${model.sample_count} samples (train accuracy ${(model.train_accuracy * 100).toFixed(0)}%).`
+                : 'No model trained yet.';
+            el.innerHTML =
+                `<div class="mb-10">${current} / ${target} resolved signals with recorded features (${pct}%) — ${etaText}.</div>` +
+                `<div class="mb-10">${modelLine}</div>` +
+                `<div>Shadow log: ${data.log_total || 0} evaluations recorded, ${data.log_vetoed || 0} would-veto.</div>`;
+        })
+        .catch(() => { el.textContent = 'Unable to load readiness.'; });
+}
+
+document.addEventListener('DOMContentLoaded', fetchAlertRefereeReadiness);
+
 async function triggerForensicFetch() {
     const btn = document.querySelector('button[onclick="triggerForensicFetch()"]');
     const msgEl = document.getElementById('forensic-msg');
