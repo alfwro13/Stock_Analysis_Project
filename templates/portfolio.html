@@ -355,6 +355,14 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
                         </div>
                     {% endif %}
                 {% endif %}
+
+                {% if item.hs_phase_label %}
+                    <div class="inline-block">
+                        <abbr title="Head & Shoulders Pattern Detector — see the /head-shoulders tool for the full pattern breakdown." class="no-decoration-abbr">
+                            <span class="setup-tag">📐 {{ item.hs_phase_label }}</span>
+                        </abbr>
+                    </div>
+                {% endif %}
             </td>
             <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
             {% for col in item.optional_cols %}

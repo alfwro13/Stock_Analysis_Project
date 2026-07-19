@@ -261,6 +261,92 @@ async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str)
         return _error_500(e)
 
 
+@analysis_router.get("/head-shoulders/results")
+@limiter.limit("20/minute")
+async def get_head_shoulders_results(request: Request):
+    """Returns all current Head & Shoulders / Inverse Head & Shoulders candidates, confirmed patterns first."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM head_shoulders_results ORDER BY phase = 'CONFIRMED' DESC, scan_ts DESC")
+        rows = [dict(r) for r in cursor.fetchall()]
+        return JSONResponse(content={"status": "success", "results": rows})
+    except Exception as e:
+        logger.error("head-shoulders/results failed: %s", e)
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
+@analysis_router.post("/head-shoulders/run")
+@limiter.limit("4/minute")
+async def run_head_shoulders_scan(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Head & Shoulders Pattern Detector scan in the background."""
+    try:
+        from scheduler_engine import run_head_shoulders_job
+        background_tasks.add_task(run_head_shoulders_job)
+        return JSONResponse(content={"status": "success", "message": "Head & Shoulders Pattern Detector scan triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Head & Shoulders Pattern Detector scan: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.post("/head-shoulders/backfill")
+@limiter.limit("1/minute")
+async def run_head_shoulders_backfill(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a one-time historical backtest over each monitored ticker's full parquet history — can take several minutes."""
+    try:
+        from head_shoulders_engine import backfill_historical_patterns
+        background_tasks.add_task(backfill_historical_patterns)
+        return JSONResponse(content={"status": "success", "message": "Head & Shoulders historical backfill triggered — this can take several minutes."})
+    except Exception as e:
+        logger.error("Failed to trigger Head & Shoulders historical backfill: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.get("/head-shoulders/accuracy")
+@limiter.limit("20/minute")
+async def get_head_shoulders_accuracy_route(request: Request):
+    """Returns per-pattern-type prediction accuracy at 14-day and 30-day horizons."""
+    from database import get_head_shoulders_accuracy
+    data = get_head_shoulders_accuracy()
+    return JSONResponse(content={"status": "success", **data})
+
+
+@analysis_router.get("/head-shoulders/chart/{ticker}")
+@limiter.limit("20/minute")
+async def get_head_shoulders_chart(request: Request, ticker: str):
+    """Returns the ticker's recent daily close series plus its stored pattern geometry for client-side chart overlay."""
+    conn = None
+    try:
+        ticker = normalize_ticker(ticker)
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM head_shoulders_results WHERE ticker = ?", (ticker,))
+        row = cursor.fetchone()
+        if not row:
+            return JSONResponse(content={"status": "error", "message": "No pattern on file for this ticker."}, status_code=404)
+        pattern = dict(row)
+
+        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        if not path.exists():
+            return JSONResponse(content={"status": "error", "message": "No price history on file for this ticker."}, status_code=404)
+        df = pd.read_parquet(path, columns=["Close"]).dropna().tail(180)
+        series = {
+            "dates": [d.strftime("%Y-%m-%d") for d in df.index],
+            "close": [round(float(c), 4) for c in df["Close"]],
+        }
+        return JSONResponse(content={"status": "success", "series": series, "pattern": pattern})
+    except Exception as e:
+        logger.error("head-shoulders/chart failed: %s", e)
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
 @analysis_router.get("/predicted-movers/leaderboard")
 @limiter.limit("20/minute")
 async def get_predicted_movers_leaderboard(

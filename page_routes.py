@@ -34,6 +34,7 @@ from fundamentals_helpers import (
 )
 from bull_bear_trap_engine import phase_label
 from bubble_radar_engine import flag_label
+from head_shoulders_engine import phase_label as hs_phase_label
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -263,6 +264,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                    (SELECT dividend_yield_pct FROM xray_dividend_cache
                     WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
                    ev.edge_score AS earnings_edge_score, ev.implied_move_pct AS earnings_implied_move,
+                   hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -279,6 +281,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
+            LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
         """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
 
@@ -343,6 +346,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                     row_dict['setup_tags_list'] = []
             else:
                 row_dict['setup_tags_list'] = []
+
+            row_dict['hs_phase_label'] = hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None
 
             portfolio_data.append(row_dict)
 
@@ -686,6 +691,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                    trap.phase as trap_phase,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
+                   hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -701,6 +707,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
+            LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
         """, (BENCHMARK_SYMBOL,))
@@ -754,6 +761,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
 
             row_dict['trap_phase_label'] = phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None
             row_dict['bubble_flag_label'] = flag_label(row_dict.get('bubble_flag'))
+            row_dict['hs_phase_label'] = hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None
 
             limits = all_holding_limits.get((watchlist_account_id, row_dict['ticker']), {})
             row_dict['low_target'] = limits.get('low_limit')
@@ -778,6 +786,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             present_tags.add(row['trap_phase_label'])
         if row.get('bubble_flag_label'):
             present_tags.add(row['bubble_flag_label'])
+        if row.get('hs_phase_label'):
+            present_tags.add(row['hs_phase_label'])
         if row.get('quality_grade'):
             present_tags.add('Grade ' + row['quality_grade'])
 
@@ -1050,6 +1060,18 @@ async def pairs_spread_monitor_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="pairs_spread_monitor.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
+@page_router.get("/head-shoulders", response_class=HTMLResponse)
+async def head_shoulders_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="head_shoulders.html",
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),
