@@ -15,6 +15,9 @@ data/
 # Default local destination for the Backup & Recovery feature
 backups/
 
+# Scratch mountpoint for the Backup & Recovery feature's NFS Share location
+.nfs_backup_mount/
+
 # Ignore Ghostfolio ha integration files - here only for the migration
 ghostfolio_ha_integration/
 Stock_Analysis_Project_ha_integration/

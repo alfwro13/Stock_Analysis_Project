@@ -46,6 +46,11 @@ def isolated_source(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_nfs_mount_point_is_not_nested_under_data_dir():
+    """A mountpoint under DATA_DIR would let the Data component's tar walk re-archive the live NFS mount, and everything already stored on it."""
+    assert backup_engine.DATA_DIR not in backup_engine._NFS_MOUNT_POINT.parents
+
+
 @pytest.mark.db
 class TestRunBackup:
     def test_creates_archive_with_all_components_no_db_duplication(self, isolated_source):

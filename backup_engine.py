@@ -12,7 +12,7 @@ from notification_engine import notify
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = BASE_DIR / "models"
-_NFS_MOUNT_POINT = DATA_DIR / ".nfs_backup_mount"
+_NFS_MOUNT_POINT = BASE_DIR / ".nfs_backup_mount"
 _ARCHIVE_GLOB = "backup_*.tar.gz"
 
 

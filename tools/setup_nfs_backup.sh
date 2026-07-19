@@ -10,7 +10,7 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MOUNTPOINT="${BASE_DIR}/data/.nfs_backup_mount"
+MOUNTPOINT="${BASE_DIR}/.nfs_backup_mount"
 MOUNT_SCRIPT="/usr/local/sbin/quant-backup-nfs-mount"
 UMOUNT_SCRIPT="/usr/local/sbin/quant-backup-nfs-umount"
 SUDOERS_FILE="/etc/sudoers.d/quant-backup-nfs"
