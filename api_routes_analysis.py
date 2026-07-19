@@ -19,7 +19,7 @@ from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from data_engine import DataEngine
 from sentiment_engine import get_latest_fear_greed
-from utils import normalize_ticker
+from utils import normalize_ticker, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -322,6 +322,9 @@ async def get_head_shoulders_chart(request: Request, ticker: str):
     conn = None
     try:
         ticker = normalize_ticker(ticker)
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            return JSONResponse(content={"status": "error", "message": "Invalid ticker."}, status_code=400)
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM head_shoulders_results WHERE ticker = ?", (ticker,))
@@ -330,7 +333,7 @@ async def get_head_shoulders_chart(request: Request, ticker: str):
             return JSONResponse(content={"status": "error", "message": "No pattern on file for this ticker."}, status_code=404)
         pattern = dict(row)
 
-        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not path.exists():
             return JSONResponse(content={"status": "error", "message": "No price history on file for this ticker."}, status_code=404)
         df = pd.read_parquet(path, columns=["Close"]).dropna().tail(180)

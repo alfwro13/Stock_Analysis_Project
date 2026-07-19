@@ -147,6 +147,10 @@ class ScheduleItemConfig(BaseModel):
     MODE: Optional[str] = None
     VETO_THRESHOLD: Optional[float] = None
     MIN_TRAINING_SAMPLES: Optional[int] = None
+    CORRELATION_THRESHOLD: Optional[float] = None
+    ZSCORE_THRESHOLD: Optional[float] = None
+    REGULAR_ENABLED: Optional[bool] = None
+    INVERSE_ENABLED: Optional[bool] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -172,6 +176,8 @@ class SchedulingConfig(BaseModel):
     NEWS_FEED: Optional[ScheduleItemConfig] = None
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
+    PAIRS_SPREAD_MONITOR: Optional[ScheduleItemConfig] = None
+    HEAD_SHOULDERS: Optional[ScheduleItemConfig] = None
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
@@ -210,6 +216,8 @@ class NotificationItemConfig(BaseModel):
     BELLWETHER_TICKERS: Optional[List[str]] = None
     ETF_BASKET: Optional[List[str]] = None
     PROXY_TICKERS: Optional[List[str]] = None
+    PRIOR_TREND_MIN_PCT: Optional[float] = None
+    VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
 
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None
@@ -222,6 +230,8 @@ class NotificationsConfig(BaseModel):
     RSS_FEED: Optional[NotificationItemConfig] = None
     AI_CONTAGION: Optional[NotificationItemConfig] = None
     TRAP_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
+    PAIRS_SPREAD_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
+    HEAD_SHOULDERS_ALERTS: Optional[NotificationItemConfig] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None
