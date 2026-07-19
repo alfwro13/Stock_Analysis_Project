@@ -145,9 +145,12 @@ exception, not something every page needs.
 A per-page modal (`#advFilterModal`) for building multi-condition row filters over any
 column — core or optional, regardless of current visibility — on top of the pre-existing
 quick-filter dropdowns (Signal/Tags/Score/Sector), which are untouched and keep working
-exactly as before. All conditions in one filter combine with AND (explicit product
-decision — an OR/grouping model was considered and rejected as unneeded complexity for
-this app's use cases).
+exactly as before. Conditions combine with a single global **AND/OR toggle** (`logic`,
+shown once ≥2 conditions exist) — not per-pair grouping, which was considered and rejected
+as unneeded complexity for this app's use cases. A worked example needing OR: "Low Target
+is not empty OR High Target is not empty" (added 2026-07-19) lists every ticker with any
+Position Target set — impossible to express under AND alone, since a single ticker rarely
+has both a low and a high target set simultaneously.
 
 **Column metadata drives the operator set.** Every column (`PORTFOLIO_CORE_COLUMNS` /
 `WATCHLIST_CORE_COLUMNS` / `OPTIONAL_COLUMNS`, all from `table_columns_helpers.py`) now
@@ -207,18 +210,27 @@ column visibility:**
   sent to the server. Restored on page load via `AdvancedFilter.init()`'s own call to
   `applyFilter(loadFromStorage(), false)` (the trailing `false` skips re-writing what was
   just read).
-- **Saved with a View**: `TableView.filter` (`api_routes.py`, `List[TableFilterCondition]
-  | None`) travels through the exact same `POST /api/ui-preferences/views` full-list
-  replacement `columns` already uses — no new endpoint. `model_dump(exclude_none=True)`
-  keeps a filter-less view's stored shape identical to before this feature (no stray
-  `"filter": null` key), so older saved views round-trip unchanged.
+- **Saved with a View**: `TableView.filter` (`api_routes.py`, `Optional[TableFilterSpec]`
+  — `{logic: "AND"|"OR", conditions: [TableFilterCondition, ...]}`) travels through the
+  exact same `POST /api/ui-preferences/views` full-list replacement `columns` already
+  uses — no new endpoint. `model_dump(exclude_none=True)` keeps a filter-less view's
+  stored shape identical to before this feature (no stray `"filter": null` key), so older
+  saved views round-trip unchanged.
 
-  Applying a view fully replaces the active filter (its `filter` list, or none) — there is
+  Applying a view fully replaces the active filter (its `filter` spec, or none) — there is
   no separate "current view" concept to merge against, matching the "Applying a view does
   not introduce a second visibility engine" principle above. Applying a view's filter also
   overwrites the ad hoc `localStorage` value, since (again matching columns) a view is
   just a bulk shortcut for setting the one piece of "current filter" state, not a second
   persisted concept living alongside it.
+
+  **Wire-format migration (2026-07-19):** the filter's `logic` field was added after the
+  feature's initial ship, when `filter` was still a bare `List[TableFilterCondition]` with
+  no wrapper object and an implicit AND. `advanced_filter.js`'s `normalizeFilterSpec(raw)`
+  treats a bare array (old shape, from `localStorage` or an already-saved view) as
+  `{logic: 'AND', conditions: raw}` — the only backward-compat surface this needed, since
+  `resolve_views()`/`localStorage` reads are never themselves validated against the
+  `TableFilterSpec` Pydantic model (that only gates what the client POSTs going forward).
 
 `static/js/column_picker.js`'s `initViewsMenu(picker, opts)` gained two optional hooks to
 wire this in without column_picker.js knowing anything about filters itself:
@@ -226,6 +238,26 @@ wire this in without column_picker.js knowing anything about filters itself:
 saved view object — Advanced Filter passes `{filter: advFilter.getCurrentFilter()}`) and
 `opts.onApplyView(view)` (called after a saved view is applied; Advanced Filter calls
 `advFilter.applyFilter(view.filter || [])`).
+
+**Active-view indicator and delete confirmation (2026-07-19):** the Views dropdown marks
+whichever saved view (if any) exactly matches the *current* live state — visible-column
+set plus active filter — with a "✓ Active" badge, via `initViewsMenu`'s private
+`isViewActive(view)` (column-set equality via `_columnSetsEqual`, filter equality via
+`_filtersEqual`, both comparing structurally rather than with `JSON.stringify` so object
+key order can't produce a false mismatch). This derives "active" from state comparison on
+every render rather than tracking a separate "last-applied view" variable — deliberately
+consistent with the no-separate-current-view-concept principle above, and it means the
+badge disappears the instant a checkbox/filter edit diverges from every saved view, with
+no "detach from view" bookkeeping needed. Recomputed on every `renderMenu()` call
+(after apply/save/delete) and additionally on the dropdown's own `show.bs.dropdown` event
+(`menuEl.closest('.dropdown')`), since checkbox toggles in the separate Columns dropdown
+don't call back into `initViewsMenu` — reopening the Views dropdown is the point the badge
+needs to be fresh, not every intervening column-visibility click. Deleting a view now asks
+`confirm('Delete the view "..."? This cannot be undone.')` first, matching every other
+destructive action's `confirm()` pattern elsewhere in the app (e.g.
+`static/js/accounts.js`, `static/js/notifications.js`) — there was previously no
+confirmation at all, so a stray click permanently discarded a saved view (columns and any
+filter) with no undo.
 
 ## Front-end — `static/js/column_picker.js`
 

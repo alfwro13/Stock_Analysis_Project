@@ -13,7 +13,7 @@ import pandas as pd
 import logging
 import requests
 from datetime import datetime, timezone, timedelta
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
@@ -362,10 +362,15 @@ class TableFilterCondition(BaseModel):
     value2: Optional[str] = None
 
 
+class TableFilterSpec(BaseModel):
+    logic: Literal["AND", "OR"] = "AND"
+    conditions: List[TableFilterCondition] = []
+
+
 class TableView(BaseModel):
     name: str
     columns: List[str]
-    filter: Optional[List[TableFilterCondition]] = None
+    filter: Optional[TableFilterSpec] = None
 
 
 class TableViewsPreferenceBody(BaseModel):
