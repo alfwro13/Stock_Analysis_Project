@@ -1114,6 +1114,36 @@ CARDS = [
 <p>Before training, a backfill step recomputes the same technical features for any historical Trap Phase History row that predates this feature's own feature-tracking, reloading each ticker's price history and re-running the phase detection as of that row's original date. Only rows whose recomputed phase still matches what was originally recorded are updated, so already-resolved older calls become usable training data straight away instead of only counting new calls going forward.</p>""",
     },
     {
+        "term_key": "head-shoulders-pattern",
+        "section_id": "strategies",
+        "term_title": "📉 Head & Shoulders Pattern",
+        "question": "Besides the shoulder/head/neckline shape itself, what does the Head & Shoulders Pattern Detector require before accepting a candidate?",
+        "answer": "A genuine prior uptrend before the left shoulder",
+        "distractors": [
+            "At least three years of price history for the ticker",
+            "A minimum trading volume of 10 million shares per day",
+            "Confirmation from a separate machine-learning classifier",
+        ],
+        "explanation": """<p>The <strong>Head &amp; Shoulders</strong> pattern is one of the most established topping formations in technical analysis. It forms from three successive swing highs: a <strong>left shoulder</strong>, a taller <strong>head</strong>, and a <strong>right shoulder</strong> that roughly matches the left shoulder's height — with the two swing lows between them (the "armpits") connected by a support line called the <strong>neckline</strong>. The pattern signals that buying pressure is fading: each rally attempt reaches a lower or equal peak after the head, and a decisive close below the neckline confirms that sellers have taken control.</p>
+<p>The Head &amp; Shoulders Pattern Detector finds this shape using rolling-window swing-point detection rather than a fixed lookback, then applies several geometric rules before accepting a candidate: the head must genuinely exceed both shoulders, the two shoulders must be roughly balanced in height, the time taken from each shoulder to the head must be comparable, and — critically — the pattern must be preceded by a genuine prior uptrend, since without that check almost any three bumps in sideways noise could resemble the shape.</p>
+<p>Three supporting signals help judge whether a detected candidate is high-quality: <strong>volume</strong> should decline across the left shoulder, head, and right shoulder, then spike on the neckline breakout; <strong>RSI divergence</strong> at the head (price making an equal or higher peak while RSI reads lower) confirms weakening momentum; and the pattern's <strong>fit quality (R²)</strong> measures how closely price actually tracked the idealised shape. Once confirmed, the <strong>measured-move target</strong> — the neckline value at breakout minus the head's height above the neckline — gives a classic technical-analysis price objective.</p>""",
+    },
+    {
+        "term_key": "inverse-head-shoulders-pattern",
+        "section_id": "strategies",
+        "term_title": "📈 Inverse Head & Shoulders Pattern",
+        "question": "What must precede the left shoulder for an Inverse Head & Shoulders candidate to be accepted?",
+        "answer": "A genuine prior downtrend",
+        "distractors": [
+            "A prior Bull Trap alert on the same ticker",
+            "A dividend announcement within the last quarter",
+            "A confirmed Wyckoff Accumulation phase",
+        ],
+        "explanation": """<p>The <strong>Inverse Head &amp; Shoulders</strong> is the bullish mirror image of the regular pattern: three successive swing lows, where the middle <strong>head</strong> is lower than the two outer <strong>shoulders</strong>, connected by a neckline drawn through the two intervening swing highs. It signals that selling pressure is exhausting — each new low attempt fails to go as deep as the head — and a decisive close above the neckline confirms buyers have taken control, often marking the start of a new uptrend.</p>
+<p>Detection mirrors the regular pattern exactly, but every rule is inverted: the head must be lower than both shoulders, the shoulders must be balanced, the timing must be comparable, and — instead of a prior uptrend — the pattern requires a genuine prior <em>downtrend</em> before the left shoulder to be accepted as a valid candidate.</p>
+<p>The same three supporting signals apply in mirror form: volume should decline through the shoulders and head then spike on the upside breakout; RSI divergence at the head (price making an equal or lower trough while RSI reads higher) confirms weakening downside momentum; and the fit-quality score ranks how cleanly price tracked the shape. Once confirmed, the measured-move target — the neckline value at breakout plus the head's depth below the neckline — projects the classic upside objective.</p>""",
+    },
+    {
         "term_key": "market-leader",
         "section_id": "strategies",
         "term_title": "👑 Market Leader",

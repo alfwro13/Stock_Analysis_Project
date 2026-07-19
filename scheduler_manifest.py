@@ -56,6 +56,8 @@ JOB_GRAPH: dict[str, dict] = {
     # Pairs Spread Monitor's Universe scope — not a scheduled job; an operator-triggered,
     # on-demand-only full market-universe correlation scan (too expensive to run nightly).
     "pairs_spread_universe_source":   {"label": "Pairs Spread Monitor (Universe)",                "category": "manual",      "engine": "pairs_spread_engine.py",        "produces": ["pairs_spread_results"],                                       "consumes": ["historical_parquet", "market_universe", "stock_signals"],           "non_job": True, "settings_anchor": None},
+    "head_shoulders_job":             {"label": "Head & Shoulders Pattern Detector",              "category": "quant",       "engine": "head_shoulders_engine.py",      "produces": ["head_shoulders_results", "head_shoulders_history"],           "consumes": ["historical_parquet", "portfolio"],                                  "settings_anchor": "tools-card"},
+    "head_shoulders_accuracy_fill_job": {"label": "Head & Shoulders Pattern Detector (accuracy fill)", "category": "quant",   "engine": "head_shoulders_engine.py",      "produces": ["head_shoulders_history"],                                     "consumes": ["head_shoulders_history", "historical_parquet"],                     "settings_anchor": "tools-card"},
     "forensic_quarterly_fetch_job":   {"label": "Forensic Quarterly Data Fetch",                  "category": "quant",       "engine": "fundamentals_helpers.py",       "produces": ["forensic_quarterly_cache"],                                   "consumes": ["portfolio", "yahoo_price_data"],                                    "settings_anchor": "forensic-screener-card"},
     "forensic_scores_job":            {"label": "Forensic Accounting Scores",                     "category": "quant",       "engine": "fundamentals_helpers.py",       "produces": ["stock_signals", "forensic_scores"],                           "consumes": ["forensic_quarterly_cache", "fundamentals"],                         "settings_anchor": "forensic-screener-card"},
     "macro_auction_job_am":           {"label": "Sovereign Debt Auction Monitor (AM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
@@ -137,6 +139,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "TRAP_MONITORS":      "trap_monitor_job",
     "BUBBLE_RADAR":       "bubble_radar_job",
     "PAIRS_SPREAD_MONITOR": "pairs_spread_monitor_job",
+    "HEAD_SHOULDERS":     "head_shoulders_job",
     "MARKET_SENTIMENT":   "market_sentiment_job",
     "EARNINGS_ALERTS":          "earnings_alert_job",
     "INSIDER_TRADING":          "insider_alert_job",

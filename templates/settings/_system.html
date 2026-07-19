@@ -964,6 +964,84 @@
                 <div id="pairs-spread-monitor-msg" class="mt-10"></div>
             </div>
 
+            <div class="settings-panel border-left-cyan" id="head-shoulders-card">
+                <h4 class="settings-panel-header text-cyan">&#128200; Head &amp; Shoulders Pattern Detector</h4>
+                <p class="settings-desc">
+                    Scans your portfolio and watchlist for
+                    <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders.">Head &amp; Shoulders</abbr> and
+                    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr>
+                    chart patterns once per day, using rolling-window swing detection plus volume confirmation, RSI divergence, and a required prior trend.
+                    Results appear at the <a href="/head-shoulders" class="text-cyan">Head &amp; Shoulders tools page</a>.
+                </p>
+
+                {% set hs_sched = config.SCHEDULING.HEAD_SHOULDERS if config.SCHEDULING.HEAD_SHOULDERS else {} %}
+                {% set hs_cfg = config.NOTIFICATIONS.HEAD_SHOULDERS_ALERTS if config.NOTIFICATIONS.HEAD_SHOULDERS_ALERTS else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="HEAD_SHOULDERS_ENABLED" {% if hs_sched.ENABLED %}checked{% endif %}>
+                    <label for="HEAD_SHOULDERS_ENABLED">Enable post-market scan</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Active Days</label>
+                        <select id="HEAD_SHOULDERS_FREQ" class="form-select">
+                            {% set joined = hs_sched.DAYS | join(',') if hs_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                            <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
+                            <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Scan Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <input type="time" id="HEAD_SHOULDERS_TIME" class="form-control" value="{{ hs_sched.TIME | default('22:20') }}">
+                    </div>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="HEAD_SHOULDERS_REGULAR" {% if hs_sched.REGULAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="HEAD_SHOULDERS_REGULAR">Detect Head &amp; Shoulders (topping)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="HEAD_SHOULDERS_INVERSE" {% if hs_sched.INVERSE_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="HEAD_SHOULDERS_INVERSE">Detect Inverse Head &amp; Shoulders (bottoming)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="HEAD_SHOULDERS_PORTFOLIO" {% if hs_sched.MONITOR_PORTFOLIO | default(true) %}checked{% endif %}>
+                    <label for="HEAD_SHOULDERS_PORTFOLIO">Monitor Portfolio Tickers</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="HEAD_SHOULDERS_WATCHLIST" {% if hs_sched.MONITOR_WATCHLIST %}checked{% endif %}>
+                    <label for="HEAD_SHOULDERS_WATCHLIST">Monitor Watchlist Tickers</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Alert cooldown (min)</label>
+                        <input type="number" id="HEAD_SHOULDERS_COOLDOWN" class="form-control" value="{{ hs_cfg.COOLDOWN_MINUTES | default(120) }}" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Retrigger % move</label>
+                        <input type="number" id="HEAD_SHOULDERS_RETRIGGER" class="form-control" value="{{ hs_cfg.RETRIGGER_PERCENT | default(3.0) }}" step="0.1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Re-arm % recovery</label>
+                        <input type="number" id="HEAD_SHOULDERS_REARM" class="form-control" value="{{ hs_cfg.REARM_PERCENT | default(5.0) }}" step="0.1">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum absolute prior price move required before the left shoulder (uptrend for a regular pattern, downtrend for an inverse pattern) for a candidate to be accepted.">Prior trend minimum %</abbr></label>
+                        <input type="number" id="HEAD_SHOULDERS_PRIOR_TREND" class="form-control" value="{{ hs_cfg.PRIOR_TREND_MIN_PCT | default(8.0) }}" step="0.5" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="HEAD_SHOULDERS_VOLUME_MULT" class="form-control" value="{{ hs_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerHeadShouldersScan()">&#9654; Run Scan Now</button>
+                    <button type="button" class="btn btn-outline-secondary mt-0" onclick="triggerHeadShouldersBackfill()">&#9654; Backfill Historical Data</button>
+                </div>
+                <div id="head-shoulders-msg" class="mt-10"></div>
+            </div>
+
             <div class="settings-panel border-left-cyan" id="forensic-screener-card">
                 <h4 class="settings-panel-header text-cyan">&#128269; Forensic Screener</h4>
                 <p class="settings-desc">

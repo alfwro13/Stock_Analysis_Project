@@ -30,6 +30,7 @@
 24. [Markets](#24-markets)
 25. [Glossary Learning](#25-glossary-learning)
 26. [Pairs Spread Monitor](#26-pairs-spread-monitor)
+27. [Head & Shoulders Pattern Detector](#27-head--shoulders-pattern-detector)
 
 ---
 
@@ -4247,6 +4248,89 @@ Every ticker with at least one note, each with its full note history (newest fir
       ]
     }
   ]
+}
+```
+
+---
+
+## 27. Head & Shoulders Pattern Detector
+
+Scans Portfolio + Watchlist tickers once daily (Mon-Fri by default) for Head & Shoulders and
+Inverse Head & Shoulders chart patterns using rolling-window swing detection. See
+`head_shoulders_engine.py`.
+
+### `GET /head-shoulders`
+
+HTML page. Renders the detected-patterns table, a per-ticker pattern chart, and a prediction
+accuracy panel.
+
+### `GET /api/head-shoulders/results`
+
+Returns all rows from `head_shoulders_results` (confirmed patterns first).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "NVDA", "pattern_type": "regular", "phase": "CONFIRMED",
+      "l_shoulder_date": "2026-05-01", "l_shoulder_price": 135.2,
+      "l_armpit_date": "2026-05-08", "l_armpit_price": 128.4,
+      "head_date": "2026-05-15", "head_price": 142.1,
+      "r_armpit_date": "2026-05-22", "r_armpit_price": 129.0,
+      "r_shoulder_date": "2026-05-29", "r_shoulder_price": 134.6,
+      "neck_slope": 0.043, "breakout_date": "2026-06-05", "breakout_price": 127.8,
+      "measured_target": 114.9, "volume_confirms": 1, "rsi_divergence": 1,
+      "pattern_r2": 0.91, "prior_trend_pct": 14.2, "scan_ts": "2026-06-05 22:20:00"
+    }
+  ]
+}
+```
+
+### `POST /api/head-shoulders/run`
+
+Triggers a background scan immediately. Returns `{"status": "success"}` immediately; results
+appear in `GET /api/head-shoulders/results` within a few seconds.
+
+### `POST /api/head-shoulders/backfill`
+
+Triggers a one-time historical backtest over each monitored ticker's full parquet history in the
+background — can take several minutes. Populates `head_shoulders_history` with resolved 14d/30d
+outcomes immediately (since for historical dates the future is already in the parquet), so the
+accuracy panel is populated before relying on live alerts.
+
+### `GET /api/head-shoulders/accuracy`
+
+Returns per-pattern-type (`regular`/`inverse`) prediction accuracy at 14-day and 30-day forward
+horizons, aggregated from `head_shoulders_history`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "patterns": [
+    {"pattern_type": "regular", "total": 12, "resolved_14d": 8, "accuracy_14d": 62.5,
+     "resolved_30d": 8, "accuracy_30d": 75.0}
+  ],
+  "overall": {"total": 20, "resolved_14d": 15, "accuracy_14d": 66.7, "resolved_30d": 15, "accuracy_30d": 73.3}
+}
+```
+
+### `GET /api/head-shoulders/chart/{ticker}`
+
+Returns the ticker's recent daily close series plus its stored pattern geometry (`head_shoulders_results`
+row), for client-side chart overlay of the pattern's five pivot points, neckline, and breakout marker.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "series": {"dates": ["2026-04-01", "..."], "close": [128.0, 129.4]},
+  "pattern": {"ticker": "NVDA", "pattern_type": "regular", "phase": "CONFIRMED", "...": "..."}
 }
 ```
 

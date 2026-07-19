@@ -985,6 +985,57 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS head_shoulders_results (
+                ticker            TEXT PRIMARY KEY,
+                pattern_type      TEXT,
+                phase             TEXT,
+                l_shoulder_date   TEXT,
+                l_shoulder_price  REAL,
+                l_armpit_date     TEXT,
+                l_armpit_price    REAL,
+                head_date         TEXT,
+                head_price        REAL,
+                r_armpit_date     TEXT,
+                r_armpit_price    REAL,
+                r_shoulder_date   TEXT,
+                r_shoulder_price  REAL,
+                neck_slope        REAL,
+                breakout_date     TEXT,
+                breakout_price    REAL,
+                measured_target   REAL,
+                volume_confirms   INTEGER,
+                rsi_divergence    INTEGER,
+                pattern_r2        REAL,
+                prior_trend_pct   REAL,
+                scan_ts           TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS head_shoulders_history (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker                TEXT NOT NULL,
+                pattern_type          TEXT NOT NULL,
+                phase                 TEXT NOT NULL,
+                scan_date             TEXT NOT NULL,
+                scan_ts               TEXT NOT NULL,
+                close_price           REAL,
+                measured_target       REAL,
+                volume_confirms       INTEGER,
+                rsi_divergence        INTEGER,
+                pattern_r2            REAL,
+                prior_trend_pct       REAL,
+                actual_price_14d      REAL,
+                actual_date_14d       TEXT,
+                direction_correct_14d INTEGER,
+                actual_price_30d      REAL,
+                actual_date_30d       TEXT,
+                direction_correct_30d INTEGER,
+                UNIQUE(ticker, scan_date, pattern_type)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS alert_referee_models (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
                 engine         TEXT NOT NULL,

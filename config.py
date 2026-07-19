@@ -261,6 +261,15 @@ DEFAULT_CONFIG = {
             "VETO_THRESHOLD": 0.3,
             "MIN_TRAINING_SAMPLES": 200
         },
+        "HEAD_SHOULDERS": {
+            "ENABLED": False,
+            "REGULAR_ENABLED": True,
+            "INVERSE_ENABLED": True,
+            "MONITOR_PORTFOLIO": True,
+            "MONITOR_WATCHLIST": False,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "22:20"
+        },
         "FORENSIC_QUARTERLY_FETCH": {
             "ENABLED": True,
             "DAY_OF_MONTH": 1,
@@ -361,6 +370,13 @@ DEFAULT_CONFIG = {
             "CAPITULATION_VOL_ZSCORE": 3.0,
             "WYCKOFF_BB_SQUEEZE_PCT": 2.0,
             "PROXY_TICKERS": ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
+        },
+        "HEAD_SHOULDERS_ALERTS": {
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 3.0,
+            "REARM_PERCENT": 5.0,
+            "PRIOR_TREND_MIN_PCT": 8.0,
+            "VOLUME_CONFIRM_MULTIPLIER": 1.5
         },
         "MARKET_STRESS_ALERTS": {
             "COOLDOWN_MINUTES": 1440

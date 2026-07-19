@@ -971,6 +971,84 @@ def run_pairs_spread_monitor_job():
         record_job_run("pairs_spread_monitor_job")
 
 
+def run_head_shoulders_job():
+    from head_shoulders_engine import HeadShouldersEngine, phase_label
+    config = load_config()
+    _mark_job_started(job_label("head_shoulders_job"))
+    conn = None
+    try:
+        conn = get_connection()
+        engine = HeadShouldersEngine(config)
+        results = engine.run_scan()
+
+        if not results:
+            log_sched_notification("Info", "Head & Shoulders Pattern Detector: no candidates found.")
+            return
+
+        orch = IntradayOrchestrator()
+        candidate_tickers = [row["ticker"] for row in results]
+        currency_map = get_ticker_currency_map(candidate_tickers, conn)
+
+        fired = 0
+        for row in results:
+            ticker = row["ticker"]
+            currency = currency_map.get(ticker, "")
+            exchange = time_engine.ticker_exchange(ticker, currency)
+            if not is_quote_settled(exchange, include_premarket=(exchange == "NYSE")):
+                logger.debug("HeadShouldersDetector: %s — %s market closed or quote not yet settled, suppressing alert.", ticker, exchange)
+                continue
+
+            reason = f"HEAD SHOULDERS {row['pattern_type'].upper()} {row['phase']}"
+            severity = abs(row["close_price"] - row["neck_value"]) / row["neck_value"] * 100 if row.get("neck_value") else 0.0
+            suppress = orch._evaluate_alert_gate("HeadShouldersDetector", ticker, severity, reason, conn)
+            if suppress:
+                continue
+
+            label = phase_label(row["pattern_type"], row["phase"])
+            feed_text = (
+                f"**{ticker}** — {label} | Neckline {row.get('neck_value', '—')} | "
+                f"Target {row.get('measured_target', '—')} | Vol confirms: {row.get('volume_confirms')} | "
+                f"RSI divergence: {row.get('rsi_divergence')}"
+            )
+            msg_lines = [
+                f"📐 **HEAD & SHOULDERS: {ticker}** — {label}",
+                "",
+                f"Left shoulder {row.get('l_shoulder_price')} ({row.get('l_shoulder_date')}) | "
+                f"Head {row.get('head_price')} ({row.get('head_date')}) | "
+                f"Right shoulder {row.get('r_shoulder_price')} ({row.get('r_shoulder_date')})",
+                f"Neckline: {row.get('neck_value', '—')} | Measured target: {row.get('measured_target', '—')}",
+                f"Volume confirms: {row.get('volume_confirms')} | RSI divergence: {row.get('rsi_divergence')} | "
+                f"Pattern fit (R²): {row.get('pattern_r2', '—')}",
+            ]
+            if notify("head_shoulders_alert", "HeadShouldersDetector", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
+                orch.record_alert_fired("HeadShouldersDetector", ticker, severity, reason, conn)
+                fired += 1
+
+        log_sched_notification("Success", f"Head & Shoulders Pattern Detector complete — {len(results)} ticker(s) with a candidate, {fired} alert(s) fired.")
+    except Exception as e:
+        logger.error("Head & Shoulders Pattern Detector job failed: %s", e)
+        log_sched_notification("Error", f"Head & Shoulders Pattern Detector job failed: {e}")
+    finally:
+        if conn:
+            conn.close()
+        _mark_job_done(job_label("head_shoulders_job"))
+        record_job_run("head_shoulders_job")
+
+
+def run_head_shoulders_accuracy_fill_job():
+    from head_shoulders_engine import fill_pattern_outcomes
+    _mark_job_started(job_label("head_shoulders_accuracy_fill_job"))
+    try:
+        count = fill_pattern_outcomes()
+        log_sched_notification("Scheduler", f"Head & Shoulders accuracy fill: resolved {count} predictions.")
+    except Exception as e:
+        logger.error("Head & Shoulders accuracy fill job failed: %s", e)
+        log_sched_notification("Error", f"Head & Shoulders accuracy fill job failed: {e}")
+    finally:
+        _mark_job_done(job_label("head_shoulders_accuracy_fill_job"))
+        record_job_run("head_shoulders_accuracy_fill_job")
+
+
 def run_pairs_spread_universe_scan():
     """On-demand only (no scheduler job, no alerting) — a full market-universe correlation
     scan is too expensive to run automatically every night, and firing alerts off a scan the
