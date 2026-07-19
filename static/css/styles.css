@@ -408,6 +408,13 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .column-picker-dropdown .column-picker-menu { max-height: 420px; overflow-y: auto; min-width: 260px; padding: 8px 4px; }
 .column-picker-menu .dropdown-header { font-size: var(--font-size-body); color: #4da6ff; padding: 6px 12px 2px; }
 .column-picker-menu .column-picker-item { padding: 2px 12px 2px 1.5em; }
+.column-picker-menu .view-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px; }
+.column-picker-menu .view-name { cursor: pointer; color: inherit; }
+.column-picker-menu .view-name:hover { color: #4da6ff; }
+.column-picker-menu .view-delete-btn { background: none; border: none; color: #888; font-size: var(--font-size-body); line-height: 1; padding: 0 4px; }
+.column-picker-menu .view-delete-btn:hover { color: #e57373; }
+.column-picker-menu .view-save-row { display: flex; gap: 6px; padding: 8px 12px 4px; }
+.column-picker-menu .view-name-input { flex: 1; min-width: 0; }
 /* --- 12. Report Containers & Briefings --- */
 .report-container { max-width: 1200px; margin: 20px auto; padding: 40px; background-color: #1e1e1e; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border-left: 4px solid #4da6ff; line-height: 1.6; }
 .report-container h1 { color: #4da6ff; margin-bottom: 10px; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: var(--font-size-h1); }

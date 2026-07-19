@@ -762,6 +762,117 @@ def test_watchlist_page_renders_new_optional_columns_for_seeded_ticker(client):
 
 
 @pytest.mark.pages
+def test_watchlist_page_renders_xray_and_earnings_vol_columns_for_seeded_ticker(client):
+    """The stage-2 deferred columns (X-ray beta/annualised vol/dividend yield, Earnings
+    Volatility edge score/implied move) render correctly for a ticker with rows in all three
+    backing tables, using the fixed X-ray benchmark (xray_engine.BENCHMARK_SYMBOL)."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+    from xray_engine import BENCHMARK_SYMBOL
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, composite_score)
+            VALUES ('ZZXRAYVOL', 100.0, 'USD', 'EQUITY', 55)
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO xray_risk_cache (ticker, benchmark, last_updated, beta, annualized_vol) "
+            "VALUES ('ZZXRAYVOL', ?, '2026-07-19', 1.234, 0.256)",
+            (BENCHMARK_SYMBOL,),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO xray_dividend_cache (ticker, data_source, last_updated, dividend_yield_pct, dividend_in_base_currency) "
+            "VALUES ('ZZXRAYVOL', 'YAHOO', '2026-07-19', 3.45, 12.0)"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO earnings_volatility (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct, edge_score, options_volume, last_updated) "
+            "VALUES ('ZZXRAYVOL', '2026-07-25', 4.23, 6.10, 1.87, 500, '2026-07-19')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "ZZXRAYVOL", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        body = resp.text
+        for key in ("xray_beta", "xray_annualized_vol", "xray_dividend_yield", "earnings_edge_score", "earnings_implied_move"):
+            assert f'data-col-key="{key}"' in body
+        row_html = body[body.index('data-ticker="ZZXRAYVOL"'):].split('</tr>')[0]
+        assert "1.23" in row_html       # beta, ratio2
+        assert "25.60%" in row_html     # annualized_vol, fraction -> pct_from_fraction
+        assert "3.5%" in row_html       # xray dividend yield, already-percent -> pct_raw (1 decimal)
+        assert "1.87" in row_html       # earnings edge score, ratio2
+        assert "4.2%" in row_html       # implied move, pct_raw
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZXRAYVOL"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZXRAYVOL'")
+            conn.execute("DELETE FROM xray_risk_cache WHERE ticker = 'ZZXRAYVOL'")
+            conn.execute("DELETE FROM xray_dividend_cache WHERE ticker = 'ZZXRAYVOL'")
+            conn.execute("DELETE FROM earnings_volatility WHERE ticker = 'ZZXRAYVOL'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
+def test_portfolio_and_watchlist_render_views_bootstrap_with_defaults(client):
+    """window.*_VIEWS must be present on both pages and default to the 3 built-in views when
+    nothing has been saved yet — this bootstrap script is unconditional (unlike the toolbar
+    buttons, which only render once the page has content to act on)."""
+    for global_name, url in (("PORTFOLIO_VIEWS", "/portfolio"), ("WATCHLIST_VIEWS", "/watchlist")):
+        resp = client.get(url)
+        assert resp.status_code == 200
+        body = resp.text
+        assert f"window.{global_name} = " in body
+        assert "Technical Signals" in body
+        assert "Position Targets" in body
+        assert 'id="targetFilter"' not in body
+
+
+@pytest.mark.pages
+def test_portfolio_page_renders_views_button_when_holdings_exist(client):
+    """The Views/Columns toolbar (like the pre-existing Columns button) only renders once the
+    Portfolio page has a summary to show — confirm the button appears for a real holding."""
+    from database import create_account, add_transaction, get_connection as _get_conn
+
+    conn = _get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZVIEWSBTN', 50.0, 'USD', 'EQUITY')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    aid = create_account("Views Button Test Account", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZVIEWSBTN", company_name="Views Btn Co",
+                     currency="USD", quantity=2, unit_price=50, exchange_rate=1.0)
+
+    resp = client.get(f"/portfolio?account_id=acct:{aid}")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="viewsPickerToggle"' in body
+    assert 'id="viewsPickerMenu"' in body
+
+
+@pytest.mark.pages
+def test_watchlist_page_renders_views_button(client):
+    resp = client.get("/watchlist")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="viewsPickerToggle"' in body
+    assert 'id="viewsPickerMenu"' in body
+
+
+@pytest.mark.pages
 def test_portfolio_page_renders_watchlist_parity_columns_for_builtin_holding(client):
     """Portfolio previously had no Piotroski/Altman/Beneish/Target Price columns at all, even
     though Watchlist already showed them from the same stock_signals row — this is the parity
@@ -842,9 +953,10 @@ def test_watchlist_filters_only_show_present_values(client):
 
 
 @pytest.mark.pages
-def test_watchlist_target_column_and_filter(client):
-    """A ticker with a Watchlist-account Low/High Target set gets data-has-target="1" and the
-    dynamic 'Has Target Set' filter option appears; without any target set anywhere, it doesn't."""
+def test_watchlist_target_column_no_longer_has_a_filter(client):
+    """The 'Has Target Set' filter dropdown was removed in favor of the Views feature — Low/High
+    Target render as plain always-available columns regardless of whether any ticker has a
+    target set, and #targetFilter must never appear."""
     import database as _db
     from db_accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
 
@@ -871,9 +983,8 @@ def test_watchlist_target_column_and_filter(client):
         resp = client.get("/watchlist")
         assert resp.status_code == 200
         body = resp.text
-        assert 'id="targetFilter"' in body
-        assert 'value="HAS_TARGET"' in body
-        assert 'data-has-target="1"' in body
+        assert 'id="targetFilter"' not in body
+        assert 'data-has-target' not in body
         assert "40.00" in body and "60.00" in body
     finally:
         conn = _db.get_connection()

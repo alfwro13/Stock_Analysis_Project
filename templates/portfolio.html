@@ -22,6 +22,7 @@ window.EMBED_MODE = {% if embed %}true{% else %}false{% endif %};
 window.EMBED_TOKEN = {{ embed_token | tojson }};
 window.PORTFOLIO_COLUMNS = {{ all_columns | tojson }};
 window.PORTFOLIO_COLUMN_PREFS = {{ column_prefs | tojson }};
+window.PORTFOLIO_VIEWS = {{ views | tojson }};
 </script>
 
 {% if not embed %}
@@ -50,6 +51,10 @@ window.PORTFOLIO_COLUMN_PREFS = {{ column_prefs | tojson }};
         <a href="#" id="heatmap-link" class="xray-link-btn ms-2" onclick="toggleHeatmap(); return false;">&#9638; Heatmap</a>
         <a href="/score-history?filter=portfolio&ref=/portfolio" class="xray-link-btn ms-2">&#128200; Score History</a>
         <a href="/performance-analytics" class="xray-link-btn ms-2">&#128202; Tearsheet</a>
+        <div class="dropdown ms-2 column-picker-dropdown">
+            <a href="#" class="xray-link-btn dropdown-toggle" id="viewsPickerToggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">&#128065; Views</a>
+            <div class="dropdown-menu column-picker-menu" id="viewsPickerMenu" aria-labelledby="viewsPickerToggle"></div>
+        </div>
         <div class="dropdown ms-2 column-picker-dropdown">
             <a href="#" class="xray-link-btn dropdown-toggle" id="columnPickerToggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">&#128203; Columns</a>
             <div class="dropdown-menu column-picker-menu" id="columnPickerMenu" aria-labelledby="columnPickerToggle"></div>

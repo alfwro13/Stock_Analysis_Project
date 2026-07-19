@@ -1104,6 +1104,35 @@ def test_post_ui_preferences_columns_rejects_invalid_scope(client):
 
 
 @pytest.mark.api
+def test_post_ui_preferences_views_persists_portfolio_scope(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/views", json={
+            "scope": "portfolio",
+            "views": [{"name": "My View", "columns": ["ticker", "price", "score"]}],
+        })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {
+        "PORTFOLIO_VIEWS": [{"name": "My View", "columns": ["ticker", "price", "score"]}],
+    }})
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_persists_watchlist_scope(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/views", json={"scope": "watchlist", "views": []})
+    assert resp.status_code == 200
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {"WATCHLIST_VIEWS": []}})
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_rejects_invalid_scope(client):
+    resp = client.post("/api/ui-preferences/views", json={"scope": "bogus", "views": []})
+    assert resp.status_code == 400
+    assert resp.json()["status"] == "error"
+
+
+@pytest.mark.api
 def test_post_learn_session_with_study_all_includes_locked_levels(client):
     import database as _db
     conn = _db.get_connection()

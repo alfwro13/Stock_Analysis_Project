@@ -40,16 +40,9 @@ $(document).ready(function () {
 
     var allCols = window.WATCHLIST_COLUMNS || [];
     var colPrefs = window.WATCHLIST_COLUMN_PREFS || { hidden_core_columns: [], shown_optional_columns: [] };
-    // Piotroski/Altman/Beneish default visible, Low/High Target default hidden — matches
-    // #targetFilter's "All Rows" starting state; kept in sync with the AND-merge below.
-    var filterLinkedKeys = { piotroski: true, altman_z: true, beneish_m: true, low_target: false, high_target: false };
     var hiddenIndices = [];
     allCols.forEach(function (col, idx) {
-        var visible = ColumnPicker.resolveVisible(col.key, allCols, colPrefs);
-        if (Object.prototype.hasOwnProperty.call(filterLinkedKeys, col.key)) {
-            visible = visible && filterLinkedKeys[col.key];
-        }
-        if (!visible) hiddenIndices.push(idx);
+        if (!ColumnPicker.resolveVisible(col.key, allCols, colPrefs)) hiddenIndices.push(idx);
     });
 
     var table = $('#dataTable').DataTable({
@@ -75,8 +68,10 @@ $(document).ready(function () {
         prefs: colPrefs,
         menuId: 'columnPickerMenu'
     });
-    Object.keys(filterLinkedKeys).forEach(function (key) {
-        picker.applyFilterOverride(key, filterLinkedKeys[key]);
+    ColumnPicker.initViewsMenu(picker, {
+        scope: 'watchlist',
+        menuId: 'viewsPickerMenu',
+        views: window.WATCHLIST_VIEWS
     });
 
     applyStickyTheadOffset();
@@ -148,24 +143,6 @@ $(document).ready(function () {
 
     $('#sectorFilter').on('change', function () {
         sectorSelected = $(this).val();
-        table.draw();
-    });
-
-    var targetOnly = false;
-    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-        if (settings.nTable.id !== 'dataTable') return true;
-        if (!targetOnly) return true;
-        var node = table.row(dataIndex).node();
-        return Boolean(node) && node.dataset.hasTarget === '1';
-    });
-
-    $('#targetFilter').on('change', function () {
-        targetOnly = $(this).val() === 'HAS_TARGET';
-        picker.applyFilterOverride('piotroski', !targetOnly);
-        picker.applyFilterOverride('altman_z', !targetOnly);
-        picker.applyFilterOverride('beneish_m', !targetOnly);
-        picker.applyFilterOverride('low_target', targetOnly);
-        picker.applyFilterOverride('high_target', targetOnly);
         table.draw();
     });
 });
