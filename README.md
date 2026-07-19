@@ -155,6 +155,8 @@ The interface uses **Bootstrap 5.3** with the **DataTables Responsive** extensio
 
 The portfolio page additionally adapts to narrow screens (≤ 768 px): the macro-index cards collapse to two compact rows of four (hiding UK 10Y Gilt and US 30Y Yield); the summary strip shows Total Investment, Market Value, and P&L in a three-column grid; the yield-threat bar stacks US above UK; and the holdings table shows only the five most essential columns (Ticker, Price, Change, Global Value, Global P&L). Tapping any row slides open a detail panel with Company Name, 50-day and 200-day trends, Sentiment, Score, Setups/Tags, and Signal — one row at a time.
 
+On desktop, both the Portfolio and Watchlist tables offer a **🔖 Columns** picker (in the page toolbar) for choosing exactly which columns are visible, grouped by category — Fundamentals, Technicals, Classification, Scores, Targets, and Position Sizing — on top of the standard column set. The selection is saved per-page and follows you across browsers/devices. The table header also stays pinned to the top of the viewport while scrolling, using the browser's own scrollbar (no separate inner scroll area). Both features are desktop-only; on a phone the table keeps its normal Responsive collapse behavior described above.
+
 ## **🏠 Home Assistant & iFrame Integration (Embed Mode)**
 
 If you want to display your Portfolio or Watchlist on an external dashboard (such as Home Assistant, MagicMirror, or Grafana), you can use the built-in **Embed Mode**.

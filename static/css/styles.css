@@ -398,6 +398,16 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .dataTables_wrapper .dataTables_paginate .paginate_button { color: #ccc !important; border: 1px solid transparent !important; margin: 0 2px; }
 .dataTables_wrapper .dataTables_paginate .paginate_button.current, .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover { background: #4da6ff !important; color: #121212 !important; border: none !important; border-radius: 4px; }
 .dataTables_wrapper .dataTables_paginate .paginate_button:hover { background: #3388dd !important; color: #fff !important; border-radius: 4px; }
+@media (min-width: 769px) {
+  #dataTable thead th, #dataTable thead td {
+    position: sticky;
+    top: var(--sticky-thead-top, 60px);
+    z-index: 500;
+  }
+}
+.column-picker-dropdown .column-picker-menu { max-height: 420px; overflow-y: auto; min-width: 260px; padding: 8px 4px; }
+.column-picker-menu .dropdown-header { font-size: var(--font-size-body); color: #4da6ff; padding: 6px 12px 2px; }
+.column-picker-menu .column-picker-item { padding: 2px 12px; }
 /* --- 12. Report Containers & Briefings --- */
 .report-container { max-width: 1200px; margin: 20px auto; padding: 40px; background-color: #1e1e1e; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border-left: 4px solid #4da6ff; line-height: 1.6; }
 .report-container h1 { color: #4da6ff; margin-bottom: 10px; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: var(--font-size-h1); }
@@ -871,8 +881,10 @@ table.dataTable tbody tr td { color: #ccc; }
 .ps-headline .ps-label { color: #ccd; font-weight: 600; font-size: 15px; }
 .ps-shares { font-size: 17px; font-weight: 700; color: #6cbf6c; letter-spacing: 0.3px; }
 /* ─────────── Position Sizing — Table Cells (Watchlist / Portfolio) ─────────── */
-.ps-cell, .ps-cell-shares { text-align: right; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 13px; color: #cce0ff; }
+.ps-cell, .ps-cell-shares, .ps-cell-stop, .ps-cell-risk { text-align: right; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: var(--font-size-dt-table); color: #cce0ff; }
 .ps-cell-shares { font-weight: 600; color: #b8d8b8; }
+.ps-cell-stop { color: #e0b8b8; }
+.ps-cell-risk { color: #e0c8a0; }
 /* ─────────── Position Sizing — Split Grid & Explanation ─────────── */
 .ps-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; align-items: stretch; }
 .ps-explanation { background: rgba(0, 0, 0, 0.25); padding: 16px; border-radius: 6px; border-left: 3px solid #00ffcc; font-size: 13px; color: #ccc; line-height: 1.5; }

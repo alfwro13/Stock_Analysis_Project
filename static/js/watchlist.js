@@ -1,32 +1,56 @@
 function renderPositionSizing() {
     document.querySelectorAll(".ps-cell").forEach(function (cell) {
+        const row = cell.closest("tr");
         const entryPrice = parseFloat(cell.dataset.entryPrice);
         const atrPctRaw = cell.dataset.atrPct;
         const atrPct = atrPctRaw === "" ? null : parseFloat(atrPctRaw);
         const currency = cell.dataset.currency || "USD";
 
         const result = window.PositionSizing.calculateForRow(entryPrice, atrPct, currency);
+        const sharesCell = row ? row.querySelector('[data-col-key="shares"]') : null;
+        const stopCell = row ? row.querySelector('[data-col-key="stop_price"]') : null;
+        const riskCell = row ? row.querySelector('[data-col-key="risk_amount"]') : null;
 
         if (result.positionValue != null && result.shares != null && result.shares > 0) {
             cell.textContent = window.PositionSizing.formatCurrency(result.positionValue, window.BASE_CURRENCY);
             cell.setAttribute("data-sort", result.positionValue);
-            const sharesCell = cell.nextElementSibling;
-            if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
+            if (sharesCell) {
                 sharesCell.textContent = result.shares.toLocaleString();
                 sharesCell.setAttribute("data-sort", result.shares);
             }
+            if (stopCell) {
+                stopCell.textContent = window.PositionSizing.formatCurrency(result.stopPrice, currency);
+                stopCell.setAttribute("data-sort", result.stopPrice);
+            }
+            if (riskCell) {
+                riskCell.textContent = window.PositionSizing.formatCurrency(result.riskAmount, window.BASE_CURRENCY);
+                riskCell.setAttribute("data-sort", result.riskAmount);
+            }
         } else {
             cell.textContent = "—";
-            const sharesCell = cell.nextElementSibling;
-            if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
-                sharesCell.textContent = "—";
-            }
+            if (sharesCell) sharesCell.textContent = "—";
+            if (stopCell) stopCell.textContent = "—";
+            if (riskCell) riskCell.textContent = "—";
         }
     });
 }
 
 $(document).ready(function () {
     renderPositionSizing();
+
+    var allCols = window.WATCHLIST_COLUMNS || [];
+    var colPrefs = window.WATCHLIST_COLUMN_PREFS || { hidden_core_columns: [], shown_optional_columns: [] };
+    // Piotroski/Altman/Beneish default visible, Low/High Target default hidden — matches
+    // #targetFilter's "All Rows" starting state; kept in sync with the AND-merge below.
+    var filterLinkedKeys = { piotroski: true, altman_z: true, beneish_m: true, low_target: false, high_target: false };
+    var hiddenIndices = [];
+    allCols.forEach(function (col, idx) {
+        var visible = ColumnPicker.resolveVisible(col.key, allCols, colPrefs);
+        if (Object.prototype.hasOwnProperty.call(filterLinkedKeys, col.key)) {
+            visible = visible && filterLinkedKeys[col.key];
+        }
+        if (!visible) hiddenIndices.push(idx);
+    });
 
     var table = $('#dataTable').DataTable({
         responsive: true,
@@ -39,10 +63,24 @@ $(document).ready(function () {
             { responsivePriority: 2, targets: -1 },   // Signal — always visible
             { responsivePriority: 3, targets: 2 },    // Price
             { responsivePriority: 4, targets: 16 },    // Score
-            { visible: false, targets: [20, 21] }     // Low/High Target — shown only via targetFilter
+            { visible: false, targets: hiddenIndices }
         ]
     });
     window._watchlistTable = table;
+
+    var picker = ColumnPicker.init({
+        table: table,
+        scope: 'watchlist',
+        allColumns: allCols,
+        prefs: colPrefs,
+        menuId: 'columnPickerMenu'
+    });
+    Object.keys(filterLinkedKeys).forEach(function (key) {
+        picker.applyFilterOverride(key, filterLinkedKeys[key]);
+    });
+
+    applyStickyTheadOffset();
+    window.addEventListener('resize', applyStickyTheadOffset);
 
     try { if (localStorage.getItem('watchlist_heatmap_active')) _wlEnterHeatmapMode(); } catch (e) {}
 
@@ -123,11 +161,11 @@ $(document).ready(function () {
 
     $('#targetFilter').on('change', function () {
         targetOnly = $(this).val() === 'HAS_TARGET';
-        table.column(17).visible(!targetOnly);
-        table.column(18).visible(!targetOnly);
-        table.column(19).visible(!targetOnly);
-        table.column(20).visible(targetOnly);
-        table.column(21).visible(targetOnly);
+        picker.applyFilterOverride('piotroski', !targetOnly);
+        picker.applyFilterOverride('altman_z', !targetOnly);
+        picker.applyFilterOverride('beneish_m', !targetOnly);
+        picker.applyFilterOverride('low_target', targetOnly);
+        picker.applyFilterOverride('high_target', targetOnly);
         table.draw();
     });
 });

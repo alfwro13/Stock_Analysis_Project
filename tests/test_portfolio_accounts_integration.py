@@ -149,7 +149,7 @@ def test_change_period_defaults_to_1d_and_renders_change_header(client):
     resp = client.get(f"/portfolio?account_id=acct:{aid}")
     assert resp.status_code == 200
     assert 'window.PORTFOLIO_CHANGE_PERIOD = "1d";' in resp.text
-    assert "<th>Change</th>" in resp.text
+    assert '<th data-col-key="change">Change</th>' in resp.text
     assert "<th>Daily Change</th>" not in resp.text
 
 

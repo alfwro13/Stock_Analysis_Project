@@ -700,6 +700,103 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
 
 
 @pytest.mark.pages
+def test_portfolio_and_watchlist_thead_th_count_matches_column_registry(client):
+    """Regression guard against PORTFOLIO_CORE_COLUMNS/WATCHLIST_CORE_COLUMNS (hand-maintained,
+    must mirror the templates' hardcoded <thead> order) drifting from the real rendered markup."""
+    import table_columns_helpers as tch
+
+    for page, url in (("portfolio", "/portfolio"), ("watchlist", "/watchlist")):
+        resp = client.get(url)
+        assert resp.status_code == 200
+        rendered = resp.text.count("data-col-key=")
+        # Body rows also carry data-col-key on optional <td>s, but the count of distinct <th>
+        # entries is what column_picker.js indexes against — check the <thead> slice only.
+        thead = resp.text[resp.text.index("<thead>"):resp.text.index("</thead>")]
+        th_count = thead.count("data-col-key=")
+        assert th_count == len(tch.all_columns_for_page(page)), (
+            f"{page}: rendered {th_count} <th data-col-key> but registry has "
+            f"{len(tch.all_columns_for_page(page))} columns"
+        )
+
+
+@pytest.mark.pages
+def test_watchlist_page_renders_new_optional_columns_for_seeded_ticker(client):
+    """New optional Watchlist columns (Fundamentals + Watchlist's Exit Target parity gap) render
+    with the correct GBp-aware/percent formatting for a seeded ticker."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO stock_signals (
+                ticker, current_price, currency, quote_type, composite_score, sector,
+                trailing_pe, roe
+            ) VALUES ('ZZOPTCOL', 500.0, 'GBp', 'EQUITY', 55, 'Technology', 18.5, 0.20)
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "ZZOPTCOL", currency="GBp", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'data-col-key="trailing_pe"' in body
+        assert 'data-col-key="roe"' in body
+        assert 'data-col-key="vp_exit_zone"' in body
+        row_html = body[body.index('data-ticker="ZZOPTCOL"'):].split('</tr>')[0]
+        assert '18.50' in row_html
+        assert '20.00%' in row_html
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZOPTCOL"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZOPTCOL'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
+def test_portfolio_page_renders_watchlist_parity_columns_for_builtin_holding(client):
+    """Portfolio previously had no Piotroski/Altman/Beneish/Target Price columns at all, even
+    though Watchlist already showed them from the same stock_signals row — this is the parity
+    gap the optional-columns catalog closes."""
+    from database import create_account, add_transaction, get_connection as _get_conn
+
+    conn = _get_conn()
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO stock_signals (
+                ticker, current_price, currency, quote_type, composite_score,
+                piotroski_f_score, altman_z_score, beneish_m_score, target_price
+            ) VALUES ('ZZPGPARITY', 50.0, 'USD', 'EQUITY', 60, 7, 3.2, -2.1, 65.0)
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+    aid = create_account("Parity Test Account", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPGPARITY", company_name="Parity Co",
+                     currency="USD", quantity=2, unit_price=50, exchange_rate=1.0)
+
+    resp = client.get(f"/portfolio?account_id=acct:{aid}")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'data-col-key="piotroski_f_score"' in body
+    assert 'data-col-key="altman_z_score"' in body
+    assert 'data-col-key="beneish_m_score"' in body
+    assert 'data-col-key="target_price"' in body
+    row_html = body[body.index('data-ticker="ZZPGPARITY"'):].split('</tr>')[0]
+    assert '>7</td>' in row_html
+    assert '$65.00' in row_html
+
+
+@pytest.mark.pages
 def test_watchlist_filters_only_show_present_values(client):
     """Filter dropdowns must only offer options with at least one matching row — an option with
     zero matches would filter the table down to nothing for no useful reason."""

@@ -1066,6 +1066,44 @@ def test_post_learn_preference_with_both_fields_persists_both(client):
 
 
 @pytest.mark.api
+def test_post_ui_preferences_columns_persists_portfolio_scope(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/columns", json={
+            "scope": "portfolio",
+            "hidden_core_columns": ["sentiment"],
+            "shown_optional_columns": ["trailing_pe", "beta"],
+        })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {
+        "PORTFOLIO_HIDDEN_CORE_COLUMNS": ["sentiment"],
+        "PORTFOLIO_SHOWN_OPTIONAL_COLUMNS": ["trailing_pe", "beta"],
+    }})
+
+
+@pytest.mark.api
+def test_post_ui_preferences_columns_persists_watchlist_scope(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/columns", json={
+            "scope": "watchlist",
+            "hidden_core_columns": [],
+            "shown_optional_columns": ["market_cap"],
+        })
+    assert resp.status_code == 200
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {
+        "WATCHLIST_HIDDEN_CORE_COLUMNS": [],
+        "WATCHLIST_SHOWN_OPTIONAL_COLUMNS": ["market_cap"],
+    }})
+
+
+@pytest.mark.api
+def test_post_ui_preferences_columns_rejects_invalid_scope(client):
+    resp = client.post("/api/ui-preferences/columns", json={"scope": "bogus"})
+    assert resp.status_code == 400
+    assert resp.json()["status"] == "error"
+
+
+@pytest.mark.api
 def test_post_learn_session_with_study_all_includes_locked_levels(client):
     import database as _db
     conn = _db.get_connection()

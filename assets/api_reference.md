@@ -322,6 +322,28 @@ Synchronises the local market universe with Freetrade's securities list via ISIN
 
 ---
 
+### `POST /api/ui-preferences/columns`
+
+Persists the Portfolio/Watchlist "Columns" picker's selection — which of that page's core columns are hidden, and which of the optional columns (from `table_columns_helpers.OPTIONAL_COLUMNS`) are shown. No confirm token required, same as `/api/learn/preference`.
+
+**Request body**
+
+```json
+{
+  "scope": "portfolio",
+  "hidden_core_columns": ["sentiment"],
+  "shown_optional_columns": ["trailing_pe", "beta", "market_cap"]
+}
+```
+
+`scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_HIDDEN_CORE_COLUMNS` / `UI_PREFERENCES.{SCOPE}_SHOWN_OPTIONAL_COLUMNS` in `config.json`, read back by `page_routes.portfolio_page()`/`watchlist_page()` on next load to compute each column's initial visibility.
+
+```json
+{"status": "success"}
+```
+
+---
+
 ## 4. Data Refresh
 
 ### `POST /api/data/refresh-single`

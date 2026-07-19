@@ -34,3 +34,10 @@ function showTableError(tableSelector, colSpan) {
         '<tr><td colspan="' + colSpan + '" class="table-error-cell">⚠️ Failed to load data. Please refresh the page or try again.</td></tr>'
     );
 }
+
+function applyStickyTheadOffset() {
+    var navbar = document.querySelector('.app-navbar');
+    if (navbar) {
+        document.documentElement.style.setProperty('--sticky-thead-top', navbar.getBoundingClientRect().height + 'px');
+    }
+}

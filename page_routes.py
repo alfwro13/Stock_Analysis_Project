@@ -55,6 +55,7 @@ from visuals_ai import (
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from quant_signals import get_candlestick_patterns
+import table_columns_helpers
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
 from page_helpers import (
     _load_fundamentals_extra,
@@ -249,6 +250,13 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                    q.close_price as quant_close_price,
                    q.vp_entry_zone,
                    q.vp_exit_zone,
+                   q.macd, q.macd_signal, q.macd_hist, q.sma_200,
+                   q.week52_pct, q.anomaly_score, q.vp_poc, q.vp_val, q.vp_vah,
+                   q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
+                   q.price_q10, q.price_q90, q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
+                   q.rel_strength_5d, q.rel_strength_20d, q.hist_vol_20, q.volume,
+                   ap.industry, mu.index_membership,
+                   tmeta.market_cap,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -260,6 +268,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
             LEFT JOIN market_universe mu ON s.ticker = mu.ticker
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
+            LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN quant_signals q ON s.ticker = q.ticker
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
         """)
@@ -346,6 +355,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
         change_period = "1d"
     show_extended = request.cookies.get("portfolio_show_extended", "false") == "true"
 
+    from db_accounts import get_all_holding_price_limits
+    all_holding_limits = get_all_holding_price_limits()
+
     for row_dict in portfolio_data:
         row_dict['market_value_base'] = None
         row_dict['global_market_value'] = None
@@ -399,6 +411,26 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             row_dict['global_unrealized_pnl'] = round(pnl_in_base, 2)
             row_dict['global_unrealized_pnl_pct'] = round((pnl_in_base / cost_in_base) * 100, 2) if cost_in_base else None
 
+        row_dict['quality_grade'] = compute_quality_grade(row_dict)
+
+        acct_ids = []
+        if asset:
+            for acc in asset.get('accounts', []):
+                raw_id = acc.get('id', '')
+                if isinstance(raw_id, str) and raw_id.startswith('acct:') and (account_id == "all" or raw_id == account_id):
+                    try:
+                        acct_ids.append(int(raw_id[len('acct:'):]))
+                    except ValueError:
+                        pass
+        lows = {all_holding_limits.get((aid, row_dict['ticker']), {}).get('low_limit') for aid in acct_ids}
+        lows.discard(None)
+        highs = {all_holding_limits.get((aid, row_dict['ticker']), {}).get('high_limit') for aid in acct_ids}
+        highs.discard(None)
+        row_dict['low_target'] = next(iter(lows)) if len(lows) == 1 else None
+        row_dict['high_target'] = next(iter(highs)) if len(highs) == 1 else None
+
+        row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "portfolio")
+
     if summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
         summary_math["pnl_pct"] = (summary_math["pnl"] / summary_math["cost"]) * 100
@@ -411,6 +443,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
         }
     else:
         formatted_summary = None
+
+    optional_columns = table_columns_helpers.columns_for_page("portfolio")
+    column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "portfolio")
 
     return templates.TemplateResponse(
         request=request, name="portfolio.html",
@@ -429,7 +464,10 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "macro_regime": macro_regime,
             "position_sizing": position_sizing_context,
             "change_period": change_period,
-            "show_extended": show_extended
+            "show_extended": show_extended,
+            "optional_columns": optional_columns,
+            "all_columns": table_columns_helpers.all_columns_for_page("portfolio"),
+            "column_prefs": column_prefs
         }
     )
 
@@ -621,6 +659,12 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                    q.vp_entry_zone,
                    q.vp_exit_zone,
                    q.sma_200,
+                   q.macd, q.macd_signal, q.macd_hist,
+                   q.week52_pct, q.anomaly_score, q.vp_poc, q.vp_val, q.vp_vah,
+                   q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
+                   q.price_q10, q.price_q90, q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
+                   q.rel_strength_5d, q.rel_strength_20d, q.hist_vol_20, q.volume,
+                   ap.industry, m.index_membership,
                    m.is_freetrade,
                    tmeta.market_cap,
                    trap.phase as trap_phase,
@@ -697,6 +741,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             row_dict['low_target'] = limits.get('low_limit')
             row_dict['high_target'] = limits.get('high_limit')
 
+            row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "watchlist")
+
             watchlist_data.append(row_dict)
 
     watchlist_data.sort(key=lambda x: x['ticker'])
@@ -736,6 +782,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
     position_sizing_context = _build_position_sizing_context(config_data, db_rows)
+    optional_columns = table_columns_helpers.columns_for_page("watchlist")
+    column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "watchlist")
 
     return templates.TemplateResponse(
         request=request, name="watchlist.html",
@@ -753,7 +801,10 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
             "freetrade_only": freetrade_only,
-            "position_sizing": position_sizing_context
+            "position_sizing": position_sizing_context,
+            "optional_columns": optional_columns,
+            "all_columns": table_columns_helpers.all_columns_for_page("watchlist"),
+            "column_prefs": column_prefs
         }
     )
 
