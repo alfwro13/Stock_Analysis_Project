@@ -49,7 +49,15 @@ window.AdvancedFilter = (function () {
         var bodyEl = document.getElementById(opts.bodyId);
         var bsModal = modalEl ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
         var conditions = [];
+        var logic = 'AND';
         var draft = [];
+        var draftLogic = 'AND';
+
+        function normalizeFilterSpec(raw) {
+            if (Array.isArray(raw)) return { logic: 'AND', conditions: raw };
+            if (raw && Array.isArray(raw.conditions)) return { logic: raw.logic === 'OR' ? 'OR' : 'AND', conditions: raw.conditions };
+            return { logic: 'AND', conditions: [] };
+        }
 
         function columnByKey(key) {
             return allColumns.find(function (c) { return c.key === key; });
@@ -67,15 +75,14 @@ window.AdvancedFilter = (function () {
         function loadFromStorage() {
             try {
                 var raw = localStorage.getItem(storageKey);
-                var parsed = raw ? JSON.parse(raw) : [];
-                return Array.isArray(parsed) ? parsed : [];
+                return raw ? JSON.parse(raw) : [];
             } catch (e) {
                 return [];
             }
         }
 
-        function saveToStorage(conds) {
-            try { localStorage.setItem(storageKey, JSON.stringify(conds)); } catch (e) {}
+        function saveToStorage(spec) {
+            try { localStorage.setItem(storageKey, JSON.stringify(spec)); } catch (e) {}
         }
 
         function cellFor(dataIndex, key) {
@@ -151,6 +158,7 @@ window.AdvancedFilter = (function () {
         $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
             if (settings.nTable.id !== 'dataTable') return true;
             if (!conditions.length) return true;
+            if (logic === 'OR') return conditions.some(function (c) { return evaluateCondition(c, dataIndex); });
             return conditions.every(function (c) { return evaluateCondition(c, dataIndex); });
         });
 
@@ -162,7 +170,7 @@ window.AdvancedFilter = (function () {
         if (anchor) anchor.appendChild(btn);
 
         function refreshButton() {
-            btn.textContent = conditions.length ? ('🔍 Filter (' + conditions.length + ')') : '🔍 Filter';
+            btn.textContent = conditions.length ? ('🔍 Filter (' + conditions.length + (logic === 'OR' ? ', OR' : '') + ')') : '🔍 Filter';
         }
 
         function valueInputsHtml(idx, cond, family) {
@@ -218,11 +226,28 @@ window.AdvancedFilter = (function () {
                 '</div>';
         }
 
+        function logicRowHtml() {
+            if (draft.length < 2) return '';
+            return '<div class="adv-filter-logic-row">' +
+                '<label>Match</label>' +
+                '<select class="form-select form-select-sm adv-logic-select">' +
+                '<option value="AND"' + (draftLogic === 'AND' ? ' selected' : '') + '>all conditions (AND)</option>' +
+                '<option value="OR"' + (draftLogic === 'OR' ? ' selected' : '') + '>any condition (OR)</option>' +
+                '</select>' +
+                '</div>';
+        }
+
         function renderRows() {
             if (!bodyEl) return;
-            bodyEl.innerHTML = draft.map(rowHtml).join('') +
+            bodyEl.innerHTML = logicRowHtml() + draft.map(rowHtml).join('') +
                 '<button type="button" class="btn btn-sm btn-outline-primary adv-filter-add-btn">+ Add Condition</button>';
 
+            var logicSel = bodyEl.querySelector('.adv-logic-select');
+            if (logicSel) {
+                logicSel.addEventListener('change', function () {
+                    draftLogic = logicSel.value;
+                });
+            }
             bodyEl.querySelectorAll('.adv-col-select').forEach(function (sel) {
                 sel.addEventListener('change', function () {
                     var idx = parseInt(sel.dataset.idx, 10);
@@ -273,15 +298,17 @@ window.AdvancedFilter = (function () {
             return cond.value !== '' && cond.value !== undefined && cond.value !== null;
         }
 
-        function applyFilter(conds, persist) {
-            conditions = (conds || []).slice();
+        function applyFilter(rawSpec, persist) {
+            var spec = normalizeFilterSpec(rawSpec);
+            logic = spec.logic;
+            conditions = spec.conditions.slice();
             table.draw();
             refreshButton();
-            if (persist !== false) saveToStorage(conditions);
+            if (persist !== false) saveToStorage({ logic: logic, conditions: conditions });
         }
 
         function getCurrentFilter() {
-            return conditions.length ? conditions.slice() : null;
+            return conditions.length ? { logic: logic, conditions: conditions.slice() } : null;
         }
 
         if (modalEl) {
@@ -289,14 +316,15 @@ window.AdvancedFilter = (function () {
             var clearBtn = modalEl.querySelector('.adv-filter-clear-btn');
             if (applyBtn) {
                 applyBtn.addEventListener('click', function () {
-                    applyFilter(draft.filter(isConditionUsable));
+                    applyFilter({ logic: draftLogic, conditions: draft.filter(isConditionUsable) });
                     bsModal.hide();
                 });
             }
             if (clearBtn) {
                 clearBtn.addEventListener('click', function () {
                     draft = [];
-                    applyFilter([]);
+                    draftLogic = 'AND';
+                    applyFilter({ logic: 'AND', conditions: [] });
                     renderRows();
                     bsModal.hide();
                 });
@@ -305,6 +333,7 @@ window.AdvancedFilter = (function () {
 
         btn.addEventListener('click', function () {
             draft = conditions.length ? conditions.map(function (c) { return Object.assign({}, c); }) : [defaultRow()];
+            draftLogic = logic;
             renderRows();
             if (bsModal) bsModal.show();
         });

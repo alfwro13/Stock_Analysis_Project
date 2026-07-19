@@ -130,6 +130,26 @@ window.ColumnPicker = (function () {
         };
     }
 
+    function _columnSetsEqual(a, b) {
+        if (a.length !== b.length) return false;
+        const setA = new Set(a);
+        return b.every(function (k) { return setA.has(k); });
+    }
+
+    function _filtersEqual(a, b) {
+        const fa = a || null, fb = b || null;
+        if (!fa && !fb) return true;
+        if (!fa || !fb) return false;
+        if (fa.logic !== fb.logic) return false;
+        const ca = fa.conditions || [], cb = fb.conditions || [];
+        if (ca.length !== cb.length) return false;
+        return ca.every(function (x, i) {
+            const y = cb[i];
+            return x.key === y.key && x.operator === y.operator &&
+                (x.value || '') === (y.value || '') && (x.value2 || '') === (y.value2 || '');
+        });
+    }
+
     function initViewsMenu(picker, opts) {
         const scope = opts.scope;
         const menuEl = document.getElementById(opts.menuId);
@@ -143,12 +163,20 @@ window.ColumnPicker = (function () {
             }).catch(function () {});
         }
 
+        function isViewActive(view) {
+            if (!_columnSetsEqual(picker.getCurrentVisibleKeys(), view.columns || [])) return false;
+            const extra = (typeof opts.getExtraViewData === 'function') ? opts.getExtraViewData() : {};
+            return _filtersEqual(extra.filter, view.filter);
+        }
+
         function renderMenu() {
             if (!menuEl) return;
             let html = '';
             views.forEach(function (view, idx) {
-                html += '<div class="dropdown-item-text view-item">' +
-                    '<span class="view-name" role="button" data-idx="' + idx + '">' + escapeHtml(view.name) + '</span>' +
+                const active = isViewActive(view);
+                html += '<div class="dropdown-item-text view-item' + (active ? ' view-item-active' : '') + '">' +
+                    '<span class="view-name" role="button" data-idx="' + idx + '">' + escapeHtml(view.name) +
+                    (active ? ' <span class="view-active-badge">&#10003; Active</span>' : '') + '</span>' +
                     '<button type="button" class="view-delete-btn" data-idx="' + idx + '" aria-label="Delete view">&times;</button>' +
                     '</div>';
             });
@@ -165,11 +193,14 @@ window.ColumnPicker = (function () {
                     if (!view) return;
                     picker.applyView(view.columns);
                     if (typeof opts.onApplyView === 'function') opts.onApplyView(view);
+                    renderMenu();
                 });
             });
             menuEl.querySelectorAll('.view-delete-btn').forEach(function (btn) {
                 btn.addEventListener('click', function (e) {
                     e.stopPropagation();
+                    const view = views[parseInt(btn.dataset.idx, 10)];
+                    if (!view || !confirm('Delete the view "' + view.name + '"? This cannot be undone.')) return;
                     views.splice(parseInt(btn.dataset.idx, 10), 1);
                     saveViews();
                     renderMenu();
@@ -195,6 +226,9 @@ window.ColumnPicker = (function () {
                 });
             }
         }
+
+        const dropdownEl = menuEl ? menuEl.closest('.dropdown') : null;
+        if (dropdownEl) dropdownEl.addEventListener('show.bs.dropdown', renderMenu);
 
         renderMenu();
     }
