@@ -17,6 +17,12 @@ function _hsChartHeight() {
     return window.innerWidth < 768 ? 400 : 420;
 }
 
+function toggleFullscreen(wrapperId) {
+    ChartFullscreen.toggle(wrapperId, { getHeight: _hsChartHeight });
+}
+
+let _hsPendingTicker = null;
+
 function _hsRenderPatternsTable(results) {
     const tbody = document.getElementById('hs-patterns-body');
     const empty = document.getElementById('hs-patterns-empty');
@@ -49,7 +55,6 @@ function _hsRenderPatternsTable(results) {
 }
 
 function _hsOpenDetail(row) {
-    const panel = document.getElementById('hs-detail-panel');
     document.getElementById('hs-detail-ticker').textContent = row.ticker;
     document.getElementById('hs-detail-body').innerHTML = `
         <p class="text-muted text-sm mb-1">
@@ -63,17 +68,20 @@ function _hsOpenDetail(row) {
             ${row.breakout_date ? ` | Breakout: ${row.breakout_price} on ${row.breakout_date}` : ''}
         </p>
     `;
-    panel.style.display = 'block';
-    _hsLoadChart(row.ticker);
-}
 
-function _hsLoadChart(ticker) {
     const chartEl = document.getElementById('hs-detail-chart');
     if (chartEl.dataset.hasChart === '1' && window.Plotly) {
         Plotly.purge(chartEl);
         chartEl.dataset.hasChart = '';
     }
     chartEl.innerHTML = '<p class="text-muted p-3">Loading chart…</p>';
+
+    _hsPendingTicker = row.ticker;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('hs-chart-modal')).show();
+}
+
+function _hsLoadChart(ticker) {
+    const chartEl = document.getElementById('hs-detail-chart');
     fetch(`/api/head-shoulders/chart/${encodeURIComponent(ticker)}`)
         .then(r => r.json())
         .then(data => {
@@ -233,7 +241,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('hs-run-btn').addEventListener('click', _hsTriggerScan);
     document.getElementById('hs-backfill-btn').addEventListener('click', _hsTriggerBackfill);
-    document.getElementById('hs-detail-close').addEventListener('click', () => {
-        document.getElementById('hs-detail-panel').style.display = 'none';
+    document.getElementById('hs-chart-modal').addEventListener('shown.bs.modal', () => {
+        if (_hsPendingTicker) {
+            _hsLoadChart(_hsPendingTicker);
+            _hsPendingTicker = null;
+        }
     });
 });

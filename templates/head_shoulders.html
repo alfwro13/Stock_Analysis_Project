@@ -49,14 +49,23 @@
         </thead>
         <tbody id="hs-patterns-body"></tbody>
     </table>
+</div>
 
-    <div id="hs-detail-panel" class="bubble-detail-panel">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <strong id="hs-detail-ticker"></strong>
-            <button id="hs-detail-close" class="btn btn-outline-secondary btn-sm">Close</button>
+<div class="modal fade" id="hs-chart-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="hs-detail-ticker">Pattern Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="hs-detail-body" class="mb-3"></div>
+                <div class="chart-wrapper" id="hs-chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('hs-chart-wrapper')">&#9638; Fullscreen</button>
+                    <div id="hs-detail-chart"></div>
+                </div>
+            </div>
         </div>
-        <div id="hs-detail-chart"></div>
-        <div id="hs-detail-body" class="mt-3"></div>
     </div>
 </div>
 
@@ -91,5 +100,6 @@
 
 {% block scripts %}
 <script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
 <script src="/static/js/head_shoulders.js?v={{ css_version }}"></script>
 {% endblock %}
