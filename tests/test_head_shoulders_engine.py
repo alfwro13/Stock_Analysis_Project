@@ -596,3 +596,34 @@ class TestRunHeadShouldersJobMarketGating:
             scheduler_jobs.run_head_shoulders_job()
 
         mock_notify.assert_called_once()
+
+
+class TestChartAPIPathSafety:
+    """GET /api/head-shoulders/chart/{ticker} builds a HISTORICAL_DIR filesystem path from the
+    raw URL path parameter — must reject path-traversal-style tickers rather than passing them
+    through to disk (CodeQL py/path-injection, alert #70)."""
+
+    def test_encoded_slash_traversal_blocked_by_routing(self, client):
+        # Starlette's default `str` path convertor never matches an embedded "/" in a single
+        # {ticker} segment, so an encoded traversal attempt never reaches the handler at all —
+        # confirms the router itself is also a layer of defense here, not just safe_ticker_filename.
+        resp = client.get(
+            "/api/head-shoulders/chart/..%2F..%2F..%2Fetc%2Fpasswd",
+            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+        )
+        assert resp.status_code == 404
+
+    def test_ticker_with_disallowed_characters_rejected(self, client):
+        resp = client.get(
+            "/api/head-shoulders/chart/FOO%20BAR",
+            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["status"] == "error"
+
+    def test_valid_ticker_with_no_data_returns_404_not_400(self, client):
+        resp = client.get(
+            "/api/head-shoulders/chart/ZZZNOPE",
+            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+        )
+        assert resp.status_code == 404

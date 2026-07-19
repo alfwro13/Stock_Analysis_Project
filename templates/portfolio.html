@@ -116,6 +116,17 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
         <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
         <option value="👑 Market Leader">👑 Market Leaders</option>
         <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
+        {% if 'Bull Trap Risk' in present_tags %}<option value="Bull Trap Risk">Bull Trap Risk</option>{% endif %}
+        {% if 'Bear Trap Risk' in present_tags %}<option value="Bear Trap Risk">Bear Trap Risk</option>{% endif %}
+        {% if 'Capitulation' in present_tags %}<option value="Capitulation">Capitulation</option>{% endif %}
+        {% if 'Accumulation' in present_tags %}<option value="Accumulation">Accumulation</option>{% endif %}
+        {% if 'Active Selloff' in present_tags %}<option value="Active Selloff">Active Selloff</option>{% endif %}
+        {% if 'Bubble Risk' in present_tags %}<option value="Bubble Risk">Bubble Risk</option>{% endif %}
+        {% if 'Bubble Watch' in present_tags %}<option value="Bubble Watch">Bubble Watch</option>{% endif %}
+        {% if 'Head & Shoulders (Forming)' in present_tags %}<option value="Head & Shoulders (Forming)">Head &amp; Shoulders (Forming)</option>{% endif %}
+        {% if 'Head & Shoulders (Confirmed)' in present_tags %}<option value="Head & Shoulders (Confirmed)">Head &amp; Shoulders (Confirmed)</option>{% endif %}
+        {% if 'Inverse Head & Shoulders (Forming)' in present_tags %}<option value="Inverse Head & Shoulders (Forming)">Inverse Head &amp; Shoulders (Forming)</option>{% endif %}
+        {% if 'Inverse Head & Shoulders (Confirmed)' in present_tags %}<option value="Inverse Head & Shoulders (Confirmed)">Inverse Head &amp; Shoulders (Confirmed)</option>{% endif %}
     </select>
     <div class="btn-group change-period-group" id="changePeriodGroup" role="group" aria-label="Change Period">
         <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1d">1D</button>
@@ -354,6 +365,22 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
                             </abbr>
                         </div>
                     {% endif %}
+                {% endif %}
+
+                {% if item.trap_phase_label %}
+                    <div class="inline-block">
+                        <abbr title="Market Trap & Recovery Monitor phase — see the /trap-monitor tool for details." class="no-decoration-abbr">
+                            <span class="setup-tag">{{ item.trap_phase_label }}</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
+                {% if item.bubble_flag_label %}
+                    <div class="inline-block">
+                        <abbr title="Bubble Radar flag — see the /bubble-radar tool for the full valuation-euphoria breakdown." class="no-decoration-abbr">
+                            <span class="setup-tag">🫧 {{ item.bubble_flag_label }}</span>
+                        </abbr>
+                    </div>
                 {% endif %}
 
                 {% if item.hs_phase_label %}
