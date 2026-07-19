@@ -104,7 +104,13 @@ window.ColumnPicker = (function () {
             });
             prefs.hidden_core_columns = hiddenCore;
             prefs.shown_optional_columns = shownOptional;
-            allColumns.forEach(function (col) { applyColumn(col.key); });
+            // Applying ~90 columns one at a time via applyColumn() triggers a full DataTables
+            // redraw per call (column().visible()'s default redrawCalculations=true) — with
+            // 100 rows that's a multi-second freeze. Defer every redraw to a single pass instead.
+            allColumns.forEach(function (col, idx) {
+                table.column(idx).visible(userWants(col.key), false);
+            });
+            table.columns.adjust().draw(false);
             renderMenu();
             savePrefs();
         }
