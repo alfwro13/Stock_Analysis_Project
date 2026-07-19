@@ -68,10 +68,23 @@ $(document).ready(function () {
         prefs: colPrefs,
         menuId: 'columnPickerMenu'
     });
+
+    var advFilter = AdvancedFilter.init({
+        table: table,
+        scope: 'watchlist',
+        allColumns: allCols,
+        modalId: 'advFilterModal',
+        bodyId: 'advFilterBody',
+        anchorId: 'dataTable_length',
+        buttonClass: 'btn btn-sm btn-primary ms-2'
+    });
+
     ColumnPicker.initViewsMenu(picker, {
         scope: 'watchlist',
         menuId: 'viewsPickerMenu',
-        views: window.WATCHLIST_VIEWS
+        views: window.WATCHLIST_VIEWS,
+        getExtraViewData: function () { return { filter: advFilter.getCurrentFilter() }; },
+        onApplyView: function (view) { advFilter.applyFilter(view.filter || []); }
     });
 
     applyStickyTheadOffset();

@@ -162,7 +162,9 @@ window.ColumnPicker = (function () {
             menuEl.querySelectorAll('.view-name').forEach(function (el) {
                 el.addEventListener('click', function () {
                     const view = views[parseInt(el.dataset.idx, 10)];
-                    if (view) picker.applyView(view.columns);
+                    if (!view) return;
+                    picker.applyView(view.columns);
+                    if (typeof opts.onApplyView === 'function') opts.onApplyView(view);
                 });
             });
             menuEl.querySelectorAll('.view-delete-btn').forEach(function (btn) {
@@ -182,9 +184,11 @@ window.ColumnPicker = (function () {
                     const name = (input.value || '').trim();
                     if (!name) return;
                     const columns = picker.getCurrentVisibleKeys();
+                    const extra = (typeof opts.getExtraViewData === 'function') ? opts.getExtraViewData() : {};
+                    const view = Object.assign({ name: name, columns: columns }, extra);
                     const existingIdx = views.findIndex(function (v) { return v.name === name; });
-                    if (existingIdx !== -1) { views[existingIdx] = { name: name, columns: columns }; }
-                    else { views.push({ name: name, columns: columns }); }
+                    if (existingIdx !== -1) { views[existingIdx] = view; }
+                    else { views.push(view); }
                     input.value = '';
                     saveViews();
                     renderMenu();

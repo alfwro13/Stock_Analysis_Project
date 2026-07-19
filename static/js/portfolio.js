@@ -955,10 +955,23 @@ $(document).ready(function () {
         prefs: colPrefs,
         menuId: 'columnPickerMenu'
     });
+
+    var advFilter = AdvancedFilter.init({
+        table: table,
+        scope: 'portfolio',
+        allColumns: allCols,
+        modalId: 'advFilterModal',
+        bodyId: 'advFilterBody',
+        anchorId: 'dataTable_length',
+        buttonClass: 'btn btn-sm btn-outline-secondary ms-2'
+    });
+
     ColumnPicker.initViewsMenu(picker, {
         scope: 'portfolio',
         menuId: 'viewsPickerMenu',
-        views: window.PORTFOLIO_VIEWS
+        views: window.PORTFOLIO_VIEWS,
+        getExtraViewData: function () { return { filter: advFilter.getCurrentFilter() }; },
+        onApplyView: function (view) { advFilter.applyFilter(view.filter || []); }
     });
 
     applyStickyTheadOffset();
