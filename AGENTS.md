@@ -79,6 +79,7 @@ Stock_Analysis_Project/
 ├── ai_prediction_engine.py   # XGBoost + RF soft-voting ensemble
 ├── ai_contagion_engine.py    # AI sector contagion monitor (10-ticker ecosystem)
 ├── bull_bear_trap_engine.py  # Post-crash lifecycle detector (Bull Trap, Bear Trap, Capitulation, Wyckoff)
+├── head_shoulders_engine.py  # Head & Shoulders / Inverse Head & Shoulders swing-pattern detector
 ├── pairs_spread_engine.py    # Pairs Spread Monitor: Portfolio+Watchlist/Universe pairs correlation + log-spread z-score
 ├── anomaly_engine.py         # Unsupervised anomaly detection per ticker
 ├── xray_engine.py            # Portfolio X-ray / risk diagnostics
@@ -185,6 +186,8 @@ All tables join on `ticker` as the primary key unless noted.
 | `xray_dividend_cache` | Per-ticker dividend yield cache for X-ray |
 | `ai_contagion_snapshots` | AI sector contagion scan results (payload JSON + alert flag) |
 | `trap_monitor_results` | Latest trap scan result per ticker — phase label + four signal levels; powers `/trap-monitor` |
+| `head_shoulders_results` | Latest Head & Shoulders Pattern Detector scan result per ticker — pattern type (regular/inverse), phase (FORMING/CONFIRMED), the five swing-point pivots, neckline, measured target, and supporting signals; powers `/head-shoulders` |
+| `head_shoulders_history` | Append-only log of every detected pattern per ticker per day, with resolved 14d/30d direction-correct outcomes — populated going forward by the daily scan and retroactively by the one-time historical backfill (`head_shoulders_engine.backfill_historical_patterns()`) |
 | `pairs_spread_results` | Latest Pairs Spread Monitor scan — one row per correlated same-currency pair (correlation, log-spread z-score, direction), tagged with `scope` (`portfolio_watchlist` or `universe`); full-replaced per scope on each scan; powers `/pairs-spread` |
 | `news_articles` | Full-text news articles with sentiment scores |
 | `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
@@ -545,6 +548,7 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 | Options Sandbox | `/options-sandbox` | Interactive options chain explorer; live calls/puts, IV smile, open interest and volume across expiries |
 | AI Sector Contagion Monitor | `/ai-contagion` | Tracks 10-ticker AI ecosystem (semis + hyperscalers + cloud); 30-day normalised performance, intraday session, rolling 20-day correlation heatmap |
 | Market Trap & Recovery Monitor | `/trap-monitor` | Post-crash lifecycle monitor: Bull Trap / Dead Cat Bounce, Bear Trap, Capitulation volume climax, and Wyckoff Accumulation detection across portfolio + proxy basket |
+| Head & Shoulders Pattern Detector | `/head-shoulders` | Daily rolling-window swing-pattern scan across Portfolio (default) and Watchlist (optional) for Head & Shoulders and Inverse Head & Shoulders formations, gated on a genuine prior trend before the left shoulder; scores each candidate on volume confirmation, RSI divergence, and fit quality (R²), with a measured-move price target once confirmed. A one-time historical backfill resolves 14d/30d outcomes from existing price history. Engine: `head_shoulders_engine.py` |
 | Market Regime (HMM) | `/market-regime` | Classifies the market into Bull / Chop / Crash via a 5-year GaussianHMM on SPY returns and EWMA volatility; shows Viterbi history, transition probabilities, and per-regime return/vol statistics |
 | Historical Stress Tester | `/stress-test` | Simulates the portfolio through GFC 2008, Dot-com 2000, COVID-19 crash, and 2022 inflation shock using beta-adjusted scenario shocks; shows estimated monetary loss per holding and by sector |
 | Bubble Radar | `/bubble-radar` | Scans portfolio and watchlist for valuation euphoria: SMA-200 extension, sustained overbought RSI, stretched P/S and PEG, IV call skew, and market breadth; tracks prediction accuracy at 4, 8, and 12 weeks |

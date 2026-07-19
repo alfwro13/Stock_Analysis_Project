@@ -265,6 +265,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                     WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
                    ev.edge_score AS earnings_edge_score, ev.implied_move_pct AS earnings_implied_move,
                    hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
+                   trap.phase as trap_phase,
+                   (SELECT flag FROM bubble_radar_metrics
+                    WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -282,6 +285,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
             LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
+            LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
         """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
 
@@ -348,10 +352,21 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                 row_dict['setup_tags_list'] = []
 
             row_dict['hs_phase_label'] = hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None
+            row_dict['trap_phase_label'] = phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None
+            row_dict['bubble_flag_label'] = flag_label(row_dict.get('bubble_flag'))
 
             portfolio_data.append(row_dict)
 
     portfolio_data.sort(key=lambda x: x['ticker'])
+
+    present_tags = set()
+    for row_dict in portfolio_data:
+        if row_dict.get('trap_phase_label'):
+            present_tags.add(row_dict['trap_phase_label'])
+        if row_dict.get('bubble_flag_label'):
+            present_tags.add(row_dict['bubble_flag_label'])
+        if row_dict.get('hs_phase_label'):
+            present_tags.add(row_dict['hs_phase_label'])
 
     live_pulse = get_all_cached_pulse()
 
@@ -482,7 +497,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "optional_columns": optional_columns,
             "all_columns": table_columns_helpers.all_columns_for_page("portfolio"),
             "column_prefs": column_prefs,
-            "views": views
+            "views": views,
+            "present_tags": present_tags
         }
     )
 
