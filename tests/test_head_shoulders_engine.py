@@ -18,11 +18,13 @@ from head_shoulders_engine import (
     HeadShouldersEngine,
     _detect_and_build,
     _latest_candidate_extrema,
+    _merge_adjacent_pivots,
     _rw_top,
     _rw_bottom,
     _volume_confirms,
     _rsi_divergence,
     fill_pattern_outcomes,
+    backfill_historical_patterns,
     phase_label,
 )
 
@@ -41,6 +43,29 @@ def _make_regular_df(confirmed: bool = False) -> pd.DataFrame:
     seg4 = np.linspace(120, 96, 11)[1:]
     seg5 = np.linspace(96, 108, 16)[1:]
     parts = [seg1, seg2, seg3, seg4, seg5]
+    if confirmed:
+        parts.append(np.linspace(108, 90, 11)[1:])
+    prices = np.concatenate(parts)
+    volume = np.linspace(2_000_000, 800_000, len(prices))
+    return pd.DataFrame({
+        "Open": prices, "High": prices + 0.5, "Low": prices - 0.5,
+        "Close": prices, "Volume": volume,
+    })
+
+
+def _make_regular_df_double_top(confirmed: bool = False) -> pd.DataFrame:
+    """Regular H&S whose head is a double top (two independent, unmerged swing highs 6 bars
+    apart, 120 then 119.5, with no qualifying swing low between them) — modeled on SMGB.L's
+    real 2026-06-22/2026-06-30 twin peaks, which went undetected before the pivot-merge fix
+    because the un-merged pair breaks the strict top/bottom/top/bottom alternation check."""
+    seg1 = np.linspace(90, 110, 26)
+    seg2 = np.linspace(110, 95, 11)[1:]
+    seg3 = np.linspace(95, 120, 11)[1:]
+    dip = np.concatenate([np.linspace(120, 118, 4)[1:], np.linspace(118, 119, 3)[1:]])
+    peak2 = np.array([119.5])
+    seg4 = np.linspace(119.5, 96, 11)[1:]
+    seg5 = np.linspace(96, 108, 16)[1:]
+    parts = [seg1, seg2, seg3, dip, peak2, seg4, seg5]
     if confirmed:
         parts.append(np.linspace(108, 90, 11)[1:])
     prices = np.concatenate(parts)
@@ -153,6 +178,30 @@ class TestLatestCandidateExtrema:
         assert _latest_candidate_extrema(data, 5, inverted=False) is None
 
 
+class TestMergeAdjacentPivots:
+    """Modeled on SMGB.L's real double top (2026-06-22 @94.19, 2026-06-30 @94.06, no
+    qualifying swing low between them) — the case that went undetected before this fix."""
+
+    def test_double_top_collapses_to_higher_peak(self):
+        df = _make_regular_df_double_top(confirmed=False)
+        prices = df["Close"].to_numpy()
+        tops, bottoms = [45, 51], [35]  # matches the fixture's known raw pivot layout
+        raw_events = sorted([(i, 1) for i in tops] + [(i, -1) for i in bottoms])
+        merged = _merge_adjacent_pivots(raw_events, prices)
+        assert merged == [(35, -1), (45, 1)]
+
+    def test_double_bottom_collapses_to_lower_trough(self):
+        prices = np.array([10.0, 5.0, 6.0, 4.5, 8.0])
+        raw_events = [(1, -1), (3, -1)]
+        merged = _merge_adjacent_pivots(raw_events, prices)
+        assert merged == [(3, -1)]
+
+    def test_no_merge_when_alternating(self):
+        raw_events = [(10, 1), (20, -1), (30, 1), (40, -1)]
+        prices = np.zeros(50)
+        assert _merge_adjacent_pivots(raw_events, prices) == raw_events
+
+
 class TestDetectAndBuildRegular:
     def test_forming_phase_when_above_neckline(self):
         result = _detect(_make_regular_df(confirmed=False), inverted=False)
@@ -180,6 +229,14 @@ class TestDetectAndBuildRegular:
     def test_rejects_when_no_prior_trend(self):
         result = _detect(_make_no_trend_df(), inverted=False)
         assert result is None
+
+    def test_double_top_head_detected_after_merge(self):
+        # The regression case: SMGB.L's real double-top head went undetected before pivots
+        # were merged, since the un-merged pair breaks the top/bottom alternation check.
+        result = _detect(_make_regular_df_double_top(confirmed=False), inverted=False)
+        assert result is not None
+        assert result["pattern_type"] == "regular"
+        assert result["head_price"] == pytest.approx(120.0)
 
     def test_rejects_when_unbalanced(self):
         result = _detect(_make_unbalanced_df(), inverted=False)
@@ -361,6 +418,71 @@ class TestSaveResults:
         assert row["volume_confirms"] == 1
         assert row["rsi_divergence"] == 1
 
+    def test_unchanged_pattern_not_relogged_to_history(self):
+        # Same ticker, same geometry, same phase two days running — the second save must
+        # not add a second history row (this is what inflated the accuracy panel's "Calls").
+        self.engine._save_results([self._row("HSTST4")])
+        self.engine._save_results([self._row("HSTST4")])
+        conn = db.get_connection()
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM head_shoulders_history WHERE ticker = 'HSTST4'"
+            ).fetchone()[0]
+        finally:
+            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST4'")
+            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST4'")
+            conn.commit()
+            conn.close()
+        assert count == 1
+
+    def test_phase_transition_still_logs_new_history_row(self):
+        # FORMING -> CONFIRMED for the same geometry is a genuinely new event (the breakout)
+        # and must still get its own history row. Two different scan dates so the history
+        # table's own (ticker, scan_date, pattern_type) uniqueness isn't what's under test.
+        from datetime import datetime, timezone
+        with patch("head_shoulders_engine.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+            self.engine._save_results([self._row("HSTST5", phase="FORMING")])
+        with patch("head_shoulders_engine.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 4, 2, tzinfo=timezone.utc)
+            self.engine._save_results([self._row("HSTST5", phase="CONFIRMED")])
+        conn = db.get_connection()
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM head_shoulders_history WHERE ticker = 'HSTST5'"
+            ).fetchone()[0]
+        finally:
+            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST5'")
+            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST5'")
+            conn.commit()
+            conn.close()
+        assert count == 2
+
+    def test_new_pattern_geometry_still_logs(self):
+        # A genuinely different pattern (different head date) on the same ticker must log
+        # as a new instance, not get swallowed by the dedup check.
+        from datetime import datetime, timezone
+        first = self._row("HSTST6")
+        second = self._row("HSTST6")
+        second["head_date"] = "2026-03-20"
+        with patch("head_shoulders_engine.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+            self.engine._save_results([first])
+        with patch("head_shoulders_engine.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 4, 2, tzinfo=timezone.utc)
+            self.engine._save_results([second])
+        conn = db.get_connection()
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM head_shoulders_history WHERE ticker = 'HSTST6'"
+            ).fetchone()[0]
+        finally:
+            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST6'")
+            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST6'")
+            conn.commit()
+            conn.close()
+        assert count == 2
+
 
 class TestGetTickerList:
     def test_tbill_ticker_excluded_from_portfolio_scope(self):
@@ -539,6 +661,58 @@ class TestFillPatternOutcomes:
             assert row.get("direction_correct_14d") == 1
         finally:
             self._cleanup()
+
+
+class TestBackfillPatternLock:
+    """The backfill walks each ticker in ~weekly steps with no lock, so a single real
+    formation can re-qualify as CONFIRMED on many consecutive steps while price keeps
+    drifting past an unchanged neckline — inflating the accuracy panel's "Calls" count with
+    near-duplicate re-detections of the same pattern rather than independent trials."""
+
+    def test_same_geometry_logged_once_across_many_steps(self, tmp_path):
+        # Base H&S pattern (breaks down at idx76) extended by 60 more slowly-declining bars —
+        # the same l_shoulder/l_armpit/head/r_armpit stay CONFIRMED across ~12 weekly steps.
+        base = _make_regular_df(confirmed=True)
+        tail = np.linspace(89, 60, 60)
+        extra = pd.DataFrame({
+            "Open": tail, "High": tail + 0.5, "Low": tail - 0.5,
+            "Close": tail, "Volume": np.full(60, 800_000.0),
+        })
+        df = pd.concat([base, extra], ignore_index=True)
+        idx = pd.date_range("2024-01-01", periods=len(df), freq="B")
+        df.index = idx
+
+        pq_path = tmp_path / "HSBACKF.parquet"
+        df.to_parquet(pq_path, engine="pyarrow")
+
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSBACKF'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            with patch("head_shoulders_engine.HISTORICAL_DIR", tmp_path):
+                backfill_historical_patterns(tickers=["HSBACKF"])
+
+            conn = db.get_connection()
+            try:
+                rows = conn.execute(
+                    "SELECT scan_date FROM head_shoulders_history WHERE ticker='HSBACKF' AND pattern_type='regular'"
+                ).fetchall()
+            finally:
+                conn.close()
+            # Without the lock this would be one row per ~5-bar step across the whole
+            # confirmed tail (a dozen+ near-duplicate rows) instead of a single instance.
+            assert len(rows) == 1
+        finally:
+            conn = db.get_connection()
+            try:
+                conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSBACKF'")
+                conn.commit()
+            finally:
+                conn.close()
 
 
 class TestRunHeadShouldersJobMarketGating:
