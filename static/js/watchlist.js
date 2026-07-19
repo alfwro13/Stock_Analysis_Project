@@ -48,6 +48,7 @@ $(document).ready(function () {
     var table = $('#dataTable').DataTable({
         responsive: true,
         pageLength: 50,
+        lengthMenu: [[10, 25, 50, 100, 250, -1], [10, 25, 50, 100, 250, 'All']],
         deferRender: true,
         dom: 'lrtip',
         order: [],
