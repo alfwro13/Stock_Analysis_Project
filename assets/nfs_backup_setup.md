@@ -16,7 +16,7 @@ It detects the app's install directory and current user automatically (asks for 
 
 ## What it installs, and why
 
-- `/usr/local/sbin/quant-backup-nfs-mount` and `-umount` — small scripts that mount/unmount **only** the app's own scratch mountpoint (`<app dir>/data/.nfs_backup_mount`), rejecting any other path. This means the sudoers grant below can't be used to mount or unmount anything else on the host.
+- `/usr/local/sbin/quant-backup-nfs-mount` and `-umount` — small scripts that mount/unmount **only** the app's own scratch mountpoint (`<app dir>/.nfs_backup_mount`), rejecting any other path. This means the sudoers grant below can't be used to mount or unmount anything else on the host.
 - `/etc/sudoers.d/quant-backup-nfs` — grants the app's user passwordless `sudo` for exactly those two scripts (validated with `visudo -c` before being installed, so a malformed rule can never reach the live sudoers directory).
 
 ## Manual setup (if you'd rather not run the script)
@@ -28,7 +28,7 @@ set -euo pipefail
 SOURCE="$1"
 MOUNTPOINT="$2"
 case "$MOUNTPOINT" in
-  /path/to/app/data/.nfs_backup_mount) ;;
+  /path/to/app/.nfs_backup_mount) ;;
   *) echo "Refusing to mount onto unexpected path: $MOUNTPOINT" >&2; exit 1 ;;
 esac
 mkdir -p "$MOUNTPOINT"
@@ -40,7 +40,7 @@ sudo tee /usr/local/sbin/quant-backup-nfs-umount > /dev/null << 'EOF'
 set -euo pipefail
 MOUNTPOINT="$1"
 case "$MOUNTPOINT" in
-  /path/to/app/data/.nfs_backup_mount) ;;
+  /path/to/app/.nfs_backup_mount) ;;
   *) echo "Refusing to unmount unexpected path: $MOUNTPOINT" >&2; exit 1 ;;
 esac
 umount "$MOUNTPOINT"
@@ -52,7 +52,7 @@ sudo chown root:root /usr/local/sbin/quant-backup-nfs-mount /usr/local/sbin/quan
 sudo visudo -f /etc/sudoers.d/quant-backup-nfs
 ```
 
-Replace `/path/to/app/data/.nfs_backup_mount` with the real path (the app's install directory + `/data/.nfs_backup_mount`). In the `visudo` editor that opens, paste (replacing `your_user`):
+Replace `/path/to/app/.nfs_backup_mount` with the real path (the app's install directory + `/.nfs_backup_mount`). In the `visudo` editor that opens, paste (replacing `your_user`):
 
 ```
 your_user ALL=(root) NOPASSWD: /usr/local/sbin/quant-backup-nfs-mount
@@ -64,9 +64,9 @@ your_user ALL=(root) NOPASSWD: /usr/local/sbin/quant-backup-nfs-umount
 Before trusting the app with it, confirm the mount actually works:
 
 ```bash
-sudo -n /usr/local/sbin/quant-backup-nfs-mount <server>:<export-path> /path/to/app/data/.nfs_backup_mount
+sudo -n /usr/local/sbin/quant-backup-nfs-mount <server>:<export-path> /path/to/app/.nfs_backup_mount
 mount | grep nfs_backup_mount
-sudo -n /usr/local/sbin/quant-backup-nfs-umount /path/to/app/data/.nfs_backup_mount
+sudo -n /usr/local/sbin/quant-backup-nfs-umount /path/to/app/.nfs_backup_mount
 ```
 
 `mount -t nfs` requires `host:dir` format — a colon, not a slash, between the server and the export path. In the app's own Settings UI, **NFS Server** and **NFS Export Path** are separate fields and the colon is joined automatically; this only matters when testing the script by hand.
@@ -74,3 +74,7 @@ sudo -n /usr/local/sbin/quant-backup-nfs-umount /path/to/app/data/.nfs_backup_mo
 ## Multiple deployments on one host
 
 Each deployment (e.g. a dev checkout and a production checkout) has its own install directory and therefore its own mountpoint. The wrapper scripts only accept the one mountpoint baked in when `setup_nfs_backup.sh` was last run — if you run it again for a second deployment on the same host, it overwrites the previous one. Only the deployment that actually needs NFS backups should run this script.
+
+## Upgrading an existing installation
+
+The scratch mountpoint moved from `<app dir>/data/.nfs_backup_mount` to `<app dir>/.nfs_backup_mount` — the old location was inside `data/`, so a backup with the Data component enabled walked straight through the live mount and archived the entire remote share (including every backup already stored there) into the new archive, growing each subsequent backup exponentially. If you set up NFS backups before this change, re-run `tools/setup_nfs_backup.sh` (or redo the manual steps above) so the root-owned wrapper scripts and sudoers rule point at the new path — the old wrapper scripts will otherwise keep refusing to mount at the path the app now asks for.
