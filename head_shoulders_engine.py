@@ -87,12 +87,33 @@ def _find_pivots(closes: np.ndarray, order: int) -> tuple[list[int], list[int]]:
     return tops, bottoms
 
 
+def _merge_adjacent_pivots(raw_events: list[tuple[int, int]], closes: np.ndarray) -> list[tuple[int, int]]:
+    """Collapses consecutive same-type pivots (e.g. a double top/bottom, two nearby swing
+    highs with no qualifying low between them) into the single most extreme one. Without this,
+    a double top/bottom — a common real shape, not an edge case — breaks the strict alternation
+    check below and silently discards the whole candidate, even though a human reading the same
+    chart sees one broad head or trough. Found 2026-07-19: SMGB.L formed a textbook Head &
+    Shoulders (perfectly symmetric timing, balanced shoulders, already-confirmed breakout) that
+    went undetected purely because its head was a double top four bars apart."""
+    merged: list[tuple[int, int]] = []
+    for idx, typ in raw_events:
+        if merged and merged[-1][1] == typ:
+            prev_idx, _ = merged[-1]
+            more_extreme = closes[idx] > closes[prev_idx] if typ == 1 else closes[idx] < closes[prev_idx]
+            if more_extreme:
+                merged[-1] = (idx, typ)
+        else:
+            merged.append((idx, typ))
+    return merged
+
+
 def _latest_candidate_extrema(closes: np.ndarray, order: int, inverted: bool) -> Optional[list[int]]:
     """Most recent alternating 4-point extrema run [shoulder, armpit, head, armpit] for the
     requested pattern direction — a regular (topping) candidate starts on a top, an inverse
     (bottoming) candidate starts on a bottom. Returns None if no such run exists yet."""
     tops, bottoms = _find_pivots(closes, order)
-    events = sorted([(idx, 1) for idx in tops] + [(idx, -1) for idx in bottoms])
+    raw_events = sorted([(idx, 1) for idx in tops] + [(idx, -1) for idx in bottoms])
+    events = _merge_adjacent_pivots(raw_events, closes)
     if len(events) < 4:
         return None
     wanted_first = -1 if inverted else 1
@@ -377,9 +398,19 @@ class HeadShouldersEngine:
 
     def _save_results(self, results: list[dict]) -> None:
         conn = None
+        previous_by_ticker: dict = {}
         try:
             conn = get_connection()
             cursor = conn.cursor()
+            tickers = [row["ticker"] for row in results]
+            placeholders = ",".join("?" * len(tickers))
+            cursor.execute(
+                f"SELECT ticker, pattern_type, phase, l_shoulder_date, head_date, r_armpit_date "
+                f"FROM head_shoulders_results WHERE ticker IN ({placeholders})",
+                tickers,
+            )
+            previous_by_ticker = {r["ticker"]: dict(r) for r in cursor.fetchall()}
+
             for row in results:
                 cursor.execute(
                     """
@@ -425,6 +456,20 @@ class HeadShouldersEngine:
 
         scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         for row in results:
+            prev = previous_by_ticker.get(row["ticker"])
+            unchanged = (
+                prev is not None
+                and prev["pattern_type"] == row["pattern_type"]
+                and prev["phase"] == row["phase"]
+                and prev["l_shoulder_date"] == row["l_shoulder_date"]
+                and prev["head_date"] == row["head_date"]
+                and prev["r_armpit_date"] == row["r_armpit_date"]
+            )
+            if unchanged:
+                # Same pattern instance, same phase as yesterday's scan — skip logging a
+                # duplicate history row. A genuinely new instance (different shoulder/head/
+                # armpit dates) or a phase transition (FORMING -> CONFIRMED) still logs.
+                continue
             log_head_shoulders_pattern(
                 row["ticker"], row["pattern_type"], row["phase"], scan_date, row["close_price"], row["scan_ts"],
                 measured_target=row.get("measured_target"),
@@ -538,19 +583,30 @@ def backfill_historical_patterns(tickers: Optional[list[str]] = None) -> int:
         vol_sma_full = compute_volume_sma(df["Volume"])
         idx = df.index
 
-        for cutoff in range(_MIN_BARS, len(df), _BACKFILL_STEP_DAYS):
-            window_close = close_full[:cutoff + 1]
-            window_volume = volume_full[:cutoff + 1]
-            window_rsi = rsi_full.iloc[:cutoff + 1]
-            window_vol_sma = vol_sma_full.iloc[:cutoff + 1]
+        for inverted in directions:
+            last_geometry = None
+            for cutoff in range(_MIN_BARS, len(df), _BACKFILL_STEP_DAYS):
+                window_close = close_full[:cutoff + 1]
+                window_volume = volume_full[:cutoff + 1]
+                window_rsi = rsi_full.iloc[:cutoff + 1]
+                window_vol_sma = vol_sma_full.iloc[:cutoff + 1]
 
-            for inverted in directions:
                 result = _detect_and_build(
                     window_close, window_volume, window_rsi, window_vol_sma,
                     inverted, engine.prior_trend_min_pct, engine.volume_confirm_multiplier,
                 )
                 if not result or result["phase"] != "CONFIRMED":
                     continue
+
+                geometry = (result["l_shoulder_idx"], result["l_armpit_idx"], result["head_idx"], result["r_armpit_idx"])
+                if geometry == last_geometry:
+                    # Same pattern instance as the previous step (shoulders/head/armpits
+                    # unchanged, only price has kept drifting past the neckline) — the
+                    # reference repo's `hs_lock` equivalent, so one real formation isn't
+                    # counted as dozens of independent "Calls" in the accuracy panel.
+                    continue
+                last_geometry = geometry
+
                 scan_date = idx[cutoff].strftime("%Y-%m-%d")
                 scan_ts = f"{scan_date} 00:00:00"
                 logged = log_head_shoulders_pattern(
