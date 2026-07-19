@@ -1133,6 +1133,37 @@ def test_post_ui_preferences_views_rejects_invalid_scope(client):
 
 
 @pytest.mark.api
+def test_post_ui_preferences_views_persists_filter_conditions(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/views", json={
+            "scope": "portfolio",
+            "views": [{
+                "name": "Oversold",
+                "columns": ["ticker", "price", "rsi"],
+                "filter": [{"key": "rsi", "operator": "lt", "value": "30"}],
+            }],
+        })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {
+        "PORTFOLIO_VIEWS": [{
+            "name": "Oversold",
+            "columns": ["ticker", "price", "rsi"],
+            "filter": [{"key": "rsi", "operator": "lt", "value": "30"}],
+        }],
+    }})
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_rejects_filter_condition_missing_operator(client):
+    resp = client.post("/api/ui-preferences/views", json={
+        "scope": "portfolio",
+        "views": [{"name": "Bad", "columns": ["ticker"], "filter": [{"key": "rsi"}]}],
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.api
 def test_post_learn_session_with_study_all_includes_locked_levels(client):
     import database as _db
     conn = _db.get_connection()

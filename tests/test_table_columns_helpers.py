@@ -35,6 +35,20 @@ def test_optional_columns_keys_are_unique():
 
 
 @pytest.mark.config
+@pytest.mark.parametrize("core_columns", [tch.PORTFOLIO_CORE_COLUMNS, tch.WATCHLIST_CORE_COLUMNS])
+def test_core_columns_have_a_known_fmt(core_columns):
+    """static/js/advanced_filter.js maps fmt -> operator family (numeric/text/date/bool);
+    every core column needs one even though _format_value() never touches this list."""
+    known_fmts = {
+        "pct_from_fraction", "pct_raw", "ratio2", "price", "price_raw",
+        "currency_usd", "volume", "date", "text", "bool01", "int", "client",
+    }
+    for col in core_columns:
+        assert "fmt" in col, f"{col['key']} missing fmt"
+        assert col["fmt"] in known_fmts, f"{col['key']} has unknown fmt {col['fmt']!r}"
+
+
+@pytest.mark.config
 @pytest.mark.parametrize("page", ["portfolio", "watchlist"])
 def test_all_columns_for_page_has_no_duplicate_keys(page):
     all_cols = tch.all_columns_for_page(page)

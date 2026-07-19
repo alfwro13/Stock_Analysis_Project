@@ -355,9 +355,17 @@ async def api_table_column_preference(body: TableColumnPreferenceBody):
         return _error_500(e)
 
 
+class TableFilterCondition(BaseModel):
+    key: str
+    operator: str
+    value: Optional[str] = None
+    value2: Optional[str] = None
+
+
 class TableView(BaseModel):
     name: str
     columns: List[str]
+    filter: Optional[List[TableFilterCondition]] = None
 
 
 class TableViewsPreferenceBody(BaseModel):
@@ -372,7 +380,7 @@ async def api_table_views_preference(body: TableViewsPreferenceBody):
     try:
         prefix = body.scope.upper()
         update_config_atomic({"UI_PREFERENCES": {
-            f"{prefix}_VIEWS": [v.model_dump() for v in body.views],
+            f"{prefix}_VIEWS": [v.model_dump(exclude_none=True) for v in body.views],
         }})
         return JSONResponse(content={"status": "success"})
     except Exception as e:

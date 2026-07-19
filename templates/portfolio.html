@@ -376,12 +376,31 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
         {% endfor %}
     </tbody>
 </table>
+
+<div class="modal fade" id="advFilterModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Advanced Filter</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="advFilterBody" class="adv-filter-rows"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-secondary adv-filter-clear-btn">Clear All</button>
+        <button type="button" class="btn btn-sm btn-primary adv-filter-apply-btn">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/utils.js?v={{ css_version }}"></script>
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
 <script src="/static/js/column_picker.js?v={{ css_version }}"></script>
+<script src="/static/js/advanced_filter.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
 <script src="/static/js/heatmap_treemap.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio_heatmap.js?v={{ css_version }}"></script>
