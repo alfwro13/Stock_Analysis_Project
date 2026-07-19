@@ -169,3 +169,62 @@ def test_resolve_column_prefs_reads_scoped_keys():
     assert tch.resolve_column_prefs(config_data, "portfolio") == {
         "hidden_core_columns": ["score"], "shown_optional_columns": [],
     }
+
+
+# ── Stage-2 fields (X-ray / Earnings Volatility) ────────────────────────────
+
+@pytest.mark.config
+def test_xray_and_earnings_vol_columns_present_on_both_pages():
+    keys = {c["key"] for c in tch.OPTIONAL_COLUMNS}
+    for key in ("xray_beta", "xray_annualized_vol", "xray_dividend_yield", "earnings_edge_score", "earnings_implied_move"):
+        assert key in keys
+        col = next(c for c in tch.OPTIONAL_COLUMNS if c["key"] == key)
+        assert col["pages"] == tch._BOTH
+
+
+@pytest.mark.config
+def test_xray_dividend_yield_is_pct_raw_not_pct_from_fraction():
+    """xray_dividend_cache.dividend_yield_pct arrives from Ghostfolio already in percentage
+    form (e.g. 2.5 for 2.5%) — unlike stock_signals.dividend_yield, which is a fraction."""
+    col = next(c for c in tch.OPTIONAL_COLUMNS if c["key"] == "xray_dividend_yield")
+    assert col["fmt"] == "pct_raw"
+    _, display = tch._format_value(2.5, col["fmt"], None)
+    assert display == "2.5%"
+
+
+# ── Views ────────────────────────────────────────────────────────────────────
+
+@pytest.mark.config
+def test_resolve_views_falls_back_to_defaults_when_unset():
+    assert tch.resolve_views({}, "portfolio") == tch.DEFAULT_PORTFOLIO_VIEWS
+    assert tch.resolve_views({}, "watchlist") == tch.DEFAULT_WATCHLIST_VIEWS
+
+
+@pytest.mark.config
+def test_resolve_views_returns_saved_views_when_present():
+    custom = [{"name": "My View", "columns": ["ticker", "price"]}]
+    config_data = {"UI_PREFERENCES": {"PORTFOLIO_VIEWS": custom}}
+    assert tch.resolve_views(config_data, "portfolio") == custom
+
+
+@pytest.mark.config
+@pytest.mark.parametrize("page,views", [("portfolio", tch.DEFAULT_PORTFOLIO_VIEWS), ("watchlist", tch.DEFAULT_WATCHLIST_VIEWS)])
+def test_default_views_only_reference_real_column_keys(page, views):
+    valid_keys = {c["key"] for c in tch.all_columns_for_page(page)}
+    for view in views:
+        unknown = set(view["columns"]) - valid_keys
+        assert not unknown, f"{page} view {view['name']!r} references unknown keys: {unknown}"
+
+
+@pytest.mark.config
+@pytest.mark.parametrize("page,views", [("portfolio", tch.DEFAULT_PORTFOLIO_VIEWS), ("watchlist", tch.DEFAULT_WATCHLIST_VIEWS)])
+def test_default_views_stay_within_24_columns(page, views):
+    for view in views:
+        assert len(view["columns"]) <= 24, f"{page} view {view['name']!r} has {len(view['columns'])} columns"
+
+
+@pytest.mark.config
+def test_default_views_include_a_position_targets_view_on_both_pages():
+    for views in (tch.DEFAULT_PORTFOLIO_VIEWS, tch.DEFAULT_WATCHLIST_VIEWS):
+        names = {v["name"] for v in views}
+        assert "Position Targets" in names

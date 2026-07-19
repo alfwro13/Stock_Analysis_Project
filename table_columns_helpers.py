@@ -131,11 +131,58 @@ OPTIONAL_COLUMNS = [
     # Watchlist parity gap (Portfolio already shows this as a core column)
     {"key": "vp_exit_zone", "label": "Exit Target", "category": "Technicals", "pages": ("watchlist",), "fmt": "price"},
 
+    # Risk (X-ray) — from xray_risk_cache/xray_dividend_cache, refreshed by the nightly X-ray job
+    {"key": "xray_beta", "label": "Beta (X-ray)", "category": "Risk (X-ray)", "pages": _BOTH, "fmt": "ratio2"},
+    {"key": "xray_annualized_vol", "label": "Annualised Vol (X-ray)", "category": "Risk (X-ray)", "pages": _BOTH, "fmt": "pct_from_fraction"},
+    {"key": "xray_dividend_yield", "label": "Dividend Yield (Ghostfolio)", "category": "Risk (X-ray)", "pages": _BOTH, "fmt": "pct_raw"},
+
+    # Earnings Volatility — from earnings_volatility, only populated within ~14 days of earnings
+    {"key": "earnings_edge_score", "label": "Earnings Edge Score (pp)", "category": "Earnings Volatility", "pages": _BOTH, "fmt": "ratio2"},
+    {"key": "earnings_implied_move", "label": "Implied Move %", "category": "Earnings Volatility", "pages": _BOTH, "fmt": "pct_raw"},
+
     # Position Sizing (rendered client-side by renderPositionSizing())
     {"key": "position_value", "label": "Suggested Position Value", "category": "Position Sizing", "pages": _BOTH, "fmt": "client"},
     {"key": "shares", "label": "Suggested Shares", "category": "Position Sizing", "pages": _BOTH, "fmt": "client"},
     {"key": "stop_price", "label": "Suggested Stop Price", "category": "Position Sizing", "pages": _BOTH, "fmt": "client"},
     {"key": "risk_amount", "label": "Risk Amount", "category": "Position Sizing", "pages": _BOTH, "fmt": "client"},
+]
+
+DEFAULT_PORTFOLIO_VIEWS = [
+    {"name": "Fundamentals & Quality", "columns": [
+        "ticker", "company_name", "price", "change", "score", "signal",
+        "trailing_pe", "forward_pe", "price_to_book", "price_to_sales", "roe", "debt_to_equity",
+        "dividend_yield", "free_cash_flow", "beta", "piotroski_f_score", "altman_z_score",
+        "beneish_m_score", "quality_grade", "market_cap", "sector",
+    ]},
+    {"name": "Technical Signals", "columns": [
+        "ticker", "company_name", "price", "change", "rsi", "macd", "trend_50d", "trend_200d",
+        "sma_200", "atr_pct", "entry_zone", "exit_target", "vp_poc", "kc_z_score", "ml_conf",
+        "var_95", "mom_1m", "mom_3m", "rel_strength_5d", "score", "signal",
+    ]},
+    {"name": "Position Targets", "columns": [
+        "ticker", "company_name", "price", "change", "target_price", "low_target", "high_target",
+        "stop_loss", "entry_zone", "exit_target", "shares", "position_value", "score", "signal",
+        "setup_tags",
+    ]},
+]
+
+DEFAULT_WATCHLIST_VIEWS = [
+    {"name": "Fundamentals & Quality", "columns": [
+        "ticker", "company_name", "price", "daily_change", "score", "signal",
+        "trailing_pe", "forward_pe", "price_to_book", "price_to_sales", "roe", "debt_to_equity",
+        "dividend_yield", "free_cash_flow", "beta", "piotroski", "altman_z",
+        "beneish_m", "quality_grade", "market_cap", "sector",
+    ]},
+    {"name": "Technical Signals", "columns": [
+        "ticker", "company_name", "price", "daily_change", "rsi", "macd", "trend_50d", "trend_200d",
+        "sma_200", "atr_pct", "entry_zone", "vp_exit_zone", "vp_poc", "kc_z_score", "ml_conf",
+        "var_95", "mom_1m", "mom_3m", "rel_strength_5d", "score", "signal",
+    ]},
+    {"name": "Position Targets", "columns": [
+        "ticker", "company_name", "price", "daily_change", "target", "low_target", "high_target",
+        "stop_loss", "entry_zone", "vp_exit_zone", "shares", "position_value", "score", "signal",
+        "setup_tags",
+    ]},
 ]
 
 _NUMERIC_MISSING_SORT = -999999999
@@ -205,3 +252,12 @@ def resolve_column_prefs(config_data: dict, page: str) -> dict:
         "hidden_core_columns": ui_prefs.get(f"{prefix}_HIDDEN_CORE_COLUMNS", []) or [],
         "shown_optional_columns": ui_prefs.get(f"{prefix}_SHOWN_OPTIONAL_COLUMNS", []) or [],
     }
+
+
+def resolve_views(config_data: dict, page: str) -> list:
+    prefix = page.upper()
+    ui_prefs = config_data.get("UI_PREFERENCES", {})
+    saved = ui_prefs.get(f"{prefix}_VIEWS")
+    if saved:
+        return saved
+    return DEFAULT_PORTFOLIO_VIEWS if page == "portfolio" else DEFAULT_WATCHLIST_VIEWS

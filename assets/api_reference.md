@@ -344,6 +344,30 @@ Persists the Portfolio/Watchlist "Columns" picker's selection — which of that 
 
 ---
 
+### `POST /api/ui-preferences/views`
+
+Persists the Portfolio/Watchlist "Views" picker's full list of named column presets. Full-list replacement (the client sends the entire updated list on every add/rename/delete), same no-confirm-token pattern as `/api/ui-preferences/columns`.
+
+**Request body**
+
+```json
+{
+  "scope": "portfolio",
+  "views": [
+    {"name": "Fundamentals & Quality", "columns": ["ticker", "company_name", "price", "score", "trailing_pe", "..."]},
+    {"name": "My Custom View", "columns": ["ticker", "price", "rsi"]}
+  ]
+}
+```
+
+`scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_VIEWS` in `config.json`. `table_columns_helpers.resolve_views()` falls back to the 3 built-in default views (`DEFAULT_PORTFOLIO_VIEWS`/`DEFAULT_WATCHLIST_VIEWS`) whenever this key is empty/unset — saving an empty `views` list therefore reverts the picker to the built-in defaults rather than leaving it empty. Applying a view is purely a client-side bulk operation (`column_picker.js`'s `ColumnPicker.applyView()`) that recomputes and saves the same `hidden_core_columns`/`shown_optional_columns` state `/api/ui-preferences/columns` already persists — this endpoint only stores the named presets themselves.
+
+```json
+{"status": "success"}
+```
+
+---
+
 ## 4. Data Refresh
 
 ### `POST /api/data/refresh-single`

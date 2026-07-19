@@ -355,6 +355,31 @@ async def api_table_column_preference(body: TableColumnPreferenceBody):
         return _error_500(e)
 
 
+class TableView(BaseModel):
+    name: str
+    columns: List[str]
+
+
+class TableViewsPreferenceBody(BaseModel):
+    scope: str
+    views: List[TableView]
+
+
+@api_router.post("/ui-preferences/views")
+async def api_table_views_preference(body: TableViewsPreferenceBody):
+    if body.scope not in ("portfolio", "watchlist"):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "invalid scope"})
+    try:
+        prefix = body.scope.upper()
+        update_config_atomic({"UI_PREFERENCES": {
+            f"{prefix}_VIEWS": [v.model_dump() for v in body.views],
+        }})
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.exception("ui-preferences/views failed")
+        return _error_500(e)
+
+
 @api_router.get("/screener-data")
 @limiter.limit("20/minute")
 async def get_screener_data(request: Request):

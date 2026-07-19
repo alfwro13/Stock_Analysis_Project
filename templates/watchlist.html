@@ -11,6 +11,7 @@
 <script>
 window.WATCHLIST_COLUMNS = {{ all_columns | tojson }};
 window.WATCHLIST_COLUMN_PREFS = {{ column_prefs | tojson }};
+window.WATCHLIST_VIEWS = {{ views | tojson }};
 </script>
 {% if not embed %}
 <h1 class="mb-3">Watchlist Signals</h1>
@@ -105,17 +106,13 @@ window.WATCHLIST_COLUMN_PREFS = {{ column_prefs | tojson }};
             {% endfor %}
         </select>
     </div>
-    {% if has_targets_set %}
-    <div class="col-6 col-md-auto">
-        <select id="targetFilter" class="form-select">
-            <option value="ALL">All Rows</option>
-            <option value="HAS_TARGET">Has Target Set</option>
-        </select>
-    </div>
-    {% endif %}
     <div class="col-12 col-md-auto ms-md-auto xray-link-container d-none d-md-flex">
         <a href="#" id="heatmap-link" class="xray-link-btn" onclick="toggleHeatmap(); return false;">&#9638; Heatmap</a>
         <a href="/score-history?filter=watchlist&ref=/watchlist" class="xray-link-btn ms-2">&#128200; Score History</a>
+        <div class="dropdown ms-2 column-picker-dropdown">
+            <a href="#" class="xray-link-btn dropdown-toggle" id="viewsPickerToggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">&#128065; Views</a>
+            <div class="dropdown-menu column-picker-menu" id="viewsPickerMenu" aria-labelledby="viewsPickerToggle"></div>
+        </div>
         <div class="dropdown ms-2 column-picker-dropdown">
             <a href="#" class="xray-link-btn dropdown-toggle" id="columnPickerToggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">&#128203; Columns</a>
             <div class="dropdown-menu column-picker-menu" id="columnPickerMenu" aria-labelledby="columnPickerToggle"></div>
@@ -160,7 +157,7 @@ window.WATCHLIST_COLUMN_PREFS = {{ column_prefs | tojson }};
     <tbody>
         {% for item in watchlist %}
         {% set cp = cached_pulse.get(item.ticker) %}
-        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ cp.change_pct|float if cp and cp.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}" data-has-target="{{ '1' if (item.low_target is not none or item.high_target is not none) else '0' }}">
+        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ cp.change_pct|float if cp and cp.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
             <td data-sort="{{ item.ticker }}" class="num-cell">
                 <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% if embed_token %}&embed_token={{ embed_token }}{% endif %}{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 {% if freetrade_only and not item.is_freetrade %}

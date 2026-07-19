@@ -86,6 +86,8 @@ class UIPreferencesConfig(BaseModel):
     PORTFOLIO_SHOWN_OPTIONAL_COLUMNS: Optional[List[str]] = None
     WATCHLIST_HIDDEN_CORE_COLUMNS: Optional[List[str]] = None
     WATCHLIST_SHOWN_OPTIONAL_COLUMNS: Optional[List[str]] = None
+    PORTFOLIO_VIEWS: Optional[List[Any]] = None
+    WATCHLIST_VIEWS: Optional[List[Any]] = None
     FONT_SIZE_NAV: Optional[int] = None
     FONT_SIZE_TABLE: Optional[int] = None
     FONT_SIZE_DT_TABLE: Optional[int] = None

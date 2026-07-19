@@ -20,24 +20,15 @@ window.ColumnPicker = (function () {
             shown_optional_columns: (opts.prefs && opts.prefs.shown_optional_columns) || []
         };
         const menuEl = document.getElementById(opts.menuId);
-        const filterOverrides = {};
 
         function userWants(key) {
             return resolveVisible(key, allColumns, prefs);
         }
 
-        function effectiveVisible(key) {
-            const wants = userWants(key);
-            if (Object.prototype.hasOwnProperty.call(filterOverrides, key)) {
-                return wants && filterOverrides[key];
-            }
-            return wants;
-        }
-
         function applyColumn(key) {
             const idx = allColumns.findIndex(function (c) { return c.key === key; });
             if (idx === -1) return;
-            table.column(idx).visible(effectiveVisible(key));
+            table.column(idx).visible(userWants(key));
         }
 
         function savePrefs() {
@@ -98,16 +89,105 @@ window.ColumnPicker = (function () {
             });
         }
 
+        function applyView(columnKeys) {
+            const keySet = new Set(columnKeys);
+            const hiddenCore = [];
+            const shownOptional = [];
+            allColumns.forEach(function (col) {
+                if (col.pinned) return;
+                const wants = keySet.has(col.key);
+                if (col.type === 'optional') {
+                    if (wants) shownOptional.push(col.key);
+                } else if (!wants) {
+                    hiddenCore.push(col.key);
+                }
+            });
+            prefs.hidden_core_columns = hiddenCore;
+            prefs.shown_optional_columns = shownOptional;
+            allColumns.forEach(function (col) { applyColumn(col.key); });
+            renderMenu();
+            savePrefs();
+        }
+
+        function getCurrentVisibleKeys() {
+            return allColumns
+                .filter(function (col) { return userWants(col.key); })
+                .map(function (col) { return col.key; });
+        }
+
         renderMenu();
 
         return {
-            isVisible: effectiveVisible,
-            applyFilterOverride: function (key, visible) {
-                filterOverrides[key] = visible;
-                applyColumn(key);
-            }
+            isVisible: userWants,
+            applyView: applyView,
+            getCurrentVisibleKeys: getCurrentVisibleKeys
         };
     }
 
-    return { init: init, resolveVisible: resolveVisible };
+    function initViewsMenu(picker, opts) {
+        const scope = opts.scope;
+        const menuEl = document.getElementById(opts.menuId);
+        let views = (opts.views || []).slice();
+
+        function saveViews() {
+            fetch('/api/ui-preferences/views', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scope: scope, views: views })
+            }).catch(function () {});
+        }
+
+        function renderMenu() {
+            if (!menuEl) return;
+            let html = '';
+            views.forEach(function (view, idx) {
+                html += '<div class="dropdown-item-text view-item">' +
+                    '<span class="view-name" role="button" data-idx="' + idx + '">' + escapeHtml(view.name) + '</span>' +
+                    '<button type="button" class="view-delete-btn" data-idx="' + idx + '" aria-label="Delete view">&times;</button>' +
+                    '</div>';
+            });
+            html += '<div class="dropdown-divider"></div>' +
+                '<div class="view-save-row">' +
+                '<input type="text" class="form-control form-control-sm view-name-input" placeholder="View name…">' +
+                '<button type="button" class="btn btn-sm btn-outline-primary view-save-btn">Save Current</button>' +
+                '</div>';
+            menuEl.innerHTML = html;
+
+            menuEl.querySelectorAll('.view-name').forEach(function (el) {
+                el.addEventListener('click', function () {
+                    const view = views[parseInt(el.dataset.idx, 10)];
+                    if (view) picker.applyView(view.columns);
+                });
+            });
+            menuEl.querySelectorAll('.view-delete-btn').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    views.splice(parseInt(btn.dataset.idx, 10), 1);
+                    saveViews();
+                    renderMenu();
+                });
+            });
+            const input = menuEl.querySelector('.view-name-input');
+            const saveBtn = menuEl.querySelector('.view-save-btn');
+            if (input) input.addEventListener('click', function (e) { e.stopPropagation(); });
+            if (saveBtn) {
+                saveBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    const name = (input.value || '').trim();
+                    if (!name) return;
+                    const columns = picker.getCurrentVisibleKeys();
+                    const existingIdx = views.findIndex(function (v) { return v.name === name; });
+                    if (existingIdx !== -1) { views[existingIdx] = { name: name, columns: columns }; }
+                    else { views.push({ name: name, columns: columns }); }
+                    input.value = '';
+                    saveViews();
+                    renderMenu();
+                });
+            }
+        }
+
+        renderMenu();
+    }
+
+    return { init: init, resolveVisible: resolveVisible, initViewsMenu: initViewsMenu };
 })();

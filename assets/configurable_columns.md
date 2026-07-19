@@ -1,13 +1,17 @@
-# Configurable Columns & Sticky Header (Portfolio / Watchlist)
+# Configurable Columns, Views & Sticky Header (Portfolio / Watchlist)
 
-Added July 2026. Desktop-only (≥769px). Two independent additions to the
-Portfolio (`/portfolio`) and Watchlist (`/watchlist`) DataTables:
+Added July 2026, extended later that month with X-ray/Earnings Volatility columns and named
+Views. Desktop-only (≥769px). Three independent additions to the Portfolio (`/portfolio`) and
+Watchlist (`/watchlist`) DataTables:
 
-1. A **Columns** picker (toolbar dropdown) letting the user show/hide columns,
-   including a catalog of ~64 optional columns that weren't previously shown
-   on either page at all (see below).
-2. A **sticky table header** that stays pinned under the navbar while scrolling,
-   using the page's own scrollbar — no inner table scroll container.
+1. A **Columns** picker (toolbar dropdown) letting the user show/hide columns, from a catalog
+   of ~69 optional columns that weren't previously shown on either page at all (see below).
+2. A **Views** picker (toolbar dropdown, same visual style) for saving/applying named column
+   presets — a bulk "show exactly these columns" shortcut layered on top of the Columns picker's
+   per-column state. Ships with 3 built-in views; the user can add, overwrite, and delete views
+   freely.
+3. A **sticky table header** that stays pinned under the navbar while scrolling, using the
+   page's own scrollbar — no inner table scroll container.
 
 ## Column registry — `table_columns_helpers.py`
 
@@ -44,37 +48,109 @@ Single source of truth for every column on both pages:
 source field isn't already in the row dict, add it to the relevant `SELECT` in
 `page_routes.portfolio_page()`/`watchlist_page()` (both already `SELECT s.*` from
 `stock_signals` and LEFT JOIN `quant_signals q`/`asset_profiles ap`/
-`market_universe m`/`ticker_metadata tmeta` — most new fields are a one-line
-addition to an existing JOIN's SELECT list, not a new JOIN). No template change
-needed — the optional-column `<th>`/`<td>` loop is generic.
+`market_universe m`/`ticker_metadata tmeta`/`xray_risk_cache xrisk`/
+`earnings_volatility ev` — most new fields are a one-line addition to an existing
+JOIN's SELECT list, not a new JOIN). No template change needed — the
+optional-column `<th>`/`<td>` loop is generic. See AGENTS.md's Documentation
+Maintenance section — this is a mandatory step whenever new displayable data is
+added anywhere in the app, not an optional nice-to-have.
 
-## Persistence — `UI_PREFERENCES`
+### X-ray / Earnings Volatility columns (added in the same feature's second stage)
 
-Four `config.json` keys: `PORTFOLIO_HIDDEN_CORE_COLUMNS`, `PORTFOLIO_SHOWN_OPTIONAL_COLUMNS`,
-`WATCHLIST_HIDDEN_CORE_COLUMNS`, `WATCHLIST_SHOWN_OPTIONAL_COLUMNS`. Core columns
-are opt-*out* (default visible, matching pre-feature behavior); optional columns
-are opt-*in* (default hidden, so first load after the feature ships looks
-unchanged). Written by `POST /api/ui-preferences/columns` (see
-`assets/api_reference.md`), no confirm token — same pattern as
-`POST /api/learn/preference`.
+Five columns needing a genuinely new JOIN, deliberately deferred from the first stage:
+
+- `xray_beta` / `xray_annualized_vol` — from `xray_risk_cache`, joined on
+  `(ticker, benchmark)` where `benchmark` is pinned to the fixed
+  `xray_engine.BENCHMARK_SYMBOL` constant (`"SWDA.L"`) — passed as a bound SQL
+  parameter, never hardcoded inline, so the query stays correct if that constant
+  ever changes. Refreshed by the always-on nightly X-ray job (Mon–Fri 19:00).
+- `xray_dividend_yield` — from `xray_dividend_cache.dividend_yield_pct`, read via a
+  correlated `ORDER BY last_updated DESC LIMIT 1` subquery (not a plain JOIN) since
+  the table's real key is `(ticker, data_source)` and `data_source` varies per
+  holding — this mirrors the exact pattern `ai_engine.py`/`xray_engine.py` already
+  use to read this table. **Different scale from the existing `dividend_yield`
+  column**: this one comes from Ghostfolio already in percentage form (`2.5` = 2.5%,
+  `fmt: "pct_raw"`), while `stock_signals.dividend_yield` (Yahoo-sourced) is a
+  fraction (`0.025`, `fmt: "pct_from_fraction"`) — do not reuse one formatter for
+  both. Also only populated for Ghostfolio-tracked holdings, so it's routinely NULL
+  for most Watchlist-only tickers.
+- `earnings_edge_score` / `earnings_implied_move` — from `earnings_volatility`,
+  a plain `ticker`-keyed JOIN. Both are **sparse by design**: the weekly scan
+  (`earnings_vol_engine.py`, Saturday 10:00) only writes a row for tickers with
+  earnings within ~14 days, so most rows are NULL most of the time.
+
+## Views — `DEFAULT_PORTFOLIO_VIEWS` / `DEFAULT_WATCHLIST_VIEWS` + `resolve_views()`
+
+A view is `{"name": str, "columns": [key, ...]}` — the explicit set of column keys
+that should be visible when applied; everything else (except the pinned Ticker
+column) is hidden. Views are defined **per page**, not shared across both, because
+several concepts have different core-column keys on each page (e.g. Portfolio's
+`change`/`target_price`/`piotroski_f_score` vs. Watchlist's `daily_change`/
+`target`/`piotroski`) — a single cross-page view definition would need to special-case
+these divergences for no real benefit, so each page gets its own parallel view list
+using its own native keys instead.
+
+`resolve_views(config_data, page)` returns the saved `UI_PREFERENCES.{SCOPE}_VIEWS`
+list if non-empty, otherwise falls back to the 3 built-in defaults
+(`table_columns_helpers.py`, ≤24 columns each — kept well under DataTables'
+practical usability ceiling for a focused view):
+
+- **Fundamentals & Quality** — valuation ratios, quality/forensic scores, sector,
+  market cap.
+- **Technical Signals** — RSI/MACD/trend/volatility/momentum/ML confidence.
+- **Position Targets** — Target Price, Low/High Target, Stop-Loss, Entry/Exit Zone,
+  Suggested Shares/Position Value. This view is the direct replacement for
+  Watchlist's removed `#targetFilter` "Has Target Set" dropdown (see below) — it
+  surfaces the same information as a column preset instead of a row filter.
+
+Saving/renaming/deleting a view is a **full-list replacement** via
+`POST /api/ui-preferences/views` (`{scope, views: [...]}`) — the client always sends
+the complete updated list, matching `POST /api/ui-preferences/columns`'s existing
+pattern rather than adding separate add/rename/delete endpoints.
+
+**Applying a view does not introduce a second visibility engine.** `column_picker.js`'s
+`ColumnPicker.applyView(columnKeys)` recomputes the same `hidden_core_columns`/
+`shown_optional_columns` state the individual checkboxes already maintain, applies it
+column-by-column via the same `table.column(idx).visible()` calls, and saves it
+through the same `/api/ui-preferences/columns` endpoint — a view is purely a bulk
+shortcut for setting that one piece of state, not a separate persisted "current view"
+concept. This is why leaving the Columns picker open after applying a view shows the
+now-current (view-derived) checkbox state, and why manually tweaking a checkbox
+after applying a view doesn't need any special "detach from view" handling.
+
+### Removal of Watchlist's `#targetFilter`
+
+Before Views existed, Watchlist had a `#targetFilter` dropdown ("All Rows" / "Has
+Target Set") that did two unrelated things at once: filtered rows via a
+`$.fn.dataTable.ext.search` predicate on `data-has-target`, and toggled 5 columns
+(Piotroski/Altman/Beneish vs. Low/High Target) via a `column_picker.js`
+`applyFilterOverride()` mechanism built specifically to AND that filter's intent
+with the user's saved column preference. Both were removed in favor of the
+Position Targets view: Piotroski/Altman/Beneish/Low Target/High Target are now
+plain, independently toggleable columns like any other (visible by default, since
+they're Watchlist *core* columns) — the row-level "only show tickers with a target
+set" filtering capability was deliberately not replaced (explicit product decision;
+sort/scan manually or via the Position Targets view instead). `applyFilterOverride`
+and its supporting `filterOverrides` state were deleted from `column_picker.js`
+entirely once nothing called it — do not re-add this pattern without a concrete
+second caller; a page-specific filter/column interaction like this is the
+exception, not something every page needs.
 
 ## Front-end — `static/js/column_picker.js`
 
-Shared module (same pattern as `chart_fullscreen.js` for charts):
-`ColumnPicker.resolveVisible(key, allColumns, prefs)` is a pure function usable
-before `.DataTable()` is even constructed (to compute the initial `columnDefs`
-`visible` array, avoiding a flash of all-columns-visible). `ColumnPicker.init(...)`
-wires the dropdown menu (grouped by `category`) and returns `{isVisible,
-applyFilterOverride}`.
+Shared module (same pattern as `chart_fullscreen.js` for charts), two entry points:
 
-`applyFilterOverride(key, bool)` exists for the one case where a column's
-visibility is controlled by **two** things at once: Watchlist's pre-existing
-`#targetFilter` dropdown already toggles Piotroski/Altman/Beneish vs Low/High
-Target based on filter selection. The picker's own user preference is AND-ed with
-the filter's current override — a column hidden via the picker stays hidden
-regardless of what the filter would otherwise show. `watchlist.js`'s
-`#targetFilter` change handler calls `applyFilterOverride` for those 5 keys
-instead of calling `table.column(N).visible()` directly.
+- `ColumnPicker.init(opts)` — wires the Columns dropdown menu (grouped by
+  `category`), returns `{isVisible, applyView, getCurrentVisibleKeys}`.
+  `ColumnPicker.resolveVisible(key, allColumns, prefs)` is also exported standalone
+  (a pure function, no DOM/table needed) so pages can compute the initial
+  `columnDefs` `visible` array *before* `.DataTable()` is even constructed,
+  avoiding a flash of all-columns-visible.
+- `ColumnPicker.initViewsMenu(picker, opts)` — wires the Views dropdown, given the
+  `picker` object `init()` returned. Renders each saved view as a clickable
+  name (applies it) + delete button, plus a name input + "Save Current" button
+  that upserts (by name) the picker's `getCurrentVisibleKeys()` as a new/updated
+  view.
 
 ## Sticky header
 

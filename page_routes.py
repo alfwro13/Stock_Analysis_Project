@@ -228,6 +228,8 @@ async def home():
 
 @page_router.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
+    from xray_engine import BENCHMARK_SYMBOL
+
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -257,6 +259,10 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                    q.rel_strength_5d, q.rel_strength_20d, q.hist_vol_20, q.volume,
                    ap.industry, mu.index_membership,
                    tmeta.market_cap,
+                   xrisk.beta AS xray_beta, xrisk.annualized_vol AS xray_annualized_vol,
+                   (SELECT dividend_yield_pct FROM xray_dividend_cache
+                    WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
+                   ev.edge_score AS earnings_edge_score, ev.implied_move_pct AS earnings_implied_move,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -271,7 +277,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN quant_signals q ON s.ticker = q.ticker
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-        """)
+            LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
+            LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
+        """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
 
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
@@ -446,6 +454,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
 
     optional_columns = table_columns_helpers.columns_for_page("portfolio")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "portfolio")
+    views = table_columns_helpers.resolve_views(config_data, "portfolio")
 
     return templates.TemplateResponse(
         request=request, name="portfolio.html",
@@ -467,7 +476,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "show_extended": show_extended,
             "optional_columns": optional_columns,
             "all_columns": table_columns_helpers.all_columns_for_page("portfolio"),
-            "column_prefs": column_prefs
+            "column_prefs": column_prefs,
+            "views": views
         }
     )
 
@@ -636,6 +646,8 @@ async def house_account_detail_page(request: Request, account_id: int):
 
 @page_router.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
+    from xray_engine import BENCHMARK_SYMBOL
+
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -667,6 +679,10 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                    ap.industry, m.index_membership,
                    m.is_freetrade,
                    tmeta.market_cap,
+                   xrisk.beta AS xray_beta, xrisk.annualized_vol AS xray_annualized_vol,
+                   (SELECT dividend_yield_pct FROM xray_dividend_cache
+                    WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
+                   ev.edge_score AS earnings_edge_score, ev.implied_move_pct AS earnings_implied_move,
                    trap.phase as trap_phase,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
@@ -685,7 +701,9 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
-        """)
+            LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
+            LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
+        """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
 
         cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
@@ -748,8 +766,6 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     watchlist_data.sort(key=lambda x: x['ticker'])
     sectors = sorted({row['sector'] or 'Unclassified' for row in watchlist_data})
 
-    has_targets_set = any(row['low_target'] is not None or row['high_target'] is not None for row in watchlist_data)
-
     present_signals = {row['overall_signal'].upper() for row in watchlist_data if row.get('overall_signal')}
 
     present_tags = set()
@@ -784,6 +800,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     optional_columns = table_columns_helpers.columns_for_page("watchlist")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "watchlist")
+    views = table_columns_helpers.resolve_views(config_data, "watchlist")
 
     return templates.TemplateResponse(
         request=request, name="watchlist.html",
@@ -793,7 +810,6 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "present_signals": present_signals,
             "present_tags": present_tags,
             "present_score_buckets": present_score_buckets,
-            "has_targets_set": has_targets_set,
             "global_updated": global_updated,
             "embed": embed,
             "embed_token": embed_token,
@@ -804,6 +820,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "position_sizing": position_sizing_context,
             "optional_columns": optional_columns,
             "all_columns": table_columns_helpers.all_columns_for_page("watchlist"),
+            "views": views,
             "column_prefs": column_prefs
         }
     )

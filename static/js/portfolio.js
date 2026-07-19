@@ -948,12 +948,17 @@ $(document).ready(function () {
     });
     window._portfolioTable = table;
 
-    ColumnPicker.init({
+    var picker = ColumnPicker.init({
         table: table,
         scope: 'portfolio',
         allColumns: allCols,
         prefs: colPrefs,
         menuId: 'columnPickerMenu'
+    });
+    ColumnPicker.initViewsMenu(picker, {
+        scope: 'portfolio',
+        menuId: 'viewsPickerMenu',
+        views: window.PORTFOLIO_VIEWS
     });
 
     applyStickyTheadOffset();
