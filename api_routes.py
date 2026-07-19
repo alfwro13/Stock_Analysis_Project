@@ -13,7 +13,7 @@ import pandas as pd
 import logging
 import requests
 from datetime import datetime, timezone, timedelta
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
@@ -355,9 +355,22 @@ async def api_table_column_preference(body: TableColumnPreferenceBody):
         return _error_500(e)
 
 
+class TableFilterCondition(BaseModel):
+    key: str
+    operator: str
+    value: Optional[str] = None
+    value2: Optional[str] = None
+
+
+class TableFilterSpec(BaseModel):
+    logic: Literal["AND", "OR"] = "AND"
+    conditions: List[TableFilterCondition] = []
+
+
 class TableView(BaseModel):
     name: str
     columns: List[str]
+    filter: Optional[TableFilterSpec] = None
 
 
 class TableViewsPreferenceBody(BaseModel):
@@ -372,7 +385,7 @@ async def api_table_views_preference(body: TableViewsPreferenceBody):
     try:
         prefix = body.scope.upper()
         update_config_atomic({"UI_PREFERENCES": {
-            f"{prefix}_VIEWS": [v.model_dump() for v in body.views],
+            f"{prefix}_VIEWS": [v.model_dump(exclude_none=True) for v in body.views],
         }})
         return JSONResponse(content={"status": "success"})
     except Exception as e:

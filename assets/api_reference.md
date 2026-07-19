@@ -346,7 +346,7 @@ Persists the Portfolio/Watchlist "Columns" picker's selection — which of that 
 
 ### `POST /api/ui-preferences/views`
 
-Persists the Portfolio/Watchlist "Views" picker's full list of named column presets. Full-list replacement (the client sends the entire updated list on every add/rename/delete), same no-confirm-token pattern as `/api/ui-preferences/columns`.
+Persists the Portfolio/Watchlist "Views" picker's full list of named column presets, each optionally carrying an Advanced Filter. Full-list replacement (the client sends the entire updated list on every add/rename/delete), same no-confirm-token pattern as `/api/ui-preferences/columns`.
 
 **Request body**
 
@@ -355,12 +355,18 @@ Persists the Portfolio/Watchlist "Views" picker's full list of named column pres
   "scope": "portfolio",
   "views": [
     {"name": "Fundamentals & Quality", "columns": ["ticker", "company_name", "price", "score", "trailing_pe", "..."]},
-    {"name": "My Custom View", "columns": ["ticker", "price", "rsi"]}
+    {"name": "My Custom View", "columns": ["ticker", "price", "rsi"]},
+    {"name": "Oversold", "columns": ["ticker", "price", "rsi"], "filter": {"logic": "AND", "conditions": [{"key": "rsi", "operator": "lt", "value": "30"}]}},
+    {"name": "Has Target Set", "columns": ["ticker", "low_target", "high_target"], "filter": {"logic": "OR", "conditions": [
+      {"key": "low_target", "operator": "not_empty"}, {"key": "high_target", "operator": "not_empty"}
+    ]}}
   ]
 }
 ```
 
 `scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_VIEWS` in `config.json`. `table_columns_helpers.resolve_views()` falls back to the 3 built-in default views (`DEFAULT_PORTFOLIO_VIEWS`/`DEFAULT_WATCHLIST_VIEWS`) whenever this key is empty/unset — saving an empty `views` list therefore reverts the picker to the built-in defaults rather than leaving it empty. Applying a view is purely a client-side bulk operation (`column_picker.js`'s `ColumnPicker.applyView()`) that recomputes and saves the same `hidden_core_columns`/`shown_optional_columns` state `/api/ui-preferences/columns` already persists — this endpoint only stores the named presets themselves.
+
+`filter` is optional (`TableFilterSpec | None`, omitted from storage via `model_dump(exclude_none=True)` when absent, so older saved views round-trip with no `filter` key at all). `TableFilterSpec` is `{"logic": "AND"|"OR" (default "AND"), "conditions": [TableFilterCondition, ...]}` — `422` for any other `logic` value. Each condition is `{"key": <column key>, "operator": <see static/js/advanced_filter.js's OPERATORS table>, "value": <string, optional>, "value2": <string, optional — "between" only>}`. Conditions are not validated against known column keys/operators server-side (same leniency as `columns`) — `static/js/advanced_filter.js` is the source of truth for what's actually offered in the UI. An Advanced Filter built ad hoc (not attached to a saved view) never reaches this endpoint at all — it lives only in that browser's `localStorage`. Older saved views (or `localStorage` state) predating the `logic` field store `filter` as a bare condition list with no wrapper object — `static/js/advanced_filter.js`'s `normalizeFilterSpec()` reads that as an implicit `logic: "AND"` for backward compatibility; a subsequent save always writes the new `{logic, conditions}` shape.
 
 ```json
 {"status": "success"}

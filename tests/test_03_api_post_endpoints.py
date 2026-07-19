@@ -1133,6 +1133,78 @@ def test_post_ui_preferences_views_rejects_invalid_scope(client):
 
 
 @pytest.mark.api
+def test_post_ui_preferences_views_persists_filter_conditions(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/views", json={
+            "scope": "portfolio",
+            "views": [{
+                "name": "Oversold",
+                "columns": ["ticker", "price", "rsi"],
+                "filter": {"logic": "AND", "conditions": [{"key": "rsi", "operator": "lt", "value": "30"}]},
+            }],
+        })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    mock_update.assert_called_once_with({"UI_PREFERENCES": {
+        "PORTFOLIO_VIEWS": [{
+            "name": "Oversold",
+            "columns": ["ticker", "price", "rsi"],
+            "filter": {"logic": "AND", "conditions": [{"key": "rsi", "operator": "lt", "value": "30"}]},
+        }],
+    }})
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_persists_or_logic(client):
+    """The Low Target / High Target 'has a target set' use case needs OR, not AND."""
+    with patch("api_routes.update_config_atomic") as mock_update:
+        resp = client.post("/api/ui-preferences/views", json={
+            "scope": "watchlist",
+            "views": [{
+                "name": "Has Target Set",
+                "columns": ["ticker", "low_target", "high_target"],
+                "filter": {"logic": "OR", "conditions": [
+                    {"key": "low_target", "operator": "not_empty"},
+                    {"key": "high_target", "operator": "not_empty"},
+                ]},
+            }],
+        })
+    assert resp.status_code == 200
+    saved_view = mock_update.call_args[0][0]["UI_PREFERENCES"]["WATCHLIST_VIEWS"][0]
+    assert saved_view["filter"]["logic"] == "OR"
+    assert len(saved_view["filter"]["conditions"]) == 2
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_defaults_filter_logic_to_and(client):
+    with patch("api_routes.update_config_atomic") as mock_update:
+        client.post("/api/ui-preferences/views", json={
+            "scope": "portfolio",
+            "views": [{"name": "V", "columns": ["ticker"], "filter": {"conditions": []}}],
+        })
+    saved_view = mock_update.call_args[0][0]["UI_PREFERENCES"]["PORTFOLIO_VIEWS"][0]
+    assert saved_view["filter"]["logic"] == "AND"
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_rejects_filter_condition_missing_operator(client):
+    resp = client.post("/api/ui-preferences/views", json={
+        "scope": "portfolio",
+        "views": [{"name": "Bad", "columns": ["ticker"], "filter": {"conditions": [{"key": "rsi"}]}}],
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.api
+def test_post_ui_preferences_views_rejects_invalid_filter_logic(client):
+    resp = client.post("/api/ui-preferences/views", json={
+        "scope": "portfolio",
+        "views": [{"name": "Bad", "columns": ["ticker"], "filter": {"logic": "XOR", "conditions": []}}],
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.api
 def test_post_learn_session_with_study_all_includes_locked_levels(client):
     import database as _db
     conn = _db.get_connection()

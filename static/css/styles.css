@@ -413,8 +413,23 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .column-picker-menu .view-name:hover { color: #4da6ff; }
 .column-picker-menu .view-delete-btn { background: none; border: none; color: #888; font-size: var(--font-size-body); line-height: 1; padding: 0 4px; }
 .column-picker-menu .view-delete-btn:hover { color: #e57373; }
+.column-picker-menu .view-item-active .view-name { color: #00ffcc; font-weight: bold; }
+.column-picker-menu .view-active-badge { font-weight: normal; font-size: var(--font-size-body); }
 .column-picker-menu .view-save-row { display: flex; gap: 6px; padding: 8px 12px 4px; }
 .column-picker-menu .view-name-input { flex: 1; min-width: 0; }
+.adv-filter-rows { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
+.adv-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.adv-filter-row .adv-col-select { flex: 1 1 200px; min-width: 160px; }
+.adv-filter-row .adv-op-select { flex: 0 1 150px; min-width: 120px; }
+.adv-filter-values { display: flex; align-items: center; gap: 6px; flex: 1 1 160px; }
+.adv-filter-values .adv-val-input { flex: 1 1 100px; min-width: 80px; }
+.adv-filter-and { color: #888; font-size: var(--font-size-body); }
+.adv-filter-remove-btn { background: none; border: none; color: #888; font-size: var(--font-size-body); line-height: 1; padding: 0 4px; }
+.adv-filter-remove-btn:hover { color: #e57373; }
+.adv-filter-add-btn { align-self: flex-start; margin-top: 4px; }
+.adv-filter-logic-row { display: flex; align-items: center; gap: 8px; padding-bottom: 4px; border-bottom: 1px solid #333; margin-bottom: 4px; }
+.adv-filter-logic-row label { color: #aaa; font-size: var(--font-size-body); }
+.adv-filter-logic-row .adv-logic-select { flex: 0 1 220px; }
 /* --- 12. Report Containers & Briefings --- */
 .report-container { max-width: 1200px; margin: 20px auto; padding: 40px; background-color: #1e1e1e; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border-left: 4px solid #4da6ff; line-height: 1.6; }
 .report-container h1 { color: #4da6ff; margin-bottom: 10px; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: var(--font-size-h1); }
