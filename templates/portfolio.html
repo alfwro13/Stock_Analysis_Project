@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import pattern_tags %}
 
 {% block title %}Quantamental - Portfolio{% endblock %}
 
@@ -123,10 +124,7 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
         {% if 'Active Selloff' in present_tags %}<option value="Active Selloff">Active Selloff</option>{% endif %}
         {% if 'Bubble Risk' in present_tags %}<option value="Bubble Risk">Bubble Risk</option>{% endif %}
         {% if 'Bubble Watch' in present_tags %}<option value="Bubble Watch">Bubble Watch</option>{% endif %}
-        {% if 'Head & Shoulders (Forming)' in present_tags %}<option value="Head & Shoulders (Forming)">Head &amp; Shoulders (Forming)</option>{% endif %}
-        {% if 'Head & Shoulders (Confirmed)' in present_tags %}<option value="Head & Shoulders (Confirmed)">Head &amp; Shoulders (Confirmed)</option>{% endif %}
-        {% if 'Inverse Head & Shoulders (Forming)' in present_tags %}<option value="Inverse Head & Shoulders (Forming)">Inverse Head &amp; Shoulders (Forming)</option>{% endif %}
-        {% if 'Inverse Head & Shoulders (Confirmed)' in present_tags %}<option value="Inverse Head & Shoulders (Confirmed)">Inverse Head &amp; Shoulders (Confirmed)</option>{% endif %}
+        {% for label in present_pattern_tags %}<option value="{{ label }}">{{ label }}</option>{% endfor %}
     </select>
     <div class="btn-group change-period-group" id="changePeriodGroup" role="group" aria-label="Change Period">
         <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1d">1D</button>
@@ -386,13 +384,7 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
                     </div>
                 {% endif %}
 
-                {% if item.hs_phase_label %}
-                    <div class="inline-block">
-                        <abbr title="Head & Shoulders Pattern Detector — see the /pattern-detection tool for the full pattern breakdown." class="no-decoration-abbr">
-                            <span class="setup-tag">📐 {{ item.hs_phase_label }}</span>
-                        </abbr>
-                    </div>
-                {% endif %}
+                {{ pattern_tags(item.pattern_tags) }}
             </td>
             <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
             {% for col in item.optional_cols %}
@@ -439,6 +431,7 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
 <script src="/static/js/column_picker.js?v={{ css_version }}"></script>
 <script src="/static/js/advanced_filter.js?v={{ css_version }}"></script>
+<script src="/static/js/change_period.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
 <script src="/static/js/heatmap_treemap.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio_heatmap.js?v={{ css_version }}"></script>

@@ -24,6 +24,20 @@ const PD_PATTERN_COLORS = {
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 
+// Plain-language, 2-3 sentence explanation per pattern_type — shown at the bottom of this
+// page for whichever patterns are actually present. A new pattern family should add one
+// entry here (see assets/pattern_detection.md).
+const PD_PATTERN_EXPLANATIONS = {
+    regular: "A Head & Shoulders pattern suggests a stock that's been rising may be about to turn downward. It forms three peaks — a smaller one, then a taller one in the middle, then another smaller one — sitting above a support line (the \"neckline\"). If the price breaks below that line, it's read as a signal that buyers are losing control and the uptrend may be ending.",
+    inverse: "An Inverse Head & Shoulders is the mirror image, suggesting a stock that's been falling may be about to turn upward. It forms three troughs — with the middle one the deepest — sitting below a resistance line. A break above that line is read as a signal that sellers are losing control and the downtrend may be ending.",
+    double_top: "A Double Top forms when a rising stock hits the same price ceiling twice without breaking through, with a dip in between. It suggests buyers have tried and failed twice to push the price to a new high, and a drop below the dip's level is read as a signal of a possible downturn.",
+    double_bottom: "A Double Bottom forms when a falling stock hits the same price floor twice without breaking below it, with a bounce in between. It suggests sellers have tried and failed twice to push the price to a new low, and a rise above the bounce's level is read as a signal of a possible upturn.",
+    bull_flag: "A Bull Flag forms after a sharp rally, when the price pauses and drifts sideways-to-down in a narrow channel while trading volume dries up. It suggests early buyers are taking profit while the broader uptrend stays intact, and a break back above the channel is read as a signal the rally is resuming.",
+    bear_flag: "A Bear Flag forms after a sharp decline, when the price pauses and drifts sideways-to-up in a narrow channel. It suggests the bounce is short-covering rather than a genuine reversal, and a break back below the channel is read as a signal the decline is resuming.",
+    ascending: "An Ascending Triangle forms when a stock repeatedly hits the same price ceiling while each dip in between bottoms out a little higher than the last. It suggests buyers are getting more aggressive even though sellers keep defending the same level, and a break above that ceiling is read as a signal buyers have won out.",
+    descending: "A Descending Triangle forms when a stock repeatedly holds the same price floor while each bounce in between tops out a little lower than the last. It suggests sellers are getting more aggressive even though buyers keep defending the same level, and a break below that floor is read as a signal sellers have won out.",
+};
+
 let _pdSeries = null;
 let _pdPatterns = [];
 let _pdEnabled = new Set();
@@ -125,11 +139,14 @@ function _pdBuildCheckboxGroup(containerId, patterns) {
     const container = document.getElementById(containerId);
     container.innerHTML = patterns.map(p => {
         const key = _pdPatternKey(p);
-        const color = _pdColorForType(p.pattern_type);
+        // FORMING is always orange regardless of direction (not yet resolved); CONFIRMED
+        // reflects direction — red bearish, green bullish. Same tag classes used everywhere
+        // else a pattern is tagged (Portfolio/Watchlist/Stock Detail, the list-page badges).
+        const tagClass = p.phase === 'FORMING' ? 'pattern-tag-forming' : (p.direction === 'up' ? 'pattern-tag-bullish' : 'pattern-tag-bearish');
         return `
             <div class="checkbox-group mb-1">
                 <input type="checkbox" class="pd-pattern-checkbox" data-key="${key}" checked>
-                <label style="color:${color};">${escapeHtml(_pdPatternLabel(p))}</label>
+                <label><span class="setup-tag ${tagClass}">${escapeHtml(_pdPatternLabel(p))}</span></label>
             </div>`;
     }).join('');
 }
@@ -169,6 +186,24 @@ function _pdWireGroup(masterId, containerId) {
     _pdUpdateMasterState(masterId, groupSelector);
 }
 
+function _pdRenderExplanations() {
+    const el = document.getElementById('pd-explanations');
+    const seen = new Set();
+    const cards = [];
+    _pdPatterns.forEach(p => {
+        if (seen.has(p.pattern_type)) return;
+        seen.add(p.pattern_type);
+        const explanation = PD_PATTERN_EXPLANATIONS[p.pattern_type];
+        if (!explanation) return;
+        cards.push(`
+            <div class="settings-panel mb-2">
+                <h5 class="mb-1">${escapeHtml(PD_PATTERN_TYPE_LABELS[p.pattern_type] || p.pattern_type)}</h5>
+                <p class="text-muted small mb-0">${escapeHtml(explanation)}</p>
+            </div>`);
+    });
+    el.innerHTML = cards.join('');
+}
+
 function _pdLoadTickerPatterns() {
     fetch(`/api/pattern-detection/chart/${encodeURIComponent(window.PD_TICKER)}`)
         .then(r => r.json())
@@ -195,6 +230,7 @@ function _pdLoadTickerPatterns() {
             _pdWireGroup('pd-master-bearish', 'pd-bearish-children');
 
             _pdRenderChart();
+            _pdRenderExplanations();
         })
         .catch(err => {
             document.getElementById('pd-detail-chart').innerHTML = `<p class="text-danger p-3">${escapeHtml(err.message)}</p>`;

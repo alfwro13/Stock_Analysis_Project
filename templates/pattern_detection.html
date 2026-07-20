@@ -21,10 +21,29 @@
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
     <span id="pd-last-scan" class="text-secondary small"></span>
-    <div class="d-flex gap-2 align-items-center">
-        <select id="pd-family-filter" class="form-select form-select-sm w-auto d-inline-block">
-            <option value="">All patterns</option>
-        </select>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <div class="d-flex align-items-center gap-1">
+            <label for="pd-scope-filter" class="text-muted small mb-0">Scope</label>
+            <select id="pd-scope-filter" class="form-select form-select-sm w-auto d-inline-block">
+                <option value="portfolio" selected>Portfolio</option>
+                <option value="watchlist">Watchlist</option>
+                <option value="all">All Tickers</option>
+            </select>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+            <label for="pd-direction-filter" class="text-muted small mb-0">Direction</label>
+            <select id="pd-direction-filter" class="form-select form-select-sm w-auto d-inline-block">
+                <option value="">All Directions</option>
+                <option value="up">Bullish</option>
+                <option value="down">Bearish</option>
+            </select>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+            <label for="pd-family-filter" class="text-muted small mb-0">Family</label>
+            <select id="pd-family-filter" class="form-select form-select-sm w-auto d-inline-block">
+                <option value="">All Families</option>
+            </select>
+        </div>
         <button id="pd-backfill-btn" class="btn btn-outline-secondary btn-sm">Backfill Historical Data</button>
         <button id="pd-run-btn" class="btn btn-primary btn-sm">Run Scan</button>
     </div>

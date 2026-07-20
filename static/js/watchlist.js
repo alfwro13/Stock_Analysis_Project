@@ -159,4 +159,13 @@ $(document).ready(function () {
         sectorSelected = $(this).val();
         table.draw();
     });
+
+    // Change Period (1D/5D/1M/6M/YTD/1Y) — shared engine in static/js/change_period.js.
+    // The button group is appended later by watchlist_add_ticker.js, which re-syncs the
+    // active button via window._watchlistChangePeriod.setButtons() once it exists.
+    window._watchlistChangePeriod = ChangePeriod.init({
+        table: table,
+        cookieName: 'watchlist_change_period',
+        globalVar: 'WATCHLIST_CHANGE_PERIOD'
+    });
 });

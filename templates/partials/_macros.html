@@ -5,3 +5,13 @@
         {{ "{:,.2f}".format(val) }} {{ cur }}
     {% endif %}
 {% endmacro %}
+
+{% macro pattern_tags(tags) %}
+    {% for tag in tags %}
+        <div class="inline-block">
+            <abbr title="Pattern Detection — see the /pattern-detection tool for the full pattern breakdown." class="no-decoration-abbr">
+                <span class="setup-tag {{ 'pattern-tag-forming' if tag.phase == 'FORMING' else ('pattern-tag-bullish' if tag.direction == 'up' else 'pattern-tag-bearish') }}">&#128208; {{ tag.label }}</span>
+            </abbr>
+        </div>
+    {% endfor %}
+{% endmacro %}

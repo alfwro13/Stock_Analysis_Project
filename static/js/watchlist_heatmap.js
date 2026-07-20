@@ -5,15 +5,20 @@ function toggleHeatmap() {
     if (!window._wlHeatmapMode) { _wlEnterHeatmapMode(); } else { _wlExitHeatmapMode(); }
 }
 
-function _wlGetTableContainer() {
-    return document.getElementById('dataTable_wrapper') || document.getElementById('dataTable');
+// #dataTable_length holds the Add Ticker/Change Period/Advanced Filter buttons appended by
+// other scripts — hide only the table itself and its info/paginate/processing rows so that
+// toolbar stays usable while the heatmap is showing, instead of hiding the whole wrapper.
+function _wlSetTableRowsVisible(visible) {
+    ['dataTable', 'dataTable_info', 'dataTable_paginate', 'dataTable_processing'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = visible ? '' : 'none';
+    });
 }
 
 function _wlEnterHeatmapMode() {
     window._wlHeatmapMode = true;
     try { localStorage.setItem(_WL_HEATMAP_KEY, '1'); } catch (e) {}
-    var tbl = _wlGetTableContainer();
-    if (tbl) tbl.style.display = 'none';
+    _wlSetTableRowsVisible(false);
     var panel = document.getElementById('heatmap-panel');
     if (panel) {
         panel.style.display = 'block';
@@ -26,8 +31,7 @@ function _wlEnterHeatmapMode() {
 function _wlExitHeatmapMode() {
     window._wlHeatmapMode = false;
     try { localStorage.removeItem(_WL_HEATMAP_KEY); } catch (e) {}
-    var tbl = _wlGetTableContainer();
-    if (tbl) tbl.style.display = '';
+    _wlSetTableRowsVisible(true);
     var panel = document.getElementById('heatmap-panel');
     if (panel) {
         panel.style.display = 'none';

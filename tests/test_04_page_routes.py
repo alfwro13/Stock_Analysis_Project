@@ -389,8 +389,8 @@ def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkey
 @pytest.mark.pages
 def test_stock_detail_shows_setup_and_derived_tags(client):
     """Stock Detail must show the same badge-style tags as Portfolio/Watchlist —
-    setup_tags (candlestick patterns), Trap Monitor phase, and Head & Shoulders phase —
-    next to the header, since it previously computed none of them."""
+    setup_tags (candlestick patterns), Trap Monitor phase, and every currently-active
+    Pattern Detection family (not just Head & Shoulders) — next to the header."""
     import database as _db
 
     conn = _db.get_connection()
@@ -404,7 +404,14 @@ def test_stock_detail_shows_setup_and_derived_tags(client):
             "INSERT INTO trap_monitor_results (ticker, phase) VALUES ('ZZTAGGED', 'BULL_TRAP')"
         )
         conn.execute(
-            "INSERT INTO head_shoulders_results (ticker, pattern_type, phase) VALUES ('ZZTAGGED', 'regular', 'CONFIRMED')"
+            """INSERT INTO pattern_detection_results
+               (ticker, pattern_family, pattern_type, phase, points_json, lines_json, scan_ts)
+               VALUES ('ZZTAGGED', 'head_shoulders', 'regular', 'CONFIRMED', '[]', '[]', '2026-01-01 00:00:00')"""
+        )
+        conn.execute(
+            """INSERT INTO pattern_detection_results
+               (ticker, pattern_family, pattern_type, phase, points_json, lines_json, scan_ts)
+               VALUES ('ZZTAGGED', 'double_top_bottom', 'double_bottom', 'FORMING', '[]', '[]', '2026-01-01 00:00:00')"""
         )
         conn.commit()
     finally:
@@ -415,12 +422,14 @@ def test_stock_detail_shows_setup_and_derived_tags(client):
         assert resp.status_code < 500
         assert "Bullish Engulfing" in resp.text
         assert "setup-tag" in resp.text
+        assert "Head &amp; Shoulders (Confirmed)" in resp.text
+        assert "Double Bottom (Forming)" in resp.text
     finally:
         conn = _db.get_connection()
         try:
             conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZTAGGED'")
             conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'ZZTAGGED'")
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'ZZTAGGED'")
+            conn.execute("DELETE FROM pattern_detection_results WHERE ticker = 'ZZTAGGED'")
             conn.commit()
         finally:
             conn.close()
