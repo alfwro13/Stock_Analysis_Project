@@ -12,6 +12,7 @@
 window.WATCHLIST_COLUMNS = {{ all_columns | tojson }};
 window.WATCHLIST_COLUMN_PREFS = {{ column_prefs | tojson }};
 window.WATCHLIST_VIEWS = {{ views | tojson }};
+window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
 </script>
 {% if not embed %}
 <h1 class="mb-3">Watchlist Signals</h1>
@@ -20,6 +21,8 @@ window.WATCHLIST_VIEWS = {{ views | tojson }};
     window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_WATCHLIST %}true{% else %}false{% endif %};
     window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
 </script>
+{% set show_indexes = False %}
+{% include 'macro_cards.html' %}
 
 <div class="sentiment-widgets">
     <div class="sentiment-widget">
@@ -161,7 +164,15 @@ window.WATCHLIST_VIEWS = {{ views | tojson }};
     <tbody>
         {% for item in watchlist %}
         {% set cp = cached_pulse.get(item.ticker) %}
-        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ cp.change_pct|float if cp and cp.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-sector="{{ item.sector or 'Unclassified' }}" data-composite-score="{{ item.composite_score if item.composite_score is not none else '' }}" data-rsi="{{ item.rsi_14 if item.rsi_14 is not none else '' }}" data-change-pct="{{ item.change_pct|float if item.change_pct is not none else '' }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
+            data-live-price="{{ cp.price if cp and cp.price is not none else (item.current_price if item.current_price is not none else '') }}"
+            data-day1-change-pct="{{ cp.change_pct if cp else '' }}"
+            data-day1-is-positive="{{ '1' if cp and cp.is_positive else '0' }}"
+            data-close5d="{{ item.period_anchors.get('5d') if item.period_anchors.get('5d') is not none else '' }}"
+            data-close1m="{{ item.period_anchors.get('1m') if item.period_anchors.get('1m') is not none else '' }}"
+            data-close6m="{{ item.period_anchors.get('6m') if item.period_anchors.get('6m') is not none else '' }}"
+            data-closeytd="{{ item.period_anchors.get('ytd') if item.period_anchors.get('ytd') is not none else '' }}"
+            data-close1y="{{ item.period_anchors.get('1y') if item.period_anchors.get('1y') is not none else '' }}">
             <td data-sort="{{ item.ticker }}" class="num-cell">
                 <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% if embed_token %}&embed_token={{ embed_token }}{% endif %}{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 {% if freetrade_only and not item.is_freetrade %}
@@ -185,13 +196,15 @@ window.WATCHLIST_VIEWS = {{ views | tojson }};
                 </span>
             </td>
 
-            <td data-sort="{{ cp.change_pct if cp and cp.change_pct is not none else 0 }}" class="num-cell">
-                <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp and cp.change_pct is not none %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
-                    {% if cp and cp.change_pct is not none %}
-                        {% set sign = '+' if cp.is_positive else '' %}
-                        {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
-                    {% else %}
+            <td data-sort="{{ item.change_pct if item.change_pct is not none else 0 }}" class="num-cell">
+                <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif item.change_pct is not none %}{% if item.change_is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                    {% if item.change_pct is not none %}
+                        {% set sign = '+' if item.change_is_positive else '' %}
+                        {{ sign }}{{ "{:,.2f}".format(item.change_pct|float) }}%
+                    {% elif change_period == '1d' %}
                         -
+                    {% else %}
+                        N/A
                     {% endif %}
                 </span>
             </td>

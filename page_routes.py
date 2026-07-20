@@ -722,6 +722,15 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     watchlist_account_id = get_watchlist_account()['id']
     all_holding_limits = get_all_holding_price_limits()
 
+    from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS
+    anchor_closes = get_period_anchor_closes(list(set(watchlist_tickers)))
+
+    change_period = request.cookies.get("watchlist_change_period", "1d")
+    if change_period not in CHANGE_PERIODS:
+        change_period = "1d"
+
+    cached_pulse = get_all_cached_pulse()
+
     watchlist_data = []
     for row in db_rows:
         row_dict = dict(row)
@@ -738,6 +747,17 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             row_dict['high_target'] = limits.get('high_limit')
 
             row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "watchlist")
+
+            cp = cached_pulse.get(row_dict['ticker'])
+            row_dict['period_anchors'] = anchor_closes.get(row_dict['ticker'], {})
+            if change_period == "1d":
+                row_dict['change_pct'] = cp['change_pct'] if cp else None
+                row_dict['change_is_positive'] = cp['is_positive'] if cp else None
+            else:
+                display_price = cp['price'] if cp and cp.get('price') is not None else row_dict['current_price']
+                pct = pct_from_anchor(display_price, row_dict['period_anchors'].get(change_period))
+                row_dict['change_pct'] = pct
+                row_dict['change_is_positive'] = (pct >= 0) if pct is not None else None
 
             watchlist_data.append(row_dict)
 
@@ -795,13 +815,14 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "embed_token": embed_token,
             "unread_count": get_unread_count(),
             "config": config_data,
-            "cached_pulse": get_all_cached_pulse(),
+            "cached_pulse": cached_pulse,
             "freetrade_only": freetrade_only,
             "position_sizing": position_sizing_context,
             "optional_columns": optional_columns,
             "all_columns": table_columns_helpers.all_columns_for_page("watchlist"),
             "views": views,
-            "column_prefs": column_prefs
+            "column_prefs": column_prefs,
+            "change_period": change_period
         }
     )
 

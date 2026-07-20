@@ -241,7 +241,7 @@ function updateAssetPrices(assets) {
                 rowEl.setAttribute('data-day1-is-positive', asset.is_positive ? '1' : '0');
             }
 
-            const activePeriod = window.PORTFOLIO_CHANGE_PERIOD;
+            const activePeriod = window.PORTFOLIO_CHANGE_PERIOD || window.WATCHLIST_CHANGE_PERIOD;
             let isPositive = asset.is_positive;
 
             if (rowEl && activePeriod && activePeriod !== '1d' && typeof window._applyChangeCell === 'function') {
@@ -249,7 +249,7 @@ function updateAssetPrices(assets) {
                 isPositive = pct !== null && pct >= 0;
                 window._applyChangeCell(rowEl, pct, isPositive, asset.is_stale);
             } else {
-                // 1D (Portfolio page) and Watchlist/Stock Detail (portfolio.js not loaded there) — unchanged rendering.
+                // 1D and Stock Detail (no Change Period control there) — unchanged rendering.
                 const formattedChange = Number(asset.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 const sign = asset.is_positive ? '+' : '';
                 changeEl.innerText = `${sign}${formattedChange}%`;

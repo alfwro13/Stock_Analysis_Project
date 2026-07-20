@@ -159,4 +159,74 @@ $(document).ready(function () {
         sectorSelected = $(this).val();
         table.draw();
     });
+
+    $(document).on('click', '.change-period-btn', function () {
+        changePeriod(this.dataset.period);
+    });
 });
+
+// ── Change Period (1D/5D/1M/6M/YTD/1Y) ─────────────────────────────────────────
+function _setChangePeriodCookie(period) {
+    document.cookie = 'watchlist_change_period=' + period + ';path=/;max-age=31536000';
+}
+
+function _setChangePeriodButtons(active) {
+    document.querySelectorAll('.change-period-btn').forEach(function (btn) {
+        var isActive = btn.dataset.period === active;
+        btn.classList.toggle('btn-primary', isActive);
+        btn.classList.toggle('btn-outline-secondary', !isActive);
+    });
+}
+
+function _pctFromAnchor(livePrice, anchorClose) {
+    var live = parseFloat(livePrice);
+    var anchor = parseFloat(anchorClose);
+    if (!isFinite(live) || !isFinite(anchor) || anchor === 0) return null;
+    return (live - anchor) / anchor * 100;
+}
+window._pctFromAnchor = _pctFromAnchor;
+
+function _applyChangeCell(rowEl, pct, isPositive, isStale) {
+    var changeEl = document.getElementById('change-' + rowEl.dataset.ticker);
+    if (!changeEl) return;
+    if (isStale === undefined) isStale = changeEl.classList.contains('stale-text');
+    var cell = changeEl.closest('td');
+    if (pct === null || pct === undefined || !isFinite(pct)) {
+        changeEl.innerText = 'N/A';
+        changeEl.className = isStale ? 'stale-text' : '';
+        rowEl.setAttribute('data-change-pct', '');
+        if (cell) cell.setAttribute('data-sort', 0);
+    } else {
+        var sign = isPositive ? '+' : '';
+        changeEl.innerText = sign + pct.toFixed(2) + '%';
+        changeEl.className = isStale ? 'stale-text' : (isPositive ? 'trend-up' : 'trend-down');
+        rowEl.setAttribute('data-change-pct', pct);
+        if (cell) cell.setAttribute('data-sort', pct);
+    }
+}
+window._applyChangeCell = _applyChangeCell;
+
+function _recomputeChangeColumn(period) {
+    if (!window._watchlistTable) return;
+    window._watchlistTable.rows().nodes().each(function (rowEl) {
+        if (rowEl.classList.contains('child')) return;
+        var pct, isPositive;
+        if (period === '1d') {
+            var pct1d = rowEl.dataset.day1ChangePct;
+            pct = (pct1d === '' || pct1d === undefined) ? null : parseFloat(pct1d);
+            isPositive = rowEl.dataset.day1IsPositive === '1';
+        } else {
+            pct = _pctFromAnchor(rowEl.dataset.livePrice, rowEl.dataset['close' + period]);
+            isPositive = pct !== null && pct >= 0;
+        }
+        _applyChangeCell(rowEl, pct, isPositive);
+    });
+    window._watchlistTable.rows().invalidate('dom').draw(false);
+}
+
+function changePeriod(period) {
+    window.WATCHLIST_CHANGE_PERIOD = period;
+    _setChangePeriodButtons(period);
+    _setChangePeriodCookie(period);
+    _recomputeChangeColumn(period);
+}
