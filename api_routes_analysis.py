@@ -265,7 +265,13 @@ async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str)
 @limiter.limit("20/minute")
 async def get_pattern_detection_results(request: Request, family: Optional[str] = Query(None)):
     """Returns all current pattern candidates across every registered family (or one family
-    if `family` is given), confirmed patterns first."""
+    if `family` is given), confirmed patterns first. Each result carries a `direction`
+    ("up"/"down") resolved from its family's PATTERN_TYPES registry entry, and the response
+    also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
+    without a second round-trip."""
+    from pattern_detection_engine import DETECTORS
+    from accounts_engine import get_combined_holdings
+    from database import get_watchlist_tickers
     conn = None
     try:
         conn = get_connection()
@@ -282,8 +288,17 @@ async def get_pattern_detection_results(request: Request, family: Optional[str] 
             row = dict(r)
             row["points"] = json.loads(row.pop("points_json") or "[]")
             row["lines"] = json.loads(row.pop("lines_json") or "[]")
+            module = DETECTORS.get(row["pattern_family"])
+            row["direction"] = module.PATTERN_TYPES.get(row["pattern_type"]) if module else None
             rows.append(row)
-        return JSONResponse(content={"status": "success", "results": rows})
+
+        portfolio_tickers = sorted({str(t).upper() for t in get_combined_holdings().keys()})
+        watchlist_tickers = sorted({str(t).upper() for t in get_watchlist_tickers()})
+
+        return JSONResponse(content={
+            "status": "success", "results": rows,
+            "portfolio_tickers": portfolio_tickers, "watchlist_tickers": watchlist_tickers,
+        })
     except Exception as e:
         logger.error("pattern-detection/results failed: %s", e)
         return _error_500(e)

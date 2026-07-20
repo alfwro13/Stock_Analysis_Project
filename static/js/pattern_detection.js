@@ -1,5 +1,5 @@
 // New pattern families only need an entry here for a human-readable label — the table,
-// filter, and per-ticker detail page all work generically off whatever family/points/lines
+// filters, and per-ticker detail page all work generically off whatever family/points/lines
 // a result carries, with no further changes needed (see assets/pattern_detection.md).
 const PATTERN_FAMILY_LABELS = {
     head_shoulders: 'Head & Shoulders',
@@ -20,20 +20,26 @@ function _pdPatternTypeLabel(patternType) {
     return PATTERN_TYPE_LABELS[patternType] || patternType || '—';
 }
 
-function _pdPhaseColor(phase) {
-    if (phase === 'CONFIRMED') return '#ff4d4d';
-    if (phase === 'FORMING') return '#ffaa00';
-    return '#888';
+// FORMING is always orange regardless of direction (not yet resolved); once CONFIRMED, the
+// tag reflects direction — red for bearish, green for bullish. Shared with the
+// Portfolio/Watchlist/Stock Detail "Setups & Tags" badges (see templates/partials/_macros.html).
+function _pdTagClass(phase, direction) {
+    if (phase === 'FORMING') return 'pattern-tag-forming';
+    return direction === 'up' ? 'pattern-tag-bullish' : 'pattern-tag-bearish';
 }
 
 let _pdAllResults = [];
+let _pdPortfolioTickers = new Set();
+let _pdWatchlistTickers = new Set();
 let _pdActiveFamily = '';
+let _pdActiveDirection = '';
+let _pdActiveScope = 'portfolio';
 
 function _pdBuildFamilyFilter(results) {
     const select = document.getElementById('pd-family-filter');
     const families = Array.from(new Set(results.map(r => r.pattern_family))).sort();
     const current = select.value;
-    select.innerHTML = '<option value="">All patterns</option>' + families.map(f =>
+    select.innerHTML = '<option value="">All Families</option>' + families.map(f =>
         `<option value="${escapeHtml(f)}">${escapeHtml(_pdFamilyLabel(f))}</option>`
     ).join('');
     if (families.includes(current)) select.value = current;
@@ -52,13 +58,20 @@ function _pdGroupByTicker(results) {
     })).sort((a, b) => b.lastScanTs.localeCompare(a.lastScanTs));
 }
 
+function _pdInScope(ticker) {
+    if (_pdActiveScope === 'portfolio') return _pdPortfolioTickers.has(ticker);
+    if (_pdActiveScope === 'watchlist') return _pdWatchlistTickers.has(ticker);
+    return true;
+}
+
 function _pdRenderPatternsTable() {
     const tbody = document.getElementById('pd-patterns-body');
     const empty = document.getElementById('pd-patterns-empty');
-    const filtered = _pdActiveFamily
+    let filtered = _pdActiveFamily
         ? _pdAllResults.filter(r => r.pattern_family === _pdActiveFamily)
         : _pdAllResults;
-    const grouped = _pdGroupByTicker(filtered);
+    if (_pdActiveDirection) filtered = filtered.filter(r => r.direction === _pdActiveDirection);
+    const grouped = _pdGroupByTicker(filtered).filter(g => _pdInScope(g.ticker));
 
     if (!grouped.length) {
         tbody.innerHTML = '';
@@ -71,9 +84,8 @@ function _pdRenderPatternsTable() {
         const tr = document.createElement('tr');
         tr.className = 'clickable';
         const badges = patterns.map(p => {
-            const color = _pdPhaseColor(p.phase);
             const label = `${_pdPatternTypeLabel(p.pattern_type)} (${p.phase === 'CONFIRMED' ? 'Confirmed' : 'Forming'})`;
-            return `<span class="setup-tag" style="border-color:${color};color:${color};">${escapeHtml(label)}</span>`;
+            return `<span class="setup-tag ${_pdTagClass(p.phase, p.direction)}">${escapeHtml(label)}</span>`;
         }).join('');
         tr.innerHTML = `
             <td><a href="/pattern-detection/${encodeURIComponent(ticker)}" style="color:#4da6ff;font-weight:600;text-decoration:none;">${escapeHtml(ticker)}</a></td>
@@ -134,6 +146,8 @@ function _pdLoadResults() {
         .then(r => r.json())
         .then(data => {
             _pdAllResults = data.results || [];
+            _pdPortfolioTickers = new Set(data.portfolio_tickers || []);
+            _pdWatchlistTickers = new Set(data.watchlist_tickers || []);
             _pdBuildFamilyFilter(_pdAllResults);
             _pdRenderPatternsTable();
             const ts = document.getElementById('pd-last-scan');
@@ -195,6 +209,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('pd-family-filter').addEventListener('change', (e) => {
         _pdActiveFamily = e.target.value;
+        _pdRenderPatternsTable();
+    });
+
+    document.getElementById('pd-direction-filter').addEventListener('change', (e) => {
+        _pdActiveDirection = e.target.value;
+        _pdRenderPatternsTable();
+    });
+
+    document.getElementById('pd-scope-filter').addEventListener('change', (e) => {
+        _pdActiveScope = e.target.value;
         _pdRenderPatternsTable();
     });
 

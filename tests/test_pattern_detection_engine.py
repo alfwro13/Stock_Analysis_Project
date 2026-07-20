@@ -394,3 +394,40 @@ class TestChartAPIMultiPattern:
             assert patterns["double_top_bottom"]["direction"] == "up"
         finally:
             self._cleanup(ticker)
+
+
+class TestResultsAPIDirectionAndScope:
+    """GET /api/pattern-detection/results must resolve a direction ("up"/"down") per row and
+    return the current Portfolio/Watchlist ticker sets so the list page can filter by
+    direction and scope without a second round-trip."""
+
+    @staticmethod
+    def _cleanup(ticker: str):
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM pattern_detection_results WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_results_include_direction_and_ticker_scopes(self, client):
+        ticker = "PDRESULTSCOPE"
+        self._cleanup(ticker)
+        engine = PatternDetectionEngine(_CFG)
+        engine._save_results([TestSaveResults._row(ticker, family="double_top_bottom", pattern_type="double_bottom")])
+        try:
+            with patch("accounts_engine.get_combined_holdings", return_value={ticker: {"ticker": ticker}}), \
+                 patch("database.get_watchlist_tickers", return_value=[]):
+                resp = client.get(
+                    "/api/pattern-detection/results",
+                    headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+                )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "success"
+            assert "portfolio_tickers" in data and "watchlist_tickers" in data
+            assert ticker in data["portfolio_tickers"]
+            row = next(r for r in data["results"] if r["ticker"] == ticker)
+            assert row["direction"] == "up"
+        finally:
+            self._cleanup(ticker)

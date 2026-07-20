@@ -4265,19 +4265,25 @@ and `assets/pattern_detection.md`.
 ### `GET /pattern-detection`
 
 HTML page. Renders the combined detected-patterns table, grouped one row per ticker (each
-currently-active pattern shown as a badge), a family filter, and a prediction accuracy panel.
-`GET /head-shoulders` redirects here.
+currently-active pattern shown as a badge), plus three independent filters — Scope
+(Portfolio / Watchlist / All Tickers, defaults to Portfolio), Direction (All Directions /
+Bullish / Bearish), Family (All Families / one per registered `pattern_family`) — and a
+prediction accuracy panel. `GET /head-shoulders` redirects here.
 
 ### `GET /pattern-detection/{ticker}`
 
 HTML page. Shows every currently-active pattern for one ticker overlaid on a single chart,
 with a Bullish/Bearish checkbox tree (one master checkbox per direction, one child checkbox
-per active pattern) to show/hide individual patterns or an entire direction group.
+per active pattern) to show/hide individual patterns or an entire direction group, and a
+plain-language explanation of each pattern type currently present.
 
 ### `GET /api/pattern-detection/results`
 
-Returns all rows from `pattern_detection_results` (confirmed patterns first). Optional `family`
-query param filters to one `pattern_family` (`head_shoulders` / `double_top_bottom`).
+Returns all rows from `pattern_detection_results` (confirmed patterns first), each carrying a
+server-resolved `direction` (`"up"`/`"down"`, from `DETECTORS[pattern_family].PATTERN_TYPES`),
+plus the current Portfolio/Watchlist ticker sets so the page can filter by scope without a
+second round-trip. Optional `family` query param filters to one `pattern_family`
+(`head_shoulders` / `double_top_bottom`).
 
 **Response**
 
@@ -4287,6 +4293,7 @@ query param filters to one `pattern_family` (`head_shoulders` / `double_top_bott
   "results": [
     {
       "ticker": "NVDA", "pattern_family": "head_shoulders", "pattern_type": "regular", "phase": "CONFIRMED",
+      "direction": "down",
       "points": [
         {"label": "L Shoulder", "date": "2026-05-01", "price": 135.2},
         {"label": "L Armpit", "date": "2026-05-08", "price": 128.4},
@@ -4301,7 +4308,9 @@ query param filters to one `pattern_family` (`head_shoulders` / `double_top_bott
       "measured_target": 114.9, "volume_confirms": 1, "rsi_divergence": 1,
       "pattern_r2": 0.91, "prior_trend_pct": 14.2, "scan_ts": "2026-06-05 22:20:00"
     }
-  ]
+  ],
+  "portfolio_tickers": ["NVDA", "AAPL"],
+  "watchlist_tickers": ["MSFT"]
 }
 ```
 

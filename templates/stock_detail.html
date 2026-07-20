@@ -10,7 +10,7 @@
 <script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
 {% endblock %}
 
-{% from "partials/_macros.html" import display_price %}
+{% from "partials/_macros.html" import display_price, pattern_tags %}
 
 {% block content %}
 
@@ -23,7 +23,7 @@
         {% if stock.has_name_override %}<span class="name-override-badge" title="Custom display name is active">&#9998;</span>{% endif %}
         <button class="btn-name-edit" id="name-edit-btn" title="Edit display name" onclick="startNameEdit()">&#9998;</button>
     </h1>
-    {% if stock.setup_tags_list or stock.report_tags or stock.trap_phase_label or stock.bubble_flag_label or stock.hs_phase_label or stock.quality_grade %}
+    {% if stock.setup_tags_list or stock.report_tags or stock.trap_phase_label or stock.bubble_flag_label or stock.pattern_tags or stock.quality_grade %}
     <div class="d-flex flex-wrap">
         {% for tag in stock.setup_tags_list %}
             <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr"><span class="setup-tag">{{ tag.name }}</span></abbr>
@@ -33,7 +33,7 @@
         {% endfor %}
         {% if stock.trap_phase_label %}<span class="setup-tag">{{ stock.trap_phase_label }}</span>{% endif %}
         {% if stock.bubble_flag_label %}<span class="setup-tag">🫧 {{ stock.bubble_flag_label }}</span>{% endif %}
-        {% if stock.hs_phase_label %}<span class="setup-tag">📐 {{ stock.hs_phase_label }}</span>{% endif %}
+        {{ pattern_tags(stock.pattern_tags) }}
         {% if stock.quality_grade %}<span class="setup-tag quality-grade-{{ stock.quality_grade|lower }}">Grade {{ stock.quality_grade }}</span>{% endif %}
     </div>
     {% endif %}
