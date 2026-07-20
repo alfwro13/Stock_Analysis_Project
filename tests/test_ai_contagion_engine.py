@@ -405,6 +405,42 @@ class TestSharesLivePriceOnEveryScan:
         assert row is not None
         assert row["price"] == pytest.approx(98.0)
 
+    def test_skips_market_pulse_cache_write_during_premarket(self):
+        """scan()'s own gate allows premarket (include_premarket=True) so a flash crash there
+        still gets caught, but _evaluate_ticker() must not share that premarket tick into
+        market_pulse_cache's settled price columns — regression test for the 2026-07-20 bug
+        where a premarket tick briefly overwrote the settled price/change_pct shown on
+        Portfolio/the Home Assistant integration until the next market_pulse refresh cycle."""
+        prev = 100.0
+        basket = {
+            "NVDA": _make_intraday_df(prev, prev * 0.98),
+            "AMD":  _make_intraday_df(prev, prev * 0.98),
+            "SMH":  _make_intraday_df(prev, prev * 0.98),
+        }
+        engine = AIContagionEngine(_CFG)
+        conn = _get_conn()
+        try:
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('NVDA','AMD','SMH')")
+            conn.commit()
+            with (
+                patch(
+                    "ai_contagion_engine.is_quote_settled",
+                    side_effect=lambda exchange, include_premarket=False: include_premarket,
+                ),
+                patch.object(engine, "_fetch_basket_data", return_value=basket),
+                patch.object(engine, "_check_volume_spike", return_value=False),
+            ):
+                result = engine.scan()
+            row = conn.execute(
+                "SELECT price FROM market_pulse_cache WHERE ticker = 'NVDA'"
+            ).fetchone()
+        finally:
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('NVDA','AMD','SMH')")
+            conn.commit()
+            conn.close()
+        assert result == []
+        assert row is None
+
 
 # ── run_ai_contagion_job() — MAX_ALERTS_PER_DAY gating ─────────────────────────
 

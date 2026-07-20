@@ -141,7 +141,14 @@ class AIContagionEngine:
             if prev_close <= 0.0:
                 return None
 
-            upsert_live_price(ticker, ticker, current_price, prev_close)
+            # scan()'s own gate deliberately allows premarket so a flash crash there still gets
+            # caught, but that means this frame's last bar can be a premarket/postmarket tick —
+            # only share it into market_pulse_cache's settled price/change_pts/change_pct columns
+            # while NYSE is genuinely in regular session, never during premarket, per the
+            # "never mix session data" rule (market_pulse.fetch_and_save_pulse already tracks the
+            # real premarket move separately via extended_price/extended_change_pct).
+            if is_quote_settled("NYSE"):
+                upsert_live_price(ticker, ticker, current_price, prev_close)
 
             drawdown = (current_price - prev_close) / prev_close
             threshold = self.etf_threshold if is_etf else self.leader_threshold
