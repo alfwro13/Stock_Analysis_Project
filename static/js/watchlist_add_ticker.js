@@ -59,7 +59,18 @@ async function addTickerToWatchlist(ticker) {
 }
 
 $(document).ready(function () {
+    $('#dataTable_length').append(
+        '<div class="btn-group change-period-group ms-2" id="changePeriodGroup" role="group" aria-label="Change Period">'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1d">1D</button>'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="5d">5D</button>'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1m">1M</button>'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="6m">6M</button>'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="ytd">YTD</button>'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1y">1Y</button>'
+        + '</div>'
+    );
     $('#dataTable_length').append('<button type="button" id="addTickerBtn" class="btn btn-sm btn-primary ms-2" onclick="openAddTickerModal()">+ Add Ticker</button>');
+    window._watchlistChangePeriod.setButtons(window.WATCHLIST_CHANGE_PERIOD || '1d');
 
     $('#wl-add-search').on('input', function () {
         clearTimeout(_wlAddSearchTimer);
