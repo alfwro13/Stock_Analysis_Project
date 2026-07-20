@@ -15,7 +15,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from page_routes import _build_rss_base_url
 from page_routes_macro import enrich_macro_events, _parse_cb_nlp_message
-from page_helpers import _fmt_currency, _fmt_volume, _utc_str_to_local, calculate_pnl, _build_position_sizing_context
+from page_helpers import (
+    _fmt_currency, _fmt_volume, _utc_str_to_local, calculate_pnl, _build_position_sizing_context,
+    get_pattern_tags_by_ticker, compute_badge_tags,
+)
+import database as db
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +392,67 @@ class TestBuildPositionSizingContext:
              patch("page_helpers.get_rate_to_base", return_value=None):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
         assert "JPY" not in result["fx_rates"]
+
+
+class TestGetPatternTagsByTicker:
+    @staticmethod
+    def _cleanup(tickers):
+        conn = db.get_connection()
+        try:
+            placeholders = ",".join("?" * len(tickers))
+            conn.execute(f"DELETE FROM pattern_detection_results WHERE ticker IN ({placeholders})", tickers)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_empty_ticker_list_returns_empty_dict(self):
+        assert get_pattern_tags_by_ticker([]) == {}
+
+    def test_resolves_label_and_direction_across_families(self):
+        conn = db.get_connection()
+        tickers = ["PGTTST1"]
+        try:
+            conn.execute(
+                """INSERT INTO pattern_detection_results
+                   (ticker, pattern_family, pattern_type, phase, points_json, lines_json, scan_ts)
+                   VALUES (?, 'head_shoulders', 'regular', 'CONFIRMED', '[]', '[]', '2026-01-01 00:00:00')""",
+                ("PGTTST1",),
+            )
+            conn.execute(
+                """INSERT INTO pattern_detection_results
+                   (ticker, pattern_family, pattern_type, phase, points_json, lines_json, scan_ts)
+                   VALUES (?, 'double_top_bottom', 'double_bottom', 'FORMING', '[]', '[]', '2026-01-01 00:00:00')""",
+                ("PGTTST1",),
+            )
+            conn.commit()
+            conn.close()
+            conn = None
+
+            result = get_pattern_tags_by_ticker(tickers)
+            tags = {t["label"]: t for t in result["PGTTST1"]}
+            assert "Head & Shoulders (Confirmed)" in tags
+            assert tags["Head & Shoulders (Confirmed)"]["direction"] == "down"
+            assert "Double Bottom (Forming)" in tags
+            assert tags["Double Bottom (Forming)"]["direction"] == "up"
+        finally:
+            if conn:
+                conn.close()
+            self._cleanup(tickers)
+
+    def test_ticker_with_no_patterns_absent_from_result(self):
+        result = get_pattern_tags_by_ticker(["ZZZNOPATTERNS"])
+        assert "ZZZNOPATTERNS" not in result
+
+
+class TestComputeBadgeTagsPatternPassthrough:
+    def test_pattern_detections_passed_through_as_pattern_tags(self):
+        row = {"pattern_detections": [{"label": "Double Top (Confirmed)", "phase": "CONFIRMED", "direction": "down"}]}
+        result = compute_badge_tags(row)
+        assert result["pattern_tags"] == row["pattern_detections"]
+
+    def test_missing_pattern_detections_defaults_to_empty_list(self):
+        result = compute_badge_tags({})
+        assert result["pattern_tags"] == []
 
 
 if __name__ == "__main__":

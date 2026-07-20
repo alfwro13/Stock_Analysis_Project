@@ -55,6 +55,7 @@ from page_helpers import (
     get_unread_count,
     calculate_pnl,
     compute_badge_tags,
+    get_pattern_tags_by_ticker,
 )
 from page_routes_macro import page_router_macro
 
@@ -255,7 +256,6 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                    (SELECT dividend_yield_pct FROM xray_dividend_cache
                     WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
                    ev.edge_score AS earnings_edge_score, ev.implied_move_pct AS earnings_implied_move,
-                   hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
                    trap.phase as trap_phase,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
@@ -275,7 +275,6 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
-            LEFT JOIN pattern_detection_results hs ON s.ticker = hs.ticker AND hs.pattern_family = 'head_shoulders'
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
         """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
@@ -323,6 +322,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
 
     portfolio_data = []
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
+    pattern_tags_by_ticker = get_pattern_tags_by_ticker(portfolio_tickers)
 
     for row in db_rows:
         row_dict = dict(row)
@@ -334,6 +334,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                 or row_dict.get('company_name')
                 or row_dict['ticker']
             )
+            row_dict['pattern_detections'] = pattern_tags_by_ticker.get(row_dict['ticker'], [])
             row_dict.update(compute_badge_tags(row_dict))
 
             portfolio_data.append(row_dict)
@@ -341,13 +342,16 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     portfolio_data.sort(key=lambda x: x['ticker'])
 
     present_tags = set()
+    present_pattern_tags = set()
     for row_dict in portfolio_data:
         if row_dict.get('trap_phase_label'):
             present_tags.add(row_dict['trap_phase_label'])
         if row_dict.get('bubble_flag_label'):
             present_tags.add(row_dict['bubble_flag_label'])
-        if row_dict.get('hs_phase_label'):
-            present_tags.add(row_dict['hs_phase_label'])
+        for tag in row_dict.get('pattern_tags', []):
+            present_tags.add(tag['label'])
+            present_pattern_tags.add(tag['label'])
+    present_pattern_tags = sorted(present_pattern_tags)
 
     live_pulse = get_all_cached_pulse()
 
@@ -479,7 +483,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "all_columns": table_columns_helpers.all_columns_for_page("portfolio"),
             "column_prefs": column_prefs,
             "views": views,
-            "present_tags": present_tags
+            "present_tags": present_tags,
+            "present_pattern_tags": present_pattern_tags,
         }
     )
 
@@ -688,7 +693,6 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                    trap.phase as trap_phase,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
-                   hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
                    COALESCE(
                        cno.display_name,
                        NULLIF(ap.company_name, s.ticker),
@@ -704,7 +708,6 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
-            LEFT JOIN pattern_detection_results hs ON s.ticker = hs.ticker AND hs.pattern_family = 'head_shoulders'
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
         """, (BENCHMARK_SYMBOL,))
@@ -723,6 +726,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     all_holding_limits = get_all_holding_price_limits()
 
     watchlist_data = []
+    pattern_tags_by_ticker = get_pattern_tags_by_ticker(watchlist_tickers)
     for row in db_rows:
         row_dict = dict(row)
         if row_dict['ticker'] in watchlist_tickers:
@@ -731,6 +735,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                 or row_dict.get('company_name')
                 or row_dict['ticker']
             )
+            row_dict['pattern_detections'] = pattern_tags_by_ticker.get(row_dict['ticker'], [])
             row_dict.update(compute_badge_tags(row_dict))
 
             limits = all_holding_limits.get((watchlist_account_id, row_dict['ticker']), {})
@@ -747,6 +752,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     present_signals = {row['overall_signal'].upper() for row in watchlist_data if row.get('overall_signal')}
 
     present_tags = set()
+    present_pattern_tags = set()
     for row in watchlist_data:
         for tag in row.get('setup_tags_list') or []:
             present_tags.add(tag['name'])
@@ -756,10 +762,12 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             present_tags.add(row['trap_phase_label'])
         if row.get('bubble_flag_label'):
             present_tags.add(row['bubble_flag_label'])
-        if row.get('hs_phase_label'):
-            present_tags.add(row['hs_phase_label'])
+        for tag in row.get('pattern_tags', []):
+            present_tags.add(tag['label'])
+            present_pattern_tags.add(tag['label'])
         if row.get('quality_grade'):
             present_tags.add('Grade ' + row['quality_grade'])
+    present_pattern_tags = sorted(present_pattern_tags)
 
     present_score_buckets = set()
     for row in watchlist_data:
@@ -789,6 +797,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "sectors": sectors,
             "present_signals": present_signals,
             "present_tags": present_tags,
+            "present_pattern_tags": present_pattern_tags,
             "present_score_buckets": present_score_buckets,
             "global_updated": global_updated,
             "embed": embed,
@@ -1491,7 +1500,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
                    trap.phase as trap_phase,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
-                   hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
                    COALESCE(
                        cno.display_name,
                        NULLIF(p.company_name, s.ticker),
@@ -1507,7 +1515,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
                 AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
-            LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
             WHERE s.ticker = ?
         ''', (ticker,))
         stock_data = cursor.fetchone()
@@ -1531,6 +1538,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
                 .strip()
             )
             stock_data['has_name_override'] = bool(stock_data.get('name_override'))
+            stock_data['pattern_detections'] = get_pattern_tags_by_ticker([ticker]).get(ticker, [])
             stock_data.update(compute_badge_tags(stock_data))
         else:
             cursor.execute('''

@@ -190,6 +190,12 @@ th:hover { background-color: #3d3d3d; }
 .quality-grade-b { background-color: #1a3a4d; border-color: #2e6b7d; }
 .quality-grade-c { background-color: #333; border-color: #555; }
 .quality-grade-d { background-color: #4d1a1a; border-color: #7d2e2e; }
+/* Pattern Detection tags/badges — shared across Portfolio, Watchlist, Stock Detail, and the
+   Pattern Detection page: orange while FORMING regardless of direction (not yet resolved),
+   then red (bearish) or green (bullish) once CONFIRMED. */
+.pattern-tag-forming { background-color: #4d3a1a; border-color: #7d642e; }
+.pattern-tag-bearish { background-color: #4d1a1a; border-color: #7d2e2e; }
+.pattern-tag-bullish { background-color: #1a4d1a; border-color: #2e7d32; }
 /* --- 5. Form Controls & Buttons --- */
 .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
 .change-period-group { flex-wrap: wrap; }

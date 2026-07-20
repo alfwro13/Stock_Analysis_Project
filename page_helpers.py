@@ -19,18 +19,58 @@ from fundamentals_helpers import (
 )
 from bull_bear_trap_engine import phase_label as _trap_phase_label
 from bubble_radar_engine import flag_label as _bubble_flag_label
-from head_shoulders_engine import phase_label as _hs_phase_label
+from pattern_detection_engine import DETECTORS
 
 logger = logging.getLogger(__name__)
 
 
+def get_pattern_tags_by_ticker(tickers: list) -> dict:
+    """Every currently-active Pattern Detection result for the given tickers, grouped by
+    ticker and resolved to a display label + bullish/bearish direction via each family's
+    own registry entry (DETECTORS[family].phase_label()/.PATTERN_TYPES) — shared by
+    Portfolio, Watchlist, and Stock Detail so a new pattern family shows up as a tag on all
+    three with no per-page changes. Callers fetch this once per page (not once per ticker)
+    and attach each ticker's own list into row_dict['pattern_detections'] before calling
+    compute_badge_tags()."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, pattern_family, pattern_type, phase FROM pattern_detection_results WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+    except Exception as e:
+        logger.error("get_pattern_tags_by_ticker failed: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+    by_ticker: dict = {}
+    for row in rows:
+        row = dict(row)
+        module = DETECTORS.get(row['pattern_family'])
+        if module is None:
+            continue
+        by_ticker.setdefault(row['ticker'], []).append({
+            'label': module.phase_label(row['pattern_type'], row['phase']),
+            'phase': row['phase'],
+            'direction': module.PATTERN_TYPES.get(row['pattern_type']),
+        })
+    return by_ticker
+
+
 def compute_badge_tags(row_dict: dict) -> dict:
-    """Shared setup/report/trap/bubble/H&S/quality-grade badge computation for a single ticker
-    row — used by Portfolio, Watchlist, and Stock Detail so the three pages never drift apart.
+    """Shared setup/report/trap/bubble/pattern-detection/quality-grade badge computation for
+    a single ticker row — used by Portfolio, Watchlist, and Stock Detail so the three pages
+    never drift apart.
 
     row_dict must carry: setup_tags (raw JSON string from stock_signals), quant_close_price,
-    market_cap, trap_phase, bubble_flag, hs_pattern_type, hs_phase, plus the fundamentals
-    columns compute_quality_grade()/is_*() read directly off stock_signals.
+    market_cap, trap_phase, bubble_flag, pattern_detections (see get_pattern_tags_by_ticker),
+    plus the fundamentals columns compute_quality_grade()/is_*() read directly off stock_signals.
     """
     if row_dict.get('setup_tags'):
         try:
@@ -60,7 +100,7 @@ def compute_badge_tags(row_dict: dict) -> dict:
         'report_tags': report_tags,
         'trap_phase_label': _trap_phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None,
         'bubble_flag_label': _bubble_flag_label(row_dict.get('bubble_flag')),
-        'hs_phase_label': _hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None,
+        'pattern_tags': row_dict.get('pattern_detections') or [],
     }
 
 
