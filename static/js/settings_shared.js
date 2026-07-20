@@ -267,6 +267,16 @@ async function saveSettings(silent = false) {
                 "TRIANGLE": {
                     "ASCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_ASC').checked,
                     "DESCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_DESC').checked
+                },
+                "VOLATILITY_SQUEEZE": {
+                    "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_VS_BULLISH').checked,
+                    "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_VS_BEARISH').checked
+                },
+                "NARROW_RANGE": {
+                    "NR4_ENABLED": document.getElementById('PATTERN_DETECTION_NR_NR4').checked,
+                    "NR7_ENABLED": document.getElementById('PATTERN_DETECTION_NR_NR7').checked,
+                    "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_NR_BULLISH').checked,
+                    "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_NR_BEARISH').checked
                 }
             },
             "FORENSIC_QUARTERLY_FETCH": {
@@ -392,6 +402,17 @@ async function saveSettings(silent = false) {
                     "WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_TRI_WINDOW').value) || 40,
                     "FLAT_SLOPE_EPSILON_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_TRI_FLAT_EPS').value) || 0.15,
                     "MIN_SLOPE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_TRI_MIN_SLOPE').value) || 0.15
+                },
+                "VOLATILITY_SQUEEZE": {
+                    "WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_VS_WINDOW').value) || 20,
+                    "NUM_STD": parseFloat(document.getElementById('PATTERN_DETECTION_VS_NUM_STD').value) || 2.0,
+                    "KC_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_VS_KC_MULT').value) || 1.5,
+                    "MIN_SQUEEZE_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_VS_MIN_SQUEEZE_DAYS').value) || 6,
+                    "BREAKOUT_LOOKAHEAD_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_VS_BREAKOUT_LOOKAHEAD').value) || 5
+                },
+                "NARROW_RANGE": {
+                    "BREAKOUT_LOOKAHEAD_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_NR_BREAKOUT_LOOKAHEAD').value) || 5,
+                    "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_NR_VOLUME_MULT').value) || 1.5
                 }
             }
         },

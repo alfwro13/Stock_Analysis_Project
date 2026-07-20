@@ -169,6 +169,49 @@ def compute_volume_profile(
     }
 
 
+def compute_true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    """Wilder's True Range (gap-inclusive), unsmoothed: max(H-L, |H-PrevClose|, |L-PrevClose|).
+    Used where the raw per-bar range is needed rather than compute_atr's smoothed average."""
+    prev_close = close.shift(1)
+    ranges = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1)
+    return ranges.max(axis=1)
+
+
+def compute_bollinger_bands(
+    close: pd.Series,
+    window: int = 20,
+    num_std: float = 2.0,
+) -> Dict[str, pd.Series]:
+    """Bollinger Bands via the ta library: window-day SMA centre with +/- num_std standard
+    deviation bands. Returns {upper, mid, lower} as full Series."""
+    bb = ta.volatility.BollingerBands(close=close, window=window, window_dev=num_std)
+    return {"upper": bb.bollinger_hband(), "mid": bb.bollinger_mavg(), "lower": bb.bollinger_lband()}
+
+
+def compute_keltner_channel_series(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    ema_period: int = 20,
+    atr_window: int = 20,
+    multiplier: float = 1.5,
+) -> Dict[str, pd.Series]:
+    """Keltner Channel as full Series (non-original/EMA+ATR version): ema_period-day EMA centre
+    with +/- multiplier*ATR(atr_window) bands. Distinct from compute_keltner_channel (last-bar-only,
+    fixed EMA(21)/ATR(14)/2-3x convention used for z-score display) — this is the TTM Squeeze
+    convention (EMA(20)/ATR(20)/1.5x) and needs the full history, not just the latest bar."""
+    kc = ta.volatility.KeltnerChannel(
+        high=high, low=low, close=close,
+        window=ema_period, window_atr=atr_window,
+        original_version=False, multiplier=multiplier,
+    )
+    return {
+        "upper": kc.keltner_channel_hband(),
+        "mid": kc.keltner_channel_mband(),
+        "lower": kc.keltner_channel_lband(),
+    }
+
+
 def compute_keltner_channel(
     high: pd.Series,
     low: pd.Series,

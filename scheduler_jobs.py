@@ -1023,7 +1023,7 @@ def run_pattern_detection_job():
                 points_txt,
                 f"Key level: {key_level if key_level is not None else '—'} | Measured target: {row.get('measured_target', '—')}",
                 f"Volume confirms: {row.get('volume_confirms')} | RSI divergence: {row.get('rsi_divergence')} | "
-                f"Pattern fit (R²): {row.get('pattern_r2', '—')}",
+                f"Pattern fit (R²): {row.get('pattern_r2') if row.get('pattern_r2') is not None else '—'}",
             ]
             if notify("pattern_detection_alert", "PatternDetector", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
                 orch.record_alert_fired("PatternDetector", gate_key, severity, reason, conn)

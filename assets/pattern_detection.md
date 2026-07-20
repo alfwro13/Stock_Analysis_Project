@@ -1,7 +1,7 @@
 # Pattern Detection — Technical Documentation
 
 **Project:** Stock Analysis Quantitative Trading Terminal
-**Engines:** `pattern_detection_engine.py` (registry + orchestrator), `pattern_geometry_helpers.py` (shared swing-point/pivot math), `head_shoulders_engine.py`, `double_top_bottom_engine.py`, `flag_engine.py`, `triangle_engine.py` (per-family detectors)
+**Engines:** `pattern_detection_engine.py` (registry + orchestrator), `pattern_geometry_helpers.py` (shared swing-point/pivot math), `head_shoulders_engine.py`, `double_top_bottom_engine.py`, `flag_engine.py`, `triangle_engine.py`, `volatility_squeeze_engine.py`, `narrow_range_engine.py` (per-family detectors)
 **Pages:** `/pattern-detection` (list — `templates/pattern_detection.html`, `static/js/pattern_detection.js`), `/pattern-detection/{ticker}` (per-ticker overlay chart — `templates/pattern_detection_detail.html`, `static/js/pattern_detection_detail.js`)
 **API Endpoints:** `GET /api/pattern-detection/results`, `POST /api/pattern-detection/run`, `POST /api/pattern-detection/backfill`, `GET /api/pattern-detection/accuracy`, `GET /api/pattern-detection/chart/{ticker}`
 **Last Updated:** 2026-07-20
@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-Pattern Detection is a unified swing-pattern-detection tool: one results table, one scheduler job, one DB schema — covering every registered pattern family. It started as the Head & Shoulders Pattern Detector (a single-pattern standalone tool) and was generalized when Double Top / Double Bottom was added, on explicit direction that future patterns must plug into the same foundation rather than each becoming its own disconnected tool. Two continuation-pattern families — Bull/Bear Flag and Ascending/Descending Triangle — were added on the same foundation, extending the registry beyond the original alternating-pivot (Williams fractal) detection style to a regression-based one (see §2's `linreg`/`slope_pct_per_day` helpers and §7).
+Pattern Detection is a unified swing-pattern-detection tool: one results table, one scheduler job, one DB schema — covering every registered pattern family. It started as the Head & Shoulders Pattern Detector (a single-pattern standalone tool) and was generalized when Double Top / Double Bottom was added, on explicit direction that future patterns must plug into the same foundation rather than each becoming its own disconnected tool. Two continuation-pattern families — Bull/Bear Flag and Ascending/Descending Triangle — were added on the same foundation, extending the registry beyond the original alternating-pivot (Williams fractal) detection style to a regression-based one (see §2's `linreg`/`slope_pct_per_day` helpers and §7). Two quantitative volatility/breakout families — Volatility Squeeze and NR4/NR7 Narrow Range — extended the registry a third way: neither is a swing-pivot or regression shape at all, so both introduced a genuinely new "direction-unknown-until-breakout" phase model (see §7b) and Volatility Squeeze's band-contour geometry required the one deliberate exception to "no chart-renderer changes" this tool has needed so far (see §4b).
 
 The presentation layer went through a second round of generalization once a ticker could realistically carry more than one simultaneous pattern (§8): the results table is ticker-centric (one row per ticker, one badge per active pattern) rather than one row per `(ticker, pattern_family)`, and the modal-opened single-family chart was replaced with a dedicated `/pattern-detection/{ticker}` page overlaying every active pattern for that ticker on one chart.
 
@@ -20,7 +20,7 @@ The presentation layer went through a second round of generalization once a tick
 
 `pattern_detection_engine.py` owns everything generic:
 
-- **`DETECTORS`** — a `dict[str, module]` registry (`{"head_shoulders": head_shoulders_engine, "double_top_bottom": double_top_bottom_engine, "flag": flag_engine, "triangle": triangle_engine}`). Adding a family is adding one entry here.
+- **`DETECTORS`** — a `dict[str, module]` registry (`{"head_shoulders": head_shoulders_engine, "double_top_bottom": double_top_bottom_engine, "flag": flag_engine, "triangle": triangle_engine, "volatility_squeeze": volatility_squeeze_engine, "narrow_range": narrow_range_engine}`). Adding a family is adding one entry here.
 - **`PatternDetectionEngine`** — the scan orchestrator. `run_scan()` builds the ticker list once (Portfolio/Watchlist per config, same scope for every family), loads each ticker's parquet once, computes RSI/volume-SMA once, then calls every enabled registered detector's `detect(...)` against that same data and collects results. `_save_results()` upserts each result into `pattern_detection_results` (keyed on `ticker, pattern_family`, so families never clobber each other) and logs to `pattern_detection_history`, skipping a duplicate log row when the geometry and phase are unchanged from the previous scan.
 - **`fill_pattern_outcomes()`** — resolves 14d/30d directional accuracy for `CONFIRMED` history rows, looking up each registered family's `PATTERN_TYPES` map for the expected breakout direction.
 - **`backfill_historical_patterns()`** — one-time historical backtest, walking each ticker's full parquet at ~weekly steps per family and logging `CONFIRMED` candidates, deduping repeated re-detection of the same instance across steps.
@@ -46,6 +46,8 @@ def detect(ticker: str, df: pd.DataFrame, rsi_series: pd.Series, vol_sma: pd.Ser
     ...  # returns the generic result shape (below), or None if no candidate found
 ```
 
+`PATTERN_TYPES` need not cover every `pattern_type` a family can return. Volatility Squeeze and Narrow Range each have one non-directional `pattern_type` (`"volatility_squeeze"`, `"nr4"`/`"nr7"`) used only while `phase == "FORMING"` — direction is genuinely unknown until a later breakout resolves it, so that `pattern_type` is deliberately absent from `PATTERN_TYPES`. Every reader that resolves direction via `PATTERN_TYPES.get(pattern_type)` (the API's `direction` field, `fill_pattern_outcomes()`, `page_helpers.get_pattern_tags_by_ticker()`) already treats a missing key as `None` rather than erroring, and every UI surface that groups by direction already has a defined behavior for `None` (§7b, §8) — a future family with the same "unknown until breakout" shape can reuse this without further changes.
+
 `detect()` receives the full ticker DataFrame (`Open`/`High`/`Low`/`Close`/`Volume`, indexed by date) plus the RSI/volume-SMA series the orchestrator already computed once — it should read its own family-scoped config from `config["SCHEDULING"]["PATTERN_DETECTION"][<FAMILY_KEY>]` / `config["NOTIFICATIONS"]["PATTERN_DETECTION_ALERTS"][<FAMILY_KEY>]` and return `None` if disabled or no candidate qualifies.
 
 A module is also expected to expose `phase_label(pattern_type, phase) -> str` (the human-readable label used in alert text and the page table) — see either existing family module for the two-line implementation.
@@ -63,6 +65,8 @@ A module is also expected to expose `phase_label(pattern_type, phase) -> str` (t
     "lines": [                 # key line segment(s) — neckline, support/resistance, trendlines...
         {"label": str, "date_from": "YYYY-MM-DD", "price_from": float,
          "date_to": "YYYY-MM-DD", "price_to": float, "dash": bool},
+        # OR, for a genuine curve rather than a straight segment (§4b):
+        {"label": str, "path": [{"date": "YYYY-MM-DD", "price": float}, ...], "dash": bool},
         ...
     ],
     "key_level": float,        # the line value used for phase/severity — not persisted, used in-memory for alerting
@@ -77,7 +81,11 @@ A module is also expected to expose `phase_label(pattern_type, phase) -> str` (t
 }
 ```
 
-`points` and `lines` are what make the schema and chart renderer geometry-agnostic: Head & Shoulders returns 5 points and 1 (neckline) line; Double Top/Bottom returns 3 points and 1 (support/resistance) line; Flag returns 2 points (pole start/end) and 2 (upper/lower channel) lines; Triangle returns its swing-high/swing-low touch points (count varies — at least 2 per side) and 1 (flat resistance or support) line. `pattern_detection_detail.js`'s chart renderer (`_pdBuildPatternTraces`) iterates whichever `points`/`lines` a result carries and draws a filled shape through `points` (closed back to the first point) plus the `lines` as key-level segments — it needs no changes to support a new family's shape.
+`points` and `lines` are what make the schema and chart renderer geometry-agnostic: Head & Shoulders returns 5 points and 1 (neckline) line; Double Top/Bottom returns 3 points and 1 (support/resistance) line; Flag returns 2 points (pole start/end) and 2 (upper/lower channel) lines; Triangle returns its swing-high/swing-low touch points (count varies — at least 2 per side) and 1 (flat resistance or support) line; NR4/NR7 Narrow Range returns 2 points (the narrow bar's high/low) and 2 (breakout trigger) lines. `pattern_detection_detail.js`'s chart renderer (`_pdBuildPatternTraces`) iterates whichever `points`/`lines` a result carries and draws a filled shape through `points` (closed back to the first point) plus the `lines` as key-level segments — it needs no changes to support a new family's shape, as long as that shape is expressible as a handful of discrete points plus straight line segments.
+
+### 4b. The `path` exception — a line that is a genuine curve, not a straight segment
+
+Volatility Squeeze is the one family so far whose key level (the actual Bollinger Band contour through the squeeze window) is a multi-point curve, not a straight line between two dates — forcing it into a straight `date_from`/`price_from`/`date_to`/`price_to` segment would show a flat line spanning the squeeze rather than the bands' real narrowing shape. Rather than add a parallel schema or bypass the registry (which AGENTS.md's central-engine rule for this tool explicitly forbids), the `lines` schema gained one optional field: a `line` entry may supply `"path": [{"date": ..., "price": ...}, ...]` (an ordered list of 2+ points) instead of `date_from`/`price_from`/`date_to`/`price_to`. `_pdBuildPatternTraces` (`static/js/pattern_detection_detail.js`) checks for `path` first and draws it as a polyline; a `line` without `path` renders exactly as before (a straight 2-point segment) — fully backward compatible with every existing family. Volatility Squeeze also still draws its 4 squeeze-corner `points` as a coarse quadrilateral (the existing `points`-closed-polygon fallback), so the chart shows both the precise band contour (via `path`) and the shaded squeeze region (via the `points` polygon) together. Use `path` only when a family's key level is a genuine curve; a straight support/resistance/channel/neckline should keep using `date_from`/`date_to` as every other family does.
 
 ## 5. Database
 
@@ -114,13 +122,31 @@ Both families validate a swing shape via linear regression rather than a fixed-l
 - *Volume:* mirrors Flag's declining-volume check over the full window (the same "dry-up before breakout" convention already documented for VCP Breakout in the glossary).
 - *Breakout/target:* CONFIRMED when the close crosses the flat level; `measured_target` projects the triangle's height (flat level vs. the first touch on the sloped side) from the breakout point.
 
+## 7b. Volatility Squeeze and Narrow Range — Direction-Unknown-Until-Breakout Detection
+
+Both families detect a *state* (compressed volatility, or a single unusually narrow bar) whose eventual breakout direction is not knowable from the state itself — unlike every earlier family, whose `pattern_type` already implies a direction (`bull_flag` is always bullish) even while still `FORMING`. Each introduces one non-directional `pattern_type` used only for the FORMING phase, then resolves to one of two directional `pattern_type`s once a later bar's close breaks decisively past a reference level, within a configurable lookahead window — past that window with no resolution, the candidate is dropped (no result, not a stale FORMING carried forward indefinitely).
+
+**Volatility Squeeze (`volatility_squeeze_engine.py`):** a squeeze fires when `indicators.compute_bollinger_bands` (`WINDOW_DAYS`-day SMA ± `NUM_STD` standard deviations) sits fully inside `indicators.compute_keltner_channel_series` (`WINDOW_DAYS`-day EMA ± `KC_MULTIPLIER` × ATR(`WINDOW_DAYS`) — the non-original/EMA+ATR Keltner convention, distinct from `indicators.compute_keltner_channel`'s last-bar-only EMA(21)/ATR(14) z-score variant used elsewhere) for at least `MIN_SQUEEZE_DAYS` consecutive bars.
+- *FORMING:* the squeeze is still active as of today — `pattern_type = "volatility_squeeze"`, no direction.
+- *CONFIRMED:* the squeeze ended within the last `BREAKOUT_LOOKAHEAD_DAYS` bars and today's close is decisively outside the Bollinger Band — `pattern_type` becomes `volatility_squeeze_bullish` (close above the upper band) or `volatility_squeeze_bearish` (close below the lower band).
+- *Volume/RSI:* declining volume through the squeeze (the same "dry-up" convention as Flag/Triangle) plus a breakout-day surge; RSI moving in the breakout's direction since the squeeze began. Both are only meaningful once direction resolves, so they read a plain "declining" check while FORMING.
+- *Target:* projects the squeeze's own Bollinger Band width (measured at the squeeze's start) from the breakout point.
+- `BULLISH_ENABLED`/`BEARISH_ENABLED` gate which *confirmed* breakout direction gets reported — mirroring Flag's `BULL_ENABLED`/`BEAR_ENABLED` — but do not gate the FORMING state, since direction isn't known yet to filter on.
+
+**NR4/NR7 Narrow Range (`narrow_range_engine.py`):** a bar qualifies as narrow when its True Range (`indicators.compute_true_range` — Wilder's gap-inclusive definition, `max(H-L, |H-PrevClose|, |L-PrevClose|)`, not the bare `High - Low` a naive reading of the classic NR7 definition might suggest) is the smallest of the trailing 4 (NR4) or 7 (NR7) bars *and* it is a strict inside bar vs. the prior bar (`High < PrevHigh` and `Low > PrevLow`). NR7 is checked first and preferred over a simultaneous NR4 candidate on the same ticker (the rarer, stricter signal wins), since only one result can be stored per `(ticker, pattern_family)`.
+- *FORMING:* the narrow bar is today's bar — `pattern_type = "nr4"` or `"nr7"`, no direction.
+- *CONFIRMED:* a later bar (within `BREAKOUT_LOOKAHEAD_DAYS`) closes above the narrow bar's own high (`..._bullish`) or below its own low (`..._bearish`).
+- *Volume/RSI:* below-average volume on the narrow bar itself (genuine indecision, not a low-liquidity fluke) plus a breakout-day surge; RSI moving in the breakout's direction since the narrow bar.
+- *Target:* projects the narrow bar's own high-low range from the breakout point.
+- `NR4_ENABLED`/`NR7_ENABLED` gate which window(s) are searched at all; `BULLISH_ENABLED`/`BEARISH_ENABLED` gate which confirmed breakout direction gets reported, same as Volatility Squeeze.
+
 ## 8. Presentation Layer
 
 **List page (`/pattern-detection`):** results are grouped client-side by `ticker` (`_pdGroupByTicker` in `static/js/pattern_detection.js`) — one row per ticker, one `.setup-tag` badge per currently-active pattern (reusing the same badge component as the Portfolio/Watchlist "Setups & Tags", §9). Clicking a row navigates to `/pattern-detection/{ticker}` rather than opening a chart inline — per AGENTS.md rule 18, a dedicated page (not a modal) is the right call once the chart itself needs real UI (the checkbox tree below), the same carve-out that already applies to Market Regime and Monte Carlo.
 
 Three independent filters narrow the table, each unambiguously labeled so "all" in one dimension is never confused with "all" in another: **Scope** (Portfolio / Watchlist / All Tickers — defaults to Portfolio; a ticker row is shown if it's in that scope's ticker set, sourced from `GET /api/pattern-detection/results`'s `portfolio_tickers`/`watchlist_tickers` arrays), **Direction** (All Directions / Bullish / Bearish — filters on each result's server-resolved `direction` field), and **Family** (All Families / one per registered `pattern_family`).
 
-**Per-ticker page (`/pattern-detection/{ticker}`):** `GET /api/pattern-detection/chart/{ticker}` returns every currently-active pattern for that ticker (not scoped to one family), each carrying a server-resolved `"direction": "up"|"down"` field looked up from `DETECTORS[pattern_family].PATTERN_TYPES[pattern_type]` — the frontend never hardcodes which pattern types are bullish vs. bearish. `static/js/pattern_detection_detail.js` builds two checkbox groups (Bullish / Bearish) purely from this field:
+**Per-ticker page (`/pattern-detection/{ticker}`):** `GET /api/pattern-detection/chart/{ticker}` returns every currently-active pattern for that ticker (not scoped to one family), each carrying a server-resolved `"direction": "up"|"down"|None` field looked up from `DETECTORS[pattern_family].PATTERN_TYPES[pattern_type]` — the frontend never hardcodes which pattern types are bullish vs. bearish. `static/js/pattern_detection_detail.js` builds three checkbox groups (Bullish / Bearish / Forming — Direction Pending) purely from this field, the third catching any pattern whose direction is `None` (§7b's FORMING volatility_squeeze/nr4/nr7 states):
 
 - A master checkbox per group; checking/unchecking it checks/unchecks (and shows/hides) every pattern checkbox in that group.
 - Toggling an individual pattern checkbox re-derives the master's state: checked (all on), unchecked (all off), or `indeterminate` (mixed) — plain DOM, no extra dependency.

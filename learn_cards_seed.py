@@ -1234,6 +1234,51 @@ CARDS = [
 <p>Once confirmed by a close below that support level, the measured-move target projects the triangle's height (the first swing high minus support) downward from the breakout point.</p>""",
     },
     {
+        "term_key": "volatility-squeeze-pattern",
+        "section_id": "strategies",
+        "term_title": "🌀 Volatility Squeeze (Bollinger / Keltner)",
+        "question": "What does Pattern Detection require for a Volatility Squeeze to fire?",
+        "answer": "The Bollinger Bands must sit completely inside the Keltner Channel for a minimum number of consecutive trading days",
+        "distractors": [
+            "RSI must stay between 40 and 60 for a full month",
+            "Trading volume must fall to zero for at least one session",
+            "The stock's beta must drop below 1.0",
+        ],
+        "explanation": """<p>A <strong>Volatility Squeeze</strong> is a purely mathematical setup: it fires when the <strong>Bollinger Bands</strong> (a 20-day SMA with bands 2 standard deviations above and below it) contract completely inside the <strong>Keltner Channel</strong> (a 20-day EMA with bands 1.5x the Average True Range above and below it). Because Bollinger Bands widen and narrow with recent price volatility while the Keltner Channel widens and narrows with recent trading-range volatility, the Bollinger Bands sitting fully inside the Keltner Channel means price volatility has compressed to an unusually quiet, tight level relative to normal trading range. Volatility is cyclical, and periods of extreme compression like this are historically often followed by an explosive directional move.</p>
+<p>Pattern Detection requires at least a configurable minimum number of consecutive trading days where the bands sit fully inside the channel before it counts as a genuine squeeze, rather than a single coincidental overlap. While the squeeze is still on, direction is genuinely unknown — the pattern surfaces as FORMING with no bullish/bearish label yet. Once the squeeze releases, a decisive close outside the Bollinger Band within a configurable lookahead window resolves it to a directional breakout.</p>
+<p>Supporting signals: volume declining through the squeeze itself is expected (a genuine quiet period sees less trading interest), with a volume surge on the breakout day confirming real participation; RSI moving in the breakout's direction since the squeeze began supports genuine momentum rather than a false start. Once confirmed, the measured-move target projects the squeeze's own band width from the breakout point.</p>""",
+    },
+    {
+        "term_key": "nr4-narrow-range",
+        "section_id": "strategies",
+        "term_title": "🔬 NR4 Narrow Range",
+        "question": "What two conditions must a bar meet to qualify as an NR4?",
+        "answer": "Its True Range must be the smallest of the past 4 trading days, and it must be a strict inside bar vs. the prior day",
+        "distractors": [
+            "Its closing price must be unchanged from the prior day",
+            "Its volume must be the highest of the past 4 trading days",
+            "It must gap up or down from the prior close",
+        ],
+        "explanation": """<p>An <strong>NR4</strong> bar is a trading day whose True Range (the greatest of high-minus-low, high-minus-previous-close, and low-minus-previous-close — so it captures range expansion from an overnight gap, not just the day's own high/low spread) is the smallest of the past 4 trading days, and which is also a strict <strong>inside bar</strong>: its high sits below the prior day's high and its low sits above the prior day's low. Together, this is a micro-contraction in price range — a day of unusual indecision — that often precedes a sharp breakout as the market resolves which direction it wants to go.</p>
+<p>Because the narrow bar itself gives no directional clue, Pattern Detection surfaces it as FORMING with no bullish/bearish label the day it prints. A later close beyond the narrow bar's own high or low, within a configurable lookahead window, resolves it to a directional breakout — NR4 is the more frequent, less strict sibling of NR7, since a 4-day range low is a lower bar to clear than a 7-day one.</p>
+<p>Supporting signals: below-average volume on the narrow bar itself supports genuine indecision rather than a low-liquidity fluke, with a volume surge on the breakout day confirming real participation. Once confirmed, the measured-move target projects the narrow bar's own high-low range from the breakout point.</p>""",
+    },
+    {
+        "term_key": "nr7-narrow-range",
+        "section_id": "strategies",
+        "term_title": "🔬 NR7 Narrow Range",
+        "question": "Why is an NR7 bar considered a stronger signal than an NR4 bar?",
+        "answer": "Its True Range must be the smallest of a full 7-day window rather than just 4, making it a rarer compression",
+        "distractors": [
+            "NR7 requires confirmation from a second, unrelated ticker",
+            "NR7 only counts on a Friday",
+            "NR7 requires the stock to be at a 52-week high",
+        ],
+        "explanation": """<p>An <strong>NR7</strong> bar is the same idea as NR4 but stricter: its True Range must be the smallest of the past 7 trading days (not just 4), and it must also be a strict inside bar against the prior day's high/low. Requiring a full week's worth of comparison makes NR7 a rarer, more significant compression signal than NR4 — the market has gone an entire trading week without printing a tighter range than this one day.</p>
+<p>Detection and resolution mirror NR4 exactly: the bar itself carries no directional signal (FORMING, unresolved), and a later decisive close beyond its own high or low within the configured lookahead window resolves it to a directional breakout.</p>
+<p>The same supporting signals apply: below-average volume on the narrow bar itself, and a breakout-day volume surge confirming genuine participation. Once confirmed, the measured-move target projects the narrow bar's own high-low range from the breakout point.</p>""",
+    },
+    {
         "term_key": "market-leader",
         "section_id": "strategies",
         "term_title": "👑 Market Leader",

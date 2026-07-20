@@ -10,7 +10,9 @@ import pandas as pd
 import double_top_bottom_engine
 import flag_engine
 import head_shoulders_engine
+import narrow_range_engine
 import triangle_engine
+import volatility_squeeze_engine
 from config import HISTORICAL_DIR, load_config
 from database import (
     get_connection,
@@ -34,6 +36,8 @@ DETECTORS = {
     double_top_bottom_engine.FAMILY: double_top_bottom_engine,
     flag_engine.FAMILY: flag_engine,
     triangle_engine.FAMILY: triangle_engine,
+    volatility_squeeze_engine.FAMILY: volatility_squeeze_engine,
+    narrow_range_engine.FAMILY: narrow_range_engine,
 }
 
 _MIN_BARS = 60
