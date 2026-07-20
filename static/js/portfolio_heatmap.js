@@ -45,7 +45,14 @@ function _buildHeatmap(panel) {
     }
 
     var items = rows.map(function (row) {
-        return { ticker: row.dataset.ticker || '', change: parseFloat(row.dataset.changePct) };
+        return {
+            ticker: row.dataset.ticker || '',
+            change: parseFloat(row.dataset.changePct),
+            currency: row.dataset.currency || '',
+            extendedSession: row.dataset.extendedSession || '',
+            extendedPrice: parseFloat(row.dataset.extendedPrice),
+            extendedChangePct: parseFloat(row.dataset.extendedChangePct)
+        };
     });
-    window.HeatmapTreemap.render(panel, items);
+    window.HeatmapTreemap.render(panel, items, !!window.SHOW_EXTENDED_HOURS);
 }

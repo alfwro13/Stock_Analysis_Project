@@ -213,6 +213,10 @@ function toggleExtendedHours(checked) {
     document.querySelectorAll('.extended-hours-cell').forEach(function (el) {
         el.classList.toggle('d-none', !checked);
     });
+    if (window._heatmapMode) {
+        var panel = document.getElementById('heatmap-panel');
+        if (panel) _buildHeatmap(panel);
+    }
 }
 
 // ── Live Unrealized P&L recompute (keeps summary row + Global Value/P&L columns

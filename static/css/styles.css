@@ -1197,6 +1197,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .heatmap-tile-gain .heatmap-tile-change { color: #88cc88; }
 .heatmap-tile-loss .heatmap-tile-change { color: #cc8888; }
 .heatmap-tile-flat .heatmap-tile-change { color: #b0b0b0; }
+.heatmap-tile-extended { font-size: var(--font-size-body); color: #c0c0c0; text-align: center; opacity: 0.85; }
 .ma-traffic-strip { display: flex; gap: 8px; margin: 12px 0 18px 0; }
 .ma-traffic-box { flex: 1; padding: 8px 4px; border-radius: 6px; text-align: center; font-size: 0.73rem; font-weight: 600; border: 2px solid currentColor; opacity: 0.22; transition: opacity 0.2s; cursor: default; }
 .ma-traffic-box.active { opacity: 1; box-shadow: 0 0 10px currentColor; }
