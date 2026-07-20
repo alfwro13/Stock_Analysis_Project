@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Pattern Detection - {{ ticker }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128200; Pattern Detection &mdash; {{ ticker }}</h1>
+<p class="text-muted mb-3">
+    Every currently-active pattern for this ticker, overlaid on one chart. Use the checkboxes to
+    show or hide individual patterns, or an entire Bullish/Bearish group at once.
+</p>
+
+<a href="/pattern-detection" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Pattern Detection</a>
+<a href="/stock/{{ ticker }}" class="btn btn-outline-secondary btn-sm mb-3">Stock Detail &rarr;</a>
+
+<div id="pd-detail-empty" class="bubble-empty bubble-empty-hidden">
+    No patterns currently on file for this ticker.
+</div>
+
+<div id="pd-detail-body" class="row">
+    <div class="col-12 col-lg-3 mb-3">
+        <div class="settings-panel mb-3" id="pd-bull-group">
+            <div class="checkbox-group mb-2">
+                <input type="checkbox" id="pd-master-bullish" checked>
+                <label for="pd-master-bullish"><strong>Bullish Patterns</strong></label>
+            </div>
+            <div id="pd-bullish-children" class="ms-4"></div>
+        </div>
+        <div class="settings-panel" id="pd-bear-group">
+            <div class="checkbox-group mb-2">
+                <input type="checkbox" id="pd-master-bearish" checked>
+                <label for="pd-master-bearish"><strong>Bearish Patterns</strong></label>
+            </div>
+            <div id="pd-bearish-children" class="ms-4"></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-9">
+        <div class="chart-wrapper" id="pd-detail-chart-wrapper">
+            <button class="fullscreen-btn" onclick="toggleFullscreen('pd-detail-chart-wrapper')">&#9638; Fullscreen</button>
+            <div id="pd-detail-chart"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.PD_TICKER = {{ ticker | tojson }};
+</script>
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
+<script src="/static/js/pattern_detection_detail.js?v={{ css_version }}"></script>
+{% endblock %}

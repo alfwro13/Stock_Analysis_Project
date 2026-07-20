@@ -43,36 +43,12 @@
         <thead>
             <tr>
                 <th>Ticker</th>
-                <th>Pattern</th>
-                <th>Phase</th>
-                <th><abbr title="The support/resistance/neckline level the pattern's confirmation and measured-move target are anchored to.">Key Level</abbr></th>
-                <th><abbr title="Key level projected by the pattern's height — the classic technical-analysis price objective.">Target</abbr></th>
-                <th>Vol Confirms</th>
-                <th>RSI Divergence</th>
-                <th><abbr title="How closely price tracked the idealized pattern shape (1.0 = perfect fit).">Fit (R&sup2;)</abbr></th>
-                <th>Scanned</th>
+                <th>Patterns</th>
+                <th>Last Scanned</th>
             </tr>
         </thead>
         <tbody id="pd-patterns-body"></tbody>
     </table>
-</div>
-
-<div class="modal fade" id="pd-chart-modal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="pd-detail-ticker">Pattern Detail</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="pd-detail-body" class="mb-3"></div>
-                <div class="chart-wrapper" id="pd-chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('pd-chart-wrapper')">&#9638; Fullscreen</button>
-                    <div id="pd-detail-chart"></div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <div class="bubble-tab-panel" data-panel="accuracy">
@@ -99,12 +75,7 @@
 </div>
 {% endblock %}
 
-{% block extra_head %}
-<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
-{% endblock %}
-
 {% block scripts %}
 <script src="/static/js/utils.js?v={{ css_version }}"></script>
-<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
 <script src="/static/js/pattern_detection.js?v={{ css_version }}"></script>
 {% endblock %}

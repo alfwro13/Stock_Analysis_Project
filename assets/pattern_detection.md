@@ -2,15 +2,17 @@
 
 **Project:** Stock Analysis Quantitative Trading Terminal
 **Engines:** `pattern_detection_engine.py` (registry + orchestrator), `pattern_geometry_helpers.py` (shared swing-point/pivot math), `head_shoulders_engine.py`, `double_top_bottom_engine.py` (per-family detectors)
-**Page:** `/pattern-detection` (`templates/pattern_detection.html`, `static/js/pattern_detection.js`)
-**API Endpoints:** `GET /api/pattern-detection/results`, `POST /api/pattern-detection/run`, `POST /api/pattern-detection/backfill`, `GET /api/pattern-detection/accuracy`, `GET /api/pattern-detection/chart/{ticker}/{family}`
+**Pages:** `/pattern-detection` (list — `templates/pattern_detection.html`, `static/js/pattern_detection.js`), `/pattern-detection/{ticker}` (per-ticker overlay chart — `templates/pattern_detection_detail.html`, `static/js/pattern_detection_detail.js`)
+**API Endpoints:** `GET /api/pattern-detection/results`, `POST /api/pattern-detection/run`, `POST /api/pattern-detection/backfill`, `GET /api/pattern-detection/accuracy`, `GET /api/pattern-detection/chart/{ticker}`
 **Last Updated:** 2026-07-20
 
 ---
 
 ## 1. Overview
 
-Pattern Detection is a unified swing-pattern-detection tool: one page, one results table, one chart modal, one scheduler job, one DB schema — covering every registered pattern family. It started as the Head & Shoulders Pattern Detector (a single-pattern standalone tool) and was generalized when Double Top / Double Bottom was added, on explicit direction that future patterns (Triangles, Wedges, Flag & Pennant, and others) must plug into the same foundation rather than each becoming its own disconnected tool.
+Pattern Detection is a unified swing-pattern-detection tool: one results table, one scheduler job, one DB schema — covering every registered pattern family. It started as the Head & Shoulders Pattern Detector (a single-pattern standalone tool) and was generalized when Double Top / Double Bottom was added, on explicit direction that future patterns (Triangles, Wedges, Flag & Pennant, and others) must plug into the same foundation rather than each becoming its own disconnected tool.
+
+The presentation layer went through a second round of generalization once a ticker could realistically carry more than one simultaneous pattern (§7): the results table is ticker-centric (one row per ticker, one badge per active pattern) rather than one row per `(ticker, pattern_family)`, and the modal-opened single-family chart was replaced with a dedicated `/pattern-detection/{ticker}` page overlaying every active pattern for that ticker on one chart.
 
 **The registry is the extension point.** A new pattern family is a single Python module conforming to a three-part contract (§3) and one line added to `pattern_detection_engine.DETECTORS` (§2). Nothing else changes: not the DB schema, not the scheduler job, not the API routes, not the page template, not the chart renderer. If a future pattern's geometry genuinely doesn't fit the `points`/`lines` shape (§4), that is a signal the shared schema itself needs revisiting — not a reason to bolt on a parallel table/page/job for that one pattern.
 
@@ -73,7 +75,7 @@ A module is also expected to expose `phase_label(pattern_type, phase) -> str` (t
 }
 ```
 
-`points` and `lines` are what make the schema and chart renderer geometry-agnostic: Head & Shoulders returns 5 points and 1 (neckline) line; Double Top/Bottom returns 3 points and 1 (support/resistance) line; a future Triangle/Wedge could return 0 points and 2 (converging trendline) lines; a Flag/Pennant could return 2 points (pole start/end) and 2 (channel boundary) lines. `pattern_detection.js`'s chart renderer (`_pdRenderChart`) iterates whichever `points`/`lines` a result carries — it needs no changes to support a new family's shape.
+`points` and `lines` are what make the schema and chart renderer geometry-agnostic: Head & Shoulders returns 5 points and 1 (neckline) line; Double Top/Bottom returns 3 points and 1 (support/resistance) line; a future Triangle/Wedge could return 0 points and 2 (converging trendline) lines; a Flag/Pennant could return 2 points (pole start/end) and 2 (channel boundary) lines. `pattern_detection_detail.js`'s chart renderer (`_pdBuildPatternTraces`) iterates whichever `points`/`lines` a result carries and draws a filled shape through `points` (closed back to the first point) plus the `lines` as key-level segments — it needs no changes to support a new family's shape.
 
 ## 5. Database
 
@@ -85,7 +87,21 @@ A module is also expected to expose `phase_label(pattern_type, phase) -> str` (t
 2. Register it: add one entry to `pattern_detection_engine.DETECTORS`.
 3. Add config defaults: a family sub-block under `config.py`'s `DEFAULT_CONFIG["SCHEDULING"]["PATTERN_DETECTION"]` and `["NOTIFICATIONS"]["PATTERN_DETECTION_ALERTS"]`.
 4. Add a Settings sub-toggle: extend the "Pattern Detection" card in `templates/settings/_system.html` with the new family's checkboxes/fields, and extend `static/js/settings_shared.js`'s harvesting code and `api_routes_system.py`'s `PatternFamilyScheduleConfig`/`PatternFamilyAlertConfig` Pydantic models with any new field names.
-5. Add a display label: one entry in `static/js/pattern_detection.js`'s `PATTERN_FAMILY_LABELS`/`PATTERN_TYPE_LABELS` maps — the family filter dropdown, results table, and chart title all derive from these with no other template changes.
+5. Add a display label: one entry in `static/js/pattern_detection.js`'s `PATTERN_FAMILY_LABELS`/`PATTERN_TYPE_LABELS` maps (family filter dropdown + table badges) and `static/js/pattern_detection_detail.js`'s `PD_PATTERN_TYPE_LABELS` map (checkbox/legend labels). A chart color is optional — `PD_PATTERN_COLORS` gives a curated color per pattern_type, but any pattern_type missing from it automatically gets a deterministic fallback color (§7), so this step is cosmetic polish, not a requirement.
 6. Document it: a glossary term-box (`templates/glossary/_strategy.html`) and a matching `learn_cards_seed.py` card per pattern type, per AGENTS.md's Glossary rule.
 
-No DB migration, no new scheduler job, no new API route, and no page/chart-renderer changes are needed for a new family that fits the `points`/`lines` shape.
+No DB migration, no new scheduler job, no new API route, and no page/chart-renderer changes are needed for a new family that fits the `points`/`lines` shape — bullish/bearish grouping and chart color both resolve automatically, see §7.
+
+## 7. Presentation Layer
+
+**List page (`/pattern-detection`):** results are grouped client-side by `ticker` (`_pdGroupByTicker` in `static/js/pattern_detection.js`) — one row per ticker, one `.setup-tag` badge per currently-active pattern (reusing the same badge component as the Portfolio/Watchlist "Setups & Tags"), phase-colored (amber = FORMING, red = CONFIRMED). Clicking a row navigates to `/pattern-detection/{ticker}` rather than opening a chart inline — per AGENTS.md rule 18, a dedicated page (not a modal) is the right call once the chart itself needs real UI (the checkbox tree below), the same carve-out that already applies to Market Regime and Monte Carlo.
+
+**Per-ticker page (`/pattern-detection/{ticker}`):** `GET /api/pattern-detection/chart/{ticker}` returns every currently-active pattern for that ticker (not scoped to one family), each carrying a server-resolved `"direction": "up"|"down"` field looked up from `DETECTORS[pattern_family].PATTERN_TYPES[pattern_type]` — the frontend never hardcodes which pattern types are bullish vs. bearish. `static/js/pattern_detection_detail.js` builds two checkbox groups (Bullish / Bearish) purely from this field:
+
+- A master checkbox per group; checking/unchecking it checks/unchecks (and shows/hides) every pattern checkbox in that group.
+- Toggling an individual pattern checkbox re-derives the master's state: checked (all on), unchecked (all off), or `indeterminate` (mixed) — plain DOM, no extra dependency.
+- All patterns are enabled by default on page load.
+
+**Overlay chart:** for each *checked* pattern, `_pdBuildPatternTraces` draws a closed, semi-transparent (`fillcolor` ~0.2 alpha) `fill: 'toself'` shape through that pattern's `points` in chronological order (closed back to the first point) — this is what gives Head & Shoulders its recognizable shaded "M" silhouette and Double Top/Bottom its shaded wedge, and lets two overlapping patterns' shaded regions visually blend rather than just stacking outlines. The pattern's `lines` (key level) and point markers/labels draw on top, plus a star marker at `breakout_date`/`breakout_price` if confirmed. Every trace for one pattern shares a Plotly `legendgroup` (keyed on `"{family}:{pattern_type}"`) so the legend shows one entry per pattern, not one per trace.
+
+**Color assignment:** `PD_PATTERN_COLORS` (in `pattern_detection_detail.js`) gives a curated color per `pattern_type`; any `pattern_type` not in that map gets a deterministic color from `PD_FALLBACK_PALETTE` via a simple string hash, so a brand-new pattern family always renders with a stable, distinct color with zero code changes required.

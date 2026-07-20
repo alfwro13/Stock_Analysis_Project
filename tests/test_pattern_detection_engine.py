@@ -327,20 +327,20 @@ class TestRunPatternDetectionJobMarketGating:
 
 
 class TestChartAPIPathSafety:
-    """GET /api/pattern-detection/chart/{ticker}/{family} builds a HISTORICAL_DIR filesystem
+    """GET /api/pattern-detection/chart/{ticker} builds a HISTORICAL_DIR filesystem
     path from the raw URL path parameter — must reject path-traversal-style tickers rather
     than passing them through to disk (CodeQL py/path-injection precedent, alert #70)."""
 
     def test_encoded_slash_traversal_blocked_by_routing(self, client):
         resp = client.get(
-            "/api/pattern-detection/chart/..%2F..%2F..%2Fetc%2Fpasswd/head_shoulders",
+            "/api/pattern-detection/chart/..%2F..%2F..%2Fetc%2Fpasswd",
             headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
         )
         assert resp.status_code == 404
 
     def test_ticker_with_disallowed_characters_rejected(self, client):
         resp = client.get(
-            "/api/pattern-detection/chart/FOO%20BAR/head_shoulders",
+            "/api/pattern-detection/chart/FOO%20BAR",
             headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
         )
         assert resp.status_code == 400
@@ -348,7 +348,49 @@ class TestChartAPIPathSafety:
 
     def test_valid_ticker_with_no_data_returns_404_not_400(self, client):
         resp = client.get(
-            "/api/pattern-detection/chart/ZZZNOPE/head_shoulders",
+            "/api/pattern-detection/chart/ZZZNOPE",
             headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
         )
         assert resp.status_code == 404
+
+
+class TestChartAPIMultiPattern:
+    """GET /api/pattern-detection/chart/{ticker} must return every currently-active family
+    for the ticker (not just one), each tagged with a direction resolved from its family's
+    PATTERN_TYPES registry entry — this is what the per-ticker overlay page groups on."""
+
+    @staticmethod
+    def _cleanup(ticker: str):
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM pattern_detection_results WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_returns_all_families_with_direction(self, client, tmp_path):
+        ticker = "PDCHARTMULTI"
+        self._cleanup(ticker)
+        engine = PatternDetectionEngine(_CFG)
+        engine._save_results([
+            TestSaveResults._row(ticker, family="head_shoulders", pattern_type="regular"),
+            TestSaveResults._row(ticker, family="double_top_bottom", pattern_type="double_bottom"),
+        ])
+        try:
+            idx = pd.date_range("2026-01-01", periods=30, freq="D")
+            df = pd.DataFrame({"Close": np.linspace(100.0, 110.0, 30)}, index=idx)
+            with patch("api_routes_analysis.HISTORICAL_DIR", tmp_path):
+                df.to_parquet(tmp_path / f"{ticker}.parquet", engine="pyarrow")
+                resp = client.get(
+                    f"/api/pattern-detection/chart/{ticker}",
+                    headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+                )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "success"
+            patterns = {p["pattern_family"]: p for p in data["patterns"]}
+            assert set(patterns.keys()) == {"head_shoulders", "double_top_bottom"}
+            assert patterns["head_shoulders"]["direction"] == "down"
+            assert patterns["double_top_bottom"]["direction"] == "up"
+        finally:
+            self._cleanup(ticker)

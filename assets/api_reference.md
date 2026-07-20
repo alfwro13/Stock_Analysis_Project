@@ -4264,8 +4264,15 @@ and `assets/pattern_detection.md`.
 
 ### `GET /pattern-detection`
 
-HTML page. Renders the combined detected-patterns table (all families, with a family filter),
-a per-ticker pattern chart, and a prediction accuracy panel. `GET /head-shoulders` redirects here.
+HTML page. Renders the combined detected-patterns table, grouped one row per ticker (each
+currently-active pattern shown as a badge), a family filter, and a prediction accuracy panel.
+`GET /head-shoulders` redirects here.
+
+### `GET /pattern-detection/{ticker}`
+
+HTML page. Shows every currently-active pattern for one ticker overlaid on a single chart,
+with a Bullish/Bearish checkbox tree (one master checkbox per direction, one child checkbox
+per active pattern) to show/hide individual patterns or an entire direction group.
 
 ### `GET /api/pattern-detection/results`
 
@@ -4328,11 +4335,16 @@ aggregated from `pattern_detection_history`. Optional `family` query param filte
 }
 ```
 
-### `GET /api/pattern-detection/chart/{ticker}/{family}`
+### `GET /api/pattern-detection/chart/{ticker}`
 
-Returns the ticker's recent daily close series plus its stored pattern geometry (`pattern_detection_results`
-row for that ticker+family, unpacked from `points_json`/`lines_json`), for client-side chart overlay of
-the pattern's structural points, key line(s), and breakout marker.
+Returns the ticker's recent daily close series plus **every** currently-active pattern for
+that ticker (one entry per `pattern_family` with a row in `pattern_detection_results`,
+unpacked from `points_json`/`lines_json`), for client-side overlay of every pattern's
+structural points, key line(s), and breakout marker on one chart. Each pattern carries a
+`direction` (`"up"`/`"down"`) resolved server-side from
+`DETECTORS[pattern_family].PATTERN_TYPES[pattern_type]`, which the `/pattern-detection/{ticker}`
+page uses to group patterns into Bullish/Bearish checkboxes without any family-specific
+frontend logic.
 
 **Response**
 
@@ -4340,7 +4352,10 @@ the pattern's structural points, key line(s), and breakout marker.
 {
   "status": "success",
   "series": {"dates": ["2026-04-01", "..."], "close": [128.0, 129.4]},
-  "pattern": {"ticker": "NVDA", "pattern_family": "head_shoulders", "pattern_type": "regular", "phase": "CONFIRMED", "points": ["..."], "lines": ["..."]}
+  "patterns": [
+    {"pattern_family": "head_shoulders", "pattern_type": "regular", "phase": "CONFIRMED", "direction": "down", "points": ["..."], "lines": ["..."]},
+    {"pattern_family": "double_top_bottom", "pattern_type": "double_bottom", "phase": "FORMING", "direction": "up", "points": ["..."], "lines": ["..."]}
+  ]
 }
 ```
 
