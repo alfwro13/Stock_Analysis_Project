@@ -327,11 +327,15 @@ async def get_pattern_detection_accuracy_route(request: Request, family: Optiona
     return JSONResponse(content={"status": "success", **data})
 
 
-@analysis_router.get("/pattern-detection/chart/{ticker}/{family}")
+@analysis_router.get("/pattern-detection/chart/{ticker}")
 @limiter.limit("20/minute")
-async def get_pattern_detection_chart(request: Request, ticker: str, family: str):
-    """Returns the ticker's recent daily close series plus its stored pattern geometry
-    (points/lines) for the given family, for client-side chart overlay."""
+async def get_pattern_detection_chart(request: Request, ticker: str):
+    """Returns the ticker's recent daily close series plus every currently-active pattern's
+    stored geometry (points/lines) across all registered families, for client-side overlay
+    on a single chart. Each pattern carries a `direction` ("up"/"down") resolved from its
+    family's PATTERN_TYPES registry entry, so the frontend can group patterns into
+    Bullish/Bearish without hardcoding any family-specific knowledge."""
+    from pattern_detection_engine import DETECTORS
     conn = None
     try:
         ticker = normalize_ticker(ticker)
@@ -340,16 +344,19 @@ async def get_pattern_detection_chart(request: Request, ticker: str, family: str
             return JSONResponse(content={"status": "error", "message": "Invalid ticker."}, status_code=400)
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM pattern_detection_results WHERE ticker = ? AND pattern_family = ?",
-            (ticker, family),
-        )
-        row = cursor.fetchone()
-        if not row:
+        cursor.execute("SELECT * FROM pattern_detection_results WHERE ticker = ?", (ticker,))
+        rows = cursor.fetchall()
+        if not rows:
             return JSONResponse(content={"status": "error", "message": "No pattern on file for this ticker."}, status_code=404)
-        pattern = dict(row)
-        pattern["points"] = json.loads(pattern.pop("points_json") or "[]")
-        pattern["lines"] = json.loads(pattern.pop("lines_json") or "[]")
+
+        patterns = []
+        for r in rows:
+            pattern = dict(r)
+            pattern["points"] = json.loads(pattern.pop("points_json") or "[]")
+            pattern["lines"] = json.loads(pattern.pop("lines_json") or "[]")
+            module = DETECTORS.get(pattern["pattern_family"])
+            pattern["direction"] = module.PATTERN_TYPES.get(pattern["pattern_type"]) if module else None
+            patterns.append(pattern)
 
         path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not path.exists():
@@ -359,7 +366,7 @@ async def get_pattern_detection_chart(request: Request, ticker: str, family: str
             "dates": [d.strftime("%Y-%m-%d") for d in df.index],
             "close": [round(float(c), 4) for c in df["Close"]],
         }
-        return JSONResponse(content={"status": "success", "series": series, "pattern": pattern})
+        return JSONResponse(content={"status": "success", "series": series, "patterns": patterns})
     except Exception as e:
         logger.error("pattern-detection/chart failed: %s", e)
         return _error_500(e)

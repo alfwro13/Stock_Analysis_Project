@@ -1054,6 +1054,20 @@ async def pattern_detection_page(request: Request):
     )
 
 
+@page_router.get("/pattern-detection/{ticker}", response_class=HTMLResponse)
+async def pattern_detection_detail_page(request: Request, ticker: str):
+    ticker = normalize_ticker(ticker)
+    return templates.TemplateResponse(
+        request=request,
+        name="pattern_detection_detail.html",
+        context={
+            "ticker": ticker,
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/predicted-movers", response_class=HTMLResponse)
 async def predicted_movers_page(request: Request):
     return templates.TemplateResponse(

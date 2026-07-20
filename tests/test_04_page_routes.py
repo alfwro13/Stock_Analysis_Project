@@ -1090,6 +1090,8 @@ def test_no_page_route_returns_500(client):
         ("/yahoo-api-usage",    "Yahoo Finance API Usage"),
         ("/pairs-spread",       "Pairs Spread Monitor"),
         ("/reports",            "Reports"),
+        ("/pattern-detection",  "Pattern Detection"),
+        ("/pattern-detection/NOTAREALTICKER", "Pattern Detection Detail"),
     ]
     failures = []
     for url, label in pages:
@@ -1125,6 +1127,31 @@ def test_pairs_spread_monitor_page_links_back_to_reports(client):
     resp = client.get("/pairs-spread")
     assert resp.status_code == 200
     assert b'href="/reports"' in resp.content
+
+
+# ── Pattern Detection ─────────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_pattern_detection_page_loads(client):
+    """GET /pattern-detection must load with an empty results table without crashing."""
+    _assert_page_ok(client, "/pattern-detection", label="Pattern Detection")
+
+
+@pytest.mark.pages
+def test_pattern_detection_detail_page_loads_for_unknown_ticker(client):
+    """GET /pattern-detection/{ticker} must not crash even for a ticker with no data on
+    file — the page is a thin shell that fetches everything client-side."""
+    resp = client.get("/pattern-detection/NOTAREALTICKER")
+    assert resp.status_code == 200
+    assert b"NOTAREALTICKER" in resp.content
+
+
+@pytest.mark.pages
+def test_head_shoulders_redirects_to_pattern_detection(client):
+    """The old /head-shoulders route must redirect to the unified /pattern-detection page."""
+    resp = client.get("/head-shoulders", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/pattern-detection"
 
 
 # ── Reports Menu ───────────────────────────────────────────────────────────────
