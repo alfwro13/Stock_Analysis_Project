@@ -67,9 +67,34 @@ window.HeatmapTreemap = (function () {
         return worst;
     }
 
-    function render(panel, items) {
+    var EXTENDED_MIN_SIDE = 55;
+
+    function _extendedFull(d) {
+        var priceStr = formatCurrency(d.extendedPrice, d.currency);
+        var sign = d.extendedChangePct >= 0 ? '+' : '';
+        var label = d.extendedSession === 'pre' ? 'Pre-Market' : 'After Hours';
+        return '(' + label + ': ' + priceStr + ' ' + sign + d.extendedChangePct.toFixed(2) + '%)';
+    }
+
+    function _extendedCompact(d) {
+        var sign = d.extendedChangePct >= 0 ? '+' : '';
+        var label = d.extendedSession === 'pre' ? 'Pre' : 'After';
+        return '(' + label + ': ' + sign + d.extendedChangePct.toFixed(2) + '%)';
+    }
+
+    function render(panel, items, showExtended) {
         var data = items
-            .map(function (d) { return { ticker: d.ticker || '', change: d.change, value: Math.max(Math.abs(d.change), MIN_VALUE) }; })
+            .map(function (d) {
+                return {
+                    ticker: d.ticker || '',
+                    change: d.change,
+                    value: Math.max(Math.abs(d.change), MIN_VALUE),
+                    currency: d.currency || '',
+                    extendedSession: d.extendedSession || '',
+                    extendedPrice: d.extendedPrice,
+                    extendedChangePct: d.extendedChangePct
+                };
+            })
             .filter(function (d) { return d.ticker && isFinite(d.change); });
 
         if (!data.length) {
@@ -84,16 +109,20 @@ window.HeatmapTreemap = (function () {
         var tileRects = squarify(data, 0, 0, W, H);
         var html = '';
         tileRects.forEach(function (r) {
-            var cls = r.item.change > 0.001 ? 'heatmap-tile-gain'
-                    : r.item.change < -0.001 ? 'heatmap-tile-loss'
+            var d = r.item;
+            var cls = d.change > 0.001 ? 'heatmap-tile-gain'
+                    : d.change < -0.001 ? 'heatmap-tile-loss'
                     : 'heatmap-tile-flat';
-            var sign = r.item.change > 0 ? '+' : '';
-            var label = sign + r.item.change.toFixed(2) + '%';
+            var sign = d.change > 0 ? '+' : '';
+            var label = sign + d.change.toFixed(2) + '%';
             var minSide = Math.min(r.w, r.h);
-            var href = '/stock/' + encodeURIComponent(r.item.ticker) + (window.EMBED_MODE ? '?embed=true' + (window.EMBED_TOKEN ? '&embed_token=' + encodeURIComponent(window.EMBED_TOKEN) : '') : '');
-            html += '<a href="' + href + '" class="heatmap-tile ' + cls + '" style="left:' + Math.round(r.x) + 'px;top:' + Math.round(r.y) + 'px;width:' + Math.round(r.w) + 'px;height:' + Math.round(r.h) + 'px;">'
-                  + (minSide >= 20 ? '<span class="heatmap-tile-ticker">' + r.item.ticker + '</span>' : '')
+            var hasExtended = !!(showExtended && d.extendedSession && isFinite(d.extendedChangePct));
+            var href = '/stock/' + encodeURIComponent(d.ticker) + (window.EMBED_MODE ? '?embed=true' + (window.EMBED_TOKEN ? '&embed_token=' + encodeURIComponent(window.EMBED_TOKEN) : '') : '');
+            var title = hasExtended && minSide < EXTENDED_MIN_SIDE ? ' title="' + _extendedFull(d).replace(/"/g, '&quot;') + '"' : '';
+            html += '<a href="' + href + '" class="heatmap-tile ' + cls + '" style="left:' + Math.round(r.x) + 'px;top:' + Math.round(r.y) + 'px;width:' + Math.round(r.w) + 'px;height:' + Math.round(r.h) + 'px;"' + title + '>'
+                  + (minSide >= 20 ? '<span class="heatmap-tile-ticker">' + d.ticker + '</span>' : '')
                   + (minSide >= 35 ? '<span class="heatmap-tile-change">' + label + '</span>' : '')
+                  + (hasExtended && minSide >= EXTENDED_MIN_SIDE ? '<span class="heatmap-tile-extended">' + _extendedCompact(d) + '</span>' : '')
                   + '</a>';
         });
         panel.innerHTML = html;
