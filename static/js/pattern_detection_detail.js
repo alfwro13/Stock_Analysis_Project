@@ -7,12 +7,20 @@ const PD_PATTERN_TYPE_LABELS = {
     inverse: 'Inverse Head & Shoulders',
     double_top: 'Double Top',
     double_bottom: 'Double Bottom',
+    bull_flag: 'Bull Flag',
+    bear_flag: 'Bear Flag',
+    ascending: 'Ascending Triangle',
+    descending: 'Descending Triangle',
 };
 const PD_PATTERN_COLORS = {
     regular: '#ff4d4d',
     double_top: '#ff9900',
     inverse: '#4caf50',
     double_bottom: '#22b8cf',
+    bull_flag: '#2ecc71',
+    bear_flag: '#e74c3c',
+    ascending: '#f1c40f',
+    descending: '#9b59b6',
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 
@@ -24,6 +32,10 @@ const PD_PATTERN_EXPLANATIONS = {
     inverse: "An Inverse Head & Shoulders is the mirror image, suggesting a stock that's been falling may be about to turn upward. It forms three troughs — with the middle one the deepest — sitting below a resistance line. A break above that line is read as a signal that sellers are losing control and the downtrend may be ending.",
     double_top: "A Double Top forms when a rising stock hits the same price ceiling twice without breaking through, with a dip in between. It suggests buyers have tried and failed twice to push the price to a new high, and a drop below the dip's level is read as a signal of a possible downturn.",
     double_bottom: "A Double Bottom forms when a falling stock hits the same price floor twice without breaking below it, with a bounce in between. It suggests sellers have tried and failed twice to push the price to a new low, and a rise above the bounce's level is read as a signal of a possible upturn.",
+    bull_flag: "A Bull Flag forms after a sharp rally, when the price pauses and drifts sideways-to-down in a narrow channel while trading volume dries up. It suggests early buyers are taking profit while the broader uptrend stays intact, and a break back above the channel is read as a signal the rally is resuming.",
+    bear_flag: "A Bear Flag forms after a sharp decline, when the price pauses and drifts sideways-to-up in a narrow channel. It suggests the bounce is short-covering rather than a genuine reversal, and a break back below the channel is read as a signal the decline is resuming.",
+    ascending: "An Ascending Triangle forms when a stock repeatedly hits the same price ceiling while each dip in between bottoms out a little higher than the last. It suggests buyers are getting more aggressive even though sellers keep defending the same level, and a break above that ceiling is read as a signal buyers have won out.",
+    descending: "A Descending Triangle forms when a stock repeatedly holds the same price floor while each bounce in between tops out a little lower than the last. It suggests sellers are getting more aggressive even though buyers keep defending the same level, and a break below that floor is read as a signal sellers have won out.",
 };
 
 let _pdSeries = null;

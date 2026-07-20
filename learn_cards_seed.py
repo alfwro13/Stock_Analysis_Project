@@ -1174,6 +1174,66 @@ CARDS = [
 <p>The same supporting signals apply in mirror form: volume should decline from the first trough to the second, then spike on the breakout; RSI divergence (the second trough reading higher on RSI despite a similar price) confirms weakening downside momentum; and the fit-quality score ranks how cleanly price tracked the shape. Once confirmed, the measured-move target — the resistance level plus the pattern's height below it — projects the classic upside objective.</p>""",
     },
     {
+        "term_key": "bull-flag-pattern",
+        "section_id": "strategies",
+        "term_title": "🚩 Bull Flag Pattern",
+        "question": "What must the flagpole's return exceed for a Bull Flag candidate to even be considered?",
+        "answer": "A multiple of the ticker's own recent daily volatility, scaled to the length of the lookback",
+        "distractors": [
+            "A fixed 20% gain regardless of the ticker's normal volatility",
+            "The S&P 500's return over the same period",
+            "The ticker's average trading volume for the month",
+        ],
+        "explanation": """<p>A <strong>Bull Flag</strong> is a bullish continuation pattern: a brief pause after a sharp rally, rather than a reversal. It has two parts — the <strong>flagpole</strong>, a sharp price increase, and the <strong>flag</strong>, a short consolidation where price drifts gently sideways-to-down in a narrow, roughly parallel channel while trading volume dries up. The idea is that early buyers are taking profit and the market is quietly digesting the move, while genuine demand remains intact — a decisive close back above the upper channel line signals the pause is over and the uptrend is resuming.</p>
+<p>Pattern Detection requires the flagpole's return over a configurable lookback to exceed a multiple of the ticker's own recent daily volatility, scaled to the lookback length (so a 10-day move is judged against 10 days' worth of normal volatility, not one day's) — this is what separates a genuine sharp move from ordinary daily noise. The flag itself is validated by fitting a separate straight line through the consolidation's swing highs and through its swing lows: both lines must slope flat-to-down within a configurable bound, and the two lines must be close enough to parallel to look like a real channel rather than two unrelated trends.</p>
+<p>Declining volume through the consolidation supports the pattern — a genuine pause sees trading interest fade, not remain elevated. Once confirmed by a breakout above the upper channel, the classic <strong>measured-move target</strong> projects the flagpole's own height upward from the breakout point, on the idea that a continuation move often travels about as far as the move that preceded it.</p>""",
+    },
+    {
+        "term_key": "bear-flag-pattern",
+        "section_id": "strategies",
+        "term_title": "🏳️ Bear Flag Pattern",
+        "question": "What does the consolidation channel look like in a valid Bear Flag?",
+        "answer": "Two roughly parallel lines both sloping flat-to-up, mirroring the Bull Flag's flat-to-down channel",
+        "distractors": [
+            "A single flat horizontal line with no slope at all",
+            "Two lines converging to a single point (an apex)",
+            "A channel that must slope steeply downward, matching the flagpole",
+        ],
+        "explanation": """<p>The <strong>Bear Flag</strong> is the bearish mirror image of the Bull Flag: a sharp decline (the flagpole) followed by a brief consolidation that drifts gently sideways-to-up (the flag) before the downtrend resumes. The shallow bounce reflects short-covering and bargain-hunting rather than a genuine change in direction — a decisive close back below the lower channel line signals sellers have regained control.</p>
+<p>Detection mirrors the Bull Flag exactly with every rule inverted: the flagpole must be a sharp decline exceeding the same time-scaled volatility threshold, and the consolidation's two channel lines must both slope flat-to-up (rather than flat-to-down) within the same parallel tolerance.</p>
+<p>The same supporting signal applies: volume should decline through the consolidation. Once confirmed by a breakout below the lower channel line, the measured-move target projects the flagpole's height downward from the breakout point.</p>""",
+    },
+    {
+        "term_key": "ascending-triangle-pattern",
+        "section_id": "strategies",
+        "term_title": "📐 Ascending Triangle Pattern",
+        "question": "What two conditions does Pattern Detection require for an Ascending Triangle candidate?",
+        "answer": "A near-flat regression line through the swing highs (resistance) and a clearly positive-sloped line through the swing lows (rising support)",
+        "distractors": [
+            "Both the swing highs and swing lows must be perfectly flat",
+            "The swing highs must be falling while the swing lows are flat",
+            "A confirmed Wyckoff Accumulation phase on the same ticker",
+        ],
+        "explanation": """<p>An <strong>Ascending Triangle</strong> is a bullish continuation/accumulation pattern formed against a hard overhead supply level. Buyers keep stepping in at progressively higher prices — each swing low is higher than the last, forming a rising support line — while sellers repeatedly defend the exact same ceiling, forming a flat resistance line. This squeeze reflects accumulation: demand is strengthening even though price can't yet break through, and each retest of resistance absorbs a little more of the available supply until it runs out.</p>
+<p>Pattern Detection fits a straight line through the swing highs and requires its slope to be near-zero (within a configurable tolerance, expressed as a %-of-price-per-day so the same threshold means the same thing regardless of a ticker's absolute price level) — this is the flat resistance test. A separate line fit through the swing lows must have a clearly positive slope exceeding a configurable minimum, confirming genuine rising support rather than noise. The flat resistance level itself is the average of the swing-high touches.</p>
+<p>Once confirmed by a close above that resistance level, the classic measured-move target projects the triangle's own height (resistance minus the first swing low) upward from the breakout point.</p>""",
+    },
+    {
+        "term_key": "descending-triangle-pattern",
+        "section_id": "strategies",
+        "term_title": "📐 Descending Triangle Pattern",
+        "question": "What confirms a Descending Triangle candidate detected by Pattern Detection?",
+        "answer": "A close below the flat support level formed by the swing lows",
+        "distractors": [
+            "The stock's RSI crossing above 70",
+            "A second detector agreeing on the same ticker within 24 hours",
+            "A dividend cut announcement",
+        ],
+        "explanation": """<p>The <strong>Descending Triangle</strong> is the bearish mirror image of the Ascending Triangle: a flat support level defended by buyers while sellers keep pushing in at progressively lower prices, forming a falling resistance line. This reflects distribution — supply is building even though buyers keep the price propped up at the same floor, until that floor eventually gives way.</p>
+<p>Detection mirrors the Ascending Triangle exactly with every rule inverted: the swing lows must fit a near-flat line (the support test) and the swing highs must fit a line with a clearly negative slope exceeding the same configurable minimum. The flat support level is the average of the swing-low touches.</p>
+<p>Once confirmed by a close below that support level, the measured-move target projects the triangle's height (the first swing high minus support) downward from the breakout point.</p>""",
+    },
+    {
         "term_key": "market-leader",
         "section_id": "strategies",
         "term_title": "👑 Market Leader",

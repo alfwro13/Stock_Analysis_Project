@@ -120,3 +120,25 @@ def rsi_divergence(rsi_series: pd.Series, first_idx: int, second_idx: int, inver
     if pd.isna(rsi_first) or pd.isna(rsi_second):
         return False
     return bool(rsi_second > rsi_first) if inverted else bool(rsi_second < rsi_first)
+
+
+def linreg(x: np.ndarray, y: np.ndarray) -> Optional[tuple[float, float, float]]:
+    """OLS slope/intercept/R^2 of y ~ x. None if fewer than 2 points or x has zero range
+    (a degenerate fit) — used by Flag's channel lines and Triangle's flat/sloped sides."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if len(x) < 2 or np.ptp(x) == 0:
+        return None
+    slope, intercept = np.polyfit(x, y, 1)
+    pred = slope * x + intercept
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2 = 1.0 if ss_tot == 0 else 1.0 - float(np.sum((y - pred) ** 2)) / ss_tot
+    return float(slope), float(intercept), r2
+
+
+def slope_pct_per_day(slope: float, reference_price: float) -> float:
+    """Normalizes a raw price/day regression slope to %-of-price-per-day so a flatness/steepness
+    threshold means the same thing regardless of a ticker's absolute price level."""
+    if reference_price <= 0:
+        return 0.0
+    return slope / reference_price * 100.0

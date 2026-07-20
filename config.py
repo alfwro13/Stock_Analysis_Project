@@ -274,6 +274,14 @@ DEFAULT_CONFIG = {
             "DOUBLE_TOP_BOTTOM": {
                 "TOP_ENABLED": True,
                 "BOTTOM_ENABLED": True
+            },
+            "FLAG": {
+                "BULL_ENABLED": True,
+                "BEAR_ENABLED": True
+            },
+            "TRIANGLE": {
+                "ASCENDING_ENABLED": True,
+                "DESCENDING_ENABLED": True
             }
         },
         "FORENSIC_QUARTERLY_FETCH": {
@@ -390,6 +398,20 @@ DEFAULT_CONFIG = {
                 "VOLUME_CONFIRM_MULTIPLIER": 1.5,
                 "BALANCE_TOLERANCE_PCT": 3.0,
                 "MIN_SEPARATION_PCT": 3.0
+            },
+            "FLAG": {
+                "SIGMA_MULTIPLIER": 1.5,
+                "FLAGPOLE_LOOKBACK_DAYS": 10,
+                "SIGMA_WINDOW_DAYS": 20,
+                "MIN_CONSOLIDATION_DAYS": 7,
+                "MAX_CONSOLIDATION_DAYS": 15,
+                "MAX_CHANNEL_SLOPE_PCT": 0.75,
+                "PARALLEL_TOLERANCE_PCT": 0.15
+            },
+            "TRIANGLE": {
+                "WINDOW_DAYS": 40,
+                "FLAT_SLOPE_EPSILON_PCT": 0.15,
+                "MIN_SLOPE_PCT": 0.15
             }
         },
         "MARKET_STRESS_ALERTS": {

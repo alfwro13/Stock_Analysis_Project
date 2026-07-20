@@ -8,7 +8,9 @@ from typing import Optional
 import pandas as pd
 
 import double_top_bottom_engine
+import flag_engine
 import head_shoulders_engine
+import triangle_engine
 from config import HISTORICAL_DIR, load_config
 from database import (
     get_connection,
@@ -30,6 +32,8 @@ logger = logging.getLogger(__name__)
 DETECTORS = {
     head_shoulders_engine.FAMILY: head_shoulders_engine,
     double_top_bottom_engine.FAMILY: double_top_bottom_engine,
+    flag_engine.FAMILY: flag_engine,
+    triangle_engine.FAMILY: triangle_engine,
 }
 
 _MIN_BARS = 60

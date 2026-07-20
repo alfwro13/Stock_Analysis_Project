@@ -157,6 +157,10 @@ class PatternFamilyScheduleConfig(BaseModel):
     INVERSE_ENABLED: Optional[bool] = None
     TOP_ENABLED: Optional[bool] = None
     BOTTOM_ENABLED: Optional[bool] = None
+    BULL_ENABLED: Optional[bool] = None
+    BEAR_ENABLED: Optional[bool] = None
+    ASCENDING_ENABLED: Optional[bool] = None
+    DESCENDING_ENABLED: Optional[bool] = None
 
 class PatternDetectionScheduleConfig(BaseModel):
     ENABLED: Optional[bool] = None
@@ -166,6 +170,8 @@ class PatternDetectionScheduleConfig(BaseModel):
     TIME: Optional[str] = None
     HEAD_SHOULDERS: Optional[PatternFamilyScheduleConfig] = None
     DOUBLE_TOP_BOTTOM: Optional[PatternFamilyScheduleConfig] = None
+    FLAG: Optional[PatternFamilyScheduleConfig] = None
+    TRIANGLE: Optional[PatternFamilyScheduleConfig] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -239,6 +245,16 @@ class PatternFamilyAlertConfig(BaseModel):
     VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
     BALANCE_TOLERANCE_PCT: Optional[float] = None
     MIN_SEPARATION_PCT: Optional[float] = None
+    SIGMA_MULTIPLIER: Optional[float] = None
+    FLAGPOLE_LOOKBACK_DAYS: Optional[int] = None
+    SIGMA_WINDOW_DAYS: Optional[int] = None
+    MIN_CONSOLIDATION_DAYS: Optional[int] = None
+    MAX_CONSOLIDATION_DAYS: Optional[int] = None
+    MAX_CHANNEL_SLOPE_PCT: Optional[float] = None
+    PARALLEL_TOLERANCE_PCT: Optional[float] = None
+    WINDOW_DAYS: Optional[int] = None
+    FLAT_SLOPE_EPSILON_PCT: Optional[float] = None
+    MIN_SLOPE_PCT: Optional[float] = None
 
 class PatternDetectionAlertConfig(BaseModel):
     COOLDOWN_MINUTES: Optional[float] = None
@@ -246,6 +262,8 @@ class PatternDetectionAlertConfig(BaseModel):
     REARM_PERCENT: Optional[float] = None
     HEAD_SHOULDERS: Optional[PatternFamilyAlertConfig] = None
     DOUBLE_TOP_BOTTOM: Optional[PatternFamilyAlertConfig] = None
+    FLAG: Optional[PatternFamilyAlertConfig] = None
+    TRIANGLE: Optional[PatternFamilyAlertConfig] = None
 
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None

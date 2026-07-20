@@ -973,6 +973,10 @@
                     <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr> and
                     <abbr title="Two peaks of near-equal height separated by one qualifying trough.">Double Top</abbr> /
                     <abbr title="The bullish mirror image: two troughs of near-equal depth separated by one qualifying peak.">Double Bottom</abbr>,
+                    <abbr title="A sharp directional move (the pole) followed by a brief, mildly counter-sloped consolidation channel before the trend resumes.">Bull Flag</abbr> /
+                    <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr> and
+                    <abbr title="A flat resistance level with a rising support line, breaking out upward.">Ascending Triangle</abbr> /
+                    <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr>,
                     with more pattern types planned. Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
                 </p>
 
@@ -980,8 +984,12 @@
                 {% set pd_cfg = config.NOTIFICATIONS.PATTERN_DETECTION_ALERTS if config.NOTIFICATIONS.PATTERN_DETECTION_ALERTS else {} %}
                 {% set pd_hs_sched = pd_sched.HEAD_SHOULDERS if pd_sched.HEAD_SHOULDERS else {} %}
                 {% set pd_dtb_sched = pd_sched.DOUBLE_TOP_BOTTOM if pd_sched.DOUBLE_TOP_BOTTOM else {} %}
+                {% set pd_flag_sched = pd_sched.FLAG if pd_sched.FLAG else {} %}
+                {% set pd_tri_sched = pd_sched.TRIANGLE if pd_sched.TRIANGLE else {} %}
                 {% set pd_hs_cfg = pd_cfg.HEAD_SHOULDERS if pd_cfg.HEAD_SHOULDERS else {} %}
                 {% set pd_dtb_cfg = pd_cfg.DOUBLE_TOP_BOTTOM if pd_cfg.DOUBLE_TOP_BOTTOM else {} %}
+                {% set pd_flag_cfg = pd_cfg.FLAG if pd_cfg.FLAG else {} %}
+                {% set pd_tri_cfg = pd_cfg.TRIANGLE if pd_cfg.TRIANGLE else {} %}
 
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PATTERN_DETECTION_ENABLED" {% if pd_sched.ENABLED %}checked{% endif %}>
@@ -1071,6 +1079,74 @@
                     <div class="form-group flex-1">
                         <label><abbr title="Minimum % separation required between the middle trough/peak and the average of the two outer extremes, so a real pull-back is required.">Min separation %</abbr></label>
                         <input type="number" id="PATTERN_DETECTION_DTB_MIN_SEP" class="form-control" value="{{ pd_dtb_cfg.MIN_SEPARATION_PCT | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Bull Flag / Bear Flag</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_FLAG_BULL" {% if pd_flag_sched.BULL_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_FLAG_BULL">Detect Bull Flag (continuation up)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_FLAG_BEAR" {% if pd_flag_sched.BEAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_FLAG_BEAR">Detect Bear Flag (continuation down)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The flagpole's N-day return must exceed this many standard deviations of daily volatility (time-scaled by the square root of N) to count as a genuinely sharp move.">Sigma multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_SIGMA_MULT" class="form-control" value="{{ pd_flag_cfg.SIGMA_MULTIPLIER | default(1.5) }}" step="0.1" min="0.5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days the flagpole move is measured over.">Flagpole lookback (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_POLE_DAYS" class="form-control" value="{{ pd_flag_cfg.FLAGPOLE_LOOKBACK_DAYS | default(10) }}" step="1" min="3">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days of daily returns used to estimate normal volatility, taken immediately before the flagpole so the pole itself never inflates its own threshold.">Volatility window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_SIGMA_WINDOW" class="form-control" value="{{ pd_flag_cfg.SIGMA_WINDOW_DAYS | default(20) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum allowed %/day slope on either channel line — keeps the consolidation a genuine 'slight' pause rather than a steep reversal.">Max channel slope %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_MAX_SLOPE" class="form-control" value="{{ pd_flag_cfg.MAX_CHANNEL_SLOPE_PCT | default(0.75) }}" step="0.05" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum consolidation length in trading days.">Min consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_MIN_CONSOL" class="form-control" value="{{ pd_flag_cfg.MIN_CONSOLIDATION_DAYS | default(7) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum consolidation length in trading days.">Max consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_MAX_CONSOL" class="form-control" value="{{ pd_flag_cfg.MAX_CONSOLIDATION_DAYS | default(15) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum allowed difference (in %/day) between the upper and lower channel lines' slopes for them to count as parallel.">Parallel tolerance %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_PARALLEL_TOL" class="form-control" value="{{ pd_flag_cfg.PARALLEL_TOLERANCE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Ascending / Descending Triangle</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_ASC" {% if pd_tri_sched.ASCENDING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_ASC">Detect Ascending Triangle (breakout up)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_DESC" {% if pd_tri_sched.DESCENDING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_DESC">Detect Descending Triangle (breakout down)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trailing lookback window (trading days) searched for a triangle's swing highs/lows.">Window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_TRI_WINDOW" class="form-control" value="{{ pd_tri_cfg.WINDOW_DAYS | default(40) }}" step="5" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum allowed %/day slope (in either direction) for a side's regression line to count as 'flat'.">Flat-side slope epsilon %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_TRI_FLAT_EPS" class="form-control" value="{{ pd_tri_cfg.FLAT_SLOPE_EPSILON_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day slope (in the pattern's direction) for the sloped side's regression line to count as a real trend, not noise.">Min sloped-side %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_TRI_MIN_SLOPE" class="form-control" value="{{ pd_tri_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
                     </div>
                 </div>
 
