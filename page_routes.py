@@ -24,17 +24,7 @@ import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
 from utils import normalize_ticker, ignored_tickers_set
-from fundamentals_helpers import (
-    compute_quality_grade,
-    is_quality_compounder,
-    is_quality_on_sale,
-    is_garp_tenbagger,
-    is_mean_reversion_setup,
-    is_dividend_harvest_candidate,
-)
-from bull_bear_trap_engine import phase_label
-from bubble_radar_engine import flag_label
-from head_shoulders_engine import phase_label as hs_phase_label
+from fundamentals_helpers import compute_quality_grade
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -64,6 +54,7 @@ from page_helpers import (
     _build_position_sizing_context,
     get_unread_count,
     calculate_pnl,
+    compute_badge_tags,
 )
 from page_routes_macro import page_router_macro
 
@@ -343,17 +334,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                 or row_dict.get('company_name')
                 or row_dict['ticker']
             )
-            if row_dict.get('setup_tags'):
-                try:
-                    row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
-                except Exception:
-                    row_dict['setup_tags_list'] = []
-            else:
-                row_dict['setup_tags_list'] = []
-
-            row_dict['hs_phase_label'] = hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None
-            row_dict['trap_phase_label'] = phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None
-            row_dict['bubble_flag_label'] = flag_label(row_dict.get('bubble_flag'))
+            row_dict.update(compute_badge_tags(row_dict))
 
             portfolio_data.append(row_dict)
 
@@ -750,34 +731,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
                 or row_dict.get('company_name')
                 or row_dict['ticker']
             )
-            if row_dict.get('setup_tags'):
-                try:
-                    row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
-                except Exception:
-                    row_dict['setup_tags_list'] = []
-            else:
-                row_dict['setup_tags_list'] = []
-
-            row_dict['quality_grade'] = compute_quality_grade(row_dict)
-
-            screen_row = dict(row_dict)
-            screen_row['close_price'] = row_dict.get('quant_close_price')
-            report_tags = []
-            if is_quality_compounder(screen_row):
-                report_tags.append({'name': 'Quality Compounder', 'tooltip': 'Meets the Market Reports Quality Compounders screen: ROE>15%, low debt, steady growth, reasonable PE.'})
-            if is_quality_on_sale(screen_row):
-                report_tags.append({'name': 'Quality on Sale', 'tooltip': 'Meets the Market Reports Quality on Sale screen: near its 52-week low despite solid fundamentals.'})
-            if is_garp_tenbagger(screen_row, row_dict.get('market_cap')):
-                report_tags.append({'name': 'GARP Tenbagger', 'tooltip': 'Meets the Market Reports GARP Tenbaggers screen: low PEG with strong growth (Peter Lynch style).'})
-            if is_mean_reversion_setup(screen_row):
-                report_tags.append({'name': 'Mean Reversion Setup', 'tooltip': 'Meets the Market Reports Mean Reversion screen: oversold RSI within a longer-term uptrend.'})
-            if is_dividend_harvest_candidate(screen_row):
-                report_tags.append({'name': 'Dividend Harvest', 'tooltip': 'Meets the Market Reports Dividend Harvest screen: solid yield with a healthy composite score.'})
-            row_dict['report_tags'] = report_tags
-
-            row_dict['trap_phase_label'] = phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None
-            row_dict['bubble_flag_label'] = flag_label(row_dict.get('bubble_flag'))
-            row_dict['hs_phase_label'] = hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None
+            row_dict.update(compute_badge_tags(row_dict))
 
             limits = all_holding_limits.get((watchlist_account_id, row_dict['ticker']), {})
             row_dict['low_target'] = limits.get('low_limit')
@@ -1508,12 +1462,17 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
                    q.sma_50, q.sma_200,
                    q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
                    q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
-                   q.anomaly_score,
+                   q.anomaly_score, q.close_price as quant_close_price,
                    q.vp_poc, q.vp_val, q.vp_vah, q.vp_entry_zone, q.vp_exit_zone,
                    q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
                    q.price_q10, q.price_q90,
                    mu.industry, mu.index_membership,
                    cno.display_name as name_override,
+                   tmeta.market_cap,
+                   trap.phase as trap_phase,
+                   (SELECT flag FROM bubble_radar_metrics
+                    WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
+                   hs.pattern_type as hs_pattern_type, hs.phase as hs_phase,
                    COALESCE(
                        cno.display_name,
                        NULLIF(p.company_name, s.ticker),
@@ -1527,6 +1486,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
             LEFT JOIN quant_signals q ON s.ticker = q.ticker
                 AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+            LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
+            LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
+            LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
             WHERE s.ticker = ?
         ''', (ticker,))
         stock_data = cursor.fetchone()
@@ -1550,6 +1512,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
                 .strip()
             )
             stock_data['has_name_override'] = bool(stock_data.get('name_override'))
+            stock_data.update(compute_badge_tags(stock_data))
         else:
             cursor.execute('''
                 SELECT q.*,

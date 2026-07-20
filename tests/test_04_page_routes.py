@@ -387,6 +387,46 @@ def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkey
 
 
 @pytest.mark.pages
+def test_stock_detail_shows_setup_and_derived_tags(client):
+    """Stock Detail must show the same badge-style tags as Portfolio/Watchlist —
+    setup_tags (candlestick patterns), Trap Monitor phase, and Head & Shoulders phase —
+    next to the header, since it previously computed none of them."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, setup_tags) "
+            "VALUES ('ZZTAGGED', 50.0, 'USD', 'EQUITY', ?)",
+            ('[{"name": "Bullish Engulfing", "tooltip": "A bullish reversal candlestick pattern."}]',),
+        )
+        conn.execute(
+            "INSERT INTO trap_monitor_results (ticker, phase) VALUES ('ZZTAGGED', 'BULL_TRAP')"
+        )
+        conn.execute(
+            "INSERT INTO head_shoulders_results (ticker, pattern_type, phase) VALUES ('ZZTAGGED', 'regular', 'CONFIRMED')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        resp = client.get("/stock/ZZTAGGED", follow_redirects=True)
+        assert resp.status_code < 500
+        assert "Bullish Engulfing" in resp.text
+        assert "setup-tag" in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZTAGGED'")
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'ZZTAGGED'")
+            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'ZZTAGGED'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
     """A ticker with no built-in-account holding but present on the Watchlist has no
     "Your Position" box (portfolio_math is None), but must still get a standalone
