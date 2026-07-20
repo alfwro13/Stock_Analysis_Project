@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Pattern Detection{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128200; Pattern Detection</h1>
+<p class="text-muted mb-3">
+    Scans your portfolio and watchlist for chart patterns using rolling-window swing-point detection plus
+    <abbr title="Volume should decline through the pattern's two comparable structural points, then spike on the breakout.">volume confirmation</abbr>,
+    <abbr title="Price makes an equal or more extreme second point while RSI makes a less extreme reading — weakening momentum confirms the reversal.">RSI divergence</abbr>, and a
+    <abbr title="A prior directional move is required before the pattern's first structural point — an uptrend for a topping pattern, a downtrend for a bottoming pattern — to reduce false positives on sideways price action.">prior-trend gate</abbr>.
+    Currently covers
+    <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders, connected by a neckline drawn through the two intervening swing lows.">Head &amp; Shoulders</abbr> /
+    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders, connected by a neckline drawn through the two intervening swing highs.">Inverse Head &amp; Shoulders</abbr> and
+    <abbr title="Two peaks of near-equal height separated by one qualifying trough — confirms on a close below the trough (support) level.">Double Top</abbr> /
+    <abbr title="The bullish mirror image: two troughs of near-equal depth separated by one qualifying peak — confirms on a close above the peak (resistance) level.">Double Bottom</abbr>,
+    with more pattern types planned.
+</p>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <span id="pd-last-scan" class="text-secondary small"></span>
+    <div class="d-flex gap-2 align-items-center">
+        <select id="pd-family-filter" class="form-select form-select-sm w-auto d-inline-block">
+            <option value="">All patterns</option>
+        </select>
+        <button id="pd-backfill-btn" class="btn btn-outline-secondary btn-sm">Backfill Historical Data</button>
+        <button id="pd-run-btn" class="btn btn-primary btn-sm">Run Scan</button>
+    </div>
+</div>
+
+<div class="bubble-tabs">
+    <button class="bubble-tab active" data-tab="patterns">Detected Patterns</button>
+    <button class="bubble-tab" data-tab="accuracy">Prediction Accuracy</button>
+</div>
+
+<div class="bubble-tab-panel active" data-panel="patterns">
+    <div id="pd-patterns-empty" class="bubble-empty bubble-empty-hidden">
+        No patterns currently detected. Run a scan or wait for the scheduled post-market scan.
+    </div>
+    <table class="bubble-table">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Pattern</th>
+                <th>Phase</th>
+                <th><abbr title="The support/resistance/neckline level the pattern's confirmation and measured-move target are anchored to.">Key Level</abbr></th>
+                <th><abbr title="Key level projected by the pattern's height — the classic technical-analysis price objective.">Target</abbr></th>
+                <th>Vol Confirms</th>
+                <th>RSI Divergence</th>
+                <th><abbr title="How closely price tracked the idealized pattern shape (1.0 = perfect fit).">Fit (R&sup2;)</abbr></th>
+                <th>Scanned</th>
+            </tr>
+        </thead>
+        <tbody id="pd-patterns-body"></tbody>
+    </table>
+</div>
+
+<div class="modal fade" id="pd-chart-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pd-detail-ticker">Pattern Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="pd-detail-body" class="mb-3"></div>
+                <div class="chart-wrapper" id="pd-chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('pd-chart-wrapper')">&#9638; Fullscreen</button>
+                    <div id="pd-detail-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bubble-tab-panel" data-panel="accuracy">
+    <p class="text-secondary small mb-3">
+        Tracks every confirmed pattern breakout and records whether price moved in the predicted direction
+        within 14 and 30 calendar days. Use "Backfill Historical Data" once to populate this from two years
+        of existing price history before relying on live alerts.
+    </p>
+    <div id="pd-accuracy-empty" class="bubble-empty bubble-empty-hidden">No resolved predictions yet.</div>
+    <table class="bubble-table">
+        <thead>
+            <tr>
+                <th>Pattern</th>
+                <th>Calls</th>
+                <th>14d Accuracy</th>
+                <th>14d Resolved</th>
+                <th>30d Accuracy</th>
+                <th>30d Resolved</th>
+            </tr>
+        </thead>
+        <tbody id="pd-accuracy-body"></tbody>
+        <tfoot id="pd-accuracy-foot"></tfoot>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
+<script src="/static/js/pattern_detection.js?v={{ css_version }}"></script>
+{% endblock %}

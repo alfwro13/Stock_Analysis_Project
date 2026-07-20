@@ -30,7 +30,7 @@
 24. [Markets](#24-markets)
 25. [Glossary Learning](#25-glossary-learning)
 26. [Pairs Spread Monitor](#26-pairs-spread-monitor)
-27. [Head & Shoulders Pattern Detector](#27-head--shoulders-pattern-detector)
+27. [Pattern Detection](#27-pattern-detection)
 
 ---
 
@@ -4253,20 +4253,24 @@ Every ticker with at least one note, each with its full note history (newest fir
 
 ---
 
-## 27. Head & Shoulders Pattern Detector
+## 27. Pattern Detection
 
-Scans Portfolio + Watchlist tickers once daily (Mon-Fri by default) for Head & Shoulders and
-Inverse Head & Shoulders chart patterns using rolling-window swing detection. See
-`head_shoulders_engine.py`.
+Scans Portfolio + Watchlist tickers once daily (Mon-Fri by default) for chart patterns using
+rolling-window swing-point detection, dispatched through a per-family detector registry
+(`pattern_detection_engine.DETECTORS`). Currently covers Head & Shoulders / Inverse Head &
+Shoulders (`head_shoulders_engine.py`) and Double Top / Double Bottom (`double_top_bottom_engine.py`);
+adding a future pattern family requires no changes to these endpoints. See `pattern_detection_engine.py`
+and `assets/pattern_detection.md`.
 
-### `GET /head-shoulders`
+### `GET /pattern-detection`
 
-HTML page. Renders the detected-patterns table, a per-ticker pattern chart, and a prediction
-accuracy panel.
+HTML page. Renders the combined detected-patterns table (all families, with a family filter),
+a per-ticker pattern chart, and a prediction accuracy panel. `GET /head-shoulders` redirects here.
 
-### `GET /api/head-shoulders/results`
+### `GET /api/pattern-detection/results`
 
-Returns all rows from `head_shoulders_results` (confirmed patterns first).
+Returns all rows from `pattern_detection_results` (confirmed patterns first). Optional `family`
+query param filters to one `pattern_family` (`head_shoulders` / `double_top_bottom`).
 
 **Response**
 
@@ -4275,13 +4279,18 @@ Returns all rows from `head_shoulders_results` (confirmed patterns first).
   "status": "success",
   "results": [
     {
-      "ticker": "NVDA", "pattern_type": "regular", "phase": "CONFIRMED",
-      "l_shoulder_date": "2026-05-01", "l_shoulder_price": 135.2,
-      "l_armpit_date": "2026-05-08", "l_armpit_price": 128.4,
-      "head_date": "2026-05-15", "head_price": 142.1,
-      "r_armpit_date": "2026-05-22", "r_armpit_price": 129.0,
-      "r_shoulder_date": "2026-05-29", "r_shoulder_price": 134.6,
-      "neck_slope": 0.043, "breakout_date": "2026-06-05", "breakout_price": 127.8,
+      "ticker": "NVDA", "pattern_family": "head_shoulders", "pattern_type": "regular", "phase": "CONFIRMED",
+      "points": [
+        {"label": "L Shoulder", "date": "2026-05-01", "price": 135.2},
+        {"label": "L Armpit", "date": "2026-05-08", "price": 128.4},
+        {"label": "Head", "date": "2026-05-15", "price": 142.1},
+        {"label": "R Armpit", "date": "2026-05-22", "price": 129.0},
+        {"label": "R Shoulder", "date": "2026-05-29", "price": 134.6}
+      ],
+      "lines": [
+        {"label": "Neckline", "date_from": "2026-05-08", "price_from": 128.4, "date_to": "2026-05-22", "price_to": 129.0, "dash": true}
+      ],
+      "breakout_date": "2026-06-05", "breakout_price": 127.8,
       "measured_target": 114.9, "volume_confirms": 1, "rsi_divergence": 1,
       "pattern_r2": 0.91, "prior_trend_pct": 14.2, "scan_ts": "2026-06-05 22:20:00"
     }
@@ -4289,22 +4298,22 @@ Returns all rows from `head_shoulders_results` (confirmed patterns first).
 }
 ```
 
-### `POST /api/head-shoulders/run`
+### `POST /api/pattern-detection/run`
 
-Triggers a background scan immediately. Returns `{"status": "success"}` immediately; results
-appear in `GET /api/head-shoulders/results` within a few seconds.
+Triggers a background scan immediately (every registered family). Returns `{"status": "success"}`
+immediately; results appear in `GET /api/pattern-detection/results` within a few seconds.
 
-### `POST /api/head-shoulders/backfill`
+### `POST /api/pattern-detection/backfill`
 
 Triggers a one-time historical backtest over each monitored ticker's full parquet history in the
-background — can take several minutes. Populates `head_shoulders_history` with resolved 14d/30d
+background — can take several minutes. Populates `pattern_detection_history` with resolved 14d/30d
 outcomes immediately (since for historical dates the future is already in the parquet), so the
 accuracy panel is populated before relying on live alerts.
 
-### `GET /api/head-shoulders/accuracy`
+### `GET /api/pattern-detection/accuracy`
 
-Returns per-pattern-type (`regular`/`inverse`) prediction accuracy at 14-day and 30-day forward
-horizons, aggregated from `head_shoulders_history`.
+Returns per-family, per-pattern-type prediction accuracy at 14-day and 30-day forward horizons,
+aggregated from `pattern_detection_history`. Optional `family` query param filters to one family.
 
 **Response**
 
@@ -4312,17 +4321,18 @@ horizons, aggregated from `head_shoulders_history`.
 {
   "status": "success",
   "patterns": [
-    {"pattern_type": "regular", "total": 12, "resolved_14d": 8, "accuracy_14d": 62.5,
+    {"pattern_family": "head_shoulders", "pattern_type": "regular", "total": 12, "resolved_14d": 8, "accuracy_14d": 62.5,
      "resolved_30d": 8, "accuracy_30d": 75.0}
   ],
   "overall": {"total": 20, "resolved_14d": 15, "accuracy_14d": 66.7, "resolved_30d": 15, "accuracy_30d": 73.3}
 }
 ```
 
-### `GET /api/head-shoulders/chart/{ticker}`
+### `GET /api/pattern-detection/chart/{ticker}/{family}`
 
-Returns the ticker's recent daily close series plus its stored pattern geometry (`head_shoulders_results`
-row), for client-side chart overlay of the pattern's five pivot points, neckline, and breakout marker.
+Returns the ticker's recent daily close series plus its stored pattern geometry (`pattern_detection_results`
+row for that ticker+family, unpacked from `points_json`/`lines_json`), for client-side chart overlay of
+the pattern's structural points, key line(s), and breakout marker.
 
 **Response**
 
@@ -4330,7 +4340,7 @@ row), for client-side chart overlay of the pattern's five pivot points, neckline
 {
   "status": "success",
   "series": {"dates": ["2026-04-01", "..."], "close": [128.0, 129.4]},
-  "pattern": {"ticker": "NVDA", "pattern_type": "regular", "phase": "CONFIRMED", "...": "..."}
+  "pattern": {"ticker": "NVDA", "pattern_family": "head_shoulders", "pattern_type": "regular", "phase": "CONFIRMED", "points": ["..."], "lines": ["..."]}
 }
 ```
 

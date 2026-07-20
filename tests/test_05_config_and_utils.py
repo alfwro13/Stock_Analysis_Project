@@ -96,6 +96,50 @@ def test_load_config_does_not_raise_with_corrupt_json(tmp_path):
 
 
 @pytest.mark.config
+def test_load_config_migrates_legacy_head_shoulders_scheduling(tmp_path):
+    """A config.json predating the unified Pattern Detection tool (flat SCHEDULING.HEAD_SHOULDERS
+    / NOTIFICATIONS.HEAD_SHOULDERS_ALERTS) must have its values folded into the new nested
+    PATTERN_DETECTION / PATTERN_DETECTION_ALERTS shape, not silently reset to defaults."""
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    legacy_config_path = tmp_path / "legacy_config.json"
+    legacy_config_path.write_text(json.dumps({
+        "SCHEDULING": {
+            "HEAD_SHOULDERS": {
+                "ENABLED": True, "REGULAR_ENABLED": False, "INVERSE_ENABLED": True,
+                "MONITOR_PORTFOLIO": True, "MONITOR_WATCHLIST": True,
+                "DAYS": ["mon", "tue", "wed", "thu", "fri"], "TIME": "23:45",
+            },
+        },
+        "NOTIFICATIONS": {
+            "HEAD_SHOULDERS_ALERTS": {
+                "COOLDOWN_MINUTES": 90, "RETRIGGER_PERCENT": 4.0, "REARM_PERCENT": 6.0,
+                "PRIOR_TREND_MIN_PCT": 10.0, "VOLUME_CONFIRM_MULTIPLIER": 2.0,
+            },
+        },
+    }))
+    try:
+        _config.SECRETS_PATH = legacy_config_path
+        result = _config.load_config()
+
+        pd_sched = result["SCHEDULING"]["PATTERN_DETECTION"]
+        assert pd_sched["ENABLED"] is True
+        assert pd_sched["MONITOR_WATCHLIST"] is True
+        assert pd_sched["TIME"] == "23:45"
+        assert pd_sched["HEAD_SHOULDERS"]["REGULAR_ENABLED"] is False
+        assert pd_sched["HEAD_SHOULDERS"]["INVERSE_ENABLED"] is True
+        assert "HEAD_SHOULDERS" not in result["SCHEDULING"]
+
+        pd_alerts = result["NOTIFICATIONS"]["PATTERN_DETECTION_ALERTS"]
+        assert pd_alerts["COOLDOWN_MINUTES"] == 90
+        assert pd_alerts["HEAD_SHOULDERS"]["PRIOR_TREND_MIN_PCT"] == 10.0
+        assert pd_alerts["HEAD_SHOULDERS"]["VOLUME_CONFIRM_MULTIPLIER"] == 2.0
+        assert "HEAD_SHOULDERS_ALERTS" not in result["NOTIFICATIONS"]
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
+@pytest.mark.config
 def test_update_config_atomic_persists_changes(tmp_path):
     """update_config_atomic() must write changes that are readable by load_config()."""
     import config as _config

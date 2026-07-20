@@ -87,6 +87,8 @@ EXPECTED_TABLES = [
     "learn_cards",
     "learn_term_state",
     "ticker_notes",
+    "pattern_detection_results",
+    "pattern_detection_history",
 ]
 
 
@@ -785,4 +787,50 @@ def test_seed_learn_cards_is_populated_and_idempotent():
     finally:
         conn.execute("DELETE FROM learn_term_state WHERE term_key = ?", (learn_cards_seed.CARDS[0]["term_key"],))
         conn.commit()
+
+
+@pytest.mark.db
+def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results():
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'MIGTST1'")
+        conn.execute("DELETE FROM pattern_detection_results WHERE ticker = 'MIGTST1'")
+        conn.execute(
+            """INSERT INTO head_shoulders_results
+               (ticker, pattern_type, phase, l_shoulder_date, l_shoulder_price, l_armpit_date, l_armpit_price,
+                head_date, head_price, r_armpit_date, r_armpit_price, r_shoulder_date, r_shoulder_price,
+                neck_slope, breakout_date, breakout_price, measured_target, volume_confirms, rsi_divergence,
+                pattern_r2, prior_trend_pct, scan_ts)
+               VALUES ('MIGTST1', 'regular', 'CONFIRMED', '2026-01-01', 110.0, '2026-01-10', 95.0,
+                       '2026-01-20', 120.0, '2026-01-30', 96.0, '2026-02-05', 108.0,
+                       0.04, '2026-02-10', 90.0, 74.0, 1, 1, 0.85, 12.0, '2026-02-10 22:20:00')""",
+        )
+        conn.commit()
+
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT * FROM pattern_detection_results WHERE ticker = 'MIGTST1' AND pattern_family = 'head_shoulders'"
+        ).fetchone()
+        assert row is not None
+        assert row["phase"] == "CONFIRMED"
+        points = json.loads(row["points_json"])
+        assert len(points) == 5
+        assert points[2]["label"] == "Head"
+        assert points[2]["price"] == 120.0
+
+        # Re-running migrate_db must not duplicate the row.
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+        count = conn.execute(
+            "SELECT COUNT(*) AS n FROM pattern_detection_results WHERE ticker = 'MIGTST1' AND pattern_family = 'head_shoulders'"
+        ).fetchone()["n"]
+        assert count == 1
+    finally:
+        conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'MIGTST1'")
+        conn.execute("DELETE FROM pattern_detection_results WHERE ticker = 'MIGTST1'")
+        conn.commit()
+        conn.close()
         conn.close()

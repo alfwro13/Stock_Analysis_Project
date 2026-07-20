@@ -152,6 +152,21 @@ class ScheduleItemConfig(BaseModel):
     REGULAR_ENABLED: Optional[bool] = None
     INVERSE_ENABLED: Optional[bool] = None
 
+class PatternFamilyScheduleConfig(BaseModel):
+    REGULAR_ENABLED: Optional[bool] = None
+    INVERSE_ENABLED: Optional[bool] = None
+    TOP_ENABLED: Optional[bool] = None
+    BOTTOM_ENABLED: Optional[bool] = None
+
+class PatternDetectionScheduleConfig(BaseModel):
+    ENABLED: Optional[bool] = None
+    MONITOR_PORTFOLIO: Optional[bool] = None
+    MONITOR_WATCHLIST: Optional[bool] = None
+    DAYS: Optional[List[str]] = None
+    TIME: Optional[str] = None
+    HEAD_SHOULDERS: Optional[PatternFamilyScheduleConfig] = None
+    DOUBLE_TOP_BOTTOM: Optional[PatternFamilyScheduleConfig] = None
+
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
     PROFILER_ENGINE: Optional[ScheduleItemConfig] = None
@@ -177,7 +192,7 @@ class SchedulingConfig(BaseModel):
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
     PAIRS_SPREAD_MONITOR: Optional[ScheduleItemConfig] = None
-    HEAD_SHOULDERS: Optional[ScheduleItemConfig] = None
+    PATTERN_DETECTION: Optional[PatternDetectionScheduleConfig] = None
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
@@ -219,6 +234,19 @@ class NotificationItemConfig(BaseModel):
     PRIOR_TREND_MIN_PCT: Optional[float] = None
     VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
 
+class PatternFamilyAlertConfig(BaseModel):
+    PRIOR_TREND_MIN_PCT: Optional[float] = None
+    VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
+    BALANCE_TOLERANCE_PCT: Optional[float] = None
+    MIN_SEPARATION_PCT: Optional[float] = None
+
+class PatternDetectionAlertConfig(BaseModel):
+    COOLDOWN_MINUTES: Optional[float] = None
+    RETRIGGER_PERCENT: Optional[float] = None
+    REARM_PERCENT: Optional[float] = None
+    HEAD_SHOULDERS: Optional[PatternFamilyAlertConfig] = None
+    DOUBLE_TOP_BOTTOM: Optional[PatternFamilyAlertConfig] = None
+
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None
     EARNINGS_ALERTS: Optional[NotificationItemConfig] = None
@@ -231,7 +259,7 @@ class NotificationsConfig(BaseModel):
     AI_CONTAGION: Optional[NotificationItemConfig] = None
     TRAP_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
     PAIRS_SPREAD_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
-    HEAD_SHOULDERS_ALERTS: Optional[NotificationItemConfig] = None
+    PATTERN_DETECTION_ALERTS: Optional[PatternDetectionAlertConfig] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None

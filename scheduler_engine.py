@@ -660,34 +660,34 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Pairs Spread Monitor: %s", e)
 
-    head_shoulders_cfg = scheduling.get("HEAD_SHOULDERS", {})
-    if head_shoulders_cfg.get("ENABLED", False):
+    pattern_detection_cfg = scheduling.get("PATTERN_DETECTION", {})
+    if pattern_detection_cfg.get("ENABLED", False):
         try:
-            days = ",".join(head_shoulders_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
-            time_str = head_shoulders_cfg.get("TIME", "22:20")
+            days = ",".join(pattern_detection_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
+            time_str = pattern_detection_cfg.get("TIME", "22:20")
             run_h, run_m = map(int, time_str.split(":"))
             scheduler.add_job(
-                run_head_shoulders_job,
+                run_pattern_detection_job,
                 CronTrigger(day_of_week=days, hour=run_h, minute=run_m, timezone=user_tz),
-                id="head_shoulders_job",
+                id="pattern_detection_job",
                 replace_existing=True,
                 misfire_grace_time=600,
             )
-            logger.info("Head & Shoulders Pattern Detector scheduled for %s at %s.", days, time_str)
+            logger.info("Pattern Detection scheduled for %s at %s.", days, time_str)
         except Exception as e:
-            logger.error("Failed to schedule Head & Shoulders Pattern Detector: %s", e)
+            logger.error("Failed to schedule Pattern Detection: %s", e)
 
         try:
             scheduler.add_job(
-                run_head_shoulders_accuracy_fill_job,
+                run_pattern_detection_accuracy_fill_job,
                 CronTrigger(day_of_week="mon-sun", hour="23", minute="0", timezone=user_tz),
-                id="head_shoulders_accuracy_fill_job",
+                id="pattern_detection_accuracy_fill_job",
                 replace_existing=True,
                 misfire_grace_time=600,
             )
-            logger.info("Head & Shoulders accuracy fill job scheduled (daily 23:00).")
+            logger.info("Pattern Detection accuracy fill job scheduled (daily 23:00).")
         except Exception as e:
-            logger.error("Failed to schedule Head & Shoulders accuracy fill job: %s", e)
+            logger.error("Failed to schedule Pattern Detection accuracy fill job: %s", e)
 
     forensic_fetch_cfg = scheduling.get("FORENSIC_QUARTERLY_FETCH", {})
     if forensic_fetch_cfg.get("ENABLED", False):
@@ -919,7 +919,7 @@ from scheduler_jobs import (
     run_intraday_dip_reset, _build_contagion_feed_text, _build_contagion_message,
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,
-    run_head_shoulders_job, run_head_shoulders_accuracy_fill_job,
+    run_pattern_detection_job, run_pattern_detection_accuracy_fill_job,
     register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,

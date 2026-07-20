@@ -34,7 +34,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "trap_monitor_alert":    {"label": "Market Trap & Recovery Alert", "job_id": "trap_monitor_job",          "default": dict(_NO_TALK)},
     "bubble_radar_alert":    {"label": "Bubble Radar Alert",           "job_id": "bubble_radar_job",          "default": dict(_NO_TALK)},
     "pairs_spread_alert":    {"label": "Pairs Spread Monitor Alert",   "job_id": "pairs_spread_monitor_job",  "default": dict(_NO_TALK)},
-    "head_shoulders_alert":  {"label": "Head & Shoulders Pattern Alert", "job_id": "head_shoulders_job",      "default": dict(_NO_TALK)},
+    "pattern_detection_alert": {"label": "Pattern Detection Alert",     "job_id": "pattern_detection_job",   "default": dict(_NO_TALK)},
     "dip_radar_alert":       {"label": "Dip Radar — Bottom Detected",  "job_id": "intraday_dip_scan_job",     "default": dict(_NO_TALK)},
     "earnings_alert":        {"label": "Portfolio Earnings Alert",     "job_id": "earnings_alert_job",        "default": dict(_ON)},
     "insider_alert":         {"label": "Insider Trading Alert",        "job_id": "insider_alert_job",         "default": dict(_ON)},

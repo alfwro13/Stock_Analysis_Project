@@ -1036,6 +1036,52 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pattern_detection_results (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker           TEXT NOT NULL,
+                pattern_family   TEXT NOT NULL,
+                pattern_type     TEXT,
+                phase            TEXT,
+                points_json      TEXT,
+                lines_json       TEXT,
+                breakout_date    TEXT,
+                breakout_price   REAL,
+                measured_target  REAL,
+                volume_confirms  INTEGER,
+                rsi_divergence   INTEGER,
+                pattern_r2       REAL,
+                prior_trend_pct  REAL,
+                scan_ts          TEXT,
+                UNIQUE(ticker, pattern_family)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pattern_detection_history (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker                TEXT NOT NULL,
+                pattern_family        TEXT NOT NULL,
+                pattern_type          TEXT NOT NULL,
+                phase                 TEXT NOT NULL,
+                scan_date             TEXT NOT NULL,
+                scan_ts               TEXT NOT NULL,
+                close_price           REAL,
+                measured_target       REAL,
+                volume_confirms       INTEGER,
+                rsi_divergence        INTEGER,
+                pattern_r2            REAL,
+                prior_trend_pct       REAL,
+                actual_price_14d      REAL,
+                actual_date_14d       TEXT,
+                direction_correct_14d INTEGER,
+                actual_price_30d      REAL,
+                actual_date_30d       TEXT,
+                direction_correct_30d INTEGER,
+                UNIQUE(ticker, scan_date, pattern_family, pattern_type)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS alert_referee_models (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
                 engine         TEXT NOT NULL,
@@ -2266,6 +2312,68 @@ def migrate_db(conn, cursor) -> None:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_referee_log_engine_ticker ON alert_referee_log(engine, ticker)')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create alert_referee tables: %s", e)
+
+    # One-time copy: head_shoulders_results/_history -> generic pattern_detection_results/_history,
+    # folding Head & Shoulders in as the first pattern_family under the unified Pattern Detection
+    # tool. The old tables are left in place as inert historical artifacts; nothing writes to them
+    # after this migration ships. INSERT OR IGNORE against the new tables' UNIQUE constraints makes
+    # repeat boot-time calls a no-op.
+    try:
+        cursor.execute("SELECT COUNT(*) FROM head_shoulders_results")
+        if cursor.fetchone()[0]:
+            logger.info("[MIGRATION] Copying head_shoulders_results into pattern_detection_results...")
+            cursor.execute("SELECT * FROM head_shoulders_results")
+            for row in [dict(r) for r in cursor.fetchall()]:
+                points = [
+                    {"label": "L Shoulder", "date": row["l_shoulder_date"], "price": row["l_shoulder_price"]},
+                    {"label": "L Armpit", "date": row["l_armpit_date"], "price": row["l_armpit_price"]},
+                    {"label": "Head", "date": row["head_date"], "price": row["head_price"]},
+                    {"label": "R Armpit", "date": row["r_armpit_date"], "price": row["r_armpit_price"]},
+                    {"label": "R Shoulder", "date": row["r_shoulder_date"], "price": row["r_shoulder_price"]},
+                ]
+                lines = [{
+                    "label": "Neckline",
+                    "date_from": row["l_armpit_date"], "price_from": row["l_armpit_price"],
+                    "date_to": row["r_armpit_date"], "price_to": row["r_armpit_price"],
+                    "dash": True,
+                }]
+                cursor.execute(
+                    """INSERT OR IGNORE INTO pattern_detection_results
+                       (ticker, pattern_family, pattern_type, phase, points_json, lines_json,
+                        breakout_date, breakout_price, measured_target,
+                        volume_confirms, rsi_divergence, pattern_r2, prior_trend_pct, scan_ts)
+                       VALUES (?, 'head_shoulders', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (row["ticker"], row["pattern_type"], row["phase"],
+                     json.dumps(points), json.dumps(lines),
+                     row["breakout_date"], row["breakout_price"], row["measured_target"],
+                     row["volume_confirms"], row["rsi_divergence"], row["pattern_r2"],
+                     row["prior_trend_pct"], row["scan_ts"]),
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to copy head_shoulders_results: %s", e)
+
+    try:
+        cursor.execute("SELECT COUNT(*) FROM head_shoulders_history")
+        if cursor.fetchone()[0]:
+            logger.info("[MIGRATION] Copying head_shoulders_history into pattern_detection_history...")
+            cursor.execute("SELECT * FROM head_shoulders_history")
+            for row in [dict(r) for r in cursor.fetchall()]:
+                cursor.execute(
+                    """INSERT OR IGNORE INTO pattern_detection_history
+                       (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, close_price,
+                        measured_target, volume_confirms, rsi_divergence, pattern_r2, prior_trend_pct,
+                        actual_price_14d, actual_date_14d, direction_correct_14d,
+                        actual_price_30d, actual_date_30d, direction_correct_30d)
+                       VALUES (?, 'head_shoulders', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (row["ticker"], row["pattern_type"], row["phase"], row["scan_date"], row["scan_ts"], row["close_price"],
+                     row["measured_target"], row["volume_confirms"], row["rsi_divergence"], row["pattern_r2"], row["prior_trend_pct"],
+                     row["actual_price_14d"], row["actual_date_14d"], row["direction_correct_14d"],
+                     row["actual_price_30d"], row["actual_date_30d"], row["direction_correct_30d"]),
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to copy head_shoulders_history: %s", e)
 
     try:
         conn.commit()
