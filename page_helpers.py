@@ -9,8 +9,59 @@ from database import get_connection
 from position_sizing import get_position_sizing_config
 from portfolio_service import get_rate_to_base
 from utils import safe_ticker_filename
+from fundamentals_helpers import (
+    compute_quality_grade,
+    is_quality_compounder,
+    is_quality_on_sale,
+    is_garp_tenbagger,
+    is_mean_reversion_setup,
+    is_dividend_harvest_candidate,
+)
+from bull_bear_trap_engine import phase_label as _trap_phase_label
+from bubble_radar_engine import flag_label as _bubble_flag_label
+from head_shoulders_engine import phase_label as _hs_phase_label
 
 logger = logging.getLogger(__name__)
+
+
+def compute_badge_tags(row_dict: dict) -> dict:
+    """Shared setup/report/trap/bubble/H&S/quality-grade badge computation for a single ticker
+    row — used by Portfolio, Watchlist, and Stock Detail so the three pages never drift apart.
+
+    row_dict must carry: setup_tags (raw JSON string from stock_signals), quant_close_price,
+    market_cap, trap_phase, bubble_flag, hs_pattern_type, hs_phase, plus the fundamentals
+    columns compute_quality_grade()/is_*() read directly off stock_signals.
+    """
+    if row_dict.get('setup_tags'):
+        try:
+            setup_tags_list = json.loads(row_dict['setup_tags'])
+        except Exception:
+            setup_tags_list = []
+    else:
+        setup_tags_list = []
+
+    screen_row = dict(row_dict)
+    screen_row['close_price'] = row_dict.get('quant_close_price')
+    report_tags = []
+    if is_quality_compounder(screen_row):
+        report_tags.append({'name': 'Quality Compounder', 'tooltip': 'Meets the Market Reports Quality Compounders screen: ROE>15%, low debt, steady growth, reasonable PE.'})
+    if is_quality_on_sale(screen_row):
+        report_tags.append({'name': 'Quality on Sale', 'tooltip': 'Meets the Market Reports Quality on Sale screen: near its 52-week low despite solid fundamentals.'})
+    if is_garp_tenbagger(screen_row, row_dict.get('market_cap')):
+        report_tags.append({'name': 'GARP Tenbagger', 'tooltip': 'Meets the Market Reports GARP Tenbaggers screen: low PEG with strong growth (Peter Lynch style).'})
+    if is_mean_reversion_setup(screen_row):
+        report_tags.append({'name': 'Mean Reversion Setup', 'tooltip': 'Meets the Market Reports Mean Reversion screen: oversold RSI within a longer-term uptrend.'})
+    if is_dividend_harvest_candidate(screen_row):
+        report_tags.append({'name': 'Dividend Harvest', 'tooltip': 'Meets the Market Reports Dividend Harvest screen: solid yield with a healthy composite score.'})
+
+    return {
+        'setup_tags_list': setup_tags_list,
+        'quality_grade': compute_quality_grade(row_dict),
+        'report_tags': report_tags,
+        'trap_phase_label': _trap_phase_label(row_dict.get('trap_phase')) if row_dict.get('trap_phase') and row_dict['trap_phase'] != 'NEUTRAL' else None,
+        'bubble_flag_label': _bubble_flag_label(row_dict.get('bubble_flag')),
+        'hs_phase_label': _hs_phase_label(row_dict.get('hs_pattern_type'), row_dict.get('hs_phase')) if row_dict.get('hs_phase') else None,
+    }
 
 
 def get_unread_count() -> int:
