@@ -26,7 +26,7 @@ xgboost>=2.0.3
 lxml
 cssselect
 html5lib
-trafilatura>=1.6.0
+trafilatura>=2.1.0
 transformers>=5.13.1
 torch>=2.0.0
 hmmlearn>=0.3.0
