@@ -70,7 +70,7 @@ $(document).ready(function () {
         + '</div>'
     );
     $('#dataTable_length').append('<button type="button" id="addTickerBtn" class="btn btn-sm btn-primary ms-2" onclick="openAddTickerModal()">+ Add Ticker</button>');
-    _setChangePeriodButtons(window.WATCHLIST_CHANGE_PERIOD || '1d');
+    window._watchlistChangePeriod.setButtons(window.WATCHLIST_CHANGE_PERIOD || '1d');
 
     $('#wl-add-search').on('input', function () {
         clearTimeout(_wlAddSearchTimer);
