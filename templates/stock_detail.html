@@ -18,27 +18,27 @@
     <span id="watchlist-star" class="star-icon relative" title="Toggle Watchlist" onclick="toggleWatchlist()">
         {% if is_in_watchlist %}★{% else %}☆{% endif %}
     </span>
-    <h1 class="mb-0 flex-grow-1">
+    <h1 class="mb-0">
         <span id="company-name-display">{{ stock.company_name }}</span>
         {% if stock.has_name_override %}<span class="name-override-badge" title="Custom display name is active">&#9998;</span>{% endif %}
         <button class="btn-name-edit" id="name-edit-btn" title="Edit display name" onclick="startNameEdit()">&#9998;</button>
     </h1>
-    <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link">&#8599; View on Yahoo Finance</a>
+    {% if stock.setup_tags_list or stock.report_tags or stock.trap_phase_label or stock.bubble_flag_label or stock.hs_phase_label or stock.quality_grade %}
+    <div class="d-flex flex-wrap">
+        {% for tag in stock.setup_tags_list %}
+            <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr"><span class="setup-tag">{{ tag.name }}</span></abbr>
+        {% endfor %}
+        {% for tag in stock.report_tags %}
+            <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr"><span class="setup-tag">{{ tag.name }}</span></abbr>
+        {% endfor %}
+        {% if stock.trap_phase_label %}<span class="setup-tag">{{ stock.trap_phase_label }}</span>{% endif %}
+        {% if stock.bubble_flag_label %}<span class="setup-tag">🫧 {{ stock.bubble_flag_label }}</span>{% endif %}
+        {% if stock.hs_phase_label %}<span class="setup-tag">📐 {{ stock.hs_phase_label }}</span>{% endif %}
+        {% if stock.quality_grade %}<span class="setup-tag quality-grade-{{ stock.quality_grade|lower }}">Grade {{ stock.quality_grade }}</span>{% endif %}
+    </div>
+    {% endif %}
+    <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link ms-auto">&#8599; View on Yahoo Finance</a>
 </div>
-{% if stock.setup_tags_list or stock.report_tags or stock.trap_phase_label or stock.bubble_flag_label or stock.hs_phase_label or stock.quality_grade %}
-<div class="d-flex flex-wrap mb-2">
-    {% for tag in stock.setup_tags_list %}
-        <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr"><span class="setup-tag">{{ tag.name }}</span></abbr>
-    {% endfor %}
-    {% for tag in stock.report_tags %}
-        <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr"><span class="setup-tag">{{ tag.name }}</span></abbr>
-    {% endfor %}
-    {% if stock.trap_phase_label %}<span class="setup-tag">{{ stock.trap_phase_label }}</span>{% endif %}
-    {% if stock.bubble_flag_label %}<span class="setup-tag">🫧 {{ stock.bubble_flag_label }}</span>{% endif %}
-    {% if stock.hs_phase_label %}<span class="setup-tag">📐 {{ stock.hs_phase_label }}</span>{% endif %}
-    {% if stock.quality_grade %}<span class="setup-tag quality-grade-{{ stock.quality_grade|lower }}">Grade {{ stock.quality_grade }}</span>{% endif %}
-</div>
-{% endif %}
 <div id="name-edit-form" class="name-edit-form" hidden>
     <input type="text" id="name-edit-input" class="form-control name-edit-input">
     <button class="btn btn-sm btn-primary" onclick="saveNameOverride()">Save</button>
