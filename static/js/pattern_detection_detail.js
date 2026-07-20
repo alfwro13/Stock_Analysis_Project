@@ -11,6 +11,15 @@ const PD_PATTERN_TYPE_LABELS = {
     bear_flag: 'Bear Flag',
     ascending: 'Ascending Triangle',
     descending: 'Descending Triangle',
+    volatility_squeeze: 'Volatility Squeeze',
+    volatility_squeeze_bullish: 'Volatility Squeeze (Bullish)',
+    volatility_squeeze_bearish: 'Volatility Squeeze (Bearish)',
+    nr4: 'NR4 Narrow Range',
+    nr7: 'NR7 Narrow Range',
+    nr4_bullish: 'NR4 Breakout (Bullish)',
+    nr4_bearish: 'NR4 Breakout (Bearish)',
+    nr7_bullish: 'NR7 Breakout (Bullish)',
+    nr7_bearish: 'NR7 Breakout (Bearish)',
 };
 const PD_PATTERN_COLORS = {
     regular: '#ff4d4d',
@@ -21,6 +30,15 @@ const PD_PATTERN_COLORS = {
     bear_flag: '#e74c3c',
     ascending: '#f1c40f',
     descending: '#9b59b6',
+    volatility_squeeze: '#00bcd4',
+    volatility_squeeze_bullish: '#00e676',
+    volatility_squeeze_bearish: '#ff5252',
+    nr4: '#b0bec5',
+    nr7: '#607d8b',
+    nr4_bullish: '#8bc34a',
+    nr4_bearish: '#f44336',
+    nr7_bullish: '#4caf50',
+    nr7_bearish: '#d32f2f',
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 
@@ -36,6 +54,15 @@ const PD_PATTERN_EXPLANATIONS = {
     bear_flag: "A Bear Flag forms after a sharp decline, when the price pauses and drifts sideways-to-up in a narrow channel. It suggests the bounce is short-covering rather than a genuine reversal, and a break back below the channel is read as a signal the decline is resuming.",
     ascending: "An Ascending Triangle forms when a stock repeatedly hits the same price ceiling while each dip in between bottoms out a little higher than the last. It suggests buyers are getting more aggressive even though sellers keep defending the same level, and a break above that ceiling is read as a signal buyers have won out.",
     descending: "A Descending Triangle forms when a stock repeatedly holds the same price floor while each bounce in between tops out a little lower than the last. It suggests sellers are getting more aggressive even though buyers keep defending the same level, and a break below that floor is read as a signal sellers have won out.",
+    volatility_squeeze: "A Volatility Squeeze forms when a stock's Bollinger Bands contract fully inside its Keltner Channel — the tightest, quietest price action it's shown in a while. Direction isn't known yet at this stage; it just flags that a big, explosive move is historically more likely to be coming soon in either direction.",
+    volatility_squeeze_bullish: "A Volatility Squeeze resolves bullish when, after the bands were tightly compressed, price breaks decisively above the upper Bollinger Band. It suggests the quiet period has ended with buyers winning out.",
+    volatility_squeeze_bearish: "A Volatility Squeeze resolves bearish when, after the bands were tightly compressed, price breaks decisively below the lower Bollinger Band. It suggests the quiet period has ended with sellers winning out.",
+    nr4: "An NR4 bar is the narrowest trading range of the last 4 days, and also sits entirely inside the prior day's high/low. It suggests a brief pause in indecision; direction isn't known yet, but a breakout beyond that day's own high or low is often sharp.",
+    nr7: "An NR7 bar is the narrowest trading range of the last 7 days, and also sits entirely inside the prior day's high/low — a stronger, rarer compression signal than NR4. Direction isn't known yet, but a breakout beyond that day's own high or low is often sharp.",
+    nr4_bullish: "An NR4 setup resolves bullish when price later closes above the narrow bar's own high. It suggests the brief pause ended with buyers winning out.",
+    nr4_bearish: "An NR4 setup resolves bearish when price later closes below the narrow bar's own low. It suggests the brief pause ended with sellers winning out.",
+    nr7_bullish: "An NR7 setup resolves bullish when price later closes above the narrow bar's own high. It suggests the compression ended with buyers winning out.",
+    nr7_bearish: "An NR7 setup resolves bearish when price later closes below the narrow bar's own low. It suggests the compression ended with sellers winning out.",
 };
 
 let _pdSeries = null;
@@ -89,8 +116,15 @@ function _pdBuildPatternTraces(pattern) {
     }
 
     (pattern.lines || []).forEach(line => {
+        // Most families draw a straight 2-point segment (date_from/price_from -> date_to/
+        // price_to). A family whose key level is a genuine curve rather than a straight line
+        // (e.g. Volatility Squeeze's actual Bollinger Band contour) can instead supply `path`,
+        // an ordered list of {date, price} points, drawn as a polyline.
+        const hasPath = Array.isArray(line.path) && line.path.length >= 2;
+        const x = hasPath ? line.path.map(p => p.date) : [line.date_from, line.date_to];
+        const y = hasPath ? line.path.map(p => p.price) : [line.price_from, line.price_to];
         traces.push({
-            x: [line.date_from, line.date_to], y: [line.price_from, line.price_to],
+            x, y,
             type: 'scatter', mode: 'lines',
             line: { color, width: 1.5, dash: line.dash ? 'dash' : 'solid' },
             name: line.label || 'Key level', legendgroup: key, showlegend: false,
@@ -221,13 +255,20 @@ function _pdLoadTickerPatterns() {
 
             const bullish = _pdPatterns.filter(p => p.direction === 'up');
             const bearish = _pdPatterns.filter(p => p.direction === 'down');
+            // A pattern like Volatility Squeeze or NR4/NR7 can be FORMING with no resolved
+            // direction yet (its pattern_type has no PATTERN_TYPES entry until it breaks out) —
+            // it belongs in neither the Bullish nor Bearish group.
+            const neutral = _pdPatterns.filter(p => p.direction !== 'up' && p.direction !== 'down');
 
             _pdBuildCheckboxGroup('pd-bullish-children', bullish);
             _pdBuildCheckboxGroup('pd-bearish-children', bearish);
+            _pdBuildCheckboxGroup('pd-neutral-children', neutral);
             document.getElementById('pd-bull-group').classList.toggle('d-none', !bullish.length);
             document.getElementById('pd-bear-group').classList.toggle('d-none', !bearish.length);
+            document.getElementById('pd-neutral-group').classList.toggle('d-none', !neutral.length);
             _pdWireGroup('pd-master-bullish', 'pd-bullish-children');
             _pdWireGroup('pd-master-bearish', 'pd-bearish-children');
+            _pdWireGroup('pd-master-neutral', 'pd-neutral-children');
 
             _pdRenderChart();
             _pdRenderExplanations();

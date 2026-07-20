@@ -977,6 +977,8 @@
                     <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr> and
                     <abbr title="A flat resistance level with a rising support line, breaking out upward.">Ascending Triangle</abbr> /
                     <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr>,
+                    <abbr title="Bollinger Bands (20-day SMA +/- 2 standard deviations) contracting fully inside the Keltner Channel (20-day EMA +/- 1.5x ATR) — a volatility compression that often precedes an explosive directional move.">Volatility Squeeze</abbr>, and
+                    <abbr title="A bar whose True Range is the smallest of the trailing 4 (NR4) or 7 (NR7) bars and which is also a strict inside bar vs. the prior bar — a micro-contraction often preceding a sharp breakout.">NR4 / NR7 Narrow Range</abbr>,
                     with more pattern types planned. Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
                 </p>
 
@@ -986,10 +988,14 @@
                 {% set pd_dtb_sched = pd_sched.DOUBLE_TOP_BOTTOM if pd_sched.DOUBLE_TOP_BOTTOM else {} %}
                 {% set pd_flag_sched = pd_sched.FLAG if pd_sched.FLAG else {} %}
                 {% set pd_tri_sched = pd_sched.TRIANGLE if pd_sched.TRIANGLE else {} %}
+                {% set pd_vs_sched = pd_sched.VOLATILITY_SQUEEZE if pd_sched.VOLATILITY_SQUEEZE else {} %}
+                {% set pd_nr_sched = pd_sched.NARROW_RANGE if pd_sched.NARROW_RANGE else {} %}
                 {% set pd_hs_cfg = pd_cfg.HEAD_SHOULDERS if pd_cfg.HEAD_SHOULDERS else {} %}
                 {% set pd_dtb_cfg = pd_cfg.DOUBLE_TOP_BOTTOM if pd_cfg.DOUBLE_TOP_BOTTOM else {} %}
                 {% set pd_flag_cfg = pd_cfg.FLAG if pd_cfg.FLAG else {} %}
                 {% set pd_tri_cfg = pd_cfg.TRIANGLE if pd_cfg.TRIANGLE else {} %}
+                {% set pd_vs_cfg = pd_cfg.VOLATILITY_SQUEEZE if pd_cfg.VOLATILITY_SQUEEZE else {} %}
+                {% set pd_nr_cfg = pd_cfg.NARROW_RANGE if pd_cfg.NARROW_RANGE else {} %}
 
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PATTERN_DETECTION_ENABLED" {% if pd_sched.ENABLED %}checked{% endif %}>
@@ -1147,6 +1153,68 @@
                     <div class="form-group flex-1">
                         <label><abbr title="Minimum required %/day slope (in the pattern's direction) for the sloped side's regression line to count as a real trend, not noise.">Min sloped-side %/day</abbr></label>
                         <input type="number" id="PATTERN_DETECTION_TRI_MIN_SLOPE" class="form-control" value="{{ pd_tri_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Volatility Squeeze (Bollinger / Keltner)</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_VS_BULLISH" {% if pd_vs_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_VS_BULLISH">Report bullish breakouts</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_VS_BEARISH" {% if pd_vs_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_VS_BEARISH">Report bearish breakouts</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Rolling window (trading days) used for both the Bollinger Bands and the Keltner Channel.">Window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_WINDOW" class="form-control" value="{{ pd_vs_cfg.WINDOW_DAYS | default(20) }}" step="1" min="10">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of standard deviations for the Bollinger Bands.">Bollinger std devs</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_NUM_STD" class="form-control" value="{{ pd_vs_cfg.NUM_STD | default(2.0) }}" step="0.1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="ATR multiplier for the Keltner Channel.">Keltner ATR multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_KC_MULT" class="form-control" value="{{ pd_vs_cfg.KC_MULTIPLIER | default(1.5) }}" step="0.1" min="0.5">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum consecutive trading days the Bollinger Bands must sit fully inside the Keltner Channel to count as a qualifying squeeze.">Min squeeze length (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_MIN_SQUEEZE_DAYS" class="form-control" value="{{ pd_vs_cfg.MIN_SQUEEZE_DAYS | default(6) }}" step="1" min="2">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="How many trading days after the squeeze releases a decisive close outside the Bollinger Band still counts as that squeeze's breakout.">Breakout lookahead (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_BREAKOUT_LOOKAHEAD" class="form-control" value="{{ pd_vs_cfg.BREAKOUT_LOOKAHEAD_DAYS | default(5) }}" step="1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">NR4 / NR7 Narrow Range (Inside Bar Breakout)</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_NR4" {% if pd_nr_sched.NR4_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_NR4">Detect NR4 (smallest range of trailing 4 bars)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_NR7" {% if pd_nr_sched.NR7_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_NR7">Detect NR7 (smallest range of trailing 7 bars)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_BULLISH" {% if pd_nr_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_BULLISH">Report bullish breakouts</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_BEARISH" {% if pd_nr_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_BEARISH">Report bearish breakouts</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="How many trading days after the narrow bar a decisive close beyond its own high/low still counts as that bar's breakout.">Breakout lookahead (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_NR_BREAKOUT_LOOKAHEAD" class="form-control" value="{{ pd_nr_cfg.BREAKOUT_LOOKAHEAD_DAYS | default(5) }}" step="1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_NR_VOLUME_MULT" class="form-control" value="{{ pd_nr_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
                     </div>
                 </div>
 

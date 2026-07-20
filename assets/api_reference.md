@@ -4259,9 +4259,10 @@ Scans Portfolio + Watchlist tickers once daily (Mon-Fri by default) for chart pa
 rolling-window swing-point detection, dispatched through a per-family detector registry
 (`pattern_detection_engine.DETECTORS`). Currently covers Head & Shoulders / Inverse Head &
 Shoulders (`head_shoulders_engine.py`), Double Top / Double Bottom (`double_top_bottom_engine.py`),
-Bull Flag / Bear Flag (`flag_engine.py`), and Ascending / Descending Triangle (`triangle_engine.py`);
-adding a future pattern family requires no changes to these endpoints. See `pattern_detection_engine.py`
-and `assets/pattern_detection.md`.
+Bull Flag / Bear Flag (`flag_engine.py`), Ascending / Descending Triangle (`triangle_engine.py`),
+Volatility Squeeze (`volatility_squeeze_engine.py`), and NR4/NR7 Narrow Range
+(`narrow_range_engine.py`); adding a future pattern family requires no changes to these endpoints.
+See `pattern_detection_engine.py` and `assets/pattern_detection.md`.
 
 ### `GET /pattern-detection`
 
@@ -4274,17 +4275,20 @@ prediction accuracy panel. `GET /head-shoulders` redirects here.
 ### `GET /pattern-detection/{ticker}`
 
 HTML page. Shows every currently-active pattern for one ticker overlaid on a single chart,
-with a Bullish/Bearish checkbox tree (one master checkbox per direction, one child checkbox
-per active pattern) to show/hide individual patterns or an entire direction group, and a
-plain-language explanation of each pattern type currently present.
+with a Bullish/Bearish/Forming checkbox tree (one master checkbox per group, one child
+checkbox per active pattern) to show/hide individual patterns or an entire group, and a
+plain-language explanation of each pattern type currently present. The Forming group catches
+any pattern whose direction is not yet resolved (Volatility Squeeze while still squeezed,
+NR4/NR7 the day the narrow bar prints).
 
 ### `GET /api/pattern-detection/results`
 
 Returns all rows from `pattern_detection_results` (confirmed patterns first), each carrying a
-server-resolved `direction` (`"up"`/`"down"`, from `DETECTORS[pattern_family].PATTERN_TYPES`),
-plus the current Portfolio/Watchlist ticker sets so the page can filter by scope without a
-second round-trip. Optional `family` query param filters to one `pattern_family`
-(`head_shoulders` / `double_top_bottom`).
+server-resolved `direction` (`"up"`/`"down"`/`null`, from `DETECTORS[pattern_family].PATTERN_TYPES`
+— `null` for a pattern whose direction is not yet resolved), plus the current Portfolio/Watchlist
+ticker sets so the page can filter by scope without a second round-trip. Optional `family` query
+param filters to one `pattern_family` (`head_shoulders` / `double_top_bottom` / `flag` /
+`triangle` / `volatility_squeeze` / `narrow_range`).
 
 **Response**
 

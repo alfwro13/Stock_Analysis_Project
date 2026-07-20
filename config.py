@@ -282,6 +282,16 @@ DEFAULT_CONFIG = {
             "TRIANGLE": {
                 "ASCENDING_ENABLED": True,
                 "DESCENDING_ENABLED": True
+            },
+            "VOLATILITY_SQUEEZE": {
+                "BULLISH_ENABLED": True,
+                "BEARISH_ENABLED": True
+            },
+            "NARROW_RANGE": {
+                "NR4_ENABLED": True,
+                "NR7_ENABLED": True,
+                "BULLISH_ENABLED": True,
+                "BEARISH_ENABLED": True
             }
         },
         "FORENSIC_QUARTERLY_FETCH": {
@@ -412,6 +422,18 @@ DEFAULT_CONFIG = {
                 "WINDOW_DAYS": 40,
                 "FLAT_SLOPE_EPSILON_PCT": 0.15,
                 "MIN_SLOPE_PCT": 0.15
+            },
+            "VOLATILITY_SQUEEZE": {
+                "WINDOW_DAYS": 20,
+                "NUM_STD": 2.0,
+                "KC_MULTIPLIER": 1.5,
+                "MIN_SQUEEZE_DAYS": 6,
+                "BREAKOUT_LOOKAHEAD_DAYS": 5,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5
+            },
+            "NARROW_RANGE": {
+                "BREAKOUT_LOOKAHEAD_DAYS": 5,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5
             }
         },
         "MARKET_STRESS_ALERTS": {
