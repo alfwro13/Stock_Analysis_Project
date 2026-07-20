@@ -7,12 +7,20 @@ const PD_PATTERN_TYPE_LABELS = {
     inverse: 'Inverse Head & Shoulders',
     double_top: 'Double Top',
     double_bottom: 'Double Bottom',
+    bull_flag: 'Bull Flag',
+    bear_flag: 'Bear Flag',
+    ascending: 'Ascending Triangle',
+    descending: 'Descending Triangle',
 };
 const PD_PATTERN_COLORS = {
     regular: '#ff4d4d',
     double_top: '#ff9900',
     inverse: '#4caf50',
     double_bottom: '#22b8cf',
+    bull_flag: '#2ecc71',
+    bear_flag: '#e74c3c',
+    ascending: '#f1c40f',
+    descending: '#9b59b6',
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 

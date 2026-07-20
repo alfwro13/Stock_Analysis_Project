@@ -2,7 +2,8 @@
 tests/test_pattern_detection_engine.py — the generic Pattern Detection orchestrator: registry
 dispatch, ticker scoping, DB save/dedup, accuracy resolution, historical backfill, and the
 scheduler runner's alert wiring. Per-family detection math lives in
-tests/test_head_shoulders_engine.py and tests/test_double_top_bottom_engine.py.
+tests/test_head_shoulders_engine.py, tests/test_double_top_bottom_engine.py,
+tests/test_flag_engine.py, and tests/test_triangle_engine.py.
 """
 
 import sys
@@ -18,7 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
 import double_top_bottom_engine
+import flag_engine
 import head_shoulders_engine
+import triangle_engine
 from pattern_detection_engine import (
     PatternDetectionEngine,
     DETECTORS,
@@ -33,9 +36,11 @@ _CFG = {
 
 
 class TestRegistry:
-    def test_both_families_registered(self):
+    def test_all_families_registered(self):
         assert DETECTORS["head_shoulders"] is head_shoulders_engine
         assert DETECTORS["double_top_bottom"] is double_top_bottom_engine
+        assert DETECTORS["flag"] is flag_engine
+        assert DETECTORS["triangle"] is triangle_engine
 
 
 class TestGetTickerList:

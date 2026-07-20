@@ -4258,7 +4258,8 @@ Every ticker with at least one note, each with its full note history (newest fir
 Scans Portfolio + Watchlist tickers once daily (Mon-Fri by default) for chart patterns using
 rolling-window swing-point detection, dispatched through a per-family detector registry
 (`pattern_detection_engine.DETECTORS`). Currently covers Head & Shoulders / Inverse Head &
-Shoulders (`head_shoulders_engine.py`) and Double Top / Double Bottom (`double_top_bottom_engine.py`);
+Shoulders (`head_shoulders_engine.py`), Double Top / Double Bottom (`double_top_bottom_engine.py`),
+Bull Flag / Bear Flag (`flag_engine.py`), and Ascending / Descending Triangle (`triangle_engine.py`);
 adding a future pattern family requires no changes to these endpoints. See `pattern_detection_engine.py`
 and `assets/pattern_detection.md`.
 

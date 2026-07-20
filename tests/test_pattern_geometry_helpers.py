@@ -21,6 +21,8 @@ from pattern_geometry_helpers import (
     piecewise_r2,
     volume_confirms,
     rsi_divergence,
+    linreg,
+    slope_pct_per_day,
 )
 
 
@@ -145,3 +147,37 @@ class TestRsiDivergence:
     def test_nan_returns_false(self):
         rsi = pd.Series([np.nan] * 100)
         assert rsi_divergence(rsi, 10, 50, inverted=False) is False
+
+
+class TestLinreg:
+    def test_perfect_line_gives_exact_slope_and_r2_one(self):
+        x = np.arange(10)
+        y = 2.0 * x + 5.0
+        result = linreg(x, y)
+        assert result is not None
+        slope, intercept, r2 = result
+        assert slope == pytest.approx(2.0)
+        assert intercept == pytest.approx(5.0)
+        assert r2 == pytest.approx(1.0)
+
+    def test_none_with_fewer_than_two_points(self):
+        assert linreg(np.array([1.0]), np.array([1.0])) is None
+
+    def test_none_with_zero_x_range(self):
+        assert linreg(np.array([5.0, 5.0, 5.0]), np.array([1.0, 2.0, 3.0])) is None
+
+    def test_noisy_line_scores_below_one(self):
+        x = np.arange(20)
+        y = 1.5 * x + np.array([0, 1, -1, 0.5, -0.5] * 4)
+        _, _, r2 = linreg(x, y)
+        assert 0.0 < r2 < 1.0
+
+
+class TestSlopePctPerDay:
+    def test_normalizes_by_reference_price(self):
+        assert slope_pct_per_day(1.0, 100.0) == pytest.approx(1.0)
+        assert slope_pct_per_day(1.0, 200.0) == pytest.approx(0.5)
+
+    def test_zero_or_negative_reference_price_returns_zero(self):
+        assert slope_pct_per_day(1.0, 0.0) == 0.0
+        assert slope_pct_per_day(1.0, -50.0) == 0.0

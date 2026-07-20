@@ -4,12 +4,18 @@
 const PATTERN_FAMILY_LABELS = {
     head_shoulders: 'Head & Shoulders',
     double_top_bottom: 'Double Top / Bottom',
+    flag: 'Flag',
+    triangle: 'Triangle',
 };
 const PATTERN_TYPE_LABELS = {
     regular: 'Head & Shoulders',
     inverse: 'Inverse Head & Shoulders',
     double_top: 'Double Top',
     double_bottom: 'Double Bottom',
+    bull_flag: 'Bull Flag',
+    bear_flag: 'Bear Flag',
+    ascending: 'Ascending Triangle',
+    descending: 'Descending Triangle',
 };
 
 function _pdFamilyLabel(family) {
