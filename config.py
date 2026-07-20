@@ -261,14 +261,20 @@ DEFAULT_CONFIG = {
             "VETO_THRESHOLD": 0.3,
             "MIN_TRAINING_SAMPLES": 200
         },
-        "HEAD_SHOULDERS": {
+        "PATTERN_DETECTION": {
             "ENABLED": False,
-            "REGULAR_ENABLED": True,
-            "INVERSE_ENABLED": True,
             "MONITOR_PORTFOLIO": True,
             "MONITOR_WATCHLIST": False,
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],
-            "TIME": "22:20"
+            "TIME": "22:20",
+            "HEAD_SHOULDERS": {
+                "REGULAR_ENABLED": True,
+                "INVERSE_ENABLED": True
+            },
+            "DOUBLE_TOP_BOTTOM": {
+                "TOP_ENABLED": True,
+                "BOTTOM_ENABLED": True
+            }
         },
         "FORENSIC_QUARTERLY_FETCH": {
             "ENABLED": True,
@@ -371,12 +377,20 @@ DEFAULT_CONFIG = {
             "WYCKOFF_BB_SQUEEZE_PCT": 2.0,
             "PROXY_TICKERS": ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
         },
-        "HEAD_SHOULDERS_ALERTS": {
+        "PATTERN_DETECTION_ALERTS": {
             "COOLDOWN_MINUTES": 120,
             "RETRIGGER_PERCENT": 3.0,
             "REARM_PERCENT": 5.0,
-            "PRIOR_TREND_MIN_PCT": 8.0,
-            "VOLUME_CONFIRM_MULTIPLIER": 1.5
+            "HEAD_SHOULDERS": {
+                "PRIOR_TREND_MIN_PCT": 8.0,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5
+            },
+            "DOUBLE_TOP_BOTTOM": {
+                "PRIOR_TREND_MIN_PCT": 8.0,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5,
+                "BALANCE_TOLERANCE_PCT": 3.0,
+                "MIN_SEPARATION_PCT": 3.0
+            }
         },
         "MARKET_STRESS_ALERTS": {
             "COOLDOWN_MINUTES": 1440
@@ -491,6 +505,32 @@ def load_config() -> dict:
                     _blk["START_TIME"] = "08:00"
                 if _blk.get("END_TIME") == "16:00":
                     _blk["END_TIME"] = "21:00"
+
+            # One-time migration: HEAD_SHOULDERS folded into the unified PATTERN_DETECTION tool
+            # (see AGENTS.md's Pattern Detection registry rule). Preserves the operator's existing
+            # schedule/toggle values rather than silently resetting them to defaults.
+            _old_sched = merged_config.get("SCHEDULING", {}).pop("HEAD_SHOULDERS", None)
+            if _old_sched:
+                pd_sched = merged_config["SCHEDULING"].setdefault("PATTERN_DETECTION", {})
+                for _k in ("ENABLED", "MONITOR_PORTFOLIO", "MONITOR_WATCHLIST", "DAYS", "TIME"):
+                    if _k in _old_sched:
+                        pd_sched[_k] = _old_sched[_k]
+                hs_family = pd_sched.setdefault("HEAD_SHOULDERS", {})
+                if "REGULAR_ENABLED" in _old_sched:
+                    hs_family["REGULAR_ENABLED"] = _old_sched["REGULAR_ENABLED"]
+                if "INVERSE_ENABLED" in _old_sched:
+                    hs_family["INVERSE_ENABLED"] = _old_sched["INVERSE_ENABLED"]
+
+            _old_alerts = merged_config.get("NOTIFICATIONS", {}).pop("HEAD_SHOULDERS_ALERTS", None)
+            if _old_alerts:
+                pd_alerts = merged_config["NOTIFICATIONS"].setdefault("PATTERN_DETECTION_ALERTS", {})
+                for _k in ("COOLDOWN_MINUTES", "RETRIGGER_PERCENT", "REARM_PERCENT"):
+                    if _k in _old_alerts:
+                        pd_alerts[_k] = _old_alerts[_k]
+                hs_alerts = pd_alerts.setdefault("HEAD_SHOULDERS", {})
+                for _k in ("PRIOR_TREND_MIN_PCT", "VOLUME_CONFIRM_MULTIPLIER"):
+                    if _k in _old_alerts:
+                        hs_alerts[_k] = _old_alerts[_k]
 
             return merged_config
     except Exception as e:

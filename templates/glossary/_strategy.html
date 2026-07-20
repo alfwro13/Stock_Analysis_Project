@@ -91,6 +91,22 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">📉 Double Top Pattern</span>
+                <p>A <strong>Double Top</strong> is a topping reversal pattern formed by two peaks of near-equal height separated by one qualifying trough — simpler than Head &amp; Shoulders' three-peak shape, but built from the same underlying idea: buying pressure twice fails to push price to a meaningfully new high. The trough between the two peaks acts as a <strong>support level</strong>; a decisive close below it confirms the pattern and signals sellers have taken control.</p>
+                <p>Pattern Detection finds this shape using the same rolling-window swing-point detection as Head &amp; Shoulders, then applies its own geometric rules: the two peaks must be within a configurable balance tolerance of each other, the trough must sit a meaningful distance below their average (a real pull-back, not noise), and the pattern must be preceded by a genuine prior uptrend before the first peak.</p>
+                <p>The same three supporting signals apply as for Head &amp; Shoulders: <strong>volume</strong> should decline from the first peak to the second, then spike on the breakdown; <strong>RSI divergence</strong> (the second peak reading lower on RSI despite a similar price) confirms weakening momentum; and the pattern's <strong>fit quality (R²)</strong> measures how closely price tracked the idealised shape. Once confirmed, the <strong>measured-move target</strong> — the support level minus the pattern's height above it — gives the classic downside price objective.</p>
+                <div class="rule">PHASE: FORMING once both peaks and the intervening trough are identified and price still sits above the trough level; CONFIRMED once a close breaks below it. Requires a prior uptrend before the first peak to be accepted as a candidate at all.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">📈 Double Bottom Pattern</span>
+                <p>The <strong>Double Bottom</strong> is the bullish mirror image of the Double Top: two troughs of near-equal depth separated by one qualifying peak, which acts as a <strong>resistance level</strong>. A decisive close above that level confirms the pattern, signalling that sellers have twice failed to push price to a meaningfully new low and buyers have taken control.</p>
+                <p>Detection mirrors the Double Top exactly, but every rule is inverted: the two troughs must be balanced within tolerance, the middle peak must sit a meaningful distance above their average, and the pattern requires a genuine prior <em>downtrend</em> before the first trough to be accepted as a valid candidate.</p>
+                <p>The same supporting signals apply in mirror form: volume should decline from the first trough to the second, then spike on the breakout; RSI divergence (the second trough reading higher on RSI despite a similar price) confirms weakening downside momentum; and the fit-quality score ranks how cleanly price tracked the shape. Once confirmed, the measured-move target — the resistance level plus the pattern's height below it — projects the classic upside objective.</p>
+                <div class="rule">PHASE: FORMING once both troughs and the intervening peak are identified and price still sits below the peak level; CONFIRMED once a close breaks above it. Requires a prior downtrend before the first trough to be accepted as a candidate at all.</div>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">👑 Market Leader</span>
                 <p>A <strong>Market Leader</strong> tag is assigned to a stock that shows positive <strong>Relative Strength (RS)</strong> compared to the S&amp;P 500. Relative Strength measures how much better (or worse) a stock has performed compared to the market benchmark over a defined period.</p>
                 <p>The concept, popularised by William O'Neil and his CANSLIM method, is straightforward: if you're going to own individual stocks rather than just the index, you want stocks that are outperforming the market — not just rising because a rising tide is lifting all boats. A Market Leader rises faster than the index in bull markets and falls less (or continues rising) when the market corrects. That relative strength reflects genuine investor demand and institutional accumulation.</p>

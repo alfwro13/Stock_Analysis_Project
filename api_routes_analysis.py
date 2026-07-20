@@ -261,64 +261,77 @@ async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str)
         return _error_500(e)
 
 
-@analysis_router.get("/head-shoulders/results")
+@analysis_router.get("/pattern-detection/results")
 @limiter.limit("20/minute")
-async def get_head_shoulders_results(request: Request):
-    """Returns all current Head & Shoulders / Inverse Head & Shoulders candidates, confirmed patterns first."""
+async def get_pattern_detection_results(request: Request, family: Optional[str] = Query(None)):
+    """Returns all current pattern candidates across every registered family (or one family
+    if `family` is given), confirmed patterns first."""
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM head_shoulders_results ORDER BY phase = 'CONFIRMED' DESC, scan_ts DESC")
-        rows = [dict(r) for r in cursor.fetchall()]
+        if family:
+            cursor.execute(
+                "SELECT * FROM pattern_detection_results WHERE pattern_family = ? ORDER BY phase = 'CONFIRMED' DESC, scan_ts DESC",
+                (family,),
+            )
+        else:
+            cursor.execute("SELECT * FROM pattern_detection_results ORDER BY phase = 'CONFIRMED' DESC, scan_ts DESC")
+        rows = []
+        for r in cursor.fetchall():
+            row = dict(r)
+            row["points"] = json.loads(row.pop("points_json") or "[]")
+            row["lines"] = json.loads(row.pop("lines_json") or "[]")
+            rows.append(row)
         return JSONResponse(content={"status": "success", "results": rows})
     except Exception as e:
-        logger.error("head-shoulders/results failed: %s", e)
+        logger.error("pattern-detection/results failed: %s", e)
         return _error_500(e)
     finally:
         if conn:
             conn.close()
 
 
-@analysis_router.post("/head-shoulders/run")
+@analysis_router.post("/pattern-detection/run")
 @limiter.limit("4/minute")
-async def run_head_shoulders_scan(request: Request, background_tasks: BackgroundTasks):
-    """Manually triggers a Head & Shoulders Pattern Detector scan in the background."""
+async def run_pattern_detection_scan(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Pattern Detection scan (every registered family) in the background."""
     try:
-        from scheduler_engine import run_head_shoulders_job
-        background_tasks.add_task(run_head_shoulders_job)
-        return JSONResponse(content={"status": "success", "message": "Head & Shoulders Pattern Detector scan triggered."})
+        from scheduler_engine import run_pattern_detection_job
+        background_tasks.add_task(run_pattern_detection_job)
+        return JSONResponse(content={"status": "success", "message": "Pattern Detection scan triggered."})
     except Exception as e:
-        logger.error("Failed to trigger Head & Shoulders Pattern Detector scan: %s", e)
+        logger.error("Failed to trigger Pattern Detection scan: %s", e)
         return _error_500(e)
 
 
-@analysis_router.post("/head-shoulders/backfill")
+@analysis_router.post("/pattern-detection/backfill")
 @limiter.limit("1/minute")
-async def run_head_shoulders_backfill(request: Request, background_tasks: BackgroundTasks):
+async def run_pattern_detection_backfill(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a one-time historical backtest over each monitored ticker's full parquet history — can take several minutes."""
     try:
-        from head_shoulders_engine import backfill_historical_patterns
+        from pattern_detection_engine import backfill_historical_patterns
         background_tasks.add_task(backfill_historical_patterns)
-        return JSONResponse(content={"status": "success", "message": "Head & Shoulders historical backfill triggered — this can take several minutes."})
+        return JSONResponse(content={"status": "success", "message": "Pattern Detection historical backfill triggered — this can take several minutes."})
     except Exception as e:
-        logger.error("Failed to trigger Head & Shoulders historical backfill: %s", e)
+        logger.error("Failed to trigger Pattern Detection historical backfill: %s", e)
         return _error_500(e)
 
 
-@analysis_router.get("/head-shoulders/accuracy")
+@analysis_router.get("/pattern-detection/accuracy")
 @limiter.limit("20/minute")
-async def get_head_shoulders_accuracy_route(request: Request):
-    """Returns per-pattern-type prediction accuracy at 14-day and 30-day horizons."""
-    from database import get_head_shoulders_accuracy
-    data = get_head_shoulders_accuracy()
+async def get_pattern_detection_accuracy_route(request: Request, family: Optional[str] = Query(None)):
+    """Returns per-family, per-pattern-type prediction accuracy at 14-day and 30-day horizons."""
+    from database import get_pattern_detection_accuracy
+    data = get_pattern_detection_accuracy(family)
     return JSONResponse(content={"status": "success", **data})
 
 
-@analysis_router.get("/head-shoulders/chart/{ticker}")
+@analysis_router.get("/pattern-detection/chart/{ticker}/{family}")
 @limiter.limit("20/minute")
-async def get_head_shoulders_chart(request: Request, ticker: str):
-    """Returns the ticker's recent daily close series plus its stored pattern geometry for client-side chart overlay."""
+async def get_pattern_detection_chart(request: Request, ticker: str, family: str):
+    """Returns the ticker's recent daily close series plus its stored pattern geometry
+    (points/lines) for the given family, for client-side chart overlay."""
     conn = None
     try:
         ticker = normalize_ticker(ticker)
@@ -327,11 +340,16 @@ async def get_head_shoulders_chart(request: Request, ticker: str):
             return JSONResponse(content={"status": "error", "message": "Invalid ticker."}, status_code=400)
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM head_shoulders_results WHERE ticker = ?", (ticker,))
+        cursor.execute(
+            "SELECT * FROM pattern_detection_results WHERE ticker = ? AND pattern_family = ?",
+            (ticker, family),
+        )
         row = cursor.fetchone()
         if not row:
             return JSONResponse(content={"status": "error", "message": "No pattern on file for this ticker."}, status_code=404)
         pattern = dict(row)
+        pattern["points"] = json.loads(pattern.pop("points_json") or "[]")
+        pattern["lines"] = json.loads(pattern.pop("lines_json") or "[]")
 
         path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not path.exists():
@@ -343,7 +361,7 @@ async def get_head_shoulders_chart(request: Request, ticker: str):
         }
         return JSONResponse(content={"status": "success", "series": series, "pattern": pattern})
     except Exception as e:
-        logger.error("head-shoulders/chart failed: %s", e)
+        logger.error("pattern-detection/chart failed: %s", e)
         return _error_500(e)
     finally:
         if conn:

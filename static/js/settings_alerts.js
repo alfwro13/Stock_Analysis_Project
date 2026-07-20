@@ -307,14 +307,14 @@ async function triggerPairsSpreadScan() {
     }
 }
 
-async function triggerHeadShouldersScan() {
-    const btn = document.querySelector('button[onclick="triggerHeadShouldersScan()"]');
-    const msgEl = document.getElementById('head-shoulders-msg');
+async function triggerPatternDetectionScan() {
+    const btn = document.querySelector('button[onclick="triggerPatternDetectionScan()"]');
+    const msgEl = document.getElementById('pattern-detection-msg');
     btn.disabled = true;
     btn.innerText = "⏳ Scanning...";
     msgEl.innerHTML = '';
     try {
-        const resp = await fetch('/api/head-shoulders/run', { method: 'POST' });
+        const resp = await fetch('/api/pattern-detection/run', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
         msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
@@ -325,14 +325,14 @@ async function triggerHeadShouldersScan() {
     }
 }
 
-async function triggerHeadShouldersBackfill() {
-    const btn = document.querySelector('button[onclick="triggerHeadShouldersBackfill()"]');
-    const msgEl = document.getElementById('head-shoulders-msg');
+async function triggerPatternDetectionBackfill() {
+    const btn = document.querySelector('button[onclick="triggerPatternDetectionBackfill()"]');
+    const msgEl = document.getElementById('pattern-detection-msg');
     btn.disabled = true;
     btn.innerText = "⏳ Backfilling...";
     msgEl.innerHTML = '';
     try {
-        const resp = await fetch('/api/head-shoulders/backfill', { method: 'POST' });
+        const resp = await fetch('/api/pattern-detection/backfill', { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
         msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;

@@ -244,16 +244,22 @@ async function saveSettings(silent = false) {
                 "CORRELATION_THRESHOLD": parseFloat(document.getElementById('PAIRS_SPREAD_CORRELATION_THRESHOLD').value) || 0.7,
                 "ZSCORE_THRESHOLD": parseFloat(document.getElementById('PAIRS_SPREAD_ZSCORE_THRESHOLD').value) || 2.0
             },
-            "HEAD_SHOULDERS": {
-                "ENABLED": document.getElementById('HEAD_SHOULDERS_ENABLED').checked,
-                "REGULAR_ENABLED": document.getElementById('HEAD_SHOULDERS_REGULAR').checked,
-                "INVERSE_ENABLED": document.getElementById('HEAD_SHOULDERS_INVERSE').checked,
-                "MONITOR_PORTFOLIO": document.getElementById('HEAD_SHOULDERS_PORTFOLIO').checked,
-                "MONITOR_WATCHLIST": document.getElementById('HEAD_SHOULDERS_WATCHLIST').checked,
-                "DAYS": document.getElementById('HEAD_SHOULDERS_FREQ').value === 'mon-sun'
+            "PATTERN_DETECTION": {
+                "ENABLED": document.getElementById('PATTERN_DETECTION_ENABLED').checked,
+                "MONITOR_PORTFOLIO": document.getElementById('PATTERN_DETECTION_PORTFOLIO').checked,
+                "MONITOR_WATCHLIST": document.getElementById('PATTERN_DETECTION_WATCHLIST').checked,
+                "DAYS": document.getElementById('PATTERN_DETECTION_FREQ').value === 'mon-sun'
                     ? ['mon','tue','wed','thu','fri','sat','sun']
                     : ['mon','tue','wed','thu','fri'],
-                "TIME": document.getElementById('HEAD_SHOULDERS_TIME').value
+                "TIME": document.getElementById('PATTERN_DETECTION_TIME').value,
+                "HEAD_SHOULDERS": {
+                    "REGULAR_ENABLED": document.getElementById('PATTERN_DETECTION_HS_REGULAR').checked,
+                    "INVERSE_ENABLED": document.getElementById('PATTERN_DETECTION_HS_INVERSE').checked
+                },
+                "DOUBLE_TOP_BOTTOM": {
+                    "TOP_ENABLED": document.getElementById('PATTERN_DETECTION_DTB_TOP').checked,
+                    "BOTTOM_ENABLED": document.getElementById('PATTERN_DETECTION_DTB_BOTTOM').checked
+                }
             },
             "FORENSIC_QUARTERLY_FETCH": {
                 "ENABLED": document.getElementById('FORENSIC_QUARTERLY_FETCH_ENABLED').checked,
@@ -351,12 +357,20 @@ async function saveSettings(silent = false) {
                 "RETRIGGER_PERCENT": parseFloat(document.getElementById('PAIRS_SPREAD_RETRIGGER').value),
                 "REARM_PERCENT": parseFloat(document.getElementById('PAIRS_SPREAD_REARM').value)
             },
-            "HEAD_SHOULDERS_ALERTS": {
-                "COOLDOWN_MINUTES": parseFloat(document.getElementById('HEAD_SHOULDERS_COOLDOWN').value),
-                "RETRIGGER_PERCENT": parseFloat(document.getElementById('HEAD_SHOULDERS_RETRIGGER').value),
-                "REARM_PERCENT": parseFloat(document.getElementById('HEAD_SHOULDERS_REARM').value),
-                "PRIOR_TREND_MIN_PCT": parseFloat(document.getElementById('HEAD_SHOULDERS_PRIOR_TREND').value) || 8.0,
-                "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('HEAD_SHOULDERS_VOLUME_MULT').value) || 1.5
+            "PATTERN_DETECTION_ALERTS": {
+                "COOLDOWN_MINUTES": parseFloat(document.getElementById('PATTERN_DETECTION_COOLDOWN').value),
+                "RETRIGGER_PERCENT": parseFloat(document.getElementById('PATTERN_DETECTION_RETRIGGER').value),
+                "REARM_PERCENT": parseFloat(document.getElementById('PATTERN_DETECTION_REARM').value),
+                "HEAD_SHOULDERS": {
+                    "PRIOR_TREND_MIN_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_HS_PRIOR_TREND').value) || 8.0,
+                    "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_HS_VOLUME_MULT').value) || 1.5
+                },
+                "DOUBLE_TOP_BOTTOM": {
+                    "PRIOR_TREND_MIN_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_DTB_PRIOR_TREND').value) || 8.0,
+                    "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_DTB_VOLUME_MULT').value) || 1.5,
+                    "BALANCE_TOLERANCE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_DTB_BALANCE_TOL').value) || 3.0,
+                    "MIN_SEPARATION_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_DTB_MIN_SEP').value) || 3.0
+                }
             }
         },
         "NOTIFICATION_ROUTING": (function() {

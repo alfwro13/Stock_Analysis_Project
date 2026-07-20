@@ -275,7 +275,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
-            LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
+            LEFT JOIN pattern_detection_results hs ON s.ticker = hs.ticker AND hs.pattern_family = 'head_shoulders'
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
         """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
@@ -704,7 +704,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
-            LEFT JOIN head_shoulders_results hs ON s.ticker = hs.ticker
+            LEFT JOIN pattern_detection_results hs ON s.ticker = hs.ticker AND hs.pattern_family = 'head_shoulders'
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
         """, (BENCHMARK_SYMBOL,))
@@ -1037,11 +1037,16 @@ async def pairs_spread_monitor_page(request: Request):
     )
 
 
-@page_router.get("/head-shoulders", response_class=HTMLResponse)
-async def head_shoulders_page(request: Request):
+@page_router.get("/head-shoulders", response_class=RedirectResponse)
+async def head_shoulders_page_redirect():
+    return RedirectResponse(url="/pattern-detection", status_code=302)
+
+
+@page_router.get("/pattern-detection", response_class=HTMLResponse)
+async def pattern_detection_page(request: Request):
     return templates.TemplateResponse(
         request=request,
-        name="head_shoulders.html",
+        name="pattern_detection.html",
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),

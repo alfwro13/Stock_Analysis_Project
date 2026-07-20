@@ -964,82 +964,121 @@
                 <div id="pairs-spread-monitor-msg" class="mt-10"></div>
             </div>
 
-            <div class="settings-panel border-left-cyan" id="head-shoulders-card">
-                <h4 class="settings-panel-header text-cyan">&#128200; Head &amp; Shoulders Pattern Detector</h4>
+            <div class="settings-panel border-left-cyan" id="pattern-detection-card">
+                <h4 class="settings-panel-header text-cyan">&#128200; Pattern Detection</h4>
                 <p class="settings-desc">
-                    Scans your portfolio and watchlist for
-                    <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders.">Head &amp; Shoulders</abbr> and
-                    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr>
-                    chart patterns once per day, using rolling-window swing detection plus volume confirmation, RSI divergence, and a required prior trend.
-                    Results appear at the <a href="/head-shoulders" class="text-cyan">Head &amp; Shoulders tools page</a>.
+                    Scans your portfolio and watchlist once per day for chart patterns using rolling-window swing detection
+                    plus volume confirmation, RSI divergence, and a required prior trend. Currently covers
+                    <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders.">Head &amp; Shoulders</abbr> /
+                    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr> and
+                    <abbr title="Two peaks of near-equal height separated by one qualifying trough.">Double Top</abbr> /
+                    <abbr title="The bullish mirror image: two troughs of near-equal depth separated by one qualifying peak.">Double Bottom</abbr>,
+                    with more pattern types planned. Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
                 </p>
 
-                {% set hs_sched = config.SCHEDULING.HEAD_SHOULDERS if config.SCHEDULING.HEAD_SHOULDERS else {} %}
-                {% set hs_cfg = config.NOTIFICATIONS.HEAD_SHOULDERS_ALERTS if config.NOTIFICATIONS.HEAD_SHOULDERS_ALERTS else {} %}
+                {% set pd_sched = config.SCHEDULING.PATTERN_DETECTION if config.SCHEDULING.PATTERN_DETECTION else {} %}
+                {% set pd_cfg = config.NOTIFICATIONS.PATTERN_DETECTION_ALERTS if config.NOTIFICATIONS.PATTERN_DETECTION_ALERTS else {} %}
+                {% set pd_hs_sched = pd_sched.HEAD_SHOULDERS if pd_sched.HEAD_SHOULDERS else {} %}
+                {% set pd_dtb_sched = pd_sched.DOUBLE_TOP_BOTTOM if pd_sched.DOUBLE_TOP_BOTTOM else {} %}
+                {% set pd_hs_cfg = pd_cfg.HEAD_SHOULDERS if pd_cfg.HEAD_SHOULDERS else {} %}
+                {% set pd_dtb_cfg = pd_cfg.DOUBLE_TOP_BOTTOM if pd_cfg.DOUBLE_TOP_BOTTOM else {} %}
 
                 <div class="checkbox-group mb-10">
-                    <input type="checkbox" id="HEAD_SHOULDERS_ENABLED" {% if hs_sched.ENABLED %}checked{% endif %}>
-                    <label for="HEAD_SHOULDERS_ENABLED">Enable post-market scan</label>
+                    <input type="checkbox" id="PATTERN_DETECTION_ENABLED" {% if pd_sched.ENABLED %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_ENABLED">Enable post-market scan</label>
                 </div>
                 <div class="flex-gap-15 mb-10">
                     <div class="form-group flex-1">
                         <label>Active Days</label>
-                        <select id="HEAD_SHOULDERS_FREQ" class="form-select">
-                            {% set joined = hs_sched.DAYS | join(',') if hs_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                        <select id="PATTERN_DETECTION_FREQ" class="form-select">
+                            {% set joined = pd_sched.DAYS | join(',') if pd_sched.DAYS else 'mon,tue,wed,thu,fri' %}
                             <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
                             <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
                         </select>
                     </div>
                     <div class="form-group flex-1">
                         <label>Scan Time <span class="text-muted text-xs">(local tz)</span></label>
-                        <input type="time" id="HEAD_SHOULDERS_TIME" class="form-control" value="{{ hs_sched.TIME | default('22:20') }}">
+                        <input type="time" id="PATTERN_DETECTION_TIME" class="form-control" value="{{ pd_sched.TIME | default('22:20') }}">
                     </div>
                 </div>
                 <div class="checkbox-group mb-10">
-                    <input type="checkbox" id="HEAD_SHOULDERS_REGULAR" {% if hs_sched.REGULAR_ENABLED | default(true) %}checked{% endif %}>
-                    <label for="HEAD_SHOULDERS_REGULAR">Detect Head &amp; Shoulders (topping)</label>
+                    <input type="checkbox" id="PATTERN_DETECTION_PORTFOLIO" {% if pd_sched.MONITOR_PORTFOLIO | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PORTFOLIO">Monitor Portfolio Tickers</label>
                 </div>
                 <div class="checkbox-group mb-10">
-                    <input type="checkbox" id="HEAD_SHOULDERS_INVERSE" {% if hs_sched.INVERSE_ENABLED | default(true) %}checked{% endif %}>
-                    <label for="HEAD_SHOULDERS_INVERSE">Detect Inverse Head &amp; Shoulders (bottoming)</label>
-                </div>
-                <div class="checkbox-group mb-10">
-                    <input type="checkbox" id="HEAD_SHOULDERS_PORTFOLIO" {% if hs_sched.MONITOR_PORTFOLIO | default(true) %}checked{% endif %}>
-                    <label for="HEAD_SHOULDERS_PORTFOLIO">Monitor Portfolio Tickers</label>
-                </div>
-                <div class="checkbox-group mb-10">
-                    <input type="checkbox" id="HEAD_SHOULDERS_WATCHLIST" {% if hs_sched.MONITOR_WATCHLIST %}checked{% endif %}>
-                    <label for="HEAD_SHOULDERS_WATCHLIST">Monitor Watchlist Tickers</label>
+                    <input type="checkbox" id="PATTERN_DETECTION_WATCHLIST" {% if pd_sched.MONITOR_WATCHLIST %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_WATCHLIST">Monitor Watchlist Tickers</label>
                 </div>
                 <div class="flex-gap-15 mb-10">
                     <div class="form-group flex-1">
                         <label>Alert cooldown (min)</label>
-                        <input type="number" id="HEAD_SHOULDERS_COOLDOWN" class="form-control" value="{{ hs_cfg.COOLDOWN_MINUTES | default(120) }}" min="15">
+                        <input type="number" id="PATTERN_DETECTION_COOLDOWN" class="form-control" value="{{ pd_cfg.COOLDOWN_MINUTES | default(120) }}" min="15">
                     </div>
                     <div class="form-group flex-1">
                         <label>Retrigger % move</label>
-                        <input type="number" id="HEAD_SHOULDERS_RETRIGGER" class="form-control" value="{{ hs_cfg.RETRIGGER_PERCENT | default(3.0) }}" step="0.1">
+                        <input type="number" id="PATTERN_DETECTION_RETRIGGER" class="form-control" value="{{ pd_cfg.RETRIGGER_PERCENT | default(3.0) }}" step="0.1">
                     </div>
                     <div class="form-group flex-1">
                         <label>Re-arm % recovery</label>
-                        <input type="number" id="HEAD_SHOULDERS_REARM" class="form-control" value="{{ hs_cfg.REARM_PERCENT | default(5.0) }}" step="0.1">
+                        <input type="number" id="PATTERN_DETECTION_REARM" class="form-control" value="{{ pd_cfg.REARM_PERCENT | default(5.0) }}" step="0.1">
                     </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Head &amp; Shoulders</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_HS_REGULAR" {% if pd_hs_sched.REGULAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_HS_REGULAR">Detect Head &amp; Shoulders (topping)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_HS_INVERSE" {% if pd_hs_sched.INVERSE_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_HS_INVERSE">Detect Inverse Head &amp; Shoulders (bottoming)</label>
                 </div>
                 <div class="flex-gap-15 mb-10">
                     <div class="form-group flex-1">
                         <label><abbr title="Minimum absolute prior price move required before the left shoulder (uptrend for a regular pattern, downtrend for an inverse pattern) for a candidate to be accepted.">Prior trend minimum %</abbr></label>
-                        <input type="number" id="HEAD_SHOULDERS_PRIOR_TREND" class="form-control" value="{{ hs_cfg.PRIOR_TREND_MIN_PCT | default(8.0) }}" step="0.5" min="0">
+                        <input type="number" id="PATTERN_DETECTION_HS_PRIOR_TREND" class="form-control" value="{{ pd_hs_cfg.PRIOR_TREND_MIN_PCT | default(8.0) }}" step="0.5" min="0">
                     </div>
                     <div class="form-group flex-1">
                         <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
-                        <input type="number" id="HEAD_SHOULDERS_VOLUME_MULT" class="form-control" value="{{ hs_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                        <input type="number" id="PATTERN_DETECTION_HS_VOLUME_MULT" class="form-control" value="{{ pd_hs_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
                     </div>
                 </div>
-                <div class="flex-gap-15">
-                    <button type="button" class="btn btn-primary mt-0" onclick="triggerHeadShouldersScan()">&#9654; Run Scan Now</button>
-                    <button type="button" class="btn btn-outline-secondary mt-0" onclick="triggerHeadShouldersBackfill()">&#9654; Backfill Historical Data</button>
+
+                <h5 class="text-cyan mt-10">Double Top / Double Bottom</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_DTB_TOP" {% if pd_dtb_sched.TOP_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_DTB_TOP">Detect Double Top (topping)</label>
                 </div>
-                <div id="head-shoulders-msg" class="mt-10"></div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_DTB_BOTTOM" {% if pd_dtb_sched.BOTTOM_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_DTB_BOTTOM">Detect Double Bottom (bottoming)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum absolute prior price move required before the pattern's first peak/trough for a candidate to be accepted.">Prior trend minimum %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_PRIOR_TREND" class="form-control" value="{{ pd_dtb_cfg.PRIOR_TREND_MIN_PCT | default(8.0) }}" step="0.5" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_VOLUME_MULT" class="form-control" value="{{ pd_dtb_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum % difference allowed between the two peaks (or two troughs) for them to count as a matching pair.">Balance tolerance %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_BALANCE_TOL" class="form-control" value="{{ pd_dtb_cfg.BALANCE_TOLERANCE_PCT | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum % separation required between the middle trough/peak and the average of the two outer extremes, so a real pull-back is required.">Min separation %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_MIN_SEP" class="form-control" value="{{ pd_dtb_cfg.MIN_SEPARATION_PCT | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                </div>
+
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerPatternDetectionScan()">&#9654; Run Scan Now</button>
+                    <button type="button" class="btn btn-outline-secondary mt-0" onclick="triggerPatternDetectionBackfill()">&#9654; Backfill Historical Data</button>
+                </div>
+                <div id="pattern-detection-msg" class="mt-10"></div>
             </div>
 
             <div class="settings-panel border-left-cyan" id="forensic-screener-card">

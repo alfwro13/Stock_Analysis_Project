@@ -454,8 +454,9 @@ def get_trap_phase_accuracy() -> dict:
             conn.close()
 
 
-def log_head_shoulders_pattern(
+def log_pattern_detection(
     ticker: str,
+    pattern_family: str,
     pattern_type: str,
     phase: str,
     scan_date: str,
@@ -468,17 +469,17 @@ def log_head_shoulders_pattern(
     prior_trend_pct: Optional[float] = None,
 ) -> bool:
     """Returns True if a new row was inserted, False if one already existed for this
-    (ticker, scan_date, pattern_type) or on failure — lets callers (the historical backfill)
-    count genuinely new rows logged."""
+    (ticker, scan_date, pattern_family, pattern_type) or on failure — lets callers (the
+    historical backfill) count genuinely new rows logged."""
     conn = None
     try:
         conn = get_connection()
         cursor = conn.execute(
-            """INSERT OR IGNORE INTO head_shoulders_history
-               (ticker, pattern_type, phase, scan_date, scan_ts, close_price,
+            """INSERT OR IGNORE INTO pattern_detection_history
+               (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, close_price,
                 measured_target, volume_confirms, rsi_divergence, pattern_r2, prior_trend_pct)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (ticker, pattern_type, phase, scan_date, scan_ts, close_price,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, close_price,
              measured_target,
              None if volume_confirms is None else int(volume_confirms),
              None if rsi_divergence is None else int(rsi_divergence),
@@ -487,21 +488,21 @@ def log_head_shoulders_pattern(
         conn.commit()
         return cursor.rowcount > 0
     except Exception as e:
-        logger.error("log_head_shoulders_pattern failed for %s on %s: %s", ticker, scan_date, e)
+        logger.error("log_pattern_detection failed for %s on %s: %s", ticker, scan_date, e)
         return False
     finally:
         if conn:
             conn.close()
 
 
-def get_unresolved_head_shoulders_patterns(cutoff_14d: str, cutoff_30d: str) -> list:
+def get_unresolved_pattern_detections(cutoff_14d: str, cutoff_30d: str) -> list:
     conn = None
     try:
         conn = get_connection()
         rows = conn.execute(
-            """SELECT id, ticker, pattern_type, phase, scan_date, close_price,
+            """SELECT id, ticker, pattern_family, pattern_type, phase, scan_date, close_price,
                       direction_correct_14d, direction_correct_30d
-               FROM head_shoulders_history
+               FROM pattern_detection_history
                WHERE phase = 'CONFIRMED'
                  AND (
                    (direction_correct_14d IS NULL AND scan_date <= ?)
@@ -512,14 +513,14 @@ def get_unresolved_head_shoulders_patterns(cutoff_14d: str, cutoff_30d: str) -> 
         ).fetchall()
         return [dict(r) for r in rows]
     except Exception as e:
-        logger.error("get_unresolved_head_shoulders_patterns failed: %s", e)
+        logger.error("get_unresolved_pattern_detections failed: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 
-def batch_update_head_shoulders_actuals(
+def batch_update_pattern_detection_actuals(
     payloads: list[tuple[int, int, float, str, int]],
 ) -> None:
     """Single-transaction update; each payload is (row_id, horizon, actual_price, actual_date, direction_correct)."""
@@ -533,12 +534,12 @@ def batch_update_head_shoulders_actuals(
             date_col    = f"actual_date_{horizon}d"
             correct_col = f"direction_correct_{horizon}d"
             conn.execute(
-                f"UPDATE head_shoulders_history SET {price_col}=?, {date_col}=?, {correct_col}=? WHERE id=?",
+                f"UPDATE pattern_detection_history SET {price_col}=?, {date_col}=?, {correct_col}=? WHERE id=?",
                 (actual_price, actual_date, direction_correct, row_id),
             )
         conn.commit()
     except Exception as e:
-        logger.error("batch_update_head_shoulders_actuals failed (%d rows): %s", len(payloads), e)
+        logger.error("batch_update_pattern_detection_actuals failed (%d rows): %s", len(payloads), e)
         if conn:
             conn.rollback()
     finally:
@@ -546,13 +547,16 @@ def batch_update_head_shoulders_actuals(
             conn.close()
 
 
-def get_head_shoulders_accuracy() -> dict:
+def get_pattern_detection_accuracy(pattern_family: Optional[str] = None) -> dict:
     conn = None
     try:
         conn = get_connection()
+        family_filter = "AND pattern_family = ?" if pattern_family else ""
+        params = (pattern_family,) if pattern_family else ()
         patterns = [
             dict(r) for r in conn.execute(
-                """SELECT
+                f"""SELECT
+                    pattern_family,
                     pattern_type,
                     COUNT(*) AS total,
                     SUM(CASE WHEN direction_correct_14d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_14d,
@@ -561,14 +565,15 @@ def get_head_shoulders_accuracy() -> dict:
                     SUM(CASE WHEN direction_correct_30d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_30d,
                     ROUND(AVG(CASE WHEN direction_correct_30d IS NOT NULL
                               THEN direction_correct_30d END) * 100, 1) AS accuracy_30d
-                   FROM head_shoulders_history
-                   WHERE phase = 'CONFIRMED'
-                   GROUP BY pattern_type
-                   ORDER BY pattern_type"""
+                   FROM pattern_detection_history
+                   WHERE phase = 'CONFIRMED' {family_filter}
+                   GROUP BY pattern_family, pattern_type
+                   ORDER BY pattern_family, pattern_type""",
+                params,
             ).fetchall()
         ]
         overall = dict(conn.execute(
-            """SELECT
+            f"""SELECT
                 COUNT(*) AS total,
                 SUM(CASE WHEN direction_correct_14d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_14d,
                 ROUND(AVG(CASE WHEN direction_correct_14d IS NOT NULL
@@ -576,12 +581,13 @@ def get_head_shoulders_accuracy() -> dict:
                 SUM(CASE WHEN direction_correct_30d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_30d,
                 ROUND(AVG(CASE WHEN direction_correct_30d IS NOT NULL
                           THEN direction_correct_30d END) * 100, 1) AS accuracy_30d
-               FROM head_shoulders_history
-               WHERE phase = 'CONFIRMED'"""
+               FROM pattern_detection_history
+               WHERE phase = 'CONFIRMED' {family_filter}""",
+            params,
         ).fetchone())
         return {"patterns": patterns, "overall": overall}
     except Exception as e:
-        logger.error("get_head_shoulders_accuracy failed: %s", e)
+        logger.error("get_pattern_detection_accuracy failed: %s", e)
         return {"patterns": [], "overall": {}}
     finally:
         if conn:

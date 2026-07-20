@@ -1,10 +1,11 @@
 """
-tests/test_head_shoulders_engine.py — Head & Shoulders Pattern Detector Tests
+tests/test_head_shoulders_engine.py — Head & Shoulders detection math (the Pattern Detection
+"head_shoulders" family). Orchestration (ticker scans, DB save/dedup, scheduler wiring, chart
+API) is generic across every family and is covered by tests/test_pattern_detection_engine.py.
 """
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -12,26 +13,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
 from indicators import compute_rsi, compute_volume_sma
 from head_shoulders_engine import (
-    HeadShouldersEngine,
     _detect_and_build,
-    _latest_candidate_extrema,
-    _merge_adjacent_pivots,
-    _rw_top,
-    _rw_bottom,
-    _volume_confirms,
-    _rsi_divergence,
-    fill_pattern_outcomes,
-    backfill_historical_patterns,
     phase_label,
+    detect,
+    FAMILY,
+    PATTERN_TYPES,
 )
-
-_CFG = {
-    "SCHEDULING": {"HEAD_SHOULDERS": {}},
-    "NOTIFICATIONS": {"HEAD_SHOULDERS_ALERTS": {}},
-}
 
 
 def _make_regular_df(confirmed: bool = False) -> pd.DataFrame:
@@ -143,65 +132,6 @@ def _detect(df: pd.DataFrame, inverted: bool, prior_trend_min_pct: float = 8.0, 
     return _detect_and_build(close, volume, rsi_series, vol_sma, inverted, prior_trend_min_pct, volume_confirm_multiplier)
 
 
-class TestRwExtrema:
-    def test_rw_top_detects_peak(self):
-        data = np.concatenate([np.linspace(0, 10, 10), np.linspace(10, 0, 10)])
-        assert _rw_top(data, 14, 5) is True
-
-    def test_rw_bottom_detects_trough(self):
-        data = np.concatenate([np.linspace(10, 0, 10), np.linspace(0, 10, 10)])
-        assert _rw_bottom(data, 14, 5) is True
-
-    def test_rw_top_false_on_monotonic_series(self):
-        data = np.linspace(0, 10, 20)
-        assert not any(_rw_top(data, i, 5) for i in range(len(data)))
-
-    def test_too_early_index_returns_false(self):
-        data = np.linspace(0, 10, 20)
-        assert _rw_top(data, 3, 5) is False
-        assert _rw_bottom(data, 3, 5) is False
-
-
-class TestLatestCandidateExtrema:
-    def test_finds_regular_pattern_points(self):
-        df = _make_regular_df(confirmed=False)
-        extrema = _latest_candidate_extrema(df["Close"].to_numpy(), 5, inverted=False)
-        assert extrema == [25, 35, 50, 60]
-
-    def test_finds_inverse_pattern_points(self):
-        df = _make_inverse_df(confirmed=False)
-        extrema = _latest_candidate_extrema(df["Close"].to_numpy(), 5, inverted=True)
-        assert extrema == [25, 35, 50, 60]
-
-    def test_returns_none_with_too_few_extrema(self):
-        data = np.linspace(0, 10, 20)
-        assert _latest_candidate_extrema(data, 5, inverted=False) is None
-
-
-class TestMergeAdjacentPivots:
-    """Modeled on SMGB.L's real double top (2026-06-22 @94.19, 2026-06-30 @94.06, no
-    qualifying swing low between them) — the case that went undetected before this fix."""
-
-    def test_double_top_collapses_to_higher_peak(self):
-        df = _make_regular_df_double_top(confirmed=False)
-        prices = df["Close"].to_numpy()
-        tops, bottoms = [45, 51], [35]  # matches the fixture's known raw pivot layout
-        raw_events = sorted([(i, 1) for i in tops] + [(i, -1) for i in bottoms])
-        merged = _merge_adjacent_pivots(raw_events, prices)
-        assert merged == [(35, -1), (45, 1)]
-
-    def test_double_bottom_collapses_to_lower_trough(self):
-        prices = np.array([10.0, 5.0, 6.0, 4.5, 8.0])
-        raw_events = [(1, -1), (3, -1)]
-        merged = _merge_adjacent_pivots(raw_events, prices)
-        assert merged == [(3, -1)]
-
-    def test_no_merge_when_alternating(self):
-        raw_events = [(10, 1), (20, -1), (30, 1), (40, -1)]
-        prices = np.zeros(50)
-        assert _merge_adjacent_pivots(raw_events, prices) == raw_events
-
-
 class TestDetectAndBuildRegular:
     def test_forming_phase_when_above_neckline(self):
         result = _detect(_make_regular_df(confirmed=False), inverted=False)
@@ -231,8 +161,6 @@ class TestDetectAndBuildRegular:
         assert result is None
 
     def test_double_top_head_detected_after_merge(self):
-        # The regression case: SMGB.L's real double-top head went undetected before pivots
-        # were merged, since the un-merged pair breaks the top/bottom alternation check.
         result = _detect(_make_regular_df_double_top(confirmed=False), inverted=False)
         assert result is not None
         assert result["pattern_type"] == "regular"
@@ -274,244 +202,6 @@ class TestDetectAndBuildInverse:
         assert result is None
 
 
-class TestVolumeConfirms:
-    def test_declining_volume_confirms_forming(self):
-        volume = np.array([100.0] * 60 + [50.0] * 20)
-        vol_sma = pd.Series(np.full(80, 90.0))
-        assert _volume_confirms(volume, vol_sma, l_shoulder=5, r_shoulder=70, today_idx=79, confirmed=False, multiplier=1.5) is True
-
-    def test_rising_volume_does_not_confirm_forming(self):
-        volume = np.array([50.0] * 60 + [100.0] * 20)
-        vol_sma = pd.Series(np.full(80, 90.0))
-        assert _volume_confirms(volume, vol_sma, l_shoulder=5, r_shoulder=70, today_idx=79, confirmed=False, multiplier=1.5) is False
-
-    def test_confirmed_requires_breakout_surge(self):
-        volume = np.array([100.0] * 60 + [50.0] * 19 + [500.0])
-        vol_sma = pd.Series(np.full(80, 90.0))
-        assert _volume_confirms(volume, vol_sma, l_shoulder=5, r_shoulder=70, today_idx=79, confirmed=True, multiplier=1.5) is True
-
-    def test_confirmed_without_surge_fails(self):
-        volume = np.array([100.0] * 60 + [50.0] * 20)
-        vol_sma = pd.Series(np.full(80, 90.0))
-        assert _volume_confirms(volume, vol_sma, l_shoulder=5, r_shoulder=70, today_idx=79, confirmed=True, multiplier=1.5) is False
-
-
-class TestRsiDivergence:
-    def test_bearish_divergence_for_regular(self):
-        rsi = pd.Series([70.0] * 100)
-        rsi.iloc[10] = 60.0
-        rsi.iloc[50] = 55.0
-        assert _rsi_divergence(rsi, l_shoulder=10, head=50, inverted=False) is True
-
-    def test_no_divergence_for_regular(self):
-        rsi = pd.Series([70.0] * 100)
-        rsi.iloc[10] = 50.0
-        rsi.iloc[50] = 60.0
-        assert _rsi_divergence(rsi, l_shoulder=10, head=50, inverted=False) is False
-
-    def test_bullish_divergence_for_inverse(self):
-        rsi = pd.Series([30.0] * 100)
-        rsi.iloc[10] = 30.0
-        rsi.iloc[50] = 35.0
-        assert _rsi_divergence(rsi, l_shoulder=10, head=50, inverted=True) is True
-
-    def test_nan_returns_false(self):
-        rsi = pd.Series([np.nan] * 100)
-        assert _rsi_divergence(rsi, l_shoulder=10, head=50, inverted=False) is False
-
-
-class TestAnalyseTicker:
-    def setup_method(self):
-        self.engine = HeadShouldersEngine(_CFG)
-
-    def test_returns_none_for_insufficient_data(self):
-        df = _with_datetime_index(_make_regular_df(confirmed=False).head(30))
-        assert self.engine._analyse_ticker("TEST", df) is None
-
-    def test_result_has_required_keys(self):
-        result = self.engine._analyse_ticker("FAKE", _with_datetime_index(_make_regular_df(confirmed=False)))
-        assert result is not None
-        for key in (
-            "ticker", "pattern_type", "phase", "l_shoulder_date", "l_shoulder_price",
-            "l_armpit_date", "head_date", "r_armpit_date", "r_shoulder_date",
-            "neck_slope", "measured_target", "volume_confirms", "rsi_divergence",
-            "pattern_r2", "prior_trend_pct", "scan_ts",
-        ):
-            assert key in result, f"Missing key in result: {key}"
-
-    def test_ticker_and_pattern_type_preserved(self):
-        result = self.engine._analyse_ticker("NVDA", _with_datetime_index(_make_regular_df(confirmed=True)))
-        assert result["ticker"] == "NVDA"
-        assert result["pattern_type"] == "regular"
-        assert result["phase"] == "CONFIRMED"
-
-    def test_dates_are_strings_not_indices(self):
-        result = self.engine._analyse_ticker("FAKE", _with_datetime_index(_make_regular_df(confirmed=False)))
-        assert isinstance(result["l_shoulder_date"], str)
-        assert "l_shoulder_idx" not in result
-
-
-class TestSaveResults:
-    def setup_method(self):
-        self.engine = HeadShouldersEngine(_CFG)
-
-    @staticmethod
-    def _row(ticker: str, phase: str = "CONFIRMED", pattern_type: str = "regular") -> dict:
-        return {
-            "ticker": ticker, "pattern_type": pattern_type, "phase": phase,
-            "l_shoulder_date": "2026-01-01", "l_shoulder_price": 110.0,
-            "l_armpit_date": "2026-01-10", "l_armpit_price": 95.0,
-            "head_date": "2026-01-20", "head_price": 120.0,
-            "r_armpit_date": "2026-01-30", "r_armpit_price": 96.0,
-            "r_shoulder_date": "2026-02-05", "r_shoulder_price": 108.0,
-            "neck_slope": 0.04, "neck_value": 97.0,
-            "breakout_date": "2026-02-10" if phase == "CONFIRMED" else None,
-            "breakout_price": 90.0 if phase == "CONFIRMED" else None,
-            "measured_target": 74.0, "volume_confirms": True, "rsi_divergence": True,
-            "pattern_r2": 0.85, "prior_trend_pct": 12.0, "close_price": 90.0,
-            "scan_ts": "2026-02-10 22:20:00",
-        }
-
-    def test_row_readable_after_save(self):
-        self.engine._save_results([self._row("HSTST1")])
-        conn = db.get_connection()
-        try:
-            saved = conn.execute("SELECT * FROM head_shoulders_results WHERE ticker = 'HSTST1'").fetchone()
-        finally:
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST1'")
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST1'")
-            conn.commit()
-            conn.close()
-        assert saved is not None
-        assert saved["phase"] == "CONFIRMED"
-        assert abs(saved["measured_target"] - 74.0) < 1e-6
-
-    def test_upsert_overwrites_existing_row(self):
-        self.engine._save_results([self._row("HSTST2", phase="FORMING")])
-        self.engine._save_results([self._row("HSTST2", phase="CONFIRMED")])
-        conn = db.get_connection()
-        try:
-            rows = conn.execute("SELECT phase FROM head_shoulders_results WHERE ticker = 'HSTST2'").fetchall()
-        finally:
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST2'")
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST2'")
-            conn.commit()
-            conn.close()
-        assert len(rows) == 1
-        assert rows[0]["phase"] == "CONFIRMED"
-
-    def test_save_results_populates_history(self):
-        self.engine._save_results([self._row("HSTST3")])
-        conn = db.get_connection()
-        try:
-            row = conn.execute(
-                "SELECT measured_target, volume_confirms, rsi_divergence, pattern_r2, prior_trend_pct "
-                "FROM head_shoulders_history WHERE ticker = 'HSTST3'"
-            ).fetchone()
-        finally:
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST3'")
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST3'")
-            conn.commit()
-            conn.close()
-        assert row is not None
-        assert abs(row["measured_target"] - 74.0) < 1e-6
-        assert row["volume_confirms"] == 1
-        assert row["rsi_divergence"] == 1
-
-    def test_unchanged_pattern_not_relogged_to_history(self):
-        # Same ticker, same geometry, same phase two days running — the second save must
-        # not add a second history row (this is what inflated the accuracy panel's "Calls").
-        self.engine._save_results([self._row("HSTST4")])
-        self.engine._save_results([self._row("HSTST4")])
-        conn = db.get_connection()
-        try:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM head_shoulders_history WHERE ticker = 'HSTST4'"
-            ).fetchone()[0]
-        finally:
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST4'")
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST4'")
-            conn.commit()
-            conn.close()
-        assert count == 1
-
-    def test_phase_transition_still_logs_new_history_row(self):
-        # FORMING -> CONFIRMED for the same geometry is a genuinely new event (the breakout)
-        # and must still get its own history row. Two different scan dates so the history
-        # table's own (ticker, scan_date, pattern_type) uniqueness isn't what's under test.
-        from datetime import datetime, timezone
-        with patch("head_shoulders_engine.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
-            self.engine._save_results([self._row("HSTST5", phase="FORMING")])
-        with patch("head_shoulders_engine.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 4, 2, tzinfo=timezone.utc)
-            self.engine._save_results([self._row("HSTST5", phase="CONFIRMED")])
-        conn = db.get_connection()
-        try:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM head_shoulders_history WHERE ticker = 'HSTST5'"
-            ).fetchone()[0]
-        finally:
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST5'")
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST5'")
-            conn.commit()
-            conn.close()
-        assert count == 2
-
-    def test_new_pattern_geometry_still_logs(self):
-        # A genuinely different pattern (different head date) on the same ticker must log
-        # as a new instance, not get swallowed by the dedup check.
-        from datetime import datetime, timezone
-        first = self._row("HSTST6")
-        second = self._row("HSTST6")
-        second["head_date"] = "2026-03-20"
-        with patch("head_shoulders_engine.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
-            self.engine._save_results([first])
-        with patch("head_shoulders_engine.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 4, 2, tzinfo=timezone.utc)
-            self.engine._save_results([second])
-        conn = db.get_connection()
-        try:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM head_shoulders_history WHERE ticker = 'HSTST6'"
-            ).fetchone()[0]
-        finally:
-            conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'HSTST6'")
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker = 'HSTST6'")
-            conn.commit()
-            conn.close()
-        assert count == 2
-
-
-class TestGetTickerList:
-    def test_tbill_ticker_excluded_from_portfolio_scope(self):
-        engine = HeadShouldersEngine(_CFG)
-        engine.monitor_portfolio = True
-        holdings = {"AAPL": {}, "TBILL-606": {}}
-        with patch("accounts_engine.get_combined_holdings", return_value=holdings):
-            tickers = engine._get_ticker_list()
-        assert "AAPL" in tickers
-        assert not any(t.startswith("TBILL-") for t in tickers)
-
-    def test_watchlist_excluded_by_default(self):
-        engine = HeadShouldersEngine(_CFG)
-        engine.monitor_portfolio = False
-        assert engine.monitor_watchlist is False
-        with patch("database.get_watchlist_tickers", return_value=["NVDA"]) as mock_wl:
-            tickers = engine._get_ticker_list()
-        mock_wl.assert_not_called()
-        assert "NVDA" not in tickers
-
-    def test_watchlist_included_when_enabled(self):
-        engine = HeadShouldersEngine(_CFG)
-        engine.monitor_portfolio = False
-        engine.monitor_watchlist = True
-        with patch("database.get_watchlist_tickers", return_value=["nvda"]):
-            tickers = engine._get_ticker_list()
-        assert "NVDA" in tickers
-
-
 class TestPhaseLabel:
     def test_regular_forming(self):
         assert phase_label("regular", "FORMING") == "Head & Shoulders (Forming)"
@@ -526,278 +216,40 @@ class TestPhaseLabel:
         assert phase_label(None, "FORMING") == "FORMING"
 
 
-class TestHeadShouldersHistoryDB:
-    def test_head_shoulders_history_table_created(self):
-        conn = db.get_connection()
-        try:
-            row = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='head_shoulders_history'"
-            ).fetchone()
-        finally:
-            conn.close()
-        assert row is not None
+class TestRegistryContract:
+    def test_family_and_pattern_types(self):
+        assert FAMILY == "head_shoulders"
+        assert PATTERN_TYPES == {"regular": "down", "inverse": "up"}
 
-    def test_log_head_shoulders_pattern_insert_and_ignore(self):
-        first = db.log_head_shoulders_pattern("HSLOG1", "regular", "CONFIRMED", "2020-01-01", 100.0, "2020-01-01 10:00:00")
-        second = db.log_head_shoulders_pattern("HSLOG1", "regular", "CONFIRMED", "2020-01-01", 100.0, "2020-01-01 10:00:00")
-        conn = db.get_connection()
-        try:
-            rows = conn.execute(
-                "SELECT phase FROM head_shoulders_history WHERE ticker='HSLOG1' AND scan_date='2020-01-01'"
-            ).fetchall()
-        finally:
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSLOG1'")
-            conn.commit()
-            conn.close()
-        assert first is True
-        assert second is False
-        assert len(rows) == 1
+    def test_detect_returns_generic_shape(self):
+        df = _with_datetime_index(_make_regular_df(confirmed=True))
+        rsi_series = compute_rsi(df["Close"])
+        vol_sma = compute_volume_sma(df["Volume"])
+        config = {"SCHEDULING": {"PATTERN_DETECTION": {}}, "NOTIFICATIONS": {"PATTERN_DETECTION_ALERTS": {}}}
+        result = detect("FAKE", df, rsi_series, vol_sma, config)
+        assert result is not None
+        assert result["phase"] == "CONFIRMED"
+        assert len(result["points"]) == 5
+        assert [p["label"] for p in result["points"]] == ["L Shoulder", "L Armpit", "Head", "R Armpit", "R Shoulder"]
+        assert isinstance(result["points"][0]["date"], str)
+        assert len(result["lines"]) == 1
+        assert result["lines"][0]["label"] == "Neckline"
+        assert result["breakout_date"] is not None
+        assert "l_shoulder_idx" not in result
 
-    def test_regular_and_inverse_can_coexist_same_day(self):
-        db.log_head_shoulders_pattern("HSLOG2", "regular", "CONFIRMED", "2020-01-01", 100.0, "2020-01-01 10:00:00")
-        db.log_head_shoulders_pattern("HSLOG2", "inverse", "CONFIRMED", "2020-01-01", 100.0, "2020-01-01 10:00:00")
-        conn = db.get_connection()
-        try:
-            rows = conn.execute(
-                "SELECT pattern_type FROM head_shoulders_history WHERE ticker='HSLOG2' AND scan_date='2020-01-01'"
-            ).fetchall()
-        finally:
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSLOG2'")
-            conn.commit()
-            conn.close()
-        assert len(rows) == 2
-
-    def test_get_unresolved_head_shoulders_patterns_filters(self):
-        db.log_head_shoulders_pattern("HSFILT1", "regular", "CONFIRMED", "2019-01-01", 50.0, "2019-01-01 10:00:00")
-        db.log_head_shoulders_pattern("HSFILT2", "regular", "FORMING", "2019-01-01", 50.0, "2019-01-01 10:00:00")
-        rows = db.get_unresolved_head_shoulders_patterns("2020-01-01", "2020-01-01")
-        tickers = [r["ticker"] for r in rows]
-        assert "HSFILT1" in tickers
-        assert "HSFILT2" not in tickers
-
-    def test_batch_update_head_shoulders_actuals(self):
-        db.log_head_shoulders_pattern("HSUPD1", "regular", "CONFIRMED", "2019-02-01", 60.0, "2019-02-01 09:00:00")
-        conn = db.get_connection()
-        try:
-            row_id = conn.execute("SELECT id FROM head_shoulders_history WHERE ticker='HSUPD1'").fetchone()["id"]
-        finally:
-            conn.close()
-        db.batch_update_head_shoulders_actuals([(row_id, 14, 55.0, "2019-02-15", 1)])
-        conn = db.get_connection()
-        try:
-            updated = dict(conn.execute(
-                "SELECT actual_price_14d, actual_date_14d, direction_correct_14d FROM head_shoulders_history WHERE id=?",
-                (row_id,),
-            ).fetchone())
-        finally:
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSUPD1'")
-            conn.commit()
-            conn.close()
-        assert updated["actual_price_14d"] == 55.0
-        assert updated["direction_correct_14d"] == 1
-
-    def test_get_head_shoulders_accuracy_aggregates(self):
-        conn = db.get_connection()
-        try:
-            conn.execute(
-                """INSERT OR IGNORE INTO head_shoulders_history
-                   (ticker, pattern_type, phase, scan_date, scan_ts, close_price, direction_correct_14d)
-                   VALUES (?,?,?,?,?,?,?)""",
-                ("HSAGG1", "regular", "CONFIRMED", "2018-01-01", "2018-01-01 10:00:00", 100.0, 1),
-            )
-            conn.execute(
-                """INSERT OR IGNORE INTO head_shoulders_history
-                   (ticker, pattern_type, phase, scan_date, scan_ts, close_price, direction_correct_14d)
-                   VALUES (?,?,?,?,?,?,?)""",
-                ("HSAGG2", "regular", "CONFIRMED", "2018-01-02", "2018-01-02 10:00:00", 100.0, 0),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        result = db.get_head_shoulders_accuracy()
-        reg_row = next((r for r in result["patterns"] if r["pattern_type"] == "regular"), None)
-        assert reg_row is not None
-        assert reg_row["resolved_14d"] >= 2
-        assert reg_row["accuracy_14d"] == 50.0
-
-
-class TestFillPatternOutcomes:
-    @staticmethod
-    def _cleanup():
-        conn = db.get_connection()
-        try:
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSFATST'")
-            conn.commit()
-        finally:
-            conn.close()
-
-    def test_returns_zero_when_no_pending_rows(self):
-        assert fill_pattern_outcomes() == 0
-
-    def test_back_fills_14d_outcome_from_parquet(self, tmp_path):
-        from datetime import date, timedelta
-        scan_date = (date.today() - timedelta(days=20)).strftime("%Y-%m-%d")
-        db.log_head_shoulders_pattern("HSFATST", "regular", "CONFIRMED", scan_date, 100.0, f"{scan_date} 10:00:00")
-        try:
-            n = 30
-            idx = pd.date_range(scan_date, periods=n, freq="D")
-            prices = np.linspace(100.0, 90.0, n)  # declining — regular H&S "down" prediction correct
-            df = pd.DataFrame({"Close": prices, "Open": prices, "High": prices + 1, "Low": prices - 1, "Volume": np.ones(n)}, index=idx)
-            (tmp_path / "HSFATST.parquet").parent.mkdir(parents=True, exist_ok=True)
-            df.to_parquet(tmp_path / "HSFATST.parquet", engine="pyarrow")
-
-            with patch("head_shoulders_engine.HISTORICAL_DIR", tmp_path):
-                count = fill_pattern_outcomes()
-
-            conn = db.get_connection()
-            try:
-                row = dict(conn.execute(
-                    "SELECT * FROM head_shoulders_history WHERE ticker='HSFATST' AND scan_date=?", (scan_date,)
-                ).fetchone())
-            finally:
-                conn.close()
-            assert count >= 1
-            assert row.get("actual_price_14d") is not None
-            assert row.get("direction_correct_14d") == 1
-        finally:
-            self._cleanup()
-
-
-class TestBackfillPatternLock:
-    """The backfill walks each ticker in ~weekly steps with no lock, so a single real
-    formation can re-qualify as CONFIRMED on many consecutive steps while price keeps
-    drifting past an unchanged neckline — inflating the accuracy panel's "Calls" count with
-    near-duplicate re-detections of the same pattern rather than independent trials."""
-
-    def test_same_geometry_logged_once_across_many_steps(self, tmp_path):
-        # Base H&S pattern (breaks down at idx76) extended by 60 more slowly-declining bars —
-        # the same l_shoulder/l_armpit/head/r_armpit stay CONFIRMED across ~12 weekly steps.
-        base = _make_regular_df(confirmed=True)
-        tail = np.linspace(89, 60, 60)
-        extra = pd.DataFrame({
-            "Open": tail, "High": tail + 0.5, "Low": tail - 0.5,
-            "Close": tail, "Volume": np.full(60, 800_000.0),
-        })
-        df = pd.concat([base, extra], ignore_index=True)
-        idx = pd.date_range("2024-01-01", periods=len(df), freq="B")
-        df.index = idx
-
-        pq_path = tmp_path / "HSBACKF.parquet"
-        df.to_parquet(pq_path, engine="pyarrow")
-
-        conn = db.get_connection()
-        try:
-            conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSBACKF'")
-            conn.commit()
-        finally:
-            conn.close()
-
-        try:
-            with patch("head_shoulders_engine.HISTORICAL_DIR", tmp_path):
-                backfill_historical_patterns(tickers=["HSBACKF"])
-
-            conn = db.get_connection()
-            try:
-                rows = conn.execute(
-                    "SELECT scan_date FROM head_shoulders_history WHERE ticker='HSBACKF' AND pattern_type='regular'"
-                ).fetchall()
-            finally:
-                conn.close()
-            # Without the lock this would be one row per ~5-bar step across the whole
-            # confirmed tail (a dozen+ near-duplicate rows) instead of a single instance.
-            assert len(rows) == 1
-        finally:
-            conn = db.get_connection()
-            try:
-                conn.execute("DELETE FROM head_shoulders_history WHERE ticker='HSBACKF'")
-                conn.commit()
-            finally:
-                conn.close()
-
-
-class TestRunHeadShouldersJobMarketGating:
-    @staticmethod
-    def _row(ticker: str, phase: str = "CONFIRMED", pattern_type: str = "regular") -> dict:
-        return {
-            "ticker": ticker, "pattern_type": pattern_type, "phase": phase,
-            "l_shoulder_date": "2026-01-01", "l_shoulder_price": 110.0,
-            "l_armpit_date": "2026-01-10", "l_armpit_price": 95.0,
-            "head_date": "2026-01-20", "head_price": 120.0,
-            "r_armpit_date": "2026-01-30", "r_armpit_price": 96.0,
-            "r_shoulder_date": "2026-02-05", "r_shoulder_price": 108.0,
-            "neck_slope": 0.04, "neck_value": 97.0,
-            "breakout_date": "2026-02-10", "breakout_price": 90.0,
-            "measured_target": 74.0, "volume_confirms": True, "rsi_divergence": True,
-            "pattern_r2": 0.85, "prior_trend_pct": 12.0, "close_price": 90.0,
-            "scan_ts": "2026-02-10 22:20:00",
+    def test_detect_respects_family_toggles(self):
+        df = _with_datetime_index(_make_regular_df(confirmed=False))
+        rsi_series = compute_rsi(df["Close"])
+        vol_sma = compute_volume_sma(df["Volume"])
+        config = {
+            "SCHEDULING": {"PATTERN_DETECTION": {"HEAD_SHOULDERS": {"REGULAR_ENABLED": False, "INVERSE_ENABLED": False}}},
+            "NOTIFICATIONS": {"PATTERN_DETECTION_ALERTS": {}},
         }
+        assert detect("FAKE", df, rsi_series, vol_sma, config) is None
 
-    def test_suppresses_alert_when_ticker_exchange_closed(self):
-        import scheduler_jobs
-
-        conn = db.get_connection()
-        try:
-            conn.execute("DELETE FROM alert_state WHERE engine = 'HeadShouldersDetector'")
-            conn.commit()
-        finally:
-            conn.close()
-
-        with patch(
-            "head_shoulders_engine.HeadShouldersEngine.run_scan",
-            return_value=[self._row("AAPL")],
-        ), patch("scheduler_jobs.is_quote_settled", return_value=False) as mock_open, \
-           patch("scheduler_jobs.notify") as mock_notify:
-            scheduler_jobs.run_head_shoulders_job()
-
-        mock_open.assert_called()
-        mock_notify.assert_not_called()
-
-    def test_fires_alert_when_ticker_exchange_open(self):
-        import scheduler_jobs
-
-        conn = db.get_connection()
-        try:
-            conn.execute("DELETE FROM alert_state WHERE engine = 'HeadShouldersDetector'")
-            conn.commit()
-        finally:
-            conn.close()
-
-        with patch(
-            "head_shoulders_engine.HeadShouldersEngine.run_scan",
-            return_value=[self._row("AAPL")],
-        ), patch("scheduler_jobs.is_quote_settled", return_value=True), \
-           patch("scheduler_jobs.notify", return_value=True) as mock_notify:
-            scheduler_jobs.run_head_shoulders_job()
-
-        mock_notify.assert_called_once()
-
-
-class TestChartAPIPathSafety:
-    """GET /api/head-shoulders/chart/{ticker} builds a HISTORICAL_DIR filesystem path from the
-    raw URL path parameter — must reject path-traversal-style tickers rather than passing them
-    through to disk (CodeQL py/path-injection, alert #70)."""
-
-    def test_encoded_slash_traversal_blocked_by_routing(self, client):
-        # Starlette's default `str` path convertor never matches an embedded "/" in a single
-        # {ticker} segment, so an encoded traversal attempt never reaches the handler at all —
-        # confirms the router itself is also a layer of defense here, not just safe_ticker_filename.
-        resp = client.get(
-            "/api/head-shoulders/chart/..%2F..%2F..%2Fetc%2Fpasswd",
-            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
-        )
-        assert resp.status_code == 404
-
-    def test_ticker_with_disallowed_characters_rejected(self, client):
-        resp = client.get(
-            "/api/head-shoulders/chart/FOO%20BAR",
-            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
-        )
-        assert resp.status_code == 400
-        assert resp.json()["status"] == "error"
-
-    def test_valid_ticker_with_no_data_returns_404_not_400(self, client):
-        resp = client.get(
-            "/api/head-shoulders/chart/ZZZNOPE",
-            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
-        )
-        assert resp.status_code == 404
+    def test_detect_returns_none_below_min_bars(self):
+        df = _with_datetime_index(_make_regular_df(confirmed=False).head(30))
+        rsi_series = compute_rsi(df["Close"])
+        vol_sma = compute_volume_sma(df["Volume"])
+        config = {"SCHEDULING": {"PATTERN_DETECTION": {}}, "NOTIFICATIONS": {"PATTERN_DETECTION_ALERTS": {}}}
+        assert detect("FAKE", df, rsi_series, vol_sma, config) is None

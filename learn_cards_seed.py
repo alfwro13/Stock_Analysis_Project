@@ -1144,6 +1144,36 @@ CARDS = [
 <p>The same three supporting signals apply in mirror form: volume should decline through the shoulders and head then spike on the upside breakout; RSI divergence at the head (price making an equal or lower trough while RSI reads higher) confirms weakening downside momentum; and the fit-quality score ranks how cleanly price tracked the shape. Once confirmed, the measured-move target — the neckline value at breakout plus the head's depth below the neckline — projects the classic upside objective.</p>""",
     },
     {
+        "term_key": "double-top-pattern",
+        "section_id": "strategies",
+        "term_title": "📉 Double Top Pattern",
+        "question": "What confirms a Double Top candidate detected by Pattern Detection?",
+        "answer": "A close below the support level formed by the trough between the two peaks",
+        "distractors": [
+            "A second detector agreeing on the same ticker within 24 hours",
+            "The stock's RSI crossing below 30",
+            "A dividend cut announcement",
+        ],
+        "explanation": """<p>A <strong>Double Top</strong> is a topping reversal pattern formed by two peaks of near-equal height separated by one qualifying trough — simpler than Head &amp; Shoulders' three-peak shape, but built from the same underlying idea: buying pressure twice fails to push price to a meaningfully new high. The trough between the two peaks acts as a <strong>support level</strong>; a decisive close below it confirms the pattern and signals sellers have taken control.</p>
+<p>Pattern Detection finds this shape using the same rolling-window swing-point detection as Head &amp; Shoulders, then applies its own geometric rules: the two peaks must be within a configurable balance tolerance of each other, the trough must sit a meaningful distance below their average (a real pull-back, not noise), and the pattern must be preceded by a genuine prior uptrend before the first peak.</p>
+<p>The same three supporting signals apply as for Head &amp; Shoulders: <strong>volume</strong> should decline from the first peak to the second, then spike on the breakdown; <strong>RSI divergence</strong> (the second peak reading lower on RSI despite a similar price) confirms weakening momentum; and the pattern's <strong>fit quality (R²)</strong> measures how closely price tracked the idealised shape. Once confirmed, the <strong>measured-move target</strong> — the support level minus the pattern's height above it — gives the classic downside price objective.</p>""",
+    },
+    {
+        "term_key": "double-bottom-pattern",
+        "section_id": "strategies",
+        "term_title": "📈 Double Bottom Pattern",
+        "question": "What must precede the first trough for a Double Bottom candidate to be accepted?",
+        "answer": "A genuine prior downtrend",
+        "distractors": [
+            "A confirmed Bull Trap alert on the same ticker",
+            "An earnings announcement within the last month",
+            "A Wyckoff Accumulation phase already in progress",
+        ],
+        "explanation": """<p>The <strong>Double Bottom</strong> is the bullish mirror image of the Double Top: two troughs of near-equal depth separated by one qualifying peak, which acts as a <strong>resistance level</strong>. A decisive close above that level confirms the pattern, signalling that sellers have twice failed to push price to a meaningfully new low and buyers have taken control.</p>
+<p>Detection mirrors the Double Top exactly, but every rule is inverted: the two troughs must be balanced within tolerance, the middle peak must sit a meaningful distance above their average, and the pattern requires a genuine prior <em>downtrend</em> before the first trough to be accepted as a valid candidate.</p>
+<p>The same supporting signals apply in mirror form: volume should decline from the first trough to the second, then spike on the breakout; RSI divergence (the second trough reading higher on RSI despite a similar price) confirms weakening downside momentum; and the fit-quality score ranks how cleanly price tracked the shape. Once confirmed, the measured-move target — the resistance level plus the pattern's height below it — projects the classic upside objective.</p>""",
+    },
+    {
         "term_key": "market-leader",
         "section_id": "strategies",
         "term_title": "👑 Market Leader",
