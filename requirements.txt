@@ -19,7 +19,7 @@ apscheduler==3.11.3
 exchange_calendars==4.13.2
 fake-useragent==2.2.0
 matplotlib==3.11.1
-scipy>=1.17.1
+scipy>=1.18.0
 joblib==1.5.3
 scikit-learn==1.9.0
 xgboost>=2.0.3
