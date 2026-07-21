@@ -260,7 +260,9 @@ _disarm_alert(ticker):
 Both jobs are **always registered** (no config flag required to enable them). The scan job exits immediately if no tickers are armed, so the overhead when the feature is not in use is negligible (one SQLite read per 2-minute tick).
 
 **Timing of the scan window:**  
-`CronTrigger(day_of_week='mon-fri', hour='9-15', minute='*/2')`
+`CronTrigger(day_of_week='mon-fri', hour='7-21', minute='1-59/2', timezone=timezone.utc)`
+
+(Starts at minute 1, not 0 — staggered off the round-minute boundary alongside several other write-heavy scheduled jobs, to avoid the multi-job "database is locked" pileups found 2026-07-21.)
 
 This covers 09:00–15:59 ET. The final scan of the session occurs at 15:58. The reset job fires at 16:05, giving a 7-minute window after close for any final analysis before monitors are cleared.
 
