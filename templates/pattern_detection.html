@@ -6,15 +6,14 @@
 <h1 class="mb-1">&#128200; Pattern Detection</h1>
 <p class="text-muted mb-3">
     Scans your portfolio and watchlist for chart patterns using rolling-window swing-point detection plus
-    <abbr title="Volume should decline through the pattern's two comparable structural points, then spike on the breakout.">volume confirmation</abbr>,
-    <abbr title="Price makes an equal or more extreme second point while RSI makes a less extreme reading — weakening momentum confirms the reversal.">RSI divergence</abbr>, and a
-    <abbr title="A prior directional move is required before the pattern's first structural point — an uptrend for a topping pattern, a downtrend for a bottoming pattern — to reduce false positives on sideways price action.">prior-trend gate</abbr>.
-    Currently covers
-    <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders, connected by a neckline drawn through the two intervening swing lows.">Head &amp; Shoulders</abbr> /
-    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders, connected by a neckline drawn through the two intervening swing highs.">Inverse Head &amp; Shoulders</abbr> and
-    <abbr title="Two peaks of near-equal height separated by one qualifying trough — confirms on a close below the trough (support) level.">Double Top</abbr> /
-    <abbr title="The bullish mirror image: two troughs of near-equal depth separated by one qualifying peak — confirms on a close above the peak (resistance) level.">Double Bottom</abbr>,
-    with more pattern types planned.
+    <abbr title="Volume should decline through the pattern's structural points, then spike on the breakout.">volume confirmation</abbr> and
+    <abbr title="Price makes an equal or more extreme point while RSI makes a less extreme reading — weakening momentum confirms the reversal.">RSI divergence</abbr>.
+    Covers reversal patterns (Head &amp; Shoulders / Inverse Head &amp; Shoulders, Double Top / Double Bottom), continuation patterns
+    (Bull Flag / Bear Flag, Bull Pennant / Bear Pennant, Ascending / Descending / Symmetrical Triangle),
+    <abbr title="Both trendlines slope the same direction but converge — a terminal exhaustion signal, unlike a Triangle's flat-vs-sloped or Flag's parallel-channel shape.">Wedge</abbr> exhaustion/convergence patterns
+    (Rising Wedge / Falling Wedge), volatility/breakout patterns (Volatility Squeeze, NR4 / NR7 Narrow Range), mean-reversion/exhaustion
+    patterns (Parabolic Stretch, Bullish / Bearish Divergence), and 1-2 bar Micro-Structure Candlestick Triggers (Bullish / Bearish
+    Engulfing, Hammer / Shooting Star) used to confirm a larger setup. See the full list with explanations below the results table.
 </p>
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
@@ -91,6 +90,41 @@
         <tbody id="pd-accuracy-body"></tbody>
         <tfoot id="pd-accuracy-foot"></tfoot>
     </table>
+</div>
+
+<h3 class="mt-4 mb-2">All Covered Patterns</h3>
+<p class="text-muted small mb-3">Every pattern this scan can detect, grouped by the direction it signals once confirmed.</p>
+<div class="row">
+    <div class="col-12 col-lg-6">
+        <h5 class="text-success">Bullish</h5>
+        <p><strong>Inverse Head &amp; Shoulders</strong> — three swing lows where the middle (head) is lower than the two outer shoulders. Confirms on a close above the neckline drawn through the two intervening swing highs.</p>
+        <p><strong>Double Bottom</strong> — two troughs of near-equal depth separated by one qualifying peak. Confirms on a close above the peak (resistance) level.</p>
+        <p><strong>Bull Flag</strong> — a sharp rally (the pole) followed by a brief, mildly downward-sloped parallel channel. Confirms on a close above the upper channel line.</p>
+        <p><strong>Bull Pennant</strong> — the same pole prerequisite as a Bull Flag, but the pause is a short converging micro-triangle rather than a parallel channel. Confirms on a close above the falling resistance line.</p>
+        <p><strong>Ascending Triangle</strong> — a flat resistance level with a rising support line. Confirms on a close above resistance.</p>
+        <p><strong>Symmetrical Triangle (Bullish)</strong> — a falling resistance line and rising support line converging together, direction unknown until it breaks. Confirms on a close above the falling resistance line.</p>
+        <p><strong>Falling Wedge</strong> — both resistance and support slope downward, but resistance falls faster, forcing convergence — selling pressure is exhausting even as price still slides. Confirms on a close above the falling resistance line.</p>
+        <p><strong>Volatility Squeeze (Bullish)</strong> — Bollinger Bands contracting fully inside the Keltner Channel, then a decisive close above the upper Bollinger Band once the squeeze releases.</p>
+        <p><strong>NR4 / NR7 Narrow Range (Bullish)</strong> — the smallest True Range of the trailing 4 or 7 bars, followed by a decisive close above that bar's own high.</p>
+        <p><strong>Parabolic Stretch (Oversold)</strong> — price closes unusually far below its 200-day SMA (by Z-score), statistically due for a bounce back toward the mean.</p>
+        <p><strong>Bullish Divergence</strong> — price makes a new low while RSI makes a higher low, a leading sign selling pressure is fading. Confirms on a close through the level between the two extremes.</p>
+        <p><strong>Bullish Engulfing / Hammer</strong> — a 1-2 bar rejection candle only counted near a price extreme (below the lower Bollinger Band or RSI oversold), used to confirm a larger bullish setup.</p>
+    </div>
+    <div class="col-12 col-lg-6">
+        <h5 class="text-danger">Bearish</h5>
+        <p><strong>Head &amp; Shoulders</strong> — three swing highs where the middle (head) is taller than the two outer shoulders. Confirms on a close below the neckline drawn through the two intervening swing lows.</p>
+        <p><strong>Double Top</strong> — two peaks of near-equal height separated by one qualifying trough. Confirms on a close below the trough (support) level.</p>
+        <p><strong>Bear Flag</strong> — a sharp decline (the pole) followed by a brief, mildly upward-sloped parallel channel. Confirms on a close below the lower channel line.</p>
+        <p><strong>Bear Pennant</strong> — the same pole prerequisite as a Bear Flag, but the pause is a short converging micro-triangle rather than a parallel channel. Confirms on a close below the rising support line.</p>
+        <p><strong>Descending Triangle</strong> — a flat support level with a falling resistance line. Confirms on a close below support.</p>
+        <p><strong>Symmetrical Triangle (Bearish)</strong> — a falling resistance line and rising support line converging together, direction unknown until it breaks. Confirms on a close below the rising support line.</p>
+        <p><strong>Rising Wedge</strong> — both resistance and support slope upward, but support rises faster, forcing convergence — upward momentum is failing even as price still climbs. Confirms on a close below the rising support line.</p>
+        <p><strong>Volatility Squeeze (Bearish)</strong> — Bollinger Bands contracting fully inside the Keltner Channel, then a decisive close below the lower Bollinger Band once the squeeze releases.</p>
+        <p><strong>NR4 / NR7 Narrow Range (Bearish)</strong> — the smallest True Range of the trailing 4 or 7 bars, followed by a decisive close below that bar's own low.</p>
+        <p><strong>Parabolic Stretch (Overbought)</strong> — price closes unusually far above its 200-day SMA (by Z-score), statistically due for a pullback back toward the mean.</p>
+        <p><strong>Bearish Divergence</strong> — price makes a new high while RSI makes a lower high, a leading sign momentum is fading. Confirms on a close through the level between the two extremes.</p>
+        <p><strong>Bearish Engulfing / Shooting Star</strong> — a 1-2 bar rejection candle only counted near a price extreme (above the upper Bollinger Band or RSI overbought), used to confirm a larger bearish setup.</p>
+    </div>
 </div>
 {% endblock %}
 

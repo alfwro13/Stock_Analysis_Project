@@ -968,22 +968,26 @@
                 <h4 class="settings-panel-header text-cyan">&#128200; Pattern Detection</h4>
                 <p class="settings-desc">
                     Scans your portfolio and watchlist once per day for chart patterns using rolling-window swing detection
-                    plus volume confirmation, RSI divergence, and a required prior trend. Currently covers
+                    plus volume confirmation, RSI divergence, and a required prior trend. Covers
                     <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders.">Head &amp; Shoulders</abbr> /
-                    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr> and
+                    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr>,
                     <abbr title="Two peaks of near-equal height separated by one qualifying trough.">Double Top</abbr> /
                     <abbr title="The bullish mirror image: two troughs of near-equal depth separated by one qualifying peak.">Double Bottom</abbr>,
                     <abbr title="A sharp directional move (the pole) followed by a brief, mildly counter-sloped consolidation channel before the trend resumes.">Bull Flag</abbr> /
-                    <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr> and
+                    <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr>,
+                    <abbr title="Same pole prerequisite as a Flag, but the consolidation is a micro symmetrical triangle (converging resistance/support) rather than a parallel channel.">Bull Pennant</abbr> /
+                    <abbr title="The bearish mirror image of a Bull Pennant.">Bear Pennant</abbr>,
                     <abbr title="A flat resistance level with a rising support line, breaking out upward.">Ascending Triangle</abbr> /
                     <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr> /
                     <abbr title="A falling resistance line and a rising support line converging together — directionally neutral until price closes decisively past either line.">Symmetrical Triangle</abbr>,
+                    <abbr title="Both resistance and support slope upward, but support rises faster, forcing convergence — a bearish exhaustion signal, confirming on a close below the rising support line.">Rising Wedge</abbr> /
+                    <abbr title="The bullish mirror image: both lines slope downward, but resistance falls faster, confirming on a close above the falling resistance line.">Falling Wedge</abbr>,
                     <abbr title="Bollinger Bands (20-day SMA +/- 2 standard deviations) contracting fully inside the Keltner Channel (20-day EMA +/- 1.5x ATR) — a volatility compression that often precedes an explosive directional move.">Volatility Squeeze</abbr>,
                     <abbr title="A bar whose True Range is the smallest of the trailing 4 (NR4) or 7 (NR7) bars and which is also a strict inside bar vs. the prior bar — a micro-contraction often preceding a sharp breakout.">NR4 / NR7 Narrow Range</abbr>,
                     <abbr title="Price stretched more than a configurable Z-score threshold away from its 200-day SMA (measured against the distance series' own trailing mean/std) — a mean-reversion exhaustion setup.">Parabolic Stretch</abbr>,
                     <abbr title="Price makes a new high/low while RSI fails to confirm it with a new high/low of its own — a leading sign that momentum is fading even as price keeps pushing.">Bullish / Bearish Divergence</abbr>, and
-                    <abbr title="1-2 bar execution triggers (Bullish/Bearish Engulfing, Hammer/Shooting Star) that only qualify near a price extreme — below the lower Bollinger Band or RSI oversold/overbought — used to confirm a reversal rather than as structural analysis on their own.">Micro-Structure Candlestick Triggers</abbr>,
-                    with more pattern types planned. Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
+                    <abbr title="1-2 bar execution triggers (Bullish/Bearish Engulfing, Hammer/Shooting Star) that only qualify near a price extreme — below the lower Bollinger Band or RSI oversold/overbought — used to confirm a reversal rather than as structural analysis on their own.">Micro-Structure Candlestick Triggers</abbr>.
+                    Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
                 </p>
 
                 {% set pd_sched = config.SCHEDULING.PATTERN_DETECTION if config.SCHEDULING.PATTERN_DETECTION else {} %}
@@ -991,7 +995,9 @@
                 {% set pd_hs_sched = pd_sched.HEAD_SHOULDERS if pd_sched.HEAD_SHOULDERS else {} %}
                 {% set pd_dtb_sched = pd_sched.DOUBLE_TOP_BOTTOM if pd_sched.DOUBLE_TOP_BOTTOM else {} %}
                 {% set pd_flag_sched = pd_sched.FLAG if pd_sched.FLAG else {} %}
+                {% set pd_pennant_sched = pd_sched.PENNANT if pd_sched.PENNANT else {} %}
                 {% set pd_tri_sched = pd_sched.TRIANGLE if pd_sched.TRIANGLE else {} %}
+                {% set pd_wedge_sched = pd_sched.WEDGE if pd_sched.WEDGE else {} %}
                 {% set pd_vs_sched = pd_sched.VOLATILITY_SQUEEZE if pd_sched.VOLATILITY_SQUEEZE else {} %}
                 {% set pd_nr_sched = pd_sched.NARROW_RANGE if pd_sched.NARROW_RANGE else {} %}
                 {% set pd_ps_sched = pd_sched.PARABOLIC_STRETCH if pd_sched.PARABOLIC_STRETCH else {} %}
@@ -1000,7 +1006,9 @@
                 {% set pd_hs_cfg = pd_cfg.HEAD_SHOULDERS if pd_cfg.HEAD_SHOULDERS else {} %}
                 {% set pd_dtb_cfg = pd_cfg.DOUBLE_TOP_BOTTOM if pd_cfg.DOUBLE_TOP_BOTTOM else {} %}
                 {% set pd_flag_cfg = pd_cfg.FLAG if pd_cfg.FLAG else {} %}
+                {% set pd_pennant_cfg = pd_cfg.PENNANT if pd_cfg.PENNANT else {} %}
                 {% set pd_tri_cfg = pd_cfg.TRIANGLE if pd_cfg.TRIANGLE else {} %}
+                {% set pd_wedge_cfg = pd_cfg.WEDGE if pd_cfg.WEDGE else {} %}
                 {% set pd_vs_cfg = pd_cfg.VOLATILITY_SQUEEZE if pd_cfg.VOLATILITY_SQUEEZE else {} %}
                 {% set pd_nr_cfg = pd_cfg.NARROW_RANGE if pd_cfg.NARROW_RANGE else {} %}
                 {% set pd_ps_cfg = pd_cfg.PARABOLIC_STRETCH if pd_cfg.PARABOLIC_STRETCH else {} %}
@@ -1142,6 +1150,47 @@
                     </div>
                 </div>
 
+                <h5 class="text-cyan mt-10">Bull Pennant / Bear Pennant</h5>
+                <p class="text-muted text-xs mb-10">Shares the pole prerequisite and sigma/lookback settings above (Flag) — the consolidation itself is a short converging micro-triangle rather than a parallel channel.</p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PENNANT_BULL" {% if pd_pennant_sched.BULL_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PENNANT_BULL">Detect Bull Pennant (continuation up)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PENNANT_BEAR" {% if pd_pennant_sched.BEAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PENNANT_BEAR">Detect Bear Pennant (continuation down)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The flagpole's N-day return must exceed this many standard deviations of daily volatility (time-scaled by the square root of N) to count as a genuinely sharp move.">Sigma multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_SIGMA_MULT" class="form-control" value="{{ pd_pennant_cfg.SIGMA_MULTIPLIER | default(1.5) }}" step="0.1" min="0.5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days the flagpole move is measured over.">Flagpole lookback (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_POLE_DAYS" class="form-control" value="{{ pd_pennant_cfg.FLAGPOLE_LOOKBACK_DAYS | default(10) }}" step="1" min="3">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days of daily returns used to estimate normal volatility, taken immediately before the flagpole so the pole itself never inflates its own threshold.">Volatility window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_SIGMA_WINDOW" class="form-control" value="{{ pd_pennant_cfg.SIGMA_WINDOW_DAYS | default(20) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day slope (in either direction) for both the resistance and support regression lines to count as a genuine converging triangle rather than noise.">Min slope %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_MIN_SLOPE" class="form-control" value="{{ pd_pennant_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum consolidation length in trading days.">Min consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_MIN_CONSOL" class="form-control" value="{{ pd_pennant_cfg.MIN_CONSOLIDATION_DAYS | default(5) }}" step="1" min="3">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum consolidation length in trading days.">Max consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_MAX_CONSOL" class="form-control" value="{{ pd_pennant_cfg.MAX_CONSOLIDATION_DAYS | default(12) }}" step="1" min="5">
+                    </div>
+                </div>
+
                 <h5 class="text-cyan mt-10">Ascending / Descending Triangle</h5>
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PATTERN_DETECTION_TRI_ASC" {% if pd_tri_sched.ASCENDING_ENABLED | default(true) %}checked{% endif %}>
@@ -1175,6 +1224,30 @@
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PATTERN_DETECTION_TRI_SYM_BEARISH" {% if pd_tri_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
                     <label for="PATTERN_DETECTION_TRI_SYM_BEARISH">Report bearish breakouts (downside)</label>
+                </div>
+
+                <h5 class="text-cyan mt-10">Rising Wedge / Falling Wedge</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_WEDGE_RISING" {% if pd_wedge_sched.RISING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_WEDGE_RISING">Detect Rising Wedge (breakout down)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_WEDGE_FALLING" {% if pd_wedge_sched.FALLING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_WEDGE_FALLING">Detect Falling Wedge (breakout up)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trailing lookback window (trading days) searched for a wedge's swing highs/lows.">Window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_WEDGE_WINDOW" class="form-control" value="{{ pd_wedge_cfg.WINDOW_DAYS | default(40) }}" step="5" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day slope (in the wedge's direction) for both the resistance and support regression lines, so both sides are genuinely trending rather than one being flat (a Triangle) or noise.">Min slope %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_WEDGE_MIN_SLOPE" class="form-control" value="{{ pd_wedge_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day gap between the support and resistance slopes for the two lines to count as genuinely converging (a wedge) rather than parallel (a Flag channel).">Min convergence gap %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_WEDGE_CONVERGENCE" class="form-control" value="{{ pd_wedge_cfg.MIN_CONVERGENCE_DIFF_PCT | default(0.1) }}" step="0.05" min="0">
+                    </div>
                 </div>
 
                 <h5 class="text-cyan mt-10">Volatility Squeeze (Bollinger / Keltner)</h5>

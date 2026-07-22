@@ -161,6 +161,8 @@ class PatternFamilyScheduleConfig(BaseModel):
     BEAR_ENABLED: Optional[bool] = None
     ASCENDING_ENABLED: Optional[bool] = None
     DESCENDING_ENABLED: Optional[bool] = None
+    RISING_ENABLED: Optional[bool] = None
+    FALLING_ENABLED: Optional[bool] = None
     NR4_ENABLED: Optional[bool] = None
     NR7_ENABLED: Optional[bool] = None
     BULLISH_ENABLED: Optional[bool] = None
@@ -180,6 +182,8 @@ class PatternDetectionScheduleConfig(BaseModel):
     DOUBLE_TOP_BOTTOM: Optional[PatternFamilyScheduleConfig] = None
     FLAG: Optional[PatternFamilyScheduleConfig] = None
     TRIANGLE: Optional[PatternFamilyScheduleConfig] = None
+    WEDGE: Optional[PatternFamilyScheduleConfig] = None
+    PENNANT: Optional[PatternFamilyScheduleConfig] = None
     VOLATILITY_SQUEEZE: Optional[PatternFamilyScheduleConfig] = None
     NARROW_RANGE: Optional[PatternFamilyScheduleConfig] = None
     PARABOLIC_STRETCH: Optional[PatternFamilyScheduleConfig] = None
@@ -268,6 +272,7 @@ class PatternFamilyAlertConfig(BaseModel):
     WINDOW_DAYS: Optional[int] = None
     FLAT_SLOPE_EPSILON_PCT: Optional[float] = None
     MIN_SLOPE_PCT: Optional[float] = None
+    MIN_CONVERGENCE_DIFF_PCT: Optional[float] = None
     NUM_STD: Optional[float] = None
     KC_MULTIPLIER: Optional[float] = None
     MIN_SQUEEZE_DAYS: Optional[int] = None
@@ -293,6 +298,8 @@ class PatternDetectionAlertConfig(BaseModel):
     DOUBLE_TOP_BOTTOM: Optional[PatternFamilyAlertConfig] = None
     FLAG: Optional[PatternFamilyAlertConfig] = None
     TRIANGLE: Optional[PatternFamilyAlertConfig] = None
+    WEDGE: Optional[PatternFamilyAlertConfig] = None
+    PENNANT: Optional[PatternFamilyAlertConfig] = None
     VOLATILITY_SQUEEZE: Optional[PatternFamilyAlertConfig] = None
     NARROW_RANGE: Optional[PatternFamilyAlertConfig] = None
     PARABOLIC_STRETCH: Optional[PatternFamilyAlertConfig] = None

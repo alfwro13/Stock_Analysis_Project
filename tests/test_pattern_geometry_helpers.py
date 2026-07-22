@@ -23,6 +23,7 @@ from pattern_geometry_helpers import (
     rsi_divergence,
     linreg,
     slope_pct_per_day,
+    detect_pole,
     candle_body_wick_metrics,
     is_bullish_engulfing,
     is_bearish_engulfing,
@@ -238,3 +239,44 @@ class TestPinBars:
 
     def test_shooting_star_false_when_wick_too_short(self):
         assert is_shooting_star(upper_wick=1.5, lower_wick=0.1, body_safe=1.0, rng=3.0) is False
+
+
+def _make_pole_close(pole_return_pct: float, flagpole_days: int = 10, sigma_window_days: int = 20) -> np.ndarray:
+    """Quiet pre-pole period (for a stable sigma estimate) followed by a pole move of the
+    requested return, then a short flat tail so `consolidation_start` has somewhere to land."""
+    pre = 100.0 + 1.5 * np.sin(np.arange(sigma_window_days + 5) * 0.9)
+    pole = np.linspace(pre[-1], pre[-1] * (1 + pole_return_pct / 100.0), flagpole_days)
+    tail = np.full(3, pole[-1])
+    return np.concatenate([pre, pole[1:], tail])
+
+
+class TestDetectPole:
+    def test_bull_pole_detected(self):
+        close = _make_pole_close(20.0)
+        consolidation_start = len(close) - 3
+        result = detect_pole(close, consolidation_start, False, 1.5, 10, 20)
+        assert result is not None
+        assert result["pole_end_idx"] == consolidation_start - 1
+        assert result["flagpole_return_pct"] > 0
+
+    def test_bear_pole_detected(self):
+        close = _make_pole_close(-20.0)
+        consolidation_start = len(close) - 3
+        result = detect_pole(close, consolidation_start, True, 1.5, 10, 20)
+        assert result is not None
+        assert result["flagpole_return_pct"] < 0
+
+    def test_bull_pole_rejected_when_direction_is_bear(self):
+        close = _make_pole_close(20.0)
+        consolidation_start = len(close) - 3
+        assert detect_pole(close, consolidation_start, True, 1.5, 10, 20) is None
+
+    def test_rejects_move_below_sigma_threshold(self):
+        close = _make_pole_close(0.5)
+        consolidation_start = len(close) - 3
+        assert detect_pole(close, consolidation_start, False, 1.5, 10, 20) is None
+
+    def test_rejects_when_insufficient_history_for_sigma_window(self):
+        close = _make_pole_close(20.0)[10:]
+        consolidation_start = len(close) - 3
+        assert detect_pole(close, consolidation_start, False, 1.5, 10, 20) is None

@@ -1259,6 +1259,36 @@ CARDS = [
 <p>The same supporting signal applies: volume should decline through the consolidation. Once confirmed by a breakout below the lower channel line, the measured-move target projects the flagpole's height downward from the breakout point.</p>""",
     },
     {
+        "term_key": "bull-pennant-pattern",
+        "section_id": "strategies",
+        "term_title": "🚀 Bull Pennant Pattern",
+        "question": "How does a Bull Pennant's consolidation differ from a Bull Flag's?",
+        "answer": "It's a short converging symmetrical mini-triangle (falling resistance, rising support) rather than a parallel channel",
+        "distractors": [
+            "It has no consolidation at all — it confirms the instant the pole ends",
+            "It requires a flat resistance line and a rising support line, like an Ascending Triangle",
+            "It requires two separate flagpoles instead of one",
+        ],
+        "explanation": """<p>A <strong>Bull Pennant</strong> shares the same prerequisite as a Bull Flag — a sharp, explosive rally (the flagpole) measured against the ticker's own recent volatility — but the pause afterward has a different shape: instead of a parallel channel, the consolidation is a short symmetrical mini-triangle, with a falling resistance line and a rising support line converging together. The idea is the same as a Flag — early profit-taking against still-intact underlying demand — but the range compresses rather than drifting; a decisive close back above the resistance line signals the pause is over and the uptrend is resuming.</p>
+<p>Pattern Detection reuses the exact same pole test as Flag (the same sigma-multiplier, lookback, and volatility-window settings), then validates the consolidation with the same converging-lines test Symmetrical Triangle uses: the resistance line fit through the consolidation's swing highs must have a clearly negative slope, and the support line fit through its swing lows must have a clearly positive slope, both exceeding a configurable minimum. Unlike Symmetrical Triangle, direction is not unknown — it's fixed by the pole itself, so only a breakout in the pole's own direction (upward) counts as confirmation.</p>
+<p>Declining volume through the consolidation supports the pattern, exactly as for a Flag. Once confirmed by a breakout above the resistance line, the measured-move target projects the flagpole's own height upward from the breakout point.</p>""",
+    },
+    {
+        "term_key": "bear-pennant-pattern",
+        "section_id": "strategies",
+        "term_title": "🪂 Bear Pennant Pattern",
+        "question": "What confirms a Bear Pennant candidate detected by Pattern Detection?",
+        "answer": "A close below the rising support line of the converging consolidation triangle",
+        "distractors": [
+            "A close above the falling resistance line",
+            "The stock's RSI crossing below 30",
+            "A second detector agreeing on the same ticker within 24 hours",
+        ],
+        "explanation": """<p>The <strong>Bear Pennant</strong> is the bearish mirror image of the Bull Pennant: the same sharp decline (the flagpole) followed by a short converging mini-triangle rather than a parallel channel, before the downtrend resumes. The shallow, narrowing consolidation reflects short-covering and bargain-hunting rather than a genuine change in direction — a decisive close back below the support line signals sellers have regained control.</p>
+<p>Detection mirrors the Bull Pennant exactly: the same pole test (a sharp decline exceeding the same time-scaled volatility threshold) and the same converging resistance/support test, but only a breakout below the support line — matching the pole's own downward direction — counts as confirmation.</p>
+<p>The same supporting signal applies: volume should decline through the consolidation. Once confirmed by a breakout below the support line, the measured-move target projects the flagpole's height downward from the breakout point.</p>""",
+    },
+    {
         "term_key": "ascending-triangle-pattern",
         "section_id": "strategies",
         "term_title": "📐 Ascending Triangle Pattern",
@@ -1302,6 +1332,36 @@ CARDS = [
         "explanation": """<p>A <strong>Symmetrical Triangle</strong> is complete market indecision: unlike the Ascending/Descending Triangle, neither side is flat — both buyers and sellers are lowering their thresholds at the same time, so resistance falls while support rises and the trading range squeezes together. Volatility compresses steadily as the pattern narrows, and because neither side is winning outright, a breakout in either direction is usually explosive once it comes.</p>
 <p>Pattern Detection fits the same two regression lines as Ascending/Descending Triangle — one through the swing highs, one through the swing lows — but requires the swing-high line to have a clearly negative slope and the swing-low line to have a clearly positive slope, both exceeding the same configurable minimum used by the other two Triangle variants. This is what distinguishes a genuine symmetrical triangle from a wedge (both lines sloping the same direction) or a widening range (the lines diverging instead of converging).</p>
 <p>Direction is genuinely unknown while the triangle is still forming, so it surfaces as FORMING with no bullish/bearish label yet — the same "direction-unknown-until-breakout" contract used by Volatility Squeeze and NR4/NR7 Narrow Range. Once price closes decisively past either line, it resolves to a directional breakout: above the falling resistance line for a bullish resolution, below the rising support line for a bearish one. Once confirmed, the measured-move target projects the triangle's own height (measured at the back of the lookback window, its widest point) from the breakout point.</p>""",
+    },
+    {
+        "term_key": "rising-wedge-pattern",
+        "section_id": "strategies",
+        "term_title": "📈 Rising Wedge Pattern",
+        "question": "What distinguishes a Rising Wedge from an Ascending Triangle?",
+        "answer": "Both the resistance and support lines slope upward in a Rising Wedge (resistance flat in an Ascending Triangle), with support rising distinctly faster than resistance",
+        "distractors": [
+            "A Rising Wedge requires a flat resistance line, just like an Ascending Triangle",
+            "A Rising Wedge only forms after a confirmed Bull Flag",
+            "A Rising Wedge has no support or resistance lines at all",
+        ],
+        "explanation": """<p>A <strong>Rising Wedge</strong> is a bearish signal that can mark either a terminal reversal or a continuation pause, depending where it forms — unlike Triangle or Flag, both boundary lines slope the same direction (upward) rather than one flat or one countertrend. Price is still making higher highs and higher lows, but the underlying momentum is failing: the rising support line climbs faster than the rising resistance line, so the two lines converge even though price is nominally still trending up.</p>
+<p>Pattern Detection fits a straight line through the swing highs (resistance) and another through the swing lows (support) over a trailing lookback window, exactly like Triangle. Both lines must slope upward and exceed a configurable minimum steepness — this is what separates a Rising Wedge from an Ascending Triangle, whose resistance line is required to be flat — and the support line's slope must exceed the resistance line's by at least a configurable minimum gap, confirming the lines are genuinely converging rather than running in a parallel channel (a Bull Flag).</p>
+<p>Because both lines are rising, a break of the rising support line is what confirms the pattern — a break to the downside despite the still-technically-upward-sloping floor. Once confirmed, the measured-move target projects the wedge's own height downward from the breakout point.</p>""",
+    },
+    {
+        "term_key": "falling-wedge-pattern",
+        "section_id": "strategies",
+        "term_title": "📉 Falling Wedge Pattern",
+        "question": "What confirms a Falling Wedge candidate detected by Pattern Detection?",
+        "answer": "A close above the falling resistance line, even though both lines still slope downward",
+        "distractors": [
+            "A close below the falling support line",
+            "The stock's RSI crossing above 70",
+            "A confirmed Head & Shoulders pattern on the same ticker",
+        ],
+        "explanation": """<p>The <strong>Falling Wedge</strong> is the bullish mirror image of the Rising Wedge: both the resistance and support lines slope downward, but the resistance line falls faster than the support line, so the two converge even though price is nominally still trending down. This reflects selling pressure exhausting — each new low fails to fall as far, relative to the shrinking range, as the highs are still dropping.</p>
+<p>Detection mirrors the Rising Wedge exactly with every rule inverted: both the resistance and support regression lines must slope downward past the same configurable minimum steepness (what separates it from a Descending Triangle, whose support line is required to be flat), and the resistance line's slope must be more negative than the support line's by at least the same configurable convergence gap.</p>
+<p>Confirmation is a break of the falling resistance line — an upside break despite the still-technically-downward-sloping ceiling. Once confirmed, the measured-move target projects the wedge's own height upward from the breakout point.</p>""",
     },
     {
         "term_key": "volatility-squeeze-pattern",
