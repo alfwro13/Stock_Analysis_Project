@@ -428,6 +428,12 @@ DEFAULT_CONFIG = {
             "WYCKOFF_BB_SQUEEZE_PCT": 2.0,
             "PROXY_TICKERS": ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
         },
+        "RISK_ORCHESTRATOR_ALERTS": {
+            "ENABLED": False,
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 5.0,
+            "REARM_PERCENT": 10.0
+        },
         "PATTERN_DETECTION_ALERTS": {
             "COOLDOWN_MINUTES": 120,
             "RETRIGGER_PERCENT": 3.0,

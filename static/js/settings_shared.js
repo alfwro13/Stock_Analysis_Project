@@ -424,6 +424,12 @@ async function saveSettings(silent = false) {
                 "RETRIGGER_PERCENT": parseFloat(document.getElementById('PAIRS_SPREAD_RETRIGGER').value),
                 "REARM_PERCENT": parseFloat(document.getElementById('PAIRS_SPREAD_REARM').value)
             },
+            "RISK_ORCHESTRATOR_ALERTS": {
+                "ENABLED": document.getElementById('RO_ALERTS_ENABLED').checked,
+                "COOLDOWN_MINUTES": parseFloat(document.getElementById('RO_ALERTS_COOLDOWN').value) || 120,
+                "RETRIGGER_PERCENT": parseFloat(document.getElementById('RO_ALERTS_RETRIGGER').value) || 5.0,
+                "REARM_PERCENT": parseFloat(document.getElementById('RO_ALERTS_REARM').value) || 10.0
+            },
             "PATTERN_DETECTION_ALERTS": {
                 "COOLDOWN_MINUTES": parseFloat(document.getElementById('PATTERN_DETECTION_COOLDOWN').value),
                 "RETRIGGER_PERCENT": parseFloat(document.getElementById('PATTERN_DETECTION_RETRIGGER').value),

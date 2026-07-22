@@ -18,8 +18,8 @@ DB tables: `portfolio_heat_index`, `ticker_risk_contribution`, `pretrade_check_l
 `atr_stop_history` (§7)
 
 Phase 1 (scoring + dashboard) shipped first; Pillar A (pre-trade gatekeeper, §6) shipped next;
-Pillar C1 (daily rollup, §7) shipped after that. Pillar C2 (critical escalations) remains
-deliberately out of scope — see `audit/risk_orchestrator_plan.md` for that follow-up plan.
+Pillar C1 (daily rollup, §7) and Pillar C2 (critical escalations, §8) shipped after that —
+the full plan in `audit/risk_orchestrator_plan.md` has now shipped in its entirety.
 
 ---
 
@@ -147,3 +147,36 @@ successful comparison always uses whatever two most-recent snapshots actually ex
 **Settings.** Same "Risk Orchestrator" card as above — a nested "Daily Rollup" panel with its own
 enable toggle and run time (`SCHEDULING.RISK_ORCHESTRATOR_DIGEST`), independent of the scan's own
 schedule.
+
+## 8. Critical Escalations (Pillar C2)
+
+Instant Nextcloud/in-app alerts for three computed severity conditions, each dispatched through
+`notification_engine.notify()` and deduplicated via the shared `IntradayOrchestrator._evaluate_alert_gate()`
+worsened/recovered/cooldown model (AGENTS.md rule 19) — **not** the static-threshold daily gate
+HoldingLimit/AI Contagion use, since PHI/correlation/stop-distance are all computed severity
+scores that can worsen or recover, not fixed user-set thresholds:
+
+1. **PHI Critical** (`risk_orchestrator_phi_critical`) — a scope's PHI tier reaches RED.
+2. **Correlation Spike** (`risk_orchestrator_correlation_spike`) — a scope's max pairwise
+   correlation tier reaches RED.
+3. **Stop Breach** (`risk_orchestrator_stop_breach`) — a held ticker's live price falls to or
+   through its `stock_signals.atr_stop_loss`.
+
+**Cadence.** PHI Critical and Correlation Spike are evaluated once daily, immediately after
+`risk_orchestrator_job`'s scan persists `portfolio_heat_index` — `scheduler_jobs._fire_risk_orchestrator_critical_alerts()`
+reads back every scope via `risk_orchestrator_engine.get_critical_scopes()` and fires per RED
+scope. Stop Breach runs on the existing 5-minute `intraday_orchestrator.py` scan loop, since a
+price can cross a stop far faster than the daily schedule — checked in the same per-ticker pass
+as `_check_holding_limits()`, for held tickers only (not Watchlist-only target rows).
+
+**Gate polarity.** `_evaluate_alert_gate()` needs a "worsening vs. recovery" direction per engine:
+`AtrStopBreach` mirrors Crash (falling further below the stop is worsening; rising back above it
+is recovery — `current_price` here is a real price). `PhiCritical`/`CorrelationSpike` mirror
+Moonshot (rising further is worsening; falling back is recovery — `current_price` here carries the
+PHI score / max-correlation value, not a price, the same substitution TrapMonitor already uses
+for `ema_distance`).
+
+**Settings.** One shared cooldown block, `NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS` (enable,
+cooldown minutes, retrigger %, rearm %), covers all three conditions — split into per-condition
+blocks only if real usage shows they need to diverge. Configured in the same "Risk Orchestrator"
+settings card as the PHI thresholds/weights above.
