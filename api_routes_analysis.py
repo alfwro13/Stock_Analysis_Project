@@ -189,6 +189,44 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
         return _error_500(e)
 
 
+@analysis_router.post("/risk-orchestrator/run")
+@limiter.limit("4/minute")
+async def run_risk_orchestrator(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Portfolio Heat Index scan in the background."""
+    try:
+        from scheduler_engine import run_risk_orchestrator_job
+        background_tasks.add_task(run_risk_orchestrator_job)
+        return JSONResponse(content={"status": "success", "message": "Risk Orchestrator scan triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Risk Orchestrator scan: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.get("/risk-orchestrator/status")
+@limiter.limit("30/minute")
+async def get_risk_orchestrator_status(request: Request):
+    """Returns every scope's latest Portfolio Heat Index plus all per-ticker risk contributions."""
+    conn = None
+    try:
+        conn = get_connection()
+        scopes = [dict(r) for r in conn.execute(
+            "SELECT * FROM portfolio_heat_index ORDER BY (scope != 'all'), scope_label"
+        ).fetchall()]
+        for s in scopes:
+            s["breakdown"] = json.loads(s["breakdown_json"]) if s.get("breakdown_json") else []
+            del s["breakdown_json"]
+        tickers = [dict(r) for r in conn.execute(
+            "SELECT * FROM ticker_risk_contribution ORDER BY risk_score DESC"
+        ).fetchall()]
+        return JSONResponse(content={"status": "success", "scopes": scopes, "tickers": tickers})
+    except Exception as e:
+        logger.error("Failed to load Risk Orchestrator status: %s", e)
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
 @analysis_router.get("/pairs-spread/results")
 @limiter.limit("20/minute")
 async def get_pairs_spread_results(

@@ -4365,4 +4365,43 @@ frontend logic.
 
 ---
 
+## 30. Portfolio Heat Index (Risk Orchestrator)
+
+Synthesizes portfolio VaR, max pairwise correlation, and max drawdown into a single 0-100
+Portfolio Heat Index (PHI) per account scope (`"all"` or `"acct:{id}"`), plus a per-ticker
+Risk Contribution tier for the combined `"all"` scope. Computed daily by the
+`risk_orchestrator_job` scheduler job (`risk_orchestrator_engine.py`); scoring math is
+otherwise read-only — see `assets/risk_orchestrator.md`.
+
+### `POST /api/risk-orchestrator/run`
+
+Triggers an immediate background Risk Orchestrator scan across every eligible scope.
+
+**Response:** `{"status": "success", "message": "Risk Orchestrator scan triggered."}`
+
+### `GET /api/risk-orchestrator/status`
+
+Returns every scope's latest Portfolio Heat Index row plus all per-ticker Risk Contribution rows.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "scopes": [
+    {"scope": "all", "scope_label": "All Accounts", "phi_score": 42.5, "tier": "YELLOW",
+     "var_pct_of_equity": 2.1, "var_tier": "YELLOW", "max_correlation": 0.6, "correlation_tier": "YELLOW",
+     "drawdown_pct": 3.0, "drawdown_tier": "GREEN", "breakdown": ["VaR (95%, 1d): 2.1% of equity (YELLOW)"],
+     "last_updated": "2026-07-22 19:15:00"}
+  ],
+  "tickers": [
+    {"ticker": "AAPL", "risk_score": 25.0, "risk_tier": "GREEN",
+     "marginal_var_contribution_pct": 12.0, "max_pairwise_correlation": 0.4, "stop_distance_pct": 8.5,
+     "last_updated": "2026-07-22 19:15:00"}
+  ]
+}
+```
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

@@ -253,6 +253,18 @@ DEFAULT_CONFIG = {
             "WATCH_THRESHOLD": 70,
             "FLAG_THRESHOLD": 85
         },
+        "RISK_ORCHESTRATOR": {
+            "ENABLED": False,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "19:15",
+            "WEIGHTS": {"VAR": 0.4, "CORRELATION": 0.3, "DRAWDOWN": 0.3},
+            "THRESHOLDS": {
+                "PHI_YELLOW": 40, "PHI_RED": 75,
+                "VAR_PCT_YELLOW": 2.0, "VAR_PCT_RED": 4.0,
+                "MAX_CORR_YELLOW": 0.5, "MAX_CORR_RED": 0.75,
+                "DRAWDOWN_PCT_YELLOW": 5.0, "DRAWDOWN_PCT_RED": 10.0
+            }
+        },
         "ALERT_REFEREE_TRAINING": {
             "ENABLED": False,
             "DAYS": ["sun"],

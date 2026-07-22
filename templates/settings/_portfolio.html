@@ -28,6 +28,100 @@
                 </div>
             </details>
 
+            <details class="settings-card" id="risk-orchestrator-card">
+                <summary>🌡️ Risk Orchestrator (Portfolio Heat Index)</summary>
+                <p class="settings-desc">
+                    Synthesizes portfolio VaR, max pairwise correlation, and max drawdown into a single
+                    0-100 <abbr title="Portfolio Heat Index — a composite risk score combining VaR, correlation, and drawdown into one 0-100 traffic-light reading.">Portfolio Heat Index (PHI)</abbr>
+                    per account scope, plus a per-ticker Risk Contribution tier. See <a href="/portfolio-heat-index">Portfolio Heat Index</a>.
+                </p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="RISK_ORCHESTRATOR_ENABLED" {% if config.SCHEDULING.RISK_ORCHESTRATOR.ENABLED %}checked{% endif %}>
+                    <label for="RISK_ORCHESTRATOR_ENABLED">Enable daily scan (Mon-Fri)</label>
+                </div>
+                <div class="form-group">
+                    <div class="form-group">
+                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <input type="time" id="RISK_ORCHESTRATOR_TIME" class="form-control"
+                            value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.TIME | default('19:15') }}">
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-outline-secondary" onclick="runRiskOrchestratorNow()">Run Now</button>
+                        <span id="risk-orchestrator-msg"></span>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">⚖️ Weights (must sum to 100%)</h4>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>VaR Weight %</label>
+                            <input type="number" id="RO_W_VAR" class="form-control"
+                                value="{{ (config.SCHEDULING.RISK_ORCHESTRATOR.WEIGHTS.VAR | default(0.4)) * 100 }}"
+                                min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Correlation Weight %</label>
+                            <input type="number" id="RO_W_CORR" class="form-control"
+                                value="{{ (config.SCHEDULING.RISK_ORCHESTRATOR.WEIGHTS.CORRELATION | default(0.3)) * 100 }}"
+                                min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Drawdown Weight %</label>
+                            <input type="number" id="RO_W_DD" class="form-control"
+                                value="{{ (config.SCHEDULING.RISK_ORCHESTRATOR.WEIGHTS.DRAWDOWN | default(0.3)) * 100 }}"
+                                min="0" max="100" step="5">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-amber">
+                    <h4 class="settings-panel-header text-amber">🚦 Thresholds</h4>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>PHI Yellow ≥</label>
+                            <input type="number" id="RO_T_PHI_YELLOW" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.PHI_YELLOW | default(40) }}" min="0" max="100">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>PHI Red ≥</label>
+                            <input type="number" id="RO_T_PHI_RED" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.PHI_RED | default(75) }}" min="0" max="100">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>VaR % Yellow ≥</label>
+                            <input type="number" id="RO_T_VAR_YELLOW" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.VAR_PCT_YELLOW | default(2.0) }}" min="0" max="100" step="0.1">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>VaR % Red ≥</label>
+                            <input type="number" id="RO_T_VAR_RED" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.VAR_PCT_RED | default(4.0) }}" min="0" max="100" step="0.1">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Max Corr Yellow ≥</label>
+                            <input type="number" id="RO_T_CORR_YELLOW" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.MAX_CORR_YELLOW | default(0.5) }}" min="0" max="1" step="0.05">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Max Corr Red ≥</label>
+                            <input type="number" id="RO_T_CORR_RED" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.MAX_CORR_RED | default(0.75) }}" min="0" max="1" step="0.05">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Drawdown % Yellow ≥</label>
+                            <input type="number" id="RO_T_DD_YELLOW" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.DRAWDOWN_PCT_YELLOW | default(5.0) }}" min="0" max="100" step="0.5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Drawdown % Red ≥</label>
+                            <input type="number" id="RO_T_DD_RED" class="form-control"
+                                value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.DRAWDOWN_PCT_RED | default(10.0) }}" min="0" max="100" step="0.5">
+                        </div>
+                    </div>
+                </div>
+            </details>
+
             <details class="settings-card">
                 <summary>🎯 X-Ray Allocation Targets</summary>
                 <p class="settings-desc">

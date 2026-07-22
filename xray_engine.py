@@ -1195,6 +1195,7 @@ def assemble_xray_report(account_id: str) -> Dict:
     portfolio_vol: Optional[float] = None
     var_95_1d: Optional[float] = None
     avg_pairwise_corr: Optional[float] = None
+    max_pairwise_corr: Optional[float] = None
 
     beta_pairs = [(h["weight"], h["beta"]) for h in holdings_sorted if h.get("beta") is not None]
     if beta_pairs:
@@ -1249,6 +1250,20 @@ def assemble_xray_report(account_id: str) -> Dict:
             ]
             if off_diag:
                 avg_pairwise_corr = round(float(np.mean(off_diag)), 3)
+                max_pairwise_corr = round(float(np.max(off_diag)), 3)
+
+            for i in active_indices:
+                sym = corr_tickers[i]
+                h_match = holdings_by_symbol.get(sym)
+                if h_match is None:
+                    continue
+                own_pairs = [
+                    corr_matrix[i][j] for j in active_indices
+                    if j != i and corr_matrix[i][j] is not None
+                ]
+                h_match["max_pairwise_correlation"] = round(float(np.max(own_pairs)), 3) if own_pairs else None
+        for h in holdings_sorted:
+            h.setdefault("max_pairwise_correlation", None)
 
     weighted_div_yield = round(
         sum(h["weight"] * (h.get("dividend_yield_pct") or 0) for h in holdings_sorted), 4
@@ -1379,6 +1394,7 @@ def assemble_xray_report(account_id: str) -> Dict:
             "dividend_yield_pct": h.get("dividend_yield_pct", 0.0),
             "dividend_income": h.get("dividend_income", 0.0),
             "marginal_risk_contribution": h.get("marginal_risk_contribution"),
+            "max_pairwise_correlation": h.get("max_pairwise_correlation"),
         }
         for h in holdings_sorted
     ]
@@ -1394,6 +1410,7 @@ def assemble_xray_report(account_id: str) -> Dict:
             "max_drawdown": max_drawdown,
             "sharpe_ratio": sharpe_ratio,
             "avg_pairwise_correlation": avg_pairwise_corr,
+            "max_pairwise_correlation": max_pairwise_corr,
         },
         concentration={
             "hhi": hhi,
@@ -1430,6 +1447,7 @@ def assemble_xray_report(account_id: str) -> Dict:
             "historical_var_95_1d": historical_var_95_1d,
             "cvar_95_1d": cvar_95_1d,
             "avg_pairwise_correlation": avg_pairwise_corr,
+            "max_pairwise_correlation": max_pairwise_corr,
             "tracking_error": tracking_error,
             "sharpe_ratio": sharpe_ratio,
             "calmar_ratio": calmar_ratio,

@@ -1548,6 +1548,35 @@ CARDS = [
 <p>Practically: a stock with VaR=10% and CVaR=11% has a smooth tail — bad days are all similar severity. A stock with VaR=10% and CVaR=25% has a fat, lumpy tail — most bad days are okay but occasionally there is a violent crash. Same VaR, very different risk profiles.</p>""",
     },
     {
+        "term_key": "portfolio-heat-index-phi",
+        "section_id": "machine-learning",
+        "term_title": "Portfolio Heat Index (PHI)",
+        "question": "What does the Portfolio Heat Index (PHI) combine into its single 0-100 score?",
+        "answer": "Normalized VaR, max pairwise correlation, and max drawdown, combined via configurable weights",
+        "distractors": [
+            "Only the single worst-performing holding's return",
+            "The total number of holdings in the portfolio",
+            "A simple average of every holding's ML Confidence Score",
+        ],
+        "explanation": """<p>Individual risk metrics — VaR, correlation, drawdown — are useful on their own, but nobody wants to check three separate numbers every morning to answer one question: "is my whole portfolio running too hot right now?" The <strong>Portfolio Heat Index (PHI)</strong> answers that question with a single 0–100 score, computed per account (and for every account combined), that synthesizes three inputs into one traffic-light reading.</p>
+<p>Each input — 1-day 95% <abbr title="Value at Risk">VaR</abbr> as a percentage of that scope's equity, the highest pairwise correlation among current holdings, and the portfolio's maximum drawdown — is first normalized to its own 0–100 sub-score against configurable Yellow/Red thresholds, then combined into the PHI using configurable weights (default: 40% VaR, 30% correlation, 30% drawdown).</p>
+<p>A dedicated Risk Orchestrator scan computes and stores the PHI for every scope daily; see the Portfolio Heat Index report for the full per-scope breakdown.</p>""",
+    },
+    {
+        "term_key": "ticker-risk-contribution",
+        "section_id": "machine-learning",
+        "term_title": "Ticker Risk Contribution",
+        "question": "What does a ticker's Risk Contribution tier measure?",
+        "answer": "That specific holding's share of marginal VaR, its correlation with other holdings, and its distance from its own ATR stop-loss",
+        "distractors": [
+            "The ticker's total market capitalization relative to the S&P 500",
+            "Whether the ticker pays a dividend",
+            "The ticker's ML Confidence Score alone",
+        ],
+        "explanation": """<p>The Portfolio Heat Index answers "how hot is my whole book?" — <strong>Ticker Risk Contribution</strong> answers the follow-up question: "which specific holding is driving that heat?" Every actively held ticker gets its own Green/Yellow/Red tier, shown as the Portfolio page's "Heat Index" column and on that ticker's own Stock Detail page.</p>
+<p>The tier is built from three ticker-level inputs, normalized and weighted the same way as the Portfolio Heat Index itself: this ticker's share of total portfolio VaR (from the same Euler/marginal risk decomposition used by the Portfolio X-ray), its own highest pairwise correlation with any other current holding, and how close its current price sits to its dynamic <abbr title="Average True Range — the average daily price swing over 14 days, used to calibrate stop-loss distance.">ATR</abbr> stop-loss.</p>""",
+    },
+    {
         "term_key": "vader-sentiment-score",
         "section_id": "machine-learning",
         "term_title": "VADER Sentiment Score",

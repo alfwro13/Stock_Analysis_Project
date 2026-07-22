@@ -46,6 +46,25 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Portfolio Heat Index (PHI)</span>
+                <p>Individual risk metrics — VaR, correlation, drawdown — are useful on their own, but nobody wants to check three separate numbers every morning to answer one question: "is my whole portfolio running too hot right now?" The <strong>Portfolio Heat Index (PHI)</strong> answers that question with a single 0–100 score, computed per account (and for every account combined), that synthesizes three inputs into one traffic-light reading.</p>
+                <p>Each input — 1-day 95% <abbr title="Value at Risk">VaR</abbr> as a percentage of that scope's equity, the highest pairwise correlation among current holdings, and the portfolio's maximum drawdown — is first normalized to its own 0–100 sub-score against configurable Yellow/Red thresholds, then combined into the PHI using configurable weights (default: 40% VaR, 30% correlation, 30% drawdown).</p>
+                <ul>
+                    <li><strong>Green (&lt; 40):</strong> Risk is within normal bounds across all three inputs.</li>
+                    <li><strong>Yellow (40–75):</strong> At least one input is elevated — worth a closer look before adding more risk.</li>
+                    <li><strong>Red (&gt; 75):</strong> Risk is stretched. New BUY-flavored signals are flagged with a "Risk Paused" warning badge across the Portfolio, Watchlist, and Stock Detail pages until the reading cools — a visual warning only, since this app never executes trades automatically.</li>
+                </ul>
+                <p>A dedicated Risk Orchestrator scan computes and stores the PHI for every scope daily; see the <a href="/portfolio-heat-index">Portfolio Heat Index report</a> for the full per-scope breakdown.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Ticker Risk Contribution</span>
+                <p>The Portfolio Heat Index answers "how hot is my whole book?" — <strong>Ticker Risk Contribution</strong> answers the follow-up question: "which specific holding is driving that heat?" Every actively held ticker gets its own Green/Yellow/Red tier, shown as the Portfolio page's "Heat Index" column and on that ticker's own Stock Detail page.</p>
+                <p>The tier is built from three ticker-level inputs, normalized and weighted the same way as the Portfolio Heat Index itself: this ticker's share of total portfolio VaR (from the same Euler/marginal risk decomposition used by the Portfolio X-ray), its own highest pairwise correlation with any other current holding, and how close its current price sits to its dynamic <abbr title="Average True Range — the average daily price swing over 14 days, used to calibrate stop-loss distance.">ATR</abbr> stop-loss.</p>
+                <div class="rule">A Red Risk Contribution tier means this specific position is the main thing pushing your overall Portfolio Heat Index higher — worth checking before adding to it further.</div>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">VADER Sentiment Score</span>
                 <p><strong>VADER</strong> (Valence Aware Dictionary and sEntiment Reasoner) is a rule-based Natural Language Processing (NLP) model originally designed for social media text. It reads news headlines and short article summaries and outputs a sentiment score ranging from <strong>−1.0</strong> (extremely negative/fearful) to <strong>+1.0</strong> (extremely positive/euphoric), with 0 being completely neutral.</p>
                 <p>Unlike machine learning models that need training data, VADER works from a carefully curated lexicon of financial and general language words, each pre-assigned a sentiment strength. Words like "surge", "beat", "record", and "buyback" push the score positive. Words like "crash", "miss", "investigation", "downgrade", and "layoffs" push it negative. It also handles punctuation (!!!) and capitalization (CRASH) as intensity amplifiers.</p>

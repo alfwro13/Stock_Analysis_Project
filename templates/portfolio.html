@@ -64,9 +64,10 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
 </div>
 {% endif %}
 
-{% if macro_regime %}
+{% if macro_regime or portfolio_heat %}
 <div class="sentiment-widgets">
-    {% include 'partials/risk_summary.html' %}
+    {% if macro_regime %}{% include 'partials/risk_summary.html' %}{% endif %}
+    {% if portfolio_heat %}{% include 'partials/portfolio_heat_widget.html' %}{% endif %}
 </div>
 {% endif %}
 
@@ -386,7 +387,7 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
 
                 {{ pattern_tags(item.pattern_tags) }}
             </td>
-            <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+            <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}{% if risk_paused and 'BUY' in (item.overall_signal or '') %} <abbr class="badge-warn" title="Portfolio Heat Index is Red — new buy signals are flagged for extra caution until risk cools down.">RISK PAUSED</abbr>{% endif %}</td>
             {% for col in item.optional_cols %}
                 {% if col.client %}
                 {% if col.key == 'position_value' %}

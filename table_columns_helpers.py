@@ -122,6 +122,7 @@ OPTIONAL_COLUMNS = [
 
     # Scores
     {"key": "quality_grade", "label": "Quality Grade", "category": "Scores", "pages": _BOTH, "fmt": "text"},
+    {"key": "heat_index", "label": "Heat Index", "category": "Risk (X-ray)", "pages": ("portfolio",), "fmt": "text"},
 
     # Portfolio parity gaps (Watchlist already shows these as core columns)
     {"key": "target_price", "label": "Target Price", "category": "Targets", "pages": ("portfolio",), "fmt": "price"},
