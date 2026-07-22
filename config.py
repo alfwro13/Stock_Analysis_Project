@@ -300,6 +300,12 @@ DEFAULT_CONFIG = {
             "MOMENTUM_DIVERGENCE": {
                 "BULLISH_ENABLED": True,
                 "BEARISH_ENABLED": True
+            },
+            "CANDLESTICK_TRIGGER": {
+                "ENGULFING_ENABLED": True,
+                "PIN_BAR_ENABLED": True,
+                "BULLISH_ENABLED": True,
+                "BEARISH_ENABLED": True
             }
         },
         "FORENSIC_QUARTERLY_FETCH": {
@@ -454,6 +460,15 @@ DEFAULT_CONFIG = {
             "MOMENTUM_DIVERGENCE": {
                 "MIN_PRICE_CHANGE_PCT": 1.0,
                 "MIN_RSI_GAP": 3.0,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5
+            },
+            "CANDLESTICK_TRIGGER": {
+                "RSI_OVERSOLD": 30.0,
+                "RSI_OVERBOUGHT": 70.0,
+                "BB_WINDOW_DAYS": 20,
+                "BB_NUM_STD": 2.0,
+                "WICK_MULTIPLIER": 2.0,
+                "OPPOSITE_WICK_MAX_PCT": 0.2,
                 "VOLUME_CONFIRM_MULTIPLIER": 1.5
             }
         },

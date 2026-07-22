@@ -24,6 +24,10 @@ const PD_PATTERN_TYPE_LABELS = {
     parabolic_stretch_oversold: 'Parabolic Stretch (Oversold)',
     bearish_divergence: 'Bearish Divergence',
     bullish_divergence: 'Bullish Divergence',
+    bullish_engulfing: 'Bullish Engulfing',
+    bearish_engulfing: 'Bearish Engulfing',
+    hammer: 'Hammer',
+    shooting_star: 'Shooting Star',
 };
 const PD_PATTERN_COLORS = {
     regular: '#ff4d4d',
@@ -47,6 +51,10 @@ const PD_PATTERN_COLORS = {
     parabolic_stretch_oversold: '#2ecc71',
     bearish_divergence: '#ff7043',
     bullish_divergence: '#26a69a',
+    bullish_engulfing: '#00e676',
+    bearish_engulfing: '#ff1744',
+    hammer: '#69f0ae',
+    shooting_star: '#ff8a80',
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 
@@ -75,6 +83,10 @@ const PD_PATTERN_EXPLANATIONS = {
     parabolic_stretch_oversold: "A Parabolic Stretch (Oversold) is the mirror image: price has closed unusually far below its 200-day average. It suggests a sharp decline has overshot, and the stock is statistically due for a bounce back toward the average.",
     bearish_divergence: "A Bearish Divergence forms when price makes a new high but the RSI momentum indicator makes a lower high over the same two points. It suggests the rally is running out of steam even though price is still climbing, and is often an early warning ahead of a reversal.",
     bullish_divergence: "A Bullish Divergence forms when price makes a new low but the RSI momentum indicator makes a higher low over the same two points. It suggests selling pressure is fading even though price is still falling, and is often an early warning ahead of a reversal.",
+    bullish_engulfing: "A Bullish Engulfing candle forms when a bullish candle's body completely swallows the prior bearish candle's body, and only counts here when it happens near a price extreme (below the lower Bollinger Band or RSI oversold). It's used as a strict, one-bar confirmation trigger — e.g. to confirm a Double Bottom — rather than a standalone structural signal.",
+    bearish_engulfing: "A Bearish Engulfing candle forms when a bearish candle's body completely swallows the prior bullish candle's body, and only counts here when it happens near a price extreme (above the upper Bollinger Band or RSI overbought). It's used as a strict, one-bar confirmation trigger rather than a standalone structural signal.",
+    hammer: "A Hammer is a single candle with a small body near the top of its range and a lower rejection wick at least twice the size of the body, with a negligible upper wick, and only counts here near a price extreme (below the lower Bollinger Band or RSI oversold). It suggests sellers pushed the price down intraday but buyers aggressively rejected it.",
+    shooting_star: "A Shooting Star is a single candle with a small body near the bottom of its range and an upper rejection wick at least twice the size of the body, with a negligible lower wick, and only counts here near a price extreme (above the upper Bollinger Band or RSI overbought). It suggests buyers pushed the price up intraday but sellers aggressively rejected it.",
 };
 
 let _pdSeries = null;

@@ -10,6 +10,7 @@ const PATTERN_FAMILY_LABELS = {
     narrow_range: 'Narrow Range (NR4/NR7)',
     parabolic_stretch: 'Parabolic Stretch',
     momentum_divergence: 'Bullish / Bearish Divergence',
+    candlestick_trigger: 'Candlestick Trigger',
 };
 const PATTERN_TYPE_LABELS = {
     regular: 'Head & Shoulders',
@@ -33,6 +34,10 @@ const PATTERN_TYPE_LABELS = {
     parabolic_stretch_oversold: 'Parabolic Stretch (Oversold)',
     bearish_divergence: 'Bearish Divergence',
     bullish_divergence: 'Bullish Divergence',
+    bullish_engulfing: 'Bullish Engulfing',
+    bearish_engulfing: 'Bearish Engulfing',
+    hammer: 'Hammer',
+    shooting_star: 'Shooting Star',
 };
 
 function _pdFamilyLabel(family) {

@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
+import candlestick_trigger_engine
 import double_top_bottom_engine
 import flag_engine
 import head_shoulders_engine
@@ -51,6 +52,7 @@ class TestRegistry:
         assert DETECTORS["narrow_range"] is narrow_range_engine
         assert DETECTORS["parabolic_stretch"] is parabolic_stretch_engine
         assert DETECTORS["momentum_divergence"] is momentum_divergence_engine
+        assert DETECTORS["candlestick_trigger"] is candlestick_trigger_engine
 
 
 class TestGetTickerList:
@@ -190,6 +192,87 @@ class TestSaveResults:
             conn.close()
             self._cleanup("PDTST6")
         assert count == 2
+
+
+class TestStaleRowCleanup:
+    """A family that ran cleanly but no longer finds the previously-flagged candidate must have
+    its stored row cleared, not left showing as 'active' forever — required for single-bar
+    families like candlestick_trigger to ever stop reporting a trigger the day after it fires."""
+
+    def setup_method(self):
+        self.engine = PatternDetectionEngine(_CFG)
+
+    def _cleanup(self, ticker: str):
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM pattern_detection_results WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_save_results_deletes_stale_row(self):
+        ticker = "PDSTALE1"
+        self.engine._save_results([TestSaveResults._row(ticker, family="head_shoulders")])
+        conn = db.get_connection()
+        try:
+            before = conn.execute(
+                "SELECT COUNT(*) FROM pattern_detection_results WHERE ticker = ?", (ticker,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert before == 1
+
+        self.engine._save_results([], [(ticker, "head_shoulders")])
+        conn = db.get_connection()
+        try:
+            after = conn.execute(
+                "SELECT COUNT(*) FROM pattern_detection_results WHERE ticker = ?", (ticker,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+            self._cleanup(ticker)
+        assert after == 0
+
+    @staticmethod
+    def _flat_df(n: int = 65) -> pd.DataFrame:
+        close = np.linspace(100.0, 90.0, n)
+        idx = pd.date_range("2024-01-01", periods=n, freq="B")
+        return pd.DataFrame({
+            "Open": close, "High": close + 0.5, "Low": close - 0.5,
+            "Close": close, "Volume": np.full(n, 1_000_000.0),
+        }, index=idx)
+
+    def test_analyse_ticker_reports_stale_for_families_returning_none(self):
+        results, stale = self.engine._analyse_ticker("PDSTALE2", self._flat_df())
+        stale_families = {f for _, f in stale}
+        # A bland, unremarkable linear series shouldn't qualify any registered family, so every
+        # one should be reported stale and nothing should error.
+        assert stale_families == set(DETECTORS.keys())
+        assert results == []
+
+    def test_analyse_ticker_excludes_family_that_raised(self):
+        with patch.object(head_shoulders_engine, "detect", side_effect=RuntimeError("boom")):
+            results, stale = self.engine._analyse_ticker("PDSTALE3", self._flat_df())
+        stale_families = {f for _, f in stale}
+        assert "head_shoulders" not in stale_families
+
+    def test_run_scan_clears_stale_row_end_to_end(self):
+        ticker = "PDSTALE4"
+        self.engine._save_results([TestSaveResults._row(ticker, family="head_shoulders")])
+        try:
+            with patch.object(self.engine, "_get_ticker_list", return_value=[ticker]), \
+                 patch.object(self.engine, "_load_history", return_value=self._flat_df()):
+                self.engine.run_scan()
+            conn = db.get_connection()
+            try:
+                after = conn.execute(
+                    "SELECT COUNT(*) FROM pattern_detection_results WHERE ticker = ?", (ticker,)
+                ).fetchone()[0]
+            finally:
+                conn.close()
+            assert after == 0
+        finally:
+            self._cleanup(ticker)
 
 
 class TestFillPatternOutcomes:

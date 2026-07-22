@@ -167,6 +167,8 @@ class PatternFamilyScheduleConfig(BaseModel):
     BEARISH_ENABLED: Optional[bool] = None
     OVERBOUGHT_ENABLED: Optional[bool] = None
     OVERSOLD_ENABLED: Optional[bool] = None
+    ENGULFING_ENABLED: Optional[bool] = None
+    PIN_BAR_ENABLED: Optional[bool] = None
 
 class PatternDetectionScheduleConfig(BaseModel):
     ENABLED: Optional[bool] = None
@@ -182,6 +184,7 @@ class PatternDetectionScheduleConfig(BaseModel):
     NARROW_RANGE: Optional[PatternFamilyScheduleConfig] = None
     PARABOLIC_STRETCH: Optional[PatternFamilyScheduleConfig] = None
     MOMENTUM_DIVERGENCE: Optional[PatternFamilyScheduleConfig] = None
+    CANDLESTICK_TRIGGER: Optional[PatternFamilyScheduleConfig] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -275,6 +278,12 @@ class PatternFamilyAlertConfig(BaseModel):
     CONFIRM_Z_THRESHOLD: Optional[float] = None
     MIN_PRICE_CHANGE_PCT: Optional[float] = None
     MIN_RSI_GAP: Optional[float] = None
+    RSI_OVERSOLD: Optional[float] = None
+    RSI_OVERBOUGHT: Optional[float] = None
+    BB_WINDOW_DAYS: Optional[int] = None
+    BB_NUM_STD: Optional[float] = None
+    WICK_MULTIPLIER: Optional[float] = None
+    OPPOSITE_WICK_MAX_PCT: Optional[float] = None
 
 class PatternDetectionAlertConfig(BaseModel):
     COOLDOWN_MINUTES: Optional[float] = None
@@ -288,6 +297,7 @@ class PatternDetectionAlertConfig(BaseModel):
     NARROW_RANGE: Optional[PatternFamilyAlertConfig] = None
     PARABOLIC_STRETCH: Optional[PatternFamilyAlertConfig] = None
     MOMENTUM_DIVERGENCE: Optional[PatternFamilyAlertConfig] = None
+    CANDLESTICK_TRIGGER: Optional[PatternFamilyAlertConfig] = None
 
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None

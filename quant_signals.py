@@ -11,6 +11,9 @@ import ta
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection, log_score_event
 from fundamentals_helpers import calculate_peter_lynch_peg
+from pattern_geometry_helpers import (
+    candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
+)
 from utils import safe_ticker_filename
 from constants import (
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
@@ -26,13 +29,14 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
     """Pattern recognition engine; patterns are non-exclusive to allow signal confluence."""
     patterns: List[Dict[str, Any]] = []
 
-    curr_body = abs(curr['Open'] - curr['Close'])
-    curr_body_safe = max(curr_body, 0.001) 
-    curr_range = max(curr['High'] - curr['Low'], 0.001) 
-    curr_upper_wick = curr['High'] - max(curr['Open'], curr['Close'])
-    curr_lower_wick = min(curr['Open'], curr['Close']) - curr['Low']
-    curr_is_bullish = bool(curr['Close'] > curr['Open'])
-    curr_is_bearish = bool(curr['Close'] < curr['Open'])
+    curr_metrics = candle_body_wick_metrics(curr['Open'], curr['High'], curr['Low'], curr['Close'])
+    curr_body = curr_metrics["body"]
+    curr_body_safe = curr_metrics["body_safe"]
+    curr_range = curr_metrics["range"]
+    curr_upper_wick = curr_metrics["upper_wick"]
+    curr_lower_wick = curr_metrics["lower_wick"]
+    curr_is_bullish = curr_metrics["is_bullish"]
+    curr_is_bearish = curr_metrics["is_bearish"]
 
     prev1_body = abs(prev1['Open'] - prev1['Close'])
     prev1_range = max(prev1['High'] - prev1['Low'], 0.001)
@@ -86,7 +90,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
     harami_cross_detected = False
 
 
-    if prev1_is_bearish and curr_is_bullish and (curr['Open'] <= prev1['Close']) and (curr['Close'] >= prev1['Open']):
+    if is_bullish_engulfing(prev1['Open'], prev1['Close'], curr['Open'], curr['Close']):
         patterns.append({
             "name": "🐂 Bullish Engulfing",
             "tooltip": "Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body. Signals a potential reversal to the upside.",
@@ -94,7 +98,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 15
         })
 
-    if prev1_is_bullish and curr_is_bearish and (curr['Open'] >= prev1['Close']) and (curr['Close'] <= prev1['Open']):
+    if is_bearish_engulfing(prev1['Open'], prev1['Close'], curr['Open'], curr['Close']):
         patterns.append({
             "name": "🐻 Bearish Engulfing",
             "tooltip": "Sellers took total control. The current red body fully engulfed the previous green body. A stark warning signal of impending downside.",
@@ -141,7 +145,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 10
         })
 
-    if curr_lower_wick >= (2.0 * curr_body_safe) and curr_upper_wick <= (0.2 * curr_range):
+    if is_hammer(curr_upper_wick, curr_lower_wick, curr_body_safe, curr_range):
         patterns.append({
             "name": "🔨 Hammer Rejection",
             "tooltip": "Sellers tried to crash the price intraday, but institutional buyers violently rejected it and bought the dip. Indicates strong underlying support.",
@@ -149,7 +153,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 10
         })
 
-    elif curr_upper_wick >= (2.0 * curr_body_safe) and curr_lower_wick <= (0.2 * curr_range):
+    elif is_shooting_star(curr_upper_wick, curr_lower_wick, curr_body_safe, curr_range):
         patterns.append({
             "name": "🌠 Shooting Star",
             "tooltip": "Retail buyers tried to push the price up, but institutional sellers aggressively dumped shares into the rally. Momentum is fading.",
