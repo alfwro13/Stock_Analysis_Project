@@ -479,7 +479,8 @@ CARDS = [
         ],
         "explanation": """<p>The Hammer is a single-candle pattern with a small body near the top of its range and a lower wick at least twice the length of the body. It appears after a decline. The interpretation: at some point during the session, sellers took control and drove the price significantly lower — but then buyers overwhelmed them and pushed the price back up to near the open. This intraday rejection of the lows is a real-time signal that demand is entering at these prices.</p>
 <p>A Hammer is more significant when: (1) it appears after a multi-day downtrend, not a random single-day dip; (2) the volume on the Hammer day is above average, confirming the buying was genuine and broad; (3) the next day opens and closes above the Hammer's body, providing follow-through confirmation. A Hammer with no volume and no follow-through is much weaker.</p>
-<p>The <strong>Inverted Hammer</strong> is the mirror image — small body at the bottom, long upper wick — and carries similar but slightly weaker bullish implications when it appears after a decline.</p>""",
+<p>The <strong>Inverted Hammer</strong> is the mirror image — small body at the bottom, long upper wick — and carries similar but slightly weaker bullish implications when it appears after a decline.</p>
+<p>The Pattern Detection tool's <strong>Micro-Structure Candlestick Trigger</strong> family scans for this shape automatically, but only counts it as a signal when it appears near a genuine extreme — price below the lower Bollinger Band, or RSI oversold — rather than flagging the geometry alone wherever it happens to occur. It's used as a strict, single-bar confirmation trigger (e.g. to confirm a Double Bottom), not as standalone structural analysis.</p>""",
         "candle_html": """<div class="candle-display">
                     <div class="candle-group">
                         <div class="candle">
@@ -503,7 +504,8 @@ CARDS = [
         ],
         "explanation": """<p>The <strong>Bullish Engulfing</strong> is a two-candle pattern. Day 1 is a red (bearish) candle continuing the existing downtrend. Day 2 opens <em>below</em> Day 1's close (a gap down, making the opening look even weaker), then reverses so powerfully that it closes <em>above</em> Day 1's open — the green body "engulfs" the entire red body.</p>
 <p>This pattern is powerful because of what it reveals about the balance of buyers and sellers. Day 1 shows sellers in control. Day 2 opens even lower, suggesting sellers are still pressing the advantage — but then buyers reverse the entire move and add more. The sellers who aggressively pushed it down on both days are now trapped in losing short positions, and many of them will cover (buy) when it keeps rising, adding fuel to the rally.</p>
-<p>Strength factors: the larger the engulfing body relative to Day 1, the more powerful the reversal signal. Volume should be significantly higher on Day 2 than Day 1. The pattern is most significant at a well-established support level, a Bollinger Band lower boundary, or after a long declining trend.</p>""",
+<p>Strength factors: the larger the engulfing body relative to Day 1, the more powerful the reversal signal. Volume should be significantly higher on Day 2 than Day 1. The pattern is most significant at a well-established support level, a Bollinger Band lower boundary, or after a long declining trend.</p>
+<p>The Pattern Detection tool's <strong>Micro-Structure Candlestick Trigger</strong> family scans for this shape automatically, but only counts it as a signal when it appears near a genuine extreme — price below the lower Bollinger Band, or RSI oversold — rather than flagging the geometry alone wherever it happens to occur. It's used as a strict, single-bar confirmation trigger (e.g. to confirm a Double Bottom), not as standalone structural analysis.</p>""",
         "candle_html": """<div class="candle-display">
                     <div class="candle-group">
                         <div class="candle">
@@ -516,6 +518,59 @@ CARDS = [
                         </div>
                     </div>
                     <div class="candle-explanation">Day 2's green body completely swallows Day 1's red body — buyers so aggressively overwhelmed sellers that they erased the prior day's entire decline and more.</div>
+                </div>""",
+    },
+    {
+        "term_key": "bearish-engulfing",
+        "section_id": "candlesticks",
+        "term_title": "🐻 Bearish Engulfing",
+        "question": "What defines a Bearish Engulfing pattern?",
+        "answer": "Day 2's red body completely swallows Day 1's green body after opening higher",
+        "distractors": [
+            "Two consecutive candles of identical size and colour",
+            "A single candle with a very long lower wick and small body",
+            "Day 2 gaps down and closes without any wicks at all",
+        ],
+        "explanation": """<p>The <strong>Bearish Engulfing</strong> is the mirror image of the Bullish Engulfing. Day 1 is a green (bullish) candle continuing the existing uptrend. Day 2 opens <em>above</em> Day 1's close (a gap up, making the opening look even stronger), then reverses so powerfully that it closes <em>below</em> Day 1's open — the red body "engulfs" the entire green body.</p>
+<p>The logic mirrors the bullish version: Day 1 shows buyers in control, Day 2 opens even higher suggesting the advance is continuing — but then sellers reverse the entire move and add more. Traders who bought the gap-up on Day 2 are now trapped in losing long positions, and many will sell as the price keeps falling, adding fuel to the decline.</p>
+<p>Strength factors mirror the bullish version: the larger the engulfing body relative to Day 1, the more powerful the signal, and volume should be significantly higher on Day 2. The pattern is most significant at a well-established resistance level, a Bollinger Band upper boundary, or after a long advancing trend.</p>
+<p>The Pattern Detection tool's <strong>Micro-Structure Candlestick Trigger</strong> family scans for this shape automatically, but only counts it as a signal when it appears near a genuine extreme — price above the upper Bollinger Band, or RSI overbought — rather than flagging the geometry alone wherever it happens to occur. It's used as a strict, single-bar confirmation trigger, not as standalone structural analysis.</p>""",
+        "candle_html": """<div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick h-60 t-20"></div>
+                            <div class="body-green h-40 t-30"></div>
+                        </div>
+                        <div class="candle">
+                            <div class="wick h-100 t-0"></div>
+                            <div class="body-red h-80 t-10"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">Day 2's red body completely swallows Day 1's green body — sellers so aggressively overwhelmed buyers that they erased the prior day's entire advance and more.</div>
+                </div>""",
+    },
+    {
+        "term_key": "shooting-star-bearish-rejection",
+        "section_id": "candlesticks",
+        "term_title": "🌠 Shooting Star (Bearish Rejection)",
+        "question": "What makes a Shooting Star pattern more significant?",
+        "answer": "It appears after a multi-day uptrend, with above-average volume and next-day follow-through below its body",
+        "distractors": [
+            "It appears in the middle of a sideways, rangebound market with no trend",
+            "It has a long lower wick and a small body near the top of its range",
+            "It occurs on unusually low trading volume with no confirmation needed",
+        ],
+        "explanation": """<p>The <strong>Shooting Star</strong> is the bearish mirror of the Hammer: a single-candle pattern with a small body near the bottom of its range and an upper wick at least twice the length of the body. It appears after an advance. The interpretation: at some point during the session, buyers took control and drove the price significantly higher — but then sellers overwhelmed them and pushed the price back down to near the open. This intraday rejection of the highs is a real-time signal that supply is entering at these prices.</p>
+<p>A Shooting Star is more significant when: (1) it appears after a multi-day uptrend, not a random single-day spike; (2) the volume on the day is above average, confirming the selling was genuine and broad; (3) the next day opens and closes below the Shooting Star's body, providing follow-through confirmation. A Shooting Star with no volume and no follow-through is much weaker.</p>
+<p>The Pattern Detection tool's <strong>Micro-Structure Candlestick Trigger</strong> family scans for this shape automatically, but only counts it as a signal when it appears near a genuine extreme — price above the upper Bollinger Band, or RSI overbought — rather than flagging the geometry alone wherever it happens to occur. It's used as a strict, single-bar confirmation trigger, not as standalone structural analysis.</p>""",
+        "candle_html": """<div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick h-100 t-0"></div>
+                            <div class="body-red h-30 t-70"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">Buyers drove price up hard during the session, but institutional sellers rejected the highs and pushed it back down before the close. The tiny body near the bottom and long upper wick is the rejection signal.</div>
                 </div>""",
     },
     {

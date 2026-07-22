@@ -23,6 +23,11 @@ from pattern_geometry_helpers import (
     rsi_divergence,
     linreg,
     slope_pct_per_day,
+    candle_body_wick_metrics,
+    is_bullish_engulfing,
+    is_bearish_engulfing,
+    is_hammer,
+    is_shooting_star,
 )
 
 
@@ -181,3 +186,55 @@ class TestSlopePctPerDay:
     def test_zero_or_negative_reference_price_returns_zero(self):
         assert slope_pct_per_day(1.0, 0.0) == 0.0
         assert slope_pct_per_day(1.0, -50.0) == 0.0
+
+
+class TestCandleBodyWickMetrics:
+    def test_bullish_candle_with_both_wicks(self):
+        m = candle_body_wick_metrics(open_=10.0, high=12.0, low=9.0, close=11.0)
+        assert m["body"] == pytest.approx(1.0)
+        assert m["range"] == pytest.approx(3.0)
+        assert m["upper_wick"] == pytest.approx(1.0)
+        assert m["lower_wick"] == pytest.approx(1.0)
+        assert m["is_bullish"] is True
+        assert m["is_bearish"] is False
+
+    def test_zero_body_and_range_are_floored(self):
+        m = candle_body_wick_metrics(open_=10.0, high=10.0, low=10.0, close=10.0)
+        assert m["body_safe"] >= 0.001
+        assert m["range"] >= 0.001
+
+
+class TestEngulfing:
+    def test_bullish_engulfing_true(self):
+        # Prior bearish (10 -> 8), current bullish and fully containing it (7 -> 11).
+        assert is_bullish_engulfing(prev_open=10.0, prev_close=8.0, curr_open=7.0, curr_close=11.0) is True
+
+    def test_bullish_engulfing_false_when_prior_not_bearish(self):
+        # Containment inequalities alone hold, but the prior candle is bullish, not bearish.
+        assert is_bullish_engulfing(prev_open=8.0, prev_close=10.0, curr_open=7.0, curr_close=11.0) is False
+
+    def test_bullish_engulfing_false_when_containment_fails(self):
+        assert is_bullish_engulfing(prev_open=10.0, prev_close=8.0, curr_open=8.5, curr_close=9.5) is False
+
+    def test_bearish_engulfing_true(self):
+        assert is_bearish_engulfing(prev_open=8.0, prev_close=10.0, curr_open=11.0, curr_close=7.0) is True
+
+    def test_bearish_engulfing_false_when_prior_not_bullish(self):
+        assert is_bearish_engulfing(prev_open=10.0, prev_close=8.0, curr_open=11.0, curr_close=7.0) is False
+
+
+class TestPinBars:
+    def test_hammer_true(self):
+        assert is_hammer(upper_wick=0.1, lower_wick=2.5, body_safe=1.0, rng=3.0) is True
+
+    def test_hammer_false_when_wick_too_short(self):
+        assert is_hammer(upper_wick=0.1, lower_wick=1.5, body_safe=1.0, rng=3.0) is False
+
+    def test_hammer_false_when_opposite_wick_not_negligible(self):
+        assert is_hammer(upper_wick=1.0, lower_wick=2.5, body_safe=1.0, rng=3.0) is False
+
+    def test_shooting_star_true(self):
+        assert is_shooting_star(upper_wick=2.5, lower_wick=0.1, body_safe=1.0, rng=3.0) is True
+
+    def test_shooting_star_false_when_wick_too_short(self):
+        assert is_shooting_star(upper_wick=1.5, lower_wick=0.1, body_safe=1.0, rng=3.0) is False

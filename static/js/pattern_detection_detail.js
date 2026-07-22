@@ -20,6 +20,10 @@ const PD_PATTERN_TYPE_LABELS = {
     nr4_bearish: 'NR4 Breakout (Bearish)',
     nr7_bullish: 'NR7 Breakout (Bullish)',
     nr7_bearish: 'NR7 Breakout (Bearish)',
+    bullish_engulfing: 'Bullish Engulfing',
+    bearish_engulfing: 'Bearish Engulfing',
+    hammer: 'Hammer',
+    shooting_star: 'Shooting Star',
 };
 const PD_PATTERN_COLORS = {
     regular: '#ff4d4d',
@@ -39,6 +43,10 @@ const PD_PATTERN_COLORS = {
     nr4_bearish: '#f44336',
     nr7_bullish: '#4caf50',
     nr7_bearish: '#d32f2f',
+    bullish_engulfing: '#00e676',
+    bearish_engulfing: '#ff1744',
+    hammer: '#69f0ae',
+    shooting_star: '#ff8a80',
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 
@@ -63,6 +71,10 @@ const PD_PATTERN_EXPLANATIONS = {
     nr4_bearish: "An NR4 setup resolves bearish when price later closes below the narrow bar's own low. It suggests the brief pause ended with sellers winning out.",
     nr7_bullish: "An NR7 setup resolves bullish when price later closes above the narrow bar's own high. It suggests the compression ended with buyers winning out.",
     nr7_bearish: "An NR7 setup resolves bearish when price later closes below the narrow bar's own low. It suggests the compression ended with sellers winning out.",
+    bullish_engulfing: "A Bullish Engulfing candle forms when a bullish candle's body completely swallows the prior bearish candle's body, and only counts here when it happens near a price extreme (below the lower Bollinger Band or RSI oversold). It's used as a strict, one-bar confirmation trigger — e.g. to confirm a Double Bottom — rather than a standalone structural signal.",
+    bearish_engulfing: "A Bearish Engulfing candle forms when a bearish candle's body completely swallows the prior bullish candle's body, and only counts here when it happens near a price extreme (above the upper Bollinger Band or RSI overbought). It's used as a strict, one-bar confirmation trigger rather than a standalone structural signal.",
+    hammer: "A Hammer is a single candle with a small body near the top of its range and a lower rejection wick at least twice the size of the body, with a negligible upper wick, and only counts here near a price extreme (below the lower Bollinger Band or RSI oversold). It suggests sellers pushed the price down intraday but buyers aggressively rejected it.",
+    shooting_star: "A Shooting Star is a single candle with a small body near the bottom of its range and an upper rejection wick at least twice the size of the body, with a negligible lower wick, and only counts here near a price extreme (above the upper Bollinger Band or RSI overbought). It suggests buyers pushed the price up intraday but sellers aggressively rejected it.",
 };
 
 let _pdSeries = null;

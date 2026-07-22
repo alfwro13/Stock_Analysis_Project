@@ -7,6 +7,7 @@ from typing import Optional
 
 import pandas as pd
 
+import candlestick_trigger_engine
 import double_top_bottom_engine
 import flag_engine
 import head_shoulders_engine
@@ -38,6 +39,7 @@ DETECTORS = {
     triangle_engine.FAMILY: triangle_engine,
     volatility_squeeze_engine.FAMILY: volatility_squeeze_engine,
     narrow_range_engine.FAMILY: narrow_range_engine,
+    candlestick_trigger_engine.FAMILY: candlestick_trigger_engine,
 }
 
 _MIN_BARS = 60
@@ -61,25 +63,29 @@ class PatternDetectionEngine:
     def run_scan(self) -> list[dict]:
         tickers = self._get_ticker_list()
         results: list[dict] = []
+        stale: list[tuple[str, str]] = []
         for ticker in tickers:
             df = self._load_history(ticker)
             if df is None:
                 continue
-            results.extend(self._analyse_ticker(ticker, df))
+            ticker_results, ticker_stale = self._analyse_ticker(ticker, df)
+            results.extend(ticker_results)
+            stale.extend(ticker_stale)
 
-        if results:
-            self._save_results(results)
+        if results or stale:
+            self._save_results(results, stale)
         return results
 
-    def _analyse_ticker(self, ticker: str, df: pd.DataFrame) -> list[dict]:
+    def _analyse_ticker(self, ticker: str, df: pd.DataFrame) -> tuple[list[dict], list[tuple[str, str]]]:
         try:
             if len(df) < _MIN_BARS:
-                return []
+                return [], []
 
             rsi_series = compute_rsi(df["Close"])
             vol_sma = compute_volume_sma(df["Volume"])
 
             out: list[dict] = []
+            stale: list[tuple[str, str]] = []
             for family, module in DETECTORS.items():
                 try:
                     result = module.detect(ticker, df, rsi_series, vol_sma, self.config)
@@ -91,10 +97,17 @@ class PatternDetectionEngine:
                     result["pattern_family"] = family
                     result["scan_ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                     out.append(result)
-            return out
+                else:
+                    # A family that ran cleanly but found nothing this scan means any
+                    # previously-stored row for this (ticker, family) is stale — clear it
+                    # rather than leaving a pattern that no longer exists shown as "active"
+                    # indefinitely. A family that raised is left untouched (transient
+                    # failure, not evidence the pattern ended).
+                    stale.append((ticker, family))
+            return out, stale
         except Exception as e:
             logger.error("PatternDetectionEngine: analysis failed for %s: %s", ticker, e)
-            return []
+            return [], []
 
     def _get_ticker_list(self) -> list[str]:
         tickers: set[str] = set()
@@ -146,7 +159,7 @@ class PatternDetectionEngine:
             logger.warning("PatternDetectionEngine: failed to load %s: %s", ticker, e)
             return None
 
-    def _save_results(self, results: list[dict]) -> None:
+    def _save_results(self, results: list[dict], stale: list[tuple[str, str]] = ()) -> None:
         conn = None
         previous_by_key: dict = {}
         try:
@@ -160,6 +173,12 @@ class PatternDetectionEngine:
                 prev = cursor.fetchone()
                 if prev:
                     previous_by_key[(row["ticker"], row["pattern_family"])] = dict(prev)
+
+            if stale:
+                cursor.executemany(
+                    "DELETE FROM pattern_detection_results WHERE ticker=? AND pattern_family=?",
+                    list(stale),
+                )
 
             for row in results:
                 points_json = json.dumps(row["points"])

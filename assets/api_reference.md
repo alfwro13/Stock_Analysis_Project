@@ -4260,8 +4260,10 @@ rolling-window swing-point detection, dispatched through a per-family detector r
 (`pattern_detection_engine.DETECTORS`). Currently covers Head & Shoulders / Inverse Head &
 Shoulders (`head_shoulders_engine.py`), Double Top / Double Bottom (`double_top_bottom_engine.py`),
 Bull Flag / Bear Flag (`flag_engine.py`), Ascending / Descending Triangle (`triangle_engine.py`),
-Volatility Squeeze (`volatility_squeeze_engine.py`), and NR4/NR7 Narrow Range
-(`narrow_range_engine.py`); adding a future pattern family requires no changes to these endpoints.
+Volatility Squeeze (`volatility_squeeze_engine.py`), NR4/NR7 Narrow Range
+(`narrow_range_engine.py`), and Micro-Structure Candlestick Triggers — Bullish/Bearish
+Engulfing, Hammer/Shooting Star (`candlestick_trigger_engine.py`); adding a future pattern
+family requires no changes to these endpoints.
 See `pattern_detection_engine.py` and `assets/pattern_detection.md`.
 
 ### `GET /pattern-detection`
@@ -4288,7 +4290,7 @@ server-resolved `direction` (`"up"`/`"down"`/`null`, from `DETECTORS[pattern_fam
 — `null` for a pattern whose direction is not yet resolved), plus the current Portfolio/Watchlist
 ticker sets so the page can filter by scope without a second round-trip. Optional `family` query
 param filters to one `pattern_family` (`head_shoulders` / `double_top_bottom` / `flag` /
-`triangle` / `volatility_squeeze` / `narrow_range`).
+`triangle` / `volatility_squeeze` / `narrow_range` / `candlestick_trigger`).
 
 **Response**
 

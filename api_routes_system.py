@@ -165,6 +165,8 @@ class PatternFamilyScheduleConfig(BaseModel):
     NR7_ENABLED: Optional[bool] = None
     BULLISH_ENABLED: Optional[bool] = None
     BEARISH_ENABLED: Optional[bool] = None
+    ENGULFING_ENABLED: Optional[bool] = None
+    PIN_BAR_ENABLED: Optional[bool] = None
 
 class PatternDetectionScheduleConfig(BaseModel):
     ENABLED: Optional[bool] = None
@@ -178,6 +180,7 @@ class PatternDetectionScheduleConfig(BaseModel):
     TRIANGLE: Optional[PatternFamilyScheduleConfig] = None
     VOLATILITY_SQUEEZE: Optional[PatternFamilyScheduleConfig] = None
     NARROW_RANGE: Optional[PatternFamilyScheduleConfig] = None
+    CANDLESTICK_TRIGGER: Optional[PatternFamilyScheduleConfig] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -265,6 +268,12 @@ class PatternFamilyAlertConfig(BaseModel):
     KC_MULTIPLIER: Optional[float] = None
     MIN_SQUEEZE_DAYS: Optional[int] = None
     BREAKOUT_LOOKAHEAD_DAYS: Optional[int] = None
+    RSI_OVERSOLD: Optional[float] = None
+    RSI_OVERBOUGHT: Optional[float] = None
+    BB_WINDOW_DAYS: Optional[int] = None
+    BB_NUM_STD: Optional[float] = None
+    WICK_MULTIPLIER: Optional[float] = None
+    OPPOSITE_WICK_MAX_PCT: Optional[float] = None
 
 class PatternDetectionAlertConfig(BaseModel):
     COOLDOWN_MINUTES: Optional[float] = None
@@ -276,6 +285,7 @@ class PatternDetectionAlertConfig(BaseModel):
     TRIANGLE: Optional[PatternFamilyAlertConfig] = None
     VOLATILITY_SQUEEZE: Optional[PatternFamilyAlertConfig] = None
     NARROW_RANGE: Optional[PatternFamilyAlertConfig] = None
+    CANDLESTICK_TRIGGER: Optional[PatternFamilyAlertConfig] = None
 
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None

@@ -277,6 +277,12 @@ async function saveSettings(silent = false) {
                     "NR7_ENABLED": document.getElementById('PATTERN_DETECTION_NR_NR7').checked,
                     "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_NR_BULLISH').checked,
                     "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_NR_BEARISH').checked
+                },
+                "CANDLESTICK_TRIGGER": {
+                    "ENGULFING_ENABLED": document.getElementById('PATTERN_DETECTION_CT_ENGULFING').checked,
+                    "PIN_BAR_ENABLED": document.getElementById('PATTERN_DETECTION_CT_PIN_BAR').checked,
+                    "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_CT_BULLISH').checked,
+                    "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_CT_BEARISH').checked
                 }
             },
             "FORENSIC_QUARTERLY_FETCH": {
@@ -413,6 +419,15 @@ async function saveSettings(silent = false) {
                 "NARROW_RANGE": {
                     "BREAKOUT_LOOKAHEAD_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_NR_BREAKOUT_LOOKAHEAD').value) || 5,
                     "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_NR_VOLUME_MULT').value) || 1.5
+                },
+                "CANDLESTICK_TRIGGER": {
+                    "RSI_OVERSOLD": parseFloat(document.getElementById('PATTERN_DETECTION_CT_RSI_OVERSOLD').value) || 30.0,
+                    "RSI_OVERBOUGHT": parseFloat(document.getElementById('PATTERN_DETECTION_CT_RSI_OVERBOUGHT').value) || 70.0,
+                    "BB_WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_CT_BB_WINDOW').value) || 20,
+                    "BB_NUM_STD": parseFloat(document.getElementById('PATTERN_DETECTION_CT_BB_NUM_STD').value) || 2.0,
+                    "WICK_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_CT_WICK_MULT').value) || 2.0,
+                    "OPPOSITE_WICK_MAX_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_CT_OPP_WICK_MAX').value) || 0.2,
+                    "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_CT_VOLUME_MULT').value) || 1.5
                 }
             }
         },

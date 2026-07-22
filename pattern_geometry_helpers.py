@@ -142,3 +142,50 @@ def slope_pct_per_day(slope: float, reference_price: float) -> float:
     if reference_price <= 0:
         return 0.0
     return slope / reference_price * 100.0
+
+
+def candle_body_wick_metrics(open_: float, high: float, low: float, close: float) -> dict:
+    """Body/wick decomposition for a single OHLC bar — shared by quant_signals.py's
+    Quantamental scoring and candlestick_trigger_engine.py's Pattern Detection family so the
+    two never drift apart on what counts as a body vs. a wick."""
+    body = abs(open_ - close)
+    rng = max(high - low, 0.001)
+    return {
+        "body": body,
+        "body_safe": max(body, 0.001),
+        "range": rng,
+        "upper_wick": high - max(open_, close),
+        "lower_wick": min(open_, close) - low,
+        "is_bullish": bool(close > open_),
+        "is_bearish": bool(close < open_),
+    }
+
+
+def is_bullish_engulfing(prev_open: float, prev_close: float, curr_open: float, curr_close: float) -> bool:
+    """Prior candle bearish, current candle bullish, and the current body fully contains the
+    prior body — the directional check is required alongside the containment inequalities;
+    containment alone (curr_open < prev_close and curr_close > prev_open) also holds for
+    candle pairs that aren't a genuine reversal engulfing."""
+    return bool(
+        prev_close < prev_open and curr_close > curr_open
+        and curr_open <= prev_close and curr_close >= prev_open
+    )
+
+
+def is_bearish_engulfing(prev_open: float, prev_close: float, curr_open: float, curr_close: float) -> bool:
+    return bool(
+        prev_close > prev_open and curr_close < curr_open
+        and curr_open >= prev_close and curr_close <= prev_open
+    )
+
+
+def is_hammer(upper_wick: float, lower_wick: float, body_safe: float, rng: float,
+              wick_multiplier: float = 2.0, opposite_wick_max_pct: float = 0.2) -> bool:
+    """Long lower rejection wick (>= wick_multiplier x body) with a negligible upper wick."""
+    return bool(lower_wick >= wick_multiplier * body_safe and upper_wick <= opposite_wick_max_pct * rng)
+
+
+def is_shooting_star(upper_wick: float, lower_wick: float, body_safe: float, rng: float,
+                      wick_multiplier: float = 2.0, opposite_wick_max_pct: float = 0.2) -> bool:
+    """Long upper rejection wick (>= wick_multiplier x body) with a negligible lower wick."""
+    return bool(upper_wick >= wick_multiplier * body_safe and lower_wick <= opposite_wick_max_pct * rng)

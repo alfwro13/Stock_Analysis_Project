@@ -8,6 +8,7 @@ const PATTERN_FAMILY_LABELS = {
     triangle: 'Triangle',
     volatility_squeeze: 'Volatility Squeeze',
     narrow_range: 'Narrow Range (NR4/NR7)',
+    candlestick_trigger: 'Candlestick Trigger',
 };
 const PATTERN_TYPE_LABELS = {
     regular: 'Head & Shoulders',
@@ -27,6 +28,10 @@ const PATTERN_TYPE_LABELS = {
     nr4_bearish: 'NR4 Breakout (Bearish)',
     nr7_bullish: 'NR7 Breakout (Bullish)',
     nr7_bearish: 'NR7 Breakout (Bearish)',
+    bullish_engulfing: 'Bullish Engulfing',
+    bearish_engulfing: 'Bearish Engulfing',
+    hammer: 'Hammer',
+    shooting_star: 'Shooting Star',
 };
 
 function _pdFamilyLabel(family) {
