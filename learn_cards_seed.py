@@ -29,6 +29,7 @@ LEVELS = [
     ("dip-radar", "Dip Radar"),
     ("bubble-radar", "Bubble Radar"),
     ("pairs-spread-monitor", "Pairs Spread Monitor"),
+    ("pillar-confluence", "Signal Pillar Confluence"),
     ("predicted-movers", "Predicted Movers"),
     ("ticker-notes", "Ticker Notes"),
     ("forensic-screener", "Forensic Screener"),
@@ -2092,6 +2093,75 @@ CARDS = [
         ],
         "explanation": """<p>By default the monitor scans your <strong>Portfolio + Watchlist</strong> — a small, fast scan that runs automatically on a schedule and fires alerts. A <strong>Universe</strong> scope is also available, scanning the full market universe (thousands of tickers) for correlated pairs you don't currently hold or watch.</p>
 <p>Universe is <strong>on-demand only</strong> — triggered manually from the report page, never run automatically. A full-universe correlation scan is expensive (many more tickers means many more candidate pairs to check), and firing alerts off a scan the operator didn't ask for and may not repeat again soon would defeat the point of the alert dedup/cooldown model, which assumes a recurring scan cadence. Universe results are shown on the page but never trigger a notification.</p>""",
+    },
+    # --- pillar-confluence ---
+    {
+        "term_key": "what-pillar-confluence-detects",
+        "section_id": "pillar-confluence",
+        "term_title": "What Pillar Confluence Detects",
+        "question": "What does Signal Pillar Confluence actually add on top of this app's existing signal engines?",
+        "answer": "No new signal of its own — it checks whether independent existing signals already agree",
+        "distractors": [
+            "A brand-new proprietary technical indicator not used anywhere else in the app",
+            "A live options-flow feed for measuring institutional positioning",
+            "A replacement for the composite Quant Score",
+        ],
+        "explanation": """<p>This app runs many independent signal engines — swing-pattern detection, the Trap Monitor's post-crash phase classifier, earnings-drift statistics, an ML confidence model — each looking at a ticker through a different lens. Any single one of them firing is a weak signal on its own. <strong>Signal Pillar Confluence</strong> instead asks a narrower question: within the last 5 scan days, do at least two of three independent signal <em>families</em> ("pillars") agree on direction, with none of the three disagreeing? A ticker only gets flagged when that genuine agreement exists — it adds no new signal of its own, it only checks existing ones for corroboration.</p>""",
+    },
+    {
+        "term_key": "the-three-pillars",
+        "section_id": "pillar-confluence",
+        "term_title": "The Three Pillars",
+        "question": "What happens when a pillar's own signals conflict with each other within the window (e.g. one confirmed pattern says up, another says down)?",
+        "answer": "That pillar abstains — it casts no vote at all rather than forcing a side",
+        "distractors": [
+            "It votes with whichever signal fired most recently",
+            "It automatically counts as a down vote to be conservative",
+            "It throws an error and the ticker is excluded from the whole page",
+        ],
+        "explanation": """<p><strong>Technical</strong> — every confirmed Pattern Detection result (any registered family — Head &amp; Shoulders, Double Top/Bottom, Flag, Triangle, Wedge, Pennant, Volatility Squeeze, NR4/NR7, Parabolic Stretch, Momentum Divergence, Candlestick Trigger, and any family added later) plus the Trap Monitor's current phase, each resolved to "up"/"down" via that engine's own existing direction convention.</p>
+<p><strong>Statistical</strong> — Earnings Volatility's historical 5-day post-earnings drift, only counted when there's a real measured mispricing edge (<code>edge_score &gt; 0</code>) — a drift reading with no edge is noise, not signal.</p>
+<p><strong>ML</strong> — the daily ML confidence score (the same Quantamental ML ensemble read elsewhere in the app) above or below 50.</p>
+<p>A pillar only casts a vote when every signal it saw in the window points the same way — if a pillar's own signals conflict with each other (e.g. one confirmed pattern says up, another says down), that pillar abstains rather than forcing a side.</p>""",
+    },
+    {
+        "term_key": "pillar-confluence-automatic-coverage",
+        "section_id": "pillar-confluence",
+        "term_title": "Automatic New-Pattern Coverage",
+        "question": "What has to change in the Pillar Confluence code when a new swing-pattern family is added to Pattern Detection?",
+        "answer": "Nothing — it's picked up automatically through the shared DETECTORS registry",
+        "distractors": [
+            "A new hardcoded entry has to be added to score_analysis.py's pillar logic",
+            "Pillar Confluence has to be manually retrained on the new pattern",
+            "A new database migration is required for every new pattern family",
+        ],
+        "explanation": """<p>The Technical pillar never hardcodes a pattern list. It reads <code>pattern_detection_engine.DETECTORS</code> — the same registry <a href="/pattern-detection">Pattern Detection</a> itself is built on — and resolves each result's direction through that family's own <code>PATTERN_TYPES</code> dict at evaluation time. A new pattern family added to the registry is automatically included in Pillar Confluence with no changes needed here.</p>""",
+    },
+    {
+        "term_key": "pillar-confluence-window",
+        "section_id": "pillar-confluence",
+        "term_title": "5-Trading-Day Rolling Window",
+        "question": "Why does the Technical pillar's window get derived from quant_signals rather than from Pattern Detection's own history table?",
+        "answer": "Pattern Detection's history table skips logging a row when a pattern is unchanged, so its own dates are too sparse to define a reliable window",
+        "distractors": [
+            "quant_signals is faster to query than pattern_detection_history",
+            "Pattern Detection's history table doesn't have a scan_date column at all",
+            "It's an arbitrary implementation choice with no functional reason",
+        ],
+        "explanation": """<p>Each pillar looks back over a ticker's last 5 <em>trading days</em> — not 5 calendar days — matching this app's scanner cadence. The Technical pillar's window is anchored to <code>quant_signals</code>' own dates (written every trading day the nightly quant scan runs) rather than to Pattern Detection's own history table, since that table deliberately skips logging a row when a pattern is unchanged from the previous scan — using its own sparse dates as the window would silently stretch it across weeks for a quiet ticker. The ML confidence score is written to the same <code>quant_signals</code> table nightly, so its window is naturally the same 5 trading days. Earnings Volatility only scans a ticker while it's within ~14 days of its next earnings date, so its own "last 5 scans" can span several calendar weeks for a ticker that isn't near-term — outside that window a ticker simply has no statistical-pillar votes, which is expected rather than a gap.</p>""",
+    },
+    {
+        "term_key": "pillar-confluence-rule",
+        "section_id": "pillar-confluence",
+        "term_title": "Confluence Rule",
+        "question": "Does a ticker with one bullish pillar and one bearish pillar ever reach confluence, regardless of the third pillar's vote?",
+        "answer": "No — genuine disagreement between pillars blocks confluence by design",
+        "distractors": [
+            "Yes, as long as the bullish pillar voted more recently",
+            "Yes, if the third pillar is Technical specifically",
+            "Only if the disagreement is between Statistical and ML, not Technical",
+        ],
+        "explanation": """<p>Bullish confluence: at least 2 of the 3 pillars vote "up" and none votes "down". Bearish confluence is the mirror case. A ticker with, say, one bullish and one bearish pillar never reaches confluence regardless of the third pillar's vote — genuine disagreement blocks the flag by design.</p>""",
     },
     # --- predicted-movers ---
     {

@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 _HORIZONS = {"3m": 90, "6m": 180, "12m": 365}
 
+_CONFLUENCE_WINDOW = 5
+_ML_CONFIDENCE_BULLISH = 50
+
 
 def _available_from(earliest: str, days: int) -> str:
     return (date.fromisoformat(earliest) + timedelta(days=days)).isoformat()
@@ -147,3 +150,202 @@ def get_score_analysis(filter_name: str = "all") -> dict:
         "summary": summary,
         "events": enriched[:500],
     }
+
+
+def _pillar_vote(signals: list[str]) -> Optional[str]:
+    """A pillar votes 'up'/'down' only when every signal it saw in the window agrees;
+    an empty or directionally-mixed window abstains rather than forcing a side."""
+    unique = set(signals)
+    return unique.pop() if len(unique) == 1 else None
+
+
+def _recent_window_dates(rows: list[dict], window: int = _CONFLUENCE_WINDOW) -> dict[str, set]:
+    """rows: [{ticker, scan_date}, ...] (need not be deduped) -> {ticker: last N distinct
+    scan_date strings}. scan_date rows only exist for days a scan actually ran, so this is
+    a rolling window of trading days, not calendar days."""
+    dates_by_ticker: dict[str, set] = {}
+    for row in rows:
+        dates_by_ticker.setdefault(row["ticker"], set()).add(row["scan_date"])
+    return {t: set(sorted(dates, reverse=True)[:window]) for t, dates in dates_by_ticker.items()}
+
+
+def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
+    """Pattern Detection (any registered family — new families need zero changes here since
+    direction is resolved via each family's own DETECTORS[family].PATTERN_TYPES dict) plus
+    Trap Monitor phase, both windowed to each ticker's last 5 trading days.
+
+    The window itself is derived from quant_signals, not from pattern_detection_history's own
+    scan_date column — pattern_detection_engine.PatternDetectionEngine.run_scan() deliberately
+    skips logging a history row when a pattern instance is unchanged from the previous scan, so
+    that table's own distinct dates are sparse and can silently span far more than 5 trading days
+    for a quiet ticker. quant_signals is written every trading day the nightly quant scan runs
+    (the same daily cadence Pattern Detection and Trap Monitor themselves scan on), so it's the
+    reliable trading-day calendar to filter both sources against."""
+    from pattern_detection_engine import DETECTORS
+    from bull_bear_trap_engine import _PHASE_EXPECTED_DIRECTION
+
+    signals: dict[str, list[str]] = {t: [] for t in tickers}
+    if not tickers:
+        return signals
+    placeholders = ",".join("?" * len(tickers))
+
+    # 30 calendar days comfortably covers 5 trading days through any holiday stretch, without
+    # pulling a ticker's full multi-year quant_signals history just to keep the last 5 dates.
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    trading_dates = conn.execute(
+        f"SELECT DISTINCT ticker, date AS scan_date FROM quant_signals WHERE ticker IN ({placeholders}) AND date >= ?",
+        tickers + [recent_cutoff],
+    ).fetchall()
+    trading_windows = _recent_window_dates([dict(r) for r in trading_dates])
+
+    confirmed_rows = conn.execute(
+        f"""SELECT ticker, pattern_family, pattern_type, scan_date FROM pattern_detection_history
+            WHERE ticker IN ({placeholders}) AND phase = 'CONFIRMED'""",
+        tickers,
+    ).fetchall()
+    for row in confirmed_rows:
+        row = dict(row)
+        if row["scan_date"] not in trading_windows.get(row["ticker"], set()):
+            continue
+        module = DETECTORS.get(row["pattern_family"])
+        if module is None:
+            continue
+        direction = module.PATTERN_TYPES.get(row["pattern_type"])
+        if direction:
+            signals[row["ticker"]].append(direction)
+
+    trap_rows = conn.execute(
+        f"SELECT ticker, phase, scan_date FROM trap_phase_history WHERE ticker IN ({placeholders})",
+        tickers,
+    ).fetchall()
+    for row in trap_rows:
+        row = dict(row)
+        if row["scan_date"] not in trading_windows.get(row["ticker"], set()):
+            continue
+        direction = _PHASE_EXPECTED_DIRECTION.get(row["phase"])
+        if direction:
+            signals[row["ticker"]].append(direction)
+
+    return signals
+
+
+def _statistical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
+    """earnings_volatility_history drift sign, gated on a real mispricing edge (edge_score>0),
+    windowed to each ticker's last 5 scan runs (earnings_vol_engine only scans a ticker within
+    ~14 days of its next earnings date, so these 5 rows may span several weeks of calendar
+    time for a ticker that isn't near-term)."""
+    signals: dict[str, list[str]] = {t: [] for t in tickers}
+    if not tickers:
+        return signals
+    placeholders = ",".join("?" * len(tickers))
+    rows = conn.execute(
+        f"""SELECT ticker, scan_date, edge_score, drift_avg_pct_5d FROM earnings_volatility_history
+            WHERE ticker IN ({placeholders}) ORDER BY ticker, scan_date DESC""",
+        tickers,
+    ).fetchall()
+
+    counts: dict[str, int] = {}
+    for row in rows:
+        row = dict(row)
+        ticker = row["ticker"]
+        counts[ticker] = counts.get(ticker, 0) + 1
+        if counts[ticker] > _CONFLUENCE_WINDOW:
+            continue
+        if row["edge_score"] is None or row["edge_score"] <= 0 or row["drift_avg_pct_5d"] is None:
+            continue
+        if row["drift_avg_pct_5d"] > 0:
+            signals[ticker].append("up")
+        elif row["drift_avg_pct_5d"] < 0:
+            signals[ticker].append("down")
+
+    return signals
+
+
+def _ml_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
+    """quant_signals.ml_confidence_score across each ticker's last 5 trading days."""
+    signals: dict[str, list[str]] = {t: [] for t in tickers}
+    if not tickers:
+        return signals
+    placeholders = ",".join("?" * len(tickers))
+    rows = conn.execute(
+        f"""SELECT ticker, date, ml_confidence_score FROM quant_signals
+            WHERE ticker IN ({placeholders}) AND ml_confidence_score IS NOT NULL
+            ORDER BY ticker, date DESC""",
+        tickers,
+    ).fetchall()
+
+    counts: dict[str, int] = {}
+    for row in rows:
+        row = dict(row)
+        ticker = row["ticker"]
+        counts[ticker] = counts.get(ticker, 0) + 1
+        if counts[ticker] > _CONFLUENCE_WINDOW:
+            continue
+        score = row["ml_confidence_score"]
+        if score > _ML_CONFIDENCE_BULLISH:
+            signals[ticker].append("up")
+        elif score < _ML_CONFIDENCE_BULLISH:
+            signals[ticker].append("down")
+
+    return signals
+
+
+def evaluate_pillar_confluence_batch(tickers: list[str]) -> dict[str, dict]:
+    """Per-ticker Signal Pillar Confluence: bullish confluence = >=2 of {technical, statistical,
+    ml} pillars vote 'up' and none votes 'down' within a 5-trading-day rolling window (bearish
+    confluence is the mirror case). Each pillar's own vote requires directional agreement across
+    every signal it saw in the window — see _pillar_vote(). Batched (one query per source table,
+    not per ticker) since Portfolio/Watchlist call this for every held/watched ticker at once."""
+    tickers = list(dict.fromkeys(tickers))
+    if not tickers:
+        return {}
+
+    conn = None
+    try:
+        conn = get_connection()
+        technical = _technical_signals_batch(tickers, conn)
+        statistical = _statistical_signals_batch(tickers, conn)
+        ml = _ml_signals_batch(tickers, conn)
+    except Exception as e:
+        logger.error("evaluate_pillar_confluence_batch failed: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+    results: dict[str, dict] = {}
+    for ticker in tickers:
+        votes = {
+            "technical": _pillar_vote(technical.get(ticker, [])),
+            "statistical": _pillar_vote(statistical.get(ticker, [])),
+            "ml": _pillar_vote(ml.get(ticker, [])),
+        }
+        bullish_pillars = [name for name, vote in votes.items() if vote == "up"]
+        bearish_pillars = [name for name, vote in votes.items() if vote == "down"]
+
+        direction: Optional[str] = None
+        if len(bullish_pillars) >= 2 and not bearish_pillars:
+            direction = "bullish"
+        elif len(bearish_pillars) >= 2 and not bullish_pillars:
+            direction = "bearish"
+
+        results[ticker] = {
+            "bullish_pillars": bullish_pillars,
+            "bearish_pillars": bearish_pillars,
+            "confluence": direction is not None,
+            "direction": direction,
+        }
+    return results
+
+
+def evaluate_pillar_confluence(ticker: str) -> dict:
+    return evaluate_pillar_confluence_batch([ticker]).get(
+        ticker, {"bullish_pillars": [], "bearish_pillars": [], "confluence": False, "direction": None}
+    )
+
+
+def pillar_confluence_label(result: Optional[dict]) -> Optional[str]:
+    if not result or not result.get("confluence"):
+        return None
+    pillars = result["bullish_pillars"] if result["direction"] == "bullish" else result["bearish_pillars"]
+    return f"{result['direction'].capitalize()} ({len(pillars)}/3)"

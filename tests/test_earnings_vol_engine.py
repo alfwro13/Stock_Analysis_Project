@@ -103,6 +103,13 @@ def db_path(tmp_path):
             is_read BOOLEAN DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'sent'
         );
+        CREATE TABLE earnings_volatility_history (
+            ticker        TEXT NOT NULL,
+            scan_date     TEXT NOT NULL,
+            edge_score    REAL,
+            drift_avg_pct_5d REAL,
+            UNIQUE(ticker, scan_date)
+        );
     """)
     conn.commit()
     conn.close()
@@ -301,6 +308,12 @@ class TestCachedEarningsDateFilter:
         assert rows[0]["drift_up_count_1d"] == 3
         assert rows[0]["drift_sample_size_1d"] == 4
         assert rows[0]["drift_avg_pct_20d"] == -1.5
+
+        history_rows = _read_all(db_path, "SELECT * FROM earnings_volatility_history")
+        assert len(history_rows) == 1
+        assert history_rows[0]["ticker"] == "NVDA"
+        assert history_rows[0]["edge_score"] == rows[0]["edge_score"]
+        assert history_rows[0]["drift_avg_pct_5d"] == 3.0
 
     def test_illiquid_options_still_writes_row_with_null_edge_score(self, db_path):
         in_window_date = date.today() + timedelta(days=3)

@@ -1,0 +1,43 @@
+<div class="accordion-item glossary-section" id="pillar-confluence">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-pillar-confluence"
+                aria-expanded="false" aria-controls="collapse-pillar-confluence">
+            &#128200; Signal Pillar Confluence
+        </button>
+    </h2>
+    <div id="collapse-pillar-confluence" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Pillar Confluence Detects</span>
+                <p>This app runs many independent signal engines — swing-pattern detection, the Trap Monitor's post-crash phase classifier, earnings-drift statistics, an ML confidence model — each looking at a ticker through a different lens. Any single one of them firing is a weak signal on its own. <strong>Signal Pillar Confluence</strong> instead asks a narrower question: within the last 5 scan days, do at least two of three independent signal <em>families</em> ("pillars") agree on direction, with none of the three disagreeing? A ticker only gets flagged when that genuine agreement exists — it adds no new signal of its own, it only checks existing ones for corroboration.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">The Three Pillars</span>
+                <p><strong>Technical</strong> — every confirmed Pattern Detection result (any registered family — Head & Shoulders, Double Top/Bottom, Flag, Triangle, Wedge, Pennant, Volatility Squeeze, NR4/NR7, Parabolic Stretch, Momentum Divergence, Candlestick Trigger, and any family added later) plus the Trap Monitor's current phase, each resolved to "up"/"down" via that engine's own existing direction convention.</p>
+                <p><strong>Statistical</strong> — Earnings Volatility's historical 5-day post-earnings drift, only counted when there's a real measured mispricing edge (<code>edge_score &gt; 0</code>) — a drift reading with no edge is noise, not signal.</p>
+                <p><strong>ML</strong> — the daily ML confidence score (the same Quantamental ML ensemble read elsewhere in the app) above or below 50.</p>
+                <p>A pillar only casts a vote when every signal it saw in the window points the same way — if a pillar's own signals conflict with each other (e.g. one confirmed pattern says up, another says down), that pillar abstains rather than forcing a side.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Automatic New-Pattern Coverage</span>
+                <p>The Technical pillar never hardcodes a pattern list. It reads <code>pattern_detection_engine.DETECTORS</code> — the same registry <a href="/pattern-detection">Pattern Detection</a> itself is built on — and resolves each result's direction through that family's own <code>PATTERN_TYPES</code> dict at evaluation time. A new pattern family added to the registry is automatically included in Pillar Confluence with no changes needed here.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">5-Trading-Day Rolling Window</span>
+                <p>Each pillar looks back over a ticker's last 5 <em>trading days</em> — not 5 calendar days — matching this app's scanner cadence. The Technical pillar's window is anchored to <code>quant_signals</code>' own dates (written every trading day the nightly quant scan runs) rather than to Pattern Detection's own history table, since that table deliberately skips logging a row when a pattern is unchanged from the previous scan — using its own sparse dates as the window would silently stretch it across weeks for a quiet ticker. The ML confidence score is written to the same <code>quant_signals</code> table nightly, so its window is naturally the same 5 trading days. Earnings Volatility only scans a ticker while it's within ~14 days of its next earnings date, so its own "last 5 scans" can span several calendar weeks for a ticker that isn't near-term — outside that window a ticker simply has no statistical-pillar votes, which is expected rather than a gap.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Confluence Rule</span>
+                <p>Bullish confluence: at least 2 of the 3 pillars vote "up" and none votes "down". Bearish confluence is the mirror case. A ticker with, say, one bullish and one bearish pillar never reaches confluence regardless of the third pillar's vote — genuine disagreement blocks the flag by design.</p>
+                <div class="rule">Read-only over already-persisted rows from other engines — no new fetch, no new scheduled job. See <code>score_analysis.evaluate_pillar_confluence()</code>.</div>
+            </div>
+
+        </div>
+    </div>
+</div>

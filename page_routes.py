@@ -328,6 +328,9 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
     pattern_tags_by_ticker = get_pattern_tags_by_ticker(portfolio_tickers)
 
+    from score_analysis import evaluate_pillar_confluence_batch, pillar_confluence_label
+    confluence_by_ticker = evaluate_pillar_confluence_batch(portfolio_tickers)
+
     for row in db_rows:
         row_dict = dict(row)
         if row_dict['ticker'] in portfolio_tickers:
@@ -341,6 +344,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             row_dict['pattern_detections'] = pattern_tags_by_ticker.get(row_dict['ticker'], [])
             row_dict.update(compute_badge_tags(row_dict))
             row_dict['heat_index'] = (row_dict.get('heat_index_tier') or '').capitalize() or None
+            row_dict['pillar_confluence_result'] = confluence_by_ticker.get(row_dict['ticker'])
+            row_dict['pillar_confluence'] = pillar_confluence_label(row_dict['pillar_confluence_result'])
 
             portfolio_data.append(row_dict)
 
@@ -744,6 +749,10 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
 
     watchlist_data = []
     pattern_tags_by_ticker = get_pattern_tags_by_ticker(watchlist_tickers)
+
+    from score_analysis import evaluate_pillar_confluence_batch, pillar_confluence_label
+    confluence_by_ticker = evaluate_pillar_confluence_batch(watchlist_tickers)
+
     for row in db_rows:
         row_dict = dict(row)
         if row_dict['ticker'] in watchlist_tickers:
@@ -754,6 +763,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             )
             row_dict['pattern_detections'] = pattern_tags_by_ticker.get(row_dict['ticker'], [])
             row_dict.update(compute_badge_tags(row_dict))
+            row_dict['pillar_confluence_result'] = confluence_by_ticker.get(row_dict['ticker'])
+            row_dict['pillar_confluence'] = pillar_confluence_label(row_dict['pillar_confluence_result'])
 
             limits = all_holding_limits.get((watchlist_account_id, row_dict['ticker']), {})
             row_dict['low_target'] = limits.get('low_limit')
@@ -2033,6 +2044,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         if conn_risk:
             conn_risk.close()
 
+    from score_analysis import evaluate_pillar_confluence
+    pillar_confluence = evaluate_pillar_confluence(ticker)
+
     return templates.TemplateResponse(
         request=request, name="stock_detail.html",
         context={
@@ -2066,6 +2080,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             "fundamentals_extra": fundamentals_extra,
             "bubble_data": bubble_data,
             "ticker_risk": ticker_risk,
+            "pillar_confluence": pillar_confluence,
             "risk_paused": get_all_scope_heat_tier() == "RED",
         }
     )

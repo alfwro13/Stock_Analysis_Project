@@ -75,13 +75,16 @@ def compute_spread_zscore(
         return None
     last = float(log_spread.iloc[-1])
     z = (last - mean) / std
-    direction = f"{ticker_a} rich vs {ticker_b}" if z > 0 else f"{ticker_b} rich vs {ticker_a}"
+    rich_ticker, cheap_ticker = (ticker_a, ticker_b) if z > 0 else (ticker_b, ticker_a)
+    direction = f"{rich_ticker} rich vs {cheap_ticker}"
     return {
         "zscore": round(z, 3),
         "spread_mean": round(mean, 6),
         "spread_std": round(std, 6),
         "last_spread": round(last, 6),
         "direction": direction,
+        "cheap_ticker": cheap_ticker,
+        "rich_ticker": rich_ticker,
     }
 
 
@@ -232,13 +235,13 @@ class PairsSpreadEngine:
                     """
                     INSERT INTO pairs_spread_results
                         (pair_key, scope, ticker_a, ticker_b, currency, correlation, zscore,
-                         spread_mean, spread_std, last_spread, direction, scan_ts)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                         spread_mean, spread_std, last_spread, direction, cheap_ticker, rich_ticker, scan_ts)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         row["pair_key"], row["scope"], row["ticker_a"], row["ticker_b"], row["currency"],
                         row["correlation"], row["zscore"], row["spread_mean"], row["spread_std"],
-                        row["last_spread"], row["direction"], row["scan_ts"],
+                        row["last_spread"], row["direction"], row["cheap_ticker"], row["rich_ticker"], row["scan_ts"],
                     ),
                 )
             conn.commit()

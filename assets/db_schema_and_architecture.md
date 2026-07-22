@@ -53,6 +53,11 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Key Columns:** `ticker` (PK), `next_earnings_date`, `implied_move_pct` (isolated straddle move, NULL if no liquid quote), `historical_avg_move_pct` (unsigned 1-day), `edge_score` (NULL if no liquid quote), `options_volume` (NULL if no liquid quote), `drift_avg_pct_1d`/`drift_up_count_1d`/`drift_sample_size_1d`, `drift_avg_pct_5d`/`drift_up_count_5d`/`drift_sample_size_5d`, `drift_avg_pct_20d`/`drift_up_count_20d`/`drift_sample_size_20d` (signed average % change, count of positive events, and sample size out of the last 4 earnings events, at each horizon).
 * **Written by:** `earnings_vol_engine.run_earnings_vol_scan()`, called by the `weekend_earnings_vol_scan_job` scheduler job.
 
+#### `earnings_volatility_history`
+* **Purpose:** Per-scan-day snapshot of `edge_score`/`drift_avg_pct_5d` for a ticker, retained (unlike `earnings_volatility`, which is latest-only) so the Statistical pillar of Signal Pillar Confluence can look back over a rolling window of scans. Only populated while a ticker is within `run_earnings_vol_scan()`'s ~14-day pre-earnings window, so rows are sparse outside that window by design.
+* **Key Columns:** `ticker`, `scan_date`, `edge_score`, `drift_avg_pct_5d` — `UNIQUE(ticker, scan_date)`.
+* **Written by:** `earnings_vol_engine.run_earnings_vol_scan()`, alongside `earnings_volatility` in the same scan.
+
 ### System, Macro & AI Models Tables
 
 #### `market_regimes`
@@ -279,7 +284,7 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 
 #### `pairs_spread_results`
 * **Purpose:** Latest Pairs Spread Monitor scan result — one row per correlated same-currency pair, per scope (`portfolio_watchlist` or `universe`). Fully replaced per scope (not upserted) on every scan of that scope, so a pair that drops out of the correlation threshold disappears rather than lingering with a stale `scan_ts`, and a Universe scan never clears Portfolio+Watchlist rows or vice versa. Powers `/pairs-spread`.
-* **Key Columns:** `pair_key` (PK, `"{scope}:{ticker_a}:{ticker_b}"` — scope-prefixed so the same pair can independently appear in both scopes without a PK collision), `scope`, `ticker_a`, `ticker_b`, `currency` (normalized — GBp/GBP collapse to `GBP`), `correlation` (Pearson, trailing 252-day daily returns), `zscore` (log-spread deviation from its own trailing-year mean), `spread_mean`, `spread_std`, `last_spread`, `direction` (which leg is "rich"), `scan_ts`. Company names are not stored here — joined at read time from `stock_signals.company_name` via `db_helpers.get_company_names()`.
+* **Key Columns:** `pair_key` (PK, `"{scope}:{ticker_a}:{ticker_b}"` — scope-prefixed so the same pair can independently appear in both scopes without a PK collision), `scope`, `ticker_a`, `ticker_b`, `currency` (normalized — GBp/GBP collapse to `GBP`), `correlation` (Pearson, trailing 252-day daily returns), `zscore` (log-spread deviation from its own trailing-year mean), `spread_mean`, `spread_std`, `last_spread`, `direction` (human-readable "X rich vs Y" string), `cheap_ticker`/`rich_ticker` (the same information as `direction`, split into two columns so a consumer can read a pair's cheap side as a value without string-parsing), `scan_ts`. Company names are not stored here — joined at read time from `stock_signals.company_name` via `db_helpers.get_company_names()`.
 * **Written by:** `pairs_spread_engine.PairsSpreadEngine.run_scan(scope=...)` → `PairsSpreadEngine._save_results()`, called by the `pairs_spread_monitor_job` scheduler job (`portfolio_watchlist` scope only) and by `scheduler_jobs.run_pairs_spread_universe_scan()` (`universe` scope, on-demand only — not a scheduled job). The underlying log-spread/price time series itself is never persisted — `pairs_spread_engine.build_chart_series()` recomputes it on demand from `data/historical/*.parquet` for the chart endpoint.
 
 #### `predicted_movers_history`

@@ -1,7 +1,17 @@
 """Tests for score_analysis pure functions and DB-backed get_score_analysis."""
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import database as _db_module
-from score_analysis import _available_from, _compute_return, get_score_analysis
+from score_analysis import (
+    _available_from,
+    _compute_return,
+    _pillar_vote,
+    evaluate_pillar_confluence,
+    evaluate_pillar_confluence_batch,
+    get_score_analysis,
+    pillar_confluence_label,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -36,8 +46,201 @@ def clean_tables():
     conn = _db_module.get_connection()
     conn.execute("DELETE FROM score_history")
     conn.execute("DELETE FROM quant_signals")
+    conn.execute("DELETE FROM pattern_detection_history")
+    conn.execute("DELETE FROM trap_phase_history")
+    conn.execute("DELETE FROM earnings_volatility_history")
     conn.commit()
     conn.close()
+
+
+def _seed_pattern_history(ticker, pattern_family, pattern_type, phase, scan_date):
+    conn = _db_module.get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO pattern_detection_history
+           (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (ticker, pattern_family, pattern_type, phase, scan_date, f"{scan_date} 00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_trap_history(ticker, phase, scan_date):
+    conn = _db_module.get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO trap_phase_history (ticker, phase, scan_date, scan_ts)
+           VALUES (?, ?, ?, ?)""",
+        (ticker, phase, scan_date, f"{scan_date} 00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_earnings_vol_history(ticker, scan_date, edge_score, drift_avg_pct_5d):
+    conn = _db_module.get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO earnings_volatility_history (ticker, scan_date, edge_score, drift_avg_pct_5d)
+           VALUES (?, ?, ?, ?)""",
+        (ticker, scan_date, edge_score, drift_avg_pct_5d),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_ml_confidence(ticker, date_, score):
+    conn = _db_module.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO quant_signals (ticker, date, ml_confidence_score) VALUES (?, ?, ?)",
+        (ticker, date_, score),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _d(days_ago):
+    """A date string `days_ago` days before today — keeps pillar-confluence test dates inside
+    the technical pillar's rolling cutoff (score_analysis._technical_signals_batch) regardless
+    of when the suite actually runs, rather than hardcoding dates that age out over time."""
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+
+
+def _seed_quant_date(ticker, date_):
+    """The technical pillar's trading-day window is derived from quant_signals (written every
+    trading day), not from pattern_detection_history/trap_phase_history's own dates — see
+    score_analysis._technical_signals_batch(). A test asserting a pattern/trap signal is
+    in-window must seed a matching quant_signals date even with no ml_confidence_score."""
+    conn = _db_module.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO quant_signals (ticker, date) VALUES (?, ?)",
+        (ticker, date_),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# _pillar_vote
+# ---------------------------------------------------------------------------
+
+class TestPillarVote:
+    def test_empty_abstains(self):
+        assert _pillar_vote([]) is None
+
+    def test_single_signal_wins(self):
+        assert _pillar_vote(["up"]) == "up"
+
+    def test_unanimous_up(self):
+        assert _pillar_vote(["up", "up", "up"]) == "up"
+
+    def test_unanimous_down(self):
+        assert _pillar_vote(["down", "down"]) == "down"
+
+    def test_mixed_abstains(self):
+        assert _pillar_vote(["up", "down"]) is None
+
+
+# ---------------------------------------------------------------------------
+# evaluate_pillar_confluence_batch
+# ---------------------------------------------------------------------------
+
+class TestEvaluatePillarConfluence:
+    def test_no_data_no_confluence(self):
+        result = evaluate_pillar_confluence("ZZZZ")
+        assert result == {"bullish_pillars": [], "bearish_pillars": [], "confluence": False, "direction": None}
+
+    def test_two_bullish_pillars_confluence_true(self):
+        _seed_pattern_history("AAPL", "flag", "bull_flag", "CONFIRMED", _d(0))
+        _seed_quant_date("AAPL", _d(0))
+        _seed_earnings_vol_history("AAPL", _d(0), edge_score=1.5, drift_avg_pct_5d=2.0)
+        result = evaluate_pillar_confluence("AAPL")
+        assert result["confluence"] is True
+        assert result["direction"] == "bullish"
+        assert set(result["bullish_pillars"]) == {"technical", "statistical"}
+        assert result["bearish_pillars"] == []
+
+    def test_dissenting_pillar_blocks_confluence(self):
+        _seed_pattern_history("MSFT", "flag", "bull_flag", "CONFIRMED", _d(0))
+        _seed_earnings_vol_history("MSFT", _d(0), edge_score=1.5, drift_avg_pct_5d=2.0)
+        _seed_ml_confidence("MSFT", _d(0), 20)  # < 50 -> down
+        result = evaluate_pillar_confluence("MSFT")
+        assert result["confluence"] is False
+        assert result["direction"] is None
+        assert "ml" in result["bearish_pillars"]
+
+    def test_bearish_confluence(self):
+        _seed_pattern_history("TSLA", "flag", "bear_flag", "CONFIRMED", _d(0))
+        _seed_ml_confidence("TSLA", _d(0), 30)
+        result = evaluate_pillar_confluence("TSLA")
+        assert result["confluence"] is True
+        assert result["direction"] == "bearish"
+        assert set(result["bearish_pillars"]) == {"technical", "ml"}
+
+    def test_new_pattern_family_picked_up_automatically(self):
+        # wedge_engine wasn't part of this feature's original spec — proves the technical
+        # pillar resolves direction dynamically via DETECTORS/PATTERN_TYPES, not a hardcoded list.
+        _seed_pattern_history("NVDA", "wedge", "falling_wedge", "CONFIRMED", _d(0))
+        _seed_ml_confidence("NVDA", _d(0), 80)
+        result = evaluate_pillar_confluence("NVDA")
+        assert result["confluence"] is True
+        assert result["direction"] == "bullish"
+
+    def test_forming_phase_pattern_not_counted(self):
+        _seed_pattern_history("GOOG", "flag", "bull_flag", "FORMING", _d(0))
+        _seed_ml_confidence("GOOG", _d(0), 70)
+        result = evaluate_pillar_confluence("GOOG")
+        assert "technical" not in result["bullish_pillars"]
+
+    def test_earnings_vol_requires_positive_edge_score(self):
+        _seed_earnings_vol_history("AMD", _d(0), edge_score=-1.0, drift_avg_pct_5d=2.0)
+        _seed_ml_confidence("AMD", _d(0), 70)
+        result = evaluate_pillar_confluence("AMD")
+        assert "statistical" not in result["bullish_pillars"]
+
+    def test_signal_outside_window_ignored(self):
+        # 6 distinct trading days: the oldest (stale) row falls outside the 5-day window.
+        for i, days_ago in enumerate([6, 5, 4, 3, 2, 0]):
+            _seed_pattern_history("META", "flag", "bear_flag" if i == 0 else "bull_flag", "CONFIRMED", _d(days_ago))
+            _seed_quant_date("META", _d(days_ago))
+        _seed_ml_confidence("META", _d(0), 70)
+        result = evaluate_pillar_confluence("META")
+        assert result["confluence"] is True
+        assert result["direction"] == "bullish"
+
+    def test_conflicting_signals_within_pillar_abstain(self):
+        _seed_pattern_history("AMZN", "flag", "bull_flag", "CONFIRMED", _d(1))
+        _seed_quant_date("AMZN", _d(1))
+        _seed_trap_history("AMZN", "BULL_TRAP_RISK", _d(0))  # down
+        _seed_ml_confidence("AMZN", _d(0), 70)
+        result = evaluate_pillar_confluence("AMZN")
+        assert "technical" not in result["bullish_pillars"]
+        assert "technical" not in result["bearish_pillars"]
+
+    def test_batch_matches_single_ticker_result(self):
+        _seed_pattern_history("AAPL", "flag", "bull_flag", "CONFIRMED", _d(0))
+        _seed_quant_date("AAPL", _d(0))
+        _seed_earnings_vol_history("AAPL", _d(0), edge_score=1.5, drift_avg_pct_5d=2.0)
+        batch_result = evaluate_pillar_confluence_batch(["AAPL", "ZZZZ"])
+        assert batch_result["AAPL"] == evaluate_pillar_confluence("AAPL")
+        assert batch_result["ZZZZ"]["confluence"] is False
+
+    def test_batch_empty_list(self):
+        assert evaluate_pillar_confluence_batch([]) == {}
+
+
+class TestPillarConfluenceLabel:
+    def test_none_result(self):
+        assert pillar_confluence_label(None) is None
+
+    def test_no_confluence_returns_none(self):
+        assert pillar_confluence_label({"bullish_pillars": [], "bearish_pillars": [], "confluence": False, "direction": None}) is None
+
+    def test_bullish_label(self):
+        result = {"bullish_pillars": ["technical", "ml"], "bearish_pillars": [], "confluence": True, "direction": "bullish"}
+        assert pillar_confluence_label(result) == "Bullish (2/3)"
+
+    def test_bearish_label(self):
+        result = {"bullish_pillars": [], "bearish_pillars": ["technical", "statistical", "ml"], "confluence": True, "direction": "bearish"}
+        assert pillar_confluence_label(result) == "Bearish (3/3)"
 
 
 # ---------------------------------------------------------------------------
