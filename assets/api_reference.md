@@ -2178,6 +2178,32 @@ Alert Confidence Referee (see glossary) status for the Trap Monitor pilot: readi
 
 `readiness.backfill_available` is a second leading indicator, distinct from `pending`: phase calls whose 14-day outcome is already resolved but whose features haven't been backfilled yet (an upper bound — a handful may be skipped during the actual backfill if the recomputed phase no longer matches, see `POST /api/alert-referee/train` below). This is what makes `can_train_after_backfill` true even when `can_train` (based on `current` alone) is still false — the difference between the two answers "is there anything usable right now if I click Run Training Now" vs. "has a backfill already happened."
 
+### `GET /api/alert-referee/log`
+
+Searchable, filterable, paginated slice of the Alert Confidence Referee shadow-mode log, backing the "View Shadow Log" modal on the Settings page (`recent_log` on `/api/alert-referee/status` only returns a fixed 25-row summary and has no filters — this endpoint is the one the modal actually calls).
+
+**Query params:** `ticker` (optional substring match, case-insensitive), `vetoed` (optional, `true`/`false`; omit for both), `limit` (default 50, max 200), `offset` (default 0, for pagination).
+
+**Response:**
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "AAPL",
+      "phase": "BULL_TRAP_RISK",
+      "fire_probability": 0.42,
+      "vetoed": 0,
+      "mode": "shadow",
+      "scan_ts": "2026-07-18 14:30:00"
+    }
+  ],
+  "has_more": true
+}
+```
+
+`has_more` indicates whether another page exists at `offset + limit`.
+
 ### `POST /api/alert-referee/train`
 
 Triggers Alert Confidence Referee training in the background (the Settings "Run Training Now" action). Before counting samples or fitting anything, it runs `alert_referee_engine.backfill_historical_features()` — a one-time-safe backfill that recomputes RSI/EMA-distance/volume-ratio/Bollinger-width for any `trap_phase_history` row logged before these columns existed, from the same 2-year parquet history the live scan reads, so already-resolved historical rows become usable training data immediately rather than only accumulating from new scans (idempotent — already-backfilled rows are skipped, so repeat calls are cheap once caught up). Training itself then refuses to fit a model below a hard minimum sample count (30 resolved, feature-bearing Trap Monitor phase calls); above that it always trains, but the resulting model only runs in Active (enforcing) mode once the sample count also crosses the configured `MIN_TRAINING_SAMPLES` target — otherwise it runs in Shadow (log-only) mode regardless of the configured mode. Returns `{"status": "success"}` immediately; poll `/api/alert-referee/status` for the outcome.

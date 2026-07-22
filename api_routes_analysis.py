@@ -134,6 +134,33 @@ async def get_alert_referee_status(request: Request):
         return _error_500(e)
 
 
+@analysis_router.get("/alert-referee/log")
+@limiter.limit("30/minute")
+async def get_alert_referee_log(
+    request: Request,
+    ticker: str = Query(default=""),
+    vetoed: str = Query(default="", pattern=r"^(true|false|)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Returns a searchable, filterable, paginated slice of the Alert Confidence Referee shadow-mode log."""
+    try:
+        from alert_referee_engine import get_recent_evaluations, TRAP_MONITOR_ENGINE
+        vetoed_filter = {"true": True, "false": False}.get(vetoed)
+        rows = get_recent_evaluations(
+            TRAP_MONITOR_ENGINE,
+            limit=limit + 1,
+            offset=offset,
+            ticker=ticker.strip() or None,
+            vetoed=vetoed_filter,
+        )
+        has_more = len(rows) > limit
+        return JSONResponse(content={"status": "success", "results": rows[:limit], "has_more": has_more})
+    except Exception as e:
+        logger.error("alert-referee/log failed: %s", e)
+        return _error_500(e)
+
+
 @analysis_router.post("/alert-referee/train")
 @limiter.limit("4/minute")
 async def train_alert_referee(request: Request, background_tasks: BackgroundTasks):

@@ -423,8 +423,22 @@
                                 Shadow mode — even a "Yes" here does not suppress the real alert until Active mode is ready
                                 (see Readiness above).
                             </p>
-                            <div id="alert-referee-log-empty" class="text-muted" hidden>No shadow-log entries recorded yet.</div>
-                            <div class="table-responsive">
+                            <div class="flex-gap-15 mb-10 flex-wrap">
+                                <div class="form-group flex-1">
+                                    <label for="alert-referee-log-ticker">Search Ticker</label>
+                                    <input type="text" id="alert-referee-log-ticker" class="form-control" placeholder="e.g. AAPL" oninput="onAlertRefereeLogFilterChange()">
+                                </div>
+                                <div class="form-group flex-1">
+                                    <label for="alert-referee-log-vetoed">Would Veto</label>
+                                    <select id="alert-referee-log-vetoed" class="form-select" onchange="onAlertRefereeLogFilterChange()">
+                                        <option value="">All</option>
+                                        <option value="true">Yes</option>
+                                        <option value="false">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="alert-referee-log-empty" class="text-muted" hidden>No matching shadow-log entries.</div>
+                            <div class="table-responsive alert-referee-log-scroll">
                                 <table class="table table-sm table-hover">
                                     <thead>
                                         <tr>
@@ -439,6 +453,7 @@
                                     <tbody id="alert-referee-log-tbody"></tbody>
                                 </table>
                             </div>
+                            <button type="button" id="alert-referee-log-more" class="btn btn-outline-secondary btn-sm mt-10" onclick="loadAlertRefereeLog(false)" hidden>Load More</button>
                         </div>
                     </div>
                 </div>
