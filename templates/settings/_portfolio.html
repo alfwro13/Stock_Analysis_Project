@@ -39,17 +39,15 @@
                     <input type="checkbox" id="RISK_ORCHESTRATOR_ENABLED" {% if config.SCHEDULING.RISK_ORCHESTRATOR.ENABLED %}checked{% endif %}>
                     <label for="RISK_ORCHESTRATOR_ENABLED">Enable daily scan (Mon-Fri)</label>
                 </div>
-                <div class="form-group">
-                    <div class="form-group">
-                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group mb-0">
+                        <label>Run Time</label>
                         <input type="time" id="RISK_ORCHESTRATOR_TIME" class="form-control"
                             value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.TIME | default('19:15') }}">
                     </div>
-                    <div class="form-group">
-                        <button type="button" class="btn btn-outline-secondary" onclick="runRiskOrchestratorNow()">Run Now</button>
-                        <span id="risk-orchestrator-msg"></span>
-                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="runRiskOrchestratorNow()">▶️ Run Now</button>
                 </div>
+                <div id="risk-orchestrator-msg" class="mt-10"></div>
 
                 <div class="settings-panel border-left-red">
                     <h4 class="settings-panel-header text-red">⚖️ Weights (must sum to 100%)</h4>
@@ -132,7 +130,7 @@
                         <label for="RISK_ORCHESTRATOR_DIGEST_ENABLED">Enable daily rollup (Mon-Fri)</label>
                     </div>
                     <div class="form-group">
-                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <label>Run Time</label>
                         <input type="time" id="RISK_ORCHESTRATOR_DIGEST_TIME" class="form-control"
                             value="{{ config.SCHEDULING.RISK_ORCHESTRATOR_DIGEST.TIME | default('19:25') }}">
                     </div>
