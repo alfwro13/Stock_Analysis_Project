@@ -14,8 +14,10 @@ import head_shoulders_engine
 import momentum_divergence_engine
 import narrow_range_engine
 import parabolic_stretch_engine
+import pennant_engine
 import triangle_engine
 import volatility_squeeze_engine
+import wedge_engine
 from config import HISTORICAL_DIR, load_config
 from database import (
     get_connection,
@@ -29,16 +31,17 @@ from yahoo_engine import yahoo_engine
 logger = logging.getLogger(__name__)
 
 # GUI name: "Pattern Detection". This is the canonical extension point for future swing-pattern
-# detectors (Triangles, Wedges, Flag & Pennant, ...): each family is a module exposing FAMILY,
-# PATTERN_TYPES (pattern_type -> expected breakout direction "up"/"down"), and
-# detect(ticker, df, rsi_series, vol_sma, config) -> dict | None returning the generic
-# points/lines/key_level result shape. Register it below — no other file needs to change.
-# See assets/pattern_detection.md for the full walkthrough.
+# detectors: each family is a module exposing FAMILY, PATTERN_TYPES (pattern_type -> expected
+# breakout direction "up"/"down"), and detect(ticker, df, rsi_series, vol_sma, config) ->
+# dict | None returning the generic points/lines/key_level result shape. Register it below —
+# no other file needs to change. See assets/pattern_detection.md for the full walkthrough.
 DETECTORS = {
     head_shoulders_engine.FAMILY: head_shoulders_engine,
     double_top_bottom_engine.FAMILY: double_top_bottom_engine,
     flag_engine.FAMILY: flag_engine,
     triangle_engine.FAMILY: triangle_engine,
+    wedge_engine.FAMILY: wedge_engine,
+    pennant_engine.FAMILY: pennant_engine,
     volatility_squeeze_engine.FAMILY: volatility_squeeze_engine,
     narrow_range_engine.FAMILY: narrow_range_engine,
     parabolic_stretch_engine.FAMILY: parabolic_stretch_engine,

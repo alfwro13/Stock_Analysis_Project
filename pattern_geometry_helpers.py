@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import numpy as np
@@ -142,6 +143,53 @@ def slope_pct_per_day(slope: float, reference_price: float) -> float:
     if reference_price <= 0:
         return 0.0
     return slope / reference_price * 100.0
+
+
+def detect_pole(
+    close: np.ndarray,
+    consolidation_start: int,
+    is_bear: bool,
+    sigma_multiplier: float,
+    flagpole_days: int,
+    sigma_window_days: int,
+) -> Optional[dict]:
+    """Finds the sharp directional 'pole' move ending immediately before `consolidation_start`,
+    shared by Flag and Pennant (both require a >=sigma_multiplier-sigma move, time-scaled by
+    sqrt(flagpole_days), over the ticker's own trailing daily-return volatility) before either
+    family's differently-shaped consolidation is even considered. Returns None if no qualifying
+    pole exists this far back from consolidation_start."""
+    daily_returns = np.diff(close) / close[:-1]
+    pole_end = consolidation_start - 1
+    pole_start = pole_end - flagpole_days + 1
+    if pole_start - sigma_window_days < 0 or pole_end <= pole_start:
+        return None
+
+    pole_start_price = close[pole_start]
+    pole_end_price = close[pole_end]
+    if pole_start_price <= 0:
+        return None
+    flagpole_return_pct = (pole_end_price - pole_start_price) / pole_start_price * 100.0
+
+    sigma_window = daily_returns[pole_start - sigma_window_days:pole_start]
+    if len(sigma_window) < sigma_window_days:
+        return None
+    sigma_daily = float(np.std(sigma_window, ddof=1))
+    if sigma_daily <= 0:
+        return None
+    threshold_pct = sigma_multiplier * sigma_daily * math.sqrt(flagpole_days) * 100.0
+
+    if is_bear:
+        if flagpole_return_pct > -threshold_pct:
+            return None
+    else:
+        if flagpole_return_pct < threshold_pct:
+            return None
+
+    return {
+        "pole_start_idx": pole_start, "pole_start_price": round(float(pole_start_price), 4),
+        "pole_end_idx": pole_end, "pole_end_price": round(float(pole_end_price), 4),
+        "flagpole_return_pct": round(float(flagpole_return_pct), 2),
+    }
 
 
 def candle_body_wick_metrics(open_: float, high: float, low: float, close: float) -> dict:

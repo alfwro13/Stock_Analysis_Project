@@ -4277,8 +4277,8 @@ server-resolved `direction` (`"up"`/`"down"`/`null`, from `DETECTORS[pattern_fam
 — `null` for a pattern whose direction is not yet resolved), plus the current Portfolio/Watchlist
 ticker sets so the page can filter by scope without a second round-trip. Optional `family` query
 param filters to one `pattern_family` (`head_shoulders` / `double_top_bottom` / `flag` /
-`triangle` / `volatility_squeeze` / `narrow_range` / `parabolic_stretch` / `momentum_divergence` /
-`candlestick_trigger`).
+`pennant` / `triangle` / `wedge` / `volatility_squeeze` / `narrow_range` / `parabolic_stretch` /
+`momentum_divergence` / `candlestick_trigger`).
 
 **Response**
 

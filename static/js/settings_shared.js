@@ -264,11 +264,19 @@ async function saveSettings(silent = false) {
                     "BULL_ENABLED": document.getElementById('PATTERN_DETECTION_FLAG_BULL').checked,
                     "BEAR_ENABLED": document.getElementById('PATTERN_DETECTION_FLAG_BEAR').checked
                 },
+                "PENNANT": {
+                    "BULL_ENABLED": document.getElementById('PATTERN_DETECTION_PENNANT_BULL').checked,
+                    "BEAR_ENABLED": document.getElementById('PATTERN_DETECTION_PENNANT_BEAR').checked
+                },
                 "TRIANGLE": {
                     "ASCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_ASC').checked,
                     "DESCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_DESC').checked,
                     "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_SYM_BULLISH').checked,
                     "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_SYM_BEARISH').checked
+                },
+                "WEDGE": {
+                    "RISING_ENABLED": document.getElementById('PATTERN_DETECTION_WEDGE_RISING').checked,
+                    "FALLING_ENABLED": document.getElementById('PATTERN_DETECTION_WEDGE_FALLING').checked
                 },
                 "VOLATILITY_SQUEEZE": {
                     "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_VS_BULLISH').checked,
@@ -414,10 +422,23 @@ async function saveSettings(silent = false) {
                     "MAX_CHANNEL_SLOPE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_FLAG_MAX_SLOPE').value) || 0.75,
                     "PARALLEL_TOLERANCE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_FLAG_PARALLEL_TOL').value) || 0.15
                 },
+                "PENNANT": {
+                    "SIGMA_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_PENNANT_SIGMA_MULT').value) || 1.5,
+                    "FLAGPOLE_LOOKBACK_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_PENNANT_POLE_DAYS').value) || 10,
+                    "SIGMA_WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_PENNANT_SIGMA_WINDOW').value) || 20,
+                    "MIN_SLOPE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_PENNANT_MIN_SLOPE').value) || 0.15,
+                    "MIN_CONSOLIDATION_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_PENNANT_MIN_CONSOL').value) || 5,
+                    "MAX_CONSOLIDATION_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_PENNANT_MAX_CONSOL').value) || 12
+                },
                 "TRIANGLE": {
                     "WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_TRI_WINDOW').value) || 40,
                     "FLAT_SLOPE_EPSILON_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_TRI_FLAT_EPS').value) || 0.15,
                     "MIN_SLOPE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_TRI_MIN_SLOPE').value) || 0.15
+                },
+                "WEDGE": {
+                    "WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_WEDGE_WINDOW').value) || 40,
+                    "MIN_SLOPE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_WEDGE_MIN_SLOPE').value) || 0.15,
+                    "MIN_CONVERGENCE_DIFF_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_WEDGE_CONVERGENCE').value) || 0.1
                 },
                 "VOLATILITY_SQUEEZE": {
                     "WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_VS_WINDOW').value) || 20,

@@ -3,9 +3,10 @@ tests/test_pattern_detection_engine.py — the generic Pattern Detection orchest
 dispatch, ticker scoping, DB save/dedup, accuracy resolution, historical backfill, and the
 scheduler runner's alert wiring. Per-family detection math lives in
 tests/test_head_shoulders_engine.py, tests/test_double_top_bottom_engine.py,
-tests/test_flag_engine.py, tests/test_triangle_engine.py,
-tests/test_volatility_squeeze_engine.py, tests/test_narrow_range_engine.py,
-tests/test_parabolic_stretch_engine.py, and tests/test_momentum_divergence_engine.py.
+tests/test_flag_engine.py, tests/test_pennant_engine.py, tests/test_triangle_engine.py,
+tests/test_wedge_engine.py, tests/test_volatility_squeeze_engine.py,
+tests/test_narrow_range_engine.py, tests/test_parabolic_stretch_engine.py, and
+tests/test_momentum_divergence_engine.py.
 """
 
 import sys
@@ -27,8 +28,10 @@ import head_shoulders_engine
 import momentum_divergence_engine
 import narrow_range_engine
 import parabolic_stretch_engine
+import pennant_engine
 import triangle_engine
 import volatility_squeeze_engine
+import wedge_engine
 from pattern_detection_engine import (
     PatternDetectionEngine,
     DETECTORS,
@@ -47,7 +50,9 @@ class TestRegistry:
         assert DETECTORS["head_shoulders"] is head_shoulders_engine
         assert DETECTORS["double_top_bottom"] is double_top_bottom_engine
         assert DETECTORS["flag"] is flag_engine
+        assert DETECTORS["pennant"] is pennant_engine
         assert DETECTORS["triangle"] is triangle_engine
+        assert DETECTORS["wedge"] is wedge_engine
         assert DETECTORS["volatility_squeeze"] is volatility_squeeze_engine
         assert DETECTORS["narrow_range"] is narrow_range_engine
         assert DETECTORS["parabolic_stretch"] is parabolic_stretch_engine
