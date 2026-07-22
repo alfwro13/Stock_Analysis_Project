@@ -319,6 +319,7 @@ class NotificationsConfig(BaseModel):
     TRAP_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
     PAIRS_SPREAD_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
     PATTERN_DETECTION_ALERTS: Optional[PatternDetectionAlertConfig] = None
+    RISK_ORCHESTRATOR_ALERTS: Optional[NotificationItemConfig] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None

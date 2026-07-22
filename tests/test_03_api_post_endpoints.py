@@ -167,6 +167,28 @@ def test_post_settings_with_notification_routing(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_with_risk_orchestrator_alerts(client, confirm_token):
+    """POST /api/settings with NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS (Pillar C2's shared
+    cooldown block for PHI/correlation/stop-breach escalations) must persist and round-trip."""
+    import config as _config
+    payload = {
+        "NOTIFICATIONS": {
+            "RISK_ORCHESTRATOR_ALERTS": {
+                "ENABLED": True, "COOLDOWN_MINUTES": 45.0, "RETRIGGER_PERCENT": 4.0, "REARM_PERCENT": 8.0,
+            }
+        }
+    }
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    block = _config.load_config().get("NOTIFICATIONS", {}).get("RISK_ORCHESTRATOR_ALERTS", {})
+    assert block.get("ENABLED") is True
+    assert block.get("COOLDOWN_MINUTES") == 45.0
+    assert block.get("RETRIGGER_PERCENT") == 4.0
+    assert block.get("REARM_PERCENT") == 8.0
+
+
+@pytest.mark.api
 def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(client, confirm_token):
     """POST /api/settings with GHOSTFOLIO_ENABLED=False must purge portfolio.json/watchlist.json,
     clear GHOSTFOLIO_ACCOUNTS, and force GHOSTFOLIO_SYNC.ENABLED off."""

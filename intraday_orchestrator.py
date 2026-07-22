@@ -28,7 +28,7 @@ from utils import clamp_beta
 logger = logging.getLogger(__name__)
 
 # GUI name: "Crash & Moonshot Alerts". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
-_ALERT_SOURCES = {"Crash": "crash_alert", "Moonshot": "moonshot_alert", "Anomaly": "anomaly_alert", "Macro": "macro_yield_alert", "HoldingLimit": "holding_limit_alert"}
+_ALERT_SOURCES = {"Crash": "crash_alert", "Moonshot": "moonshot_alert", "Anomaly": "anomaly_alert", "Macro": "macro_yield_alert", "HoldingLimit": "holding_limit_alert", "AtrStopBreach": "risk_orchestrator_stop_breach"}
 
 _STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
 _INTRADAY_BAR_SECONDS = 300     # 5m bar width — Yahoo returns the still-filling current bucket as the last row
@@ -163,7 +163,7 @@ class IntradayOrchestrator:
             )
             conn.commit()
         except Exception as e:
-            logger.error(f"Failed to write notification feed row for {msg_type}: {e}")
+            logger.error("Failed to write notification feed row for %s: %s", msg_type, e)
 
     @staticmethod
     def _condition_fingerprint(reason: str) -> str:
@@ -193,6 +193,8 @@ class IntradayOrchestrator:
             key = "PAIRS_SPREAD_MONITOR_ALERTS"
         elif engine == "PatternDetector":
             key = "PATTERN_DETECTION_ALERTS"
+        elif engine in ("PhiCritical", "CorrelationSpike", "AtrStopBreach"):
+            key = "RISK_ORCHESTRATOR_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})
@@ -269,6 +271,14 @@ class IntradayOrchestrator:
                     # Moonshot: price rising further is worsening; falling back is recovery.
                     worsened_pct = pct_change
                     recovered_pct = -pct_change
+                elif engine == "AtrStopBreach":
+                    # current_price here is a real price falling further below the stop is worsening.
+                    worsened_pct = -pct_change
+                    recovered_pct = pct_change
+                elif engine in ("PhiCritical", "CorrelationSpike"):
+                    # current_price here carries the PHI score / max correlation value, not a price — rising is worsening.
+                    worsened_pct = pct_change
+                    recovered_pct = -pct_change
                 else:
                     # Macro (yield surge): yield rising further is worsening; falling back is recovery.
                     worsened_pct = pct_change
@@ -311,7 +321,7 @@ class IntradayOrchestrator:
             return True
 
         except Exception as e:
-            logger.error(f"Alert gate evaluation failed for {engine}/{ticker}: {e}")
+            logger.error("Alert gate evaluation failed for %s/%s: %s", engine, ticker, e)
             return True  # fail safe: suppress rather than risk spamming
 
     def _evaluate_daily_alert_gate(
@@ -375,7 +385,7 @@ class IntradayOrchestrator:
             )
             conn.commit()
         except Exception as e:
-            logger.error(f"Failed to record alert state for {engine}/{ticker}: {e}")
+            logger.error("Failed to record alert state for %s/%s: %s", engine, ticker, e)
 
     @staticmethod
     def _seconds_since(ts: pd.Timestamp) -> float:
@@ -437,7 +447,7 @@ class IntradayOrchestrator:
             if pruned:
                 logger.info("Pruned %d stale alert_state row(s) older than 7 days.", pruned)
         except Exception as e:
-            logger.error(f"Failed to prune alert_state: {e}")
+            logger.error("Failed to prune alert_state: %s", e)
 
     def _has_corporate_action_today(self, ticker: str) -> bool:
         """Returns True if Yahoo Finance reports a dividend or split today; memoised per calendar day to avoid redundant HTTP calls."""
@@ -736,11 +746,13 @@ class IntradayOrchestrator:
         moonshot_alerts_to_send = []
         anomaly_alerts_to_send = []
         holding_limit_alerts_to_send = []
+        atr_stop_breach_alerts_to_send = []
 
         # Check correct config paths for enablement (SCHEDULING, not NOTIFICATIONS)
         crash_enabled = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {}).get("ENABLED", False)
         moonshot_enabled = self.config.get("SCHEDULING", {}).get("MOONSHOT_ALERTS", {}).get("ENABLED", False)
         anomaly_enabled = self.config.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("ENABLED", False)
+        risk_orch_alerts_enabled = self.config.get("NOTIFICATIONS", {}).get("RISK_ORCHESTRATOR_ALERTS", {}).get("ENABLED", False)
 
         for ticker in tickers:
             try:
@@ -817,6 +829,16 @@ class IntradayOrchestrator:
                     ticker, current_price, currency, holding_limits_by_ticker,
                     account_names, conn, holding_limit_alerts_to_send,
                 )
+
+                if risk_orch_alerts_enabled:
+                    atr_stop = asset_meta.get("atr_stop_loss")
+                    if atr_stop is not None and current_price <= atr_stop:
+                        reason = f"ATR STOP BREACH {ticker}"
+                        if not self._evaluate_alert_gate("AtrStopBreach", ticker, current_price, reason, conn):
+                            atr_stop_breach_alerts_to_send.append(
+                                (ticker, {"price": current_price, "reason": reason,
+                                          "formatted_atr_stop": format_currency(atr_stop, currency)}, currency, asset_meta)
+                            )
 
                 # evaluate() first so reason string is available for fingerprinting; returns None when no condition met.
                 if crash_enabled:
@@ -997,6 +1019,20 @@ class IntradayOrchestrator:
             ),
             lambda t, p, a: (
                 f"Anomaly Score: {a.get('anomaly_score', 0):.2f} detected for {t} at {p}"
+            ),
+        )
+        self._dispatch_alerts(
+            "AtrStopBreach",
+            atr_stop_breach_alerts_to_send,
+            conn,
+            lambda t, p, a, ml, v, s, u: (
+                f"🛑 **ATR STOP BREACHED: {t}** 🛑\n\n"
+                f"**Price:** {p}\n"
+                f"**Stop:** {a['formatted_atr_stop']}\n\n"
+                f"🔗 [View Position]({u})"
+            ),
+            lambda t, p, a: (
+                f"{t}: ATR stop of {a['formatted_atr_stop']} breached — current price {p}."
             ),
         )
         self._dispatch_holding_limit_alerts(holding_limit_alerts_to_send, conn)

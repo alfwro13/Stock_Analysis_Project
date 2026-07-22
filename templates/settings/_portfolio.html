@@ -120,6 +120,36 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">🚨 Critical Escalations</h4>
+                    <p class="settings-desc-sm">
+                        Instant alerts when a scope's PHI or max correlation reaches Red, or a held
+                        position breaches its ATR stop — checked on the daily scan (PHI/correlation)
+                        and every 5-minute intraday scan (ATR stop).
+                    </p>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="RO_ALERTS_ENABLED" {% if config.NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS.ENABLED %}checked{% endif %}>
+                        <label for="RO_ALERTS_ENABLED">Enable critical escalations</label>
+                    </div>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Cooldown (minutes)</label>
+                            <input type="number" id="RO_ALERTS_COOLDOWN" class="form-control"
+                                value="{{ config.NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS.COOLDOWN_MINUTES | default(120) }}" min="0" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Retrigger %</label>
+                            <input type="number" id="RO_ALERTS_RETRIGGER" class="form-control"
+                                value="{{ config.NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS.RETRIGGER_PERCENT | default(5.0) }}" min="0" step="0.5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Rearm %</label>
+                            <input type="number" id="RO_ALERTS_REARM" class="form-control"
+                                value="{{ config.NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS.REARM_PERCENT | default(10.0) }}" min="0" step="0.5">
+                        </div>
+                    </div>
+                </div>
             </details>
 
             <details class="settings-card">

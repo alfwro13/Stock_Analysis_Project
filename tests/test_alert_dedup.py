@@ -60,6 +60,11 @@ TEST_CONFIG = {
             "RETRIGGER_PERCENT": 3.0,
             "REARM_PERCENT": 5.0,
         },
+        "RISK_ORCHESTRATOR_ALERTS": {
+            "COOLDOWN_MINUTES": 120.0,
+            "RETRIGGER_PERCENT": 5.0,
+            "REARM_PERCENT": 10.0,
+        },
     }
 }
 
@@ -215,6 +220,20 @@ class TestDedupSettings:
         assert s["retrigger_percent"] == 3.0
         assert s["rearm_percent"] == 5.0
 
+    def test_risk_orchestrator_engines_share_one_block(self, orch):
+        # PhiCritical/CorrelationSpike/AtrStopBreach all route to the same shared block.
+        orch.config = {
+            "NOTIFICATIONS": {
+                "RISK_ORCHESTRATOR_ALERTS": {"COOLDOWN_MINUTES": 45.0, "RETRIGGER_PERCENT": 4.0, "REARM_PERCENT": 8.0},
+                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 999.0},  # must NOT be used
+            }
+        }
+        for engine in ("PhiCritical", "CorrelationSpike", "AtrStopBreach"):
+            s = orch._dedup_settings(engine)
+            assert s["cooldown_minutes"] == 45.0
+            assert s["retrigger_percent"] == 4.0
+            assert s["rearm_percent"] == 8.0
+
     def test_missing_key_uses_safe_fallback(self, orch):
         orch.config = {"NOTIFICATIONS": {"CRASH_ALERTS": {}}}
         s = orch._dedup_settings("Crash")
@@ -316,6 +335,53 @@ class TestEvaluateAlertGateCrash:
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
         assert orch._evaluate_alert_gate("Crash", TEST_TICKER, None, CRASH_REASON, db_conn) is True
+
+
+STOP_REASON = "ATR STOP BREACH _DEDUP_TEST"
+PHI_REASON = "PHI_RED_all"
+CORR_REASON = "CORRELATION_SPIKE_all"
+
+
+class TestEvaluateAlertGateAtrStopBreach:
+    """Pillar C2: directional logic mirrors Crash — price falling further below the stop is
+    worsening, rising back above it is recovery — since current_price here is a real price."""
+
+    def test_worsened_is_price_falling_further(self, orch, db_conn):
+        fp = orch._condition_fingerprint(STOP_REASON)
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("AtrStopBreach", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
+        # 100 → 93 = -7% further decline, exceeds RETRIGGER 5.0% (RISK_ORCHESTRATOR_ALERTS)
+        assert orch._evaluate_alert_gate("AtrStopBreach", TEST_TICKER, 93.0, STOP_REASON, db_conn) is False
+
+    def test_recovered_is_price_rising_back(self, orch, db_conn):
+        fp = orch._condition_fingerprint(STOP_REASON)
+        _seed_alert_state("AtrStopBreach", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
+        # 100 → 111 = +11% recovery, exceeds REARM 10.0%
+        result = orch._evaluate_alert_gate("AtrStopBreach", TEST_TICKER, 111.0, STOP_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("AtrStopBreach", TEST_TICKER)
+        assert row["armed"] == 1
+
+
+class TestEvaluateAlertGatePhiCriticalAndCorrelationSpike:
+    """Both carry a computed magnitude (PHI score / max correlation), not a price, in the
+    current_price slot — directional logic mirrors Moonshot: rising further is worsening."""
+
+    def test_phi_critical_worsened_is_score_rising(self, orch, db_conn):
+        fp = orch._condition_fingerprint(PHI_REASON)
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("PhiCritical", TEST_TICKER, fp, 80.0, old_ts, 0, TODAY)
+        # 80 → 90 = +12.5% further deterioration, exceeds RETRIGGER 5.0%
+        assert orch._evaluate_alert_gate("PhiCritical", TEST_TICKER, 90.0, PHI_REASON, db_conn) is False
+
+    def test_correlation_spike_recovered_is_value_falling(self, orch, db_conn):
+        fp = orch._condition_fingerprint(CORR_REASON)
+        _seed_alert_state("CorrelationSpike", TEST_TICKER, fp, 0.9, TODAY + " 10:00:00", 0, TODAY)
+        # 0.9 → 0.75 = -16.7% recovery, exceeds REARM 10.0%
+        result = orch._evaluate_alert_gate("CorrelationSpike", TEST_TICKER, 0.75, CORR_REASON, db_conn)
+        assert result is True
+        row = _read_alert_state("CorrelationSpike", TEST_TICKER)
+        assert row["armed"] == 1
 
 
 class TestEvaluateAlertGateMoonshot:

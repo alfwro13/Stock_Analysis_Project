@@ -898,8 +898,49 @@ def run_alert_referee_training_job():
         record_job_run("alert_referee_training_job")
 
 
+def _fire_risk_orchestrator_critical_alerts(scopes: list) -> None:
+    """Pillar C2: instant escalation when a scope's PHI or max correlation reaches RED — a
+    computed severity condition, so per AGENTS.md rule 19 this uses the shared worsened/
+    recovered/cooldown alert gate (not the static-threshold daily gate), keyed per scope so an
+    "all" breach and an individual account breach never collide."""
+    if not load_config().get("NOTIFICATIONS", {}).get("RISK_ORCHESTRATOR_ALERTS", {}).get("ENABLED", False):
+        return
+    if not scopes:
+        return
+    orch = IntradayOrchestrator()
+    conn_alert = None
+    try:
+        conn_alert = get_connection()
+        for row in scopes:
+            if row["tier"] == "RED" and row["phi_score"] is not None:
+                reason = f"PHI_RED_{row['scope']}"
+                if not orch._evaluate_alert_gate("PhiCritical", row["scope"], row["phi_score"], reason, conn_alert):
+                    msg = (
+                        f"🌡️ **Portfolio Heat Index Critical: {row['scope_label']}** 🌡️\n\n"
+                        f"PHI score {row['phi_score']} has reached RED.\n\n"
+                        f"🔗 [View Portfolio Heat Index](/portfolio-heat-index)"
+                    )
+                    if notify("risk_orchestrator_phi_critical", "PhiCritical", msg, conn=conn_alert):
+                        orch.record_alert_fired("PhiCritical", row["scope"], row["phi_score"], reason, conn_alert)
+            if row["correlation_tier"] == "RED" and row["max_correlation"] is not None:
+                reason = f"CORRELATION_SPIKE_{row['scope']}"
+                if not orch._evaluate_alert_gate("CorrelationSpike", row["scope"], row["max_correlation"], reason, conn_alert):
+                    msg = (
+                        f"🔗 **Correlation Spike: {row['scope_label']}** 🔗\n\n"
+                        f"Max pairwise correlation {row['max_correlation']} has reached RED.\n\n"
+                        f"🔗 [View Portfolio Heat Index](/portfolio-heat-index)"
+                    )
+                    if notify("risk_orchestrator_correlation_spike", "CorrelationSpike", msg, conn=conn_alert):
+                        orch.record_alert_fired("CorrelationSpike", row["scope"], row["max_correlation"], reason, conn_alert)
+    except Exception as e:
+        logger.error("Risk Orchestrator critical alert evaluation failed: %s", e)
+    finally:
+        if conn_alert:
+            conn_alert.close()
+
+
 def run_risk_orchestrator_job():
-    from risk_orchestrator_engine import run_scan
+    from risk_orchestrator_engine import run_scan, get_critical_scopes
     _mark_job_started(job_label("risk_orchestrator_job"))
     try:
         log_sched_notification("Scheduler", "Started Risk Orchestrator Scan...")
@@ -909,6 +950,7 @@ def run_risk_orchestrator_job():
             f"Risk Orchestrator Scan complete — {result['scopes_computed']} scope(s) scored, "
             f"{result['tickers_scored']} ticker(s) rated.",
         )
+        _fire_risk_orchestrator_critical_alerts(get_critical_scopes())
     except Exception as e:
         logger.error("Risk Orchestrator Scan failed: %s", e)
         log_sched_notification("Error", f"Risk Orchestrator Scan failed: {e}")

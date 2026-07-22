@@ -267,6 +267,21 @@ def run_scan() -> dict:
     return {"scopes_computed": scopes_computed, "scopes_skipped": scopes_skipped, "tickers_scored": len(contributions)}
 
 
+def get_critical_scopes() -> list:
+    """Reads back the just-persisted portfolio_heat_index for Pillar C2's critical escalations —
+    every scope's PHI tier and max-correlation tier, so the caller can alert on whichever are RED."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT scope, scope_label, phi_score, tier, max_correlation, correlation_tier FROM portfolio_heat_index"
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    return [dict(r) for r in rows]
+
+
 def _suggest_reduced_value(
     scope: str, ticker: str, additional_value: float, dd_sub: float,
     thresholds: dict, weights: dict, target_rank: int, iterations: int = 6,

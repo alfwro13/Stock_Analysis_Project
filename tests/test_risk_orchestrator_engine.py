@@ -10,7 +10,7 @@ Covers:
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from database import get_connection
 from risk_orchestrator_engine import (
     _sub_score,
     _tier_for,
+    get_critical_scopes,
     persist_heat_index,
     persist_ticker_contributions,
     run_scan,
@@ -154,6 +155,79 @@ class TestRunScan:
         assert result["scopes_computed"] == 0
         assert result["scopes_skipped"] == 1
         assert result["tickers_scored"] == 0
+
+
+@pytest.mark.db
+class TestGetCriticalScopes:
+    def test_returns_every_persisted_scope_row(self):
+        persist_heat_index({
+            "scope": "all", "scope_label": "All Accounts", "phi_score": 80.0, "tier": "RED",
+            "var_pct_of_equity": 3.0, "var_tier": "YELLOW", "max_correlation": 0.9,
+            "correlation_tier": "RED", "drawdown_pct": 2.0, "drawdown_tier": "GREEN",
+            "breakdown_json": "[]",
+        })
+        rows = get_critical_scopes()
+        matching = [r for r in rows if r["scope"] == "all"]
+        assert len(matching) == 1
+        assert matching[0]["tier"] == "RED"
+        assert matching[0]["correlation_tier"] == "RED"
+        assert matching[0]["phi_score"] == 80.0
+        assert matching[0]["max_correlation"] == 0.9
+
+
+class TestFireRiskOrchestratorCriticalAlerts:
+    def _config(self, enabled=True):
+        return {"NOTIFICATIONS": {"RISK_ORCHESTRATOR_ALERTS": {"ENABLED": enabled}}}
+
+    def test_noop_when_disabled(self):
+        with patch("scheduler_jobs.load_config", return_value=self._config(enabled=False)), \
+             patch("scheduler_jobs.IntradayOrchestrator") as mock_orch_cls:
+            scheduler_jobs._fire_risk_orchestrator_critical_alerts(
+                [{"scope": "all", "scope_label": "All Accounts", "phi_score": 90.0, "tier": "RED",
+                  "max_correlation": 0.9, "correlation_tier": "RED"}]
+            )
+        mock_orch_cls.assert_not_called()
+
+    def test_fires_phi_and_correlation_alerts_when_both_red(self):
+        mock_orch = MagicMock()
+        mock_orch._evaluate_alert_gate.return_value = False  # fire
+        with patch("scheduler_jobs.load_config", return_value=self._config()), \
+             patch("scheduler_jobs.IntradayOrchestrator", return_value=mock_orch), \
+             patch("scheduler_jobs.get_connection"), \
+             patch("scheduler_jobs.notify", return_value=True) as mock_notify:
+            scheduler_jobs._fire_risk_orchestrator_critical_alerts(
+                [{"scope": "all", "scope_label": "All Accounts", "phi_score": 90.0, "tier": "RED",
+                  "max_correlation": 0.9, "correlation_tier": "RED"}]
+            )
+        fired_sources = {c.args[0] for c in mock_notify.call_args_list}
+        assert fired_sources == {"risk_orchestrator_phi_critical", "risk_orchestrator_correlation_spike"}
+        assert mock_orch.record_alert_fired.call_count == 2
+
+    def test_skips_scope_whose_tiers_are_not_red(self):
+        mock_orch = MagicMock()
+        with patch("scheduler_jobs.load_config", return_value=self._config()), \
+             patch("scheduler_jobs.IntradayOrchestrator", return_value=mock_orch), \
+             patch("scheduler_jobs.get_connection"), \
+             patch("scheduler_jobs.notify") as mock_notify:
+            scheduler_jobs._fire_risk_orchestrator_critical_alerts(
+                [{"scope": "all", "scope_label": "All Accounts", "phi_score": 20.0, "tier": "GREEN",
+                  "max_correlation": 0.3, "correlation_tier": "GREEN"}]
+            )
+        mock_notify.assert_not_called()
+
+    def test_gated_alert_gate_suppresses_notify(self):
+        mock_orch = MagicMock()
+        mock_orch._evaluate_alert_gate.return_value = True  # suppress
+        with patch("scheduler_jobs.load_config", return_value=self._config()), \
+             patch("scheduler_jobs.IntradayOrchestrator", return_value=mock_orch), \
+             patch("scheduler_jobs.get_connection"), \
+             patch("scheduler_jobs.notify") as mock_notify:
+            scheduler_jobs._fire_risk_orchestrator_critical_alerts(
+                [{"scope": "all", "scope_label": "All Accounts", "phi_score": 90.0, "tier": "RED",
+                  "max_correlation": 0.9, "correlation_tier": "RED"}]
+            )
+        mock_notify.assert_not_called()
+        mock_orch.record_alert_fired.assert_not_called()
 
 
 class TestRunRiskOrchestratorJobRunner:
