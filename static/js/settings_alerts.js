@@ -235,6 +235,44 @@ function fetchAlertRefereeReadiness() {
 
 document.addEventListener('DOMContentLoaded', fetchAlertRefereeReadiness);
 
+function showAlertRefereeShadowLog() {
+    const tbody = document.getElementById('alert-referee-log-tbody');
+    const emptyEl = document.getElementById('alert-referee-log-empty');
+    const modalEl = document.getElementById('alert-referee-log-modal');
+    if (!tbody || !modalEl) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
+    emptyEl.hidden = true;
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+    fetch('/api/alert-referee/status')
+        .then(r => r.json())
+        .then(data => {
+            const rows = (data.status === 'success' && data.recent_log) ? data.recent_log : [];
+            if (rows.length === 0) {
+                tbody.innerHTML = '';
+                emptyEl.hidden = false;
+                return;
+            }
+            tbody.innerHTML = rows.map(row => {
+                const prob = row.fire_probability != null ? Number(row.fire_probability).toFixed(2) : '—';
+                const vetoed = row.vetoed ? '<span class="text-danger">Yes</span>' : 'No';
+                const scanTime = row.scan_ts ? new Date(row.scan_ts.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+                return `<tr>
+                    <td>${escapeHtml(row.ticker || '')}</td>
+                    <td>${escapeHtml(row.phase || '')}</td>
+                    <td>${prob}</td>
+                    <td>${vetoed}</td>
+                    <td>${escapeHtml(row.mode || '')}</td>
+                    <td>${escapeHtml(scanTime)}</td>
+                </tr>`;
+            }).join('');
+        })
+        .catch(() => {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load shadow log.</td></tr>';
+        });
+}
+
 async function triggerForensicFetch() {
     const btn = document.querySelector('button[onclick="triggerForensicFetch()"]');
     const msgEl = document.getElementById('forensic-msg');

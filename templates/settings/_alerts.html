@@ -401,6 +401,7 @@
                 <div class="settings-panel border-left-cyan">
                     <h4 class="settings-panel-header text-cyan">📊 Readiness</h4>
                     <div id="alert-referee-readiness" class="text-muted">Loading…</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mt-10" onclick="showAlertRefereeShadowLog()">🔍 View Shadow Log</button>
                 </div>
 
                 <div class="flex-gap-15 mt-10">
@@ -408,6 +409,40 @@
                 </div>
                 <div id="alert-referee-msg" class="mt-10"></div>
             </details>
+
+            <div class="modal fade" id="alert-referee-log-modal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Alert Confidence Referee — Shadow Log</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="settings-desc-sm text-muted">
+                                Most recent Trap Monitor signals the referee has scored, newest first. "Would Veto" reflects
+                                Shadow mode — even a "Yes" here does not suppress the real alert until Active mode is ready
+                                (see Readiness above).
+                            </p>
+                            <div id="alert-referee-log-empty" class="text-muted" hidden>No shadow-log entries recorded yet.</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Ticker</th>
+                                            <th>Phase</th>
+                                            <th>Fire Probability</th>
+                                            <th>Would Veto</th>
+                                            <th>Mode</th>
+                                            <th>Scan Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="alert-referee-log-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <details class="settings-card" id="alerts-briefings-card">
                 <summary>📊 Alerts &amp; Reports</summary>
