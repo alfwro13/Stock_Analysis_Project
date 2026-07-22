@@ -712,6 +712,58 @@ def test_pairs_spread_chart_returns_404_for_unknown_pair(client):
     assert data.get("status") == "error"
 
 
+# ── Risk Orchestrator: Pre-Trade Gatekeeper (Pillar A) ─────────────────────────
+
+@pytest.mark.api
+def test_pretrade_check_returns_200_and_logs_verdict(client):
+    """GET /api/risk-orchestrator/pretrade-check must return the verdict and persist it."""
+    fake_result = {
+        "scope": "all", "ticker": "AAPL", "proposed_value": 1000.0, "verdict": "approve",
+        "breached_constraint": None, "phi_score": 10.0, "tier": "GREEN",
+        "var_pct_of_equity": 0.5, "var_tier": "GREEN", "max_correlation": 0.1,
+        "correlation_tier": "GREEN", "drawdown_pct": 1.0, "drawdown_tier": "GREEN",
+        "hypothetical_weight": 0.05, "new_portfolio_total_value": 21000.0,
+        "suggested_reduced_value": None, "data_warnings": [],
+    }
+    with patch("risk_orchestrator_engine.evaluate_pretrade_check", return_value=fake_result):
+        resp = client.get("/api/risk-orchestrator/pretrade-check?ticker=AAPL&value=1000&scope=all")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "success"
+    assert data["check"]["verdict"] == "approve"
+
+    import database
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM pretrade_check_log WHERE ticker='AAPL' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        assert row["verdict"] == "approve"
+    finally:
+        conn.execute("DELETE FROM pretrade_check_log WHERE ticker='AAPL'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.api
+def test_pretrade_check_missing_params_returns_422(client):
+    """GET /api/risk-orchestrator/pretrade-check without required query params must 422, not 500."""
+    resp = client.get("/api/risk-orchestrator/pretrade-check")
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_pretrade_check_empty_scope_returns_400_not_500(client):
+    """An empty/unreachable scope (RuntimeError from the engine) must surface as 400, not crash."""
+    with patch("risk_orchestrator_engine.evaluate_pretrade_check",
+               side_effect=RuntimeError("No holdings found for this scope.")):
+        resp = client.get("/api/risk-orchestrator/pretrade-check?ticker=AAPL&value=1000&scope=all")
+    assert resp.status_code == 400, f"Expected 400, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "error"
+
+
 # ── Predicted Movers ──────────────────────────────────────────────────────────
 
 @pytest.mark.api

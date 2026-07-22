@@ -76,6 +76,34 @@ def log_score_event(ticker: str, date: str, score: int, signal: str, close_price
             conn.close()
 
 
+def log_pretrade_check(
+    ticker: str, scope: str, proposed_value: float, verdict: str,
+    breached_constraint: Optional[str], phi_score: Optional[float],
+    var_pct_of_equity: Optional[float], max_correlation: Optional[float],
+    suggested_reduced_value: Optional[float],
+) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO pretrade_check_log
+               (ticker, scope, proposed_value, verdict, breached_constraint, phi_score,
+                var_pct_of_equity, max_correlation, suggested_reduced_value, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                ticker, scope, proposed_value, verdict, breached_constraint, phi_score,
+                var_pct_of_equity, max_correlation, suggested_reduced_value,
+                datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to log pre-trade check for %s: %s", ticker, e)
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_universe_tickers() -> List[str]:
     """Respects FREETRADE_ONLY_MODE: returns only is_freetrade=1 tickers when enabled."""
     conn = None

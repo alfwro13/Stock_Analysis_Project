@@ -16,7 +16,7 @@ from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
 from treasury_bill_engine import parse_tbill_buy_txn_id
-from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_ticker
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -593,6 +593,162 @@ def get_scope_return_series(
     port_rets_series = (combined_df[port_cols] * weights[port_cols]).sum(axis=1)
     bench_rets_series = combined_df[BENCHMARK_SYMBOL]
     return port_rets_series, bench_rets_series, data_warnings
+
+
+def _ticker_return_series(ticker: str) -> Optional[pd.Series]:
+    """A ticker's own daily return series, preferring the cached xray_returns_cache row
+    (already populated for every current holding) and falling back to a parquet read for a
+    ticker not currently held — the case the pre-trade gatekeeper (Pillar A) exists for."""
+    combined, _ = get_scope_returns_matrix([ticker], include_benchmark=False)
+    if combined is not None and ticker in combined.columns:
+        return combined[ticker]
+    df = fetch_close_returns_from_parquet([ticker])
+    if ticker in df.columns:
+        series = df[ticker].dropna()
+        return series if not series.empty else None
+    return None
+
+
+def simulate_scope_with_hypothetical_holding(
+    scope: str, ticker: str, additional_value: float
+) -> Dict:
+    """Recomputes the VaR/correlation half of assemble_xray_report()'s risk_metrics as if
+    `additional_value` (BASE_CURRENCY) of `ticker` were added to `scope` — the pre-trade
+    gatekeeper's what-if check. Max drawdown is deliberately NOT re-simulated (it needs a full
+    historical portfolio-return blend, not just a covariance recompute — out of scope per the
+    Pillar A plan). Raises RuntimeError if the scope itself has no holdings (mirrors
+    resolve_scope_holdings()); returns var_95_1d/max_pairwise_correlation as None (with a
+    data_warnings entry) if `ticker`'s own return series can't be resolved or the scope's
+    correlation cache is empty — the caller decides how to treat an inconclusive simulation.
+    """
+    ticker = normalize_ticker(ticker)
+    holdings, total_value = resolve_scope_holdings(scope)
+    new_total = total_value + additional_value
+    data_warnings: List[str] = []
+
+    conn = None
+    risk_cache: Dict[str, Dict] = {}
+    corr_tickers: List[str] = []
+    _raw_matrix: Optional[List] = None
+    try:
+        conn = get_connection()
+        existing_symbols = [h["symbol"] for h in holdings]
+        placeholders = ",".join("?" * len(existing_symbols)) if existing_symbols else ""
+        if existing_symbols:
+            rows = conn.execute(
+                f"SELECT ticker, annualized_vol FROM xray_risk_cache "
+                f"WHERE benchmark = ? AND ticker IN ({placeholders})",
+                [BENCHMARK_SYMBOL] + existing_symbols,
+            ).fetchall()
+            risk_cache = {row["ticker"]: {"vol": row["annualized_vol"]} for row in rows}
+        corr_row = conn.execute(
+            "SELECT tickers_json, matrix_json FROM xray_correlation_matrix WHERE benchmark = ?",
+            (BENCHMARK_SYMBOL,),
+        ).fetchone()
+        if corr_row:
+            corr_tickers = json.loads(corr_row["tickers_json"])
+            _raw_matrix = json.loads(corr_row["matrix_json"])
+    except Exception as e:
+        logger.error("Pre-trade simulation DB read failed: %s", e)
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+    if not corr_tickers or _raw_matrix is None:
+        data_warnings.append(
+            "No cached correlation matrix available for this scope — run the X-ray risk "
+            "cache job before using the pre-trade check."
+        )
+        return {
+            "var_95_1d": None, "var_pct_of_equity": None, "portfolio_vol": None,
+            "avg_pairwise_correlation": None, "max_pairwise_correlation": None,
+            "portfolio_total_value": round(new_total, 2), "hypothetical_weight": None,
+            "data_warnings": data_warnings,
+        }
+
+    hypo_series = _ticker_return_series(ticker)
+    if hypo_series is None or len(hypo_series) < 10:
+        data_warnings.append(f"No usable return history for {ticker} (need at least 10 daily observations).")
+        return {
+            "var_95_1d": None, "var_pct_of_equity": None, "portfolio_vol": None,
+            "avg_pairwise_correlation": None, "max_pairwise_correlation": None,
+            "portfolio_total_value": round(new_total, 2), "hypothetical_weight": None,
+            "data_warnings": data_warnings,
+        }
+    hypo_vol = XRayRiskComputer()._compute_vol(hypo_series)
+
+    active_tickers = [t for t in corr_tickers if t in {h["symbol"] for h in holdings}]
+    if ticker not in active_tickers:
+        active_tickers.append(ticker)
+    corr_matrix_fixed = _psd_fix_corr(_raw_matrix)
+    corr_by_pair: Dict[Tuple[str, str], float] = {}
+    for i, ti in enumerate(corr_tickers):
+        for j, tj in enumerate(corr_tickers):
+            corr_by_pair[(ti, tj)] = corr_matrix_fixed[i][j]
+
+    if ticker not in corr_tickers:
+        existing_active = [t for t in active_tickers if t != ticker]
+        existing_series, _ = get_scope_returns_matrix(existing_active + [ticker], include_benchmark=False) \
+            if existing_active else (None, [])
+        for t in existing_active:
+            rho = 0.0
+            if existing_series is not None and t in existing_series.columns and ticker in existing_series.columns:
+                aligned = existing_series[[t, ticker]].dropna()
+                if len(aligned) >= 30:
+                    rho = float(aligned.corr().iloc[0, 1])
+            corr_by_pair[(ticker, t)] = rho
+            corr_by_pair[(t, ticker)] = rho
+        corr_by_pair[(ticker, ticker)] = 1.0
+
+    weight_map: Dict[str, float] = {h["symbol"]: h["value"] / new_total for h in holdings if new_total > 0}
+    weight_map[ticker] = weight_map.get(ticker, 0.0) + (additional_value / new_total if new_total > 0 else 0.0)
+
+    w_list, dv_list, syms = [], [], []
+    for t in active_tickers:
+        w = weight_map.get(t, 0.0)
+        ann_vol = hypo_vol if t == ticker else (risk_cache.get(t) or {}).get("vol")
+        if w <= 0 or not ann_vol:
+            continue
+        syms.append(t)
+        w_list.append(w)
+        dv_list.append(ann_vol / np.sqrt(252))
+
+    var_95_1d: Optional[float] = None
+    portfolio_vol: Optional[float] = None
+    avg_pairwise_corr: Optional[float] = None
+    max_pairwise_corr: Optional[float] = None
+
+    if len(syms) >= 2:
+        w_arr = np.array(w_list)
+        dv_arr = np.array(dv_list)
+        corr_arr = np.array([[corr_by_pair.get((a, b), 0.0 if a != b else 1.0) for b in syms] for a in syms])
+        sigma_daily = np.outer(dv_arr, dv_arr) * corr_arr
+        port_var_daily = float(w_arr @ sigma_daily @ w_arr)
+        if port_var_daily > 0:
+            port_daily_vol = np.sqrt(port_var_daily)
+            portfolio_vol = round(float(port_daily_vol * np.sqrt(252)), 4)
+            var_95_1d = round(float(port_daily_vol * 1.6449 * new_total), 2)
+
+        off_diag = [corr_arr[i][j] for i in range(len(syms)) for j in range(len(syms)) if i != j]
+        if off_diag:
+            avg_pairwise_corr = round(float(np.mean(off_diag)), 3)
+            max_pairwise_corr = round(float(np.max(off_diag)), 3)
+    else:
+        data_warnings.append("Not enough correlated, priced holdings to simulate portfolio VaR.")
+
+    var_pct_of_equity = round(var_95_1d / new_total * 100, 3) if var_95_1d and new_total else None
+
+    return {
+        "var_95_1d": var_95_1d,
+        "var_pct_of_equity": var_pct_of_equity,
+        "portfolio_vol": portfolio_vol,
+        "avg_pairwise_correlation": avg_pairwise_corr,
+        "max_pairwise_correlation": max_pairwise_corr,
+        "portfolio_total_value": round(new_total, 2),
+        "hypothetical_weight": round(weight_map.get(ticker, 0.0), 4),
+        "data_warnings": data_warnings,
+    }
 
 
 def annualized_return(returns: pd.Series) -> float:

@@ -6,7 +6,7 @@ from typing import Optional
 
 from config import load_config
 from database import get_connection
-from xray_engine import assemble_xray_report
+from xray_engine import assemble_xray_report, simulate_scope_with_hypothetical_holding
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,9 @@ def _tier_for(sub_score: float, yellow: float = 40.0, red: float = 75.0) -> str:
     if sub_score >= yellow:
         return TIER_YELLOW
     return TIER_GREEN
+
+
+_TIER_RANK = {TIER_GREEN: 0, TIER_YELLOW: 1, TIER_RED: 2}
 
 
 def _thresholds(config: dict) -> dict:
@@ -262,3 +265,108 @@ def run_scan() -> dict:
             scopes_skipped += 1
 
     return {"scopes_computed": scopes_computed, "scopes_skipped": scopes_skipped, "tickers_scored": len(contributions)}
+
+
+def _suggest_reduced_value(
+    scope: str, ticker: str, additional_value: float, dd_sub: float,
+    thresholds: dict, weights: dict, target_rank: int, iterations: int = 6,
+) -> Optional[float]:
+    """Binary-searches for the largest addition size whose what-if tier is at or below
+    `target_rank` (0=GREEN, 1=YELLOW) — an advisory suggestion only, per Pillar A's design
+    (this app has no trade execution to actually enforce a smaller size)."""
+    lo, hi = 0.0, additional_value
+    best: Optional[float] = None
+    for _ in range(iterations):
+        mid = (lo + hi) / 2
+        if mid <= 0:
+            break
+        sim = simulate_scope_with_hypothetical_holding(scope, ticker, mid)
+        var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
+        corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
+        phi_score = max(0.0, min(
+            weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 100.0
+        ))
+        tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+        if _TIER_RANK[tier] <= target_rank:
+            best = mid
+            lo = mid
+        else:
+            hi = mid
+    return round(best, 2) if best else None
+
+
+def evaluate_pretrade_check(
+    scope: str, ticker: str, additional_value: float, config: Optional[dict] = None
+) -> dict:
+    """Pillar A pre-trade gatekeeper: advisory approve/warn/reject verdict for adding
+    `additional_value` (BASE_CURRENCY) of `ticker` to `scope`, using the exact same
+    normalize/tier thresholds and weights as the passive Portfolio Heat Index (compute_portfolio_heat).
+    Max drawdown is reused from the scope's current (unmodified) state — see
+    simulate_scope_with_hypothetical_holding()'s docstring for why it isn't re-simulated.
+    Raises RuntimeError if the scope has no holdings or Ghostfolio is unreachable, mirroring
+    assemble_xray_report()."""
+    config = config or load_config()
+    thresholds = _thresholds(config)
+    weights = _weights(config)
+
+    baseline_report = assemble_xray_report(scope)
+    baseline_drawdown_raw = baseline_report.get("risk_metrics", {}).get("max_drawdown")
+    drawdown_pct = round(abs(baseline_drawdown_raw) * 100, 3) if baseline_drawdown_raw is not None else None
+    dd_sub = _sub_score(drawdown_pct, thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"])
+    dd_tier = _tier_for(dd_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+
+    sim = simulate_scope_with_hypothetical_holding(scope, ticker, additional_value)
+    var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
+    corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
+    phi_score = round(
+        weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 2
+    )
+    phi_score = max(0.0, min(phi_score, 100.0))
+    tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+    var_tier = _tier_for(var_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+    correlation_tier = _tier_for(corr_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+
+    if tier == TIER_RED:
+        verdict = "reject"
+    elif tier == TIER_YELLOW:
+        verdict = "warn"
+    else:
+        verdict = "approve"
+
+    breached_constraint = None
+    for label, sub_tier in (("VaR", var_tier), ("Correlation", correlation_tier), ("Drawdown", dd_tier)):
+        if sub_tier == TIER_RED:
+            breached_constraint = label
+            break
+    if breached_constraint is None:
+        for label, sub_tier in (("VaR", var_tier), ("Correlation", correlation_tier), ("Drawdown", dd_tier)):
+            if sub_tier == TIER_YELLOW:
+                breached_constraint = label
+                break
+
+    suggested_reduced_value = None
+    if verdict != "approve" and additional_value > 0:
+        target_rank = max(0, _TIER_RANK[tier] - 1)
+        suggested_reduced_value = _suggest_reduced_value(
+            scope, ticker, additional_value, dd_sub, thresholds, weights, target_rank
+        )
+
+    return {
+        "scope": scope,
+        "ticker": ticker,
+        "proposed_value": round(additional_value, 2),
+        "verdict": verdict,
+        "breached_constraint": breached_constraint,
+        "phi_score": phi_score,
+        "tier": tier,
+        "var_pct_of_equity": sim["var_pct_of_equity"],
+        "var_tier": var_tier,
+        "max_correlation": sim["max_pairwise_correlation"],
+        "correlation_tier": correlation_tier,
+        "drawdown_pct": drawdown_pct,
+        "drawdown_tier": dd_tier,
+        "hypothetical_weight": sim["hypothetical_weight"],
+        "new_portfolio_total_value": sim["portfolio_total_value"],
+        "suggested_reduced_value": suggested_reduced_value,
+        "data_warnings": sim["data_warnings"],
+    }

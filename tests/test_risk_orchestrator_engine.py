@@ -24,10 +24,25 @@ from risk_orchestrator_engine import (
     persist_heat_index,
     persist_ticker_contributions,
     run_scan,
+    evaluate_pretrade_check,
     TIER_GREEN,
     TIER_YELLOW,
     TIER_RED,
 )
+
+
+def _ro_config():
+    return {
+        "SCHEDULING": {"RISK_ORCHESTRATOR": {
+            "THRESHOLDS": {
+                "PHI_YELLOW": 40, "PHI_RED": 75,
+                "VAR_PCT_YELLOW": 2.0, "VAR_PCT_RED": 4.0,
+                "MAX_CORR_YELLOW": 0.5, "MAX_CORR_RED": 0.75,
+                "DRAWDOWN_PCT_YELLOW": 5.0, "DRAWDOWN_PCT_RED": 10.0,
+            },
+            "WEIGHTS": {"VAR": 0.4, "CORRELATION": 0.3, "DRAWDOWN": 0.3},
+        }},
+    }
 
 
 class TestSubScore:
@@ -165,3 +180,80 @@ class TestRunRiskOrchestratorJobRunner:
 
         error_calls = [c for c in mock_notify.call_args_list if c.args[0] == "Error"]
         assert len(error_calls) == 1
+
+
+class TestEvaluatePretradeCheck:
+    """Pillar A pre-trade gatekeeper: verdict/breach/suggestion logic, isolated from the
+    (separately-tested) VaR/correlation simulation in xray_engine."""
+
+    def test_approve_when_all_metrics_green(self):
+        with patch("risk_orchestrator_engine.assemble_xray_report",
+                   return_value={"risk_metrics": {"max_drawdown": -0.01}}), \
+             patch("risk_orchestrator_engine.simulate_scope_with_hypothetical_holding",
+                   return_value={
+                       "var_95_1d": 100.0, "var_pct_of_equity": 0.5, "portfolio_vol": 0.1,
+                       "avg_pairwise_correlation": 0.1, "max_pairwise_correlation": 0.1,
+                       "portfolio_total_value": 20000.0, "hypothetical_weight": 0.05,
+                       "data_warnings": [],
+                   }):
+            result = evaluate_pretrade_check("all", "AAPL", 1000.0, config=_ro_config())
+
+        assert result["verdict"] == "approve"
+        assert result["breached_constraint"] is None
+        assert result["suggested_reduced_value"] is None
+        assert result["tier"] == TIER_GREEN
+
+    def test_reject_with_var_breach_and_convergent_suggestion(self):
+        def _sim(scope, ticker, value):
+            var_pct = value / 200.0
+            corr = min(0.9, value / 10000.0)
+            return {
+                "var_95_1d": var_pct * 100, "var_pct_of_equity": var_pct, "portfolio_vol": 0.2,
+                "avg_pairwise_correlation": corr, "max_pairwise_correlation": corr,
+                "portfolio_total_value": 20000.0 + value,
+                "hypothetical_weight": value / (20000.0 + value),
+                "data_warnings": [],
+            }
+
+        with patch("risk_orchestrator_engine.assemble_xray_report",
+                   return_value={"risk_metrics": {"max_drawdown": -0.20}}), \
+             patch("risk_orchestrator_engine.simulate_scope_with_hypothetical_holding", side_effect=_sim):
+            result = evaluate_pretrade_check("all", "AAPL", 5000.0, config=_ro_config())
+
+        assert result["verdict"] == "reject"
+        assert result["tier"] == TIER_RED
+        assert result["breached_constraint"] == "VaR"
+        assert result["suggested_reduced_value"] is not None
+        assert 0 < result["suggested_reduced_value"] < 5000.0
+
+        thresholds = _ro_config()["SCHEDULING"]["RISK_ORCHESTRATOR"]["THRESHOLDS"]
+        weights = _ro_config()["SCHEDULING"]["RISK_ORCHESTRATOR"]["WEIGHTS"]
+        sim = _sim("all", "AAPL", result["suggested_reduced_value"])
+        var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
+        corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
+        dd_sub = _sub_score(20.0, thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"])
+        phi = weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub
+        assert _tier_for(phi, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) != TIER_RED
+
+    def test_no_suggestion_when_risk_is_not_size_dependent(self):
+        # simulate() ignores `value` entirely — reducing the size can never help, so the
+        # binary search must correctly report "no smaller size fixes this" rather than
+        # fabricating a number.
+        with patch("risk_orchestrator_engine.assemble_xray_report",
+                   return_value={"risk_metrics": {"max_drawdown": -0.20}}), \
+             patch("risk_orchestrator_engine.simulate_scope_with_hypothetical_holding",
+                   return_value={
+                       "var_95_1d": 900.0, "var_pct_of_equity": 4.5, "portfolio_vol": 0.3,
+                       "avg_pairwise_correlation": 0.8, "max_pairwise_correlation": 0.8,
+                       "portfolio_total_value": 25000.0, "hypothetical_weight": 0.2,
+                       "data_warnings": [],
+                   }):
+            result = evaluate_pretrade_check("all", "AAPL", 5000.0, config=_ro_config())
+
+        assert result["verdict"] == "reject"
+        assert result["suggested_reduced_value"] is None
+
+    def test_propagates_runtime_error_for_empty_scope(self):
+        with patch("risk_orchestrator_engine.assemble_xray_report", side_effect=RuntimeError("no holdings")):
+            with pytest.raises(RuntimeError):
+                evaluate_pretrade_check("all", "AAPL", 1000.0, config=_ro_config())

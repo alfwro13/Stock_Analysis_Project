@@ -227,6 +227,39 @@ async def get_risk_orchestrator_status(request: Request):
             conn.close()
 
 
+@analysis_router.get("/risk-orchestrator/pretrade-check")
+@limiter.limit("20/minute")
+async def get_risk_orchestrator_pretrade_check(
+    request: Request,
+    ticker: str = Query(...),
+    value: float = Query(..., gt=0),
+    scope: str = Query(default="all"),
+):
+    """Pillar A pre-trade gatekeeper: advisory approve/warn/reject what-if verdict for adding
+    `value` (BASE_CURRENCY) of `ticker` to `scope`, using the same VaR/correlation/drawdown
+    thresholds as the Portfolio Heat Index. Every call is logged to pretrade_check_log."""
+    from risk_orchestrator_engine import evaluate_pretrade_check
+    from db_helpers import log_pretrade_check
+
+    ticker = normalize_ticker(ticker)
+    try:
+        result = evaluate_pretrade_check(scope, ticker, value)
+    except RuntimeError as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+    except Exception as e:
+        logger.error("Pre-trade check failed for %s: %s", ticker, e)
+        return _error_500(e)
+
+    log_pretrade_check(
+        ticker=ticker, scope=scope, proposed_value=result["proposed_value"],
+        verdict=result["verdict"], breached_constraint=result["breached_constraint"],
+        phi_score=result["phi_score"], var_pct_of_equity=result["var_pct_of_equity"],
+        max_correlation=result["max_correlation"],
+        suggested_reduced_value=result["suggested_reduced_value"],
+    )
+    return JSONResponse(content={"status": "success", "check": result})
+
+
 @analysis_router.get("/pairs-spread/results")
 @limiter.limit("20/minute")
 async def get_pairs_spread_results(

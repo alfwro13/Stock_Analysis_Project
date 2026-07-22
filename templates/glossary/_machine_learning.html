@@ -65,6 +65,13 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Pre-Trade Check (Gatekeeper)</span>
+                <p>The Portfolio Heat Index and Ticker Risk Contribution both look backward at the portfolio as it stands today. The <strong>Pre-Trade Check</strong> asks the forward-looking question instead: "if I actually bought this, what would happen to my risk?" It runs live from the Stock Detail page's Position Sizing panel, re-simulating VaR and correlation as if the position you're sizing were added to your portfolio right now — using the exact same thresholds and weights as the Portfolio Heat Index, not a separate scoring system.</p>
+                <p>The result is one of three verdicts: <strong>Approve</strong> (risk stays in the Green tier), <strong>Warn</strong> (Yellow — worth a second look), or <strong>Reject</strong> (Red — this trade would push the portfolio into stretched territory). When the verdict isn't Approve, it also names which constraint is driving it (VaR or Correlation), and — when a smaller size would actually help — suggests a reduced position value to try instead.</p>
+                <div class="rule">This app has no trade execution, so a Reject verdict can never actually block a purchase — it's advisory, the same way the Portfolio Heat Index's "Risk Paused" badge is a visual warning rather than a hard stop.</div>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">VADER Sentiment Score</span>
                 <p><strong>VADER</strong> (Valence Aware Dictionary and sEntiment Reasoner) is a rule-based Natural Language Processing (NLP) model originally designed for social media text. It reads news headlines and short article summaries and outputs a sentiment score ranging from <strong>−1.0</strong> (extremely negative/fearful) to <strong>+1.0</strong> (extremely positive/euphoric), with 0 being completely neutral.</p>
                 <p>Unlike machine learning models that need training data, VADER works from a carefully curated lexicon of financial and general language words, each pre-assigned a sentiment strength. Words like "surge", "beat", "record", and "buyback" push the score positive. Words like "crash", "miss", "investigation", "downgrade", and "layoffs" push it negative. It also handles punctuation (!!!) and capitalization (CRASH) as intensity amplifiers.</p>

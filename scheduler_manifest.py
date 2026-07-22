@@ -105,6 +105,11 @@ JOB_GRAPH: dict[str, dict] = {
     # xray_returns_cache-derived return series X-ray uses (plus a parquet fallback for
     # never-held Watchlist tickers), no new artifact produced.
     "portfolio_optimizer_source":    {"label": "Portfolio Optimizer",                            "category": "manual",      "engine": "portfolio_optimizer_engine.py",   "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
+
+    # Pre-Trade Gatekeeper (Pillar A) — not a scheduled job; on-demand what-if VaR/correlation
+    # simulation from the Stock Detail Position Sizing panel, using the same X-ray caches
+    # Risk Orchestrator reads. Every call logs a row to pretrade_check_log.
+    "pretrade_gatekeeper_source":    {"label": "Pre-Trade Check",                                 "category": "manual",      "engine": "risk_orchestrator_engine.py",   "produces": ["pretrade_check_log"],                                        "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
