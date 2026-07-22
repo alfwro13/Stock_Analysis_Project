@@ -30,6 +30,7 @@ LEVELS = [
     ("bubble-radar", "Bubble Radar"),
     ("pairs-spread-monitor", "Pairs Spread Monitor"),
     ("pillar-confluence", "Signal Pillar Confluence"),
+    ("regime-weighted-score", "Regime-Weighted Conviction Score"),
     ("predicted-movers", "Predicted Movers"),
     ("ticker-notes", "Ticker Notes"),
     ("forensic-screener", "Forensic Screener"),
@@ -2162,6 +2163,47 @@ CARDS = [
             "Only if the disagreement is between Statistical and ML, not Technical",
         ],
         "explanation": """<p>Bullish confluence: at least 2 of the 3 pillars vote "up" and none votes "down". Bearish confluence is the mirror case. A ticker with, say, one bullish and one bearish pillar never reaches confluence regardless of the third pillar's vote — genuine disagreement blocks the flag by design.</p>""",
+    },
+    # --- regime-weighted-score ---
+    {
+        "term_key": "what-conviction-score-measures",
+        "section_id": "regime-weighted-score",
+        "term_title": "What the Conviction Score Measures",
+        "question": "How should the Regime-Weighted Conviction Score be read alongside the System Verdict (overall_signal)?",
+        "answer": "As a complementary, regime-aware lens on the same underlying data — the two are never meant to agree or disagree",
+        "distractors": [
+            "As a more accurate replacement for the System Verdict",
+            "As a tie-breaker whenever the System Verdict and ML confidence disagree",
+            "As a confirmation step required before the System Verdict is trusted",
+        ],
+        "explanation": """<p>The <strong>Regime-Weighted Conviction Score</strong> is a 0-100 blend of four existing per-ticker signals — the composite Quant Score, the ML confidence score, Pattern Detection's confirmed patterns, and Trap Monitor's current phase — combined with a weight vector that switches depending on the current Market Regime. It's a complementary, regime-aware lens on data this app already computes, not a replacement for the <code>overall_signal</code> System Verdict shown elsewhere — the two are never meant to agree or disagree, since they answer different questions.</p>""",
+    },
+    {
+        "term_key": "regime-switched-weights",
+        "section_id": "regime-weighted-score",
+        "term_title": "Regime-Switched Weights",
+        "question": "Why does the Regime-Weighted Conviction Score weight Pattern Detection and Trap Monitor independently, instead of reusing Signal Pillar Confluence's single merged Technical-pillar vote?",
+        "answer": "Because the weight table needs to move the two sources by different amounts (e.g. more pattern weight, less trap weight in a Chop regime)",
+        "distractors": [
+            "Pattern Detection and Trap Monitor use incompatible direction conventions that can't be merged",
+            "Signal Pillar Confluence's merged vote is deprecated and no longer computed",
+            "It's a performance optimization to avoid an extra database query",
+        ],
+        "explanation": """<p>The same four inputs matter by different amounts depending on market conditions. In a <strong>Bull</strong> regime, the composite Quant Score and ML confidence carry the most weight (40%/30% by default) since trending, directional signals tend to be reliable. In a <strong>Chop</strong> (range-bound) regime, Pattern Detection and Trap Monitor carry more weight (35%/15% by default) since mean-reversion and structural setups tend to matter more than trend-following scores when there's no clear trend to follow. Both weight vectors are fully configurable in Settings and must sum to 100%.</p>
+<p>Pattern Detection and Trap Monitor are weighted <em>independently</em> here, unlike Signal Pillar Confluence's Technical pillar, which merges them into a single vote — this score needs to move them separately since the weight table treats them as distinct inputs. Each source's own direction is still resolved the identical way (Pattern Detection via <code>PATTERN_TYPES</code>, Trap Monitor via <code>_PHASE_EXPECTED_DIRECTION</code>), windowed to the same last-5-trading-days rule, then mapped to 100 (up), 50 (neutral/no signal in the window), or 0 (down) before weighting.</p>""",
+    },
+    {
+        "term_key": "regime-weighted-crash-veto",
+        "section_id": "regime-weighted-score",
+        "term_title": "Crash Veto",
+        "question": "Why is the market-wide stress score used as a veto trigger rather than folded into the weighted blend as a fifth input?",
+        "answer": "It's non-directional (high = unusual, not bullish or bearish), so it can't be combined with the other four directional inputs",
+        "distractors": [
+            "It updates too infrequently to be useful as an input",
+            "It's already included inside the composite Quant Score",
+            "Regulatory rules prohibit using volatility measures in a scoring formula",
+        ],
+        "explanation": """<p>During a <strong>Crash</strong> regime, or whenever the Isolation Forest's market-wide stress score crosses a configurable threshold, the score is suppressed entirely rather than reweighted — it shows as "No signal," never a number. None of the four inputs were validated to mean anything during a genuine market crash, and the market-stress score itself is non-directional (high = unusual, not bullish or bearish), so it can't be folded into a weighted blend the way the other four can. A hard veto is more honest here than fabricating a reweighted number from inputs whose real-world meaning has broken down.</p>""",
     },
     # --- predicted-movers ---
     {

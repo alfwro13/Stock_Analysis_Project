@@ -379,6 +379,7 @@ class SettingsConfig(BaseModel):
     NOTIFICATIONS: Optional[NotificationsConfig] = None
     NOTIFICATION_ROUTING: Optional[dict] = None
     XRAY_TARGETS: Optional[dict] = None
+    META_SCORING: Optional[dict] = None
     FILE_LOGGING: Optional[FileLoggingConfig] = None
 
 

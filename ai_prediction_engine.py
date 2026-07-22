@@ -1088,6 +1088,14 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                 SET ml_confidence_score = ?
                 WHERE ticker = ? AND date = ?
             """, update_payloads)
+            # stock_signals.ml_confidence mirrors the same value onto the one-row-per-ticker
+            # snapshot table so consumers that already join off stock_signals (e.g. the Regime-
+            # Weighted Conviction Score) don't need a second quant_signals subselect for it.
+            cursor.executemany("""
+                UPDATE stock_signals
+                SET ml_confidence = ?
+                WHERE ticker = ?
+            """, [(score, ticker) for score, ticker, _date in update_payloads])
             conn.commit()
             logger.info(f"✅ Executed ML predictions for {len(update_payloads)} assets.")
         else:

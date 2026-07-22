@@ -103,6 +103,12 @@ JOB_GRAPH: dict[str, dict] = {
     # inline on Portfolio/Watchlist/Stock Detail with no new artifact produced.
     "pillar_confluence_source":       {"label": "Signal Pillar Confluence",                       "category": "manual",      "engine": "score_analysis.py",             "produces": [],                                                             "consumes": ["pattern_detection_history", "trap_phase_history", "earnings_volatility_history", "quant_signals"], "non_job": True, "settings_anchor": None},
 
+    # Regime-Weighted Conviction Score — not a scheduled job; a read-only per-ticker blend of
+    # stock_signals/quant_signals/Pattern Detection/Trap Monitor, reweighted by the current
+    # market regime, rendered inline on Portfolio/Watchlist/Stock Detail with no new artifact
+    # produced.
+    "regime_weighted_score_source":   {"label": "Regime-Weighted Conviction Score",               "category": "manual",      "engine": "score_analysis.py",             "produces": [],                                                             "consumes": ["stock_signals", "quant_signals", "market_regimes", "pattern_detection_history", "trap_phase_history"], "non_job": True, "settings_anchor": "meta-scoring-card"},
+
     # Earnings Volatility Accuracy — not a scheduled job; the leaderboard is a live read over
     # earnings_drift_predictions (written by overnight_quant_scan_job above).
     "earnings_drift_accuracy_source": {"label": "Earnings Volatility Accuracy",                    "category": "manual",      "engine": "earnings_vol_engine.py",        "produces": [],                                                             "consumes": ["earnings_drift_predictions"],                                       "non_job": True, "settings_anchor": None},

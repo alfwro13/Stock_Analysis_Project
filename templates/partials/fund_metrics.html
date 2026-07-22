@@ -80,6 +80,16 @@
             </span>
         </div>
         {% endif %}
+        <div class="data-row">
+            <span class="data-label"><abbr title="A 0-100 blend of the Quant Score, ML confidence, and Pattern Detection/Trap Monitor direction, weighted differently depending on the current Market Regime. Suppressed entirely during a Crash regime or elevated market stress — a complementary, regime-aware lens on the same data, not a replacement for the System Verdict above.">Regime-Weighted Conviction Score:</abbr></span>
+            <span class="data-value">
+                {% if regime_weighted_score %}
+                    {{ regime_weighted_score.score }}/100 <span class="metric-neutral">({{ regime_weighted_score.regime }} regime)</span>
+                {% else %}
+                    <span class="metric-neutral">No signal</span>
+                {% endif %}
+            </span>
+        </div>
     </div>
 
     <div class="data-card">
