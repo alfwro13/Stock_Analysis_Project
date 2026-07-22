@@ -669,6 +669,23 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Risk Orchestrator Scan: %s", e)
 
+    risk_orch_digest_cfg = scheduling.get("RISK_ORCHESTRATOR_DIGEST", {})
+    if risk_orch_digest_cfg.get("ENABLED", False):
+        try:
+            days = ",".join(risk_orch_digest_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
+            time_str = risk_orch_digest_cfg.get("TIME", "19:25")
+            run_h, run_m = map(int, time_str.split(":"))
+            scheduler.add_job(
+                run_risk_orchestrator_digest_job,
+                CronTrigger(day_of_week=days, hour=run_h, minute=run_m, timezone=user_tz),
+                id="risk_orchestrator_digest_job",
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Risk Orchestrator Digest scheduled for %s at %s.", days, time_str)
+        except Exception as e:
+            logger.error("Failed to schedule Risk Orchestrator Digest: %s", e)
+
     pairs_spread_cfg = scheduling.get("PAIRS_SPREAD_MONITOR", {})
     if pairs_spread_cfg.get("ENABLED", False):
         try:
@@ -942,7 +959,7 @@ from scheduler_jobs import (
     run_weekend_universe_routine, run_index_scraper, run_fundamentals_profiler,
     run_universe_deep_sync_job, run_ml_backfill, run_ml_training, run_ml_inference,
     run_macro_calendar_update, run_central_bank_nlp_check, run_macro_data_update,
-    run_xray_risk_cache_job, run_risk_orchestrator_job, run_anomaly_training_job, run_intraday_dip_scan,
+    run_xray_risk_cache_job, run_risk_orchestrator_job, run_risk_orchestrator_digest_job, run_anomaly_training_job, run_intraday_dip_scan,
     run_intraday_dip_reset, _build_contagion_feed_text, _build_contagion_message,
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,

@@ -6,14 +6,20 @@ Contribution tier. Mirrors `quant_signals.py`'s composite "System Verdict" score
 focused and portfolio-scoped rather than per-ticker-technicals-scoped.
 
 Page routes: `GET /portfolio-heat-index` (Reports hub), plus compact widgets on `/portfolio`
-(the `"all"` scope) and `/accounts/{id}` (that account's own scope).
+(the `"all"` scope) and `/accounts/{id}` (that account's own scope). The report page ends
+with a plain-language "How to Read This Page" section explaining, in non-finance terms, the
+three reasons a ticker's Risk Contribution tier can turn Yellow/Red (large share of portfolio
+VaR, high correlation with another holding, proximity to its ATR stop) — added so the tooltips
+on individual columns aren't the only explanation available.
 Engine: `risk_orchestrator_engine.py`
-Scheduler job: `risk_orchestrator_job` (daily Mon-Fri, config `SCHEDULING.RISK_ORCHESTRATOR`)
-DB tables: `portfolio_heat_index`, `ticker_risk_contribution`, `pretrade_check_log` (§6)
+Scheduler jobs: `risk_orchestrator_job` (daily Mon-Fri, config `SCHEDULING.RISK_ORCHESTRATOR`),
+`risk_orchestrator_digest_job` (daily Mon-Fri, config `SCHEDULING.RISK_ORCHESTRATOR_DIGEST`, §7)
+DB tables: `portfolio_heat_index`, `ticker_risk_contribution`, `pretrade_check_log` (§6),
+`atr_stop_history` (§7)
 
-Phase 1 (scoring + dashboard) shipped first; Pillar A (pre-trade gatekeeper, §6 below) shipped
-next; Pillar C2 (critical escalations, §7 below) shipped after that. Pillar C1 (daily digest)
-remains open — see `audit/risk_orchestrator_plan.md` for that follow-up plan.
+Phase 1 (scoring + dashboard) shipped first; Pillar A (pre-trade gatekeeper, §6) shipped next;
+Pillar C1 (daily rollup, §7) and Pillar C2 (critical escalations, §8) shipped after that —
+the full plan in `audit/risk_orchestrator_plan.md` has now shipped in its entirety.
 
 ---
 
@@ -113,7 +119,36 @@ timestamp) — append-only, since the same ticker can be checked many times a da
 adjusts size on the panel, unlike the snapshot-only `portfolio_heat_index`/`ticker_risk_contribution`
 tables above.
 
-## 7. Critical Escalations (Pillar C2)
+## 7. Daily Rollup (Pillar C1)
+
+A once-daily digest notification — the app's first true digest-style notification, as opposed
+to every other `NOTIFICATION_SOURCES` entry which fires once per discrete event. Composed by
+`risk_orchestrator_engine.build_daily_digest()`, dispatched by the `risk_orchestrator_digest_job`
+scheduler job (default Mon-Fri 19:25 local, ten minutes after `risk_orchestrator_job` itself) via
+`notification_engine.notify("risk_orchestrator_digest", ...)` — never a direct
+`nextcloud_talk.send_text_message()` call, per AGENTS.md rule 9.
+
+**Content.** Reads only already-persisted data — it does not recompute anything:
+- Current PHI (score + tier) and VaR% of equity per account scope, from `portfolio_heat_index`.
+- Any ticker whose `atr_stop_loss` rose since the prior trading day.
+
+**"Since the last rollup" without depending on the rollup having run.** `stock_signals.atr_stop_loss`
+is latest-value-only, so a new table, `atr_stop_history` (`ticker`, `date`, `atr_stop_loss`,
+composite PK), is written alongside it in `quant_signals.py`'s `save_to_db()` on every quant scan.
+`risk_orchestrator_engine._tickers_with_rising_stop()` compares the two most recent **distinct
+dates present in the table** (not "yesterday" by wall-clock date, and not "the last time this job
+ran") — so a missed scan or a missed digest run never permanently hides a stop move; the next
+successful comparison always uses whatever two most-recent snapshots actually exist.
+
+**No data yet.** If `portfolio_heat_index` is empty (the Risk Orchestrator Scan hasn't run yet),
+`build_daily_digest()` returns `{"message": None, ...}` and the job logs an informational
+"skipping" status instead of sending an empty digest.
+
+**Settings.** Same "Risk Orchestrator" card as above — a nested "Daily Rollup" panel with its own
+enable toggle and run time (`SCHEDULING.RISK_ORCHESTRATOR_DIGEST`), independent of the scan's own
+schedule.
+
+## 8. Critical Escalations (Pillar C2)
 
 Instant Nextcloud/in-app alerts for three computed severity conditions, each dispatched through
 `notification_engine.notify()` and deduplicated via the shared `IntradayOrchestrator._evaluate_alert_gate()`

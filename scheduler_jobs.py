@@ -959,6 +959,28 @@ def run_risk_orchestrator_job():
         record_job_run("risk_orchestrator_job")
 
 
+def run_risk_orchestrator_digest_job():
+    from risk_orchestrator_engine import build_daily_digest
+    _mark_job_started(job_label("risk_orchestrator_digest_job"))
+    try:
+        digest = build_daily_digest()
+        if digest["message"] is None:
+            log_sched_notification("Info", "Risk Orchestrator Digest: no Portfolio Heat Index data yet — skipping.")
+        else:
+            notify("risk_orchestrator_digest", "Info", digest["message"])
+            log_sched_notification(
+                "Success",
+                f"Risk Orchestrator Digest sent — {digest['scope_count']} scope(s), "
+                f"{digest['rising_stop_count']} stop(s) moved up.",
+            )
+    except Exception as e:
+        logger.error("Risk Orchestrator Digest failed: %s", e)
+        log_sched_notification("Error", f"Risk Orchestrator Digest failed: {e}")
+    finally:
+        _mark_job_done(job_label("risk_orchestrator_digest_job"))
+        record_job_run("risk_orchestrator_digest_job")
+
+
 def run_bubble_radar_job():
     from bubble_radar_engine import run_bubble_scan
     _mark_job_started(job_label("bubble_radar_job"))

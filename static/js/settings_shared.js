@@ -255,6 +255,11 @@ async function saveSettings(silent = false) {
                     "DRAWDOWN_PCT_RED": parseFloat(document.getElementById('RO_T_DD_RED').value) || 10.0
                 }
             },
+            "RISK_ORCHESTRATOR_DIGEST": {
+                "ENABLED": document.getElementById('RISK_ORCHESTRATOR_DIGEST_ENABLED').checked,
+                "DAYS": ['mon','tue','wed','thu','fri'],
+                "TIME": document.getElementById('RISK_ORCHESTRATOR_DIGEST_TIME').value
+            },
             "PAIRS_SPREAD_MONITOR": {
                 "ENABLED": document.getElementById('PAIRS_SPREAD_ENABLED').checked,
                 "DAYS": document.getElementById('PAIRS_SPREAD_FREQ').value === 'mon-sun'

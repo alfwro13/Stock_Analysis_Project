@@ -58,6 +58,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "stale_price_alert":       {"label": "Stale Price Alert",               "job_id": None,                     "default": dict(_ON)},
     "yahoo_intraday_gap_alert": {"label": "Yahoo Intraday Data Gap",        "job_id": None,                     "default": dict(_ON)},
     "yahoo_history_gap_alert": {"label": "Yahoo Daily History Data Gap",    "job_id": None,                     "default": dict(_ON)},
+    "risk_orchestrator_digest": {"label": "Risk Orchestrator Daily Rollup", "job_id": "risk_orchestrator_digest_job", "default": dict(_ON)},
 }
 
 CATEGORY_LABELS = {
