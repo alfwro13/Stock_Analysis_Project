@@ -39,35 +39,39 @@
                     <input type="checkbox" id="RISK_ORCHESTRATOR_ENABLED" {% if config.SCHEDULING.RISK_ORCHESTRATOR.ENABLED %}checked{% endif %}>
                     <label for="RISK_ORCHESTRATOR_ENABLED">Enable daily scan (Mon-Fri)</label>
                 </div>
-                <div class="form-group">
-                    <div class="form-group">
-                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group mb-0">
+                        <label>Run Time</label>
                         <input type="time" id="RISK_ORCHESTRATOR_TIME" class="form-control"
                             value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.TIME | default('19:15') }}">
                     </div>
-                    <div class="form-group">
-                        <button type="button" class="btn btn-outline-secondary" onclick="runRiskOrchestratorNow()">Run Now</button>
-                        <span id="risk-orchestrator-msg"></span>
-                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="runRiskOrchestratorNow()">▶️ Run Now</button>
                 </div>
+                <div id="risk-orchestrator-msg" class="mt-10"></div>
 
                 <div class="settings-panel border-left-red">
                     <h4 class="settings-panel-header text-red">⚖️ Weights (must sum to 100%)</h4>
+                    <p class="settings-desc-sm">
+                        Controls how much each risk input contributes to the composite PHI score.
+                        A higher <abbr title="1-day 95% Value at Risk, parametric, as a percentage of scope equity.">VaR</abbr> weight emphasizes today's downside risk; a higher
+                        <abbr title="Max pairwise correlation — the highest correlation between any two holdings in this scope.">Correlation</abbr> weight emphasizes concentration risk (holdings that move together); a higher
+                        <abbr title="Max drawdown — the largest peak-to-trough decline in this scope's historical return series.">Drawdown</abbr> weight emphasizes historical loss severity.
+                    </p>
                     <div class="flex-gap-15 flex-wrap align-end">
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>VaR Weight %</label>
+                            <label><abbr title="1-day 95% Value at Risk, parametric, as a percentage of scope equity.">VaR</abbr> Weight %</label>
                             <input type="number" id="RO_W_VAR" class="form-control"
                                 value="{{ (config.SCHEDULING.RISK_ORCHESTRATOR.WEIGHTS.VAR | default(0.4)) * 100 }}"
                                 min="0" max="100" step="5">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>Correlation Weight %</label>
+                            <label><abbr title="Max pairwise correlation — the highest correlation between any two holdings in this scope.">Correlation</abbr> Weight %</label>
                             <input type="number" id="RO_W_CORR" class="form-control"
                                 value="{{ (config.SCHEDULING.RISK_ORCHESTRATOR.WEIGHTS.CORRELATION | default(0.3)) * 100 }}"
                                 min="0" max="100" step="5">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>Drawdown Weight %</label>
+                            <label><abbr title="Max drawdown — the largest peak-to-trough decline in this scope's historical return series.">Drawdown</abbr> Weight %</label>
                             <input type="number" id="RO_W_DD" class="form-control"
                                 value="{{ (config.SCHEDULING.RISK_ORCHESTRATOR.WEIGHTS.DRAWDOWN | default(0.3)) * 100 }}"
                                 min="0" max="100" step="5">
@@ -77,44 +81,51 @@
 
                 <div class="settings-panel border-left-amber">
                     <h4 class="settings-panel-header text-amber">🚦 Thresholds</h4>
+                    <p class="settings-desc-sm">
+                        Each input below is converted to a 0-100 sub-score against its own Yellow/Red
+                        boundary — 0-50 below Yellow, 50-100 between Yellow and Red, clamped at 100
+                        beyond Red — and the composite <abbr title="Portfolio Heat Index — a composite risk score combining VaR, correlation, and drawdown into one 0-100 traffic-light reading.">PHI</abbr> score is bucketed the same way against its own
+                        thresholds. Lower values make the dashboard more sensitive; higher values
+                        require a bigger move before a tier changes.
+                    </p>
                     <div class="flex-gap-15 flex-wrap align-end">
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>PHI Yellow ≥</label>
+                            <label><abbr title="Portfolio Heat Index — a composite risk score combining VaR, correlation, and drawdown into one 0-100 traffic-light reading.">PHI</abbr> Yellow ≥</label>
                             <input type="number" id="RO_T_PHI_YELLOW" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.PHI_YELLOW | default(40) }}" min="0" max="100">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>PHI Red ≥</label>
+                            <label><abbr title="Portfolio Heat Index — a composite risk score combining VaR, correlation, and drawdown into one 0-100 traffic-light reading.">PHI</abbr> Red ≥</label>
                             <input type="number" id="RO_T_PHI_RED" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.PHI_RED | default(75) }}" min="0" max="100">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>VaR % Yellow ≥</label>
+                            <label><abbr title="1-day 95% Value at Risk, parametric, as a percentage of scope equity.">VaR</abbr> % Yellow ≥</label>
                             <input type="number" id="RO_T_VAR_YELLOW" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.VAR_PCT_YELLOW | default(2.0) }}" min="0" max="100" step="0.1">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>VaR % Red ≥</label>
+                            <label><abbr title="1-day 95% Value at Risk, parametric, as a percentage of scope equity.">VaR</abbr> % Red ≥</label>
                             <input type="number" id="RO_T_VAR_RED" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.VAR_PCT_RED | default(4.0) }}" min="0" max="100" step="0.1">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>Max Corr Yellow ≥</label>
+                            <label>Max <abbr title="Max pairwise correlation — the highest correlation between any two holdings in this scope.">Corr</abbr> Yellow ≥</label>
                             <input type="number" id="RO_T_CORR_YELLOW" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.MAX_CORR_YELLOW | default(0.5) }}" min="0" max="1" step="0.05">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>Max Corr Red ≥</label>
+                            <label>Max <abbr title="Max pairwise correlation — the highest correlation between any two holdings in this scope.">Corr</abbr> Red ≥</label>
                             <input type="number" id="RO_T_CORR_RED" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.MAX_CORR_RED | default(0.75) }}" min="0" max="1" step="0.05">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>Drawdown % Yellow ≥</label>
+                            <label><abbr title="Max drawdown — the largest peak-to-trough decline in this scope's historical return series.">Drawdown</abbr> % Yellow ≥</label>
                             <input type="number" id="RO_T_DD_YELLOW" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.DRAWDOWN_PCT_YELLOW | default(5.0) }}" min="0" max="100" step="0.5">
                         </div>
                         <div class="form-group flex-1 mb-0 min-w-130">
-                            <label>Drawdown % Red ≥</label>
+                            <label><abbr title="Max drawdown — the largest peak-to-trough decline in this scope's historical return series.">Drawdown</abbr> % Red ≥</label>
                             <input type="number" id="RO_T_DD_RED" class="form-control"
                                 value="{{ config.SCHEDULING.RISK_ORCHESTRATOR.THRESHOLDS.DRAWDOWN_PCT_RED | default(10.0) }}" min="0" max="100" step="0.5">
                         </div>
@@ -132,7 +143,7 @@
                         <label for="RISK_ORCHESTRATOR_DIGEST_ENABLED">Enable daily rollup (Mon-Fri)</label>
                     </div>
                     <div class="form-group">
-                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <label>Run Time</label>
                         <input type="time" id="RISK_ORCHESTRATOR_DIGEST_TIME" class="form-control"
                             value="{{ config.SCHEDULING.RISK_ORCHESTRATOR_DIGEST.TIME | default('19:25') }}">
                     </div>

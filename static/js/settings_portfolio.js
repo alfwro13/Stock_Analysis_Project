@@ -388,7 +388,7 @@ async function runRiskOrchestratorNow() {
     } catch (err) {
         if (msgEl) msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
-        setTimeout(() => { btn.disabled = false; btn.innerText = "Run Now"; }, 3000);
+        setTimeout(() => { btn.disabled = false; btn.innerHTML = '&#9654;&#65039; Run Now'; }, 3000);
     }
 }
 
