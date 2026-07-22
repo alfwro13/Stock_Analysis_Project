@@ -9,12 +9,11 @@ Page routes: `GET /portfolio-heat-index` (Reports hub), plus compact widgets on 
 (the `"all"` scope) and `/accounts/{id}` (that account's own scope).
 Engine: `risk_orchestrator_engine.py`
 Scheduler job: `risk_orchestrator_job` (daily Mon-Fri, config `SCHEDULING.RISK_ORCHESTRATOR`)
-DB tables: `portfolio_heat_index`, `ticker_risk_contribution`
+DB tables: `portfolio_heat_index`, `ticker_risk_contribution`, `pretrade_check_log` (§6)
 
-This is Phase 1 (scoring + dashboard) of a larger plan. Pre-trade gatekeeper checks (wiring
-a "what-if I buy N shares" check into the Position Sizing panel) and a tiered alerting layer
-(daily digest + critical escalations) are deliberately out of scope here — see
-`audit/risk_orchestrator_plan.md` for that follow-up plan.
+Phase 1 (scoring + dashboard) shipped first; Pillar A (pre-trade gatekeeper, §6 below) shipped
+next. A tiered alerting layer (daily digest + critical escalations, Pillar C) remains deliberately
+out of scope — see `audit/risk_orchestrator_plan.md` for that follow-up plan.
 
 ---
 
@@ -69,10 +68,47 @@ When the `"all"`-scope PHI is Red, `page_helpers.get_all_scope_heat_tier()` driv
 presentational-only warning badge ("RISK PAUSED") next to any BUY-flavored `overall_signal`
 on the Portfolio, Watchlist, and Stock Detail pages. This is deliberately **not** a blocking
 mechanism — the app has no trade execution to block, so "halting new buys" is a visibility
-change only, not a gate on Position Sizing (that's Pillar A of the follow-up plan).
+change only, not a gate on Position Sizing.
 
 ## 5. Settings
 
 Settings → Position Sizing Defaults / X-Ray Allocation Targets column → "Risk Orchestrator"
 card: enable/schedule time, the three weights (must sum to 100%), and the four threshold
 pairs (PHI, VaR%, Max Correlation, Drawdown%). All default to the values above.
+
+## 6. Pre-Trade Gatekeeper (Pillar A)
+
+An on-demand, advisory-only what-if check surfaced in the Stock Detail page's Position Sizing
+(Risk Parity) panel: as the user adjusts Account Size / Risk per Trade / Stop Multiple, the panel
+also asks "if I added this position's value to my portfolio right now, what would happen to my
+VaR and correlation risk?" — using the exact same thresholds/weights as the passive PHI dashboard
+above, not a parallel scoring system. `GET /api/risk-orchestrator/pretrade-check` (see
+`assets/api_reference.md` §30) wraps `risk_orchestrator_engine.evaluate_pretrade_check()`.
+
+**What's simulated vs. reused.** `xray_engine.simulate_scope_with_hypothetical_holding(scope,
+ticker, additional_value)` recomputes only the VaR and max-pairwise-correlation halves of
+`risk_metrics` — it adds a synthetic holding to the scope's weight vector, sources that ticker's
+own return series (preferring the cached `xray_returns_cache` row for an already-held ticker,
+falling back to a live parquet read via `fetch_close_returns_from_parquet()` for one that isn't),
+computes its correlation against every other currently-held ticker (from the cached correlation
+matrix where available, or a fresh pairwise correlation against the cached series otherwise), and
+re-derives the same `Sigma_ij = vol_i * vol_j * rho_ij` / parametric-VaR math `assemble_xray_report()`
+already uses. **Max drawdown is deliberately not re-simulated** — it needs a full historical
+portfolio-return blend, not just a covariance recompute — so `evaluate_pretrade_check()` reuses the
+scope's current (unmodified) `max_drawdown` for that sub-score.
+
+**Verdict.** The three sub-scores (recomputed VaR/correlation + reused drawdown) feed the same
+`_sub_score()`/`_tier_for()` normalization as PHI, producing an `approve` / `warn` / `reject`
+verdict from the resulting GREEN/YELLOW/RED tier, plus `breached_constraint` naming the worst RED
+sub-metric (falling back to the worst YELLOW one if nothing is RED). On `warn`/`reject`, a binary
+search (`risk_orchestrator_engine._suggest_reduced_value()`, ≤6 iterations) finds the largest
+smaller `value` that resolves to a better tier, returned as `suggested_reduced_value` — `null` when
+no smaller size helps (e.g. the breach is driven by `Drawdown`, which doesn't move with this
+position's size). Like the PHI Red badge, the verdict is **advisory only**: this app has no trade
+execution to actually block a purchase.
+
+**Audit trail.** Every check call is logged to `pretrade_check_log` (ticker, scope, proposed
+value, verdict, breached constraint, PHI score, VaR%, max correlation, suggested reduced value,
+timestamp) — append-only, since the same ticker can be checked many times a day as the user
+adjusts size on the panel, unlike the snapshot-only `portfolio_heat_index`/`ticker_risk_contribution`
+tables above.

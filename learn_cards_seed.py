@@ -1577,6 +1577,20 @@ CARDS = [
 <p>The tier is built from three ticker-level inputs, normalized and weighted the same way as the Portfolio Heat Index itself: this ticker's share of total portfolio VaR (from the same Euler/marginal risk decomposition used by the Portfolio X-ray), its own highest pairwise correlation with any other current holding, and how close its current price sits to its dynamic <abbr title="Average True Range — the average daily price swing over 14 days, used to calibrate stop-loss distance.">ATR</abbr> stop-loss.</p>""",
     },
     {
+        "term_key": "pre-trade-check-gatekeeper",
+        "section_id": "machine-learning",
+        "term_title": "Pre-Trade Check (Gatekeeper)",
+        "question": "What does the Pre-Trade Check simulate when sizing a position on the Stock Detail page?",
+        "answer": "What would happen to portfolio VaR and correlation if this position were actually added, using the same thresholds as the Portfolio Heat Index",
+        "distractors": [
+            "The ticker's own historical price chart over the last year",
+            "Whether the ticker currently pays a dividend",
+            "A live comparison of the ticker's price across different brokers",
+        ],
+        "explanation": """<p>The Portfolio Heat Index and Ticker Risk Contribution both look backward at the portfolio as it stands today. The <strong>Pre-Trade Check</strong> asks the forward-looking question instead: "if I actually bought this, what would happen to my risk?" It runs live from the Stock Detail page's Position Sizing panel, re-simulating VaR and correlation as if the position you're sizing were added to your portfolio right now — using the exact same thresholds and weights as the Portfolio Heat Index, not a separate scoring system.</p>
+<p>The result is one of three verdicts: <strong>Approve</strong> (risk stays in the Green tier), <strong>Warn</strong> (Yellow — worth a second look), or <strong>Reject</strong> (Red — this trade would push the portfolio into stretched territory). When the verdict isn't Approve, it also names which constraint is driving it (VaR or Correlation), and — when a smaller size would actually help — suggests a reduced position value to try instead.</p>""",
+    },
+    {
         "term_key": "vader-sentiment-score",
         "section_id": "machine-learning",
         "term_title": "VADER Sentiment Score",

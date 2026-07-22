@@ -4402,6 +4402,46 @@ Returns every scope's latest Portfolio Heat Index row plus all per-ticker Risk C
 }
 ```
 
+### `GET /api/risk-orchestrator/pretrade-check`
+
+Pillar A pre-trade gatekeeper: an advisory-only what-if check for adding a hypothetical
+position to a scope, run on demand from the Stock Detail page's Position Sizing panel — never
+scheduled. Recomputes VaR and max pairwise correlation as if `value` (in `BASE_CURRENCY`) of
+`ticker` were added to `scope`, using the same normalize/tier thresholds and weights as the
+Portfolio Heat Index; max drawdown is reused unchanged from the scope's current state. Every
+call is logged to `pretrade_check_log` (see `assets/db_schema_and architecture.md`). Since this
+app has no trade execution, the verdict can never actually block a purchase — it is display-only.
+
+**Query params:** `ticker` (required), `value` (required, > 0, `BASE_CURRENCY`),
+`scope` (optional, default `"all"`; `"all"` or `"acct:{id}"`).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "check": {
+    "scope": "all", "ticker": "AAPL", "proposed_value": 2000.0,
+    "verdict": "warn", "breached_constraint": "Correlation",
+    "phi_score": 55.0, "tier": "YELLOW",
+    "var_pct_of_equity": 2.4, "var_tier": "YELLOW",
+    "max_correlation": 0.62, "correlation_tier": "YELLOW",
+    "drawdown_pct": 3.0, "drawdown_tier": "GREEN",
+    "hypothetical_weight": 0.08, "new_portfolio_total_value": 25000.0,
+    "suggested_reduced_value": 900.0,
+    "data_warnings": []
+  }
+}
+```
+
+`verdict` is one of `approve` / `warn` / `reject`, mirroring the PHI tier (`GREEN`/`YELLOW`/`RED`).
+`breached_constraint` names the worst RED sub-metric (`VaR`, `Correlation`, or `Drawdown`), falling
+back to the worst YELLOW one when nothing is RED, or `null` on approve. `suggested_reduced_value`
+is a binary-searched smaller `value` that resolves to a better tier, or `null` when the verdict is
+already `approve`, or when reducing size doesn't change the tier (e.g. the constraint is driven by
+`Drawdown`, which doesn't scale with this position's size). Returns `400` (not `500`) if the scope
+has no holdings or Ghostfolio is configured but unreachable.
+
 ---
 
 *Generated: 2026-06-06 · Quantamental Dashboard*

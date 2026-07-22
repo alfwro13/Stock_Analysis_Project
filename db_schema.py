@@ -743,6 +743,26 @@ def init_db() -> None:
             )
         ''')
 
+        # Pre-Trade Gatekeeper (Pillar A) — append-only audit trail of every what-if check run
+        # from the Stock Detail Position Sizing panel. Not a snapshot table like the two above:
+        # a verdict can be produced many times a day for the same ticker as the user adjusts
+        # size, so it is keyed on an autoincrement id, not (ticker, scope).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pretrade_check_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                proposed_value REAL NOT NULL,
+                verdict TEXT NOT NULL,
+                breached_constraint TEXT,
+                phi_score REAL,
+                var_pct_of_equity REAL,
+                max_correlation REAL,
+                suggested_reduced_value REAL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+
         # Per-holding dividend yield cache (one live Ghostfolio call per holding,
         # done on the scheduler job so page load never blocks on it).
         cursor.execute('''

@@ -36,6 +36,7 @@ from xray_engine import (
     _generate_xray_recommendations,
     assemble_xray_report,
     resolve_scope_holdings,
+    simulate_scope_with_hypothetical_holding,
     run_xray_precompute,
     BENCHMARK_SYMBOL,
     _DEVELOPED_MARKET_CODES,
@@ -1626,3 +1627,99 @@ class TestResolveScopeHoldings:
 
         assert result["risk_metrics"]["max_drawdown"] is not None
         assert result["risk_metrics"]["calmar_ratio"] is not None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 15. Pre-Trade Gatekeeper (Pillar A) — simulate_scope_with_hypothetical_holding
+# ─────────────────────────────────────────────────────────────────────────────
+
+T_HYPO = "XRAY_HYPO"        # hypothetical addition, seeded in xray_returns_cache
+T_HYPO_LIVE = "XRAY_HYPOLIVE"  # hypothetical addition never cached — exercises live fallback
+
+
+class TestSimulateScopeWithHypotheticalHolding:
+    def test_computes_var_and_correlation_for_new_ticker(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("SimHoldingAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=100, unit_price=80, exchange_rate=1.0)
+
+        rng = np.random.default_rng(21)
+        t1_rets = rng.normal(0.0003, 0.01, 40).tolist()
+        hypo_rets = rng.normal(0.0002, 0.015, 40).tolist()
+        dates = [f"2025-{(i // 21) + 1:02d}-{(i % 21) + 1:02d}" for i in range(40)]
+        _seed_returns_cache({T1: t1_rets, T_HYPO: hypo_rets}, dates)
+        _seed_risk_cache([(T1, 0.9, 0.20, "2026-06-03")])
+        _seed_corr_matrix([T1], [[1.0]])
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_HYPO, 5000.0)
+
+        assert result["var_95_1d"] is not None
+        assert result["max_pairwise_correlation"] is not None
+        assert result["portfolio_total_value"] == pytest.approx(15000.0)
+        assert result["hypothetical_weight"] == pytest.approx(5000.0 / 15000.0, rel=1e-3)
+        assert result["data_warnings"] == []
+
+    def test_falls_back_to_live_parquet_fetch_for_uncached_ticker(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("SimLiveFetchAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        _seed_risk_cache([(T1, 0.9, 0.20, "2026-06-03")])
+        _seed_corr_matrix([T1], [[1.0]])
+
+        rng = np.random.default_rng(22)
+        fake_closes = pd.DataFrame({T_HYPO_LIVE: 100 + np.cumsum(rng.normal(0, 1, 40))})
+        with patch("xray_engine.load_config", return_value=_builtin_config()), \
+             patch("xray_engine.fetch_close_returns_from_parquet",
+                   return_value=fake_closes.pct_change().dropna()):
+            result = simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_HYPO_LIVE, 1000.0)
+
+        assert result["var_95_1d"] is not None
+
+    def test_no_correlation_cache_returns_none_metrics_with_warning(self):
+        # xray_correlation_matrix has a single global row (PK on benchmark) that earlier tests
+        # in this module may have already seeded — clear it explicitly rather than relying on
+        # a fresh-DB assumption other tests in this file don't share either.
+        conn = db.get_connection()
+        conn.execute("DELETE FROM xray_correlation_matrix")
+        conn.commit()
+        conn.close()
+
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("SimNoCorrAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_HYPO, 1000.0)
+
+        assert result["var_95_1d"] is None
+        assert result["max_pairwise_correlation"] is None
+        assert result["data_warnings"]
+
+    def test_no_usable_history_for_hypothetical_ticker_returns_warning(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("SimNoRetAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        _seed_risk_cache([(T1, 0.9, 0.20, "2026-06-03")])
+        _seed_corr_matrix([T1], [[1.0]])
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()), \
+             patch("xray_engine.fetch_close_returns_from_parquet", return_value=pd.DataFrame()):
+            result = simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_NORETURNS, 1000.0)
+
+        assert result["var_95_1d"] is None
+        assert result["data_warnings"]
+
+    def test_raises_for_empty_scope(self):
+        aid = create_account("SimEmptyScopeAcc", "GBP")
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            with pytest.raises(RuntimeError):
+                simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_HYPO, 1000.0)

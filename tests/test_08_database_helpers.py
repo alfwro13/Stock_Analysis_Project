@@ -88,6 +88,60 @@ def test_log_score_event_coalesce_preserves_existing_close_price():
         conn.close()
 
 
+# ── log_pretrade_check ──────────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_log_pretrade_check_inserts_row():
+    conn = _conn()
+    try:
+        db_helpers.log_pretrade_check(
+            ticker="TST_PT", scope="all", proposed_value=1000.0, verdict="reject",
+            breached_constraint="VaR", phi_score=80.0, var_pct_of_equity=5.0,
+            max_correlation=0.6, suggested_reduced_value=300.0,
+        )
+        row = conn.execute(
+            "SELECT * FROM pretrade_check_log WHERE ticker='TST_PT'"
+        ).fetchone()
+        assert row is not None
+        assert row["scope"] == "all"
+        assert row["verdict"] == "reject"
+        assert row["breached_constraint"] == "VaR"
+        assert abs(row["proposed_value"] - 1000.0) < 0.001
+        assert abs(row["suggested_reduced_value"] - 300.0) < 0.001
+    finally:
+        conn.execute("DELETE FROM pretrade_check_log WHERE ticker='TST_PT'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_log_pretrade_check_appends_rather_than_upserts():
+    """Unlike log_score_event, every call must insert a new row — a verdict can legitimately
+    fire many times a day for the same ticker as the user adjusts size on the panel."""
+    conn = _conn()
+    try:
+        db_helpers.log_pretrade_check(
+            ticker="TST_PT2", scope="all", proposed_value=500.0, verdict="approve",
+            breached_constraint=None, phi_score=10.0, var_pct_of_equity=0.5,
+            max_correlation=0.1, suggested_reduced_value=None,
+        )
+        db_helpers.log_pretrade_check(
+            ticker="TST_PT2", scope="all", proposed_value=2000.0, verdict="warn",
+            breached_constraint="Correlation", phi_score=55.0, var_pct_of_equity=2.5,
+            max_correlation=0.6, suggested_reduced_value=1200.0,
+        )
+        rows = conn.execute(
+            "SELECT * FROM pretrade_check_log WHERE ticker='TST_PT2' ORDER BY id"
+        ).fetchall()
+        assert len(rows) == 2
+        assert rows[0]["verdict"] == "approve"
+        assert rows[1]["verdict"] == "warn"
+    finally:
+        conn.execute("DELETE FROM pretrade_check_log WHERE ticker='TST_PT2'")
+        conn.commit()
+        conn.close()
+
+
 # ── upsert_quant_signal ───────────────────────────────────────────────────────
 
 @pytest.mark.db

@@ -402,6 +402,70 @@
             result.positionValue != null ? fmt(result.positionValue, baseCurrency) : "—";
         document.getElementById("ps-at-risk").textContent =
             result.riskAmount != null ? fmt(result.riskAmount, baseCurrency) : "—";
+
+        queuePretradeCheck(ticker, result.positionValue);
+    }
+
+    var _pretradeCheckTimer = null;
+
+    function queuePretradeCheck(ticker, positionValueBase) {
+        const verdictEl = document.getElementById("ps-pretrade-verdict");
+        const detailRow = document.getElementById("ps-pretrade-detail-row");
+        const detailEl  = document.getElementById("ps-pretrade-detail");
+        if (!verdictEl) return;
+
+        if (_pretradeCheckTimer) clearTimeout(_pretradeCheckTimer);
+
+        if (positionValueBase == null || positionValueBase <= 0) {
+            verdictEl.textContent = "—";
+            verdictEl.className = "ps-value";
+            if (detailRow) detailRow.classList.add("d-none");
+            return;
+        }
+
+        verdictEl.textContent = "Checking…";
+        verdictEl.className = "ps-value";
+        if (detailRow) detailRow.classList.add("d-none");
+
+        _pretradeCheckTimer = setTimeout(function () {
+            fetch("/api/risk-orchestrator/pretrade-check?ticker=" + encodeURIComponent(ticker) +
+                "&value=" + encodeURIComponent(positionValueBase) + "&scope=all")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.status !== "success") {
+                        verdictEl.textContent = "Unavailable";
+                        verdictEl.className = "ps-value";
+                        return;
+                    }
+                    renderPretradeVerdict(data.check, verdictEl, detailRow, detailEl);
+                })
+                .catch(function () {
+                    verdictEl.textContent = "Unavailable";
+                    verdictEl.className = "ps-value";
+                });
+        }, 500);
+    }
+
+    var _pretradeVerdictClass = { approve: "metric-excellent", warn: "metric-neutral", reject: "metric-poor" };
+    var _pretradeVerdictLabel = { approve: "Approve", warn: "Warn", reject: "Reject" };
+
+    function renderPretradeVerdict(check, verdictEl, detailRow, detailEl) {
+        const cls = _pretradeVerdictClass[check.verdict] || "";
+        verdictEl.textContent = _pretradeVerdictLabel[check.verdict] || check.verdict;
+        verdictEl.className = "ps-value " + cls;
+
+        if (check.verdict === "approve" || !detailRow || !detailEl) {
+            if (detailRow) detailRow.classList.add("d-none");
+            return;
+        }
+
+        var parts = [];
+        if (check.breached_constraint) parts.push(check.breached_constraint + " constraint");
+        if (check.suggested_reduced_value != null) {
+            parts.push("try up to " + window.PositionSizing.formatCurrency(check.suggested_reduced_value, window.BASE_CURRENCY));
+        }
+        detailEl.textContent = parts.length ? parts.join(" — ") : "Elevated portfolio risk tier.";
+        detailRow.classList.remove("d-none");
     }
 
     document.addEventListener("DOMContentLoaded", function () {

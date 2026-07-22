@@ -209,6 +209,10 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Purpose:** Latest per-ticker Risk Contribution tier for the `"all"` scope combined portfolio — backs the Portfolio page's "Heat Index" column and the Stock Detail "Risk Contribution" row. Fully replaced on each `risk_orchestrator_job` run.
 * **Key Columns:** `ticker` (PK), `risk_score`, `risk_tier`, `marginal_var_contribution_pct`, `max_pairwise_correlation`, `stop_distance_pct`, `last_updated`.
 
+#### `pretrade_check_log`
+* **Purpose:** Append-only audit trail of every Pre-Trade Gatekeeper (Pillar A) what-if check run from the Stock Detail Position Sizing panel (`GET /api/risk-orchestrator/pretrade-check`). Not a snapshot table like the two above — a verdict can be produced many times a day for the same ticker as the user adjusts size, so it's keyed on an autoincrement id rather than `(ticker, scope)`. See `assets/risk_orchestrator.md` §6.
+* **Key Columns:** `id` (PK autoincrement), `ticker`, `scope`, `proposed_value`, `verdict`, `breached_constraint`, `phi_score`, `var_pct_of_equity`, `max_correlation`, `suggested_reduced_value`, `created_at`.
+
 #### `ai_contagion_snapshots`
 * **Purpose:** AI sector contagion scan results — payload JSON + alert flag. Pruned to last 7 days automatically.
 * **Key Columns:** `id` (PK autoincrement), `scan_ts`, `leader_count`, `etf_count`, `alert_fired`, `payload_json`.
