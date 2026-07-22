@@ -4139,7 +4139,7 @@ Track record for the post-earnings drift predictions logged by `earnings_vol_eng
 
 ### `GET /earnings-volatility/accuracy`
 
-HTML page. Summary tiles (total / per-horizon resolved+accuracy), a chart of the average post-earnings price path, and a per-ticker accuracy table.
+HTML page. Summary tiles (total / per-horizon resolved+accuracy) and a per-ticker accuracy table.
 
 ### `GET /api/earnings-volatility/accuracy`
 
@@ -4165,21 +4165,6 @@ Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days fo
     "resolved_5d": 3, "accuracy_5d": 66.7,
     "resolved_20d": 1, "accuracy_20d": 100.0
   }
-}
-```
-
-### `GET /api/earnings-volatility/drift-path`
-
-Returns the average post-earnings price path (-5 to +20 trading days, offset 0 = pre-earnings close) across every tracked ticker's past earnings events, computed live from parquet history.
-
-**Response**
-
-```json
-{
-  "status": "success",
-  "offsets": [-5, -4, "...", 0, 1, 5, 20],
-  "avg_pct": [-1.2, -0.8, "...", 0.0, 1.5, 2.1, 4.3],
-  "sample_size": [18, 20, "...", 22, 22, 20, 12]
 }
 ```
 

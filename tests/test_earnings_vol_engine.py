@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from earnings_vol_engine import (
     _get_past_earnings_events,
     backfill_earnings_drift_outcomes,
-    get_average_drift_path,
     get_earnings_drift_accuracy_summary,
     get_historical_earnings_drift,
     get_historical_earnings_move,
@@ -575,30 +574,3 @@ class TestGetEarningsDriftAccuracySummary:
         assert data["by_ticker"][0]["company_name"] == "Test Co"
         assert data["by_ticker"][0]["resolved_1d"] == 1
         assert data["by_ticker"][0]["accuracy_1d"] == 100.0
-
-
-class TestGetAverageDriftPath:
-    def test_averages_across_multiple_tickers_and_events(self):
-        hist = _fake_hist_linear()
-        dates = _fake_earnings_dates(["2024-01-10"])
-        with patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=dates), \
-             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=hist):
-            data = get_average_drift_path(tickers=["A", "B"])
-        assert 1 in data["offsets"]
-        idx = data["offsets"].index(1)
-        assert data["sample_size"][idx] == 2  # one event each for A and B
-        assert data["avg_pct"][idx] > 0
-
-    def test_no_tickers_returns_empty_shape(self):
-        assert get_average_drift_path(tickers=[]) == {"offsets": [], "avg_pct": [], "sample_size": []}
-
-    def test_missing_offset_omitted_not_zero_filled(self):
-        # Fixture only has 2 trading days of history after the earnings date, so offset 20
-        # never has data anywhere and must be entirely absent from the output, not zero-filled.
-        hist = _fake_hist_linear(start="2023-12-01", end="2024-02-01")
-        recent_date = hist.index[-3].strftime("%Y-%m-%d")
-        dates = _fake_earnings_dates([recent_date])
-        with patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=dates), \
-             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=hist):
-            data = get_average_drift_path(tickers=["A"])
-        assert 20 not in data["offsets"]

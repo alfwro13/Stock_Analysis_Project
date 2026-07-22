@@ -872,22 +872,6 @@ def get_earnings_drift_accuracy() -> dict:
             conn.close()
 
 
-def get_earnings_drift_tickers() -> list:
-    """Distinct tickers already tracked in earnings_drift_predictions — default scope for
-    earnings_vol_engine.get_average_drift_path()."""
-    conn = None
-    try:
-        conn = get_connection()
-        rows = conn.execute("SELECT DISTINCT ticker FROM earnings_drift_predictions ORDER BY ticker").fetchall()
-        return [r["ticker"] for r in rows]
-    except Exception as e:
-        logger.error("get_earnings_drift_tickers failed: %s", e)
-        return []
-    finally:
-        if conn:
-            conn.close()
-
-
 _REGISTRY_COLUMNS = (
     "ticker", "display_name", "region", "asset_type", "exchange", "currency",
     "future_ticker", "future_display_name", "invert_color", "is_pulse_tile",

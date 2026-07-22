@@ -16,8 +16,6 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-_DRIFT_PATH_OFFSETS = tuple(range(-5, 21))
-
 
 def _get_past_earnings_events(ticker: str, offsets: Sequence[int], max_events: int = 4) -> List[dict]:
     """Fetches the ticker's last `max_events` past earnings dates once and returns, per event,
@@ -25,9 +23,9 @@ def _get_past_earnings_events(ticker: str, offsets: Sequence[int], max_events: i
     backward from the pre-earnings close itself (offset 0 == the pre-earnings close); offset>=1
     counts forward, deliberately skipping the ambiguous earnings-day bar itself (mirrors the
     original pre/post 2-session-window design, which exists because Yahoo's earnings timestamp
-    doesn't reliably say BMO vs AMC). Single shared fetch behind get_historical_earnings_move(),
-    get_historical_earnings_drift(), and get_average_drift_path() — avoids repeating the
-    yahoo_engine.get_earnings_dates() + load_or_fetch_daily_history() call pair for each."""
+    doesn't reliably say BMO vs AMC). Single shared fetch behind get_historical_earnings_move()
+    and get_historical_earnings_drift() — avoids repeating the yahoo_engine.get_earnings_dates()
+    + load_or_fetch_daily_history() call pair for each."""
     events: List[dict] = []
     try:
         earnings_dates = yahoo_engine.get_earnings_dates(ticker, limit=10)
@@ -122,35 +120,6 @@ def get_historical_earnings_drift(ticker: str, horizons: Sequence[int] = EARNING
         else:
             result[h] = {"avg_pct": None, "avg_abs_pct": None, "up_count": 0, "sample_size": 0}
     return result
-
-
-def get_average_drift_path(tickers: Optional[List[str]] = None) -> dict:
-    """Live-computed, on-demand average post-earnings price path (-5..+20 trading days) across
-    past earnings events for `tickers` (default: every ticker already tracked in
-    earnings_drift_predictions via db_helpers.get_earnings_drift_tickers()). No persistence —
-    cheap enough to recompute per request, mirrors predicted_movers_engine.get_leaderboard()'s
-    'no persisted results table' pattern."""
-    if tickers is None:
-        from db_helpers import get_earnings_drift_tickers
-        tickers = get_earnings_drift_tickers()
-    if not tickers:
-        return {"offsets": [], "avg_pct": [], "sample_size": []}
-
-    offset_pcts: Dict[int, List[float]] = {o: [] for o in _DRIFT_PATH_OFFSETS}
-    for ticker in tickers:
-        events = _get_past_earnings_events(ticker, offsets=list(_DRIFT_PATH_OFFSETS))
-        for e in events:
-            for offset, close in e["closes"].items():
-                offset_pcts[offset].append((close - e["pre_close"]) / e["pre_close"] * 100.0)
-
-    offsets_out, avg_pct_out, sample_size_out = [], [], []
-    for o in _DRIFT_PATH_OFFSETS:
-        vals = offset_pcts[o]
-        if vals:
-            offsets_out.append(o)
-            avg_pct_out.append(float(np.mean(vals)))
-            sample_size_out.append(len(vals))
-    return {"offsets": offsets_out, "avg_pct": avg_pct_out, "sample_size": sample_size_out}
 
 
 def log_near_earnings_predictions(ticker_list: Optional[List[str]] = None, days_ahead: int = 4) -> int:
