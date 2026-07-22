@@ -293,6 +293,14 @@ DEFAULT_CONFIG = {
                 "BULLISH_ENABLED": True,
                 "BEARISH_ENABLED": True
             },
+            "PARABOLIC_STRETCH": {
+                "OVERBOUGHT_ENABLED": True,
+                "OVERSOLD_ENABLED": True
+            },
+            "MOMENTUM_DIVERGENCE": {
+                "BULLISH_ENABLED": True,
+                "BEARISH_ENABLED": True
+            },
             "CANDLESTICK_TRIGGER": {
                 "ENGULFING_ENABLED": True,
                 "PIN_BAR_ENABLED": True,
@@ -439,6 +447,19 @@ DEFAULT_CONFIG = {
             },
             "NARROW_RANGE": {
                 "BREAKOUT_LOOKAHEAD_DAYS": 5,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5
+            },
+            "PARABOLIC_STRETCH": {
+                "SMA_WINDOW": 200,
+                "Z_WINDOW_DAYS": 252,
+                "Z_THRESHOLD": 3.0,
+                "CONFIRM_Z_THRESHOLD": 2.0,
+                "BREAKOUT_LOOKAHEAD_DAYS": 10,
+                "VOLUME_CONFIRM_MULTIPLIER": 1.5
+            },
+            "MOMENTUM_DIVERGENCE": {
+                "MIN_PRICE_CHANGE_PCT": 1.0,
+                "MIN_RSI_GAP": 3.0,
                 "VOLUME_CONFIRM_MULTIPLIER": 1.5
             },
             "CANDLESTICK_TRIGGER": {

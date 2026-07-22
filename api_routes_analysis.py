@@ -434,19 +434,6 @@ async def get_earnings_drift_accuracy_data(request: Request):
         return _error_500(e)
 
 
-@analysis_router.get("/earnings-volatility/drift-path")
-@limiter.limit("20/minute")
-async def get_earnings_drift_path_data(request: Request):
-    """Returns the average post-earnings price path (-5..+20 trading days) across tracked tickers' past earnings events."""
-    try:
-        from earnings_vol_engine import get_average_drift_path
-        data = get_average_drift_path()
-        return JSONResponse(content={"status": "success", **data})
-    except Exception as e:
-        logger.error("earnings-volatility/drift-path failed: %s", e)
-        return _error_500(e)
-
-
 @analysis_router.get("/forensic-scores")
 @limiter.limit("20/minute")
 async def get_forensic_scores(request: Request):

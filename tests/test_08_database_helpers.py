@@ -531,3 +531,37 @@ def test_parse_utc_epoch_roundtrip():
     assert db_helpers.parse_utc_epoch("1970-01-01 00:16:40") == 1000.0
     assert db_helpers.parse_utc_epoch(None) == 0.0
     assert db_helpers.parse_utc_epoch("not-a-date") == 0.0
+
+
+# ── get_connection() lock retry ─────────────────────────────────────────────
+
+@pytest.mark.db
+def test_get_connection_retries_past_transient_lock():
+    """A writer that holds the lock past get_connection()'s own busy_timeout must still let a
+    second connection's write succeed once the first releases, instead of raising immediately."""
+    import sqlite3
+    import threading
+    import time
+
+    blocker = sqlite3.connect(str(_db.DB_PATH), timeout=0.1, check_same_thread=False)
+    blocker.execute("BEGIN IMMEDIATE")
+    blocker.execute("INSERT INTO score_history (ticker, date, score, signal) VALUES ('TST_LOCK', '2099-01-02', 1, 'BUY')")
+
+    def _release():
+        time.sleep(0.5)
+        blocker.commit()
+        blocker.close()
+
+    th = threading.Thread(target=_release)
+    th.start()
+    try:
+        conn = sqlite3.connect(str(_db.DB_PATH), timeout=0.1, factory=_db._RetryingConnection)
+        conn.execute("INSERT INTO score_history (ticker, date, score, signal) VALUES ('TST_LOCK2', '2099-01-02', 2, 'BUY')")
+        conn.commit()
+        row = conn.execute("SELECT score FROM score_history WHERE ticker='TST_LOCK2'").fetchone()
+        assert row[0] == 2
+        conn.execute("DELETE FROM score_history WHERE ticker IN ('TST_LOCK', 'TST_LOCK2')")
+        conn.commit()
+        conn.close()
+    finally:
+        th.join()

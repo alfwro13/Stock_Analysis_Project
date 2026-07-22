@@ -96,10 +96,9 @@ JOB_GRAPH: dict[str, dict] = {
     # predicted_movers_history the ml_inference_job entry above writes.
     "predicted_movers_leaderboard_source": {"label": "Predicted Movers",                          "category": "manual",      "engine": "predicted_movers_engine.py",    "produces": [],                                                             "consumes": ["quant_signals", "portfolio", "market_universe", "predicted_movers_history"], "non_job": True, "settings_anchor": None},
 
-    # Earnings Volatility Accuracy — not a scheduled job; the leaderboard/drift-path chart are
-    # live reads over earnings_drift_predictions (written by overnight_quant_scan_job above) and
-    # parquet history.
-    "earnings_drift_accuracy_source": {"label": "Earnings Volatility Accuracy",                    "category": "manual",      "engine": "earnings_vol_engine.py",        "produces": [],                                                             "consumes": ["earnings_drift_predictions", "historical_parquet"],                "non_job": True, "settings_anchor": None},
+    # Earnings Volatility Accuracy — not a scheduled job; the leaderboard is a live read over
+    # earnings_drift_predictions (written by overnight_quant_scan_job above).
+    "earnings_drift_accuracy_source": {"label": "Earnings Volatility Accuracy",                    "category": "manual",      "engine": "earnings_vol_engine.py",        "produces": [],                                                             "consumes": ["earnings_drift_predictions"],                                       "non_job": True, "settings_anchor": None},
 
     # Portfolio Optimizer — not a scheduled job; closed-form calculation over the same
     # xray_returns_cache-derived return series X-ray uses (plus a parquet fallback for

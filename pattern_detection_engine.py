@@ -11,7 +11,9 @@ import candlestick_trigger_engine
 import double_top_bottom_engine
 import flag_engine
 import head_shoulders_engine
+import momentum_divergence_engine
 import narrow_range_engine
+import parabolic_stretch_engine
 import triangle_engine
 import volatility_squeeze_engine
 from config import HISTORICAL_DIR, load_config
@@ -39,11 +41,17 @@ DETECTORS = {
     triangle_engine.FAMILY: triangle_engine,
     volatility_squeeze_engine.FAMILY: volatility_squeeze_engine,
     narrow_range_engine.FAMILY: narrow_range_engine,
+    parabolic_stretch_engine.FAMILY: parabolic_stretch_engine,
+    momentum_divergence_engine.FAMILY: momentum_divergence_engine,
     candlestick_trigger_engine.FAMILY: candlestick_trigger_engine,
 }
 
 _MIN_BARS = 60
-_LOOKBACK_BARS = 180
+# Parabolic Stretch needs a 200-day SMA plus a 252-day rolling Z-score window (>= 452 bars) to
+# produce a valid reading — bumped from 180 once that family required most of the 2-year parquet
+# history rather than a short recent window; every other family only ever searches the most
+# recent bars regardless of how much earlier history is available, so this is safe for them too.
+_LOOKBACK_BARS = 500
 _BACKFILL_STEP_DAYS = 5
 _RESOLUTION_HORIZONS: tuple[int, ...] = (14, 30)
 

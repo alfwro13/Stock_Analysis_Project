@@ -4139,7 +4139,7 @@ Track record for the post-earnings drift predictions logged by `earnings_vol_eng
 
 ### `GET /earnings-volatility/accuracy`
 
-HTML page. Summary tiles (total / per-horizon resolved+accuracy), a chart of the average post-earnings price path, and a per-ticker accuracy table.
+HTML page. Summary tiles (total / per-horizon resolved+accuracy) and a per-ticker accuracy table.
 
 ### `GET /api/earnings-volatility/accuracy`
 
@@ -4165,21 +4165,6 @@ Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days fo
     "resolved_5d": 3, "accuracy_5d": 66.7,
     "resolved_20d": 1, "accuracy_20d": 100.0
   }
-}
-```
-
-### `GET /api/earnings-volatility/drift-path`
-
-Returns the average post-earnings price path (-5 to +20 trading days, offset 0 = pre-earnings close) across every tracked ticker's past earnings events, computed live from parquet history.
-
-**Response**
-
-```json
-{
-  "status": "success",
-  "offsets": [-5, -4, "...", 0, 1, 5, 20],
-  "avg_pct": [-1.2, -0.8, "...", 0.0, 1.5, 2.1, 4.3],
-  "sample_size": [18, 20, "...", 22, 22, 20, 12]
 }
 ```
 
@@ -4261,10 +4246,11 @@ rolling-window swing-point detection, dispatched through a per-family detector r
 Shoulders (`head_shoulders_engine.py`), Double Top / Double Bottom (`double_top_bottom_engine.py`),
 Bull Flag / Bear Flag (`flag_engine.py`), Ascending / Descending Triangle (`triangle_engine.py`),
 Volatility Squeeze (`volatility_squeeze_engine.py`), NR4/NR7 Narrow Range
-(`narrow_range_engine.py`), and Micro-Structure Candlestick Triggers — Bullish/Bearish
-Engulfing, Hammer/Shooting Star (`candlestick_trigger_engine.py`); adding a future pattern
-family requires no changes to these endpoints.
-See `pattern_detection_engine.py` and `assets/pattern_detection.md`.
+(`narrow_range_engine.py`), Parabolic Stretch (`parabolic_stretch_engine.py`),
+Bullish/Bearish Divergence (`momentum_divergence_engine.py`), and Micro-Structure Candlestick
+Triggers — Bullish/Bearish Engulfing, Hammer/Shooting Star (`candlestick_trigger_engine.py`);
+adding a future pattern family requires no changes to these endpoints. See
+`pattern_detection_engine.py` and `assets/pattern_detection.md`.
 
 ### `GET /pattern-detection`
 
@@ -4290,7 +4276,8 @@ server-resolved `direction` (`"up"`/`"down"`/`null`, from `DETECTORS[pattern_fam
 — `null` for a pattern whose direction is not yet resolved), plus the current Portfolio/Watchlist
 ticker sets so the page can filter by scope without a second round-trip. Optional `family` query
 param filters to one `pattern_family` (`head_shoulders` / `double_top_bottom` / `flag` /
-`triangle` / `volatility_squeeze` / `narrow_range` / `candlestick_trigger`).
+`triangle` / `volatility_squeeze` / `narrow_range` / `parabolic_stretch` / `momentum_divergence` /
+`candlestick_trigger`).
 
 **Response**
 

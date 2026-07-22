@@ -252,7 +252,11 @@ def reload_scheduler():
             end_h, _ = map(int, end_time.split(':'))
             scheduler.add_job(
                 run_sentiment_scan,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}/{interval_hours}", timezone=user_tz),
+                # minute=12, not 0: this job runs ~12 min and writes to SQLite every couple of
+                # seconds throughout — starting off the hour keeps it from launching in the same
+                # instant as every other on-the-hour job (trap monitor, AI contagion, etc.),
+                # which was producing "database is locked" pileups (found 2026-07-21).
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}/{interval_hours}", minute=12, timezone=user_tz),
                 id='sentiment_scan_job'
             )
             logger.info("Sentiment Scan scheduled for %s between %s-%s every %d hours.", freq, start_time, end_time, interval_hours)
@@ -280,7 +284,9 @@ def reload_scheduler():
                 end_h += 1
             scheduler.add_job(
                 run_intraday_orchestrator,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}", timezone=user_tz),
+                # Starts at minute 2, not 0 — see the sentiment_scan_job offset comment above for why
+                # on-the-hour jobs are staggered rather than all firing at :00/:10/:20/:30.
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"2-59/{interval_mins}", timezone=user_tz),
                 id='intraday_orchestrator_job'
             )
             logger.info("Unified Intraday Orchestrator scheduled for %s between %s-%s every %d mins.", freq, start_time, end_time, interval_mins)
@@ -463,7 +469,8 @@ def reload_scheduler():
             cb_end_h, _ = map(int, cb_end.split(':'))
             scheduler.add_job(
                 run_central_bank_nlp_check,
-                CronTrigger(day_of_week=cb_freq, hour=f"{cb_start_h}-{cb_end_h}", minute=f"*/{cb_interval}", timezone=user_tz),
+                # Starts at minute 8 — see sentiment_scan_job's offset comment above.
+                CronTrigger(day_of_week=cb_freq, hour=f"{cb_start_h}-{cb_end_h}", minute=f"8-59/{cb_interval}", timezone=user_tz),
                 id='cb_nlp_alert_job'
             )
             logger.info("Central Bank NLP Alert polling scheduled %s %s-%s UTC every %dm", cb_freq, cb_start, cb_end, cb_interval)
@@ -544,7 +551,8 @@ def reload_scheduler():
             freq    = ai_c_sched.get("FREQUENCY", "mon-fri")
             scheduler.add_job(
                 run_ai_contagion_job,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{mins}", timezone=user_tz),
+                # Starts at minute 6 — see sentiment_scan_job's offset comment above.
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"6-59/{mins}", timezone=user_tz),
                 id='ai_contagion_job',
                 replace_existing=True,
                 misfire_grace_time=300,
@@ -565,7 +573,8 @@ def reload_scheduler():
             freq    = trap_sched.get("FREQUENCY", "mon-fri")
             scheduler.add_job(
                 run_trap_monitor_job,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{mins}", timezone=user_tz),
+                # Starts at minute 4 — see sentiment_scan_job's offset comment above.
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"4-59/{mins}", timezone=user_tz),
                 id='trap_monitor_job',
                 replace_existing=True,
                 misfire_grace_time=300,
@@ -727,7 +736,8 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_intraday_dip_scan,
-            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='*/2', timezone=timezone.utc),
+            # Starts at minute 1, not 0 — see sentiment_scan_job's offset comment above.
+            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='1-59/2', timezone=timezone.utc),
             id='intraday_dip_scan_job',
             replace_existing=True,
             misfire_grace_time=60,

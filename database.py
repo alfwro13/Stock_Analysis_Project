@@ -1,4 +1,6 @@
+import random
 import sqlite3
+import time
 import logging
 from typing import List, Optional
 
@@ -6,11 +8,50 @@ from config import DB_PATH, load_config
 
 logger = logging.getLogger(__name__)
 
+_LOCK_RETRY_ATTEMPTS = 3
+_LOCK_RETRY_BASE_DELAY = 0.5
+
+
+def _retry_on_locked(call, *args, **kwargs):
+    # A busy_timeout expiry means the write lock was contended for the full 20s already —
+    # a handful of short, jittered retries recovers from bursty multi-job pileups (several
+    # scheduled jobs writing at once) without the caller having to know retry ever happened.
+    for attempt in range(_LOCK_RETRY_ATTEMPTS + 1):
+        try:
+            return call(*args, **kwargs)
+        except sqlite3.OperationalError as e:
+            if "database is locked" not in str(e) or attempt == _LOCK_RETRY_ATTEMPTS:
+                raise
+            time.sleep(_LOCK_RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.2))
+
+
+class _RetryingCursor(sqlite3.Cursor):
+    def execute(self, sql, parameters=()):
+        return _retry_on_locked(super().execute, sql, parameters)
+
+    def executemany(self, sql, seq_of_parameters):
+        return _retry_on_locked(super().executemany, sql, seq_of_parameters)
+
+
+class _RetryingConnection(sqlite3.Connection):
+    def cursor(self, factory=_RetryingCursor):
+        return super().cursor(factory)
+
+    def execute(self, sql, parameters=()):
+        return self.cursor().execute(sql, parameters)
+
+    def executemany(self, sql, seq_of_parameters):
+        return self.cursor().executemany(sql, seq_of_parameters)
+
+    def commit(self):
+        return _retry_on_locked(super().commit)
+
 
 def get_connection() -> sqlite3.Connection:
     """sqlite3.Row enables column-name access (row['ticker'])."""
-    # timeout=20.0 gracefully handles background thread write collisions
-    conn = sqlite3.connect(DB_PATH, timeout=20.0)
+    # timeout=20.0 gracefully handles background thread write collisions; _RetryingConnection
+    # adds a few extra jittered retries on top for the rarer case where even that 20s is exceeded.
+    conn = sqlite3.connect(DB_PATH, timeout=20.0, factory=_RetryingConnection)
     conn.execute('PRAGMA journal_mode=WAL;')   # concurrent reads + writes
     conn.execute('PRAGMA synchronous=NORMAL;')  # significant write-perf gain in WAL mode
     conn.execute('PRAGMA temp_store=MEMORY;')   # keeps temp tables in RAM; avoids disk I/O under heavy scans

@@ -278,6 +278,14 @@ async function saveSettings(silent = false) {
                     "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_NR_BULLISH').checked,
                     "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_NR_BEARISH').checked
                 },
+                "PARABOLIC_STRETCH": {
+                    "OVERBOUGHT_ENABLED": document.getElementById('PATTERN_DETECTION_PS_OVERBOUGHT').checked,
+                    "OVERSOLD_ENABLED": document.getElementById('PATTERN_DETECTION_PS_OVERSOLD').checked
+                },
+                "MOMENTUM_DIVERGENCE": {
+                    "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_MD_BULLISH').checked,
+                    "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_MD_BEARISH').checked
+                },
                 "CANDLESTICK_TRIGGER": {
                     "ENGULFING_ENABLED": document.getElementById('PATTERN_DETECTION_CT_ENGULFING').checked,
                     "PIN_BAR_ENABLED": document.getElementById('PATTERN_DETECTION_CT_PIN_BAR').checked,
@@ -419,6 +427,19 @@ async function saveSettings(silent = false) {
                 "NARROW_RANGE": {
                     "BREAKOUT_LOOKAHEAD_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_NR_BREAKOUT_LOOKAHEAD').value) || 5,
                     "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_NR_VOLUME_MULT').value) || 1.5
+                },
+                "PARABOLIC_STRETCH": {
+                    "SMA_WINDOW": parseInt(document.getElementById('PATTERN_DETECTION_PS_SMA_WINDOW').value) || 200,
+                    "Z_WINDOW_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_PS_Z_WINDOW').value) || 252,
+                    "Z_THRESHOLD": parseFloat(document.getElementById('PATTERN_DETECTION_PS_Z_THRESHOLD').value) || 3.0,
+                    "CONFIRM_Z_THRESHOLD": parseFloat(document.getElementById('PATTERN_DETECTION_PS_CONFIRM_Z').value) || 2.0,
+                    "BREAKOUT_LOOKAHEAD_DAYS": parseInt(document.getElementById('PATTERN_DETECTION_PS_BREAKOUT_LOOKAHEAD').value) || 10,
+                    "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_PS_VOLUME_MULT').value) || 1.5
+                },
+                "MOMENTUM_DIVERGENCE": {
+                    "MIN_PRICE_CHANGE_PCT": parseFloat(document.getElementById('PATTERN_DETECTION_MD_MIN_PRICE').value) || 1.0,
+                    "MIN_RSI_GAP": parseFloat(document.getElementById('PATTERN_DETECTION_MD_MIN_RSI_GAP').value) || 3.0,
+                    "VOLUME_CONFIRM_MULTIPLIER": parseFloat(document.getElementById('PATTERN_DETECTION_MD_VOLUME_MULT').value) || 1.5
                 },
                 "CANDLESTICK_TRIGGER": {
                     "RSI_OVERSOLD": parseFloat(document.getElementById('PATTERN_DETECTION_CT_RSI_OVERSOLD').value) || 30.0,
