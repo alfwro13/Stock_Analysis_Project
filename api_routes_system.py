@@ -190,6 +190,28 @@ class PatternDetectionScheduleConfig(BaseModel):
     MOMENTUM_DIVERGENCE: Optional[PatternFamilyScheduleConfig] = None
     CANDLESTICK_TRIGGER: Optional[PatternFamilyScheduleConfig] = None
 
+class RiskOrchestratorWeightsConfig(BaseModel):
+    VAR: Optional[float] = None
+    CORRELATION: Optional[float] = None
+    DRAWDOWN: Optional[float] = None
+
+class RiskOrchestratorThresholdsConfig(BaseModel):
+    PHI_YELLOW: Optional[float] = None
+    PHI_RED: Optional[float] = None
+    VAR_PCT_YELLOW: Optional[float] = None
+    VAR_PCT_RED: Optional[float] = None
+    MAX_CORR_YELLOW: Optional[float] = None
+    MAX_CORR_RED: Optional[float] = None
+    DRAWDOWN_PCT_YELLOW: Optional[float] = None
+    DRAWDOWN_PCT_RED: Optional[float] = None
+
+class RiskOrchestratorScheduleConfig(BaseModel):
+    ENABLED: Optional[bool] = None
+    DAYS: Optional[List[str]] = None
+    TIME: Optional[str] = None
+    WEIGHTS: Optional[RiskOrchestratorWeightsConfig] = None
+    THRESHOLDS: Optional[RiskOrchestratorThresholdsConfig] = None
+
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
     PROFILER_ENGINE: Optional[ScheduleItemConfig] = None
@@ -221,6 +243,8 @@ class SchedulingConfig(BaseModel):
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
     BACKUP: Optional[ScheduleItemConfig] = None
     ALERT_REFEREE_TRAINING: Optional[ScheduleItemConfig] = None
+    RISK_ORCHESTRATOR: Optional[RiskOrchestratorScheduleConfig] = None
+    RISK_ORCHESTRATOR_DIGEST: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None

@@ -295,6 +295,63 @@ def _suggest_reduced_value(
     return round(best, 2) if best else None
 
 
+def _tickers_with_rising_stop(conn) -> list:
+    """Compares the two most recent atr_stop_history dates so the digest can report stops
+    that moved up without depending on a prior digest run having actually succeeded."""
+    dates = [r["date"] for r in conn.execute(
+        "SELECT DISTINCT date FROM atr_stop_history ORDER BY date DESC LIMIT 2"
+    ).fetchall()]
+    if len(dates) < 2:
+        return []
+    latest, previous = dates[0], dates[1]
+    rows = conn.execute(
+        """
+        SELECT a.ticker AS ticker, b.atr_stop_loss AS old_stop, a.atr_stop_loss AS new_stop
+        FROM atr_stop_history a
+        JOIN atr_stop_history b ON b.ticker = a.ticker AND b.date = ?
+        WHERE a.date = ? AND a.atr_stop_loss IS NOT NULL AND b.atr_stop_loss IS NOT NULL
+              AND a.atr_stop_loss > b.atr_stop_loss
+        ORDER BY a.ticker
+        """,
+        (previous, latest),
+    ).fetchall()
+    return [{"ticker": r["ticker"], "old_stop": r["old_stop"], "new_stop": r["new_stop"]} for r in rows]
+
+
+def build_daily_digest() -> dict:
+    """Composes the Risk Orchestrator Daily Rollup (Pillar C1): current PHI per scope, VaR,
+    and any ATR stops that moved up since the prior trading day. Reads already-persisted
+    portfolio_heat_index/atr_stop_history rather than recomputing anything."""
+    conn = None
+    try:
+        conn = get_connection()
+        phi_rows = conn.execute(
+            "SELECT scope, scope_label, phi_score, tier, var_pct_of_equity FROM portfolio_heat_index ORDER BY scope"
+        ).fetchall()
+        rising_stops = _tickers_with_rising_stop(conn)
+    finally:
+        if conn:
+            conn.close()
+
+    if not phi_rows:
+        return {"message": None, "scope_count": 0, "rising_stop_count": 0}
+
+    lines = ["**Risk Orchestrator — Daily Rollup**", "", "**Portfolio Heat Index**"]
+    for row in phi_rows:
+        var_part = f", VaR {row['var_pct_of_equity']}% of equity" if row["var_pct_of_equity"] is not None else ""
+        lines.append(f"- {row['scope_label']}: {row['phi_score']} ({row['tier']}){var_part}")
+
+    lines.append("")
+    if rising_stops:
+        lines.append("**ATR Stops Moved Up**")
+        for s in rising_stops:
+            lines.append(f"- {s['ticker']}: {s['old_stop']} → {s['new_stop']}")
+    else:
+        lines.append("**ATR Stops Moved Up**: none since the prior trading day.")
+
+    return {"message": "\n".join(lines), "scope_count": len(phi_rows), "rising_stop_count": len(rising_stops)}
+
+
 def evaluate_pretrade_check(
     scope: str, ticker: str, additional_value: float, config: Optional[dict] = None
 ) -> dict:

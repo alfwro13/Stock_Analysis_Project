@@ -763,6 +763,18 @@ def init_db() -> None:
             )
         ''')
 
+        # One row per ticker per day the Quant Scan runs — lets the Risk Orchestrator Digest
+        # (C1) answer "did this stop move up since the last rollup" without depending on a
+        # previous digest run having actually succeeded.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS atr_stop_history (
+                ticker TEXT NOT NULL,
+                date TEXT NOT NULL,
+                atr_stop_loss REAL,
+                PRIMARY KEY (ticker, date)
+            )
+        ''')
+
         # Per-holding dividend yield cache (one live Ghostfolio call per holding,
         # done on the scheduler job so page load never blocks on it).
         cursor.execute('''
