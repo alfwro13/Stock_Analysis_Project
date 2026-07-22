@@ -105,6 +105,8 @@ class TestComputeSpreadZscore:
         assert result is not None
         assert result["zscore"] > 2.0
         assert result["direction"] == f"{T_A} rich vs {T_B}"
+        assert result["rich_ticker"] == T_A
+        assert result["cheap_ticker"] == T_B
 
     def test_negative_divergence_flips_direction(self):
         close_a, close_b = _correlated_pair(jump=-0.5)
@@ -115,6 +117,8 @@ class TestComputeSpreadZscore:
         assert result is not None
         assert result["zscore"] < -2.0
         assert result["direction"] == f"{T_B} rich vs {T_A}"
+        assert result["rich_ticker"] == T_B
+        assert result["cheap_ticker"] == T_A
 
     def test_none_when_history_missing(self):
         with patch("pairs_spread_engine.load_or_fetch_daily_history", return_value=None):
@@ -243,6 +247,9 @@ class TestRunScan:
         assert row is not None
         assert row["correlation"] > 0.7
         assert row["scope"] == SCOPE_PORTFOLIO_WATCHLIST
+        assert row["cheap_ticker"] in (T_A, T_B)
+        assert row["rich_ticker"] in (T_A, T_B)
+        assert row["cheap_ticker"] != row["rich_ticker"]
 
         # A universe scan must not clear the portfolio_watchlist scope's rows.
         with patch("pairs_spread_engine.get_universe_tickers", return_value=[]):

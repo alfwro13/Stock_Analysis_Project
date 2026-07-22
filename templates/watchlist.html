@@ -308,6 +308,14 @@ window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
                     </div>
                 {% endif %}
 
+                {% if item.pillar_confluence_result and item.pillar_confluence_result.confluence %}
+                    <div class="inline-block">
+                        <abbr title="Signal Pillar Confluence — at least two of the Technical, Statistical, and ML signal pillars agree on direction within the last 5 scans, with none disagreeing." class="no-decoration-abbr">
+                            <span class="setup-tag">{{ '📈' if item.pillar_confluence_result.direction == 'bullish' else '📉' }} Pillar Confluence</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
                 {{ pattern_tags(item.pattern_tags) }}
 
                 {% for tag in item.report_tags %}

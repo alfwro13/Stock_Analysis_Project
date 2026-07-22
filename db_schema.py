@@ -512,6 +512,16 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS earnings_volatility_history (
+                ticker        TEXT NOT NULL,
+                scan_date     TEXT NOT NULL,
+                edge_score    REAL,
+                drift_avg_pct_5d REAL,
+                UNIQUE(ticker, scan_date)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS earnings_drift_predictions (
                 id                     INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker                 TEXT NOT NULL,
@@ -1022,6 +1032,8 @@ def init_db() -> None:
                 spread_std    REAL,
                 last_spread   REAL,
                 direction     TEXT,
+                cheap_ticker  TEXT,
+                rich_ticker   TEXT,
                 scan_ts       TEXT NOT NULL
             )
         ''')
@@ -2302,6 +2314,13 @@ def migrate_db(conn, cursor) -> None:
         if 'scope' not in existing_pairs_spread_columns:
             logger.info("[MIGRATION] Adding column: scope to pairs_spread_results...")
             cursor.execute("ALTER TABLE pairs_spread_results ADD COLUMN scope TEXT NOT NULL DEFAULT 'portfolio_watchlist'")
+        for col, ddl in (
+            ('cheap_ticker', "ALTER TABLE pairs_spread_results ADD COLUMN cheap_ticker TEXT"),
+            ('rich_ticker', "ALTER TABLE pairs_spread_results ADD COLUMN rich_ticker TEXT"),
+        ):
+            if col not in existing_pairs_spread_columns:
+                logger.info("[MIGRATION] Adding column: %s to pairs_spread_results...", col)
+                cursor.execute(ddl)
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to add scope to pairs_spread_results: %s", e)
 

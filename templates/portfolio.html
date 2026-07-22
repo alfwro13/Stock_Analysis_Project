@@ -385,6 +385,14 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
                     </div>
                 {% endif %}
 
+                {% if item.pillar_confluence_result and item.pillar_confluence_result.confluence %}
+                    <div class="inline-block">
+                        <abbr title="Signal Pillar Confluence — at least two of the Technical, Statistical, and ML signal pillars agree on direction within the last 5 scans, with none disagreeing." class="no-decoration-abbr">
+                            <span class="setup-tag">{{ '📈' if item.pillar_confluence_result.direction == 'bullish' else '📉' }} Pillar Confluence</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
                 {{ pattern_tags(item.pattern_tags) }}
             </td>
             <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}{% if risk_paused and 'BUY' in (item.overall_signal or '') %} <abbr class="badge-warn" title="Portfolio Heat Index is Red — new buy signals are flagged for extra caution until risk cools down.">RISK PAUSED</abbr>{% endif %}</td>

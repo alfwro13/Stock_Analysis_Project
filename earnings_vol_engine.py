@@ -403,6 +403,16 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
                     round(drift[20]["avg_pct"], 2) if drift[20]["avg_pct"] is not None else None,
                     drift[20]["up_count"], drift[20]["sample_size"],
                 ))
+
+                cursor.execute('''
+                    INSERT OR REPLACE INTO earnings_volatility_history (ticker, scan_date, edge_score, drift_avg_pct_5d)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    ticker,
+                    today.strftime("%Y-%m-%d"),
+                    round(edge_score, 2) if edge_score is not None else None,
+                    round(drift[5]["avg_pct"], 2) if drift[5]["avg_pct"] is not None else None,
+                ))
                 conn.commit()
 
                 logger.info("[%s] Edge: %s | Isolated Implied: %s | Hist: %.2f%%",

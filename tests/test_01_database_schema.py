@@ -65,6 +65,7 @@ EXPECTED_TABLES = [
     "quant_signals",
     "quant_scan_states",
     "earnings_volatility",
+    "earnings_volatility_history",
     "market_universe",
     "asset_profiles",
     "ticker_metadata",

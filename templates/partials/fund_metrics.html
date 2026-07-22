@@ -65,6 +65,21 @@
             </span>
         </div>
         {% endif %}
+        {% if pillar_confluence %}
+        <div class="data-row">
+            <span class="data-label"><abbr title="At least two of the Technical, Statistical, and ML signal pillars agree on direction within the last 5 scans, with none disagreeing.">Pillar Confluence:</abbr></span>
+            <span class="data-value">
+                {% if pillar_confluence.confluence %}
+                    <span class="{{ 'metric-excellent' if pillar_confluence.direction == 'bullish' else 'metric-poor' }}">
+                        {{ pillar_confluence.direction | capitalize }}
+                        ({{ (pillar_confluence.bullish_pillars if pillar_confluence.direction == 'bullish' else pillar_confluence.bearish_pillars) | join(', ') | capitalize }})
+                    </span>
+                {% else %}
+                    <span class="metric-neutral">None</span>
+                {% endif %}
+            </span>
+        </div>
+        {% endif %}
     </div>
 
     <div class="data-card">
