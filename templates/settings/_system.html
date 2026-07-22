@@ -977,8 +977,10 @@
                     <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr> and
                     <abbr title="A flat resistance level with a rising support line, breaking out upward.">Ascending Triangle</abbr> /
                     <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr>,
-                    <abbr title="Bollinger Bands (20-day SMA +/- 2 standard deviations) contracting fully inside the Keltner Channel (20-day EMA +/- 1.5x ATR) — a volatility compression that often precedes an explosive directional move.">Volatility Squeeze</abbr>, and
+                    <abbr title="Bollinger Bands (20-day SMA +/- 2 standard deviations) contracting fully inside the Keltner Channel (20-day EMA +/- 1.5x ATR) — a volatility compression that often precedes an explosive directional move.">Volatility Squeeze</abbr>,
                     <abbr title="A bar whose True Range is the smallest of the trailing 4 (NR4) or 7 (NR7) bars and which is also a strict inside bar vs. the prior bar — a micro-contraction often preceding a sharp breakout.">NR4 / NR7 Narrow Range</abbr>,
+                    <abbr title="Price stretched more than a configurable Z-score threshold away from its 200-day SMA (measured against the distance series' own trailing mean/std) — a mean-reversion exhaustion setup.">Parabolic Stretch</abbr>, and
+                    <abbr title="Price makes a new high/low while RSI fails to confirm it with a new high/low of its own — a leading sign that momentum is fading even as price keeps pushing.">Bullish / Bearish Divergence</abbr>,
                     with more pattern types planned. Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
                 </p>
 
@@ -990,12 +992,16 @@
                 {% set pd_tri_sched = pd_sched.TRIANGLE if pd_sched.TRIANGLE else {} %}
                 {% set pd_vs_sched = pd_sched.VOLATILITY_SQUEEZE if pd_sched.VOLATILITY_SQUEEZE else {} %}
                 {% set pd_nr_sched = pd_sched.NARROW_RANGE if pd_sched.NARROW_RANGE else {} %}
+                {% set pd_ps_sched = pd_sched.PARABOLIC_STRETCH if pd_sched.PARABOLIC_STRETCH else {} %}
+                {% set pd_md_sched = pd_sched.MOMENTUM_DIVERGENCE if pd_sched.MOMENTUM_DIVERGENCE else {} %}
                 {% set pd_hs_cfg = pd_cfg.HEAD_SHOULDERS if pd_cfg.HEAD_SHOULDERS else {} %}
                 {% set pd_dtb_cfg = pd_cfg.DOUBLE_TOP_BOTTOM if pd_cfg.DOUBLE_TOP_BOTTOM else {} %}
                 {% set pd_flag_cfg = pd_cfg.FLAG if pd_cfg.FLAG else {} %}
                 {% set pd_tri_cfg = pd_cfg.TRIANGLE if pd_cfg.TRIANGLE else {} %}
                 {% set pd_vs_cfg = pd_cfg.VOLATILITY_SQUEEZE if pd_cfg.VOLATILITY_SQUEEZE else {} %}
                 {% set pd_nr_cfg = pd_cfg.NARROW_RANGE if pd_cfg.NARROW_RANGE else {} %}
+                {% set pd_ps_cfg = pd_cfg.PARABOLIC_STRETCH if pd_cfg.PARABOLIC_STRETCH else {} %}
+                {% set pd_md_cfg = pd_cfg.MOMENTUM_DIVERGENCE if pd_cfg.MOMENTUM_DIVERGENCE else {} %}
 
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PATTERN_DETECTION_ENABLED" {% if pd_sched.ENABLED %}checked{% endif %}>
@@ -1215,6 +1221,72 @@
                     <div class="form-group flex-1">
                         <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
                         <input type="number" id="PATTERN_DETECTION_NR_VOLUME_MULT" class="form-control" value="{{ pd_nr_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Parabolic Stretch (Rubber Band)</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PS_OVERBOUGHT" {% if pd_ps_sched.OVERBOUGHT_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PS_OVERBOUGHT">Detect overbought stretch (reversion down)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PS_OVERSOLD" {% if pd_ps_sched.OVERSOLD_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PS_OVERSOLD">Detect oversold stretch (reversion up)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The moving average distance is measured against.">SMA window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_SMA_WINDOW" class="form-control" value="{{ pd_ps_cfg.SMA_WINDOW | default(200) }}" step="10" min="50">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trailing window used to compute the distance-from-SMA series' own mean and standard deviation for the Z-score.">Z-score window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_Z_WINDOW" class="form-control" value="{{ pd_ps_cfg.Z_WINDOW_DAYS | default(252) }}" step="10" min="60">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Absolute Z-score of the distance-from-SMA series that counts as 'stretched'.">Stretch Z-score threshold</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_Z_THRESHOLD" class="form-control" value="{{ pd_ps_cfg.Z_THRESHOLD | default(3.0) }}" step="0.1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="The Z-score must retrace back under this absolute value, with price also moving back toward the mean, to confirm the reversion.">Confirm Z-score threshold</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_CONFIRM_Z" class="form-control" value="{{ pd_ps_cfg.CONFIRM_Z_THRESHOLD | default(2.0) }}" step="0.1" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="How many trading days after the stretch bar a confirmed retracement still counts as that stretch's resolution.">Breakout lookahead (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_BREAKOUT_LOOKAHEAD" class="form-control" value="{{ pd_ps_cfg.BREAKOUT_LOOKAHEAD_DAYS | default(10) }}" step="1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Volume on the stretch bar must exceed its 20-day average by at least this multiplier to count as a climax-volume confirmation.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_VOLUME_MULT" class="form-control" value="{{ pd_ps_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Bullish / Bearish Divergence</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_MD_BULLISH" {% if pd_md_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_MD_BULLISH">Detect Bullish Divergence (lower low, higher RSI low)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_MD_BEARISH" {% if pd_md_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_MD_BEARISH">Detect Bearish Divergence (higher high, lower RSI high)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum % by which the second price extreme must exceed (or undershoot) the first for it to count as a genuinely new extreme, not noise.">Min price change %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_MD_MIN_PRICE" class="form-control" value="{{ pd_md_cfg.MIN_PRICE_CHANGE_PCT | default(1.0) }}" step="0.1" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum RSI point gap required between the two extremes, in the diverging direction, for it to count as a genuine divergence rather than noise.">Min RSI gap (points)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_MD_MIN_RSI_GAP" class="form-control" value="{{ pd_md_cfg.MIN_RSI_GAP | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_MD_VOLUME_MULT" class="form-control" value="{{ pd_md_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
                     </div>
                 </div>
 

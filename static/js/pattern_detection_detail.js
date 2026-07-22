@@ -20,6 +20,10 @@ const PD_PATTERN_TYPE_LABELS = {
     nr4_bearish: 'NR4 Breakout (Bearish)',
     nr7_bullish: 'NR7 Breakout (Bullish)',
     nr7_bearish: 'NR7 Breakout (Bearish)',
+    parabolic_stretch_overbought: 'Parabolic Stretch (Overbought)',
+    parabolic_stretch_oversold: 'Parabolic Stretch (Oversold)',
+    bearish_divergence: 'Bearish Divergence',
+    bullish_divergence: 'Bullish Divergence',
 };
 const PD_PATTERN_COLORS = {
     regular: '#ff4d4d',
@@ -39,6 +43,10 @@ const PD_PATTERN_COLORS = {
     nr4_bearish: '#f44336',
     nr7_bullish: '#4caf50',
     nr7_bearish: '#d32f2f',
+    parabolic_stretch_overbought: '#e74c3c',
+    parabolic_stretch_oversold: '#2ecc71',
+    bearish_divergence: '#ff7043',
+    bullish_divergence: '#26a69a',
 };
 const PD_FALLBACK_PALETTE = ['#ff4d4d', '#ff9900', '#4caf50', '#22b8cf', '#9b59b6', '#e91e8c', '#3498db', '#f1c40f'];
 
@@ -63,6 +71,10 @@ const PD_PATTERN_EXPLANATIONS = {
     nr4_bearish: "An NR4 setup resolves bearish when price later closes below the narrow bar's own low. It suggests the brief pause ended with sellers winning out.",
     nr7_bullish: "An NR7 setup resolves bullish when price later closes above the narrow bar's own high. It suggests the compression ended with buyers winning out.",
     nr7_bearish: "An NR7 setup resolves bearish when price later closes below the narrow bar's own low. It suggests the compression ended with sellers winning out.",
+    parabolic_stretch_overbought: "A Parabolic Stretch (Overbought) fires when price closes unusually far above its 200-day average — measured as a Z-score of that distance against its own trailing history, not just raw price. It suggests the stock has moved too far, too fast, and is statistically due for a pullback back toward the average.",
+    parabolic_stretch_oversold: "A Parabolic Stretch (Oversold) is the mirror image: price has closed unusually far below its 200-day average. It suggests a sharp decline has overshot, and the stock is statistically due for a bounce back toward the average.",
+    bearish_divergence: "A Bearish Divergence forms when price makes a new high but the RSI momentum indicator makes a lower high over the same two points. It suggests the rally is running out of steam even though price is still climbing, and is often an early warning ahead of a reversal.",
+    bullish_divergence: "A Bullish Divergence forms when price makes a new low but the RSI momentum indicator makes a higher low over the same two points. It suggests selling pressure is fading even though price is still falling, and is often an early warning ahead of a reversal.",
 };
 
 let _pdSeries = null;
