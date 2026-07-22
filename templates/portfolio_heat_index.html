@@ -36,6 +36,90 @@
         <tbody id="phi-ticker-tbody"></tbody>
     </table>
 </div>
+
+<hr class="my-5">
+
+<section id="how-to-read">
+    <h3 class="mb-3">How to Read This Page</h3>
+    <p class="text-muted mb-4">
+        This page has two parts. The cards at the top tell you how "hot" your portfolio is <strong>as a whole</strong> —
+        think of it like a fuel gauge for risk. The table below tells you, for each individual holding, <strong>how much
+        that one holding is contributing</strong> to the overall reading. A ticker doesn't turn red because it's a "bad"
+        stock — it turns red because of how it's currently behaving <em>in the context of everything else you own</em>.
+        The three reasons below cover everything that can push a ticker toward red.
+    </p>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-lg-4">
+            <div class="card h-100 border-danger">
+                <div class="card-header text-danger fw-semibold">1. It's carrying a big share of your risk</div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        Every holding contributes a slice to your portfolio's total day-to-day "how much could I lose"
+                        number. A large position, or a position that swings up and down a lot in price, naturally eats
+                        up a bigger slice of that risk budget than a small, calm holding does.
+                    </p>
+                    <p class="small mb-0 text-muted">
+                        Shown in the table as <strong>Marginal VaR Contribution</strong> — the higher the percentage,
+                        the more of your portfolio's overall risk this one ticker alone is responsible for.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card h-100 border-warning">
+                <div class="card-header text-warning fw-semibold">2. It moves in lockstep with things you already own</div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        The whole point of holding several different things is that when one goes down, another might
+                        hold steady or go up, smoothing out the ride. But if two of your holdings tend to rise and fall
+                        together — say, two companies in the same industry reacting to the same news — then owning both
+                        doesn't actually spread your risk out. You've effectively made one bigger bet, not two smaller ones.
+                    </p>
+                    <p class="small mb-0 text-muted">
+                        Shown in the table as <strong>Max Correlation</strong> — how closely this ticker's price
+                        movements match your <em>most similar</em> other holding. Close to 1.0 means "moves almost
+                        identically"; close to 0 means "moves independently."
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card h-100 border-primary">
+                <div class="card-header text-primary fw-semibold">3. It's getting close to its stop-loss level</div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        Behind the scenes, every holding has a calculated "if it drops to here, the setup is broken"
+                        price level, based on how much that stock normally wobbles day to day. The closer today's price
+                        has drifted toward that level, the less room is left before a small further dip would mean a
+                        meaningfully worse outcome — even if nothing else about the company has changed.
+                    </p>
+                    <p class="small mb-0 text-muted">
+                        Shown in the table as <strong>Stop Distance</strong> — the percentage gap between the current
+                        price and that calculated level. A small percentage means the price is right up against it.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <table class="table table-sm small mb-4">
+        <thead><tr><th>Tier</th><th>What it means in plain terms</th></tr></thead>
+        <tbody>
+            <tr class="text-success"><td><strong>Green</strong></td><td>This holding (or your whole portfolio) is behaving normally on all three fronts — no single thing stands out as a risk concentration right now.</td></tr>
+            <tr class="text-warning"><td><strong>Yellow</strong></td><td>At least one of the three things above is elevated. Not an emergency, but worth a glance before adding more to this position or a similar one.</td></tr>
+            <tr class="text-danger"><td><strong>Red</strong></td><td>One or more of the three things above is stretched. This is the holding (or the portfolio-wide combination of holdings) doing the most to drive your overall risk reading right now.</td></tr>
+        </tbody>
+    </table>
+
+    <p class="text-muted small mb-0">
+        A note on the top-of-page cards: when the "All Accounts" card is Red, you'll see a small "Risk Paused" badge
+        appear next to BUY-style signals elsewhere in the app (Portfolio, Watchlist, Stock Detail). That's a visual
+        heads-up only — nothing is blocked or executed automatically, since this app doesn't place trades for you.
+    </p>
+</section>
 {% endblock %}
 
 {% block scripts %}
