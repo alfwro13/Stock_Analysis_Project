@@ -235,41 +235,74 @@ function fetchAlertRefereeReadiness() {
 
 document.addEventListener('DOMContentLoaded', fetchAlertRefereeReadiness);
 
+let _refLogOffset = 0;
+let _refLogSearchTimer = null;
+const _refLogPageSize = 50;
+
 function showAlertRefereeShadowLog() {
+    const modalEl = document.getElementById('alert-referee-log-modal');
+    if (!modalEl) return;
+    document.getElementById('alert-referee-log-ticker').value = '';
+    document.getElementById('alert-referee-log-vetoed').value = '';
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    loadAlertRefereeLog(true);
+}
+
+function onAlertRefereeLogFilterChange() {
+    clearTimeout(_refLogSearchTimer);
+    _refLogSearchTimer = setTimeout(() => loadAlertRefereeLog(true), 300);
+}
+
+function _refLogRowHtml(row) {
+    const prob = row.fire_probability != null ? Number(row.fire_probability).toFixed(2) : '—';
+    const vetoed = row.vetoed ? '<span class="text-danger">Yes</span>' : 'No';
+    const scanTime = row.scan_ts ? new Date(row.scan_ts.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+    return `<tr>
+        <td>${escapeHtml(row.ticker || '')}</td>
+        <td>${escapeHtml(row.phase || '')}</td>
+        <td>${prob}</td>
+        <td>${vetoed}</td>
+        <td>${escapeHtml(row.mode || '')}</td>
+        <td>${escapeHtml(scanTime)}</td>
+    </tr>`;
+}
+
+function loadAlertRefereeLog(reset) {
     const tbody = document.getElementById('alert-referee-log-tbody');
     const emptyEl = document.getElementById('alert-referee-log-empty');
-    const modalEl = document.getElementById('alert-referee-log-modal');
-    if (!tbody || !modalEl) return;
+    const moreBtn = document.getElementById('alert-referee-log-more');
+    if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
-    emptyEl.hidden = true;
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    if (reset) {
+        _refLogOffset = 0;
+        tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
+        emptyEl.hidden = true;
+        moreBtn.hidden = true;
+    }
 
-    fetch('/api/alert-referee/status')
+    const ticker = document.getElementById('alert-referee-log-ticker').value.trim();
+    const vetoed = document.getElementById('alert-referee-log-vetoed').value;
+    const params = new URLSearchParams({ limit: _refLogPageSize, offset: _refLogOffset });
+    if (ticker) params.set('ticker', ticker);
+    if (vetoed) params.set('vetoed', vetoed);
+
+    fetch('/api/alert-referee/log?' + params.toString())
         .then(r => r.json())
         .then(data => {
-            const rows = (data.status === 'success' && data.recent_log) ? data.recent_log : [];
-            if (rows.length === 0) {
-                tbody.innerHTML = '';
+            const rows = (data.status === 'success' && data.results) ? data.results : [];
+            if (reset) tbody.innerHTML = '';
+            if (rows.length === 0 && _refLogOffset === 0) {
                 emptyEl.hidden = false;
+                moreBtn.hidden = true;
                 return;
             }
-            tbody.innerHTML = rows.map(row => {
-                const prob = row.fire_probability != null ? Number(row.fire_probability).toFixed(2) : '—';
-                const vetoed = row.vetoed ? '<span class="text-danger">Yes</span>' : 'No';
-                const scanTime = row.scan_ts ? new Date(row.scan_ts.replace(' ', 'T') + 'Z').toLocaleString() : '—';
-                return `<tr>
-                    <td>${escapeHtml(row.ticker || '')}</td>
-                    <td>${escapeHtml(row.phase || '')}</td>
-                    <td>${prob}</td>
-                    <td>${vetoed}</td>
-                    <td>${escapeHtml(row.mode || '')}</td>
-                    <td>${escapeHtml(scanTime)}</td>
-                </tr>`;
-            }).join('');
+            emptyEl.hidden = true;
+            tbody.insertAdjacentHTML('beforeend', rows.map(_refLogRowHtml).join(''));
+            _refLogOffset += rows.length;
+            moreBtn.hidden = !(data.status === 'success' && data.has_more);
         })
         .catch(() => {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load shadow log.</td></tr>';
+            if (reset) tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load shadow log.</td></tr>';
         });
 }
 

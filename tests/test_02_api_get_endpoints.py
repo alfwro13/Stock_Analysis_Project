@@ -493,6 +493,7 @@ def test_no_endpoint_returns_500(client):
         "/api/predicted-movers/accuracy",
         "/api/earnings-volatility/accuracy",
         "/api/alert-referee/status",
+        "/api/alert-referee/log",
     ]
     failures = []
     for url in get_endpoints:
@@ -1363,3 +1364,37 @@ def test_get_learn_overview_returns_200(client):
     assert "due_count" in data
     assert "weak_terms" in data
     assert "total_learned" in data
+
+
+@pytest.mark.api
+def test_alert_referee_log_filters_by_ticker_and_vetoed(client):
+    """GET /api/alert-referee/log must honor ticker/vetoed query params and report has_more."""
+    import alert_referee_engine as are
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM alert_referee_log WHERE engine=?", (are.TRAP_MONITOR_ENGINE,))
+        conn.commit()
+        are.log_veto_evaluation(are.TRAP_MONITOR_ENGINE, "AAPL", "BULL_TRAP_RISK", 0.2, True, "shadow", None, conn)
+        are.log_veto_evaluation(are.TRAP_MONITOR_ENGINE, "MSFT", "ACTIVE_SELLOFF", 0.8, False, "shadow", None, conn)
+
+        resp = client.get("/api/alert-referee/log?ticker=AAPL")
+        assert resp.status_code == 200
+        data = _json(resp)
+        assert data["status"] == "success"
+        assert len(data["results"]) == 1
+        assert data["results"][0]["ticker"] == "AAPL"
+
+        resp = client.get("/api/alert-referee/log?vetoed=false")
+        data = _json(resp)
+        assert all(r["vetoed"] == 0 for r in data["results"])
+
+        resp = client.get("/api/alert-referee/log?limit=1")
+        data = _json(resp)
+        assert len(data["results"]) == 1
+        assert data["has_more"] is True
+    finally:
+        conn.execute("DELETE FROM alert_referee_log WHERE engine=?", (are.TRAP_MONITOR_ENGINE,))
+        conn.commit()
+        conn.close()

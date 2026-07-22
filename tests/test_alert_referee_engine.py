@@ -419,6 +419,40 @@ class TestGetRefereeSummary:
         assert len(summary["recent_log"]) == 1
 
 
+class TestGetRecentEvaluationsFiltering:
+    def _seed_log_rows(self):
+        conn = db.get_connection()
+        try:
+            are.log_veto_evaluation(_ENGINE, "AAPL", "BULL_TRAP_RISK", 0.2, True, "shadow", None, conn)
+            are.log_veto_evaluation(_ENGINE, "MSFT", "ACTIVE_SELLOFF", 0.8, False, "shadow", None, conn)
+            are.log_veto_evaluation(_ENGINE, "AAPL", "ACTIVE_SELLOFF", 0.9, False, "shadow", None, conn)
+        finally:
+            conn.close()
+
+    def test_filters_by_ticker_substring(self):
+        self._seed_log_rows()
+        rows = are.get_recent_evaluations(_ENGINE, ticker="AAP")
+        assert len(rows) == 2
+        assert all(r["ticker"] == "AAPL" for r in rows)
+
+    def test_filters_by_vetoed_flag(self):
+        self._seed_log_rows()
+        vetoed_rows = are.get_recent_evaluations(_ENGINE, vetoed=True)
+        assert len(vetoed_rows) == 1
+        assert vetoed_rows[0]["ticker"] == "AAPL"
+
+        not_vetoed_rows = are.get_recent_evaluations(_ENGINE, vetoed=False)
+        assert len(not_vetoed_rows) == 2
+
+    def test_offset_paginates_newest_first(self):
+        self._seed_log_rows()
+        first_page = are.get_recent_evaluations(_ENGINE, limit=2, offset=0)
+        second_page = are.get_recent_evaluations(_ENGINE, limit=2, offset=2)
+        assert len(first_page) == 2
+        assert len(second_page) == 1
+        assert first_page[0]["ticker"] == "AAPL" and first_page[0]["phase"] == "ACTIVE_SELLOFF"
+
+
 class TestRunAlertRefereeTrainingJob:
     def test_runner_completes_with_insufficient_data(self):
         import scheduler_jobs

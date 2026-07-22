@@ -387,14 +387,30 @@ def evaluate_alert(engine: str, ticker: str, phase: str, row: dict, conn) -> Ref
     return RefereeVerdict(fire_probability=fire_probability, vetoed=vetoed, mode=effective_mode, model_available=True)
 
 
-def get_recent_evaluations(engine: str = TRAP_MONITOR_ENGINE, limit: int = 25) -> list[dict]:
+def get_recent_evaluations(
+    engine: str = TRAP_MONITOR_ENGINE,
+    limit: int = 25,
+    offset: int = 0,
+    ticker: Optional[str] = None,
+    vetoed: Optional[bool] = None,
+) -> list[dict]:
     conn = None
     try:
         conn = get_connection()
+        clauses = ["engine=?"]
+        params: list = [engine]
+        if ticker:
+            clauses.append("ticker LIKE ?")
+            params.append(f"%{ticker}%")
+        if vetoed is not None:
+            clauses.append("vetoed=?")
+            params.append(int(vetoed))
+        params.extend([limit, offset])
         rows = conn.execute(
-            """SELECT ticker, phase, fire_probability, vetoed, mode, scan_ts
-               FROM alert_referee_log WHERE engine=? ORDER BY id DESC LIMIT ?""",
-            (engine, limit),
+            f"""SELECT ticker, phase, fire_probability, vetoed, mode, scan_ts
+               FROM alert_referee_log WHERE {' AND '.join(clauses)}
+               ORDER BY id DESC LIMIT ? OFFSET ?""",
+            params,
         ).fetchall()
         return [dict(r) for r in rows]
     except Exception as e:
