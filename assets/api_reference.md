@@ -4244,8 +4244,8 @@ Scans Portfolio + Watchlist tickers once daily (Mon-Fri by default) for chart pa
 rolling-window swing-point detection, dispatched through a per-family detector registry
 (`pattern_detection_engine.DETECTORS`). Currently covers Head & Shoulders / Inverse Head &
 Shoulders (`head_shoulders_engine.py`), Double Top / Double Bottom (`double_top_bottom_engine.py`),
-Bull Flag / Bear Flag (`flag_engine.py`), Ascending / Descending Triangle (`triangle_engine.py`),
-Volatility Squeeze (`volatility_squeeze_engine.py`), NR4/NR7 Narrow Range
+Bull Flag / Bear Flag (`flag_engine.py`), Ascending / Descending / Symmetrical Triangle
+(`triangle_engine.py`), Volatility Squeeze (`volatility_squeeze_engine.py`), NR4/NR7 Narrow Range
 (`narrow_range_engine.py`), Parabolic Stretch (`parabolic_stretch_engine.py`),
 Bullish/Bearish Divergence (`momentum_divergence_engine.py`), and Micro-Structure Candlestick
 Triggers — Bullish/Bearish Engulfing, Hammer/Shooting Star (`candlestick_trigger_engine.py`);
@@ -4267,7 +4267,8 @@ with a Bullish/Bearish/Forming checkbox tree (one master checkbox per group, one
 checkbox per active pattern) to show/hide individual patterns or an entire group, and a
 plain-language explanation of each pattern type currently present. The Forming group catches
 any pattern whose direction is not yet resolved (Volatility Squeeze while still squeezed,
-NR4/NR7 the day the narrow bar prints).
+NR4/NR7 the day the narrow bar prints, Symmetrical Triangle while the two lines are still
+converging).
 
 ### `GET /api/pattern-detection/results`
 

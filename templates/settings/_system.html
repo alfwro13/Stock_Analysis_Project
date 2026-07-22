@@ -976,7 +976,8 @@
                     <abbr title="A sharp directional move (the pole) followed by a brief, mildly counter-sloped consolidation channel before the trend resumes.">Bull Flag</abbr> /
                     <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr> and
                     <abbr title="A flat resistance level with a rising support line, breaking out upward.">Ascending Triangle</abbr> /
-                    <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr>,
+                    <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr> /
+                    <abbr title="A falling resistance line and a rising support line converging together — directionally neutral until price closes decisively past either line.">Symmetrical Triangle</abbr>,
                     <abbr title="Bollinger Bands (20-day SMA +/- 2 standard deviations) contracting fully inside the Keltner Channel (20-day EMA +/- 1.5x ATR) — a volatility compression that often precedes an explosive directional move.">Volatility Squeeze</abbr>,
                     <abbr title="A bar whose True Range is the smallest of the trailing 4 (NR4) or 7 (NR7) bars and which is also a strict inside bar vs. the prior bar — a micro-contraction often preceding a sharp breakout.">NR4 / NR7 Narrow Range</abbr>,
                     <abbr title="Price stretched more than a configurable Z-score threshold away from its 200-day SMA (measured against the distance series' own trailing mean/std) — a mean-reversion exhaustion setup.">Parabolic Stretch</abbr>,
@@ -1163,6 +1164,17 @@
                         <label><abbr title="Minimum required %/day slope (in the pattern's direction) for the sloped side's regression line to count as a real trend, not noise.">Min sloped-side %/day</abbr></label>
                         <input type="number" id="PATTERN_DETECTION_TRI_MIN_SLOPE" class="form-control" value="{{ pd_tri_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
                     </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Symmetrical Triangle</h5>
+                <p class="text-muted text-xs mb-10">Shares the Window and Min sloped-side %/day settings above — both lines are tested against the same threshold. Direction is unknown while forming; these toggles gate which confirmed breakout direction gets reported.</p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_SYM_BULLISH" {% if pd_tri_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_SYM_BULLISH">Report bullish breakouts (upside)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_SYM_BEARISH" {% if pd_tri_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_SYM_BEARISH">Report bearish breakouts (downside)</label>
                 </div>
 
                 <h5 class="text-cyan mt-10">Volatility Squeeze (Bollinger / Keltner)</h5>
