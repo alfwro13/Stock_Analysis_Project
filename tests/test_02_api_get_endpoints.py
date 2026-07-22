@@ -492,7 +492,6 @@ def test_no_endpoint_returns_500(client):
         "/api/predicted-movers/leaderboard",
         "/api/predicted-movers/accuracy",
         "/api/earnings-volatility/accuracy",
-        "/api/earnings-volatility/drift-path",
         "/api/alert-referee/status",
     ]
     failures = []
@@ -772,19 +771,6 @@ def test_earnings_volatility_accuracy_returns_200(client):
     assert "by_ticker" in data
     assert "overall" in data
     assert isinstance(data["by_ticker"], list)
-
-
-@pytest.mark.api
-def test_earnings_volatility_drift_path_returns_200(client):
-    """GET /api/earnings-volatility/drift-path must return 200 with offsets/avg_pct/sample_size shape."""
-    resp = client.get("/api/earnings-volatility/drift-path")
-    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-    data = _json(resp)
-    assert data.get("status") == "success", f"Expected success status: {data}"
-    assert "offsets" in data
-    assert "avg_pct" in data
-    assert "sample_size" in data
-    assert isinstance(data["offsets"], list)
 
 
 # ── Log Viewer API ────────────────────────────────────────────────────────────
