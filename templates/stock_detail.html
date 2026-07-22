@@ -229,7 +229,7 @@
 
             <div class="summary-box mb-3">
                 <div class="flex-between-center flex-wrap gap-2">
-                    <h2 class="m-0 border-none p-0">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
+                    <h2 class="m-0 border-none p-0">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100){% if risk_paused and 'BUY' in (stock.overall_signal or '') %} <abbr class="badge-warn" title="Portfolio Heat Index is Red — new buy signals are flagged for extra caution until risk cools down.">RISK PAUSED</abbr>{% endif %}</h2>
                     <div class="inline-flex-gap-10">
                         <button id="refreshDataBtn" onclick="refreshSingleData()" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
                             <span class="btn-icon">&#8635;</span> Refresh

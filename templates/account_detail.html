@@ -21,6 +21,12 @@
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openBuyTreasuryBillModal({{ account.id }})">&#129534; Buy T-Bill</button>
 </div>
 
+{% if portfolio_heat %}
+<div class="sentiment-widgets">
+    {% include 'partials/portfolio_heat_widget.html' %}
+</div>
+{% endif %}
+
 {% for p in pending_topups %}
 <div class="availability-banner no-data" id="autotopup-pending-{{ p.id }}">
     <strong>&#9888; Auto Top-up due — confirm payment received</strong>

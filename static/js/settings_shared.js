@@ -235,6 +235,26 @@ async function saveSettings(silent = false) {
                 "WATCH_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_WATCH_THRESHOLD').value) || 70,
                 "FLAG_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_FLAG_THRESHOLD').value) || 85
             },
+            "RISK_ORCHESTRATOR": {
+                "ENABLED": document.getElementById('RISK_ORCHESTRATOR_ENABLED').checked,
+                "DAYS": ['mon','tue','wed','thu','fri'],
+                "TIME": document.getElementById('RISK_ORCHESTRATOR_TIME').value,
+                "WEIGHTS": {
+                    "VAR": (parseFloat(document.getElementById('RO_W_VAR').value) || 40) / 100,
+                    "CORRELATION": (parseFloat(document.getElementById('RO_W_CORR').value) || 30) / 100,
+                    "DRAWDOWN": (parseFloat(document.getElementById('RO_W_DD').value) || 30) / 100
+                },
+                "THRESHOLDS": {
+                    "PHI_YELLOW": parseFloat(document.getElementById('RO_T_PHI_YELLOW').value) || 40,
+                    "PHI_RED": parseFloat(document.getElementById('RO_T_PHI_RED').value) || 75,
+                    "VAR_PCT_YELLOW": parseFloat(document.getElementById('RO_T_VAR_YELLOW').value) || 2.0,
+                    "VAR_PCT_RED": parseFloat(document.getElementById('RO_T_VAR_RED').value) || 4.0,
+                    "MAX_CORR_YELLOW": parseFloat(document.getElementById('RO_T_CORR_YELLOW').value) || 0.5,
+                    "MAX_CORR_RED": parseFloat(document.getElementById('RO_T_CORR_RED').value) || 0.75,
+                    "DRAWDOWN_PCT_YELLOW": parseFloat(document.getElementById('RO_T_DD_YELLOW').value) || 5.0,
+                    "DRAWDOWN_PCT_RED": parseFloat(document.getElementById('RO_T_DD_RED').value) || 10.0
+                }
+            },
             "PAIRS_SPREAD_MONITOR": {
                 "ENABLED": document.getElementById('PAIRS_SPREAD_ENABLED').checked,
                 "DAYS": document.getElementById('PAIRS_SPREAD_FREQ').value === 'mon-sun'

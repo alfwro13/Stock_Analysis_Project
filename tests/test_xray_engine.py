@@ -449,6 +449,14 @@ class TestStaleTickerFiltering:
             f"expected ≈0.30 (±0.05)"
         )
 
+    def test_max_corr_excludes_stale_tickers(self):
+        """max_pairwise_correlation (added for the Portfolio Heat Index) must also exclude
+        stale holdings — with only T1/T2 in scope, max should equal the same 0.30 pair."""
+        result = self._run_with_stale()
+        max_corr = result["risk_metrics"].get("max_pairwise_correlation")
+        assert max_corr is not None
+        assert abs(max_corr - 0.30) < 0.05
+
     def test_stale_tickers_not_in_risk_cache_result(self):
         """The risk_cache DB query must not load rows for tickers not in current holdings."""
         result = self._run_with_stale()

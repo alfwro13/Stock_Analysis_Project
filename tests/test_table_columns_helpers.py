@@ -242,3 +242,12 @@ def test_default_views_include_a_position_targets_view_on_both_pages():
     for views in (tch.DEFAULT_PORTFOLIO_VIEWS, tch.DEFAULT_WATCHLIST_VIEWS):
         names = {v["name"] for v in views}
         assert "Position Targets" in names
+
+
+@pytest.mark.config
+def test_heat_index_column_is_portfolio_only_and_resolves_as_text():
+    col = next(c for c in tch.OPTIONAL_COLUMNS if c["key"] == "heat_index")
+    assert col["pages"] == ("portfolio",)
+    assert col["fmt"] == "text"
+    _, display = tch._format_value("Red", "text", None)
+    assert display == "Red"

@@ -201,6 +201,14 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Purpose:** Per-ticker daily return series (same data already fetched for beta/vol/correlation), one row per ticker covering every ticker in the risk-cache universe (Ghostfolio + built-in Trading accounts). `assemble_xray_report` derives a weighted portfolio return series for whatever account scope was requested by combining the relevant tickers' cached series with that scope's current weights — historical VaR/CVaR, Sharpe/Calmar ratio, tracking error, and skewness/kurtosis work for any scope (Ghostfolio, built-in, or combined), not just a precomputed global one.
 * **Key Columns:** `ticker`, `benchmark` (composite PK), `last_updated`, `dates_json`, `returns_json`.
 
+#### `portfolio_heat_index`
+* **Purpose:** Latest Portfolio Heat Index (PHI) — one row per account scope (`"all"` or `"acct:{id}"`, matching `xray_engine.resolve_scope_holdings()`'s scope convention). Computed daily by `risk_orchestrator_engine.run_scan()`.
+* **Key Columns:** `scope` (PK), `scope_label`, `phi_score`, `tier`, `var_pct_of_equity`, `var_tier`, `max_correlation`, `correlation_tier`, `drawdown_pct`, `drawdown_tier`, `breakdown_json`, `last_updated`.
+
+#### `ticker_risk_contribution`
+* **Purpose:** Latest per-ticker Risk Contribution tier for the `"all"` scope combined portfolio — backs the Portfolio page's "Heat Index" column and the Stock Detail "Risk Contribution" row. Fully replaced on each `risk_orchestrator_job` run.
+* **Key Columns:** `ticker` (PK), `risk_score`, `risk_tier`, `marginal_var_contribution_pct`, `max_pairwise_correlation`, `stop_distance_pct`, `last_updated`.
+
 #### `ai_contagion_snapshots`
 * **Purpose:** AI sector contagion scan results — payload JSON + alert flag. Pruned to last 7 days automatically.
 * **Key Columns:** `id` (PK autoincrement), `scan_ts`, `leader_count`, `etf_count`, `alert_fired`, `payload_json`.

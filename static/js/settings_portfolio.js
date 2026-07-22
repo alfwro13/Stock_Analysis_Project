@@ -374,6 +374,24 @@ async function deleteEtfPredictor(id) {
     } catch (e) { if (el) el.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
 }
 
+async function runRiskOrchestratorNow() {
+    const btn = document.querySelector('button[onclick="runRiskOrchestratorNow()"]');
+    const msgEl = document.getElementById('risk-orchestrator-msg');
+    btn.disabled = true;
+    btn.innerText = "⏳ Scanning...";
+    if (msgEl) msgEl.innerHTML = '';
+    try {
+        const resp = await fetch('/api/risk-orchestrator/run', { method: 'POST' });
+        const data = await resp.json();
+        const color = data.status === 'success' ? '#4caf50' : '#f44336';
+        if (msgEl) msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
+    } catch (err) {
+        if (msgEl) msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
+    } finally {
+        setTimeout(() => { btn.disabled = false; btn.innerText = "Run Now"; }, 3000);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const toolsDetails = document.querySelector('#etf-predictors-section')?.closest('details');
     if (toolsDetails) {

@@ -1,0 +1,14 @@
+<div class="sentiment-widget risk-summary-row {% if portfolio_heat.tier == 'RED' %}risk-summary-red{% elif portfolio_heat.tier == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
+    <h3 class="risk-summary-header {% if portfolio_heat.tier == 'RED' %}red{% elif portfolio_heat.tier == 'YELLOW' %}yellow{% else %}green{% endif %}">
+        🌡️ <abbr title="Portfolio Heat Index — a composite risk score combining VaR, correlation, and drawdown into one 0-100 traffic-light reading.">Portfolio Heat Index</abbr>:
+        {% if portfolio_heat.tier == 'RED' %}🚨 {{ portfolio_heat.phi_score }}/100
+        {% elif portfolio_heat.tier == 'YELLOW' %}⚠️ {{ portfolio_heat.phi_score }}/100
+        {% else %}✅ {{ portfolio_heat.phi_score }}/100{% endif %}
+    </h3>
+    <p class="risk-summary-text">
+        {% for line in portfolio_heat.breakdown %}
+        {{ line }}<br>
+        {% endfor %}
+        <a href="/portfolio-heat-index">Full breakdown &amp; per-ticker risk contribution &rarr;</a>
+    </p>
+</div>

@@ -343,7 +343,7 @@ window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
                     {% endif %}
                 {% endif %}
             </td>
-            <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+            <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}{% if risk_paused and 'BUY' in (item.overall_signal or '') %} <abbr class="badge-warn" title="Portfolio Heat Index is Red — new buy signals are flagged for extra caution until risk cools down.">RISK PAUSED</abbr>{% endif %}</td>
             {% for col in item.optional_cols %}
                 {% if col.client %}
                 {% if col.key == 'position_value' %}

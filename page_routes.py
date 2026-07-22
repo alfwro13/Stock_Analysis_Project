@@ -56,6 +56,8 @@ from page_helpers import (
     calculate_pnl,
     compute_badge_tags,
     get_pattern_tags_by_ticker,
+    get_all_scope_heat_tier,
+    get_portfolio_heat_row,
 )
 from page_routes_macro import page_router_macro
 
@@ -257,6 +259,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                     WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
                    ev.edge_score AS earnings_edge_score, ev.implied_move_pct AS earnings_implied_move,
                    trap.phase as trap_phase,
+                   rc.risk_tier AS heat_index_tier,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
                    COALESCE(
@@ -276,6 +279,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
+            LEFT JOIN ticker_risk_contribution rc ON s.ticker = rc.ticker
         """, (BENCHMARK_SYMBOL,))
         db_rows = cursor.fetchall()
 
@@ -336,6 +340,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             )
             row_dict['pattern_detections'] = pattern_tags_by_ticker.get(row_dict['ticker'], [])
             row_dict.update(compute_badge_tags(row_dict))
+            row_dict['heat_index'] = (row_dict.get('heat_index_tier') or '').capitalize() or None
 
             portfolio_data.append(row_dict)
 
@@ -485,6 +490,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             "views": views,
             "present_tags": present_tags,
             "present_pattern_tags": present_pattern_tags,
+            "portfolio_heat": get_portfolio_heat_row("all"),
+            "risk_paused": get_all_scope_heat_tier() == "RED",
         }
     )
 
@@ -572,6 +579,7 @@ async def account_detail_page(request: Request, account_id: int):
             "treasury_bills": list_treasury_bills(account_id),
             "treasury_bills_pending_ytm": bills_pending_ytm_confirmation(account_id),
             "config": load_config(),
+            "portfolio_heat": get_portfolio_heat_row(f"acct:{account_id}"),
         }
     )
 
@@ -831,7 +839,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             "all_columns": table_columns_helpers.all_columns_for_page("watchlist"),
             "views": views,
             "column_prefs": column_prefs,
-            "change_period": change_period
+            "change_period": change_period,
+            "risk_paused": get_all_scope_heat_tier() == "RED",
         }
     )
 
@@ -1048,6 +1057,18 @@ async def trap_monitor_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="trap_monitor.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
+@page_router.get("/portfolio-heat-index", response_class=HTMLResponse)
+async def portfolio_heat_index_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="portfolio_heat_index.html",
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),
@@ -2000,6 +2021,18 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
     except Exception:
         pass
 
+    ticker_risk = None
+    conn_risk = None
+    try:
+        conn_risk = get_connection()
+        row = conn_risk.execute(
+            "SELECT * FROM ticker_risk_contribution WHERE ticker = ?", (ticker,)
+        ).fetchone()
+        ticker_risk = dict(row) if row else None
+    finally:
+        if conn_risk:
+            conn_risk.close()
+
     return templates.TemplateResponse(
         request=request, name="stock_detail.html",
         context={
@@ -2032,6 +2065,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             "earnings_vol": earnings_vol,
             "fundamentals_extra": fundamentals_extra,
             "bubble_data": bubble_data,
+            "ticker_risk": ticker_risk,
+            "risk_paused": get_all_scope_heat_tier() == "RED",
         }
     )
 

@@ -898,6 +898,25 @@ def run_alert_referee_training_job():
         record_job_run("alert_referee_training_job")
 
 
+def run_risk_orchestrator_job():
+    from risk_orchestrator_engine import run_scan
+    _mark_job_started(job_label("risk_orchestrator_job"))
+    try:
+        log_sched_notification("Scheduler", "Started Risk Orchestrator Scan...")
+        result = run_scan()
+        log_sched_notification(
+            "Success",
+            f"Risk Orchestrator Scan complete — {result['scopes_computed']} scope(s) scored, "
+            f"{result['tickers_scored']} ticker(s) rated.",
+        )
+    except Exception as e:
+        logger.error("Risk Orchestrator Scan failed: %s", e)
+        log_sched_notification("Error", f"Risk Orchestrator Scan failed: {e}")
+    finally:
+        _mark_job_done(job_label("risk_orchestrator_job"))
+        record_job_run("risk_orchestrator_job")
+
+
 def run_bubble_radar_job():
     from bubble_radar_engine import run_bubble_scan
     _mark_job_started(job_label("bubble_radar_job"))

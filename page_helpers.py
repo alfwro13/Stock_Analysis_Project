@@ -270,3 +270,27 @@ def calculate_pnl(
         "pnl":           round(pnl, 2),
         "pnl_pct":       round(pnl_pct, 2),
     }
+
+
+def get_portfolio_heat_row(scope: str = "all") -> Optional[dict]:
+    """Latest Portfolio Heat Index row for `scope`, with its breakdown parsed from JSON."""
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM portfolio_heat_index WHERE scope = ?", (scope,)
+        ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["breakdown"] = json.loads(result["breakdown_json"]) if result.get("breakdown_json") else []
+        return result
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_all_scope_heat_tier() -> Optional[str]:
+    """The "all"-scope Portfolio Heat Index tier — drives the visual-only BUY-signal warning badge."""
+    row = get_portfolio_heat_row("all")
+    return row["tier"] if row else None

@@ -710,6 +710,39 @@ def init_db() -> None:
             )
         ''')
 
+        # Portfolio Heat Index (PHI) — one row per account scope ("all" or "acct:{id}"),
+        # matching xray_engine.resolve_scope_holdings()'s scope convention.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio_heat_index (
+                scope TEXT PRIMARY KEY,
+                scope_label TEXT NOT NULL,
+                phi_score REAL NOT NULL,
+                tier TEXT NOT NULL,
+                var_pct_of_equity REAL,
+                var_tier TEXT,
+                max_correlation REAL,
+                correlation_tier TEXT,
+                drawdown_pct REAL,
+                drawdown_tier TEXT,
+                breakdown_json TEXT,
+                last_updated TEXT NOT NULL
+            )
+        ''')
+
+        # Per-ticker Risk Contribution tier for the "all" scope combined portfolio —
+        # backs the Portfolio page's "Heat Index" column.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ticker_risk_contribution (
+                ticker TEXT PRIMARY KEY,
+                risk_score REAL NOT NULL,
+                risk_tier TEXT NOT NULL,
+                marginal_var_contribution_pct REAL,
+                max_pairwise_correlation REAL,
+                stop_distance_pct REAL,
+                last_updated TEXT NOT NULL
+            )
+        ''')
+
         # Per-holding dividend yield cache (one live Ghostfolio call per holding,
         # done on the scheduler job so page load never blocks on it).
         cursor.execute('''
