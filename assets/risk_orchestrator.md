@@ -6,7 +6,11 @@ Contribution tier. Mirrors `quant_signals.py`'s composite "System Verdict" score
 focused and portfolio-scoped rather than per-ticker-technicals-scoped.
 
 Page routes: `GET /portfolio-heat-index` (Reports hub), plus compact widgets on `/portfolio`
-(the `"all"` scope) and `/accounts/{id}` (that account's own scope).
+(the `"all"` scope) and `/accounts/{id}` (that account's own scope). The report page ends
+with a plain-language "How to Read This Page" section explaining, in non-finance terms, the
+three reasons a ticker's Risk Contribution tier can turn Yellow/Red (large share of portfolio
+VaR, high correlation with another holding, proximity to its ATR stop) — added so the tooltips
+on individual columns aren't the only explanation available.
 Engine: `risk_orchestrator_engine.py`
 Scheduler jobs: `risk_orchestrator_job` (daily Mon-Fri, config `SCHEDULING.RISK_ORCHESTRATOR`),
 `risk_orchestrator_digest_job` (daily Mon-Fri, config `SCHEDULING.RISK_ORCHESTRATOR_DIGEST`, §7)
