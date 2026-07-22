@@ -51,6 +51,7 @@ function _edpRenderChart(data) {
     const layout = {
         title: { text: 'Average Post-Earnings Price Path', x: 0.5, xanchor: 'center' },
         template: 'plotly_dark', height: _edpChartHeight(),
+        paper_bgcolor: '#111', plot_bgcolor: '#111', font: { color: '#ccc' },
         margin: { l: 50, r: 20, t: 50, b: 60 },
         legend: { orientation: 'h', yanchor: 'top', y: -0.15, xanchor: 'center', x: 0.5 },
         xaxis: { title: 'Trading days from earnings (0 = pre-earnings close)' },
