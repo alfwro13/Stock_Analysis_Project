@@ -1289,6 +1289,21 @@ CARDS = [
 <p>Once confirmed by a close below that support level, the measured-move target projects the triangle's height (the first swing high minus support) downward from the breakout point.</p>""",
     },
     {
+        "term_key": "symmetrical-triangle-pattern",
+        "section_id": "strategies",
+        "term_title": "📐 Symmetrical Triangle Pattern",
+        "question": "What does Pattern Detection require for a Symmetrical Triangle, and what does it do while the pattern is still forming?",
+        "answer": "A falling swing-high line and a rising swing-low line, both exceeding the same minimum slope — direction stays unresolved (FORMING) until price breaks decisively past either line",
+        "distractors": [
+            "Both the swing-high and swing-low lines must be flat, like a rectangle",
+            "The swing highs and swing lows must both slope in the same direction, like a wedge",
+            "It is always reported as a bullish setup the moment it's detected",
+        ],
+        "explanation": """<p>A <strong>Symmetrical Triangle</strong> is complete market indecision: unlike the Ascending/Descending Triangle, neither side is flat — both buyers and sellers are lowering their thresholds at the same time, so resistance falls while support rises and the trading range squeezes together. Volatility compresses steadily as the pattern narrows, and because neither side is winning outright, a breakout in either direction is usually explosive once it comes.</p>
+<p>Pattern Detection fits the same two regression lines as Ascending/Descending Triangle — one through the swing highs, one through the swing lows — but requires the swing-high line to have a clearly negative slope and the swing-low line to have a clearly positive slope, both exceeding the same configurable minimum used by the other two Triangle variants. This is what distinguishes a genuine symmetrical triangle from a wedge (both lines sloping the same direction) or a widening range (the lines diverging instead of converging).</p>
+<p>Direction is genuinely unknown while the triangle is still forming, so it surfaces as FORMING with no bullish/bearish label yet — the same "direction-unknown-until-breakout" contract used by Volatility Squeeze and NR4/NR7 Narrow Range. Once price closes decisively past either line, it resolves to a directional breakout: above the falling resistance line for a bullish resolution, below the rising support line for a bearish one. Once confirmed, the measured-move target projects the triangle's own height (measured at the back of the lookback window, its widest point) from the breakout point.</p>""",
+    },
+    {
         "term_key": "volatility-squeeze-pattern",
         "section_id": "strategies",
         "term_title": "🌀 Volatility Squeeze (Bollinger / Keltner)",

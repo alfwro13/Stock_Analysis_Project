@@ -266,7 +266,9 @@ async function saveSettings(silent = false) {
                 },
                 "TRIANGLE": {
                     "ASCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_ASC').checked,
-                    "DESCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_DESC').checked
+                    "DESCENDING_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_DESC').checked,
+                    "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_SYM_BULLISH').checked,
+                    "BEARISH_ENABLED": document.getElementById('PATTERN_DETECTION_TRI_SYM_BEARISH').checked
                 },
                 "VOLATILITY_SQUEEZE": {
                     "BULLISH_ENABLED": document.getElementById('PATTERN_DETECTION_VS_BULLISH').checked,

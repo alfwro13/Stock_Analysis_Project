@@ -281,7 +281,9 @@ DEFAULT_CONFIG = {
             },
             "TRIANGLE": {
                 "ASCENDING_ENABLED": True,
-                "DESCENDING_ENABLED": True
+                "DESCENDING_ENABLED": True,
+                "BULLISH_ENABLED": True,
+                "BEARISH_ENABLED": True
             },
             "VOLATILITY_SQUEEZE": {
                 "BULLISH_ENABLED": True,
