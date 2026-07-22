@@ -21,6 +21,8 @@ from database import get_connection
 from risk_orchestrator_engine import (
     _sub_score,
     _tier_for,
+    _tickers_with_rising_stop,
+    build_daily_digest,
     persist_heat_index,
     persist_ticker_contributions,
     run_scan,
@@ -179,6 +181,114 @@ class TestRunRiskOrchestratorJobRunner:
             scheduler_jobs.run_risk_orchestrator_job()
 
         error_calls = [c for c in mock_notify.call_args_list if c.args[0] == "Error"]
+        assert len(error_calls) == 1
+
+
+@pytest.mark.db
+class TestTickersWithRisingStop:
+    def test_returns_empty_with_fewer_than_two_dates(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM atr_stop_history")
+            conn.execute("INSERT INTO atr_stop_history (ticker, date, atr_stop_loss) VALUES ('AAA', '2026-07-20', 100.0)")
+            conn.commit()
+            assert _tickers_with_rising_stop(conn) == []
+        finally:
+            conn.close()
+
+    def test_flags_only_tickers_whose_stop_rose(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM atr_stop_history")
+            conn.executemany(
+                "INSERT INTO atr_stop_history (ticker, date, atr_stop_loss) VALUES (?, ?, ?)",
+                [
+                    ("AAA", "2026-07-20", 100.0), ("AAA", "2026-07-21", 105.0),
+                    ("BBB", "2026-07-20", 50.0), ("BBB", "2026-07-21", 48.0),
+                    ("CCC", "2026-07-20", 10.0), ("CCC", "2026-07-21", 10.0),
+                ],
+            )
+            conn.commit()
+            result = _tickers_with_rising_stop(conn)
+        finally:
+            conn.close()
+        assert result == [{"ticker": "AAA", "old_stop": 100.0, "new_stop": 105.0}]
+
+
+@pytest.mark.db
+class TestBuildDailyDigest:
+    def test_returns_none_message_with_no_phi_data(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM portfolio_heat_index")
+            conn.commit()
+        finally:
+            conn.close()
+        digest = build_daily_digest()
+        assert digest["message"] is None
+        assert digest["scope_count"] == 0
+
+    def test_composes_message_with_phi_rows_and_rising_stops(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM portfolio_heat_index")
+            conn.execute("DELETE FROM atr_stop_history")
+            conn.execute(
+                """
+                INSERT INTO portfolio_heat_index
+                    (scope, scope_label, phi_score, tier, var_pct_of_equity, last_updated)
+                VALUES ('all', 'All Accounts', 42.0, 'YELLOW', 2.1, '2026-07-21 19:15:00')
+                """
+            )
+            conn.executemany(
+                "INSERT INTO atr_stop_history (ticker, date, atr_stop_loss) VALUES (?, ?, ?)",
+                [("AAA", "2026-07-20", 100.0), ("AAA", "2026-07-21", 105.0)],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        digest = build_daily_digest()
+        assert digest["scope_count"] == 1
+        assert digest["rising_stop_count"] == 1
+        assert "All Accounts: 42.0 (YELLOW)" in digest["message"]
+        assert "AAA: 100.0 → 105.0" in digest["message"]
+
+
+class TestRunRiskOrchestratorDigestJobRunner:
+    def test_dispatches_notification_when_message_present(self):
+        with patch("risk_orchestrator_engine.build_daily_digest",
+                   return_value={"message": "brief", "scope_count": 1, "rising_stop_count": 0}), \
+             patch("scheduler_jobs.notify") as mock_notify, \
+             patch("scheduler_jobs.log_sched_notification"), \
+             patch("scheduler_jobs._mark_job_started"), \
+             patch("scheduler_jobs._mark_job_done"), \
+             patch("scheduler_jobs.record_job_run"):
+            scheduler_jobs.run_risk_orchestrator_digest_job()
+
+        mock_notify.assert_called_once_with("risk_orchestrator_digest", "Info", "brief")
+
+    def test_skips_notification_when_no_data(self):
+        with patch("risk_orchestrator_engine.build_daily_digest",
+                   return_value={"message": None, "scope_count": 0, "rising_stop_count": 0}), \
+             patch("scheduler_jobs.notify") as mock_notify, \
+             patch("scheduler_jobs.log_sched_notification"), \
+             patch("scheduler_jobs._mark_job_started"), \
+             patch("scheduler_jobs._mark_job_done"), \
+             patch("scheduler_jobs.record_job_run"):
+            scheduler_jobs.run_risk_orchestrator_digest_job()
+
+        mock_notify.assert_not_called()
+
+    def test_logs_error_on_failure(self):
+        with patch("risk_orchestrator_engine.build_daily_digest", side_effect=Exception("boom")), \
+             patch("scheduler_jobs.log_sched_notification") as mock_log, \
+             patch("scheduler_jobs._mark_job_started"), \
+             patch("scheduler_jobs._mark_job_done"), \
+             patch("scheduler_jobs.record_job_run"):
+            scheduler_jobs.run_risk_orchestrator_digest_job()
+
+        error_calls = [c for c in mock_log.call_args_list if c.args[0] == "Error"]
         assert len(error_calls) == 1
 
 

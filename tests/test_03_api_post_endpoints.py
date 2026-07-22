@@ -167,6 +167,37 @@ def test_post_settings_with_notification_routing(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_with_risk_orchestrator(client, confirm_token):
+    """POST /api/settings with SCHEDULING.RISK_ORCHESTRATOR (weights/thresholds) and
+    RISK_ORCHESTRATOR_DIGEST must persist and round-trip via load_config — regression for a
+    bug where SchedulingConfig had no RISK_ORCHESTRATOR field at all, so the whole block was
+    silently dropped by Pydantic on every save."""
+    import config as _config
+    payload = {
+        "SCHEDULING": {
+            "RISK_ORCHESTRATOR": {
+                "ENABLED": True,
+                "TIME": "20:05",
+                "WEIGHTS": {"VAR": 0.5, "CORRELATION": 0.25, "DRAWDOWN": 0.25},
+                "THRESHOLDS": {"PHI_YELLOW": 35, "PHI_RED": 70},
+            },
+            "RISK_ORCHESTRATOR_DIGEST": {"ENABLED": True, "TIME": "20:20"},
+        }
+    }
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    scheduling = _config.load_config().get("SCHEDULING", {})
+    ro = scheduling.get("RISK_ORCHESTRATOR", {})
+    assert ro.get("TIME") == "20:05"
+    assert ro.get("WEIGHTS", {}).get("VAR") == 0.5
+    assert ro.get("THRESHOLDS", {}).get("PHI_YELLOW") == 35
+    digest = scheduling.get("RISK_ORCHESTRATOR_DIGEST", {})
+    assert digest.get("ENABLED") is True
+    assert digest.get("TIME") == "20:20"
+
+
+@pytest.mark.api
 def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(client, confirm_token):
     """POST /api/settings with GHOSTFOLIO_ENABLED=False must purge portfolio.json/watchlist.json,
     clear GHOSTFOLIO_ACCOUNTS, and force GHOSTFOLIO_SYNC.ENABLED off."""

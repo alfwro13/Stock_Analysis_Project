@@ -842,6 +842,14 @@ class QuantEngine:
                 
                 cursor.execute(query, values)
 
+                cleaned_stop_loss = _clean(stop_loss)
+                if cleaned_stop_loss is not None:
+                    cursor.execute('''
+                        INSERT INTO atr_stop_history (ticker, date, atr_stop_loss)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(ticker, date) DO UPDATE SET atr_stop_loss=excluded.atr_stop_loss
+                    ''', (ticker, timestamp.split(" ")[0], cleaned_stop_loss))
+
                 # Stamp the composite score onto the latest quant_signals row so
                 # it is part of the time series and available for future backtesting.
                 cursor.execute('''

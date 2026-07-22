@@ -102,3 +102,53 @@ class TestSaveToDbDoesNotWipeOtherEnginesColumns:
         row = conn.execute("SELECT company_name FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()
         conn.close()
         assert row["company_name"] == "Test Co"
+
+
+class TestSaveToDbWritesAtrStopHistory:
+    """save_to_db() must also snapshot atr_stop_loss into atr_stop_history so the Risk
+    Orchestrator Digest (Pillar C1) can detect stops that moved up day over day."""
+
+    TICKER = "TST_QS_ATR_HISTORY"
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker=?", (self.TICKER,))
+            conn.execute("DELETE FROM atr_stop_history WHERE ticker=?", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_writes_a_row_for_todays_date(self):
+        args = dict(_SAVE_TO_DB_DEFAULTS, stop_loss=95.5)
+        QuantEngine().save_to_db(self.TICKER, **args)
+
+        conn = _db.get_connection()
+        rows = conn.execute(
+            "SELECT date, atr_stop_loss FROM atr_stop_history WHERE ticker=?", (self.TICKER,)
+        ).fetchall()
+        conn.close()
+        assert len(rows) == 1
+        assert rows[0]["atr_stop_loss"] == 95.5
+
+    def test_second_write_same_day_updates_not_duplicates(self):
+        QuantEngine().save_to_db(self.TICKER, **dict(_SAVE_TO_DB_DEFAULTS, stop_loss=90.0))
+        QuantEngine().save_to_db(self.TICKER, **dict(_SAVE_TO_DB_DEFAULTS, stop_loss=92.0))
+
+        conn = _db.get_connection()
+        rows = conn.execute(
+            "SELECT atr_stop_loss FROM atr_stop_history WHERE ticker=?", (self.TICKER,)
+        ).fetchall()
+        conn.close()
+        assert len(rows) == 1
+        assert rows[0]["atr_stop_loss"] == 92.0
+
+    def test_none_stop_loss_does_not_write_a_row(self):
+        QuantEngine().save_to_db(self.TICKER, **dict(_SAVE_TO_DB_DEFAULTS, stop_loss=None))
+
+        conn = _db.get_connection()
+        rows = conn.execute(
+            "SELECT * FROM atr_stop_history WHERE ticker=?", (self.TICKER,)
+        ).fetchall()
+        conn.close()
+        assert rows == []

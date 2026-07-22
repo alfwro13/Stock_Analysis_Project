@@ -265,6 +265,11 @@ DEFAULT_CONFIG = {
                 "DRAWDOWN_PCT_YELLOW": 5.0, "DRAWDOWN_PCT_RED": 10.0
             }
         },
+        "RISK_ORCHESTRATOR_DIGEST": {
+            "ENABLED": False,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "19:25"
+        },
         "ALERT_REFEREE_TRAINING": {
             "ENABLED": False,
             "DAYS": ["sun"],
