@@ -26,6 +26,7 @@ from database import (
     batch_update_pattern_detection_actuals,
 )
 from indicators import compute_rsi, compute_volume_sma
+from notification_engine import notify
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -328,6 +329,7 @@ def backfill_historical_patterns(tickers: Optional[list[str]] = None) -> int:
     as of each historical date, and immediately resolves 14d/30d outcomes from the same
     parquet's later rows — giving a populated accuracy panel before any live alerting is
     relied upon."""
+    notify("pattern_detection_job", "Info", "Pattern Detection historical backfill started — this can take several minutes.")
     engine = PatternDetectionEngine(load_config())
     if tickers is None:
         tickers = engine._get_ticker_list()
@@ -388,8 +390,8 @@ def backfill_historical_patterns(tickers: Optional[list[str]] = None) -> int:
                     total_logged += 1
 
     resolved = fill_pattern_outcomes()
-    logger.info(
-        "PatternDetectionEngine: backfill logged %d historical patterns, resolved %d outcomes.",
-        total_logged, resolved,
+    notify(
+        "pattern_detection_job", "Success",
+        f"Pattern Detection historical backfill complete — logged {total_logged} historical pattern(s), resolved {resolved} outcome(s).",
     )
     return total_logged

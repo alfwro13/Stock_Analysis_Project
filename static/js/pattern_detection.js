@@ -92,7 +92,7 @@ function _pdGroupByTicker(results) {
         ticker,
         patterns,
         lastScanTs: patterns.reduce((max, p) => (p.scan_ts || '') > max ? (p.scan_ts || '') : max, ''),
-    })).sort((a, b) => b.lastScanTs.localeCompare(a.lastScanTs));
+    })).sort((a, b) => a.ticker.localeCompare(b.ticker));
 }
 
 function _pdInScope(ticker) {
@@ -127,7 +127,7 @@ function _pdRenderPatternsTable() {
         tr.innerHTML = `
             <td><a href="/pattern-detection/${encodeURIComponent(ticker)}" style="color:#4da6ff;font-weight:600;text-decoration:none;">${escapeHtml(ticker)}</a></td>
             <td>${badges}</td>
-            <td style="color:#444;font-size:10px;">${escapeHtml(lastScanTs || '')}</td>
+            <td class="text-secondary" style="font-size:10px;">${escapeHtml(lastScanTs || '')}</td>
         `;
         tr.addEventListener('click', () => { window.location.href = `/pattern-detection/${encodeURIComponent(ticker)}`; });
         tbody.appendChild(tr);
@@ -213,28 +213,42 @@ function _pdSwitchTab(name) {
     if (name === 'accuracy') _pdLoadAccuracy();
 }
 
+function _pdShowActionMsg(text, isError) {
+    const el = document.getElementById('pd-action-msg');
+    el.innerHTML = `<span style="color:${isError ? '#f44336' : '#4caf50'};">${escapeHtml(text)}</span>`;
+}
+
 function _pdTriggerScan() {
     const btn = document.getElementById('pd-run-btn');
     btn.disabled = true; btn.textContent = 'Scanning…';
+    _pdShowActionMsg('Scan started — check Notifications for progress and results.', false);
     fetch('/api/pattern-detection/run', { method: 'POST' })
         .then(r => r.json())
-        .then(() => {
+        .then(data => {
             btn.disabled = false; btn.textContent = 'Run Scan';
+            _pdShowActionMsg(data.message || 'Scan triggered.', data.status !== 'success');
             setTimeout(_pdLoadResults, 5000);
         })
-        .catch(() => { btn.disabled = false; btn.textContent = 'Run Scan'; });
+        .catch(err => {
+            btn.disabled = false; btn.textContent = 'Run Scan';
+            _pdShowActionMsg(`Request failed: ${err.message}`, true);
+        });
 }
 
 function _pdTriggerBackfill() {
     const btn = document.getElementById('pd-backfill-btn');
     btn.disabled = true; btn.textContent = 'Backfilling…';
+    _pdShowActionMsg('Backfill started — check Notifications when it completes; this can take several minutes.', false);
     fetch('/api/pattern-detection/backfill', { method: 'POST' })
         .then(r => r.json())
         .then(data => {
             btn.disabled = false; btn.textContent = 'Backfill Historical Data';
-            alert(data.message || 'Backfill triggered.');
+            _pdShowActionMsg(data.message || 'Backfill triggered.', data.status !== 'success');
         })
-        .catch(() => { btn.disabled = false; btn.textContent = 'Backfill Historical Data'; });
+        .catch(err => {
+            btn.disabled = false; btn.textContent = 'Backfill Historical Data';
+            _pdShowActionMsg(`Request failed: ${err.message}`, true);
+        });
 }
 
 document.addEventListener('DOMContentLoaded', function () {

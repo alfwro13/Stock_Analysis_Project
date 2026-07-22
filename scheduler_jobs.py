@@ -975,6 +975,13 @@ def run_pattern_detection_job():
     from pattern_detection_engine import PatternDetectionEngine, DETECTORS
     config = load_config()
     _mark_job_started(job_label("pattern_detection_job"))
+    # Uses notify(..., source="pattern_detection_job", ...) directly rather than
+    # log_sched_notification()'s current_job_source() lookup — a manually-triggered run
+    # (POST /api/pattern-detection/run) executes via background_tasks.add_task(), which never
+    # goes through scheduler.add_job()'s _with_job_source wrapper, so current_job_source()
+    # would return None and misroute this job's status under the generic scheduler_status
+    # bucket instead of the "Pattern Detection" routing the operator actually configures.
+    notify("pattern_detection_job", "Info", "Pattern Detection scan started.")
     conn = None
     try:
         conn = get_connection()
@@ -982,7 +989,7 @@ def run_pattern_detection_job():
         results = engine.run_scan()
 
         if not results:
-            log_sched_notification("Info", "Pattern Detection: no candidates found.")
+            notify("pattern_detection_job", "Info", "Pattern Detection complete — no candidates found.")
             return
 
         orch = IntradayOrchestrator()
@@ -1029,10 +1036,10 @@ def run_pattern_detection_job():
                 orch.record_alert_fired("PatternDetector", gate_key, severity, reason, conn)
                 fired += 1
 
-        log_sched_notification("Success", f"Pattern Detection complete — {len(results)} candidate(s), {fired} alert(s) fired.")
+        notify("pattern_detection_job", "Success", f"Pattern Detection complete — {len(results)} candidate(s), {fired} alert(s) fired.")
     except Exception as e:
         logger.error("Pattern Detection job failed: %s", e)
-        log_sched_notification("Error", f"Pattern Detection job failed: {e}")
+        notify("pattern_detection_job", "Error", f"Pattern Detection job failed: {e}", level="error")
     finally:
         if conn:
             conn.close()

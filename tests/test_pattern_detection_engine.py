@@ -407,7 +407,10 @@ class TestRunPatternDetectionJobMarketGating:
             scheduler_jobs.run_pattern_detection_job()
 
         mock_open.assert_called()
-        mock_notify.assert_not_called()
+        # The job's own start/completion status notifications still fire (source
+        # "pattern_detection_job"), but no per-ticker alert should — that's what's suppressed.
+        alert_calls = [c for c in mock_notify.call_args_list if c.args and c.args[0] == "pattern_detection_alert"]
+        assert alert_calls == []
 
     def test_fires_alert_when_ticker_exchange_open(self):
         import scheduler_jobs
@@ -426,7 +429,8 @@ class TestRunPatternDetectionJobMarketGating:
            patch("scheduler_jobs.notify", return_value=True) as mock_notify:
             scheduler_jobs.run_pattern_detection_job()
 
-        mock_notify.assert_called_once()
+        alert_calls = [c for c in mock_notify.call_args_list if c.args and c.args[0] == "pattern_detection_alert"]
+        assert len(alert_calls) == 1
 
 
 class TestChartAPIPathSafety:
