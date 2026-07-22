@@ -61,7 +61,9 @@
     <a href="#price-action" class="btn btn-outline-secondary btn-sm">Price Action</a>
     <a href="#entry-exit-zones" class="btn btn-outline-secondary btn-sm">Entry &amp; Exit</a>
     <a href="#fundamentals" class="btn btn-outline-secondary btn-sm">Fundamentals</a>
-    <a href="/glossary" class="btn btn-outline-secondary btn-sm">&#128218; Glossary</a>
+    {% if stock.pattern_tags %}
+    <a href="/pattern-detection/{{ stock.ticker }}" class="btn btn-outline-secondary btn-sm">&#128200; Detected Patterns</a>
+    {% endif %}
 </nav>
 {% set show_indexes = False %}
 {% include 'macro_cards.html' %}
