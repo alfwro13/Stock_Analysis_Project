@@ -4,7 +4,8 @@ dispatch, ticker scoping, DB save/dedup, accuracy resolution, historical backfil
 scheduler runner's alert wiring. Per-family detection math lives in
 tests/test_head_shoulders_engine.py, tests/test_double_top_bottom_engine.py,
 tests/test_flag_engine.py, tests/test_triangle_engine.py,
-tests/test_volatility_squeeze_engine.py, and tests/test_narrow_range_engine.py.
+tests/test_volatility_squeeze_engine.py, tests/test_narrow_range_engine.py,
+tests/test_parabolic_stretch_engine.py, and tests/test_momentum_divergence_engine.py.
 """
 
 import sys
@@ -22,7 +23,9 @@ import database as db
 import double_top_bottom_engine
 import flag_engine
 import head_shoulders_engine
+import momentum_divergence_engine
 import narrow_range_engine
+import parabolic_stretch_engine
 import triangle_engine
 import volatility_squeeze_engine
 from pattern_detection_engine import (
@@ -46,6 +49,8 @@ class TestRegistry:
         assert DETECTORS["triangle"] is triangle_engine
         assert DETECTORS["volatility_squeeze"] is volatility_squeeze_engine
         assert DETECTORS["narrow_range"] is narrow_range_engine
+        assert DETECTORS["parabolic_stretch"] is parabolic_stretch_engine
+        assert DETECTORS["momentum_divergence"] is momentum_divergence_engine
 
 
 class TestGetTickerList:

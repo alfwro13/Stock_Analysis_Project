@@ -1279,6 +1279,36 @@ CARDS = [
 <p>The same supporting signals apply: below-average volume on the narrow bar itself, and a breakout-day volume surge confirming genuine participation. Once confirmed, the measured-move target projects the narrow bar's own high-low range from the breakout point.</p>""",
     },
     {
+        "term_key": "parabolic-stretch-rubber-band",
+        "section_id": "strategies",
+        "term_title": "🎈 Parabolic Stretch (Rubber Band)",
+        "question": "What does Pattern Detection measure the Z-score of for a Parabolic Stretch?",
+        "answer": "The distance between the close and the 200-day SMA, against that distance series' own trailing mean/std",
+        "distractors": [
+            "The raw closing price against its all-time high",
+            "The stock's trading volume against its 20-day average",
+            "The RSI reading against a fixed value of 50",
+        ],
+        "explanation": """<p>A <strong>Parabolic Stretch</strong> is a mean-reversion exhaustion signal built on the idea that a stock's price cannot stray infinitely far from its long-term average without an eventual reversion. It measures the distance between the closing price and its 200-day SMA, then takes the <strong>Z-score</strong> of that distance against the distance series' own trailing mean and standard deviation (not a Z-score of raw price). When that Z-score exceeds +3.0, the stock is statistically overbought relative to its own history and due for a pullback; when it drops below -3.0, the stock is oversold and due for a bounce.</p>
+<p>Unlike Volatility Squeeze or NR4/NR7, direction is known immediately from the sign of the Z-score — Pattern Detection surfaces it as FORMING while the stretch condition is still active, then CONFIRMED once the Z-score has retraced back inside a tighter confirmation threshold and price has genuinely moved back toward the mean, within a configurable lookahead window.</p>
+<p>Supporting signals: unusually high volume on the stretch day itself supports a genuine blow-off/capitulation move rather than a low-liquidity fluke, and an RSI reading already at a classic overbought/oversold extreme (70/30) on that same day reinforces the signal. The measured-move target is simply the 200-day SMA itself — the "mean" the price is expected to revert toward.</p>""",
+    },
+    {
+        "term_key": "bullish-bearish-divergence",
+        "section_id": "strategies",
+        "term_title": "📉📈 Bullish / Bearish Divergence (Price vs. Momentum)",
+        "question": "What defines a Bearish Divergence between price and RSI?",
+        "answer": "Price makes a Higher High while RSI makes a Lower High over the same two peaks",
+        "distractors": [
+            "Price and RSI both make new highs at the same time",
+            "Price falls while volume rises",
+            "RSI crosses above 70 for the first time in a month",
+        ],
+        "explanation": """<p>A <strong>Divergence</strong> fires when price and the RSI momentum oscillator disagree about the strength of a move — a classic leading indicator for the same kind of reversal Double Top/Bottom confirms after the fact. A <strong>Bearish Divergence</strong> occurs when price makes a Higher High (a new swing peak above the prior one) while RSI makes a Lower High over the same two peaks — momentum is fading even though price is still pushing to new highs. A <strong>Bullish Divergence</strong> is the mirror image: price makes a Lower Low while RSI makes a Higher Low, meaning selling pressure is fading even as price still falls.</p>
+<p>Detection reuses the same swing-pivot search as Double Top/Bottom, but requires the opposite of that pattern's "near-equal extremes" test: the second peak/trough must be a genuinely new extreme by at least a configurable minimum percentage, and RSI must move the opposite way by at least a configurable minimum point gap, before it counts as a real divergence rather than noise.</p>
+<p>Supporting signal: declining volume between the two extremes, with a volume surge on the confirming breakout day. Once confirmed by a close through the level between the two extremes, the measured-move target projects that same height from the breakout point, exactly as for Double Top/Bottom.</p>""",
+    },
+    {
         "term_key": "market-leader",
         "section_id": "strategies",
         "term_title": "👑 Market Leader",
