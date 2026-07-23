@@ -272,9 +272,12 @@ function _refLogRowHtml(row) {
     const prob = row.fire_probability != null ? Number(row.fire_probability).toFixed(2) : '—';
     const vetoed = row.vetoed ? '<span class="text-danger">Yes</span>' : 'No';
     const scanTime = row.scan_ts ? new Date(row.scan_ts.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+    // TrapMonitor rows populate `phase` (e.g. BULL_TRAP_RISK); Confluence rows populate
+    // `direction` (bullish/bearish) instead — only one is ever set per row.
+    const label = row.phase || row.direction || '';
     return `<tr>
         <td>${escapeHtml(row.ticker || '')}</td>
-        <td>${escapeHtml(row.phase || '')}</td>
+        <td>${escapeHtml(label)}</td>
         <td>${prob}</td>
         <td>${vetoed}</td>
         <td>${escapeHtml(row.mode || '')}</td>

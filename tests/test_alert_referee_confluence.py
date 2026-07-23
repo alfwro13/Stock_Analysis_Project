@@ -257,6 +257,10 @@ class TestConfluenceEvaluateAlert:
         assert verdict.mode == "active"
         assert verdict.vetoed is True
 
+        logged = are.get_recent_evaluations(_ENGINE)
+        assert logged[0]["direction"] == "bearish"
+        assert logged[0]["phase"] is None
+
     def test_trap_monitor_config_is_isolated_from_confluence(self):
         """Enabling only the Confluence config block must not make TrapMonitor evaluate, and
         vice versa — each engine's ENABLED/MODE/threshold is independently configured."""

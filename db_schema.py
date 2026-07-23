@@ -1188,6 +1188,7 @@ def init_db() -> None:
                 engine           TEXT NOT NULL,
                 ticker           TEXT NOT NULL,
                 phase            TEXT,
+                direction        TEXT,
                 fire_probability REAL NOT NULL,
                 vetoed           INTEGER NOT NULL,
                 mode             TEXT NOT NULL,
@@ -2417,6 +2418,7 @@ def migrate_db(conn, cursor) -> None:
                 engine           TEXT NOT NULL,
                 ticker           TEXT NOT NULL,
                 phase            TEXT,
+                direction        TEXT,
                 fire_probability REAL NOT NULL,
                 vetoed           INTEGER NOT NULL,
                 mode             TEXT NOT NULL,
@@ -2427,6 +2429,19 @@ def migrate_db(conn, cursor) -> None:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_referee_log_engine_ticker ON alert_referee_log(engine, ticker)')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create alert_referee tables: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(alert_referee_log)")
+        existing_log_columns = [info['name'] for info in cursor.fetchall()]
+        if 'direction' not in existing_log_columns:
+            # TrapMonitor logs its phase label here (e.g. BULL_TRAP_RISK); the Cross-Engine
+            # Alert Referee (Confluence) logs its bullish/bearish direction here instead — kept
+            # as its own column rather than overloading `phase`, since the two concepts differ
+            # per engine and a shared column blurred that in the log/shadow-log UI.
+            logger.info("[MIGRATION] Adding column: direction to alert_referee_log...")
+            cursor.execute("ALTER TABLE alert_referee_log ADD COLUMN direction TEXT")
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add direction column to alert_referee_log: %s", e)
 
     # One-time copy: head_shoulders_results/_history -> generic pattern_detection_results/_history,
     # folding Head & Shoulders in as the first pattern_family under the unified Pattern Detection

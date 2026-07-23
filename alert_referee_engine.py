@@ -567,13 +567,14 @@ def log_veto_evaluation(
     mode: str,
     model_id: Optional[int],
     conn,
+    direction: Optional[str] = None,
 ) -> None:
     try:
         conn.execute(
             """INSERT INTO alert_referee_log
-               (engine, ticker, phase, fire_probability, vetoed, mode, model_id, scan_ts)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (engine, ticker, phase, fire_probability, int(vetoed), mode, model_id,
+               (engine, ticker, phase, direction, fire_probability, vetoed, mode, model_id, scan_ts)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (engine, ticker, phase, direction, fire_probability, int(vetoed), mode, model_id,
              datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
         )
         conn.commit()
@@ -607,7 +608,13 @@ def evaluate_alert(engine: str, ticker: str, phase: str, row: dict, conn) -> Ref
     vetoed = would_veto and effective_mode == "active"
 
     model_id = _latest_model_id(conn, engine)
-    log_veto_evaluation(engine, ticker, phase, fire_probability, would_veto, effective_mode, model_id, conn)
+    # Confluence's "phase" argument is actually a bullish/bearish direction, not a Trap Monitor
+    # phase label — logged into its own `direction` column rather than overloading `phase`,
+    # since the two concepts differ per engine.
+    log_phase = None if engine == CONFLUENCE_ENGINE else phase
+    log_direction = phase if engine == CONFLUENCE_ENGINE else None
+    log_veto_evaluation(engine, ticker, log_phase, fire_probability, would_veto, effective_mode, model_id, conn,
+                         direction=log_direction)
 
     return RefereeVerdict(fire_probability=fire_probability, vetoed=vetoed, mode=effective_mode, model_available=True)
 
@@ -632,7 +639,7 @@ def get_recent_evaluations(
             params.append(int(vetoed))
         params.extend([limit, offset])
         rows = conn.execute(
-            f"""SELECT ticker, phase, fire_probability, vetoed, mode, scan_ts
+            f"""SELECT ticker, phase, direction, fire_probability, vetoed, mode, scan_ts
                FROM alert_referee_log WHERE {' AND '.join(clauses)}
                ORDER BY id DESC LIMIT ? OFFSET ?""",
             params,

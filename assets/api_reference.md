@@ -2167,6 +2167,7 @@ Alert Confidence Referee (see glossary) status: readiness (resolved training sam
     {
       "ticker": "AAPL",
       "phase": "BULL_TRAP_RISK",
+      "direction": null,
       "fire_probability": 0.42,
       "vetoed": 0,
       "mode": "shadow",
@@ -2175,6 +2176,8 @@ Alert Confidence Referee (see glossary) status: readiness (resolved training sam
   ]
 }
 ```
+
+`recent_log`/`GET /api/alert-referee/log` rows carry both `phase` and `direction` columns regardless of engine — only one is ever populated (`phase` for `TrapMonitor`, `direction` for `Confluence`), the other is `null`.
 
 `readiness.pending` is a leading indicator: phase calls that already have their features recorded but whose 14-day outcome hasn't resolved yet, so they aren't counted in `current` yet but will be automatically once `trap_accuracy_fill_job` resolves them.
 
@@ -2194,6 +2197,7 @@ Searchable, filterable, paginated slice of the Alert Confidence Referee shadow-m
     {
       "ticker": "AAPL",
       "phase": "BULL_TRAP_RISK",
+      "direction": null,
       "fire_probability": 0.42,
       "vetoed": 0,
       "mode": "shadow",
