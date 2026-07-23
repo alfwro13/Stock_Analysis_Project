@@ -2064,7 +2064,7 @@ For full methodology, configuration reference, and alerting details see [`assets
 
 ### `GET /trap-monitor`
 
-HTML page. Renders the unified Market Trap & Recovery Monitor with lifecycle arc diagram, active alert strip, and a full ticker status table showing all four signal columns. The table has a Scope filter (All Tickers / Portfolio / Watchlist, default Portfolio) — client-side only, filtering the already-fetched rows by the `portfolio_tickers`/`watchlist_tickers` sets in the response below; the situation card, alert strip, and lifecycle arc stay market-wide regardless of the table's scope selection.
+HTML page. Renders the unified Market Trap & Recovery Monitor with lifecycle arc diagram, active alert strip, and a full ticker status table showing all four signal columns. A Scope filter (All Tickers / Portfolio / Watchlist, default Portfolio) — client-side only, filtering the already-fetched rows by the `portfolio_tickers`/`watchlist_tickers` sets in the response below — restricts both the table and the active alert strip; the situation card's narrative/severity and the lifecycle arc highlighting stay market-wide regardless of scope, since they're whole-market reads rather than a per-ticker list.
 
 ### `GET /api/trap-monitor/results`
 

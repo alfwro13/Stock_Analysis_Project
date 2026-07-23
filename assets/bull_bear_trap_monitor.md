@@ -217,9 +217,9 @@ The page renders a unified view of all four signals per ticker:
 
 **Lifecycle arc diagram** — a horizontal CSS stepper highlighting the dominant phase across all scanned tickers. Phases are colour-coded: red = ACTIVE_SELLOFF / BULL_TRAP_RISK, orange = CAPITULATION_FORMING, cyan = BEAR_TRAP_RISK, blue = ACCUMULATION.
 
-**Active alert strip** — colour-coded cards at the top of the page for any ticker whose phase is not NEUTRAL or CAUTION. Hidden when all tickers are clear.
+**Active alert strip** — colour-coded cards below the toolbar for any ticker whose phase is not NEUTRAL or CAUTION. Hidden when no in-scope ticker is flagged. Respects the table's Scope filter (see below).
 
-**Ticker status table** — one row per ticker with columns: Phase (colour pill badge), Bull Trap level, Bear Trap level, Capitulation level, Wyckoff level, EMA Distance (%), RSI, and last scan timestamp. Sorted by phase severity (most severe first). A Scope filter (All Tickers / Portfolio / Watchlist, default Portfolio) above the table restricts it to `portfolio_tickers`/`watchlist_tickers` from the same API response — client-side only, mirroring Pattern Detection's scope filter; the lifecycle arc and alert strip above the table are unaffected and always reflect every scanned ticker.
+**Ticker status table** — one row per ticker with columns: Phase (colour pill badge), Bull Trap level, Bear Trap level, Capitulation level, Wyckoff level, EMA Distance (%), RSI, and last scan timestamp. Sorted by phase severity (most severe first). A Scope filter (All Tickers / Portfolio / Watchlist, default Portfolio) above the table restricts both the table and the active alert strip to `portfolio_tickers`/`watchlist_tickers` from the same API response — client-side only, mirroring Pattern Detection's scope filter. The situation card's narrative/severity and the lifecycle arc highlighting (further down, in the collapsible Signal & Phase Reference section) are unaffected and always reflect every scanned ticker, since those are whole-market reads rather than a per-ticker list.
 
 **Signal legend** — collapsible `<details>` panel explaining each phase and warning level.
 
