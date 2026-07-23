@@ -125,6 +125,7 @@ OPTIONAL_COLUMNS = [
     {"key": "heat_index", "label": "Heat Index", "category": "Risk (X-ray)", "pages": ("portfolio",), "fmt": "text"},
     {"key": "pillar_confluence", "label": "Pillar Confluence", "category": "Scores", "pages": _BOTH, "fmt": "text"},
     {"key": "regime_weighted_score", "label": "Regime-Weighted Conviction Score", "category": "Scores", "pages": _BOTH, "fmt": "int"},
+    {"key": "buy_recommendation", "label": "Buy Recommendation", "category": "Scores", "pages": _BOTH, "fmt": "text"},
 
     # Portfolio parity gaps (Watchlist already shows these as core columns)
     {"key": "target_price", "label": "Target Price", "category": "Targets", "pages": ("portfolio",), "fmt": "price"},

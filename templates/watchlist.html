@@ -316,6 +316,14 @@ window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
                     </div>
                 {% endif %}
 
+                {% if item.buy_recommendation %}
+                    <div class="inline-block">
+                        <abbr title="Bullish Pillar Confluence that also clears the Recommendation Risk/Reward Gate — reward:risk computed from the ATR-based stop-loss and a measured-move/ML quantile take-profit target." class="no-decoration-abbr">
+                            <span class="setup-tag">🎯 {{ item.buy_recommendation }}</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
                 {{ pattern_tags(item.pattern_tags) }}
 
                 {% for tag in item.report_tags %}

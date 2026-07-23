@@ -107,7 +107,8 @@ DEFAULT_CONFIG = {
     "POSITION_SIZING": {
         "ACCOUNT_VALUE": 500,
         "RISK_PCT": 1.0,
-        "STOP_MULTIPLE": 2.0
+        "STOP_MULTIPLE": 2.0,
+        "MIN_RISK_REWARD": 1.5
     },
     "FREETRADE_MAPPINGS": {
         "US_MICS": ["XNAS", "XNYS", "ARCX", "BATS", "PINK"],

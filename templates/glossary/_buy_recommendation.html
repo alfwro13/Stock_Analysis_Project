@@ -1,0 +1,35 @@
+<div class="accordion-item glossary-section" id="buy-recommendation">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-buy-recommendation"
+                aria-expanded="false" aria-controls="collapse-buy-recommendation">
+            &#127919; Buy Recommendation
+        </button>
+    </h2>
+    <div id="collapse-buy-recommendation" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Buy Recommendation Combines</span>
+                <p>The <strong>Buy Recommendation</strong> tag is the last stage of the Buy-Signal Confluence Pipeline: a ticker is only labeled a Buy Recommendation when it has a <strong>bullish Signal Pillar Confluence</strong> (at least two of the Technical, Statistical, and ML pillars agree on "up," with none disagreeing) <em>and</em> that setup clears the <strong>Recommendation Risk/Reward Gate</strong> below. Regime-Weighted Conviction Score is carried alongside as context — it's documented elsewhere as deliberately never a competing Buy/Sell verdict, so it isn't part of this gate either; Pillar Confluence's own bullish/bearish call is the only directional trigger.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">The Recommendation Risk/Reward Gate</span>
+                <p>A bullish setup with a poor reward-to-risk trade-off isn't worth flagging even if the signals agree. The gate computes <strong>Entry</strong> (current price), <strong>Stop</strong> (the same ATR-based stop-loss this app's Position Sizing tool already uses), and <strong>Take-Profit</strong> (see below), then requires <code>(Take-Profit − Entry) / (Entry − Stop) &gt;= Min. Risk/Reward Ratio</code> — a configurable minimum (default 1.5) editable in Settings → Position Sizing Defaults. A ticker with bullish confluence but a Risk/Reward ratio below the minimum shows as "No" with the computed ratio, not a silent omission — the operator can see exactly why it didn't qualify.</p>
+                <div class="rule">Gate: bullish Pillar Confluence AND Risk/Reward &gt;= Min. Risk/Reward Ratio. See <code>position_sizing.passes_risk_reward_gate()</code> and <code>score_analysis.evaluate_buy_recommendation()</code>.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Take-Profit Target Resolution</span>
+                <p>The take-profit target prefers a real, already-computed price objective over a generic one: if the ticker has a <strong>CONFIRMED</strong> Pattern Detection result whose own family resolves to an "up" direction, its <strong>measured-move target</strong> is used (the highest one, if more than one bullish pattern is simultaneously confirmed). Otherwise the <strong>ML Quantile Regression Q90 band</strong> — the same upper-band prediction already shown on the Position Targets panel — stands in. If neither is available, the gate has no signal at all (shown as "No signal," never a fabricated number).</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Why Not Kelly Criterion</span>
+                <p>This gate deliberately reuses the app's existing <strong>fixed-fractional, ATR-based</strong> stop-loss math rather than a Kelly Criterion calculation. This app already chose fixed-fractional sizing over Kelly for Position Sizing — Kelly's theoretically "optimal" bet size is aggressive enough that it assumes your edge estimate is exactly correct, which real-world edge estimates rarely are. The Recommendation Risk/Reward Gate reuses that same rationale rather than reopening it.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

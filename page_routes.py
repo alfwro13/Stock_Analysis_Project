@@ -329,12 +329,15 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     pattern_tags_by_ticker = get_pattern_tags_by_ticker(portfolio_tickers)
 
     from score_analysis import (
+        buy_recommendation_label,
         compute_regime_weighted_score_batch,
+        evaluate_buy_recommendation_batch,
         evaluate_pillar_confluence_batch,
         pillar_confluence_label,
     )
     confluence_by_ticker = evaluate_pillar_confluence_batch(portfolio_tickers)
     regime_score_by_ticker = compute_regime_weighted_score_batch(portfolio_tickers)
+    buy_recommendation_by_ticker = evaluate_buy_recommendation_batch(portfolio_tickers)
 
     for row in db_rows:
         row_dict = dict(row)
@@ -353,6 +356,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             row_dict['pillar_confluence'] = pillar_confluence_label(row_dict['pillar_confluence_result'])
             row_dict['regime_weighted_result'] = regime_score_by_ticker.get(row_dict['ticker'])
             row_dict['regime_weighted_score'] = (row_dict['regime_weighted_result'] or {}).get('score')
+            row_dict['buy_recommendation_result'] = buy_recommendation_by_ticker.get(row_dict['ticker'])
+            row_dict['buy_recommendation'] = buy_recommendation_label(row_dict['buy_recommendation_result'])
 
             portfolio_data.append(row_dict)
 
@@ -758,12 +763,15 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     pattern_tags_by_ticker = get_pattern_tags_by_ticker(watchlist_tickers)
 
     from score_analysis import (
+        buy_recommendation_label,
         compute_regime_weighted_score_batch,
+        evaluate_buy_recommendation_batch,
         evaluate_pillar_confluence_batch,
         pillar_confluence_label,
     )
     confluence_by_ticker = evaluate_pillar_confluence_batch(watchlist_tickers)
     regime_score_by_ticker = compute_regime_weighted_score_batch(watchlist_tickers)
+    buy_recommendation_by_ticker = evaluate_buy_recommendation_batch(watchlist_tickers)
 
     for row in db_rows:
         row_dict = dict(row)
@@ -779,6 +787,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             row_dict['pillar_confluence'] = pillar_confluence_label(row_dict['pillar_confluence_result'])
             row_dict['regime_weighted_result'] = regime_score_by_ticker.get(row_dict['ticker'])
             row_dict['regime_weighted_score'] = (row_dict['regime_weighted_result'] or {}).get('score')
+            row_dict['buy_recommendation_result'] = buy_recommendation_by_ticker.get(row_dict['ticker'])
+            row_dict['buy_recommendation'] = buy_recommendation_label(row_dict['buy_recommendation_result'])
 
             limits = all_holding_limits.get((watchlist_account_id, row_dict['ticker']), {})
             row_dict['low_target'] = limits.get('low_limit')
@@ -2058,9 +2068,10 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         if conn_risk:
             conn_risk.close()
 
-    from score_analysis import compute_regime_weighted_score, evaluate_pillar_confluence
+    from score_analysis import compute_regime_weighted_score, evaluate_buy_recommendation, evaluate_pillar_confluence
     pillar_confluence = evaluate_pillar_confluence(ticker)
     regime_weighted = compute_regime_weighted_score(ticker)
+    buy_recommendation = evaluate_buy_recommendation(ticker)
 
     return templates.TemplateResponse(
         request=request, name="stock_detail.html",
@@ -2097,6 +2108,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             "ticker_risk": ticker_risk,
             "pillar_confluence": pillar_confluence,
             "regime_weighted_score": regime_weighted,
+            "buy_recommendation": buy_recommendation,
             "risk_paused": get_all_scope_heat_tier() == "RED",
         }
     )

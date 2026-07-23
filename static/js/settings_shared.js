@@ -86,9 +86,10 @@ async function saveSettings(silent = false) {
             "FONT_SIZE_H3": parseInt(document.getElementById('FONT_SIZE_H3').value) || 12
         },
         "POSITION_SIZING": {
-            "ACCOUNT_VALUE": parseFloat(document.getElementById('POSITION_SIZING_ACCOUNT_VALUE').value) || 10000,
-            "RISK_PCT":      parseFloat(document.getElementById('POSITION_SIZING_RISK_PCT').value) || 1.0,
-            "STOP_MULTIPLE": parseFloat(document.getElementById('POSITION_SIZING_STOP_MULTIPLE').value) || 2.0
+            "ACCOUNT_VALUE":   parseFloat(document.getElementById('POSITION_SIZING_ACCOUNT_VALUE').value) || 10000,
+            "RISK_PCT":        parseFloat(document.getElementById('POSITION_SIZING_RISK_PCT').value) || 1.0,
+            "STOP_MULTIPLE":   parseFloat(document.getElementById('POSITION_SIZING_STOP_MULTIPLE').value) || 2.0,
+            "MIN_RISK_REWARD": parseFloat(document.getElementById('POSITION_SIZING_MIN_RISK_REWARD').value) || 1.5
         },
         "SCHEDULING": {
             "GHOSTFOLIO_SYNC": {
