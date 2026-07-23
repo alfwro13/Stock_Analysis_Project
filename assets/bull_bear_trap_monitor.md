@@ -219,7 +219,7 @@ The page renders a unified view of all four signals per ticker:
 
 **Active alert strip** — colour-coded cards at the top of the page for any ticker whose phase is not NEUTRAL or CAUTION. Hidden when all tickers are clear.
 
-**Ticker status table** — one row per ticker with columns: Phase (colour pill badge), Bull Trap level, Bear Trap level, Capitulation level, Wyckoff level, EMA Distance (%), RSI, and last scan timestamp. Sorted by phase severity (most severe first).
+**Ticker status table** — one row per ticker with columns: Phase (colour pill badge), Bull Trap level, Bear Trap level, Capitulation level, Wyckoff level, EMA Distance (%), RSI, and last scan timestamp. Sorted by phase severity (most severe first). A Scope filter (All Tickers / Portfolio / Watchlist, default Portfolio) above the table restricts it to `portfolio_tickers`/`watchlist_tickers` from the same API response — client-side only, mirroring Pattern Detection's scope filter; the lifecycle arc and alert strip above the table are unaffected and always reflect every scanned ticker.
 
 **Signal legend** — collapsible `<details>` panel explaining each phase and warning level.
 

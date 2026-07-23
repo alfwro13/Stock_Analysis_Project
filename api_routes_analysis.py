@@ -81,7 +81,11 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
 @analysis_router.get("/trap-monitor/results")
 @limiter.limit("20/minute")
 async def get_trap_monitor_results(request: Request):
-    """Returns all trap monitor scan results ordered by phase severity (most severe first)."""
+    """Returns all trap monitor scan results ordered by phase severity (most severe first).
+    Also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
+    without a second round-trip."""
+    from accounts_engine import get_combined_holdings
+    from database import get_watchlist_tickers
     conn = None
     try:
         conn = get_connection()
@@ -90,7 +94,14 @@ async def get_trap_monitor_results(request: Request):
         rows = [dict(r) for r in cursor.fetchall()]
         from bull_bear_trap_engine import _phase_severity
         rows.sort(key=lambda r: _phase_severity(r.get("phase", "NEUTRAL")))
-        return JSONResponse(content={"status": "success", "results": rows})
+
+        portfolio_tickers = sorted({str(t).upper() for t in get_combined_holdings().keys()})
+        watchlist_tickers = sorted({str(t).upper() for t in get_watchlist_tickers()})
+
+        return JSONResponse(content={
+            "status": "success", "results": rows,
+            "portfolio_tickers": portfolio_tickers, "watchlist_tickers": watchlist_tickers,
+        })
     except Exception as e:
         logger.error("trap-monitor/results failed: %s", e)
         return _error_500(e)
