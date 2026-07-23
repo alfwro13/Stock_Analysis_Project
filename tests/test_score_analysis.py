@@ -1,5 +1,6 @@
 """Tests for score_analysis pure functions and DB-backed get_score_analysis."""
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 import database as _db_module
@@ -7,11 +8,21 @@ from score_analysis import (
     _available_from,
     _compute_return,
     _pillar_vote,
+    compute_regime_weighted_score,
+    compute_regime_weighted_score_batch,
     evaluate_pillar_confluence,
     evaluate_pillar_confluence_batch,
     get_score_analysis,
     pillar_confluence_label,
 )
+
+_DEFAULT_META_SCORING = {
+    "REGIME_WEIGHTS": {
+        "Bull": {"composite_score": 0.40, "ml_confidence": 0.30, "pattern": 0.20, "trap": 0.10},
+        "Chop": {"composite_score": 0.25, "ml_confidence": 0.25, "pattern": 0.35, "trap": 0.15},
+    },
+    "CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.75},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +52,16 @@ def _seed_quant_signals(rows):
     conn.close()
 
 
+def _seed_stock_signals(ticker, composite_score, ml_confidence):
+    conn = _db_module.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_signals (ticker, composite_score, ml_confidence) VALUES (?, ?, ?)",
+        (ticker, composite_score, ml_confidence),
+    )
+    conn.commit()
+    conn.close()
+
+
 @pytest.fixture(autouse=True)
 def clean_tables():
     conn = _db_module.get_connection()
@@ -49,6 +70,7 @@ def clean_tables():
     conn.execute("DELETE FROM pattern_detection_history")
     conn.execute("DELETE FROM trap_phase_history")
     conn.execute("DELETE FROM earnings_volatility_history")
+    conn.execute("DELETE FROM stock_signals WHERE ticker LIKE 'RW%'")
     conn.commit()
     conn.close()
 
@@ -381,3 +403,124 @@ class TestGetScoreAnalysisWithData:
         _seed_score_history(rows)
         result = get_score_analysis()
         assert len(result["events"]) <= 500
+
+
+# ---------------------------------------------------------------------------
+# compute_regime_weighted_score_batch
+# ---------------------------------------------------------------------------
+
+def _patched_regime(regime, market_stress_score=0.1, meta_scoring=None):
+    regime_row = {"price_hmm_label": regime, "market_stress_score": market_stress_score} if regime else None
+    cfg = {"META_SCORING": meta_scoring or _DEFAULT_META_SCORING}
+    return (
+        patch("regime_engine.get_latest_regime", return_value=regime_row),
+        patch("config.load_config", return_value=cfg),
+    )
+
+
+class TestComputeRegimeWeightedScore:
+    def test_bull_regime_weighting(self):
+        _seed_stock_signals("RWA", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            result = compute_regime_weighted_score("RWA")
+        assert result is not None
+        assert result["regime"] == "Bull"
+        # 80*.40 + 60*.30 + 50(neutral pattern)*.20 + 50(neutral trap)*.10
+        assert result["score"] == pytest.approx(65.0)
+        assert result["components"] == {"composite_score": 80.0, "ml_confidence": 60.0, "pattern": 50.0, "trap": 50.0}
+
+    def test_chop_regime_uses_different_weights(self):
+        _seed_stock_signals("RWB", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("Chop")
+        with p1, p2:
+            result = compute_regime_weighted_score("RWB")
+        assert result is not None
+        assert result["regime"] == "Chop"
+        # 80*.25 + 60*.25 + 50*.35 + 50*.15
+        assert result["score"] == pytest.approx(60.0)
+
+    def test_crash_regime_returns_none(self):
+        _seed_stock_signals("RWC", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("Crash")
+        with p1, p2:
+            result = compute_regime_weighted_score("RWC")
+        assert result is None
+
+    def test_market_stress_threshold_vetoes_even_in_bull_regime(self):
+        _seed_stock_signals("RWD", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("Bull", market_stress_score=0.9)
+        with p1, p2:
+            result = compute_regime_weighted_score("RWD")
+        assert result is None
+
+    def test_missing_regime_data_returns_none(self):
+        _seed_stock_signals("RWE", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime(None)
+        with p1, p2:
+            result = compute_regime_weighted_score("RWE")
+        assert result is None
+
+    def test_missing_composite_score_returns_none_for_that_ticker_only(self):
+        _seed_stock_signals("RWF", composite_score=None, ml_confidence=60)
+        _seed_stock_signals("RWG", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            batch = compute_regime_weighted_score_batch(["RWF", "RWG"])
+        assert batch["RWF"] is None
+        assert batch["RWG"] is not None
+
+    def test_pattern_and_trap_folded_in_independently(self):
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        _seed_stock_signals("RWH", composite_score=50, ml_confidence=50)
+        _seed_quant_signals([{"ticker": "RWH", "date": today, "close_price": 100.0}])
+        conn = _db_module.get_connection()
+        conn.execute(
+            """INSERT OR REPLACE INTO pattern_detection_history
+               (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts)
+               VALUES ('RWH', 'flag', 'bull_flag', 'CONFIRMED', ?, ?)""",
+            (today, f"{today} 00:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            result = compute_regime_weighted_score("RWH")
+        assert result["components"]["pattern"] == 100.0
+        assert result["components"]["trap"] == 50.0
+        # 50*.40 + 50*.30 + 100*.20 + 50*.10
+        assert result["score"] == pytest.approx(60.0)
+
+    def test_batch_matches_single_ticker_result(self):
+        _seed_stock_signals("RWI", composite_score=70, ml_confidence=40)
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            batch_result = compute_regime_weighted_score_batch(["RWI"])
+            single_result = compute_regime_weighted_score("RWI")
+        assert batch_result["RWI"] == single_result
+
+    def test_empty_ticker_list(self):
+        assert compute_regime_weighted_score_batch([]) == {}
+
+    def test_unknown_ticker_returns_none(self):
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            result = compute_regime_weighted_score("ZZZZ")
+        assert result is None
+
+    def test_malformed_weight_vector_missing_key_does_not_crash(self):
+        """META_SCORING is user-editable config, not internal state — a manually-edited
+        config.json missing one regime weight key must degrade that component to a zero
+        contribution rather than crashing the whole batch with a KeyError."""
+        _seed_stock_signals("RWJ", composite_score=80, ml_confidence=60)
+        broken_meta_scoring = {
+            "REGIME_WEIGHTS": {"Bull": {"composite_score": 0.5, "ml_confidence": 0.5}},  # missing pattern/trap
+            "CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.75},
+        }
+        p1, p2 = _patched_regime("Bull", meta_scoring=broken_meta_scoring)
+        with p1, p2:
+            result = compute_regime_weighted_score("RWJ")
+        assert result is not None
+        # 80*.5 + 60*.5 + 50*0(missing) + 50*0(missing)
+        assert result["score"] == pytest.approx(70.0)

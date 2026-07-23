@@ -1,0 +1,31 @@
+<div class="accordion-item glossary-section" id="regime-weighted-score">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-regime-weighted-score"
+                aria-expanded="false" aria-controls="collapse-regime-weighted-score">
+            &#129517; Regime-Weighted Conviction Score
+        </button>
+    </h2>
+    <div id="collapse-regime-weighted-score" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What the Conviction Score Measures</span>
+                <p>The <strong>Regime-Weighted Conviction Score</strong> is a 0-100 blend of four existing per-ticker signals — the composite Quant Score, the ML confidence score, Pattern Detection's confirmed patterns, and Trap Monitor's current phase — combined with a weight vector that switches depending on the current <a href="/market-regime">Market Regime</a>. It's a complementary, regime-aware lens on data this app already computes, not a replacement for the <code>overall_signal</code> System Verdict shown elsewhere — the two are never meant to agree or disagree, since they answer different questions.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Regime-Switched Weights</span>
+                <p>The same four inputs matter by different amounts depending on market conditions. In a <strong>Bull</strong> regime, the composite Quant Score and ML confidence carry the most weight (40%/30% by default) since trending, directional signals tend to be reliable. In a <strong>Chop</strong> (range-bound) regime, Pattern Detection and Trap Monitor carry more weight (35%/15% by default) since mean-reversion and structural setups tend to matter more than trend-following scores when there's no clear trend to follow. Both weight vectors are fully configurable in Settings and must sum to 100%.</p>
+                <p>Pattern Detection and Trap Monitor are weighted <em>independently</em> here, unlike <a href="#pillar-confluence">Signal Pillar Confluence</a>'s Technical pillar, which merges them into a single vote — this score needs to move them separately since the weight table treats them as distinct inputs. Each source's own direction is still resolved the identical way (Pattern Detection via <code>PATTERN_TYPES</code>, Trap Monitor via <code>_PHASE_EXPECTED_DIRECTION</code>), windowed to the same last-5-trading-days rule, then mapped to 100 (up), 50 (neutral/no signal in the window), or 0 (down) before weighting.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Crash Veto</span>
+                <p>During a <strong>Crash</strong> regime, or whenever the Isolation Forest's market-wide stress score crosses a configurable threshold, the score is suppressed entirely rather than reweighted — it shows as "No signal," never a number. None of the four inputs were validated to mean anything during a genuine market crash, and the market-stress score itself is non-directional (high = unusual, not bullish or bearish), so it can't be folded into a weighted blend the way the other four can. A hard veto is more honest here than fabricating a reweighted number from inputs whose real-world meaning has broken down.</p>
+                <div class="rule">Also shows "No signal" whenever a ticker is missing its composite Quant Score or ML confidence entirely (never scanned, or never run through ML inference yet) — a missing required input, not a veto condition, but the same "no signal" outcome either way. See <code>score_analysis.compute_regime_weighted_score()</code>.</div>
+            </div>
+
+        </div>
+    </div>
+</div>

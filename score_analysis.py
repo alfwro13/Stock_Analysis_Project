@@ -169,26 +169,17 @@ def _recent_window_dates(rows: list[dict], window: int = _CONFLUENCE_WINDOW) -> 
     return {t: set(sorted(dates, reverse=True)[:window]) for t, dates in dates_by_ticker.items()}
 
 
-def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
-    """Pattern Detection (any registered family — new families need zero changes here since
-    direction is resolved via each family's own DETECTORS[family].PATTERN_TYPES dict) plus
-    Trap Monitor phase, both windowed to each ticker's last 5 trading days.
-
-    The window itself is derived from quant_signals, not from pattern_detection_history's own
-    scan_date column — pattern_detection_engine.PatternDetectionEngine.run_scan() deliberately
-    skips logging a history row when a pattern instance is unchanged from the previous scan, so
-    that table's own distinct dates are sparse and can silently span far more than 5 trading days
-    for a quiet ticker. quant_signals is written every trading day the nightly quant scan runs
-    (the same daily cadence Pattern Detection and Trap Monitor themselves scan on), so it's the
-    reliable trading-day calendar to filter both sources against."""
-    from pattern_detection_engine import DETECTORS
-    from bull_bear_trap_engine import _PHASE_EXPECTED_DIRECTION
-
-    signals: dict[str, list[str]] = {t: [] for t in tickers}
+def _trading_windows_batch(tickers: list[str], conn) -> dict[str, set]:
+    """Each ticker's last 5 trading days, derived from quant_signals (written every trading day
+    the nightly quant scan runs) rather than from pattern_detection_history's own scan_date
+    column — pattern_detection_engine.PatternDetectionEngine.run_scan() deliberately skips
+    logging a history row when a pattern instance is unchanged from the previous scan, so that
+    table's own distinct dates are sparse and can silently span far more than 5 trading days for
+    a quiet ticker. trap_phase_history logs unconditionally every scan so it doesn't have this
+    problem on its own, but sharing one window keeps both sources' cutoffs identical."""
     if not tickers:
-        return signals
+        return {}
     placeholders = ",".join("?" * len(tickers))
-
     # 30 calendar days comfortably covers 5 trading days through any holiday stretch, without
     # pulling a ticker's full multi-year quant_signals history just to keep the last 5 dates.
     recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -196,8 +187,19 @@ def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
         f"SELECT DISTINCT ticker, date AS scan_date FROM quant_signals WHERE ticker IN ({placeholders}) AND date >= ?",
         tickers + [recent_cutoff],
     ).fetchall()
-    trading_windows = _recent_window_dates([dict(r) for r in trading_dates])
+    return _recent_window_dates([dict(r) for r in trading_dates])
 
+
+def _pattern_signals_batch(tickers: list[str], conn, trading_windows: dict[str, set]) -> dict[str, list[str]]:
+    """Confirmed Pattern Detection results only, windowed. Any registered family — new families
+    need zero changes here since direction is resolved via each family's own
+    DETECTORS[family].PATTERN_TYPES dict."""
+    from pattern_detection_engine import DETECTORS
+
+    signals: dict[str, list[str]] = {t: [] for t in tickers}
+    if not tickers:
+        return signals
+    placeholders = ",".join("?" * len(tickers))
     confirmed_rows = conn.execute(
         f"""SELECT ticker, pattern_family, pattern_type, scan_date FROM pattern_detection_history
             WHERE ticker IN ({placeholders}) AND phase = 'CONFIRMED'""",
@@ -213,7 +215,17 @@ def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
         direction = module.PATTERN_TYPES.get(row["pattern_type"])
         if direction:
             signals[row["ticker"]].append(direction)
+    return signals
 
+
+def _trap_signals_batch(tickers: list[str], conn, trading_windows: dict[str, set]) -> dict[str, list[str]]:
+    """Trap Monitor phase only, windowed."""
+    from bull_bear_trap_engine import _PHASE_EXPECTED_DIRECTION
+
+    signals: dict[str, list[str]] = {t: [] for t in tickers}
+    if not tickers:
+        return signals
+    placeholders = ",".join("?" * len(tickers))
     trap_rows = conn.execute(
         f"SELECT ticker, phase, scan_date FROM trap_phase_history WHERE ticker IN ({placeholders})",
         tickers,
@@ -225,8 +237,20 @@ def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
         direction = _PHASE_EXPECTED_DIRECTION.get(row["phase"])
         if direction:
             signals[row["ticker"]].append(direction)
-
     return signals
+
+
+def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
+    """Idea A's Technical pillar — Pattern Detection and Trap Monitor merged into one vote per
+    ticker. compute_regime_weighted_score_batch() needs the same two sources kept separate
+    (they're weighted independently there), so it calls _pattern_signals_batch()/
+    _trap_signals_batch() directly instead of this merged view."""
+    if not tickers:
+        return {}
+    trading_windows = _trading_windows_batch(tickers, conn)
+    pattern_signals = _pattern_signals_batch(tickers, conn, trading_windows)
+    trap_signals = _trap_signals_batch(tickers, conn, trading_windows)
+    return {t: pattern_signals.get(t, []) + trap_signals.get(t, []) for t in tickers}
 
 
 def _statistical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
@@ -349,3 +373,89 @@ def pillar_confluence_label(result: Optional[dict]) -> Optional[str]:
         return None
     pillars = result["bullish_pillars"] if result["direction"] == "bullish" else result["bearish_pillars"]
     return f"{result['direction'].capitalize()} ({len(pillars)}/3)"
+
+
+_REGIME_WEIGHTED_SCORE_REGIMES = ("Bull", "Chop")
+
+
+def _direction_to_100(signals: list[str]) -> float:
+    vote = _pillar_vote(signals)
+    return {"up": 100.0, "down": 0.0}.get(vote, 50.0)
+
+
+def compute_regime_weighted_score_batch(tickers: list[str]) -> dict[str, Optional[dict]]:
+    """Regime-Weighted Conviction Score: a 0-100 blend of stock_signals.composite_score,
+    stock_signals.ml_confidence, and Idea A's two Technical-pillar sources (Pattern Detection,
+    Trap Monitor — kept separate here since the weight vector moves them independently, unlike
+    Idea A's merged single vote), weighted by the current market regime
+    (regime_engine.get_latest_regime()'s price_hmm_label).
+
+    Every ticker maps to None (no signal) rather than a reweighted number whenever: the regime
+    is Crash, the Isolation Forest market_stress_score is at or above the configured threshold,
+    no regime has been computed yet, or the ticker itself is missing composite_score/ml_confidence
+    (never scanned/never run through ML inference). None of these are a "bug" — a hard veto is
+    more honest than fabricating a number the underlying inputs were never validated to support."""
+    from config import load_config
+    from regime_engine import get_latest_regime
+
+    tickers = list(dict.fromkeys(tickers))
+    results: dict[str, Optional[dict]] = {t: None for t in tickers}
+    if not tickers:
+        return results
+
+    regime_row = get_latest_regime()
+    regime = regime_row.get("price_hmm_label") if regime_row else None
+    market_stress_score = regime_row.get("market_stress_score") if regime_row else None
+
+    meta_cfg = load_config().get("META_SCORING", {})
+    stress_threshold = meta_cfg.get("CRASH_VETO", {}).get("MARKET_STRESS_THRESHOLD", 0.75)
+    crash_veto = regime == "Crash" or (market_stress_score is not None and market_stress_score >= stress_threshold)
+
+    weights = None
+    if not crash_veto and regime in _REGIME_WEIGHTED_SCORE_REGIMES:
+        weights = meta_cfg.get("REGIME_WEIGHTS", {}).get(regime)
+    if weights is None:
+        return results
+
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        base_rows = conn.execute(
+            f"SELECT ticker, composite_score, ml_confidence FROM stock_signals WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+        base = {row["ticker"]: dict(row) for row in base_rows}
+
+        trading_windows = _trading_windows_batch(tickers, conn)
+        pattern_signals = _pattern_signals_batch(tickers, conn, trading_windows)
+        trap_signals = _trap_signals_batch(tickers, conn, trading_windows)
+    except Exception as e:
+        logger.error("compute_regime_weighted_score_batch failed: %s", e)
+        return results
+    finally:
+        if conn:
+            conn.close()
+
+    for ticker in tickers:
+        row = base.get(ticker)
+        if row is None or row.get("composite_score") is None or row.get("ml_confidence") is None:
+            continue
+
+        components = {
+            "composite_score": float(row["composite_score"]),
+            "ml_confidence": float(row["ml_confidence"]),
+            "pattern": _direction_to_100(pattern_signals.get(ticker, [])),
+            "trap": _direction_to_100(trap_signals.get(ticker, [])),
+        }
+        # weights.get(..., 0.0) rather than weights[key] — META_SCORING.REGIME_WEIGHTS is
+        # user-editable config, not internal state; a manually-edited config.json missing one
+        # weight key must not crash the whole Portfolio/Watchlist page for every ticker.
+        score = sum(components[key] * weights.get(key, 0.0) for key in components)
+        results[ticker] = {"score": round(score, 1), "regime": regime, "components": components}
+
+    return results
+
+
+def compute_regime_weighted_score(ticker: str) -> Optional[dict]:
+    return compute_regime_weighted_score_batch([ticker]).get(ticker)

@@ -223,9 +223,9 @@ def test_load_config_migrates_et_as_utc_defaults(tmp_path):
 
 @pytest.mark.config
 def test_load_config_fills_missing_xray_and_file_logging_sub_keys_from_defaults(tmp_path):
-    """load_config() must 2-level-merge XRAY_TARGETS, REGIME_TARGETS, FILE_LOGGING, and
-    REPORTS_DEFAULTS so that a partial stored value does not silently discard unmentioned
-    defaults (regression guard for the fix that added these keys to the merge list)."""
+    """load_config() must 2-level-merge XRAY_TARGETS, REGIME_TARGETS, FILE_LOGGING,
+    REPORTS_DEFAULTS, and META_SCORING so that a partial stored value does not silently discard
+    unmentioned defaults (regression guard for the fix that added these keys to the merge list)."""
     import config as _config
     original_path = _config.SECRETS_PATH
     partial_path = tmp_path / "partial.json"
@@ -233,6 +233,7 @@ def test_load_config_fills_missing_xray_and_file_logging_sub_keys_from_defaults(
         "FILE_LOGGING": {"ENABLED": True},
         "REPORTS_DEFAULTS": {"MR_MAX_RSI": 25},
         "XRAY_TARGETS": {"concentration_targets": {"max_single_position_pct": 20.0}},
+        "META_SCORING": {"CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.9}},
     }))
     try:
         _config.SECRETS_PATH = partial_path
@@ -247,6 +248,10 @@ def test_load_config_fills_missing_xray_and_file_logging_sub_keys_from_defaults(
         xt = result["XRAY_TARGETS"]
         assert xt["concentration_targets"]["max_single_position_pct"] == 20.0
         assert "sector_targets" in xt, "Default XRAY_TARGETS.sector_targets must be preserved"
+        ms = result["META_SCORING"]
+        assert ms["CRASH_VETO"]["MARKET_STRESS_THRESHOLD"] == 0.9
+        assert "REGIME_WEIGHTS" in ms, "Default META_SCORING.REGIME_WEIGHTS must be preserved"
+        assert "Bull" in ms["REGIME_WEIGHTS"] and "Chop" in ms["REGIME_WEIGHTS"]
     finally:
         _config.SECRETS_PATH = original_path
 

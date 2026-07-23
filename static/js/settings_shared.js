@@ -574,7 +574,26 @@ async function saveSettings(silent = false) {
                     "dividend_yield_min_pct": xt('XT_INC_DIV_MIN')
                 }
             };
-        })()
+        })(),
+        "META_SCORING": {
+            "REGIME_WEIGHTS": {
+                "Bull": {
+                    "composite_score": (parseFloat(document.getElementById('MS_BULL_W_COMPOSITE').value) || 40) / 100,
+                    "ml_confidence": (parseFloat(document.getElementById('MS_BULL_W_ML').value) || 30) / 100,
+                    "pattern": (parseFloat(document.getElementById('MS_BULL_W_PATTERN').value) || 20) / 100,
+                    "trap": (parseFloat(document.getElementById('MS_BULL_W_TRAP').value) || 10) / 100
+                },
+                "Chop": {
+                    "composite_score": (parseFloat(document.getElementById('MS_CHOP_W_COMPOSITE').value) || 25) / 100,
+                    "ml_confidence": (parseFloat(document.getElementById('MS_CHOP_W_ML').value) || 25) / 100,
+                    "pattern": (parseFloat(document.getElementById('MS_CHOP_W_PATTERN').value) || 35) / 100,
+                    "trap": (parseFloat(document.getElementById('MS_CHOP_W_TRAP').value) || 15) / 100
+                }
+            },
+            "CRASH_VETO": {
+                "MARKET_STRESS_THRESHOLD": parseFloat(document.getElementById('MS_CRASH_STRESS_THRESHOLD').value) || 0.75
+            }
+        }
     };
 
     try {

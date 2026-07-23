@@ -79,8 +79,8 @@
                     </div>
                 </div>
 
-                <div class="settings-panel border-left-amber">
-                    <h4 class="settings-panel-header text-amber">🚦 Thresholds</h4>
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">🚦 Thresholds</h4>
                     <p class="settings-desc-sm">
                         Each input below is converted to a 0-100 sub-score against its own Yellow/Red
                         boundary — 0-50 below Yellow, 50-100 between Yellow and Red, clamped at 100
@@ -176,6 +176,86 @@
                             <input type="number" id="RO_ALERTS_REARM" class="form-control"
                                 value="{{ config.NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS.REARM_PERCENT | default(10.0) }}" min="0" step="0.5">
                         </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="settings-card" id="meta-scoring-card">
+                <summary>🧭 Regime-Weighted Conviction Score</summary>
+                <p class="settings-desc">
+                    A per-ticker 0-100 score blending the composite Quant Score, ML confidence, and the
+                    Technical pillar's two signal sources (Pattern Detection, Trap Monitor) — weighted
+                    differently depending on the current <a href="/market-regime">Market Regime</a>. During
+                    a Crash regime (or when the Isolation Forest market stress score crosses the threshold
+                    below), the score is suppressed entirely rather than reweighted — none of these inputs
+                    were validated to mean anything during a genuine crash. On-demand computation only, no
+                    scheduler job.
+                </p>
+
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">📈 Bull Regime Weights (must sum to 100%)</h4>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Composite Score %</label>
+                            <input type="number" id="MS_BULL_W_COMPOSITE" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Bull.composite_score | default(0.40)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>ML Confidence %</label>
+                            <input type="number" id="MS_BULL_W_ML" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Bull.ml_confidence | default(0.30)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Pattern Detection %</label>
+                            <input type="number" id="MS_BULL_W_PATTERN" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Bull.pattern | default(0.20)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Trap Monitor %</label>
+                            <input type="number" id="MS_BULL_W_TRAP" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Bull.trap | default(0.10)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">📊 Chop Regime Weights (must sum to 100%)</h4>
+                    <p class="settings-desc-sm">Patterns and mean-reversion setups typically carry more weight in a range-bound market.</p>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Composite Score %</label>
+                            <input type="number" id="MS_CHOP_W_COMPOSITE" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Chop.composite_score | default(0.25)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>ML Confidence %</label>
+                            <input type="number" id="MS_CHOP_W_ML" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Chop.ml_confidence | default(0.25)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Pattern Detection %</label>
+                            <input type="number" id="MS_CHOP_W_PATTERN" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Chop.pattern | default(0.35)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Trap Monitor %</label>
+                            <input type="number" id="MS_CHOP_W_TRAP" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS.Chop.trap | default(0.15)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">🚨 Crash Veto</h4>
+                    <p class="settings-desc-sm">
+                        The score is suppressed (returns "no signal") whenever the current regime is Crash,
+                        or the Isolation Forest market stress score is at or above this threshold — whichever
+                        fires first.
+                    </p>
+                    <div class="form-group flex-1 mb-0 min-w-130">
+                        <label>Market Stress Threshold (0-1)</label>
+                        <input type="number" id="MS_CRASH_STRESS_THRESHOLD" class="form-control"
+                            value="{{ config.META_SCORING.CRASH_VETO.MARKET_STRESS_THRESHOLD | default(0.75) }}" min="0" max="1" step="0.05">
                     </div>
                 </div>
             </details>
@@ -298,8 +378,8 @@
                     {% endfor %}
                 </div>
 
-                <div class="settings-panel border-left-amber">
-                    <h4 class="settings-panel-header text-amber">⚖️ Concentration Limits</h4>
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">⚖️ Concentration Limits</h4>
                     <div class="flex-gap-15 flex-wrap align-end">
                         <div class="form-group flex-1 mb-0 min-w-140">
                             <label>Max Single Position %</label>
