@@ -675,6 +675,17 @@ def test_trap_monitor_results_empty_on_fresh_db(client):
     )
 
 
+@pytest.mark.api
+def test_trap_monitor_results_includes_scope_ticker_sets(client):
+    """Response must carry portfolio_tickers/watchlist_tickers so the page's Scope filter works."""
+    with patch("accounts_engine.get_combined_holdings", return_value={"AAPL": {}}), \
+         patch("database.get_watchlist_tickers", return_value=["MSFT"]):
+        resp = client.get("/api/trap-monitor/results")
+    data = _json(resp)
+    assert data["portfolio_tickers"] == ["AAPL"], f"Unexpected portfolio_tickers: {data}"
+    assert data["watchlist_tickers"] == ["MSFT"], f"Unexpected watchlist_tickers: {data}"
+
+
 # ── Pairs Spread Monitor ──────────────────────────────────────────────────────
 
 @pytest.mark.api

@@ -6,6 +6,22 @@
     // ── Shared state: populated by each fetch, narrative builds once all three arrive ──
     var _state = { hmm: null, stress: null, trap: null };
 
+    // ── Scope filter: table-only, the situation card/alert strip/lifecycle arc stay market-wide ──
+    var _tmAllRows = [];
+    var _tmPortfolioTickers = new Set();
+    var _tmWatchlistTickers = new Set();
+    var _tmActiveScope = 'portfolio';
+
+    function _tmInScope(ticker) {
+        if (_tmActiveScope === 'portfolio') return _tmPortfolioTickers.has(ticker);
+        if (_tmActiveScope === 'watchlist') return _tmWatchlistTickers.has(ticker);
+        return true;
+    }
+
+    function _tmFilteredRows() {
+        return _tmAllRows.filter(function (r) { return _tmInScope(r.ticker); });
+    }
+
     // ── Style maps ──────────────────────────────────────────────────────────────────────
     var PHASE_STYLE = {
         'ACTIVE_SELLOFF':      { bg: 'rgba(255,77,77,.15)',   color: '#ff4d4d',  border: '#ff4d4d',  label: 'ACTIVE SELLOFF' },
@@ -467,7 +483,10 @@
             .then(function (data) {
                 if (data.status === 'success' && data.results) {
                     _state.trap = data.results;
-                    renderTable(data.results);
+                    _tmAllRows = data.results;
+                    _tmPortfolioTickers = new Set(data.portfolio_tickers || []);
+                    _tmWatchlistTickers = new Set(data.watchlist_tickers || []);
+                    renderTable(_tmFilteredRows());
                     renderAlertStrip(data.results);
                     highlightArcStep(data.results);
                     tryRenderSituation();
@@ -555,6 +574,11 @@
             })
             .catch(function () { btn.disabled = false; btn.textContent = '▶ Run Scan Now'; status.textContent = 'Error — check notifications.'; });
     };
+
+    document.getElementById('tm-scope-filter').addEventListener('change', function (e) {
+        _tmActiveScope = e.target.value;
+        renderTable(_tmFilteredRows());
+    });
 
     // Mark state as "not arrived yet" using undefined so tryRenderSituation knows to wait
     _state.hmm    = undefined;

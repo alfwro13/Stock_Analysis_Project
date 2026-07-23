@@ -2064,11 +2064,11 @@ For full methodology, configuration reference, and alerting details see [`assets
 
 ### `GET /trap-monitor`
 
-HTML page. Renders the unified Market Trap & Recovery Monitor with lifecycle arc diagram, active alert strip, and a full ticker status table showing all four signal columns.
+HTML page. Renders the unified Market Trap & Recovery Monitor with lifecycle arc diagram, active alert strip, and a full ticker status table showing all four signal columns. The table has a Scope filter (All Tickers / Portfolio / Watchlist, default Portfolio) — client-side only, filtering the already-fetched rows by the `portfolio_tickers`/`watchlist_tickers` sets in the response below; the situation card, alert strip, and lifecycle arc stay market-wide regardless of the table's scope selection.
 
 ### `GET /api/trap-monitor/results`
 
-Returns all rows from `trap_monitor_results`, sorted by phase severity (most severe first).
+Returns all rows from `trap_monitor_results`, sorted by phase severity (most severe first), plus the current Portfolio/Watchlist ticker sets (mirroring `GET /api/pattern-detection/results`) so the page's Scope filter can work without a second round-trip.
 
 **Response**
 
@@ -2089,7 +2089,9 @@ Returns all rows from `trap_monitor_results`, sorted by phase severity (most sev
       "rsi": 44.0,
       "scan_ts": "2026-06-10 14:30:00"
     }
-  ]
+  ],
+  "portfolio_tickers": ["NVDA", "AAPL"],
+  "watchlist_tickers": ["MSFT"]
 }
 ```
 

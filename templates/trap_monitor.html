@@ -81,6 +81,14 @@
 
 {# ── Toolbar ── #}
 <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <div class="d-flex align-items-center gap-1">
+        <label for="tm-scope-filter" class="text-muted small mb-0">Scope</label>
+        <select id="tm-scope-filter" class="form-select form-select-sm w-auto d-inline-block">
+            <option value="portfolio" selected>Portfolio</option>
+            <option value="watchlist">Watchlist</option>
+            <option value="all">All Tickers</option>
+        </select>
+    </div>
     <button id="run-now-btn" class="btn btn-update" onclick="runScanNow()">&#9654; Run Scan Now</button>
     <span id="run-status" class="tm-run-status"></span>
     <span class="ms-auto tm-toolbar-meta">
