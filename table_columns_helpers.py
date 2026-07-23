@@ -30,7 +30,7 @@ WATCHLIST_CORE_COLUMNS = [
     {"key": "ticker", "label": "Ticker", "pinned": True, "fmt": "text"},
     {"key": "company_name", "label": "Company Name", "pinned": False, "fmt": "text"},
     {"key": "price", "label": "Price", "pinned": False, "fmt": "price"},
-    {"key": "daily_change", "label": "Daily Change", "pinned": False, "fmt": "pct_raw"},
+    {"key": "daily_change", "label": "Change", "pinned": False, "fmt": "pct_raw"},
     {"key": "target", "label": "Target", "pinned": False, "fmt": "price"},
     {"key": "trend_50d", "label": "50D", "pinned": False, "fmt": "text"},
     {"key": "trend_200d", "label": "200D", "pinned": False, "fmt": "text"},
