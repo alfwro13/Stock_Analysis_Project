@@ -1835,6 +1835,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         except Exception:
             logger.warning("Could not parse next_earnings_date for %s: %s", ticker, stock_data.get('next_earnings_date'))
 
+    from db_etf import get_etf_predictor_config_by_ticker
+    etf_predictor_config = get_etf_predictor_config_by_ticker(ticker)
+
     from accounts_engine import get_combined_holdings, current_price_map
     user_asset = get_combined_holdings().get(ticker)
 
@@ -2110,6 +2113,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             "regime_weighted_score": regime_weighted,
             "buy_recommendation": buy_recommendation,
             "risk_paused": get_all_scope_heat_tier() == "RED",
+            "etf_predictor_config": etf_predictor_config,
         }
     )
 
