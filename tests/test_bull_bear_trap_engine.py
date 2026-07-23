@@ -23,6 +23,7 @@ import ta
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
+import alert_referee_engine as are
 from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER, fill_trap_phase_actuals, phase_label
 
 # ── minimal config ─────────────────────────────────────────────────────────────
@@ -334,6 +335,52 @@ class TestSaveResults:
         assert abs(row["cap_vol_zscore"] - 1.1) < 1e-6
         assert abs(row["wyckoff_bb_width"] - 3.5) < 1e-6
 
+    def test_save_results_populates_confluence_columns_and_flags_new_row(self):
+        confluence = {"TSTT8": {"bullish_pillars": ["technical", "ml"], "bearish_pillars": [], "direction": "bullish"}}
+        regime_score = {"TSTT8": {"score": 77.0, "regime": "Bull", "components": {}}}
+        rows = [self._row("TSTT8")]
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value=confluence), \
+             patch("score_analysis.compute_regime_weighted_score_batch", return_value=regime_score):
+            self.engine._save_results(rows)
+        conn = db.get_connection()
+        try:
+            saved = conn.execute(
+                "SELECT pillar_technical, pillar_statistical, pillar_ml, regime_weighted_score, confluence_features_ts "
+                "FROM trap_phase_history WHERE ticker = 'TSTT8'"
+            ).fetchone()
+        finally:
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'TSTT8'")
+            conn.execute("DELETE FROM trap_phase_history WHERE ticker = 'TSTT8'")
+            conn.commit()
+            conn.close()
+        assert saved["pillar_technical"] == "up"
+        assert saved["pillar_statistical"] is None
+        assert saved["pillar_ml"] == "up"
+        assert saved["regime_weighted_score"] == 77.0
+        assert saved["confluence_features_ts"] is not None
+        assert rows[0]["confluence_direction"] == "bullish"
+        assert rows[0]["_new_trap_history_row"] is True
+
+    def test_second_scan_same_day_does_not_flag_new_row(self):
+        """trap_phase_history's UNIQUE(ticker, scan_date) means the second call for the same
+        ticker/day is a silent INSERT OR IGNORE no-op — _new_trap_history_row must reflect that,
+        since scheduler_jobs.run_trap_monitor_job() uses it to gate the Confluence referee's
+        shadow evaluation to once per ticker per day."""
+        empty_confluence = {"TSTT9": {"bullish_pillars": [], "bearish_pillars": [], "direction": None}}
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value=empty_confluence), \
+             patch("score_analysis.compute_regime_weighted_score_batch", return_value={"TSTT9": None}):
+            self.engine._save_results([self._row("TSTT9")])
+            second_rows = [self._row("TSTT9")]
+            self.engine._save_results(second_rows)
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'TSTT9'")
+            conn.execute("DELETE FROM trap_phase_history WHERE ticker = 'TSTT9'")
+            conn.commit()
+        finally:
+            conn.close()
+        assert second_rows[0]["_new_trap_history_row"] is False
+
 
 # ── run_trap_monitor_job() — market-hours alert gating ────────────────────────
 
@@ -391,6 +438,43 @@ class TestRunTrapMonitorJobMarketGating:
 
         assert mock_open.call_args.args[0] == "NYSE"
         mock_notify.assert_not_called()
+
+    def test_confluence_shadow_eval_fires_only_on_new_history_row_with_direction(self):
+        """The Cross-Engine Alert Referee (Confluence) shadow evaluation must fire once per
+        ticker per day (gated on _new_trap_history_row, set by TrapEngine._save_results()'s
+        log_trap_phase() insert) and only when a bullish/bearish confluence direction exists."""
+        import scheduler_jobs
+
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM alert_state WHERE engine = 'TrapMonitor'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        rows = [
+            {**self._row("CONF1", phase="NEUTRAL"), "_new_trap_history_row": True,
+             "confluence_direction": "bullish", "pillar_technical": "up",
+             "pillar_statistical": "up", "pillar_ml": None, "regime_weighted_score": 80.0},
+            {**self._row("CONF2", phase="NEUTRAL"), "_new_trap_history_row": False,
+             "confluence_direction": "bullish"},
+            {**self._row("CONF3", phase="NEUTRAL"), "_new_trap_history_row": True,
+             "confluence_direction": None},
+        ]
+        with patch("bull_bear_trap_engine.TrapEngine.run_scan", return_value=rows), \
+             patch("scheduler_jobs.is_quote_settled", return_value=False), \
+             patch("scheduler_jobs.notify"), \
+             patch("alert_referee_engine.evaluate_alert") as mock_evaluate_alert:
+            mock_evaluate_alert.return_value = are.RefereeVerdict(
+                fire_probability=None, vetoed=False, mode="off", model_available=False
+            )
+            scheduler_jobs.run_trap_monitor_job()
+
+        assert mock_evaluate_alert.call_count == 1
+        call_args = mock_evaluate_alert.call_args.args
+        assert call_args[0] == are.CONFLUENCE_ENGINE
+        assert call_args[1] == "CONF1"
+        assert call_args[2] == "bullish"
 
     def test_fires_alert_when_ticker_exchange_open(self):
         import scheduler_jobs

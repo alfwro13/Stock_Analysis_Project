@@ -9,8 +9,10 @@ from score_analysis import (
     _compute_return,
     _pillar_vote,
     compute_regime_weighted_score,
+    compute_regime_weighted_score_as_of,
     compute_regime_weighted_score_batch,
     evaluate_pillar_confluence,
+    evaluate_pillar_confluence_as_of,
     evaluate_pillar_confluence_batch,
     get_score_analysis,
     pillar_confluence_label,
@@ -62,6 +64,9 @@ def _seed_stock_signals(ticker, composite_score, ml_confidence):
     conn.close()
 
 
+_AS_OF_DATE = "2020-01-15"
+
+
 @pytest.fixture(autouse=True)
 def clean_tables():
     conn = _db_module.get_connection()
@@ -71,6 +76,29 @@ def clean_tables():
     conn.execute("DELETE FROM trap_phase_history")
     conn.execute("DELETE FROM earnings_volatility_history")
     conn.execute("DELETE FROM stock_signals WHERE ticker LIKE 'RW%'")
+    conn.execute("DELETE FROM market_regimes WHERE date = ?", (_AS_OF_DATE,))
+    conn.commit()
+    conn.close()
+
+
+def _seed_market_regime_as_of(date_, price_hmm_label, market_stress_score=0.1):
+    conn = _db_module.get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO market_regimes (date, price_hmm_label, market_stress_score)
+           VALUES (?, ?, ?)""",
+        (date_, price_hmm_label, market_stress_score),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_quant_signal_as_of(ticker, date_, composite_score, ml_confidence_score):
+    conn = _db_module.get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO quant_signals (ticker, date, composite_score, ml_confidence_score)
+           VALUES (?, ?, ?, ?)""",
+        (ticker, date_, composite_score, ml_confidence_score),
+    )
     conn.commit()
     conn.close()
 
@@ -524,3 +552,77 @@ class TestComputeRegimeWeightedScore:
         assert result is not None
         # 80*.5 + 60*.5 + 50*0(missing) + 50*0(missing)
         assert result["score"] == pytest.approx(70.0)
+
+
+# ---------------------------------------------------------------------------
+# evaluate_pillar_confluence_as_of / compute_regime_weighted_score_as_of
+#
+# Used by alert_referee_engine.backfill_historical_confluence_features() to reconstruct Idea
+# A/B features for an already-resolved historical trap_phase_history/pattern_detection_history
+# row, as of that row's own scan_date rather than today.
+# ---------------------------------------------------------------------------
+
+class TestEvaluatePillarConfluenceAsOf:
+    def test_matches_live_result_when_as_of_is_today(self):
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        _seed_quant_date("ASOF1", today)
+        _seed_pattern_history("ASOF1", "flag", "bull_flag", "CONFIRMED", today)
+        _seed_ml_confidence("ASOF1", today, 80)
+        live = evaluate_pillar_confluence("ASOF1")
+        as_of = evaluate_pillar_confluence_as_of("ASOF1", today)
+        assert as_of == live
+
+    def test_excludes_signals_after_the_as_of_date(self):
+        """A pattern/quant row dated AFTER as_of_date must not leak into a historical
+        reconstruction — the whole point of as_of is to see only what existed at that time."""
+        past = _d(10)
+        future = _d(-5)  # 5 days from now, i.e. after `past`
+        _seed_quant_date("ASOF2", past)
+        _seed_quant_date("ASOF2", future)
+        _seed_pattern_history("ASOF2", "flag", "bull_flag", "CONFIRMED", future)
+        result = evaluate_pillar_confluence_as_of("ASOF2", past)
+        assert result["bullish_pillars"] == []
+
+    def test_includes_signals_on_or_before_the_as_of_date(self):
+        past = _d(10)
+        _seed_quant_date("ASOF3", past)
+        _seed_pattern_history("ASOF3", "flag", "bull_flag", "CONFIRMED", past)
+        result = evaluate_pillar_confluence_as_of("ASOF3", past)
+        assert "technical" in result["bullish_pillars"]
+
+
+class TestComputeRegimeWeightedScoreAsOf:
+    def test_reads_market_regimes_and_quant_signals_historically(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "Bull")
+        _seed_quant_signal_as_of("ASOF4", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF4", _AS_OF_DATE)
+        assert result is not None
+        assert result["regime"] == "Bull"
+        # 80*.40 + 60*.30 + 50(neutral pattern)*.20 + 50(neutral trap)*.10
+        assert result["score"] == pytest.approx(65.0)
+
+    def test_uses_most_recent_regime_on_or_before_as_of_date(self):
+        _seed_market_regime_as_of("2020-01-10", "Chop")
+        _seed_market_regime_as_of(_AS_OF_DATE, "Bull")
+        _seed_quant_signal_as_of("ASOF5", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF5", _AS_OF_DATE)
+        assert result["regime"] == "Bull"
+        conn = _db_module.get_connection()
+        conn.execute("DELETE FROM market_regimes WHERE date = '2020-01-10'")
+        conn.commit()
+        conn.close()
+
+    def test_crash_regime_as_of_returns_none(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "Crash")
+        _seed_quant_signal_as_of("ASOF6", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF6", _AS_OF_DATE)
+        assert result is None
+
+    def test_no_regime_row_on_or_before_as_of_returns_none(self):
+        _seed_quant_signal_as_of("ASOF7", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF7", _AS_OF_DATE)
+        assert result is None

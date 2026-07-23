@@ -278,6 +278,14 @@ DEFAULT_CONFIG = {
             "VETO_THRESHOLD": 0.3,
             "MIN_TRAINING_SAMPLES": 200
         },
+        "ALERT_REFEREE_TRAINING_CONFLUENCE": {
+            "ENABLED": False,
+            "DAYS": ["sun"],
+            "TIME": "05:30",
+            "MODE": "shadow",
+            "VETO_THRESHOLD": 0.3,
+            "MIN_TRAINING_SAMPLES": 200
+        },
         "PATTERN_DETECTION": {
             "ENABLED": False,
             "MONITOR_PORTFOLIO": True,

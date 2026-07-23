@@ -1057,6 +1057,11 @@ def init_db() -> None:
                 actual_price_30d      REAL,
                 actual_date_30d       TEXT,
                 direction_correct_30d INTEGER,
+                pillar_technical      TEXT,
+                pillar_statistical    TEXT,
+                pillar_ml             TEXT,
+                regime_weighted_score REAL,
+                confluence_features_ts TEXT,
                 UNIQUE(ticker, scan_date)
             )
         ''')
@@ -1154,6 +1159,11 @@ def init_db() -> None:
                 actual_price_30d      REAL,
                 actual_date_30d       TEXT,
                 direction_correct_30d INTEGER,
+                pillar_technical      TEXT,
+                pillar_statistical    TEXT,
+                pillar_ml             TEXT,
+                regime_weighted_score REAL,
+                confluence_features_ts TEXT,
                 UNIQUE(ticker, scan_date, pattern_family, pattern_type)
             )
         ''')
@@ -2365,6 +2375,27 @@ def migrate_db(conn, cursor) -> None:
                     logger.error("[MIGRATION ERROR] Failed on trap_phase_history: %s", e)
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to add feature columns to trap_phase_history: %s", e)
+
+    _confluence_feature_columns = [
+        ('pillar_technical', "ADD COLUMN pillar_technical TEXT"),
+        ('pillar_statistical', "ADD COLUMN pillar_statistical TEXT"),
+        ('pillar_ml', "ADD COLUMN pillar_ml TEXT"),
+        ('regime_weighted_score', "ADD COLUMN regime_weighted_score REAL"),
+        ('confluence_features_ts', "ADD COLUMN confluence_features_ts TEXT"),
+    ]
+    for table in ("trap_phase_history", "pattern_detection_history"):
+        try:
+            cursor.execute(f"PRAGMA table_info({table})")
+            existing_cols = [info['name'] for info in cursor.fetchall()]
+            for col, ddl_suffix in _confluence_feature_columns:
+                if col not in existing_cols:
+                    try:
+                        logger.info("[MIGRATION] Adding column: %s to %s...", col, table)
+                        cursor.execute(f"ALTER TABLE {table} {ddl_suffix}")
+                    except Exception as e:
+                        logger.error("[MIGRATION ERROR] Failed adding %s to %s: %s", col, table, e)
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed to add Cross-Engine Alert Referee columns to %s: %s", table, e)
 
     try:
         cursor.execute('''

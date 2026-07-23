@@ -167,18 +167,27 @@ async function triggerTrapMonitorScan() {
     }
 }
 
-async function triggerAlertRefereeTraining() {
-    const btn = document.querySelector('button[onclick="triggerAlertRefereeTraining()"]');
-    const msgEl = document.getElementById('alert-referee-msg');
+// Both the original Trap Monitor pilot and the Confluence (Cross-Engine) referee share this
+// same UI/JS, parameterized by engine — TrapMonitor's DOM ids kept their original unprefixed
+// form for backwards compatibility; Confluence's use the "confluence-referee" prefix.
+function _refIdPrefix(engineName) {
+    return engineName === 'Confluence' ? 'confluence-referee' : 'alert-referee';
+}
+
+async function triggerAlertRefereeTraining(engineName) {
+    const prefix = _refIdPrefix(engineName);
+    const btn = document.getElementById(`${prefix}-run-btn`);
+    const msgEl = document.getElementById(`${prefix}-msg`);
     btn.disabled = true;
     btn.innerText = "⏳ Training...";
     msgEl.innerHTML = '';
     try {
-        const resp = await fetch('/api/alert-referee/train', { method: 'POST' });
+        const params = new URLSearchParams({ engine: engineName || 'TrapMonitor' });
+        const resp = await fetch('/api/alert-referee/train?' + params.toString(), { method: 'POST' });
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
         msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
-        setTimeout(fetchAlertRefereeReadiness, 4000);
+        setTimeout(() => fetchAlertRefereeReadiness(engineName), 4000);
     } catch (err) {
         msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
@@ -186,10 +195,12 @@ async function triggerAlertRefereeTraining() {
     }
 }
 
-function fetchAlertRefereeReadiness() {
-    const el = document.getElementById('alert-referee-readiness');
+function fetchAlertRefereeReadiness(engineName) {
+    const prefix = _refIdPrefix(engineName);
+    const el = document.getElementById(`${prefix}-readiness`);
     if (!el) return;
-    fetch('/api/alert-referee/status')
+    const params = new URLSearchParams({ engine: engineName || 'TrapMonitor' });
+    fetch('/api/alert-referee/status?' + params.toString())
         .then(r => r.json())
         .then(data => {
             if (data.status !== 'success') { el.textContent = 'Unable to load readiness.'; return; }
@@ -226,31 +237,35 @@ function fetchAlertRefereeReadiness() {
                 (backfillAvailable > 0
                     ? `<div class="mb-10 text-muted">${backfillAvailable} more resolved historical signal(s) exist but haven't had their features backfilled yet (not yet counted above).</div>`
                     : '') +
-                `<div class="mb-10 text-muted">${pending} more already have features recorded and are awaiting their 14-day outcome (leading indicator — not yet counted above).</div>` +
+                `<div class="mb-10 text-muted">${pending} more already have features recorded and are awaiting their outcome (leading indicator — not yet counted above).</div>` +
                 `<div class="mb-10">${modelLine}</div>` +
                 `<div>Shadow log: ${data.log_total || 0} evaluations recorded, ${data.log_vetoed || 0} would-veto.</div>`;
         })
         .catch(() => { el.textContent = 'Unable to load readiness.'; });
 }
 
-document.addEventListener('DOMContentLoaded', fetchAlertRefereeReadiness);
+document.addEventListener('DOMContentLoaded', () => {
+    fetchAlertRefereeReadiness('TrapMonitor');
+    fetchAlertRefereeReadiness('Confluence');
+});
 
-let _refLogOffset = 0;
+const _refLogOffset = { TrapMonitor: 0, Confluence: 0 };
 let _refLogSearchTimer = null;
 const _refLogPageSize = 50;
 
-function showAlertRefereeShadowLog() {
-    const modalEl = document.getElementById('alert-referee-log-modal');
+function showAlertRefereeShadowLog(engineName) {
+    const prefix = _refIdPrefix(engineName);
+    const modalEl = document.getElementById(`${prefix}-log-modal`);
     if (!modalEl) return;
-    document.getElementById('alert-referee-log-ticker').value = '';
-    document.getElementById('alert-referee-log-vetoed').value = '';
+    document.getElementById(`${prefix}-log-ticker`).value = '';
+    document.getElementById(`${prefix}-log-vetoed`).value = '';
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    loadAlertRefereeLog(true);
+    loadAlertRefereeLog(true, engineName);
 }
 
-function onAlertRefereeLogFilterChange() {
+function onAlertRefereeLogFilterChange(engineName) {
     clearTimeout(_refLogSearchTimer);
-    _refLogSearchTimer = setTimeout(() => loadAlertRefereeLog(true), 300);
+    _refLogSearchTimer = setTimeout(() => loadAlertRefereeLog(true, engineName), 300);
 }
 
 function _refLogRowHtml(row) {
@@ -267,22 +282,24 @@ function _refLogRowHtml(row) {
     </tr>`;
 }
 
-function loadAlertRefereeLog(reset) {
-    const tbody = document.getElementById('alert-referee-log-tbody');
-    const emptyEl = document.getElementById('alert-referee-log-empty');
-    const moreBtn = document.getElementById('alert-referee-log-more');
+function loadAlertRefereeLog(reset, engineName) {
+    const engine = engineName || 'TrapMonitor';
+    const prefix = _refIdPrefix(engine);
+    const tbody = document.getElementById(`${prefix}-log-tbody`);
+    const emptyEl = document.getElementById(`${prefix}-log-empty`);
+    const moreBtn = document.getElementById(`${prefix}-log-more`);
     if (!tbody) return;
 
     if (reset) {
-        _refLogOffset = 0;
+        _refLogOffset[engine] = 0;
         tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
         emptyEl.hidden = true;
         moreBtn.hidden = true;
     }
 
-    const ticker = document.getElementById('alert-referee-log-ticker').value.trim();
-    const vetoed = document.getElementById('alert-referee-log-vetoed').value;
-    const params = new URLSearchParams({ limit: _refLogPageSize, offset: _refLogOffset });
+    const ticker = document.getElementById(`${prefix}-log-ticker`).value.trim();
+    const vetoed = document.getElementById(`${prefix}-log-vetoed`).value;
+    const params = new URLSearchParams({ engine, limit: _refLogPageSize, offset: _refLogOffset[engine] });
     if (ticker) params.set('ticker', ticker);
     if (vetoed) params.set('vetoed', vetoed);
 
@@ -291,14 +308,14 @@ function loadAlertRefereeLog(reset) {
         .then(data => {
             const rows = (data.status === 'success' && data.results) ? data.results : [];
             if (reset) tbody.innerHTML = '';
-            if (rows.length === 0 && _refLogOffset === 0) {
+            if (rows.length === 0 && _refLogOffset[engine] === 0) {
                 emptyEl.hidden = false;
                 moreBtn.hidden = true;
                 return;
             }
             emptyEl.hidden = true;
             tbody.insertAdjacentHTML('beforeend', rows.map(_refLogRowHtml).join(''));
-            _refLogOffset += rows.length;
+            _refLogOffset[engine] += rows.length;
             moreBtn.hidden = !(data.status === 'success' && data.has_more);
         })
         .catch(() => {

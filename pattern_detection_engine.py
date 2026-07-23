@@ -229,6 +229,8 @@ class PatternDetectionEngine:
                 conn.close()
 
         scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        to_log = []
         for row in results:
             prev = previous_by_key.get((row["ticker"], row["pattern_family"]))
             unchanged = (
@@ -242,15 +244,45 @@ class PatternDetectionEngine:
                 # duplicate history row. A genuinely new instance (different points) or a
                 # phase transition (FORMING -> CONFIRMED) still logs.
                 continue
-            log_pattern_detection(
-                row["ticker"], row["pattern_family"], row["pattern_type"], row["phase"],
-                scan_date, row.get("close_price"), row["scan_ts"],
-                measured_target=row.get("measured_target"),
-                volume_confirms=row.get("volume_confirms"),
-                rsi_divergence=row.get("rsi_divergence"),
-                pattern_r2=row.get("pattern_r2"),
-                prior_trend_pct=row.get("prior_trend_pct"),
-            )
+            to_log.append(row)
+
+        if to_log:
+            # Cross-Engine Alert Referee training-data columns — computed only for the rows
+            # actually being logged this scan (log_pattern_detection() is already selective,
+            # unlike trap_phase_history's unconditional daily insert), via the same score_analysis
+            # batch functions Idea A/B themselves use.
+            from score_analysis import evaluate_pillar_confluence_batch, compute_regime_weighted_score_batch
+            tickers_to_log = [row["ticker"] for row in to_log]
+            confluence_by_ticker = evaluate_pillar_confluence_batch(tickers_to_log)
+            regime_score_by_ticker = compute_regime_weighted_score_batch(tickers_to_log)
+            confluence_features_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+            for row in to_log:
+                confluence = confluence_by_ticker.get(row["ticker"], {})
+                regime_score = regime_score_by_ticker.get(row["ticker"])
+                pillar_technical = "up" if "technical" in confluence.get("bullish_pillars", []) else (
+                    "down" if "technical" in confluence.get("bearish_pillars", []) else None
+                )
+                pillar_statistical = "up" if "statistical" in confluence.get("bullish_pillars", []) else (
+                    "down" if "statistical" in confluence.get("bearish_pillars", []) else None
+                )
+                pillar_ml = "up" if "ml" in confluence.get("bullish_pillars", []) else (
+                    "down" if "ml" in confluence.get("bearish_pillars", []) else None
+                )
+                log_pattern_detection(
+                    row["ticker"], row["pattern_family"], row["pattern_type"], row["phase"],
+                    scan_date, row.get("close_price"), row["scan_ts"],
+                    measured_target=row.get("measured_target"),
+                    volume_confirms=row.get("volume_confirms"),
+                    rsi_divergence=row.get("rsi_divergence"),
+                    pattern_r2=row.get("pattern_r2"),
+                    prior_trend_pct=row.get("prior_trend_pct"),
+                    pillar_technical=pillar_technical,
+                    pillar_statistical=pillar_statistical,
+                    pillar_ml=pillar_ml,
+                    regime_weighted_score=regime_score.get("score") if regime_score else None,
+                    confluence_features_ts=confluence_features_ts,
+                )
 
 
 def fill_pattern_outcomes() -> int:

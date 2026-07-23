@@ -476,8 +476,37 @@ class TrapEngine:
                 conn.close()
 
         scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        # Computed once per scan for every result ticker (not per-row) — feeds both the
+        # Cross-Engine Alert Referee's training-data columns below and, via the
+        # confluence_direction/pillar/regime values this attaches onto each row,
+        # run_trap_monitor_job()'s shadow-evaluation call (scheduler_jobs.py) without it having
+        # to recompute the same batch a second time.
+        from score_analysis import evaluate_pillar_confluence_batch, compute_regime_weighted_score_batch
+        tickers_this_scan = [row["ticker"] for row in results]
+        confluence_by_ticker = evaluate_pillar_confluence_batch(tickers_this_scan)
+        regime_score_by_ticker = compute_regime_weighted_score_batch(tickers_this_scan)
+        confluence_features_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
         for row in results:
-            log_trap_phase(
+            confluence = confluence_by_ticker.get(row["ticker"], {})
+            regime_score = regime_score_by_ticker.get(row["ticker"])
+            pillar_technical = "up" if "technical" in confluence.get("bullish_pillars", []) else (
+                "down" if "technical" in confluence.get("bearish_pillars", []) else None
+            )
+            pillar_statistical = "up" if "statistical" in confluence.get("bullish_pillars", []) else (
+                "down" if "statistical" in confluence.get("bearish_pillars", []) else None
+            )
+            pillar_ml = "up" if "ml" in confluence.get("bullish_pillars", []) else (
+                "down" if "ml" in confluence.get("bearish_pillars", []) else None
+            )
+            row["confluence_direction"] = confluence.get("direction")
+            row["pillar_technical"] = pillar_technical
+            row["pillar_statistical"] = pillar_statistical
+            row["pillar_ml"] = pillar_ml
+            row["regime_weighted_score"] = regime_score.get("score") if regime_score else None
+
+            row["_new_trap_history_row"] = log_trap_phase(
                 row["ticker"],
                 row["phase"],
                 scan_date,
@@ -488,6 +517,11 @@ class TrapEngine:
                 bull_trap_vol_ratio=row.get("bull_trap_vol_ratio"),
                 cap_vol_zscore=row.get("cap_vol_zscore"),
                 wyckoff_bb_width=row.get("wyckoff_bb_width"),
+                pillar_technical=pillar_technical,
+                pillar_statistical=pillar_statistical,
+                pillar_ml=pillar_ml,
+                regime_weighted_score=row["regime_weighted_score"],
+                confluence_features_ts=confluence_features_ts,
             )
 
 

@@ -778,7 +778,7 @@ def run_ai_contagion_job():
 
 def run_trap_monitor_job():
     from bull_bear_trap_engine import TrapEngine
-    from alert_referee_engine import evaluate_alert
+    from alert_referee_engine import evaluate_alert, CONFLUENCE_ENGINE
     config = load_config()
     conn = None
     try:
@@ -788,6 +788,26 @@ def run_trap_monitor_job():
 
         if not results:
             return
+
+        # Cross-Engine Alert Referee (Confluence) shadow evaluation — trap_phase_history has
+        # UNIQUE(ticker, scan_date), so log_trap_phase() only actually inserts a row on the
+        # first scan of the day for a given ticker; `_new_trap_history_row` (set by
+        # TrapEngine._save_results()) gates this to once per ticker per day rather than every
+        # 5-minute intraday scan tick re-evaluating an unchanged (daily-granularity) confluence
+        # state. Independent of the alert_phases filter below — bullish/bearish confluence has
+        # nothing to do with this ticker's own trap phase.
+        for row in results:
+            if row.get("_new_trap_history_row") and row.get("confluence_direction"):
+                evaluate_alert(
+                    CONFLUENCE_ENGINE, row["ticker"], row["confluence_direction"],
+                    {
+                        "pillar_technical": row.get("pillar_technical"),
+                        "pillar_statistical": row.get("pillar_statistical"),
+                        "pillar_ml": row.get("pillar_ml"),
+                        "regime_weighted_score": row.get("regime_weighted_score"),
+                    },
+                    conn,
+                )
 
         # Only alert on high-severity phases
         alert_phases = {"ACTIVE_SELLOFF", "BULL_TRAP_RISK", "CAPITULATION_FORMING", "BEAR_TRAP_RISK"}
@@ -896,6 +916,34 @@ def run_alert_referee_training_job():
     finally:
         _mark_job_done(job_label("alert_referee_training_job"))
         record_job_run("alert_referee_training_job")
+
+
+def run_confluence_referee_training_job():
+    from alert_referee_engine import train_referee_model, CONFLUENCE_ENGINE
+    _mark_job_started(job_label("confluence_referee_training_job"))
+    try:
+        result = train_referee_model(CONFLUENCE_ENGINE)
+        status = result.get("status")
+        if status == "trained":
+            log_sched_notification(
+                "Success",
+                f"Cross-Engine Alert Referee (Confluence): trained on {result['sample_count']} samples "
+                f"(effective mode: {result['effective_mode']}).",
+            )
+        elif status == "insufficient_data":
+            log_sched_notification(
+                "Info",
+                f"Cross-Engine Alert Referee (Confluence): not enough resolved samples yet "
+                f"({result.get('sample_count', 0)}) — {result.get('message', 'skipping training.')}",
+            )
+        else:
+            log_sched_notification("Error", f"Cross-Engine Alert Referee (Confluence) training failed: {result.get('message')}")
+    except Exception as e:
+        logger.error("Cross-Engine Alert Referee (Confluence) training job failed: %s", e)
+        log_sched_notification("Error", f"Cross-Engine Alert Referee (Confluence) training job failed: {e}")
+    finally:
+        _mark_job_done(job_label("confluence_referee_training_job"))
+        record_job_run("confluence_referee_training_job")
 
 
 def _fire_risk_orchestrator_critical_alerts(scopes: list) -> None:

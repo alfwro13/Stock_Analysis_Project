@@ -343,21 +343,34 @@ def log_trap_phase(
     bull_trap_vol_ratio: Optional[float] = None,
     cap_vol_zscore: Optional[float] = None,
     wyckoff_bb_width: Optional[float] = None,
-) -> None:
+    pillar_technical: Optional[str] = None,
+    pillar_statistical: Optional[str] = None,
+    pillar_ml: Optional[str] = None,
+    regime_weighted_score: Optional[float] = None,
+    confluence_features_ts: Optional[str] = None,
+) -> bool:
+    """Returns True if a new row was inserted, False if one already existed for this
+    (ticker, scan_date) or on failure — lets run_trap_monitor_job() fire the Cross-Engine Alert
+    Referee's Confluence shadow evaluation only once per ticker per day (the first scan of the
+    day that actually inserts a row), not on every 5-minute intraday scan tick."""
     conn = None
     try:
         conn = get_connection()
-        conn.execute(
+        cursor = conn.execute(
             """INSERT OR IGNORE INTO trap_phase_history
                (ticker, phase, scan_date, scan_ts, close_price,
-                rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width,
+                pillar_technical, pillar_statistical, pillar_ml, regime_weighted_score, confluence_features_ts)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ticker, phase, scan_date, scan_ts, close_price,
-             rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width),
+             rsi, ema_distance, bull_trap_vol_ratio, cap_vol_zscore, wyckoff_bb_width,
+             pillar_technical, pillar_statistical, pillar_ml, regime_weighted_score, confluence_features_ts),
         )
         conn.commit()
+        return cursor.rowcount > 0
     except Exception as e:
         logger.error("log_trap_phase failed for %s on %s: %s", ticker, scan_date, e)
+        return False
     finally:
         if conn:
             conn.close()
@@ -495,6 +508,11 @@ def log_pattern_detection(
     rsi_divergence: Optional[bool] = None,
     pattern_r2: Optional[float] = None,
     prior_trend_pct: Optional[float] = None,
+    pillar_technical: Optional[str] = None,
+    pillar_statistical: Optional[str] = None,
+    pillar_ml: Optional[str] = None,
+    regime_weighted_score: Optional[float] = None,
+    confluence_features_ts: Optional[str] = None,
 ) -> bool:
     """Returns True if a new row was inserted, False if one already existed for this
     (ticker, scan_date, pattern_family, pattern_type) or on failure — lets callers (the
@@ -505,13 +523,15 @@ def log_pattern_detection(
         cursor = conn.execute(
             """INSERT OR IGNORE INTO pattern_detection_history
                (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, close_price,
-                measured_target, volume_confirms, rsi_divergence, pattern_r2, prior_trend_pct)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                measured_target, volume_confirms, rsi_divergence, pattern_r2, prior_trend_pct,
+                pillar_technical, pillar_statistical, pillar_ml, regime_weighted_score, confluence_features_ts)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, close_price,
              measured_target,
              None if volume_confirms is None else int(volume_confirms),
              None if rsi_divergence is None else int(rsi_divergence),
-             pattern_r2, prior_trend_pct),
+             pattern_r2, prior_trend_pct,
+             pillar_technical, pillar_statistical, pillar_ml, regime_weighted_score, confluence_features_ts),
         )
         conn.commit()
         return cursor.rowcount > 0

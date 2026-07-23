@@ -168,6 +168,27 @@ class TestSaveResults:
         assert abs(row["measured_target"] - 74.0) < 1e-6
         assert row["volume_confirms"] == 1
 
+    def test_save_results_populates_confluence_columns(self):
+        confluence = {"PDTST4B": {"bullish_pillars": ["statistical"], "bearish_pillars": [], "direction": "bullish"}}
+        regime_score = {"PDTST4B": {"score": 61.0, "regime": "Chop", "components": {}}}
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value=confluence), \
+             patch("score_analysis.compute_regime_weighted_score_batch", return_value=regime_score):
+            self.engine._save_results([self._row("PDTST4B")])
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT pillar_technical, pillar_statistical, pillar_ml, regime_weighted_score, confluence_features_ts "
+                "FROM pattern_detection_history WHERE ticker = 'PDTST4B'"
+            ).fetchone()
+        finally:
+            conn.close()
+            self._cleanup("PDTST4B")
+        assert row["pillar_technical"] is None
+        assert row["pillar_statistical"] == "up"
+        assert row["pillar_ml"] is None
+        assert row["regime_weighted_score"] == 61.0
+        assert row["confluence_features_ts"] is not None
+
     def test_unchanged_pattern_not_relogged_to_history(self):
         self.engine._save_results([self._row("PDTST5")])
         self.engine._save_results([self._row("PDTST5")])
