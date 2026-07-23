@@ -1,26 +1,40 @@
 # Buy-Signal Confluence Pipeline
 
-Four independently-buildable pieces that compose into one pipeline (pillar vote → regime
-weighting → cross-engine probability → risk/reward gate) for turning existing per-ticker
-signals into a synthesized buy recommendation. Each part is useful on its own and does not
-require the others — this is why they shipped as separate PRs rather than one large change.
+A four-stage pipeline that turns existing per-ticker signals this app already computes into one
+synthesized **🎯 Buy Recommendation**, with no new fetch and (mostly) no new tables — each stage
+reads what an earlier stage (or an already-existing engine) produced:
 
-| Part | Feature | Status |
+```
+Part A                Part B                    Part C                     Part D
+Signal Pillar   →   Regime-Weighted   →   Cross-Engine Alert    →   Recommendation
+Confluence          Conviction Score       Referee (meta-veto,        Risk/Reward Gate
+(pillar vote)       (regime weighting)     shadow-only today)         (risk/reward gate)
+                                                                            ↓
+                                                                   🎯 Buy Recommendation
+```
+
+Each part is independently useful — Part A's badge, Part B's score, and Part D's gate all
+render on their own regardless of the others — but Part D's Buy Recommendation is the pipeline's
+combined output: it requires a bullish Part A confluence call that also clears the Part D gate.
+Part B's score and Part C's referee both sit alongside this combination as complementary lenses
+rather than hard requirements — see each part's own section for exactly how it participates.
+
+| Part | Feature | Reads |
 |---|---|---|
-| A | Signal Pillar Confluence | Shipped |
-| B | Regime-Weighted Conviction Score | Shipped |
-| C | Cross-Engine Alert Referee | Shipped |
-| D | Recommendation Risk/Reward Gate | Shipped |
+| A | Signal Pillar Confluence | Pattern Detection, Trap Monitor, Earnings Volatility, ML confidence |
+| B | Regime-Weighted Conviction Score | Quant Score, ML confidence, Part A's two Technical-pillar sources, Market Regime |
+| C | Cross-Engine Alert Referee | Part A + Part B's combined signal, trained on Trap Monitor's and Pattern Detection's own resolved history |
+| D | Recommendation Risk/Reward Gate | Part A's bullish call, ATR stop-loss math, confirmed pattern targets / ML Quantile Regression |
 
-Engine: `score_analysis.py` (Parts A, B and the combined Buy Recommendation logic, plus the
-as-of variants Part C's historical backfill uses), `position_sizing.py` (Part D's risk/reward
-math, since that module already owns the ATR stop-loss math it needs), and
-`alert_referee_engine.py` (Part C, generalizing the existing Trap Monitor referee pilot). Parts
-A, B and D remain read-only over already-persisted engine outputs with no new DB tables/
-scheduler jobs; Part C adds 5 columns to `trap_phase_history`/`pattern_detection_history`
-(populated at scan time, no new fetch) and one new scheduler job
-(`confluence_referee_training_job`, training only — reusing the existing `trap_monitor_job`
-intraday cadence for shadow evaluation rather than adding a second one).
+**Engines:** `score_analysis.py` owns Parts A and B, the as-of variants Part C's historical
+backfill uses, and the combined Buy Recommendation logic (Part D's own risk/reward math lives
+in `position_sizing.py`, since that module already owns the ATR stop-loss math it needs).
+`alert_referee_engine.py` owns Part C, generalizing the pre-existing Trap Monitor referee pilot
+to a second engine. Parts A, B and D are read-only over already-persisted engine outputs with no
+new DB tables or scheduler jobs; Part C is the one exception, adding 5 columns to
+`trap_phase_history`/`pattern_detection_history` (populated at scan time, no new fetch) and one
+new scheduler job (`confluence_referee_training_job`, training only — the shadow evaluation
+itself reuses the existing `trap_monitor_job` intraday cadence rather than adding a second one).
 
 ---
 
@@ -149,8 +163,8 @@ data, not a replacement. Glossary: `templates/glossary/_regime_weighted_score.ht
 
 Generalizes `alert_referee_engine.py`'s calibrated-probability veto — previously piloted on
 Trap Monitor only (see `AGENTS.md`'s "Alert Confidence Referee" entry) — to a second engine,
-`CONFLUENCE_ENGINE = "Confluence"`, that scores the combined Part A/B signal itself (Idea A's
-3 pillar votes + Idea B's regime-weighted score) rather than either source engine's own raw
+`CONFLUENCE_ENGINE = "Confluence"`, that scores the combined Part A/B signal itself (Part A's
+3 pillar votes + Part B's regime-weighted score) rather than either source engine's own raw
 features. Same shared architecture as the Trap Monitor pilot — `CalibratedClassifierCV`
 (isotonic) on a `RandomForestClassifier`, `_HARD_MIN_SAMPLES` hard floor, Shadow→Active gating —
 but with its own model file (`models/alert_referee_confluence.joblib`), its own training
@@ -227,6 +241,8 @@ the combined feature set has never been scored before; `confluence_features_ts` 
 populating from the day this shipped forward (aside from the one-time historical backfill), so
 `readiness_status(CONFLUENCE_ENGINE)`'s `current` count starts low regardless of how much history
 `trap_phase_history`/`pattern_detection_history` already had before this change.
+
+---
 
 ## D. Recommendation Risk/Reward Gate
 
