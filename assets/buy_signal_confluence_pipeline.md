@@ -9,13 +9,17 @@ require the others — this is why they shipped as separate PRs rather than one 
 |---|---|---|
 | A | Signal Pillar Confluence | Shipped |
 | B | Regime-Weighted Conviction Score | Shipped |
-| C | Cross-Engine Alert Referee | Planned — not yet built |
+| C | Cross-Engine Alert Referee | Shipped |
 | D | Recommendation Risk/Reward Gate | Planned — not yet built |
 
-Engine: `score_analysis.py` (Parts A and B; Part D is planned to live in `position_sizing.py`
-instead, since that module already owns the ATR stop-loss math it needs). No new DB tables,
-no new scheduler jobs — both shipped parts are read-only over already-persisted engine
-outputs, computed on demand on every Portfolio/Watchlist/Stock Detail page render.
+Engine: `score_analysis.py` (Parts A and B, plus the as-of variants Part C's historical backfill
+uses; Part D is planned to live in `position_sizing.py` instead, since that module already owns
+the ATR stop-loss math it needs) and `alert_referee_engine.py` (Part C, generalizing the
+existing Trap Monitor referee pilot). Parts A and B remain read-only over already-persisted
+engine outputs with no new DB tables/scheduler jobs; Part C adds 5 columns to
+`trap_phase_history`/`pattern_detection_history` (populated at scan time, no new fetch) and one
+new scheduler job (`confluence_referee_training_job`, training only — reusing the existing
+`trap_monitor_job` intraday cadence for shadow evaluation rather than adding a second one).
 
 ---
 
@@ -140,15 +144,88 @@ data, not a replacement. Glossary: `templates/glossary/_regime_weighted_score.ht
 
 ---
 
-## C. Cross-Engine Alert Referee (planned)
+## C. Cross-Engine Alert Referee
 
-Will generalize `alert_referee_engine.py`'s existing calibrated-probability veto (currently
-piloted on Trap Monitor only — see `AGENTS.md`'s "Alert Confidence Referee" entry) to also
-score the combined Part A/B output, reusing historical accuracy this app already tracks
-instead of building new tracking. `train_referee_model()`/`evaluate_alert()` already take an
-`engine: str` parameter for exactly this kind of extension. Not yet built — documented here in
-advance since it's the third of four pieces in this pipeline; will be fleshed out in this file
-when implemented.
+Generalizes `alert_referee_engine.py`'s calibrated-probability veto — previously piloted on
+Trap Monitor only (see `AGENTS.md`'s "Alert Confidence Referee" entry) — to a second engine,
+`CONFLUENCE_ENGINE = "Confluence"`, that scores the combined Part A/B signal itself (Idea A's
+3 pillar votes + Idea B's regime-weighted score) rather than either source engine's own raw
+features. Same shared architecture as the Trap Monitor pilot — `CalibratedClassifierCV`
+(isotonic) on a `RandomForestClassifier`, `_HARD_MIN_SAMPLES` hard floor, Shadow→Active gating —
+but with its own model file (`models/alert_referee_confluence.joblib`), its own training
+schedule/config (`SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE`, mirroring
+`ALERT_REFEREE_TRAINING`'s shape), and its own Settings card ("🔀 Cross-Engine Alert Referee",
+`_alerts.html`) with a separate readiness panel and shadow log.
+
+**Feature set (`_CONFLUENCE_FEATURE_COLUMNS`)** — deliberately compact, disjoint from Trap
+Monitor's own RSI/EMA/volume-ratio features:
+- `pillar_technical_up`/`_down`, `pillar_statistical_up`/`_down`, `pillar_ml_up`/`_down` — one-hot
+  per Part A pillar (both 0 means that pillar abstained that day).
+- `regime_weighted_score` — Part B's 0-100 score (or `NaN`→0 via the existing `fillna(0.0)`
+  pattern when Part B itself returned "no signal").
+
+**New columns, forward-populated only.** `trap_phase_history` and `pattern_detection_history`
+each gained 5 columns (`pillar_technical`, `pillar_statistical`, `pillar_ml`,
+`regime_weighted_score`, `confluence_features_ts`), populated at scan time by
+`bull_bear_trap_engine.TrapEngine._save_results()` / `pattern_detection_engine
+.PatternDetectionEngine._save_results()` via `score_analysis.evaluate_pillar_confluence_batch()`/
+`compute_regime_weighted_score_batch()` — the same functions Part A/B themselves call, so no
+new signal logic exists anywhere. `confluence_features_ts` (a timestamp, not a boolean) is the
+"has this row been through Confluence-feature computation" marker, needed because the 3 pillar
+votes are each legitimately `NULL` on a row that *was* computed but abstained on every pillar —
+a bare `IS NOT NULL` check on any single pillar column can't distinguish "abstained" from "never
+computed."
+
+**Historical backfill.** `alert_referee_engine.backfill_historical_confluence_features()`
+reconstructs these columns for rows logged before this shipped
+(`confluence_features_ts IS NULL`), using `score_analysis.evaluate_pillar_confluence_as_of(ticker,
+scan_date)` / `compute_regime_weighted_score_as_of(ticker, scan_date)` — as-of variants of Part
+A/B's own batch functions (an optional `as_of` cutoff threaded through `_trading_windows_batch()`/
+`_pattern_signals_batch()`/`_trap_signals_batch()`/`_statistical_signals_batch()`/
+`_ml_signals_batch()`, plus a `market_regimes`/`quant_signals`-history read in place of
+`regime_engine.get_latest_regime()`/`stock_signals` for the regime score) — so an already-resolved
+historical trap/pattern row gets scored with the pillar votes/regime that genuinely existed on
+its own `scan_date`, not today's. Unlike `backfill_historical_features()` (Trap Monitor's own
+RSI/EMA backfill, which re-runs `TrapEngine._analyse_ticker()` against parquet), this needs no
+engine re-run — pillar votes and regime are themselves just windowed reads over other tables.
+`train_referee_model(CONFLUENCE_ENGINE)` runs this backfill first, same as the Trap Monitor
+trainer runs its own equivalent first.
+
+**Training rows** union three sources, since a resolved historical call from either underlying
+engine is usable data for the combined model:
+- `trap_phase_history` — one row per resolved `direction_correct_14d` (14d-only, matching Trap
+  Monitor's own trainer; trap_phase_history's `direction_correct_30d` is not used here or there).
+- `pattern_detection_history` — **two** independent training rows per pattern instance whenever
+  both horizons are resolved: one keyed on `direction_correct_14d`, one on `direction_correct_30d`
+  — same point-in-time pillar/regime features, a different-horizon label. `readiness_status()`'s
+  `current` count reflects this (a single pattern row with both horizons resolved counts as 2).
+
+**Evaluation trigger.** Rather than a new scheduled job, the Confluence shadow evaluation
+piggybacks on the existing `trap_monitor_job` (frequent intraday cadence) with a once-per-ticker-
+per-day gate: `db_helpers.log_trap_phase()` now returns `True` only when it actually inserted a
+new row (blocked by `trap_phase_history`'s `UNIQUE(ticker, scan_date)` on every later call that
+day) — `TrapEngine._save_results()` surfaces this as `row["_new_trap_history_row"]`, alongside
+`row["confluence_direction"]`/`pillar_*`/`regime_weighted_score`. `scheduler_jobs
+.run_trap_monitor_job()` calls `evaluate_alert(CONFLUENCE_ENGINE, ...)` only when
+`_new_trap_history_row` is true and a confluence direction exists — recomputing pillar
+votes/regime every 5-minute intraday tick would just re-log an identical daily-granularity
+result, the same spurious-repeat failure mode AGENTS.md's rule 19 already flags for Trap
+Monitor's own alert dedup. `pattern_detection_job`'s own scan populates the training-data
+columns on its own history rows but does not independently trigger a shadow evaluation, avoiding
+duplicate same-day log rows for one ticker's confluence state.
+
+**Training schedule/config.** A separate `confluence_referee_training_job` (own `JOB_GRAPH`
+entry, own `CronTrigger` from `SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE.{DAYS,TIME}`,
+default Sunday 05:30 local — 30 minutes after Trap Monitor's own referee training) trains via
+`scheduler_jobs.run_confluence_referee_training_job()`. `POST /api/alert-referee/train` and
+`GET /api/alert-referee/status`/`log` all take an `engine` query param (`TrapMonitor` default,
+or `Confluence`) rather than duplicating routes.
+
+**Expect Shadow mode for a long stretch after launch** — same as the Trap Monitor pilot — since
+the combined feature set has never been scored before; `confluence_features_ts` only starts
+populating from the day this shipped forward (aside from the one-time historical backfill), so
+`readiness_status(CONFLUENCE_ENGINE)`'s `current` count starts low regardless of how much history
+`trap_phase_history`/`pattern_detection_history` already had before this change.
 
 ## D. Recommendation Risk/Reward Gate (planned)
 

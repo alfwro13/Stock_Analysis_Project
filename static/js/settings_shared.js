@@ -40,6 +40,7 @@ async function saveSettings(silent = false) {
     const backupDays       = Array.from(document.querySelectorAll('.backup-day:checked')).map(cb => cb.value);
     const activeIndices    = Array.from(document.querySelectorAll('.index-target:checked')).map(cb => cb.value);
     const refereeDays      = Array.from(document.querySelectorAll('.referee-training-day:checked')).map(cb => cb.value);
+    const confluenceRefereeDays = Array.from(document.querySelectorAll('.confluence-referee-training-day:checked')).map(cb => cb.value);
 
     const payload = {
         "SERVER_URL": document.getElementById('SERVER_URL').value,
@@ -363,6 +364,14 @@ async function saveSettings(silent = false) {
                 "MODE": document.getElementById('ALERT_REFEREE_MODE').value,
                 "VETO_THRESHOLD": parseFloat(document.getElementById('ALERT_REFEREE_VETO_THRESHOLD').value) || 0.3,
                 "MIN_TRAINING_SAMPLES": parseInt(document.getElementById('ALERT_REFEREE_MIN_SAMPLES').value) || 200
+            },
+            "ALERT_REFEREE_TRAINING_CONFLUENCE": {
+                "ENABLED": document.getElementById('CONFLUENCE_REFEREE_ENABLED').checked,
+                "DAYS": confluenceRefereeDays,
+                "TIME": document.getElementById('CONFLUENCE_REFEREE_TIME').value,
+                "MODE": document.getElementById('CONFLUENCE_REFEREE_MODE').value,
+                "VETO_THRESHOLD": parseFloat(document.getElementById('CONFLUENCE_REFEREE_VETO_THRESHOLD').value) || 0.3,
+                "MIN_TRAINING_SAMPLES": parseInt(document.getElementById('CONFLUENCE_REFEREE_MIN_SAMPLES').value) || 200
             }
         },
         "NOTIFICATIONS": {

@@ -121,13 +121,20 @@ async def get_trap_monitor_accuracy(request: Request):
     return JSONResponse(content={"status": "success", **data})
 
 
+def _resolve_referee_engine(engine: str) -> str:
+    from alert_referee_engine import CONFLUENCE_ENGINE, TRAP_MONITOR_ENGINE
+    return CONFLUENCE_ENGINE if engine == CONFLUENCE_ENGINE else TRAP_MONITOR_ENGINE
+
+
 @analysis_router.get("/alert-referee/status")
 @limiter.limit("20/minute")
-async def get_alert_referee_status(request: Request):
-    """Returns Alert Confidence Referee readiness, latest trained model, and recent shadow-mode log for the Trap Monitor pilot."""
+async def get_alert_referee_status(request: Request, engine: str = Query(default="TrapMonitor")):
+    """Returns Alert Confidence Referee readiness, latest trained model, and recent shadow-mode
+    log for the given engine ("TrapMonitor" — the original pilot — or "Confluence", the
+    Cross-Engine Alert Referee scoring Idea A/B's combined pillar/regime signal)."""
     try:
-        from alert_referee_engine import get_referee_summary, TRAP_MONITOR_ENGINE
-        data = get_referee_summary(TRAP_MONITOR_ENGINE)
+        from alert_referee_engine import get_referee_summary
+        data = get_referee_summary(_resolve_referee_engine(engine))
         return JSONResponse(content={"status": "success", **data})
     except Exception as e:
         logger.error("alert-referee/status failed: %s", e)
@@ -138,6 +145,7 @@ async def get_alert_referee_status(request: Request):
 @limiter.limit("30/minute")
 async def get_alert_referee_log(
     request: Request,
+    engine: str = Query(default="TrapMonitor"),
     ticker: str = Query(default=""),
     vetoed: str = Query(default="", pattern=r"^(true|false|)$"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -145,10 +153,10 @@ async def get_alert_referee_log(
 ):
     """Returns a searchable, filterable, paginated slice of the Alert Confidence Referee shadow-mode log."""
     try:
-        from alert_referee_engine import get_recent_evaluations, TRAP_MONITOR_ENGINE
+        from alert_referee_engine import get_recent_evaluations
         vetoed_filter = {"true": True, "false": False}.get(vetoed)
         rows = get_recent_evaluations(
-            TRAP_MONITOR_ENGINE,
+            _resolve_referee_engine(engine),
             limit=limit + 1,
             offset=offset,
             ticker=ticker.strip() or None,
@@ -163,10 +171,14 @@ async def get_alert_referee_log(
 
 @analysis_router.post("/alert-referee/train")
 @limiter.limit("4/minute")
-async def train_alert_referee(request: Request, background_tasks: BackgroundTasks):
+async def train_alert_referee(request: Request, background_tasks: BackgroundTasks, engine: str = Query(default="TrapMonitor")):
     """Manually triggers Alert Confidence Referee training in the background (the 'Run Now' Settings action)."""
     try:
-        from scheduler_engine import run_alert_referee_training_job
+        from alert_referee_engine import CONFLUENCE_ENGINE
+        from scheduler_engine import run_alert_referee_training_job, run_confluence_referee_training_job
+        if engine == CONFLUENCE_ENGINE:
+            background_tasks.add_task(run_confluence_referee_training_job)
+            return JSONResponse(content={"status": "success", "message": "Cross-Engine Alert Referee (Confluence) training triggered."})
         background_tasks.add_task(run_alert_referee_training_job)
         return JSONResponse(content={"status": "success", "message": "Alert Confidence Referee training triggered."})
     except Exception as e:

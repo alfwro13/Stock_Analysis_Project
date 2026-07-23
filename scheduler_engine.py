@@ -616,6 +616,25 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Alert Confidence Referee training: %s", e)
 
+    confluence_referee_sched = scheduling.get("ALERT_REFEREE_TRAINING_CONFLUENCE", {})
+    if confluence_referee_sched.get("ENABLED", False):
+        try:
+            confluence_referee_days_list = confluence_referee_sched.get("DAYS", ["sun"])
+            confluence_referee_days = ",".join(confluence_referee_days_list) if confluence_referee_days_list else "sun"
+            confluence_referee_time = confluence_referee_sched.get("TIME", "05:30")
+            hour, minute = map(int, confluence_referee_time.split(':'))
+            scheduler.add_job(
+                run_confluence_referee_training_job,
+                CronTrigger(day_of_week=confluence_referee_days, hour=hour, minute=minute, timezone=user_tz),
+                id='confluence_referee_training_job',
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Cross-Engine Alert Referee (Confluence) training scheduled for %s at %s.",
+                        confluence_referee_days, confluence_referee_time)
+        except Exception as e:
+            logger.error("Failed to schedule Cross-Engine Alert Referee (Confluence) training: %s", e)
+
     news_cfg = scheduling.get("NEWS_FEED", {})
     if news_cfg.get("ENABLED", False):
         news_freq = news_cfg.get("FREQUENCY", "mon-fri")
@@ -962,6 +981,7 @@ from scheduler_jobs import (
     run_xray_risk_cache_job, run_risk_orchestrator_job, run_risk_orchestrator_digest_job, run_anomaly_training_job, run_intraday_dip_scan,
     run_intraday_dip_reset, _build_contagion_feed_text, _build_contagion_message,
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
+    run_confluence_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,
     run_pattern_detection_job, run_pattern_detection_accuracy_fill_job,
     register_etf_predictor_jobs, unregister_etf_predictor_jobs,

@@ -204,7 +204,7 @@ class TestTrainRefereeModel:
         # 40 < configured MIN_TRAINING_SAMPLES (200) so the effective mode must stay shadow
         # regardless of the configured "active" mode.
         assert result["effective_mode"] == "shadow"
-        assert are._MODEL_PATH.exists()
+        assert are._MODEL_PATHS[_ENGINE].exists()
 
         conn = db.get_connection()
         try:
@@ -315,8 +315,8 @@ class TestTrainRefereeModelBackfillWiring:
 
 class TestEvaluateAlert:
     def setup_method(self):
-        if are._MODEL_PATH.exists():
-            are._MODEL_PATH.unlink()
+        if are._MODEL_PATHS[_ENGINE].exists():
+            are._MODEL_PATHS[_ENGINE].unlink()
 
     def _row(self):
         return {"rsi": 38.0, "ema_distance": -5.0, "bull_trap_vol_ratio": 0.4,
@@ -395,8 +395,8 @@ class TestEvaluateAlert:
 
 class TestGetRefereeSummary:
     def setup_method(self):
-        if are._MODEL_PATH.exists():
-            are._MODEL_PATH.unlink()
+        if are._MODEL_PATHS[_ENGINE].exists():
+            are._MODEL_PATHS[_ENGINE].unlink()
 
     def test_summary_reflects_log_and_model_state(self):
         _seed_balanced_training_set(n_per_class=20)

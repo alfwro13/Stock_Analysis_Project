@@ -405,7 +405,7 @@
                 </div>
 
                 <div class="flex-gap-15 mt-10">
-                    <button type="button" class="btn btn-primary mt-0" onclick="triggerAlertRefereeTraining()">&#9654; Run Training Now</button>
+                    <button type="button" id="alert-referee-run-btn" class="btn btn-primary mt-0" onclick="triggerAlertRefereeTraining()">&#9654; Run Training Now</button>
                 </div>
                 <div id="alert-referee-msg" class="mt-10"></div>
             </details>
@@ -454,6 +454,126 @@
                                 </table>
                             </div>
                             <button type="button" id="alert-referee-log-more" class="btn btn-outline-secondary btn-sm mt-10" onclick="loadAlertRefereeLog(false)" hidden>Load More</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <details class="settings-card" id="confluence-referee-card">
+                <summary>🔀 Cross-Engine Alert Referee</summary>
+                <p class="settings-desc">
+                    Generalizes the Alert Confidence Referee's calibrated-probability veto above to score the combined
+                    <a href="/glossary#pillar-confluence">Pillar Confluence</a> / <a href="/glossary#regime-weighted-score">Regime-Weighted
+                    Conviction Score</a> signal itself, trained on every already-resolved historical call from both
+                    <a href="/trap-monitor">Market Trap &amp; Recovery Monitor</a> and <a href="/pattern-detection">Pattern Detection</a>.
+                    A separate model and training schedule from the Trap Monitor referee above — expect Shadow mode for a long
+                    stretch after launch, since this combined feature set has never been scored before.
+                </p>
+
+                {% set confluence_referee_sched = config.SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE if config.SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE else {} %}
+                {% set confluence_referee_days = confluence_referee_sched.DAYS if confluence_referee_sched.DAYS else ['sun'] %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">⏱️ Training Schedule</h4>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="CONFLUENCE_REFEREE_ENABLED" {% if confluence_referee_sched.ENABLED %}checked{% endif %}>
+                        <label for="CONFLUENCE_REFEREE_ENABLED">Enable Cross-Engine Alert Referee</label>
+                    </div>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="mon" {% if 'mon' in confluence_referee_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="tue" {% if 'tue' in confluence_referee_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="wed" {% if 'wed' in confluence_referee_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="thu" {% if 'thu' in confluence_referee_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="fri" {% if 'fri' in confluence_referee_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="sat" {% if 'sat' in confluence_referee_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="confluence-referee-training-day" value="sun" {% if 'sun' in confluence_referee_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Training Time <span class="text-muted text-xs">(local)</span></label>
+                        <input type="time" id="CONFLUENCE_REFEREE_TIME" class="form-control" value="{{ confluence_referee_sched.TIME | default('05:30') }}">
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">⚖️ Veto Behavior</h4>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Mode</label>
+                            <select id="CONFLUENCE_REFEREE_MODE" class="form-select">
+                                <option value="shadow" {% if confluence_referee_sched.MODE != 'active' %}selected{% endif %}>Shadow (log only, never suppresses)</option>
+                                <option value="active" {% if confluence_referee_sched.MODE == 'active' %}selected{% endif %}>Active (suppresses low-confidence alerts)</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="The model estimates a 0-1 confidence that a signal is genuine. If that confidence is below this value, the alert is vetoed (or would be, in Shadow mode). Lower = more conservative (vetoes only near-certain false positives); higher = more aggressive (vetoes unless strongly confirmed).">Veto Threshold</abbr></label>
+                            <input type="number" id="CONFLUENCE_REFEREE_VETO_THRESHOLD" class="form-control" value="{{ confluence_referee_sched.VETO_THRESHOLD | default(0.3) }}" step="0.05" min="0" max="1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="Minimum resolved training samples required before Active mode is allowed to actually suppress alerts. Below this, the referee always runs in Shadow mode regardless of the Mode setting above.">Min. Samples for Active Mode</abbr></label>
+                            <input type="number" id="CONFLUENCE_REFEREE_MIN_SAMPLES" class="form-control" value="{{ confluence_referee_sched.MIN_TRAINING_SAMPLES | default(200) }}" min="30" step="10">
+                        </div>
+                    </div>
+                    <p class="settings-desc-sm text-muted">
+                        Even with Active selected, the referee stays in Shadow mode — it logs what it would have done but never
+                        suppresses an alert — until enough resolved combined-signal history has accumulated. See readiness below.
+                    </p>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">📊 Readiness</h4>
+                    <div id="confluence-referee-readiness" class="text-muted">Loading…</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mt-10" onclick="showAlertRefereeShadowLog('Confluence')">🔍 View Shadow Log</button>
+                </div>
+
+                <div class="flex-gap-15 mt-10">
+                    <button type="button" id="confluence-referee-run-btn" class="btn btn-primary mt-0" onclick="triggerAlertRefereeTraining('Confluence')">&#9654; Run Training Now</button>
+                </div>
+                <div id="confluence-referee-msg" class="mt-10"></div>
+            </details>
+
+            <div class="modal fade" id="confluence-referee-log-modal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Cross-Engine Alert Referee — Shadow Log</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="settings-desc-sm text-muted">
+                                Most recent Pillar Confluence signals the referee has scored, newest first. "Would Veto" reflects
+                                Shadow mode — even a "Yes" here does not suppress anything until Active mode is ready (see Readiness above).
+                            </p>
+                            <div class="flex-gap-15 mb-10 flex-wrap">
+                                <div class="form-group flex-1">
+                                    <label for="confluence-referee-log-ticker">Search Ticker</label>
+                                    <input type="text" id="confluence-referee-log-ticker" class="form-control" placeholder="e.g. AAPL" oninput="onAlertRefereeLogFilterChange('Confluence')">
+                                </div>
+                                <div class="form-group flex-1">
+                                    <label for="confluence-referee-log-vetoed">Would Veto</label>
+                                    <select id="confluence-referee-log-vetoed" class="form-select" onchange="onAlertRefereeLogFilterChange('Confluence')">
+                                        <option value="">All</option>
+                                        <option value="true">Yes</option>
+                                        <option value="false">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="confluence-referee-log-empty" class="text-muted" hidden>No matching shadow-log entries.</div>
+                            <div class="table-responsive alert-referee-log-scroll">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Ticker</th>
+                                            <th>Direction</th>
+                                            <th>Fire Probability</th>
+                                            <th>Would Veto</th>
+                                            <th>Mode</th>
+                                            <th>Scan Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="confluence-referee-log-tbody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" id="confluence-referee-log-more" class="btn btn-outline-secondary btn-sm mt-10" onclick="loadAlertRefereeLog(false, 'Confluence')" hidden>Load More</button>
                         </div>
                     </div>
                 </div>

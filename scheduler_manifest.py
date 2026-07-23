@@ -48,6 +48,7 @@ JOB_GRAPH: dict[str, dict] = {
     "trap_monitor_job":               {"label": "Market Trap & Recovery Monitor",                 "category": "intraday",    "engine": "bull_bear_trap_engine.py",      "produces": ["trap_monitor_results"],                                       "consumes": ["historical_parquet"],                                               "settings_anchor": "trap-monitor-card"},
     "trap_accuracy_fill_job":         {"label": "Market Trap & Recovery Monitor (accuracy fill)", "category": "intraday",    "engine": "bull_bear_trap_engine.py",      "produces": ["trap_phase_history"],                                         "consumes": ["trap_phase_history", "historical_parquet"],                         "settings_anchor": "trap-monitor-card"},
     "alert_referee_training_job":     {"label": "Alert Confidence Referee Training",              "category": "ml",          "engine": "alert_referee_engine.py",       "produces": ["alert_referee_models"],                                       "consumes": ["trap_phase_history"],                                               "settings_anchor": "alert-referee-card"},
+    "confluence_referee_training_job":{"label": "Cross-Engine Alert Referee Training",            "category": "ml",          "engine": "alert_referee_engine.py",       "produces": ["alert_referee_models"],                                       "consumes": ["trap_phase_history", "pattern_detection_history"],                 "settings_anchor": "confluence-referee-card"},
     "etf_predictor_actual_fill_job":  {"label": "ETF Price Predictors (actual fill)",             "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": ["etf_predictions"],                                                  "settings_anchor": "tools-card"},
     "maintenance_job":                {"label": "Database & File Maintenance",                    "category": "maintenance", "engine": "maintenance_engine.py",         "produces": [],                                                             "consumes": [],                                                                   "settings_anchor": "diagnostics-panel"},
     "system_check_job":               {"label": "System Configuration Check",                     "category": "maintenance", "engine": "system_check_engine.py",        "produces": [],                                                             "consumes": [],                                                                   "settings_anchor": "diagnostics-panel"},
@@ -168,6 +169,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "ACCOUNT_VALUE_SNAPSHOT":   "account_value_snapshot_job",
     "BACKUP":                   "backup_job",
     "ALERT_REFEREE_TRAINING":   "alert_referee_training_job",
+    "ALERT_REFEREE_TRAINING_CONFLUENCE": "confluence_referee_training_job",
 }
 
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")

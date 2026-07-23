@@ -169,23 +169,34 @@ def _recent_window_dates(rows: list[dict], window: int = _CONFLUENCE_WINDOW) -> 
     return {t: set(sorted(dates, reverse=True)[:window]) for t, dates in dates_by_ticker.items()}
 
 
-def _trading_windows_batch(tickers: list[str], conn) -> dict[str, set]:
+def _trading_windows_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, set]:
     """Each ticker's last 5 trading days, derived from quant_signals (written every trading day
     the nightly quant scan runs) rather than from pattern_detection_history's own scan_date
     column — pattern_detection_engine.PatternDetectionEngine.run_scan() deliberately skips
     logging a history row when a pattern instance is unchanged from the previous scan, so that
     table's own distinct dates are sparse and can silently span far more than 5 trading days for
     a quiet ticker. trap_phase_history logs unconditionally every scan so it doesn't have this
-    problem on its own, but sharing one window keeps both sources' cutoffs identical."""
+    problem on its own, but sharing one window keeps both sources' cutoffs identical.
+
+    as_of, when given (a 'YYYY-MM-DD' string), reconstructs the window as it stood on that
+    historical date instead of today — used by the Cross-Engine Alert Referee's historical
+    backfill to score an already-resolved trap_phase_history/pattern_detection_history row with
+    the pillar votes that were actually available at the time, not today's."""
     if not tickers:
         return {}
     placeholders = ",".join("?" * len(tickers))
+    as_of_dt = datetime.strptime(as_of, "%Y-%m-%d") if as_of else datetime.now(timezone.utc)
     # 30 calendar days comfortably covers 5 trading days through any holiday stretch, without
     # pulling a ticker's full multi-year quant_signals history just to keep the last 5 dates.
-    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    recent_cutoff = (as_of_dt - timedelta(days=30)).strftime("%Y-%m-%d")
+    params = tickers + [recent_cutoff]
+    upper_bound_sql = ""
+    if as_of:
+        upper_bound_sql = " AND date <= ?"
+        params.append(as_of)
     trading_dates = conn.execute(
-        f"SELECT DISTINCT ticker, date AS scan_date FROM quant_signals WHERE ticker IN ({placeholders}) AND date >= ?",
-        tickers + [recent_cutoff],
+        f"SELECT DISTINCT ticker, date AS scan_date FROM quant_signals WHERE ticker IN ({placeholders}) AND date >= ?{upper_bound_sql}",
+        params,
     ).fetchall()
     return _recent_window_dates([dict(r) for r in trading_dates])
 
@@ -240,32 +251,38 @@ def _trap_signals_batch(tickers: list[str], conn, trading_windows: dict[str, set
     return signals
 
 
-def _technical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
+def _technical_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, list[str]]:
     """Idea A's Technical pillar — Pattern Detection and Trap Monitor merged into one vote per
     ticker. compute_regime_weighted_score_batch() needs the same two sources kept separate
     (they're weighted independently there), so it calls _pattern_signals_batch()/
     _trap_signals_batch() directly instead of this merged view."""
     if not tickers:
         return {}
-    trading_windows = _trading_windows_batch(tickers, conn)
+    trading_windows = _trading_windows_batch(tickers, conn, as_of=as_of)
     pattern_signals = _pattern_signals_batch(tickers, conn, trading_windows)
     trap_signals = _trap_signals_batch(tickers, conn, trading_windows)
     return {t: pattern_signals.get(t, []) + trap_signals.get(t, []) for t in tickers}
 
 
-def _statistical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
+def _statistical_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, list[str]]:
     """earnings_volatility_history drift sign, gated on a real mispricing edge (edge_score>0),
     windowed to each ticker's last 5 scan runs (earnings_vol_engine only scans a ticker within
     ~14 days of its next earnings date, so these 5 rows may span several weeks of calendar
-    time for a ticker that isn't near-term)."""
+    time for a ticker that isn't near-term). as_of bounds the window to a historical date for
+    the Cross-Engine Alert Referee's historical backfill instead of "most recent 5"."""
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
     placeholders = ",".join("?" * len(tickers))
+    params: list = list(tickers)
+    as_of_sql = ""
+    if as_of:
+        as_of_sql = " AND scan_date <= ?"
+        params.append(as_of)
     rows = conn.execute(
         f"""SELECT ticker, scan_date, edge_score, drift_avg_pct_5d FROM earnings_volatility_history
-            WHERE ticker IN ({placeholders}) ORDER BY ticker, scan_date DESC""",
-        tickers,
+            WHERE ticker IN ({placeholders}){as_of_sql} ORDER BY ticker, scan_date DESC""",
+        params,
     ).fetchall()
 
     counts: dict[str, int] = {}
@@ -285,17 +302,23 @@ def _statistical_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]
     return signals
 
 
-def _ml_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
-    """quant_signals.ml_confidence_score across each ticker's last 5 trading days."""
+def _ml_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, list[str]]:
+    """quant_signals.ml_confidence_score across each ticker's last 5 trading days. as_of bounds
+    the window to a historical date for the Cross-Engine Alert Referee's historical backfill."""
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
     placeholders = ",".join("?" * len(tickers))
+    params: list = list(tickers)
+    as_of_sql = ""
+    if as_of:
+        as_of_sql = " AND date <= ?"
+        params.append(as_of)
     rows = conn.execute(
         f"""SELECT ticker, date, ml_confidence_score FROM quant_signals
-            WHERE ticker IN ({placeholders}) AND ml_confidence_score IS NOT NULL
+            WHERE ticker IN ({placeholders}) AND ml_confidence_score IS NOT NULL{as_of_sql}
             ORDER BY ticker, date DESC""",
-        tickers,
+        params,
     ).fetchall()
 
     counts: dict[str, int] = {}
@@ -314,12 +337,14 @@ def _ml_signals_batch(tickers: list[str], conn) -> dict[str, list[str]]:
     return signals
 
 
-def evaluate_pillar_confluence_batch(tickers: list[str]) -> dict[str, dict]:
+def evaluate_pillar_confluence_batch(tickers: list[str], as_of: Optional[str] = None) -> dict[str, dict]:
     """Per-ticker Signal Pillar Confluence: bullish confluence = >=2 of {technical, statistical,
     ml} pillars vote 'up' and none votes 'down' within a 5-trading-day rolling window (bearish
     confluence is the mirror case). Each pillar's own vote requires directional agreement across
     every signal it saw in the window — see _pillar_vote(). Batched (one query per source table,
-    not per ticker) since Portfolio/Watchlist call this for every held/watched ticker at once."""
+    not per ticker) since Portfolio/Watchlist call this for every held/watched ticker at once.
+    as_of ('YYYY-MM-DD'), when given, reconstructs confluence as of that historical date rather
+    than today — used by the Cross-Engine Alert Referee's historical backfill."""
     tickers = list(dict.fromkeys(tickers))
     if not tickers:
         return {}
@@ -327,9 +352,9 @@ def evaluate_pillar_confluence_batch(tickers: list[str]) -> dict[str, dict]:
     conn = None
     try:
         conn = get_connection()
-        technical = _technical_signals_batch(tickers, conn)
-        statistical = _statistical_signals_batch(tickers, conn)
-        ml = _ml_signals_batch(tickers, conn)
+        technical = _technical_signals_batch(tickers, conn, as_of=as_of)
+        statistical = _statistical_signals_batch(tickers, conn, as_of=as_of)
+        ml = _ml_signals_batch(tickers, conn, as_of=as_of)
     except Exception as e:
         logger.error("evaluate_pillar_confluence_batch failed: %s", e)
         return {}
@@ -368,6 +393,16 @@ def evaluate_pillar_confluence(ticker: str) -> dict:
     )
 
 
+def evaluate_pillar_confluence_as_of(ticker: str, as_of_date: str) -> dict:
+    """Single-ticker Pillar Confluence reconstructed as of a historical date (YYYY-MM-DD) rather
+    than today — used by alert_referee_engine.backfill_historical_confluence_features() to score
+    an already-resolved trap_phase_history/pattern_detection_history row with the pillar votes
+    that were actually available at the time."""
+    return evaluate_pillar_confluence_batch([ticker], as_of=as_of_date).get(
+        ticker, {"bullish_pillars": [], "bearish_pillars": [], "confluence": False, "direction": None}
+    )
+
+
 def pillar_confluence_label(result: Optional[dict]) -> Optional[str]:
     if not result or not result.get("confluence"):
         return None
@@ -383,7 +418,28 @@ def _direction_to_100(signals: list[str]) -> float:
     return {"up": 100.0, "down": 0.0}.get(vote, 50.0)
 
 
-def compute_regime_weighted_score_batch(tickers: list[str]) -> dict[str, Optional[dict]]:
+def _regime_as_of(as_of: str) -> Optional[dict]:
+    """Most recent market_regimes row on or before as_of ('YYYY-MM-DD') — the historical
+    equivalent of regime_engine.get_latest_regime() for the Cross-Engine Alert Referee's
+    historical backfill. META_SCORING.REGIME_WEIGHTS itself is not versioned historically —
+    the backfill uses today's config as an approximation, same as every other config value in
+    this app has no point-in-time history."""
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM market_regimes WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
+        ).fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("_regime_as_of failed for %s: %s", as_of, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str] = None) -> dict[str, Optional[dict]]:
     """Regime-Weighted Conviction Score: a 0-100 blend of stock_signals.composite_score,
     stock_signals.ml_confidence, and Idea A's two Technical-pillar sources (Pattern Detection,
     Trap Monitor — kept separate here since the weight vector moves them independently, unlike
@@ -394,7 +450,12 @@ def compute_regime_weighted_score_batch(tickers: list[str]) -> dict[str, Optiona
     is Crash, the Isolation Forest market_stress_score is at or above the configured threshold,
     no regime has been computed yet, or the ticker itself is missing composite_score/ml_confidence
     (never scanned/never run through ML inference). None of these are a "bug" — a hard veto is
-    more honest than fabricating a number the underlying inputs were never validated to support."""
+    more honest than fabricating a number the underlying inputs were never validated to support.
+
+    as_of ('YYYY-MM-DD'), when given, reconstructs the score as of that historical date instead
+    of today — regime and composite_score/ml_confidence are sourced from market_regimes/
+    quant_signals' own per-date history rather than the latest-only regime_engine/stock_signals
+    lookups. Used by the Cross-Engine Alert Referee's historical backfill."""
     from config import load_config
     from regime_engine import get_latest_regime
 
@@ -403,7 +464,7 @@ def compute_regime_weighted_score_batch(tickers: list[str]) -> dict[str, Optiona
     if not tickers:
         return results
 
-    regime_row = get_latest_regime()
+    regime_row = _regime_as_of(as_of) if as_of else get_latest_regime()
     regime = regime_row.get("price_hmm_label") if regime_row else None
     market_stress_score = regime_row.get("market_stress_score") if regime_row else None
 
@@ -421,13 +482,24 @@ def compute_regime_weighted_score_batch(tickers: list[str]) -> dict[str, Optiona
     try:
         conn = get_connection()
         placeholders = ",".join("?" * len(tickers))
-        base_rows = conn.execute(
-            f"SELECT ticker, composite_score, ml_confidence FROM stock_signals WHERE ticker IN ({placeholders})",
-            tickers,
-        ).fetchall()
-        base = {row["ticker"]: dict(row) for row in base_rows}
+        if as_of:
+            base = {}
+            for ticker in tickers:
+                row = conn.execute(
+                    """SELECT composite_score, ml_confidence_score AS ml_confidence FROM quant_signals
+                       WHERE ticker=? AND date<=? ORDER BY date DESC LIMIT 1""",
+                    (ticker, as_of),
+                ).fetchone()
+                if row:
+                    base[ticker] = dict(row)
+        else:
+            base_rows = conn.execute(
+                f"SELECT ticker, composite_score, ml_confidence FROM stock_signals WHERE ticker IN ({placeholders})",
+                tickers,
+            ).fetchall()
+            base = {row["ticker"]: dict(row) for row in base_rows}
 
-        trading_windows = _trading_windows_batch(tickers, conn)
+        trading_windows = _trading_windows_batch(tickers, conn, as_of=as_of)
         pattern_signals = _pattern_signals_batch(tickers, conn, trading_windows)
         trap_signals = _trap_signals_batch(tickers, conn, trading_windows)
     except Exception as e:
@@ -459,3 +531,9 @@ def compute_regime_weighted_score_batch(tickers: list[str]) -> dict[str, Optiona
 
 def compute_regime_weighted_score(ticker: str) -> Optional[dict]:
     return compute_regime_weighted_score_batch([ticker]).get(ticker)
+
+
+def compute_regime_weighted_score_as_of(ticker: str, as_of_date: str) -> Optional[dict]:
+    """Single-ticker Regime-Weighted Conviction Score reconstructed as of a historical date
+    (YYYY-MM-DD) — used by alert_referee_engine.backfill_historical_confluence_features()."""
+    return compute_regime_weighted_score_batch([ticker], as_of=as_of_date).get(ticker)
