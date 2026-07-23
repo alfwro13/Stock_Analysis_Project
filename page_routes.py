@@ -297,7 +297,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     config_data = load_config()
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
-    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
+    position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
     account_options = [{"id": "all", "name": "Global (All Accounts)"}]
     for acc in discovered_accounts:
         if acc["id"] in active_accounts:
@@ -569,19 +569,19 @@ async def account_detail_page(request: Request, account_id: int):
         chart_period = "max"
     chart_initial = filter_value_history_by_period(get_value_history(account_id), chart_period)
 
-    holdings = holdings_with_market_value(account_id)
+    holdings = await run_in_threadpool(holdings_with_market_value, account_id)
     pricing_warning = stale_pricing_warning(holdings)
 
     performance = get_performance_cache(account_id)
     if performance is None:
-        refresh_performance_cache(account_id)
+        await run_in_threadpool(refresh_performance_cache, account_id)
         performance = get_performance_cache(account_id)
 
     return templates.TemplateResponse(
         request=request, name="account_detail.html",
         context={
             "account": acc,
-            "summary": account_summary(account_id),
+            "summary": await run_in_threadpool(account_summary, account_id),
             "holdings": holdings,
             "pricing_warning": pricing_warning,
             "closed_positions": closed_positions(account_id),
@@ -627,12 +627,12 @@ async def pension_account_detail_page(request: Request, account_id: int):
     if value_history:
         value_df = pd.DataFrame(value_history).set_index("snapshot_date")
         value_df.index = pd.to_datetime(value_df.index)
-        benchmark_series = pension_benchmark_overlay(account_id, value_df)
+        benchmark_series = await run_in_threadpool(pension_benchmark_overlay, account_id, value_df)
         value_chart_html = create_pension_value_chart(value_df, benchmark_series)
     else:
         value_chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
 
-    summary = account_summary(account_id)
+    summary = await run_in_threadpool(account_summary, account_id)
     return templates.TemplateResponse(
         request=request, name="account_detail_pension.html",
         context={
@@ -849,7 +849,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
 
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
+    position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
     optional_columns = table_columns_helpers.columns_for_page("watchlist")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "watchlist")
     views = table_columns_helpers.resolve_views(config_data, "watchlist")
@@ -1858,7 +1858,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
     if user_asset and stock_data and stock_data.get('current_price'):
         priced = current_price_map([ticker]).get(ticker)
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
-        exchange_rate = get_rate_from_base(stock_data['currency'])
+        exchange_rate = await run_in_threadpool(get_rate_from_base, stock_data['currency'])
         price_in_pence = user_asset.get('price_in_pence', False)
 
         global_math = calculate_pnl(
@@ -1996,7 +1996,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
 
     config_data = load_config()
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
-    position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
+    position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, fake_rows)
     anomaly_chart_html = (
         "<div class='chart-ph chart-ph--lg'>"
         "<span class='chart-ph__icon'>📊</span>"
