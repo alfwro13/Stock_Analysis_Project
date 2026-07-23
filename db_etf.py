@@ -35,6 +35,26 @@ def get_etf_predictor_configs(include_deleted: bool = False) -> list:
             conn.close()
 
 
+def get_etf_predictor_config_by_ticker(ticker: str) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM etf_predictor_configs WHERE etf_ticker = ? AND deleted_at IS NULL "
+            "ORDER BY created_at LIMIT 1",
+            (ticker,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get ETF predictor config for ticker %s: %s", ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_etf_predictor_config(config_id: int) -> Optional[dict]:
     conn = None
     try:

@@ -501,6 +501,69 @@ def test_stock_detail_trap_phase_button_hidden_when_neutral(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_etf_predictor_button_shown_when_configured(client):
+    """A ticker configured as an ETF Predictor's etf_ticker must get a sub-menu button
+    linking to that config's detail page."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZETFBTN', 50.0, 'USD', 'ETF')"
+        )
+        cursor = conn.execute(
+            "INSERT INTO etf_predictor_configs (name, etf_ticker, constituents) "
+            "VALUES ('ZZETFBTN Test Config', 'ZZETFBTN', '[]')"
+        )
+        config_id = cursor.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        resp = client.get("/stock/ZZETFBTN", follow_redirects=True)
+        assert resp.status_code < 500
+        assert f'<a href="/etf-predictor/{config_id}" class="btn btn-outline-secondary btn-sm">&#128202; ETF Predictor</a>' in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZETFBTN'")
+            conn.execute("DELETE FROM etf_predictor_configs WHERE etf_ticker = 'ZZETFBTN'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
+def test_stock_detail_etf_predictor_button_hidden_when_not_configured(client):
+    """A ticker with no matching ETF Predictor config must not show the button."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZNOETFBTN', 50.0, 'USD', 'EQUITY')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        resp = client.get("/stock/ZZNOETFBTN", follow_redirects=True)
+        assert resp.status_code < 500
+        assert "ETF Predictor</a>" not in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZNOETFBTN'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
     """A ticker with no built-in-account holding but present on the Watchlist has no
     "Your Position" box (portfolio_math is None), but must still get a standalone

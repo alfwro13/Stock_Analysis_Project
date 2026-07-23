@@ -238,7 +238,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 #### `etf_predictor_configs`
 * **Purpose:** Configuration for each generic ETF predictor setup (multi-config, user-managed from Settings).
 * **Key Columns:** `id` (PK autoincrement), `name`, `etf_ticker`, `constituents` (JSON array of `{ticker, weight}`), `enabled`, `auto_schedule`, `pre_run_time` (HH:MM UTC), `post_run_time` (HH:MM UTC), `deleted_at` (soft-delete), `created_at`.
-* **Notes:** Weights stored normalised to sum=1.0. Soft-delete preserves prediction history. Scheduler jobs are registered dynamically from this table at startup.
+* **Notes:** Weights stored normalised to sum=1.0. Soft-delete preserves prediction history. Scheduler jobs are registered dynamically from this table at startup. **Stock Detail cross-link** (added July 2026): a ticker matching some non-deleted config's `etf_ticker` gets a sub-menu button — styled and positioned identically to the "Detected Patterns" button, after it — labeled "ETF Predictor" and linking to that config's `/etf-predictor/{config_id}` detail page (`db_etf.get_etf_predictor_config_by_ticker()`, called from `page_routes.stock_detail()`). The button shows regardless of the config's own `enabled` flag, since a disabled config still has viewable prediction history.
 
 #### `etf_predictor_predictions`
 * **Purpose:** Prediction log per config — tracks predicted vs actual open prices and accuracy metrics over time.
