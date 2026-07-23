@@ -436,6 +436,71 @@ def test_stock_detail_shows_setup_and_derived_tags(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_trap_phase_button_shown_when_not_neutral(client):
+    """A ticker with a non-NEUTRAL Trap Monitor phase must get a sub-menu button labeled
+    with the phase's display name, linking to the shared /trap-monitor page."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZTRAPBTN', 50.0, 'USD', 'EQUITY')"
+        )
+        conn.execute(
+            "INSERT INTO trap_monitor_results (ticker, phase) VALUES ('ZZTRAPBTN', 'ACTIVE_SELLOFF')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        resp = client.get("/stock/ZZTRAPBTN", follow_redirects=True)
+        assert resp.status_code < 500
+        assert '<a href="/trap-monitor" class="btn btn-outline-secondary btn-sm">Active Selloff</a>' in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZTRAPBTN'")
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'ZZTRAPBTN'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
+def test_stock_detail_trap_phase_button_hidden_when_neutral(client):
+    """A ticker whose Trap Monitor phase is NEUTRAL must not show the trap-phase button."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type) "
+            "VALUES ('ZZTRAPNEUT', 50.0, 'USD', 'EQUITY')"
+        )
+        conn.execute(
+            "INSERT INTO trap_monitor_results (ticker, phase) VALUES ('ZZTRAPNEUT', 'NEUTRAL')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        resp = client.get("/stock/ZZTRAPNEUT", follow_redirects=True)
+        assert resp.status_code < 500
+        assert '<a href="/trap-monitor"' not in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZTRAPNEUT'")
+            conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'ZZTRAPNEUT'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
     """A ticker with no built-in-account holding but present on the Watchlist has no
     "Your Position" box (portfolio_math is None), but must still get a standalone
