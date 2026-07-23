@@ -64,6 +64,9 @@
     {% if stock.pattern_tags %}
     <a href="/pattern-detection/{{ stock.ticker }}" class="btn btn-outline-secondary btn-sm">&#128200; Detected Patterns</a>
     {% endif %}
+    {% if stock.trap_phase_label %}
+    <a href="/trap-monitor" class="btn btn-outline-secondary btn-sm">{{ stock.trap_phase_label }}</a>
+    {% endif %}
 </nav>
 {% set show_indexes = False %}
 {% include 'macro_cards.html' %}

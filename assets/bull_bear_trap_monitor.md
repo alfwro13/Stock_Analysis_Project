@@ -227,6 +227,8 @@ The page renders a unified view of all four signals per ticker:
 
 **Run Scan Now** — a button that posts to `POST /api/trap-monitor/run`, disables with a spinner while running, and re-fetches results on completion.
 
+**Stock Detail cross-link** — a ticker's current phase already surfaces as a `setup-tag` badge next to the Stock Detail page header (via `page_helpers.compute_badge_tags()`'s `trap_phase_label`, `NEUTRAL` excluded). It also gets a sub-menu button — styled and positioned identically to the "Detected Patterns" button, after it — labeled with the phase's display name (e.g. "Active Selloff") and linking to `/trap-monitor`. Since Trap Monitor has no per-ticker detail page, the link always goes to the shared page rather than a per-ticker URL. The button is omitted whenever `trap_phase_label` is falsy (no scan row yet, or phase is `NEUTRAL`) — no new query is needed since `stock_detail()` (`page_routes.py`) already joins `trap_monitor_results` and runs `compute_badge_tags()` for the existing badge.
+
 ---
 
 ## 9. Prediction Accuracy Tracking
