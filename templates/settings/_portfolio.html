@@ -25,6 +25,12 @@
                             value="{{ config.POSITION_SIZING.STOP_MULTIPLE | default(2.0) }}"
                             min="1" max="5" step="0.5">
                     </div>
+                    <div class="form-group">
+                        <label><abbr title="Minimum reward:risk ratio a bullish Pillar Confluence setup must clear before it's labeled a Buy Recommendation. R:R = (take-profit − entry) / (entry − ATR stop-loss).">Min. Risk/Reward Ratio</abbr></label>
+                        <input type="number" id="POSITION_SIZING_MIN_RISK_REWARD" class="form-control"
+                            value="{{ config.POSITION_SIZING.MIN_RISK_REWARD | default(1.5) }}"
+                            min="0.5" max="10" step="0.1">
+                    </div>
                 </div>
             </details>
 

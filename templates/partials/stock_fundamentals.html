@@ -90,6 +90,18 @@
                 {% endif %}
             </span>
         </div>
+        <div class="data-row">
+            <span class="data-label"><abbr title="Bullish Pillar Confluence that also clears the Recommendation Risk/Reward Gate (reward:risk from the ATR-based stop-loss vs. a measured-move pattern target or the ML Quantile Regression Q90 band). No Kelly Criterion — this app deliberately uses fixed-fractional ATR sizing instead.">Buy Recommendation:</abbr></span>
+            <span class="data-value">
+                {% if buy_recommendation and buy_recommendation.recommended %}
+                    <span class="metric-excellent">🎯 Yes (R:R {{ buy_recommendation.risk_reward.risk_reward }}:1)</span>
+                {% elif buy_recommendation %}
+                    <span class="metric-neutral">No — R:R {{ buy_recommendation.risk_reward.risk_reward }}:1 below minimum {{ buy_recommendation.risk_reward.min_risk_reward }}:1</span>
+                {% else %}
+                    <span class="metric-neutral">No signal</span>
+                {% endif %}
+            </span>
+        </div>
     </div>
 
     <div class="data-card">

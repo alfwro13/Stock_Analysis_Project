@@ -10,16 +10,17 @@ require the others — this is why they shipped as separate PRs rather than one 
 | A | Signal Pillar Confluence | Shipped |
 | B | Regime-Weighted Conviction Score | Shipped |
 | C | Cross-Engine Alert Referee | Shipped |
-| D | Recommendation Risk/Reward Gate | Planned — not yet built |
+| D | Recommendation Risk/Reward Gate | Shipped |
 
-Engine: `score_analysis.py` (Parts A and B, plus the as-of variants Part C's historical backfill
-uses; Part D is planned to live in `position_sizing.py` instead, since that module already owns
-the ATR stop-loss math it needs) and `alert_referee_engine.py` (Part C, generalizing the
-existing Trap Monitor referee pilot). Parts A and B remain read-only over already-persisted
-engine outputs with no new DB tables/scheduler jobs; Part C adds 5 columns to
-`trap_phase_history`/`pattern_detection_history` (populated at scan time, no new fetch) and one
-new scheduler job (`confluence_referee_training_job`, training only — reusing the existing
-`trap_monitor_job` intraday cadence for shadow evaluation rather than adding a second one).
+Engine: `score_analysis.py` (Parts A, B and the combined Buy Recommendation logic, plus the
+as-of variants Part C's historical backfill uses), `position_sizing.py` (Part D's risk/reward
+math, since that module already owns the ATR stop-loss math it needs), and
+`alert_referee_engine.py` (Part C, generalizing the existing Trap Monitor referee pilot). Parts
+A, B and D remain read-only over already-persisted engine outputs with no new DB tables/
+scheduler jobs; Part C adds 5 columns to `trap_phase_history`/`pattern_detection_history`
+(populated at scan time, no new fetch) and one new scheduler job
+(`confluence_referee_training_job`, training only — reusing the existing `trap_monitor_job`
+intraday cadence for shadow evaluation rather than adding a second one).
 
 ---
 
@@ -227,12 +228,50 @@ populating from the day this shipped forward (aside from the one-time historical
 `readiness_status(CONFLUENCE_ENGINE)`'s `current` count starts low regardless of how much history
 `trap_phase_history`/`pattern_detection_history` already had before this change.
 
-## D. Recommendation Risk/Reward Gate (planned)
+## D. Recommendation Risk/Reward Gate
 
-Will require a minimum risk/reward ratio (computed from this app's existing ATR-based
-stop-loss math in `position_sizing.py`) before labeling a ticker a "Buy Recommendation" from
-Part A/B. Deliberately **not** a Kelly Criterion calculation — this app already rejected Kelly
-sizing in favor of fixed-fractional ATR sizing (see the Position Sizing glossary entry) because
-Kelly's "optimal" sizing is too aggressive when the edge estimate isn't reliable; this reuses
-that same rationale rather than reopening it. Not yet built — documented here in advance;
-will be fleshed out in this file when implemented.
+Requires a minimum reward:risk ratio, computed entirely from this app's existing ATR-based
+stop-loss math, before a ticker is labeled a **Buy Recommendation** — the pipeline's final,
+synthesized output. Deliberately **not** a Kelly Criterion calculation — this app already
+rejected Kelly sizing in favor of fixed-fractional ATR sizing (see the Position Sizing glossary
+entry) because Kelly's "optimal" sizing is too aggressive when the edge estimate isn't reliable;
+this reuses that same rationale rather than reopening it.
+
+`position_sizing.passes_risk_reward_gate(ticker)` / `passes_risk_reward_gate_batch(tickers)`
+return `None` (no signal) when a required input is missing, otherwise `{"entry_price",
+"stop_price", "take_profit", "take_profit_source", "risk_reward", "min_risk_reward", "passes"}`.
+
+**Math (all existing functions/tables, no new fetch):**
+- **Entry** — `stock_signals.current_price`.
+- **Stop** — `calculate_position_size()`'s ATR-based `stop_price` output (the exact same
+  function and formula the Position Sizing tool already uses), fed the latest `quant_signals.atr_pct`
+  for the ticker and the configured `ACCOUNT_VALUE`/`RISK_PCT`/`STOP_MULTIPLE` (which don't
+  actually affect `stop_price`'s formula, but `calculate_position_size()` is called as specified
+  rather than reimplementing its stop-price formula a second time).
+- **Take-profit** — the highest `pattern_detection_results.measured_target` among **CONFIRMED**
+  rows whose own family/pattern_type resolves to an "up" direction (via the same
+  `pattern_detection_engine.DETECTORS` registry Part A's Technical pillar reads — never a
+  hardcoded family list, so a new pattern family is automatically eligible with no changes here).
+  If no qualifying confirmed pattern exists, falls back to the ML Quantile Regression Q90 band
+  (`db_helpers.get_latest_quantile_bands()` — the same band already shown on the Position
+  Targets panel). `None` if neither is available.
+- **Gate:** `risk_reward = (take_profit - entry_price) / (entry_price - stop_price)`; `passes`
+  is true when `risk_reward >= MIN_RISK_REWARD` (a new key in the existing `POSITION_SIZING`
+  config block, default 1.5, editable in Settings → Position Sizing Defaults — no new panel).
+
+**Buy Recommendation itself** (`score_analysis.evaluate_buy_recommendation(ticker)` /
+`evaluate_buy_recommendation_batch(tickers)`) combines Part A and Part D:
+`recommended = (Part A's Pillar Confluence direction == "bullish") AND (Part D's gate passes)`.
+Part B's Regime-Weighted Conviction Score is attached to the result as context only — it's
+documented elsewhere as deliberately never a competing Buy/Sell verdict, so it isn't part of
+this boolean either; Pillar Confluence's own bullish/bearish call is the only directional
+trigger between Parts A and B. Returns `None` (not a candidate) whenever confluence isn't
+bullish or the Risk/Reward Gate itself returned `None` — a non-`None`, non-recommended result
+(bullish confluence that failed the gate) is still returned so the UI can show *why* a ticker
+didn't qualify rather than omitting it silently.
+
+**Surfaced as:** a `🎯 Buy Recommendation (R:R X:1)` badge on Portfolio/Watchlist (in the same
+"Setups & Tags" cell as Pillar Confluence/Trap Monitor/Bubble Radar/Pattern Detection tags), a
+"Buy Recommendation" row on Stock Detail (showing the computed ratio and, when it fails, the
+reason), and an optional "Buy Recommendation" column via the Columns picker. Glossary:
+`templates/glossary/_buy_recommendation.html`.

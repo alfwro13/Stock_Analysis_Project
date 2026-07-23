@@ -393,6 +393,14 @@ window.PORTFOLIO_VIEWS = {{ views | tojson }};
                     </div>
                 {% endif %}
 
+                {% if item.buy_recommendation %}
+                    <div class="inline-block">
+                        <abbr title="Bullish Pillar Confluence that also clears the Recommendation Risk/Reward Gate — reward:risk computed from the ATR-based stop-loss and a measured-move/ML quantile take-profit target." class="no-decoration-abbr">
+                            <span class="setup-tag">🎯 {{ item.buy_recommendation }}</span>
+                        </abbr>
+                    </div>
+                {% endif %}
+
                 {{ pattern_tags(item.pattern_tags) }}
             </td>
             <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}{% if risk_paused and 'BUY' in (item.overall_signal or '') %} <abbr class="badge-warn" title="Portfolio Heat Index is Red — new buy signals are flagged for extra caution until risk cools down.">RISK PAUSED</abbr>{% endif %}</td>

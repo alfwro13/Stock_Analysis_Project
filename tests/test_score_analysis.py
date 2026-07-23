@@ -8,9 +8,12 @@ from score_analysis import (
     _available_from,
     _compute_return,
     _pillar_vote,
+    buy_recommendation_label,
     compute_regime_weighted_score,
     compute_regime_weighted_score_as_of,
     compute_regime_weighted_score_batch,
+    evaluate_buy_recommendation,
+    evaluate_buy_recommendation_batch,
     evaluate_pillar_confluence,
     evaluate_pillar_confluence_as_of,
     evaluate_pillar_confluence_batch,
@@ -626,3 +629,84 @@ class TestComputeRegimeWeightedScoreAsOf:
         with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
             result = compute_regime_weighted_score_as_of("ASOF7", _AS_OF_DATE)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# evaluate_buy_recommendation_batch (Buy-Signal Confluence Pipeline Part D)
+#
+# Combines Part A's Pillar Confluence with Part D's Risk/Reward Gate — tested here at the
+# combining-logic level, with both source functions mocked, since each is already covered by
+# its own dedicated tests (TestEvaluatePillarConfluence above, TestPassesRiskRewardGate in
+# tests/test_position_sizing.py).
+# ---------------------------------------------------------------------------
+
+_BULLISH_CONFLUENCE = {"bullish_pillars": ["technical", "ml"], "bearish_pillars": [], "confluence": True, "direction": "bullish"}
+_BEARISH_CONFLUENCE = {"bullish_pillars": [], "bearish_pillars": ["technical", "ml"], "confluence": True, "direction": "bearish"}
+_NO_CONFLUENCE = {"bullish_pillars": [], "bearish_pillars": [], "confluence": False, "direction": None}
+_PASSING_RR = {"entry_price": 100.0, "stop_price": 92.0, "take_profit": 120.0,
+               "take_profit_source": "pattern", "risk_reward": 2.5, "min_risk_reward": 1.5, "passes": True}
+_FAILING_RR = {**_PASSING_RR, "risk_reward": 0.5, "passes": False}
+
+
+class TestEvaluateBuyRecommendation:
+    def test_bullish_confluence_and_passing_gate_is_recommended(self):
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value={"BR1": _BULLISH_CONFLUENCE}), \
+             patch("position_sizing.passes_risk_reward_gate_batch", return_value={"BR1": _PASSING_RR}):
+            result = evaluate_buy_recommendation("BR1")
+        assert result is not None
+        assert result["recommended"] is True
+        assert result["risk_reward"] == _PASSING_RR
+        assert result["pillar_confluence"] == _BULLISH_CONFLUENCE
+
+    def test_bullish_confluence_but_failing_gate_is_not_recommended_but_not_none(self):
+        """A bullish setup that fails the R:R gate still returns a result (so the UI can show
+        why), just with recommended=False — only a genuine non-candidate maps to None."""
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value={"BR2": _BULLISH_CONFLUENCE}), \
+             patch("position_sizing.passes_risk_reward_gate_batch", return_value={"BR2": _FAILING_RR}):
+            result = evaluate_buy_recommendation("BR2")
+        assert result is not None
+        assert result["recommended"] is False
+
+    def test_bearish_confluence_never_calls_rr_gate_and_returns_none(self):
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value={"BR3": _BEARISH_CONFLUENCE}), \
+             patch("position_sizing.passes_risk_reward_gate_batch") as mock_rr:
+            result = evaluate_buy_recommendation("BR3")
+        assert result is None
+        mock_rr.assert_not_called()
+
+    def test_no_confluence_returns_none(self):
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value={"BR4": _NO_CONFLUENCE}), \
+             patch("position_sizing.passes_risk_reward_gate_batch") as mock_rr:
+            result = evaluate_buy_recommendation("BR4")
+        assert result is None
+        mock_rr.assert_not_called()
+
+    def test_bullish_confluence_but_rr_gate_has_no_signal_returns_none(self):
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value={"BR5": _BULLISH_CONFLUENCE}), \
+             patch("position_sizing.passes_risk_reward_gate_batch", return_value={"BR5": None}):
+            result = evaluate_buy_recommendation("BR5")
+        assert result is None
+
+    def test_empty_ticker_list(self):
+        assert evaluate_buy_recommendation_batch([]) == {}
+
+    def test_batch_matches_single_ticker_result(self):
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value={"BR6": _BULLISH_CONFLUENCE}), \
+             patch("position_sizing.passes_risk_reward_gate_batch", return_value={"BR6": _PASSING_RR}), \
+             patch("score_analysis.compute_regime_weighted_score_batch", return_value={"BR6": None}):
+            batch_result = evaluate_buy_recommendation_batch(["BR6"])
+            single_result = evaluate_buy_recommendation("BR6")
+        assert batch_result["BR6"] == single_result
+
+
+class TestBuyRecommendationLabel:
+    def test_recommended_result_returns_label_with_ratio(self):
+        result = {"recommended": True, "risk_reward": _PASSING_RR}
+        assert buy_recommendation_label(result) == "Buy Recommendation (R:R 2.5:1)"
+
+    def test_not_recommended_returns_none(self):
+        result = {"recommended": False, "risk_reward": _FAILING_RR}
+        assert buy_recommendation_label(result) is None
+
+    def test_none_result_returns_none(self):
+        assert buy_recommendation_label(None) is None

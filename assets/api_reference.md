@@ -1131,7 +1131,8 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
   "POSITION_SIZING": {
     "ACCOUNT_VALUE": 50000.0,
     "RISK_PCT": 1.0,
-    "STOP_MULTIPLE": 2.0
+    "STOP_MULTIPLE": 2.0,
+    "MIN_RISK_REWARD": 1.5
   },
   "REPORTS_DEFAULTS": {
     "MR_MAX_RSI": 35,

@@ -31,6 +31,7 @@ LEVELS = [
     ("pairs-spread-monitor", "Pairs Spread Monitor"),
     ("pillar-confluence", "Signal Pillar Confluence"),
     ("regime-weighted-score", "Regime-Weighted Conviction Score"),
+    ("buy-recommendation", "Buy Recommendation"),
     ("predicted-movers", "Predicted Movers"),
     ("ticker-notes", "Ticker Notes"),
     ("forensic-screener", "Forensic Screener"),
@@ -2205,6 +2206,59 @@ CARDS = [
             "Regulatory rules prohibit using volatility measures in a scoring formula",
         ],
         "explanation": """<p>During a <strong>Crash</strong> regime, or whenever the Isolation Forest's market-wide stress score crosses a configurable threshold, the score is suppressed entirely rather than reweighted — it shows as "No signal," never a number. None of the four inputs were validated to mean anything during a genuine market crash, and the market-stress score itself is non-directional (high = unusual, not bullish or bearish), so it can't be folded into a weighted blend the way the other four can. A hard veto is more honest here than fabricating a reweighted number from inputs whose real-world meaning has broken down.</p>""",
+    },
+    # --- buy-recommendation ---
+    {
+        "term_key": "what-buy-recommendation-combines",
+        "section_id": "buy-recommendation",
+        "term_title": "What Buy Recommendation Combines",
+        "question": "Does the Regime-Weighted Conviction Score gate whether a ticker gets labeled a Buy Recommendation?",
+        "answer": "No — only bullish Pillar Confluence plus the Risk/Reward Gate gate it; the Conviction Score is shown as context only",
+        "distractors": [
+            "Yes — a ticker needs a Conviction Score above 50 as well as bullish confluence",
+            "Yes — the Conviction Score alone can trigger a Buy Recommendation without confluence",
+            "No — only the Risk/Reward Gate matters, confluence direction is irrelevant",
+        ],
+        "explanation": """<p>The <strong>Buy Recommendation</strong> tag is the last stage of the Buy-Signal Confluence Pipeline: a ticker is only labeled a Buy Recommendation when it has a <strong>bullish Signal Pillar Confluence</strong> (at least two of the Technical, Statistical, and ML pillars agree on "up," with none disagreeing) <em>and</em> that setup clears the <strong>Recommendation Risk/Reward Gate</strong> below. Regime-Weighted Conviction Score is carried alongside as context — it's documented elsewhere as deliberately never a competing Buy/Sell verdict, so it isn't part of this gate either; Pillar Confluence's own bullish/bearish call is the only directional trigger.</p>""",
+    },
+    {
+        "term_key": "recommendation-risk-reward-gate",
+        "section_id": "buy-recommendation",
+        "term_title": "The Recommendation Risk/Reward Gate",
+        "question": "What must be true for a bullish Pillar Confluence setup to pass the Recommendation Risk/Reward Gate?",
+        "answer": "(Take-Profit − Entry) / (Entry − Stop) must be at or above the configured Min. Risk/Reward Ratio",
+        "distractors": [
+            "The stop-loss distance must be smaller than the take-profit distance in absolute price terms only",
+            "The ML confidence score must be above the configured minimum",
+            "The ticker must already be a current portfolio holding",
+        ],
+        "explanation": """<p>A bullish setup with a poor reward-to-risk trade-off isn't worth flagging even if the signals agree. The gate computes <strong>Entry</strong> (current price), <strong>Stop</strong> (the same ATR-based stop-loss this app's Position Sizing tool already uses), and <strong>Take-Profit</strong> (see below), then requires <code>(Take-Profit − Entry) / (Entry − Stop) &gt;= Min. Risk/Reward Ratio</code> — a configurable minimum (default 1.5) editable in Settings → Position Sizing Defaults. A ticker with bullish confluence but a Risk/Reward ratio below the minimum shows as "No" with the computed ratio, not a silent omission — the operator can see exactly why it didn't qualify.</p>""",
+    },
+    {
+        "term_key": "buy-recommendation-take-profit",
+        "section_id": "buy-recommendation",
+        "term_title": "Take-Profit Target Resolution",
+        "question": "Where does the Risk/Reward Gate's take-profit target come from when a ticker has no confirmed bullish pattern?",
+        "answer": "The ML Quantile Regression Q90 band",
+        "distractors": [
+            "A fixed percentage above the current price",
+            "The ticker's 52-week high",
+            "The average analyst price target",
+        ],
+        "explanation": """<p>The take-profit target prefers a real, already-computed price objective over a generic one: if the ticker has a <strong>CONFIRMED</strong> Pattern Detection result whose own family resolves to an "up" direction, its <strong>measured-move target</strong> is used (the highest one, if more than one bullish pattern is simultaneously confirmed). Otherwise the <strong>ML Quantile Regression Q90 band</strong> — the same upper-band prediction already shown on the Position Targets panel — stands in. If neither is available, the gate has no signal at all (shown as "No signal," never a fabricated number).</p>""",
+    },
+    {
+        "term_key": "buy-recommendation-no-kelly",
+        "section_id": "buy-recommendation",
+        "term_title": "Why Not Kelly Criterion",
+        "question": "Why does the Recommendation Risk/Reward Gate reuse fixed-fractional ATR sizing instead of a Kelly Criterion calculation?",
+        "answer": "This app already rejected Kelly for Position Sizing since its 'optimal' bet size is too aggressive when the edge estimate isn't reliable, and this gate reuses that same rationale",
+        "distractors": [
+            "Kelly Criterion cannot be computed without options market data",
+            "Kelly Criterion is only valid for portfolios with more than 20 holdings",
+            "Kelly Criterion requires a paid data subscription this app doesn't have",
+        ],
+        "explanation": """<p>This gate deliberately reuses the app's existing <strong>fixed-fractional, ATR-based</strong> stop-loss math rather than a Kelly Criterion calculation. This app already chose fixed-fractional sizing over Kelly for Position Sizing — Kelly's theoretically "optimal" bet size is aggressive enough that it assumes your edge estimate is exactly correct, which real-world edge estimates rarely are. The Recommendation Risk/Reward Gate reuses that same rationale rather than reopening it.</p>""",
     },
     # --- predicted-movers ---
     {

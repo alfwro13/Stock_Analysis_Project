@@ -537,3 +537,54 @@ def compute_regime_weighted_score_as_of(ticker: str, as_of_date: str) -> Optiona
     """Single-ticker Regime-Weighted Conviction Score reconstructed as of a historical date
     (YYYY-MM-DD) — used by alert_referee_engine.backfill_historical_confluence_features()."""
     return compute_regime_weighted_score_batch([ticker], as_of=as_of_date).get(ticker)
+
+
+def evaluate_buy_recommendation_batch(tickers: list[str]) -> dict[str, Optional[dict]]:
+    """Buy-Signal Confluence Pipeline Part D: labels a ticker a Buy Recommendation only when
+    Idea A's Pillar Confluence is bullish AND Part D's Recommendation Risk/Reward Gate
+    (position_sizing.passes_risk_reward_gate_batch()) passes. Idea B's Regime-Weighted
+    Conviction Score is carried along as context only, not as a gating condition — it is
+    documented elsewhere as deliberately never a competing Buy/Sell verdict, so it isn't part of
+    this boolean either; Pillar Confluence's own bullish/bearish call is the only directional
+    trigger between Ideas A and B.
+
+    Maps to None (not a candidate) whenever confluence isn't bullish or the R:R gate has no
+    signal (missing entry/stop/take-profit inputs) — never a fabricated recommendation from
+    partial data, same convention as the rest of this pipeline."""
+    from position_sizing import passes_risk_reward_gate_batch
+
+    tickers = list(dict.fromkeys(tickers))
+    results: dict[str, Optional[dict]] = {t: None for t in tickers}
+    if not tickers:
+        return results
+
+    confluence_by_ticker = evaluate_pillar_confluence_batch(tickers)
+    bullish_tickers = [t for t in tickers if (confluence_by_ticker.get(t) or {}).get("direction") == "bullish"]
+    if not bullish_tickers:
+        return results
+
+    rr_by_ticker = passes_risk_reward_gate_batch(bullish_tickers)
+    regime_score_by_ticker = compute_regime_weighted_score_batch(bullish_tickers)
+
+    for ticker in bullish_tickers:
+        rr = rr_by_ticker.get(ticker)
+        if rr is None:
+            continue
+        results[ticker] = {
+            "recommended": rr["passes"],
+            "pillar_confluence": confluence_by_ticker[ticker],
+            "risk_reward": rr,
+            "regime_weighted_score": regime_score_by_ticker.get(ticker),
+        }
+
+    return results
+
+
+def evaluate_buy_recommendation(ticker: str) -> Optional[dict]:
+    return evaluate_buy_recommendation_batch([ticker]).get(ticker)
+
+
+def buy_recommendation_label(result: Optional[dict]) -> Optional[str]:
+    if not result or not result.get("recommended"):
+        return None
+    return f"Buy Recommendation (R:R {result['risk_reward']['risk_reward']}:1)"
