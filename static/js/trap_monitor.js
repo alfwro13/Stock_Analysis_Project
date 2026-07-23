@@ -6,7 +6,8 @@
     // ── Shared state: populated by each fetch, narrative builds once all three arrive ──
     var _state = { hmm: null, stress: null, trap: null };
 
-    // ── Scope filter: table-only, the situation card/alert strip/lifecycle arc stay market-wide ──
+    // ── Scope filter: applies to the table and the alert strip; the situation card's
+    // narrative/severity and the lifecycle arc highlighting stay market-wide by design ──
     var _tmAllRows = [];
     var _tmPortfolioTickers = new Set();
     var _tmWatchlistTickers = new Set();
@@ -487,7 +488,7 @@
                     _tmPortfolioTickers = new Set(data.portfolio_tickers || []);
                     _tmWatchlistTickers = new Set(data.watchlist_tickers || []);
                     renderTable(_tmFilteredRows());
-                    renderAlertStrip(data.results);
+                    renderAlertStrip(_tmFilteredRows());
                     highlightArcStep(data.results);
                     tryRenderSituation();
                 }
@@ -578,6 +579,7 @@
     document.getElementById('tm-scope-filter').addEventListener('change', function (e) {
         _tmActiveScope = e.target.value;
         renderTable(_tmFilteredRows());
+        renderAlertStrip(_tmFilteredRows());
     });
 
     // Mark state as "not arrived yet" using undefined so tryRenderSituation knows to wait
