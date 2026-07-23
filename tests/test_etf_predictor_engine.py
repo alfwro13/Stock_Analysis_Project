@@ -12,9 +12,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import database as _db
 from etf_predictor_engine import (
     detect_fx_pair,
+    fetch_shared_prediction_data,
     fill_actuals_for_config,
     find_unknown_exchange_tickers,
+    get_etf_correlation_data,
+    get_etf_intraday_overlay_data,
     get_next_open_date,
+    run_prediction,
     _compute_bias_corrected_prediction,
     _compute_blended_prediction,
     _compute_holdings_prediction,
@@ -551,3 +555,75 @@ class TestFillActualsForConfig:
             fill_actuals_for_config(cid)
 
         assert _actual_open(cid, today_str, "us_open_impact") == pytest.approx(102.0)
+
+
+@pytest.mark.db
+class TestSharedPrefetchAvoidsDuplicateFetch:
+    """The /etf-predictor/{id} page used to trigger 3 separate daily fetches and 2 separate
+    intraday fetches per load; fetch_shared_prediction_data() plus optional daily_df/
+    intraday_data params on the three consumers collapse that to one fetch each."""
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM etf_predictor_predictions WHERE config_id IN "
+                         "(SELECT id FROM etf_predictor_configs WHERE name='Backfill Test')")
+            conn.execute("DELETE FROM etf_predictor_configs WHERE name='Backfill Test'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _daily_df(self):
+        idx = pd.date_range("2026-01-01", periods=10)
+        return pd.DataFrame({"FBAK.L": [100.0 + i for i in range(10)], "A": [50.0 + i for i in range(10)]}, index=idx)
+
+    def test_fetch_shared_prediction_data_fetches_each_source_once(self):
+        cid = _make_config()
+        config = _db.get_etf_predictor_config(cid)
+        daily = self._daily_df()
+
+        with patch("etf_predictor_engine.detect_fx_pair", return_value=None), \
+             patch("etf_predictor_engine._fetch_constituent_closes", return_value=daily) as mock_daily, \
+             patch("etf_predictor_engine._fetch_intraday_data", return_value={}) as mock_intraday:
+            df, intraday = fetch_shared_prediction_data(config)
+
+        mock_daily.assert_called_once()
+        mock_intraday.assert_called_once()
+        assert df.equals(daily)
+        assert intraday == {}
+
+    def test_run_prediction_skips_refetch_when_data_prefetched(self):
+        cid = _make_config()
+        daily = self._daily_df()
+
+        with patch("etf_predictor_engine.detect_fx_pair", return_value=None), \
+             patch("etf_predictor_engine._fetch_constituent_closes") as mock_daily, \
+             patch("etf_predictor_engine._fetch_intraday_data") as mock_intraday:
+            run_prediction(cid, daily_df=daily, intraday_data={})
+
+        mock_daily.assert_not_called()
+        mock_intraday.assert_not_called()
+
+    def test_get_etf_correlation_data_skips_refetch_when_daily_df_prefetched(self):
+        cid = _make_config()
+        config = _db.get_etf_predictor_config(cid)
+        daily = self._daily_df()
+
+        with patch("etf_predictor_engine.yahoo_engine.get_price_history") as mock_fetch:
+            result = get_etf_correlation_data(config, days=5, daily_df=daily)
+
+        mock_fetch.assert_not_called()
+        assert not result["normalized_df"].empty
+
+    def test_get_etf_intraday_overlay_data_skips_refetch_when_prefetched(self):
+        cid = _make_config()
+        config = _db.get_etf_predictor_config(cid)
+        daily = self._daily_df()
+
+        with patch("etf_predictor_engine.yahoo_engine.get_intraday") as mock_intraday, \
+             patch("etf_predictor_engine.yahoo_engine.get_price_history") as mock_daily:
+            result = get_etf_intraday_overlay_data(config, intraday_data={}, daily_df=daily)
+
+        mock_intraday.assert_not_called()
+        mock_daily.assert_not_called()
+        assert result["etf_last_close"] == pytest.approx(daily["FBAK.L"].iloc[-1])

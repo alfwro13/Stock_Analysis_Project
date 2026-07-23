@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, BackgroundTasks, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACCOUNT_CURRENCIES
 import time_engine
@@ -1367,7 +1368,7 @@ async def etf_predictor_index_page(request: Request):
 async def etf_predictor_detail_page(request: Request, config_id: int):
     from database import get_etf_predictor_config
     from etf_predictor_engine import (
-        detect_etf_info, run_prediction,
+        detect_etf_info, run_prediction, fetch_shared_prediction_data,
         get_etf_correlation_data, get_etf_intraday_overlay_data,
     )
     cfg = get_etf_predictor_config(config_id)
@@ -1378,8 +1379,16 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
     etf_info = detect_etf_info(cfg["etf_ticker"])
     constituent_tickers = [h["ticker"] for h in cfg["constituents"]]
 
+    # Fetched once here (off the event loop) and reused by run_prediction/correlation/overlay
+    # below instead of each independently re-fetching the same tickers.
     try:
-        prediction = run_prediction(config_id)
+        daily_df, intraday_data = await run_in_threadpool(fetch_shared_prediction_data, cfg)
+    except Exception as exc:
+        logger.warning("etf_predictor_detail shared fetch failed: %s", exc)
+        daily_df, intraday_data = None, None
+
+    try:
+        prediction = await run_in_threadpool(run_prediction, config_id, daily_df, intraday_data)
     except Exception as exc:
         logger.error("etf_predictor_detail run_prediction failed: %s", exc)
         prediction = {"status": "error", "error": str(exc), "predicted_price": None}
@@ -1390,7 +1399,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
     overlay_chart_html = error_html
 
     try:
-        corr_data = get_etf_correlation_data(cfg, days=60)
+        corr_data = await run_in_threadpool(get_etf_correlation_data, cfg, 60, daily_df)
         if not corr_data["normalized_df"].empty:
             correlation_chart_html = create_etf_correlation_chart(
                 cfg["etf_ticker"],
@@ -1417,7 +1426,9 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
         logger.warning("etf_predictor_detail pred charts failed: %s", exc)
 
     try:
-        overlay_data = get_etf_intraday_overlay_data(cfg, prediction)
+        overlay_data = await run_in_threadpool(
+            get_etf_intraday_overlay_data, cfg, prediction, intraday_data, daily_df
+        )
         overlay_chart_html = create_etf_overlay_chart(
             cfg["etf_ticker"],
             etf_info["exchange"],

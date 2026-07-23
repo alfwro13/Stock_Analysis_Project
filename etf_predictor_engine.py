@@ -456,7 +456,30 @@ def _compute_blended_prediction(
     }
 
 
-def run_prediction(config_id: int) -> dict:
+def fetch_shared_prediction_data(config: dict) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+    """Single fetch of daily closes + intraday bars, reused by run_prediction/correlation/overlay
+    instead of each independently re-fetching the same tickers."""
+    etf_ticker = config["etf_ticker"]
+    constituent_tickers = [h["ticker"] for h in config["constituents"]]
+    etf_info = detect_etf_info(etf_ticker)
+    constituent_ccys = _constituent_currencies(constituent_tickers)
+    fx_pair = detect_fx_pair(etf_info["currency"], constituent_ccys)
+    config["_fx_pair"] = fx_pair
+
+    daily_df = _fetch_constituent_closes(config)
+    try:
+        intraday = _fetch_intraday_data(config)
+    except Exception as exc:
+        logger.warning("fetch_shared_prediction_data intraday fetch failed for %s: %s", etf_ticker, exc)
+        intraday = {}
+    return daily_df, intraday
+
+
+def run_prediction(
+    config_id: int,
+    daily_df: pd.DataFrame | None = None,
+    intraday_data: dict[str, pd.DataFrame] | None = None,
+) -> dict:
     config = get_etf_predictor_config(config_id)
     if config is None:
         return {"status": "error", "error": f"Config {config_id} not found", "predicted_price": None}
@@ -475,7 +498,9 @@ def run_prediction(config_id: int) -> dict:
 
     config["_fx_pair"] = fx_pair
 
-    df = _fetch_constituent_closes(config)
+    # Copy — this function's own ETF-missing fallback below mutates df in place, and the
+    # caller may be reusing this same daily_df object for the correlation/overlay calls too.
+    df = daily_df.copy() if daily_df is not None else _fetch_constituent_closes(config)
 
     if etf_ticker not in df.columns or df[etf_ticker].dropna().empty:
         fallback = yahoo_engine.get_price_history([etf_ticker], period="65d", interval="1d")
@@ -506,7 +531,7 @@ def run_prediction(config_id: int) -> dict:
     intraday_returns: dict[str, float] | None = None
 
     try:
-        intraday = _fetch_intraday_data(config)
+        intraday = intraday_data if intraday_data is not None else _fetch_intraday_data(config)
         intraday_returns, signal_source = _compute_intraday_returns(
             intraday, constituent_tickers,
             etf_exchange, constituent_exchanges,
@@ -600,22 +625,26 @@ def run_prediction(config_id: int) -> dict:
     return result
 
 
-def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
+def get_etf_correlation_data(config: dict, days: int = 60, daily_df: pd.DataFrame | None = None) -> dict:
     constituent_tickers = [h["ticker"] for h in config["constituents"]]
     etf_ticker = config["etf_ticker"]
-    etf_info = detect_etf_info(etf_ticker)
-    constituent_ccys = _constituent_currencies(constituent_tickers)
-    fx_pair = detect_fx_pair(etf_info["currency"], constituent_ccys)
 
-    all_tickers = constituent_tickers + [etf_ticker]
-    if fx_pair:
-        all_tickers.append(fx_pair)
+    if daily_df is not None:
+        df = daily_df
+    else:
+        etf_info = detect_etf_info(etf_ticker)
+        constituent_ccys = _constituent_currencies(constituent_tickers)
+        fx_pair = detect_fx_pair(etf_info["currency"], constituent_ccys)
 
-    ticker_dfs = yahoo_engine.get_price_history(all_tickers, period=f"{days + 5}d", interval="1d")
-    if not ticker_dfs:
-        return {"normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data"}
+        all_tickers = constituent_tickers + [etf_ticker]
+        if fx_pair:
+            all_tickers.append(fx_pair)
 
-    df = pd.DataFrame({t: d["Close"] for t, d in ticker_dfs.items() if "Close" in d.columns})
+        ticker_dfs = yahoo_engine.get_price_history(all_tickers, period=f"{days + 5}d", interval="1d")
+        if not ticker_dfs:
+            return {"normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data"}
+        df = pd.DataFrame({t: d["Close"] for t, d in ticker_dfs.items() if "Close" in d.columns})
+
     df = df.sort_index().dropna(how="all").tail(days)
 
     if df.empty:
@@ -645,7 +674,12 @@ def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
     return {"normalized_df": normalized, "raw_df": df, "rolling_corr": rolling_corr, "error": None}
 
 
-def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) -> dict:
+def get_etf_intraday_overlay_data(
+    config: dict,
+    prediction: dict | None = None,
+    intraday_data: dict[str, pd.DataFrame] | None = None,
+    daily_df: pd.DataFrame | None = None,
+) -> dict:
     now_utc = datetime.now(timezone.utc)
     etf_ticker = config["etf_ticker"]
     constituent_tickers = [h["ticker"] for h in config["constituents"]]
@@ -656,7 +690,10 @@ def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) 
     window_start = now_utc - timedelta(hours=25)
 
     all_tickers = [etf_ticker] + constituent_tickers
-    intraday = yahoo_engine.get_intraday(all_tickers, period="5d", interval="5m", prepost=True)
+    intraday = (
+        intraday_data if intraday_data is not None
+        else yahoo_engine.get_intraday(all_tickers, period="5d", interval="5m", prepost=True)
+    )
 
     def _strip_tz(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
@@ -682,10 +719,11 @@ def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) 
         if not bars.empty:
             constituent_series[ticker] = bars
 
-    daily_dfs = yahoo_engine.get_price_history([etf_ticker] + constituent_tickers, period="10d", interval="1d")
-    daily_df = pd.DataFrame(
-        {t: d["Close"] for t, d in (daily_dfs or {}).items() if "Close" in d.columns}
-    )
+    if daily_df is None:
+        daily_dfs = yahoo_engine.get_price_history([etf_ticker] + constituent_tickers, period="10d", interval="1d")
+        daily_df = pd.DataFrame(
+            {t: d["Close"] for t, d in (daily_dfs or {}).items() if "Close" in d.columns}
+        )
 
     etf_last_close = 0.0
     if etf_ticker in daily_df.columns:

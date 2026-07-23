@@ -1441,14 +1441,23 @@ def test_etf_predictor_detail_renders_bias_and_blend_tiles(client, monkeypatch):
         "error": None,
     }
     try:
-        monkeypatch.setattr(etf_predictor_engine, "run_prediction", lambda cid: fake_prediction)
+        monkeypatch.setattr(
+            etf_predictor_engine, "fetch_shared_prediction_data",
+            lambda cfg: (pd.DataFrame(), {}),
+        )
+        monkeypatch.setattr(
+            etf_predictor_engine, "run_prediction",
+            lambda cid, daily_df=None, intraday_data=None: fake_prediction,
+        )
         monkeypatch.setattr(
             etf_predictor_engine, "get_etf_correlation_data",
-            lambda cfg, days=60: {"normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data"},
+            lambda cfg, days=60, daily_df=None: {
+                "normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data",
+            },
         )
         monkeypatch.setattr(
             etf_predictor_engine, "get_etf_intraday_overlay_data",
-            lambda cfg, prediction=None: {
+            lambda cfg, prediction=None, intraday_data=None, daily_df=None: {
                 "etf_series": pd.Series(dtype=float), "constituent_series": {}, "now_utc": None,
                 "trading_date": None, "etf_last_close": 100.0, "constituent_prev_closes": {},
                 "prediction": prediction or {}, "next_open_date": None,
