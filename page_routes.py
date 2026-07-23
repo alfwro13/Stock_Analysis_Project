@@ -1505,7 +1505,7 @@ async def ai_contagion_page(request: Request):
     from ai_contagion_engine import get_ai_contagion_data
     error_html = "<p class='error-text'>Data unavailable — please try again later.</p>"
     try:
-        data = get_ai_contagion_data(days=30)
+        data = await run_in_threadpool(get_ai_contagion_data, 30)
         daily_dfs = data["daily_dfs"]
         intraday_dfs = data["intraday_dfs"]
 
