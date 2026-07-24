@@ -335,7 +335,7 @@
                     {% set up = earnings_vol["drift_up_count_" ~ h ~ "d"] %}
                     {% set n = earnings_vol["drift_sample_size_" ~ h ~ "d"] %}
                     {% set resolved = latest_resolved_drift[h] %}
-                    <div class="data-row {% if loop.first %}mt-10{% endif %}">
+                    <div class="data-row data-row-inline {% if loop.first %}mt-10{% endif %}">
                         <span class="data-label"><abbr title="Signed average price change {{ h }} trading day{{ 's' if h != 1 else '' }} after each of the ticker's last (up to) 4 earnings reports, measured from the close right before the report. Same figure shown on the Earnings Volatility page.">Drift {{ h }}D:</abbr></span>
                         <span class="data-value">
                             <span class="{% if avg is not none and avg > 0 %}text-success{% elif avg is not none and avg < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
