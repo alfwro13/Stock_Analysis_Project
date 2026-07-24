@@ -483,6 +483,21 @@ class TestGetTickerInfo:
 
         assert result is None
 
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_passes_singleton_lock_to_connection_boundary(self, mock_ctx):
+        # yahoo_engine._yf_singleton_lock must reach tools.network_engine.yahoo_connection_boundary
+        # so a retry's backoff sleep can release it (see _sleep_outside_lock) — a call site that
+        # forgets to pass lock= would silently keep the old sleep-inside-the-lock behavior.
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {"symbol": "AAPL"}
+            self.eng.get_ticker_info("AAPL")
+
+        import yahoo_engine as ye
+        mock_ctx.assert_called_once_with("Ticker Info: AAPL", lock=ye._yf_singleton_lock)
+
 
 class TestGetQuoteSnapshot:
 

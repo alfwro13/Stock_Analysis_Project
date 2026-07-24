@@ -21,17 +21,22 @@ import tools.network_engine as ne
 
 @pytest.fixture(autouse=True)
 def reset_global_state():
-    """Reset IPv6 latch, rate-limit circuit breaker, and init-guard before and after every test."""
+    """Reset IPv6 latch, rate-limit circuit breaker, init-guard, and the cached-session pool
+    before and after every test — the session cache is module-level state, so a stale cached
+    MagicMock from an earlier test would otherwise silently satisfy a later test's `is mock_session`
+    assertion for the wrong reason."""
     original_flag = ne._IPV6_FAULT_FLAG
     ne.GLOBAL_IPV6_STATUS.update({"is_failing": False, "last_error": "", "last_fail_time": 0.0})
     ne._latch_initialized = False
     ne._RATE_LIMIT_READY.set()
     ne._routing_counter = 0
+    ne._session_cache.clear()
     yield
     ne.GLOBAL_IPV6_STATUS.update({"is_failing": False, "last_error": "", "last_fail_time": 0.0})
     ne._latch_initialized = False
     ne._RATE_LIMIT_READY.set()
     ne._routing_counter = 0
+    ne._session_cache.clear()
     ne._IPV6_FAULT_FLAG = original_flag
 
 
@@ -136,7 +141,39 @@ class TestYahooConnectionBoundary:
              patch("tools.network_engine._increment_api_stat"):
             with ne.yahoo_connection_boundary("test") as session:
                 assert session is mock_session
-        mock_session.close.assert_called_once()
+        mock_session.close.assert_not_called()
+
+    def test_ipv4_session_is_reused_across_calls(self):
+        mock_session = MagicMock()
+        with patch("tools.network_engine.load_config", return_value=self._ipv4_only_cfg), \
+             patch("tools.network_engine.cffi_requests.Session", return_value=mock_session) as mock_ctor, \
+             patch("tools.network_engine._patch_session_with_retries"), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine._increment_api_stat"):
+            with ne.yahoo_connection_boundary("first") as session_a:
+                assert session_a is mock_session
+            with ne.yahoo_connection_boundary("second") as session_b:
+                assert session_b is mock_session
+        mock_ctor.assert_called_once()
+        mock_session.close.assert_not_called()
+
+    def test_ipv4_only_failover_session_never_reused(self):
+        # The IPv6-only failover branch is deliberately excluded from session caching (see
+        # _session_cache's module docstring) — each call must still build (and close) its own
+        # fresh session.
+        mock_session_1 = MagicMock()
+        mock_session_2 = MagicMock()
+        with patch("tools.network_engine.load_config", return_value=self._ipv6_only_cfg), \
+             patch("tools.network_engine.create_failover_session", side_effect=[mock_session_1, mock_session_2]) as mock_cfs, \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine._increment_api_stat"):
+            with ne.yahoo_connection_boundary("first") as session_a:
+                assert session_a is mock_session_1
+            with ne.yahoo_connection_boundary("second") as session_b:
+                assert session_b is mock_session_2
+        assert mock_cfs.call_count == 2
+        mock_session_1.close.assert_called_once()
+        mock_session_2.close.assert_called_once()
 
     def test_falls_back_to_standard_when_latch_is_set(self):
         ne.GLOBAL_IPV6_STATUS["is_failing"] = True
@@ -157,7 +194,7 @@ class TestYahooConnectionBoundary:
              patch("tools.network_engine._increment_api_stat"):
             with ne.yahoo_connection_boundary("test") as session:
                 assert session is mock_session
-        mock_cfs.assert_called_once_with("::1", "test", self._ipv6_only_cfg)
+        mock_cfs.assert_called_once_with("::1", "test", self._ipv6_only_cfg, lock=None)
         mock_session.close.assert_called_once()
 
     def test_dual_mode_uses_plain_ipv6_session(self):
@@ -274,6 +311,70 @@ class TestPatchSessionWithRetries:
                 session.request("GET", "http://example.com")
         mock_enter.assert_called_once_with("test-ctx")
         assert original.call_count == 1
+
+    def test_second_call_does_not_rewrap_a_reused_session(self):
+        # A cached session (see _cached_plain_session) is patched again on every reuse purely to
+        # refresh the thread-local action_context/lock — it must not nest a second retry wrapper
+        # around the first, or a single transient error would sleep/log twice.
+        session = MagicMock()
+        ok_response = MagicMock(status_code=200)
+        original = MagicMock(return_value=ok_response)
+        session.request = original
+        ne._patch_session_with_retries(session, "first-ctx", timeout=5, max_retries=3)
+        wrapped_once = session.request
+        ne._patch_session_with_retries(session, "second-ctx", timeout=5, max_retries=3)
+        assert session.request is wrapped_once
+
+    def test_reused_session_retry_error_reports_latest_action_context(self):
+        # The wrapper reads action_context from the per-thread _retry_context at call time, not
+        # from whichever call first wrapped the session — so a cached session's error messages
+        # stay accurate across reuse for a different ticker/call.
+        session = MagicMock()
+        err_response = MagicMock(status_code=500)
+        original = MagicMock(return_value=err_response)
+        session.request = original
+        ne._patch_session_with_retries(session, "first-ctx", timeout=5, max_retries=0)
+        ne._patch_session_with_retries(session, "second-ctx", timeout=5, max_retries=0)
+        with patch("tools.network_engine.time.sleep"):
+            with pytest.raises(ne._TransientHTTPError, match="second-ctx"):
+                session.request("GET", "http://example.com")
+
+    def test_retry_sleep_releases_and_reacquires_lock(self):
+        session = MagicMock()
+        ok_response = MagicMock(status_code=200)
+        err_response = MagicMock(status_code=500)
+        original = MagicMock(side_effect=[err_response, ok_response])
+        session.request = original
+        mock_lock = MagicMock()
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3, lock=mock_lock)
+        with patch("tools.network_engine.time.sleep"):
+            result = session.request("GET", "http://example.com")
+        assert result is ok_response
+        mock_lock.release.assert_called_once()
+        mock_lock.__enter__.assert_called_once()
+
+
+class TestSleepOutsideLock:
+    def test_no_lock_just_sleeps(self):
+        with patch("tools.network_engine.time.sleep") as mock_sleep:
+            ne._sleep_outside_lock(1.5, lock=None)
+        mock_sleep.assert_called_once_with(1.5)
+
+    def test_releases_before_sleeping_and_reacquires_after(self):
+        mock_lock = MagicMock()
+        calls = []
+        mock_lock.release.side_effect = lambda: calls.append("release")
+        mock_lock.__enter__.side_effect = lambda: calls.append("enter")
+        with patch("tools.network_engine.time.sleep", side_effect=lambda s: calls.append("sleep")):
+            ne._sleep_outside_lock(1.0, lock=mock_lock)
+        assert calls == ["release", "sleep", "enter"]
+
+    def test_reacquires_even_if_sleep_raises(self):
+        mock_lock = MagicMock()
+        with patch("tools.network_engine.time.sleep", side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError):
+                ne._sleep_outside_lock(1.0, lock=mock_lock)
+        mock_lock.__enter__.assert_called_once()
 
 
 class TestCreateFailoverSession:
