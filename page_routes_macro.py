@@ -8,6 +8,7 @@ import pandas as pd
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
@@ -299,15 +300,19 @@ async def market_sentiment_page(request: Request):
     finally:
         conn.close()
 
+    yield_equity_html = await run_in_threadpool(get_yield_equity_html)
+    uk_yield_equity_html = await run_in_threadpool(get_uk_yield_equity_html)
+    ftse_gbp_html = await run_in_threadpool(get_ftse_gbp_html)
+
     return templates.TemplateResponse(
         request=request,
         name="market_sentiment.html",
         context={
             "sentiment_html":      get_sentiment_html(),
             "vix_spy_html":        get_vix_spy_html(),
-            "yield_equity_html":   get_yield_equity_html(),
-            "uk_yield_equity_html": get_uk_yield_equity_html(),
-            "ftse_gbp_html":       get_ftse_gbp_html(),
+            "yield_equity_html":   yield_equity_html,
+            "uk_yield_equity_html": uk_yield_equity_html,
+            "ftse_gbp_html":       ftse_gbp_html,
             "us_liquidity_html":   us_liquidity_html,
             "us_credit_html":      us_credit_html,
             "uk_liquidity_html":   uk_liquidity_html,
