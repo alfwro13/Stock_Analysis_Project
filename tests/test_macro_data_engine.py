@@ -444,6 +444,84 @@ class TestUpdateMacroIndicators:
             cleanup.commit()
             cleanup.close()
 
+    def test_uk_m4_legacy_growth_rate_value_is_overwritten_on_refetch(self):
+        """A pre-existing row still holding the old LPMVWNM growth-rate figure (e.g. -0.6) must be
+        corrected to the real billions-scale level when that date is refetched, even though
+        INSERT OR IGNORE alone would otherwise leave the stale row untouched."""
+        seed_conn = _db_module.get_connection()
+        seed_conn.execute(
+            "INSERT OR IGNORE INTO macro_indicators (date, uk_m4) VALUES ('2024-01-31', -0.6)"
+        )
+        seed_conn.commit()
+        seed_conn.close()
+
+        boe_df = pd.DataFrame({"LPMAUYN": [3000844.0]}, index=[pd.Timestamp("2024-01-31")])
+
+        def boe_side_effect(session, series_code, *args, **kwargs):
+            return boe_df if series_code == "LPMAUYN" else pd.DataFrame()
+
+        try:
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_fred_api", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_boe_data", side_effect=boe_side_effect), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
+                update_macro_indicators()
+
+            verify_conn = _db_module.get_connection()
+            row = verify_conn.execute(
+                "SELECT uk_m4 FROM macro_indicators WHERE date='2024-01-31'"
+            ).fetchone()
+            verify_conn.close()
+            assert row is not None and row["uk_m4"] == pytest.approx(3000.844), (
+                f"Expected the stale -0.6 growth-rate value replaced with ~3000.844, got {row['uk_m4'] if row else None}"
+            )
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date='2024-01-31'")
+            cleanup.commit()
+            cleanup.close()
+
+    def test_uk_m4_legacy_growth_rate_value_outside_fetch_window_is_nulled(self):
+        """A legacy growth-rate value on a date outside the current fetch window (so it can't be
+        repatched this run) must still be nulled out rather than left displaying as a bogus
+        near-zero/negative 'money supply' figure."""
+        seed_conn = _db_module.get_connection()
+        seed_conn.execute(
+            "INSERT OR IGNORE INTO macro_indicators (date, uk_m4) VALUES ('2020-01-31', 2.1)"
+        )
+        seed_conn.commit()
+        seed_conn.close()
+
+        # A non-empty source for some other date is required so the pipeline doesn't hit its
+        # early "all sources empty" return before ever reaching the nullify step.
+        wm2ns_df = pd.DataFrame({"WM2NS": [21000.0]}, index=[pd.Timestamp("2024-01-31")])
+
+        def fred_side_effect(session, series_id, *args, **kwargs):
+            return wm2ns_df if series_id == "WM2NS" else pd.DataFrame()
+
+        try:
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
+                 patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
+                update_macro_indicators()
+
+            verify_conn = _db_module.get_connection()
+            row = verify_conn.execute(
+                "SELECT uk_m4 FROM macro_indicators WHERE date='2020-01-31'"
+            ).fetchone()
+            verify_conn.close()
+            assert row is not None and row["uk_m4"] is None, (
+                f"Expected legacy value nulled out, got {row['uk_m4'] if row else 'row missing'}"
+            )
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date IN ('2020-01-31', '2024-01-31')")
+            cleanup.commit()
+            cleanup.close()
+
 
 class TestGetUkCpiYoySeries:
     """The single reusable source for UK CPI YoY%, shared by the Market Sentiment page and the

@@ -296,6 +296,21 @@ def update_macro_indicators() -> None:
                 "UPDATE macro_indicators SET us_cpi_inflation=? WHERE date=?",
                 [(v, d) for v, d in cpi_patch if v is not None],
             )
+
+        # LPMVWNM (superseded 2026-07) was a monthly growth-rate series miswritten into this billions-scale
+        # column; any legacy value in that range is unmistakably wrong (real M4 is always > 1000bn), nullify it.
+        cursor.execute("UPDATE macro_indicators SET uk_m4=NULL WHERE uk_m4 IS NOT NULL AND ABS(uk_m4) < 100")
+
+        # Patch all rows in the current window with the correct billions-scale level.
+        if 'LPMAUYN' in merged_df.columns:
+            m4_patch = [
+                (float(row['LPMAUYN']) / 1000 if pd.notna(row['LPMAUYN']) else None, dt.strftime("%Y-%m-%d"))
+                for dt, row in merged_df.iterrows()
+            ]
+            cursor.executemany(
+                "UPDATE macro_indicators SET uk_m4=? WHERE date=?",
+                [(v, d) for v, d in m4_patch if v is not None],
+            )
         conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database bulk insertion failed: {e}")
