@@ -1531,6 +1531,12 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .tm-th-muted  { color: #888; }
 .tm-th-dimmed { color: #555; }
 
+.edp-ticker-row { cursor: pointer; }
+.edp-ticker-row:hover { background-color: #1a1a1a; }
+.edp-caret { display: inline-block; width: 12px; color: #888; }
+.edp-detail-table { background-color: #171717; }
+.edp-detail-table th, .edp-detail-table td { padding: 6px 10px; }
+
 .tm-lifecycle-arc { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .tm-arc-arrow     { color: #555; font-size: 16px; }
 .tm-arc-sep       { margin-left: 8px; color: #555; font-size: 11px; }

@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import db_helpers
 from earnings_vol_engine import (
     _get_past_earnings_events,
     backfill_earnings_drift_outcomes,
@@ -587,3 +588,76 @@ class TestGetEarningsDriftAccuracySummary:
         assert data["by_ticker"][0]["company_name"] == "Test Co"
         assert data["by_ticker"][0]["resolved_1d"] == 1
         assert data["by_ticker"][0]["accuracy_1d"] == 100.0
+
+    def test_events_attached_with_predicted_and_actual_pct(self, db_path):
+        past = (date.today() - timedelta(days=40)).strftime("%Y-%m-%d")
+        d1 = (date.today() - timedelta(days=39)).strftime("%Y-%m-%d")
+        d5 = (date.today() - timedelta(days=35)).strftime("%Y-%m-%d")
+        future20 = "2099-12-31"
+        _seed_prediction(db_path, "EVX", past, 100.0, 2.0, d1, 3.0, d5, 4.0, future20)
+        _seed_quant_signal_row(db_path, "EVX", d1, 103.0)
+        _seed_quant_signal_row(db_path, "EVX", d5, 108.0)
+
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            backfill_earnings_drift_outcomes()
+            with patch("db_helpers.get_company_names", return_value={}):
+                data = get_earnings_drift_accuracy_summary()
+
+        events = data["by_ticker"][0]["events"]
+        assert len(events) == 1
+        event = events[0]
+        assert event["earnings_date"] == past
+        assert event["predicted_pct_1d"] == 2.0
+        assert event["actual_pct_1d"] == 3.0
+        assert event["direction_correct_1d"] == 1
+        assert event["predicted_pct_5d"] == 3.0
+        assert event["actual_pct_5d"] == 8.0
+        assert event["direction_correct_5d"] == 1
+        assert event["predicted_pct_20d"] == 4.0
+        assert event["actual_pct_20d"] is None
+        assert event["direction_correct_20d"] is None
+
+    def test_multiple_events_per_ticker_ordered_newest_first(self, db_path):
+        older = (date.today() - timedelta(days=100)).strftime("%Y-%m-%d")
+        newer = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
+        _seed_prediction(db_path, "MULTX", older, 50.0, 1.0, "2099-12-31")
+        _seed_prediction(db_path, "MULTX", newer, 60.0, 1.5, "2099-12-31")
+
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_company_names", return_value={}):
+            data = get_earnings_drift_accuracy_summary()
+
+        events = data["by_ticker"][0]["events"]
+        assert [e["earnings_date"] for e in events] == [newer, older]
+
+
+class TestGetEarningsDriftEvents:
+    def test_returns_empty_list_when_no_rows(self, db_path):
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            assert db_helpers.get_earnings_drift_events() == []
+
+    def test_actual_pct_derived_from_price_and_pre_close(self, db_path):
+        past = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
+        d1 = (date.today() - timedelta(days=9)).strftime("%Y-%m-%d")
+        _seed_prediction(db_path, "DHX", past, 200.0, 1.0, d1)
+        _seed_quant_signal_row(db_path, "DHX", d1, 202.0)
+
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            backfill_earnings_drift_outcomes()
+            events = db_helpers.get_earnings_drift_events()
+
+        assert len(events) == 1
+        assert events[0]["actual_pct_1d"] == 1.0
+
+    def test_unresolved_horizon_has_null_actual_pct(self, db_path):
+        past = (date.today() - timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed_prediction(db_path, "PENDX", past, 100.0, 1.0, "2099-12-31")
+
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            events = db_helpers.get_earnings_drift_events()
+
+        assert len(events) == 1
+        assert events[0]["actual_pct_1d"] is None
+        assert events[0]["predicted_pct_1d"] == 1.0
