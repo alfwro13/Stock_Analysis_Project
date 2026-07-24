@@ -920,6 +920,38 @@ def get_earnings_drift_accuracy() -> dict:
             conn.close()
 
 
+def get_earnings_drift_events() -> list:
+    """Per-event rows (one per ticker+earnings_date) with actual_pct_Nd derived from actual_price_Nd/pre_earnings_close, for get_earnings_drift_accuracy_summary()'s drill-down."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT
+                ticker, earnings_date, pre_earnings_close,
+                predicted_pct_1d, target_date_1d, actual_date_1d, direction_correct_1d,
+                CASE WHEN actual_price_1d IS NOT NULL THEN
+                    ROUND((actual_price_1d - pre_earnings_close) / pre_earnings_close * 100, 2)
+                END AS actual_pct_1d,
+                predicted_pct_5d, target_date_5d, actual_date_5d, direction_correct_5d,
+                CASE WHEN actual_price_5d IS NOT NULL THEN
+                    ROUND((actual_price_5d - pre_earnings_close) / pre_earnings_close * 100, 2)
+                END AS actual_pct_5d,
+                predicted_pct_20d, target_date_20d, actual_date_20d, direction_correct_20d,
+                CASE WHEN actual_price_20d IS NOT NULL THEN
+                    ROUND((actual_price_20d - pre_earnings_close) / pre_earnings_close * 100, 2)
+                END AS actual_pct_20d
+               FROM earnings_drift_predictions
+               ORDER BY ticker, earnings_date DESC"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_earnings_drift_events failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 _REGISTRY_COLUMNS = (
     "ticker", "display_name", "region", "asset_type", "exchange", "currency",
     "future_ticker", "future_display_name", "invert_color", "is_pulse_tile",

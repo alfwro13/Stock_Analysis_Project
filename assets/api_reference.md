@@ -4180,11 +4180,11 @@ Track record for the post-earnings drift predictions logged by `earnings_vol_eng
 
 ### `GET /earnings-volatility/accuracy`
 
-HTML page. Summary tiles (total / per-horizon resolved+accuracy) and a per-ticker accuracy table.
+HTML page. Summary tiles (total / per-horizon resolved+accuracy) and a per-ticker accuracy table; clicking a ticker row expands a per-event breakdown of that ticker's individual predicted vs. actual % move at each horizon.
 
 ### `GET /api/earnings-volatility/accuracy`
 
-Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days for logged post-earnings drift predictions. `resolved_Nd`/pending reflect whether each horizon's target date has passed; accuracy percentages are computed over resolved rows only.
+Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days for logged post-earnings drift predictions. `resolved_Nd`/pending reflect whether each horizon's target date has passed; accuracy percentages are computed over resolved rows only. Each `by_ticker` row also carries an `events` array — one entry per logged earnings event (ticker + earnings_date) — with that event's `predicted_pct_Nd` and the actual `actual_pct_Nd` derived from `actual_price_Nd`/`pre_earnings_close`, so the UI can show the exact prediction and result behind each aggregate count rather than only the rolled-up accuracy %.
 
 **Response**
 
@@ -4197,7 +4197,15 @@ Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days fo
       "total": 4,
       "resolved_1d": 4, "accuracy_1d": 75.0,
       "resolved_5d": 3, "accuracy_5d": 66.7,
-      "resolved_20d": 1, "accuracy_20d": 100.0
+      "resolved_20d": 1, "accuracy_20d": 100.0,
+      "events": [
+        {
+          "ticker": "AAPL", "earnings_date": "2026-07-24", "pre_earnings_close": 210.5,
+          "predicted_pct_1d": 1.8, "target_date_1d": "2026-07-27", "actual_date_1d": "2026-07-27", "direction_correct_1d": 1, "actual_pct_1d": 1.4,
+          "predicted_pct_5d": 3.2, "target_date_5d": "2026-07-31", "actual_date_5d": null, "direction_correct_5d": null, "actual_pct_5d": null,
+          "predicted_pct_20d": 4.9, "target_date_20d": "2026-08-21", "actual_date_20d": null, "direction_correct_20d": null, "actual_pct_20d": null
+        }
+      ]
     }
   ],
   "overall": {

@@ -232,13 +232,19 @@ def backfill_earnings_drift_outcomes() -> int:
 
 
 def get_earnings_drift_accuracy_summary() -> dict:
-    from db_helpers import get_company_names, get_earnings_drift_accuracy
+    from db_helpers import get_company_names, get_earnings_drift_accuracy, get_earnings_drift_events
 
     data = get_earnings_drift_accuracy()
     tickers = [r["ticker"] for r in data.get("by_ticker", [])]
     names = get_company_names(tickers) if tickers else {}
+
+    events_by_ticker: Dict[str, List[dict]] = {}
+    for event in get_earnings_drift_events():
+        events_by_ticker.setdefault(event["ticker"], []).append(event)
+
     for row in data.get("by_ticker", []):
         row["company_name"] = names.get(row["ticker"])
+        row["events"] = events_by_ticker.get(row["ticker"], [])
     return data
 
 
