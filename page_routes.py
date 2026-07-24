@@ -222,10 +222,7 @@ async def home():
     return RedirectResponse(url="/portfolio")
 
 
-@page_router.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
-    from xray_engine import BENCHMARK_SYMBOL
-
+def _fetch_portfolio_signal_rows(benchmark_symbol: str):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -281,7 +278,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             LEFT JOIN ticker_risk_contribution rc ON s.ticker = rc.ticker
-        """, (BENCHMARK_SYMBOL,))
+        """, (benchmark_symbol,))
         db_rows = cursor.fetchall()
 
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
@@ -293,6 +290,15 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
         global_updated = global_update_val if global_update_val else "Awaiting initial update..."
     finally:
         conn.close()
+
+    return db_rows, macro_regime, global_updated
+
+
+@page_router.get("/portfolio", response_class=HTMLResponse)
+async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
+    from xray_engine import BENCHMARK_SYMBOL
+
+    db_rows, macro_regime, global_updated = await run_in_threadpool(_fetch_portfolio_signal_rows, BENCHMARK_SYMBOL)
 
     config_data = load_config()
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
@@ -677,10 +683,7 @@ async def house_account_detail_page(request: Request, account_id: int):
     )
 
 
-@page_router.get("/watchlist", response_class=HTMLResponse)
-async def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
-    from xray_engine import BENCHMARK_SYMBOL
-
+def _fetch_watchlist_signal_rows(benchmark_symbol: str):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -736,7 +739,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
-        """, (BENCHMARK_SYMBOL,))
+        """, (benchmark_symbol,))
         db_rows = cursor.fetchall()
 
         cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
@@ -744,6 +747,15 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
         global_updated = global_update_val if global_update_val else "Awaiting initial update..."
     finally:
         conn.close()
+
+    return db_rows, global_updated
+
+
+@page_router.get("/watchlist", response_class=HTMLResponse)
+async def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
+    from xray_engine import BENCHMARK_SYMBOL
+
+    db_rows, global_updated = await run_in_threadpool(_fetch_watchlist_signal_rows, BENCHMARK_SYMBOL)
 
     watchlist_tickers = get_watchlist_tickers()
 
