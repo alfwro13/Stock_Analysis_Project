@@ -1349,6 +1349,7 @@ def init_db() -> None:
                 created_at      TEXT DEFAULT (datetime('now'))
             )
         ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_account_transactions_account_date ON account_transactions(account_id, txn_date)')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS account_value_history (
@@ -1707,6 +1708,11 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE account_transactions ADD COLUMN fee_exchange_rate REAL")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
+
+    try:
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_account_transactions_account_date ON account_transactions(account_id, txn_date)')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed on account_transactions index: %s", e)
 
     cursor.execute("PRAGMA table_info(account_value_history)")
     existing_account_value_columns = [info['name'] for info in cursor.fetchall()]
