@@ -413,6 +413,37 @@ class TestUpdateMacroIndicators:
             cleanup.commit()
             cleanup.close()
 
+    def test_uk_m4_stored_in_billions_from_boe_level_series(self):
+        """LPMAUYN is BoE's M4 amounts-outstanding series in sterling millions; the pipeline
+        must divide by 1000 so uk_m4 matches its existing billions scale (mirrors us_m2's
+        WM2NS, which FRED already reports in billions)."""
+        boe_df = pd.DataFrame({"LPMAUYN": [3000844.0]}, index=[pd.Timestamp("2024-01-31")])
+
+        def boe_side_effect(session, series_code, *args, **kwargs):
+            return boe_df if series_code == "LPMAUYN" else pd.DataFrame()
+
+        try:
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_fred_api", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_boe_data", side_effect=boe_side_effect), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
+                update_macro_indicators()
+
+            verify_conn = _db_module.get_connection()
+            row = verify_conn.execute(
+                "SELECT uk_m4 FROM macro_indicators WHERE date='2024-01-31'"
+            ).fetchone()
+            verify_conn.close()
+            assert row is not None and row["uk_m4"] == pytest.approx(3000.844), (
+                f"Expected uk_m4 stored in billions (~3000.844), got {row['uk_m4'] if row else None}"
+            )
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date='2024-01-31'")
+            cleanup.commit()
+            cleanup.close()
+
 
 class TestGetUkCpiYoySeries:
     """The single reusable source for UK CPI YoY%, shared by the Market Sentiment page and the

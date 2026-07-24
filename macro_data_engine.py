@@ -225,7 +225,7 @@ def update_macro_indicators() -> None:
                 dfs.append(cpi_yoy_window.rename('CPIAUCSL').to_frame())
 
     logger.info("Fetching Bank of England IADB Data (2-Year History)...")
-    df_boe = fetch_boe_data(session, 'LPMVWNM', start_dt, end_dt)
+    df_boe = fetch_boe_data(session, 'LPMAUYN', start_dt, end_dt)
     if not df_boe.empty:
         dfs.append(df_boe)
 
@@ -257,7 +257,8 @@ def update_macro_indicators() -> None:
             float(row['ICSA']) if 'ICSA' in row and pd.notna(row['ICSA']) else None,
             float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
             float(row['T10Y2Y']) if 'T10Y2Y' in row and pd.notna(row['T10Y2Y']) else None,
-            float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
+            # LPMAUYN is amounts outstanding in sterling millions; /1000 matches uk_m4's existing billions scale (us_m2's WM2NS is already billions).
+            float(row['LPMAUYN']) / 1000 if 'LPMAUYN' in row and pd.notna(row['LPMAUYN']) else None,
             float(row['BAMLHE00EHYIOAS']) if 'BAMLHE00EHYIOAS' in row and pd.notna(row['BAMLHE00EHYIOAS']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
             float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None,
