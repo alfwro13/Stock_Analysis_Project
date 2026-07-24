@@ -197,6 +197,51 @@ def test_earnings_volatility_accuracy_page_loads(client):
 
 
 @pytest.mark.pages
+def test_earnings_volatility_page_scope_filter(client):
+    """The Scope selector defaults to Portfolio, and each row carries data-portfolio/
+    data-watchlist attributes reflecting the ticker's actual membership so the
+    client-side DataTables filter can default to showing Portfolio-only rows."""
+    import database as _db
+    from datetime import datetime, timedelta, timezone
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO earnings_volatility "
+            "(ticker, next_earnings_date, historical_avg_move_pct, last_updated) "
+            "VALUES ('ZZSCOPEVOL', ?, 5.0, datetime('now'))",
+            (next_earnings,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZSCOPEVOL", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/earnings-volatility")
+        assert resp.status_code == 200
+        assert 'id="scopeFilter"' in resp.text
+        assert '<option value="portfolio" selected>Portfolio</option>' in resp.text
+        assert '<option value="watchlist">Watchlist</option>' in resp.text
+        assert '<option value="all">All</option>' in resp.text
+        assert 'data-portfolio="0" data-watchlist="1"' in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZSCOPEVOL"))
+            conn.execute("DELETE FROM earnings_volatility WHERE ticker = 'ZZSCOPEVOL'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_options_sandbox_page_loads(client):
     """GET /options-sandbox must load the options payoff calculator."""
     _assert_page_ok(client, "/options-sandbox", label="Options Sandbox")
