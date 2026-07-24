@@ -60,6 +60,15 @@ def test_watchlist_page_loads(client):
 
 
 @pytest.mark.pages
+def test_portfolio_and_watchlist_tables_render_dt_init_pending(client):
+    """The table must render dt-init-pending so it starts hidden until DataTables applies the saved View."""
+    for url in ("/portfolio", "/watchlist"):
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert 'id="dataTable" class="table table-hover w-100 dt-init-pending"' in resp.text
+
+
+@pytest.mark.pages
 def test_settings_page_loads(client):
     """GET /settings must load the configuration page."""
     _assert_page_ok(client, "/settings", label="Settings")

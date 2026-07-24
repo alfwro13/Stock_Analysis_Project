@@ -52,6 +52,9 @@ $(document).ready(function () {
         deferRender: true,
         dom: 'lrtip',
         order: [],
+        initComplete: function () {
+            document.getElementById('dataTable').classList.remove('dt-init-pending');
+        },
         columnDefs: [
             { responsivePriority: 1, targets: 0 },    // Ticker — always visible
             { responsivePriority: 2, targets: -1 },   // Signal — always visible

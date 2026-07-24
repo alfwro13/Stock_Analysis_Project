@@ -864,6 +864,7 @@ $(document).ready(function () {
         dom: 'lrtip',
         order: [],
         initComplete: function () {
+            document.getElementById('dataTable').classList.remove('dt-init-pending');
             try { if (localStorage.getItem('portfolio_heatmap_active')) _enterHeatmapMode(); } catch(e) {}
             if (window.AUTO_XRAY) toggleXray();
         },
