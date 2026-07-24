@@ -931,11 +931,17 @@ async def earnings_volatility_page(request: Request):
     for row in earnings_data:
         row["quant_band"] = quant_bands.get(row["ticker"])
 
+    from accounts_engine import get_combined_holdings
+    portfolio_tickers = {str(t).upper() for t in get_combined_holdings().keys()}
+    watchlist_tickers = {str(t).upper() for t in get_watchlist_tickers()}
+
     return templates.TemplateResponse(
         request=request,
         name="earnings_volatility.html",
         context={
             "earnings_data": earnings_data,
+            "portfolio_tickers": portfolio_tickers,
+            "watchlist_tickers": watchlist_tickers,
             "unread_count": get_unread_count(),
             "config": load_config()
         }

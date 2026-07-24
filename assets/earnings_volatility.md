@@ -41,7 +41,9 @@ The engine also still checks each tracked asset's `next_earnings_date` in `stock
 
 ### 🎯 4. Scope & Limitations (Why Not The Entire Universe?)
 
-This engine **only** scans assets present in your **Portfolio** and **Watchlist**. It does not scan the massive 4,000+ Market Screener universe.
+This engine **only** scans assets present in your **Portfolio** and **Watchlist** (plus any other ticker already in the app's shared nightly fetch universe, e.g. an Account Transactions ticker or a Markets page index — see `AGENTS.md`'s priority-arbitration rule). It does not scan the massive 4,000+ Market Screener universe.
+
+The Earnings Volatility page's **Scope** selector (Portfolio / Watchlist / All, defaulting to Portfolio) filters the rendered table client-side by each row's `data-portfolio`/`data-watchlist` attributes — set server-side in `page_routes.py` from `accounts_engine.get_combined_holdings()` and `database.get_watchlist_tickers()` — so a row already scanned into `earnings_volatility` that isn't in either set (e.g. a Markets page ticker) only shows up under "All".
 
 **Why?**
 1. **Extreme API Load:** For each stock that has earnings coming up, the engine must make multiple sequential queries: fetching the options chain, fetching the historical earnings calendar, and fetching multiple historical price slices to measure past gaps. Running this 4,000 times would result in a permanent IP ban from our data providers.

@@ -6,8 +6,16 @@
 <h1 class="mb-1">Earnings Volatility</h1>
 <p class="text-secondary mb-3">Post-Earnings Drift, ML Forecast &amp; Options Mispricing Scanner</p>
 
-<div class="mb-3">
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
     <a href="/earnings-volatility/accuracy" class="btn btn-outline-secondary btn-sm">Prediction Accuracy &rarr;</a>
+    <div class="d-flex align-items-center gap-1">
+        <label for="scopeFilter" class="text-muted small mb-0">Scope</label>
+        <select id="scopeFilter" class="form-select form-select-sm w-auto d-inline-block">
+            <option value="portfolio" selected>Portfolio</option>
+            <option value="watchlist">Watchlist</option>
+            <option value="all">All</option>
+        </select>
+    </div>
 </div>
 
 <h2>Upcoming Earnings — What's Happened Before, and What the Model Sees Next</h2>
@@ -41,7 +49,7 @@
     </thead>
     <tbody>
         {% for row in earnings_data %}
-        <tr>
+        <tr data-portfolio="{{ '1' if row.ticker in portfolio_tickers else '0' }}" data-watchlist="{{ '1' if row.ticker in watchlist_tickers else '0' }}">
             <td><a href="/stock/{{ row.ticker }}" class="ticker-link">{{ row.ticker }}</a></td>
             <td>{{ row.next_earnings_date }}</td>
             {% for h in [1, 5, 20] %}
@@ -144,7 +152,7 @@
 {% block scripts %}
 <script>
 $(function() {
-    $('#dataTable').DataTable({
+    var table = $('#dataTable').DataTable({
         responsive: true,
         order: [[1, 'asc']],
         pageLength: 25,
@@ -154,6 +162,21 @@ $(function() {
             emptyTable: 'No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.'
         }
     });
+
+    var scopeSelected = 'portfolio';
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+        if (settings.nTable.id !== 'dataTable') return true;
+        if (scopeSelected === 'all') return true;
+        var node = table.row(dataIndex).node();
+        return Boolean(node) && node.dataset[scopeSelected] === '1';
+    });
+
+    $('#scopeFilter').on('change', function () {
+        scopeSelected = $(this).val();
+        table.draw();
+    });
+
+    table.draw();
 });
 </script>
 {% endblock %}
