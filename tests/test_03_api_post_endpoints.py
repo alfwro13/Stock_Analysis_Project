@@ -198,6 +198,86 @@ def test_post_settings_with_risk_orchestrator(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_with_alert_referee_training_confluence(client, confirm_token):
+    """POST /api/settings with SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE (the Cross-Engine
+    Alert Referee's own schedule/mode/threshold block) must persist and round-trip via
+    load_config — regression for a bug where SchedulingConfig had no
+    ALERT_REFEREE_TRAINING_CONFLUENCE field at all, so the whole block (including the Enable
+    checkbox) was silently dropped by Pydantic on every save."""
+    import config as _config
+    payload = {
+        "SCHEDULING": {
+            "ALERT_REFEREE_TRAINING_CONFLUENCE": {
+                "ENABLED": True,
+                "DAYS": ["mon", "wed", "fri"],
+                "TIME": "06:15",
+                "MODE": "active",
+                "VETO_THRESHOLD": 0.4,
+                "MIN_TRAINING_SAMPLES": 150,
+            },
+        }
+    }
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    block = _config.load_config().get("SCHEDULING", {}).get("ALERT_REFEREE_TRAINING_CONFLUENCE", {})
+    assert block.get("ENABLED") is True
+    assert block.get("DAYS") == ["mon", "wed", "fri"]
+    assert block.get("TIME") == "06:15"
+    assert block.get("MODE") == "active"
+    assert block.get("VETO_THRESHOLD") == 0.4
+    assert block.get("MIN_TRAINING_SAMPLES") == 150
+
+
+@pytest.mark.api
+def test_post_settings_with_position_sizing_min_risk_reward(client, confirm_token):
+    """POST /api/settings with POSITION_SIZING.MIN_RISK_REWARD must persist and round-trip via
+    load_config — regression for a bug where PositionSizingConfig had no MIN_RISK_REWARD field,
+    so the Position Sizing Defaults card's Min Risk/Reward input was silently dropped on every
+    save and position_sizing.py's Risk/Reward Gate always ran on the hardcoded 1.5 default."""
+    import config as _config
+    payload = {
+        "POSITION_SIZING": {
+            "ACCOUNT_VALUE": 20000.0,
+            "RISK_PCT": 2.0,
+            "STOP_MULTIPLE": 2.5,
+            "MIN_RISK_REWARD": 1.8,
+        }
+    }
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    block = _config.load_config().get("POSITION_SIZING", {})
+    assert block.get("MIN_RISK_REWARD") == 1.8
+
+
+@pytest.mark.api
+def test_post_settings_with_crash_alerts_flash_crash_threshold(client, confirm_token):
+    """POST /api/settings with NOTIFICATIONS.CRASH_ALERTS.FLASH_CRASH_THRESHOLD must persist and
+    round-trip via load_config — regression for a bug where NotificationItemConfig had no
+    FLASH_CRASH_THRESHOLD field, so the Crash & Moonshot Alerts card's Flash Crash Threshold
+    input was silently dropped on every save and crash_engine.py always ran on the hardcoded
+    3.0 default."""
+    import config as _config
+    payload = {
+        "NOTIFICATIONS": {
+            "CRASH_ALERTS": {
+                "DROP_PERCENT": 6.0,
+                "DROP_DAYS": 3,
+                "SMA_LENGTH": 10,
+                "SMA_GAP_PERCENT": 2.0,
+                "FLASH_CRASH_THRESHOLD": 4.5,
+            }
+        }
+    }
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    block = _config.load_config().get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {})
+    assert block.get("FLASH_CRASH_THRESHOLD") == 4.5
+
+
+@pytest.mark.api
 def test_post_settings_with_risk_orchestrator_alerts(client, confirm_token):
     """POST /api/settings with NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS (Pillar C2's shared
     cooldown block for PHI/correlation/stop-breach escalations) must persist and round-trip."""

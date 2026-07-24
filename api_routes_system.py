@@ -103,6 +103,7 @@ class PositionSizingConfig(BaseModel):
     ACCOUNT_VALUE: Optional[float] = None
     RISK_PCT: Optional[float] = None
     STOP_MULTIPLE: Optional[float] = None
+    MIN_RISK_REWARD: Optional[float] = None
 
 class ScheduleItemConfig(BaseModel):
     ENABLED: Optional[bool] = None
@@ -243,6 +244,7 @@ class SchedulingConfig(BaseModel):
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
     BACKUP: Optional[ScheduleItemConfig] = None
     ALERT_REFEREE_TRAINING: Optional[ScheduleItemConfig] = None
+    ALERT_REFEREE_TRAINING_CONFLUENCE: Optional[ScheduleItemConfig] = None
     RISK_ORCHESTRATOR: Optional[RiskOrchestratorScheduleConfig] = None
     RISK_ORCHESTRATOR_DIGEST: Optional[ScheduleItemConfig] = None
 
@@ -263,6 +265,7 @@ class NotificationItemConfig(BaseModel):
     DAYS_BACK: Optional[int] = None
     DROP_PERCENT: Optional[float] = None
     DROP_DAYS: Optional[int] = None
+    FLASH_CRASH_THRESHOLD: Optional[float] = None
     SMA_LENGTH: Optional[int] = None
     SMA_GAP_PERCENT: Optional[float] = None
     SPIKE_PERCENT: Optional[float] = None
