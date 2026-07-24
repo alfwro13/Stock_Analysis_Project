@@ -1,23 +1,3 @@
-function formatCurrency(value, currencyCode) {
-    if (value === null || value === undefined) return 'N/A';
-    let num = parseFloat(value);
-    if (isNaN(num)) return 'N/A';
-
-    let symbol = '$';
-    if (currencyCode === 'GBp') {
-        num = num / 100.0;
-        symbol = '£';
-    } else if (currencyCode === 'GBP') {
-        symbol = '£';
-    } else if (currencyCode === 'EUR') {
-        symbol = '€';
-    } else if (currencyCode && currencyCode !== 'USD') {
-        return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
-    }
-
-    return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
-
 $(document).ready(function() {
     const urlParams = new URLSearchParams(window.location.search);
     const targetSector = urlParams.get('sector');
