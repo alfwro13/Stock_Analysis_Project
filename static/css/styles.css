@@ -1551,7 +1551,6 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .arc-step-recovery  { background: rgba(0, 255, 0, .08);   border-color: rgba(0, 255, 0, .25);   color: #00ff00; }
 .arc-step-bear      { background: rgba(77, 166, 255, .1); border-color: rgba(77, 166, 255, .3); color: #4da6ff; }
 
-.tm-ref-summary  { cursor: pointer; color: #4da6ff; font-size: 13px; font-weight: 600; padding: 8px 0; display: block; }
 .tm-ref-footer   { font-size: 11px; }
 
 .tm-signal-inner      { padding: 14px 16px; }
