@@ -872,6 +872,33 @@ def batch_update_earnings_drift_actuals(
             conn.close()
 
 
+def get_latest_resolved_earnings_drift(ticker: str) -> dict:
+    """Most recent resolved earnings_drift_predictions row per horizon for one ticker. Each
+    horizon resolves independently (1d well before 20d), so the row satisfying "latest resolved"
+    can differ by horizon once a ticker's most recent earnings event has only partially resolved."""
+    conn = None
+    result = {1: None, 5: None, 20: None}
+    try:
+        conn = get_connection()
+        for horizon in (1, 5, 20):
+            row = conn.execute(
+                f"""SELECT earnings_date, direction_correct_{horizon}d AS direction_correct
+                    FROM earnings_drift_predictions
+                    WHERE ticker = ? AND direction_correct_{horizon}d IS NOT NULL
+                    ORDER BY earnings_date DESC LIMIT 1""",
+                (ticker,),
+            ).fetchone()
+            if row:
+                result[horizon] = dict(row)
+        return result
+    except Exception as e:
+        logger.error("get_latest_resolved_earnings_drift failed for %s: %s", ticker, e)
+        return result
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_earnings_drift_accuracy() -> dict:
     """Per-ticker + overall direction-match hit rates at 1/5/20 trading days — exact SQL shape
     of get_trap_phase_accuracy(), grouped by ticker instead of phase."""

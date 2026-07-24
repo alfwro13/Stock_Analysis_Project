@@ -150,6 +150,19 @@ def _seed_prediction(db_path, ticker, earnings_date, pre_close,
     return row_id
 
 
+def _seed_resolved(db_path, ticker, earnings_date, dc1=None, dc5=None, dc20=None):
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """INSERT INTO earnings_drift_predictions
+           (ticker, earnings_date, predicted_ts, pre_earnings_close, sample_size,
+            direction_correct_1d, direction_correct_5d, direction_correct_20d)
+           VALUES (?, ?, '2024-01-01 00:00:00', 100.0, 4, ?, ?, ?)""",
+        (ticker, earnings_date, dc1, dc5, dc20),
+    )
+    conn.commit()
+    conn.close()
+
+
 def _seed_quant_signal_row(db_path, ticker, dt, close):
     conn = sqlite3.connect(str(db_path))
     conn.execute("INSERT INTO quant_signals (ticker, date, close_price) VALUES (?, ?, ?)", (ticker, dt, close))
@@ -661,3 +674,37 @@ class TestGetEarningsDriftEvents:
         assert len(events) == 1
         assert events[0]["actual_pct_1d"] is None
         assert events[0]["predicted_pct_1d"] == 1.0
+
+
+class TestGetLatestResolvedEarningsDrift:
+    def test_no_rows_returns_all_none(self, db_path):
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            result = db_helpers.get_latest_resolved_earnings_drift("NOPE")
+        assert result == {1: None, 5: None, 20: None}
+
+    def test_unresolved_horizon_returns_none_for_that_horizon(self, db_path):
+        past = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
+        _seed_resolved(db_path, "GLR1", past, dc1=1, dc5=None, dc20=None)
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            result = db_helpers.get_latest_resolved_earnings_drift("GLR1")
+        assert result[1] == {"earnings_date": past, "direction_correct": 1}
+        assert result[5] is None
+        assert result[20] is None
+
+    def test_picks_most_recent_resolved_event_independently_per_horizon(self, db_path):
+        older = (date.today() - timedelta(days=100)).strftime("%Y-%m-%d")
+        newer = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
+        _seed_resolved(db_path, "GLR2", older, dc1=0, dc5=0, dc20=0)
+        _seed_resolved(db_path, "GLR2", newer, dc1=1, dc5=1, dc20=None)
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            result = db_helpers.get_latest_resolved_earnings_drift("GLR2")
+        assert result[1] == {"earnings_date": newer, "direction_correct": 1}
+        assert result[5] == {"earnings_date": newer, "direction_correct": 1}
+        assert result[20] == {"earnings_date": older, "direction_correct": 0}
+
+    def test_only_matches_requested_ticker(self, db_path):
+        past = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
+        _seed_resolved(db_path, "GLR3A", past, dc1=1)
+        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+            result = db_helpers.get_latest_resolved_earnings_drift("GLR3B")
+        assert result == {1: None, 5: None, 20: None}

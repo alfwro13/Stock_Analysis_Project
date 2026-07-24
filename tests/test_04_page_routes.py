@@ -736,6 +736,70 @@ def test_stock_detail_stale_pulse_fallback_price_does_not_crash(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_shows_drift_stats_with_thumbs_icon(client):
+    """The near-earnings panel shows Drift 1D/5D/20D (same drift_avg_pct_Nd/drift_up_count_Nd/
+    drift_sample_size_Nd figures as the Earnings Volatility page) instead of Implied Move/Options
+    Edge, with a thumbs-up icon next to a horizon whose most recent resolved
+    earnings_drift_predictions event moved with the historical-average direction."""
+    import database as _db
+    from datetime import datetime, timedelta, timezone
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
+    past_earnings = (datetime.now(timezone.utc) - timedelta(days=100)).strftime("%Y-%m-%d")
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, next_earnings_date) "
+            "VALUES ('ZZDRIFTDET', 50.0, 'USD', 'EQUITY', ?)",
+            (next_earnings,),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO earnings_volatility "
+            "(ticker, next_earnings_date, drift_avg_pct_1d, drift_up_count_1d, drift_sample_size_1d, "
+            " drift_avg_pct_5d, drift_up_count_5d, drift_sample_size_5d, "
+            " drift_avg_pct_20d, drift_up_count_20d, drift_sample_size_20d, last_updated) "
+            "VALUES ('ZZDRIFTDET', ?, 2.31, 3, 4, 4.10, 3, 4, -1.50, 1, 4, datetime('now'))",
+            (next_earnings,),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO earnings_drift_predictions "
+            "(ticker, earnings_date, predicted_ts, pre_earnings_close, sample_size, direction_correct_1d) "
+            "VALUES ('ZZDRIFTDET', ?, datetime('now'), 100.0, 4, 1)",
+            (past_earnings,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    assert wl is not None
+    add_watchlist_item(wl["id"], "ZZDRIFTDET", currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/stock/ZZDRIFTDET", follow_redirects=True)
+        assert resp.status_code < 500
+        assert "Drift 1D:" in resp.text
+        assert "Drift 5D:" in resp.text
+        assert "Drift 20D:" in resp.text
+        assert "3/4 up" in resp.text
+        assert "&#128077;" in resp.text  # thumbs up for the resolved 1d event
+        assert "Implied Move" not in resp.text
+        assert "Options Edge" not in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], "ZZDRIFTDET"))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZDRIFTDET'")
+            conn.execute("DELETE FROM earnings_volatility WHERE ticker = 'ZZDRIFTDET'")
+            conn.execute("DELETE FROM earnings_drift_predictions WHERE ticker = 'ZZDRIFTDET'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_watchlist_page_stale_pulse_fallback_price_does_not_crash(client):
     """Same fallback scenario as test_stock_detail_stale_pulse_fallback_price_does_not_crash,
     but on the /watchlist table row itself, which reads the same cached_pulse dict."""
