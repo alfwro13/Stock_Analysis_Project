@@ -6,16 +6,8 @@
 <h1 class="mb-1">Earnings Volatility</h1>
 <p class="text-secondary mb-3">Post-Earnings Drift, ML Forecast &amp; Options Mispricing Scanner</p>
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+<div class="mb-3">
     <a href="/earnings-volatility/accuracy" class="btn btn-outline-secondary btn-sm">Prediction Accuracy &rarr;</a>
-    <div class="d-flex align-items-center gap-1">
-        <label for="scopeFilter" class="text-muted small mb-0">Scope</label>
-        <select id="scopeFilter" class="form-select form-select-sm w-auto d-inline-block">
-            <option value="portfolio" selected>Portfolio</option>
-            <option value="watchlist">Watchlist</option>
-            <option value="all">All</option>
-        </select>
-    </div>
 </div>
 
 <h2>Upcoming Earnings — What's Happened Before, and What the Model Sees Next</h2>
@@ -30,6 +22,15 @@
         <h4 class="text-accent-blue"><abbr title="ML Quantile Regression estimates a statistical price range for the next 10 trading days using the same feature set as the binary ML ensemble. The floor (Q10) and ceiling (Q90) define a confidence corridor — not a guarantee.">ML Quantile Band</abbr></h4>
         <p>This is the same general-purpose 10-trading-day price band shown on the Stock Detail and Predicted Movers pages. It is <strong>not</strong> earnings-conditioned — it's provided here as a secondary reference point alongside the earnings-specific drift stats.</p>
     </div>
+</div>
+
+<div id="scopeFilterWrap" class="d-inline-flex align-items-center gap-1 ms-3">
+    <label for="scopeFilter" class="text-muted small mb-0">Scope</label>
+    <select id="scopeFilter" class="form-select form-select-sm w-auto d-inline-block">
+        <option value="portfolio" selected>Portfolio</option>
+        <option value="watchlist">Watchlist</option>
+        <option value="all">All</option>
+    </select>
 </div>
 
 <table id="dataTable" class="table table-hover w-100">
@@ -162,6 +163,8 @@ $(function() {
             emptyTable: 'No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.'
         }
     });
+
+    $('#dataTable_wrapper .dataTables_length').append($('#scopeFilterWrap'));
 
     var scopeSelected = 'portfolio';
     $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
