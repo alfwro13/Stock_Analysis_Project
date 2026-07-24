@@ -895,8 +895,8 @@ $(document).ready(function () {
         allColumns: allCols,
         modalId: 'advFilterModal',
         bodyId: 'advFilterBody',
-        anchorId: 'dataTable_length',
-        buttonClass: 'btn btn-sm btn-outline-secondary ms-2'
+        anchorId: 'advFilterAnchor',
+        buttonClass: 'btn btn-sm btn-outline-secondary'
     });
 
     ColumnPicker.initViewsMenu(picker, {
