@@ -187,7 +187,12 @@ async function triggerAlertRefereeTraining(engineName) {
         const data = await resp.json();
         const color = data.status === 'success' ? '#4caf50' : '#f44336';
         msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
-        setTimeout(() => fetchAlertRefereeReadiness(engineName), 4000);
+        if (data.status === 'success') {
+            // The endpoint only confirms the background task was queued, not that it finished —
+            // a real backfill+train pass can take well over the old single 4s re-check, so poll
+            // the readiness panel at several staggered delays instead of checking once.
+            [5000, 15000, 35000].forEach(delay => setTimeout(() => fetchAlertRefereeReadiness(engineName), delay));
+        }
     } catch (err) {
         msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
     } finally {
