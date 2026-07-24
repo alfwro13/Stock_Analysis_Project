@@ -834,4 +834,21 @@ def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results
         conn.execute("DELETE FROM pattern_detection_results WHERE ticker = 'MIGTST1'")
         conn.commit()
         conn.close()
+
+
+@pytest.mark.db
+def test_account_transactions_has_account_date_index():
+    """get_transactions() filters on account_id and orders by txn_date — must be indexed, not a table scan."""
+    conn = _conn()
+    try:
+        rows = conn.execute("PRAGMA index_list(account_transactions)").fetchall()
+        index_names = {r["name"] for r in rows}
+        assert "idx_account_transactions_account_date" in index_names
+
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+        rows = conn.execute("PRAGMA index_list(account_transactions)").fetchall()
+        assert sum(1 for r in rows if r["name"] == "idx_account_transactions_account_date") == 1
+    finally:
         conn.close()
