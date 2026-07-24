@@ -68,12 +68,17 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Workflow Monitor** — dependency flow-chart of every scheduled job with traffic-light status and conflict detection.
 * **Backup & Recovery** — scheduled or on-demand archive of DB/data/models to a local folder or NFS share, with restore.
 
-Watch list Dashboard:
-<img width="2247" height="1633" alt="watchlist_dash" src="https://github.com/user-attachments/assets/22fcd68d-b6a9-4f5d-aacc-69bd88db0bfc" />
+Watchlist Dashboard:
+<img width="1891" height="893" alt="watchlist_dash" src="https://github.com/user-attachments/assets/0ecfe656-45b0-46a9-bc7a-9b9ee3886536" />
+
+
 Market Sentiment Page:
-<img width="2265" height="1630" alt="market_sentiment" src="https://github.com/user-attachments/assets/1c70fd70-6cdf-4ee3-855b-f70d9ca3c5a4" />
+<img width="1891" height="941" alt="market_sentiment" src="https://github.com/user-attachments/assets/6a11d1ee-5e92-47be-ad5e-92592fc79224" />
+
+
 Holding detailed view:
-<img width="867" height="1805" alt="detailed_view" src="https://github.com/user-attachments/assets/35beacd7-df5e-435c-aa55-dd4f087e5b7b" />
+<img width="1891" height="847" alt="detailed_view" src="https://github.com/user-attachments/assets/bff422da-435a-4cbe-b152-7ad08b198bbd" />
+
 
 ## **🚀 Installation & Setup**
 
