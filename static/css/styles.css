@@ -373,6 +373,7 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .data-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 .data-card h3 { margin-top: 0; color: #4da6ff; border-bottom: 1px solid #333; padding-bottom: 10px; }
 .data-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: var(--font-size-body); }
+.data-row-inline { justify-content: flex-start; gap: 6px; }
 .data-label { color: #aaa; }
 .data-value { font-weight: bold; color: #fff; }
 .chart-wrapper { position: relative; background-color: #1e1e1e; padding: 10px; border-radius: 8px; margin-bottom: 30px; }
