@@ -1809,7 +1809,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         earnings_vol: dict = {}
         if stock_data:
             cursor.execute('''
-                SELECT implied_move_pct, historical_avg_move_pct, edge_score, options_volume
+                SELECT drift_avg_pct_1d, drift_up_count_1d, drift_sample_size_1d,
+                       drift_avg_pct_5d, drift_up_count_5d, drift_sample_size_5d,
+                       drift_avg_pct_20d, drift_up_count_20d, drift_sample_size_20d
                 FROM earnings_volatility WHERE ticker = ?
             ''', (ticker,))
             ev_row = cursor.fetchone()
@@ -1857,6 +1859,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             volatility_date = (e_date - timedelta(days=7)).strftime('%Y-%m-%d')
         except Exception:
             logger.warning("Could not parse next_earnings_date for %s: %s", ticker, stock_data.get('next_earnings_date'))
+
+    from db_helpers import get_latest_resolved_earnings_drift
+    latest_resolved_drift = get_latest_resolved_earnings_drift(ticker) if stock_data else {1: None, 5: None, 20: None}
 
     from db_etf import get_etf_predictor_config_by_ticker
     etf_predictor_config = get_etf_predictor_config_by_ticker(ticker)
@@ -2129,6 +2134,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             "last_updated_str": last_updated_str,
             "position_sizing": position_sizing_context,
             "earnings_vol": earnings_vol,
+            "latest_resolved_drift": latest_resolved_drift,
             "fundamentals_extra": fundamentals_extra,
             "bubble_data": bubble_data,
             "ticker_risk": ticker_risk,

@@ -325,29 +325,29 @@
                             {% else %}
                                 <p class="text-accent-bold mt-15">&#128197; Future Event: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
                             {% endif %}
-                        {% elif days_to_earnings >= -7 %}
+                        {% elif days_to_earnings >= -25 %}
                             <p class="info-text mt-15">&#8505;&#65039; Post-Earnings: The report was recently released on {{ stock.next_earnings_date }}. Volatility may still be settling.</p>
                         {% endif %}
                     {% endif %}
                     {% if earnings_vol %}
-                    <div class="data-row mt-10">
-                        <span class="data-label"><abbr title="Options-implied expected move at the next earnings event. Derived from ATM straddle pricing.">Implied Move:</abbr></span>
-                        <span class="data-value">{% if earnings_vol.implied_move_pct is not none %}&#177;{{ "{:.1f}".format(earnings_vol.implied_move_pct) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Average actual post-earnings move over the last 3 years (absolute value).">Hist. Avg Move:</abbr></span>
-                        <span class="data-value">{% if earnings_vol.historical_avg_move_pct is not none %}&#177;{{ "{:.1f}".format(earnings_vol.historical_avg_move_pct) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    {% if earnings_vol.edge_score is not none %}
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Edge Score: implied move minus historical avg. Positive = options are pricing in more risk than history suggests (premium seller edge).">Options Edge:</abbr></span>
+                    {% for h in [1, 5, 20] %}
+                    {% set avg = earnings_vol["drift_avg_pct_" ~ h ~ "d"] %}
+                    {% set up = earnings_vol["drift_up_count_" ~ h ~ "d"] %}
+                    {% set n = earnings_vol["drift_sample_size_" ~ h ~ "d"] %}
+                    {% set resolved = latest_resolved_drift[h] %}
+                    <div class="data-row {% if loop.first %}mt-10{% endif %}">
+                        <span class="data-label"><abbr title="Signed average price change {{ h }} trading day{{ 's' if h != 1 else '' }} after each of the ticker's last (up to) 4 earnings reports, measured from the close right before the report. Same figure shown on the Earnings Volatility page.">Drift {{ h }}D:</abbr></span>
                         <span class="data-value">
-                            {% set es = earnings_vol.edge_score %}
-                            {% if es > 0 %}<span class="metric-excellent">+{{ "{:.2f}".format(es) }}</span>
-                            {% else %}<span class="metric-poor">{{ "{:.2f}".format(es) }}</span>{% endif %}
+                            <span class="{% if avg is not none and avg > 0 %}text-success{% elif avg is not none and avg < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
+                                {% if n %}{{ up }}/{{ n }} up &middot; {% if avg > 0 %}+{% endif %}{{ "{:,.2f}".format(avg) }}%{% else %}&mdash;{% endif %}
+                            </span>
+                            {% if resolved is not none %}
+                                {% if resolved.direction_correct %}<abbr class="ml-10" title="The most recent resolved earnings event ({{ resolved.earnings_date }}) moved in the same direction as the historical average.">&#128077;</abbr>
+                                {% else %}<abbr class="ml-10" title="The most recent resolved earnings event ({{ resolved.earnings_date }}) moved against the historical average direction.">&#128078;</abbr>{% endif %}
+                            {% endif %}
                         </span>
                     </div>
-                    {% endif %}
+                    {% endfor %}
                     {% endif %}
                 {% endif %}
             </div>
