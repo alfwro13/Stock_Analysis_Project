@@ -28,7 +28,9 @@ Everything under version control (`*.py`, `templates/`, `static/` except the two
 | `./logs` | `/app/logs` | Rotating `app.log` |
 | `./backups` | `/app/backups` | Local Backup & Recovery destination |
 | `./config.json` | `/app/config.json` | Runtime settings (auto-created on first boot if the mounted file is empty) |
-| `.env` | (loaded via `env_file`) | All secrets — dashboard credentials, API keys, Nextcloud/Ghostfolio/FRED/HF tokens |
+| `./.env` | `/app/.env` | All secrets — dashboard credentials, API keys, Nextcloud/Ghostfolio/FRED/HF tokens |
+
+`.env` is a bind mount, not Compose's `env_file:` directive — deliberately. `config.py`'s `_provision_default_credentials()` writes auto-generated defaults (e.g. a fresh `ADMIN_CONFIRM_TOKEN`, or `DASHBOARD_USERNAME`/`PASSWORD` if unset) back into `.env` on first boot via `dotenv.set_key()`, exactly like the bare-metal deployment. `env_file:` only injects resolved variables into the container's process environment — the app's `set_key()` write would land on a `.env` that only exists inside that one container's ephemeral filesystem and vanish on the next `docker compose up`/recreation, silently regenerating credentials every time. Bind-mounting `/app/.env` to the same host file `config.py` already expects means that write persists, identically to bare metal.
 
 `reports/` and `static/briefing_charts/` are **not** mounted — both are dead leftovers from a retired feature; nothing in the current codebase reads or writes to them (confirmed by grep, 2026-07-25). `static/js/mermaid.min.js` is baked into the image at build time rather than left to self-heal via its runtime CDN download (`utils.py`'s `ensure_workflow_assets()`), so the container doesn't need outbound internet just to render the Workflow Monitor page — `Dockerfile`'s `apt-get install curl` is only there for the container `HEALTHCHECK`, the mermaid file itself is copied in via `COPY . .` from the git-tracked repo.
 
@@ -65,7 +67,7 @@ cp .env.example .env       # then fill in real values
 docker compose up -d
 ```
 
-`docker-compose.yml` maps port `8090:8090` and reads secrets from `.env` via `env_file`. Edit the `image:` tag if you want to pin a specific build instead of `:latest`.
+`docker-compose.yml` maps port `8090:8090` and bind-mounts `.env` alongside the other runtime paths. Edit the `image:` tag if you want to pin a specific build instead of `:latest`.
 
 Updating to the newest build:
 
