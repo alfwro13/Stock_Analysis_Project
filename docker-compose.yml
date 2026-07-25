@@ -1,0 +1,17 @@
+services:
+  app:
+    image: ghcr.io/alfwro13/stock_analysis_project:latest
+    container_name: quantamental-dashboard
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      # For NFS-backed backups, point this at a host-mounted NFS path instead
+      # (see assets/docker_deployment.md) and select "Local Folder" in Settings.
+      - ./backups:/app/backups
+      - ./config.json:/app/config.json
