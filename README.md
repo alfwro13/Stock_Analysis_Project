@@ -266,6 +266,19 @@ Once deployed as a service, you can manage the dashboard via the Web UI Settings
 * **Restart after manual code updates:** `sudo systemctl restart stock_analysis_project  `
 * **View live server logs:** `sudo journalctl -u stock_analysis_project -f`
 
+## **🐳 Running with Docker**
+
+An alternative to the systemd service setup above — a pre-built image is published to GitHub Container Registry on every push to `main` (`.github/workflows/docker-build.yml`), tagged `:latest` and by immutable git-sha.
+
+```bash
+mkdir -p data models logs backups
+touch config.json          # auto-filled on first boot
+cp .env.example .env       # then fill in real values
+docker compose up -d
+```
+
+`docker-compose.yml` bind-mounts `data/`, `models/`, `logs/`, `backups/`, and `config.json` from the host so state survives container recreation, and reads secrets from `.env`. Update to the newest build with `docker compose pull && docker compose up -d`. Full details, including why NFS backups need a host-level mount instead of the app's built-in NFS Share option when running in Docker, are in [assets/docker_deployment.md](assets/docker_deployment.md).
+
 ## **🔒 Nginx Reverse Proxy & Security Headers**
 
 For production deployments it is strongly recommended to place the dashboard behind an Nginx reverse proxy. This adds HTTPS termination, security headers, and clickjacking protection.
