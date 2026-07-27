@@ -1,6 +1,6 @@
 pytest>=9.1.1
 packaging>=23.0
-fastapi==0.139.2
+fastapi==0.140.4
 python-dotenv>=1.0.0
 slowapi>=0.1.10
 starlette-csrf>=3.0.0
