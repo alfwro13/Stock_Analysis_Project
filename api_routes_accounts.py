@@ -59,7 +59,7 @@ from scheduler_engine import (
     unregister_account_topup_job,
 )
 from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
-from utils import normalize_ticker
+from utils import has_cached_fundamentals, is_excluded_from_yahoo_fetch, normalize_ticker
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -196,6 +196,22 @@ class TreasuryBillAutoReinvestBody(BaseModel):
 class TreasuryBillConfirmYtmBody(BaseModel):
     confirmed_ytm: Optional[float] = None
     face_value: Optional[float] = None
+
+
+def _ensure_ticker_data(ticker: str, background_tasks: BackgroundTasks) -> None:
+    """Queues whichever of profile / fundamentals+price / stock_signals row this ticker is still
+    missing, so it renders correctly on the Portfolio and Watchlist pages straight away. The three
+    gates are deliberately independent: a universe-scraped ticker has an `asset_profiles` row but
+    no fundamentals dump, and analyzing it without one silently writes 'USD'/'EQUITY'/'Unknown'
+    defaults over the profile's real values."""
+    if is_excluded_from_yahoo_fetch(ticker):
+        return
+    if not _ticker_known(ticker):
+        background_tasks.add_task(update_single_profile, ticker)
+    if not has_cached_fundamentals(ticker):
+        background_tasks.add_task(fetch_and_save_single_ticker, ticker)
+    if not _has_stock_signals_row(ticker):
+        background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
 
 
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
@@ -403,9 +419,8 @@ async def api_create_transaction(
                 content={"status": "error", "message": "Use POST /accounts/{id}/transfer to record a transfer."},
             )
         ticker = normalize_ticker(body.ticker) if body.ticker else None
-        if ticker and not _ticker_known(ticker):
-            background_tasks.add_task(update_single_profile, ticker)
-            background_tasks.add_task(fetch_and_save_single_ticker, ticker)
+        if ticker:
+            _ensure_ticker_data(ticker, background_tasks)
         currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         fee_currency, fee_exchange_rate = _resolve_fee_currency_and_rate(
@@ -646,11 +661,7 @@ async def api_add_watchlist_item(request: Request, account_id: int, body: Watchl
         )
         if item_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add ticker to watchlist."})
-        if not _ticker_known(ticker):
-            background_tasks.add_task(update_single_profile, ticker)
-            background_tasks.add_task(fetch_and_save_single_ticker, ticker)
-        if not _has_stock_signals_row(ticker):
-            background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
+        _ensure_ticker_data(ticker, background_tasks)
         return JSONResponse(content={"status": "success", "id": item_id})
     except Exception as e:
         logger.error("api_add_watchlist_item failed for account %s: %s", account_id, e)
@@ -695,9 +706,7 @@ async def api_import_csv(request: Request, account_id: int, background_tasks: Ba
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
         tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
         for ticker in tickers:
-            if not _ticker_known(ticker):
-                background_tasks.add_task(update_single_profile, ticker)
-                background_tasks.add_task(fetch_and_save_single_ticker, ticker)
+            _ensure_ticker_data(ticker, background_tasks)
         background_tasks.add_task(resnapshot_account, account_id)
         skipped_rows = result["skipped_rows"]
         if skipped_rows:

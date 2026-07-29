@@ -196,9 +196,40 @@ class QuantEngine:
             return {}
         filepath = FUNDAMENTALS_DIR / f"{safe_ticker}.json"
         if not filepath.exists():
-            return {}
+            return self._fundamentals_from_profile(ticker)
         with open(filepath, 'r') as f:
             return json.load(f)
+
+    @staticmethod
+    def _fundamentals_from_profile(ticker: str) -> dict:
+        """The `asset_profiles` row reshaped into the Yahoo `.info` keys analyze_ticker reads, for a
+        ticker whose fundamentals dump was never fetched. Without it an empty dict falls through to
+        the 'USD'/'EQUITY'/'Unknown' defaults, which then overwrite the profile's correct values in
+        `stock_signals` — mistagging a GBP LSE ETF as USD and applying a phantom FX conversion to
+        every price derived from it."""
+        conn = None
+        try:
+            conn = get_connection()
+            row = conn.execute(
+                "SELECT company_name, sector, country, currency, quote_type FROM asset_profiles WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+            if row is None:
+                return {}
+            info = {
+                'shortName': row['company_name'],
+                'sector': row['sector'],
+                'country': row['country'],
+                'currency': row['currency'],
+                'quoteType': row['quote_type'],
+            }
+            return {k: v for k, v in info.items() if v}
+        except Exception as e:
+            logger.error("Profile fundamentals fallback failed for %s: %s", ticker, e)
+            return {}
+        finally:
+            if conn:
+                conn.close()
 
     def calculate_vcp_breakout(self, df: pd.DataFrame) -> Tuple[bool, bool, bool]:
         """Returns (is_vcp_base, is_confirmed_breakout, has_prior_uptrend) for all 5 Minervini VCP criteria."""
