@@ -1155,8 +1155,14 @@ def test_account_summary_includes_holdings_count():
 @pytest.mark.db
 def test_scraped_price_performance_returns_none_without_enough_history():
     from account_scraper_engine import import_price_csv
+    from datetime import datetime, timedelta, timezone
+    
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    yesterday_str = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+
     aid = create_account("PensionPerfShortAcc", "GBP", account_type="Pension")
-    import_price_csv(aid, "date;marketPrice\n2026-06-27;1.00\n2026-06-28;1.10\n")
+    import_price_csv(aid, f"date;marketPrice\n{yesterday_str};1.00\n{today_str};1.10\n")
+    
     result = accounts_engine.scraped_price_performance(aid)
     # Only 1-2 days of history exist, so there's no price as far back as 1 month/YTD/1 year ago.
     assert result["1m"] is None
