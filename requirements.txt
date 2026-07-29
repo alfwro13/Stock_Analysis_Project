@@ -6,8 +6,8 @@ slowapi>=0.1.10
 starlette-csrf>=3.0.0
 python-multipart
 uvicorn==0.51.0
-yfinance==1.5.1
-pandas==3.0.3
+yfinance==1.5.2
+pandas==3.0.5
 pyarrow==24.0.0
 ta==0.11.0
 plotly==6.9.0
