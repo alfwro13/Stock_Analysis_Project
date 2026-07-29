@@ -152,3 +152,35 @@ class TestSaveToDbWritesAtrStopHistory:
         ).fetchall()
         conn.close()
         assert rows == []
+
+
+class TestLoadFundamentalsProfileFallback:
+    TICKER = "ZZPROFFALL.L"
+
+    def setup_method(self):
+        conn = _db.get_connection()
+        conn.execute(
+            """INSERT OR REPLACE INTO asset_profiles
+               (ticker, company_name, sector, country, currency, quote_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (self.TICKER, "Profile Fallback ETF", "Unclassified", "Unknown", "GBP", "ETF"),
+        )
+        conn.commit()
+        conn.close()
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM asset_profiles WHERE ticker=?", (self.TICKER,))
+        conn.commit()
+        conn.close()
+
+    def test_missing_fundamentals_json_falls_back_to_asset_profiles(self, tmp_path):
+        with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path):
+            info = QuantEngine().load_fundamentals(self.TICKER)
+        assert info["currency"] == "GBP"
+        assert info["quoteType"] == "ETF"
+        assert info["shortName"] == "Profile Fallback ETF"
+
+    def test_missing_fundamentals_and_no_profile_returns_empty(self, tmp_path):
+        with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path):
+            assert QuantEngine().load_fundamentals("ZZNOPROFILE.L") == {}

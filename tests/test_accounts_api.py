@@ -451,6 +451,71 @@ def test_create_transaction_with_unknown_ticker_triggers_price_fetch(client):
 
 
 @pytest.mark.api
+def test_create_transaction_known_ticker_without_signals_row_triggers_analyze(client):
+    """A ticker already in asset_profiles (from the universe scrape) but with no stock_signals row
+    must still get a fundamentals fetch and an analyze_ticker() call queued on Buy — otherwise it
+    never appears on the Portfolio page, which renders FROM stock_signals."""
+    import database as _db
+    account_id = _create_account(client)
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO asset_profiles (ticker, company_name, currency) VALUES (?, ?, ?)",
+            ("ZZBUYANALYZE", "Buy Analyze Ltd.", "GBP"),
+        )
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZBUYANALYZE'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    mock_engine = MagicMock()
+    with (
+        patch("api_routes_accounts.update_single_profile") as mock_profile,
+        patch("api_routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api_routes_accounts.QuantEngine", return_value=mock_engine),
+    ):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZBUYANALYZE",
+            "currency": "GBP", "quantity": 1, "unit_price": 1.0, "exchange_rate": 1.0,
+        })
+    assert resp.status_code == 200
+    mock_profile.assert_not_called()
+    mock_fetch.assert_called_once_with("ZZBUYANALYZE")
+    mock_engine.analyze_ticker.assert_called_once_with("ZZBUYANALYZE")
+
+    _db.soft_delete_account(account_id)
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM asset_profiles WHERE ticker = 'ZZBUYANALYZE'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.api
+def test_create_transaction_synthetic_ticker_never_reaches_yahoo(client):
+    account_id = _create_account(client)
+    mock_engine = MagicMock()
+    with (
+        patch("api_routes_accounts.update_single_profile") as mock_profile,
+        patch("api_routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api_routes_accounts.QuantEngine", return_value=mock_engine),
+    ):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "TBILL-999",
+            "currency": "GBP", "quantity": 1, "unit_price": 1.0, "exchange_rate": 1.0,
+        })
+    assert resp.status_code == 200
+    mock_profile.assert_not_called()
+    mock_fetch.assert_not_called()
+    mock_engine.analyze_ticker.assert_not_called()
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_create_transaction_blank_exchange_rate_is_auto_filled(client):
     account_id = _create_account(client)
     with (
@@ -1060,7 +1125,7 @@ def test_add_watchlist_item_missing_stock_signals_row_triggers_analyze(client):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "ZZANALYZEME2"})
     assert resp.status_code == 200
     mock_profile.assert_not_called()
-    mock_fetch.assert_not_called()
+    mock_fetch.assert_called_once_with("ZZANALYZEME2")
     mock_engine.analyze_ticker.assert_called_once_with("ZZANALYZEME2")
 
     item_id = _json(resp)["id"]

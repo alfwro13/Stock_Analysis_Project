@@ -109,6 +109,18 @@ def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
     return ticker
 
 
+def has_cached_fundamentals(ticker: Optional[str]) -> bool:
+    """Whether this ticker's raw Yahoo `.info` dump exists under FUNDAMENTALS_DIR. Presence in
+    `asset_profiles` does not imply it — the universe scrape writes profiles without ever fetching
+    the dump — so anything that would otherwise analyze the ticker with an empty `info` (and fall
+    back on 'USD'/'EQUITY'/'Unknown' defaults) must gate on this, not on the profile row."""
+    from config import FUNDAMENTALS_DIR
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        return False
+    return (FUNDAMENTALS_DIR / f"{safe_ticker}.json").exists()
+
+
 def ignored_tickers_set(config: Optional[dict] = None) -> set:
     """Normalized Settings-page IGNORED_TICKERS — the single source every Yahoo-touching
     ticker-list builder must filter against, so an ignored ticker is actually ignored everywhere."""
