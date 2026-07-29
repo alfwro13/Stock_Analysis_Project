@@ -1455,11 +1455,17 @@ def scraped_price_performance(account_id: int) -> dict:
     if not history:
         return {"1m": None, "ytd": None, "1y": None}
     latest_price = history[-1]["price"]
+    first_date = history[0]["price_date"]
     today = datetime.now(timezone.utc).date()
 
     result = {}
     for key, days_back in _PENSION_PERFORMANCE_WINDOWS:
         as_of_date = (today.replace(month=1, day=1) if key == "ytd" else today - timedelta(days=days_back)).isoformat()
+        
+        if as_of_date < first_date:
+            result[key] = None
+            continue
+            
         as_of_row = get_price_as_of(account_id, as_of_date)
         if not as_of_row or not as_of_row["price"]:
             result[key] = None
