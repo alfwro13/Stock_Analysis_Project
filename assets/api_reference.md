@@ -325,7 +325,7 @@ Synchronises the local market universe with Freetrade's securities list via ISIN
 
 ### `POST /api/ui-preferences/columns`
 
-Persists the Portfolio/Watchlist "Columns" picker's selection — which of that page's core columns are hidden, and which of the optional columns (from `table_columns_helpers.OPTIONAL_COLUMNS`) are shown. No confirm token required, same as `/api/learn/preference`.
+Persists the Portfolio/Watchlist "Columns" picker's selection — which of that page's core columns are hidden, and which of the optional columns (from `table_columns_helpers.OPTIONAL_COLUMNS`) are shown, and the full column order. No confirm token required, same as `/api/learn/preference`.
 
 **Request body**
 
@@ -333,11 +333,14 @@ Persists the Portfolio/Watchlist "Columns" picker's selection — which of that 
 {
   "scope": "portfolio",
   "hidden_core_columns": ["sentiment"],
-  "shown_optional_columns": ["trailing_pe", "beta", "market_cap"]
+  "shown_optional_columns": ["trailing_pe", "beta", "market_cap"],
+  "column_order": ["ticker", "price", "score", "company_name"]
 }
 ```
 
 `scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_HIDDEN_CORE_COLUMNS` / `UI_PREFERENCES.{SCOPE}_SHOWN_OPTIONAL_COLUMNS` in `config.json`, read back by `page_routes.portfolio_page()`/`watchlist_page()` on next load to compute each column's initial visibility.
+
+`column_order` is an optional list of stable column keys, stored in `UI_PREFERENCES.{SCOPE}_COLUMN_ORDER`. Ticker is forced first, duplicates and unknown keys are removed, and omitted/new columns are appended in registry order. Omitting this field leaves the saved order unchanged; an empty list resets to registry order. Invalid field types return `422`. Order is independent for each page and includes hidden columns.
 
 ```json
 {"status": "success"}
@@ -347,7 +350,7 @@ Persists the Portfolio/Watchlist "Columns" picker's selection — which of that 
 
 ### `POST /api/ui-preferences/views`
 
-Persists the Portfolio/Watchlist "Views" picker's full list of named column presets, each optionally carrying an Advanced Filter. Full-list replacement (the client sends the entire updated list on every add/rename/delete), same no-confirm-token pattern as `/api/ui-preferences/columns`.
+Persists the Portfolio/Watchlist "Views" picker's full list of named column presets, each optionally carrying a column order and an Advanced Filter. Full-list replacement (the client sends the entire updated list on every add/rename/delete), same no-confirm-token pattern as `/api/ui-preferences/columns`.
 
 **Request body**
 
@@ -366,6 +369,8 @@ Persists the Portfolio/Watchlist "Views" picker's full list of named column pres
 ```
 
 `scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_VIEWS` in `config.json`. `table_columns_helpers.resolve_views()` falls back to the 3 built-in default views (`DEFAULT_PORTFOLIO_VIEWS`/`DEFAULT_WATCHLIST_VIEWS`) whenever this key is empty/unset — saving an empty `views` list therefore reverts the picker to the built-in defaults rather than leaving it empty. Applying a view is purely a client-side bulk operation (`column_picker.js`'s `ColumnPicker.applyView()`) that recomputes and saves the same `hidden_core_columns`/`shown_optional_columns` state `/api/ui-preferences/columns` already persists — this endpoint only stores the named presets themselves.
+
+`column_order` is an optional list of column keys on each View, normalized like the columns endpoint. Save Current captures the complete order, including hidden columns. Applying a View restores its order, visibility and filter, and saves the current layout through the columns endpoint. Views without `column_order` use the registry order. The Active badge compares order as well as visibility and filter.
 
 `filter` is optional (`TableFilterSpec | None`, omitted from storage via `model_dump(exclude_none=True)` when absent, so older saved views round-trip with no `filter` key at all). `TableFilterSpec` is `{"logic": "AND"|"OR" (default "AND"), "conditions": [TableFilterCondition, ...]}` — `422` for any other `logic` value. Each condition is `{"key": <column key>, "operator": <see static/js/advanced_filter.js's OPERATORS table>, "value": <string, optional>, "value2": <string, optional — "between" only>}`. Conditions are not validated against known column keys/operators server-side (same leniency as `columns`) — `static/js/advanced_filter.js` is the source of truth for what's actually offered in the UI. An Advanced Filter built ad hoc (not attached to a saved view) never reaches this endpoint at all — it lives only in that browser's `localStorage`. Older saved views (or `localStorage` state) predating the `logic` field store `filter` as a bare condition list with no wrapper object — `static/js/advanced_filter.js`'s `normalizeFilterSpec()` reads that as an implicit `logic: "AND"` for backward compatibility; a subsequent save always writes the new `{logic, conditions}` shape.
 

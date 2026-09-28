@@ -55,6 +55,7 @@ $(document).ready(function () {
         initComplete: function () {
             document.getElementById('dataTable').classList.remove('dt-init-pending');
         },
+        columns: allCols.map(function (col) { return { name: col.key }; }),
         columnDefs: [
             { responsivePriority: 1, targets: 0 },    // Ticker — always visible
             { responsivePriority: 2, targets: -1 },   // Signal — always visible
@@ -113,29 +114,29 @@ $(document).ready(function () {
 
     $('#signalFilter').on('change', function () {
         var val = $(this).val();
-        if (val === 'ALL') { table.column(23).search('').draw(); }
-        else { table.column(23).search('^' + val + '$', true, false).draw(); }
+        if (val === 'ALL') { table.column('signal:name').search('').draw(); }
+        else { table.column('signal:name').search('^' + val + '$', true, false).draw(); }
     });
 
     $('#tagFilter').on('change', function () {
         $('#candleFilter').val('ALL');
         var val = $(this).val();
-        if (val === 'ALL') { table.column(22).search('').draw(); }
-        else { table.column(22).search(exactTagSearchPattern(val), true, false).draw(); }
+        if (val === 'ALL') { table.column('setup_tags:name').search('').draw(); }
+        else { table.column('setup_tags:name').search(exactTagSearchPattern(val), true, false).draw(); }
     });
 
     $('#candleFilter').on('change', function () {
         $('#tagFilter').val('ALL');
         var val = $(this).val();
-        if (val === 'ALL') { table.column(22).search('').draw(); }
-        else { table.column(22).search(exactTagSearchPattern(val), true, false).draw(); }
+        if (val === 'ALL') { table.column('setup_tags:name').search('').draw(); }
+        else { table.column('setup_tags:name').search(exactTagSearchPattern(val), true, false).draw(); }
     });
 
     var scoreMin = null, scoreMax = null;
     $.fn.dataTable.ext.search.push(function (settings, data) {
         if (settings.nTable.id !== 'dataTable') return true;
         if (scoreMin === null) return true;
-        var score = parseFloat(data[16]);
+        var score = parseFloat(data[table.column('score:name').index()]);
         if (isNaN(score)) return false;
         return score >= scoreMin && (scoreMax === null || score <= scoreMax);
     });

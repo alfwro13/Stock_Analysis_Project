@@ -868,6 +868,7 @@ $(document).ready(function () {
             try { if (localStorage.getItem('portfolio_heatmap_active')) _enterHeatmapMode(); } catch(e) {}
             if (window.AUTO_XRAY) toggleXray();
         },
+        columns: allCols.map(function (col) { return { name: col.key }; }),
         columnDefs: [
             { responsivePriority: 1, targets: [0, 2, 5] },
             { responsivePriority: 2, targets: [3, 4, 20] },
@@ -925,14 +926,14 @@ $(document).ready(function () {
 
     $('#signalFilter').on('change', function () {
         var val = $(this).val();
-        if (val === 'ALL') { table.column(20).search('').draw(); }
-        else { table.column(20).search('^' + val + '$', true, false).draw(); }
+        if (val === 'ALL') { table.column('signal:name').search('').draw(); }
+        else { table.column('signal:name').search('^' + val + '$', true, false).draw(); }
     });
 
     $('#tagFilter').on('change', function () {
         var val = $(this).val();
-        if (val === 'ALL') { table.column(19).search('').draw(); }
-        else { table.column(19).search(exactTagSearchPattern(val), true, false).draw(); }
+        if (val === 'ALL') { table.column('setup_tags:name').search('').draw(); }
+        else { table.column('setup_tags:name').search(exactTagSearchPattern(val), true, false).draw(); }
     });
 
     ChangePeriod.init({

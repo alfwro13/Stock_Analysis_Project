@@ -103,3 +103,9 @@ flagging for the operator to confirm before dropping them from
   artifacts as "SHAP explainers," but no current `.py` file imports `shap`.
   If those explainer artifacts are still produced by an out-of-repo training
   step, keep this dependency; if that step was retired, it may be dead.
+
+## Vendored column reordering
+
+`static/vendor/datatables/dataTables.colReorder.min.js` is DataTables ColReorder **1.7.0**, distributed under the MIT license by SpryMedia: [official release](https://cdn.datatables.net/colreorder/1.7.0/), [license](https://datatables.net/license/mit). It matches the application's DataTables **1.13.7** and is loaded locally on Portfolio and Watchlist only. No runtime CDN request or package installation is needed. Required drag-feedback CSS is integrated into `styles.css` with the application's theme variables.
+
+When upgrading DataTables or ColReorder, verify fixed-first Ticker, desktop mouse dragging, disabled touch/mobile dragging, hidden-column positions, sorting/filter identity after reorder, responsive child rows and saved View restoration. ColReorder 2.x targets DataTables 2.x and changes the fixed-column options; do not independently replace this 1.x extension with a 2.x release.

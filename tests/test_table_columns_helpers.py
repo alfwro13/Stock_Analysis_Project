@@ -167,7 +167,8 @@ def test_build_optional_column_cells_marks_client_rendered_entries():
 @pytest.mark.config
 def test_resolve_column_prefs_defaults_to_empty_lists():
     prefs = tch.resolve_column_prefs({}, "portfolio")
-    assert prefs == {"hidden_core_columns": [], "shown_optional_columns": []}
+    assert prefs == {"hidden_core_columns": [], "shown_optional_columns": [],
+                     "column_order": [c["key"] for c in tch.all_columns_for_page("portfolio")]}
 
 
 @pytest.mark.config
@@ -179,9 +180,11 @@ def test_resolve_column_prefs_reads_scoped_keys():
     }}
     assert tch.resolve_column_prefs(config_data, "watchlist") == {
         "hidden_core_columns": ["sentiment"], "shown_optional_columns": ["beta"],
+        "column_order": [c["key"] for c in tch.all_columns_for_page("watchlist")],
     }
     assert tch.resolve_column_prefs(config_data, "portfolio") == {
         "hidden_core_columns": ["score"], "shown_optional_columns": [],
+        "column_order": [c["key"] for c in tch.all_columns_for_page("portfolio")],
     }
 
 
@@ -251,3 +254,28 @@ def test_heat_index_column_is_portfolio_only_and_resolves_as_text():
     assert col["fmt"] == "text"
     _, display = tch._format_value("Red", "text", None)
     assert display == "Red"
+
+
+@pytest.mark.config
+@pytest.mark.parametrize("page", ["portfolio", "watchlist"])
+def test_column_order_pins_ticker_deduplicates_and_appends_missing_columns(page):
+    result = tch.normalize_column_order(["score", "removed_column", "price", "score", "ticker"], page)
+    assert result[:3] == ["ticker", "score", "price"]
+    keys = [c["key"] for c in tch.all_columns_for_page(page)]
+    assert result[3:] == [key for key in keys if key not in result[:3]]
+    assert len(result) == len(set(result)) == len(keys)
+
+
+@pytest.mark.config
+@pytest.mark.parametrize("page", ["portfolio", "watchlist"])
+def test_column_order_preferences_and_views_resolve_saved_order(page):
+    order = ["score", "price"]
+    view = {"name": "Ordered", "columns": ["ticker", "score"], "column_order": order}
+    config = {"UI_PREFERENCES": {f"{page.upper()}_COLUMN_ORDER": order,
+                               f"{page.upper()}_VIEWS": [view]}}
+    expected = tch.normalize_column_order(order, page)
+    assert tch.resolve_column_prefs(config, page)["column_order"] == expected
+    assert tch.resolve_views(config, page)[0]["column_order"] == expected
+    assert view["column_order"] == order
+    other_page = "watchlist" if page == "portfolio" else "portfolio"
+    assert tch.resolve_column_prefs(config, other_page)["column_order"] == tch.normalize_column_order([], other_page)

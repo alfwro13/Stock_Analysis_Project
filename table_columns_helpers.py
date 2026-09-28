@@ -252,10 +252,17 @@ def build_optional_column_cells(row_dict: dict, page: str) -> list:
     return cells
 
 
+def normalize_column_order(column_order: list, page: str) -> list:
+    keys = [col["key"] for col in all_columns_for_page(page)]
+    valid = set(keys)
+    return list(dict.fromkeys(["ticker"] + [key for key in column_order if key in valid] + keys))
+
+
 def resolve_column_prefs(config_data: dict, page: str) -> dict:
     prefix = page.upper()
     ui_prefs = config_data.get("UI_PREFERENCES", {})
     return {
+        "column_order": normalize_column_order(ui_prefs.get(f"{prefix}_COLUMN_ORDER", []) or [], page),
         "hidden_core_columns": ui_prefs.get(f"{prefix}_HIDDEN_CORE_COLUMNS", []) or [],
         "shown_optional_columns": ui_prefs.get(f"{prefix}_SHOWN_OPTIONAL_COLUMNS", []) or [],
     }
@@ -266,5 +273,6 @@ def resolve_views(config_data: dict, page: str) -> list:
     ui_prefs = config_data.get("UI_PREFERENCES", {})
     saved = ui_prefs.get(f"{prefix}_VIEWS")
     if saved:
-        return saved
+        return [dict(view, column_order=normalize_column_order(view["column_order"], page))
+                if view.get("column_order") is not None else view for view in saved]
     return DEFAULT_PORTFOLIO_VIEWS if page == "portfolio" else DEFAULT_WATCHLIST_VIEWS

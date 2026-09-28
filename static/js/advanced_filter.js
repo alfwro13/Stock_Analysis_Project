@@ -86,8 +86,8 @@ window.AdvancedFilter = (function () {
         }
 
         function cellFor(dataIndex, key) {
-            var idx = allColumns.findIndex(function (c) { return c.key === key; });
-            if (idx === -1) return null;
+            var idx = table.column(key + ':name').index();
+            if (idx === undefined) return null;
             try { return table.cell(dataIndex, idx).node(); } catch (e) { return null; }
         }
 

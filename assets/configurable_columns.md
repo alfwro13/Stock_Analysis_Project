@@ -1,7 +1,7 @@
 # Configurable Columns, Views, Advanced Filter & Sticky Header (Portfolio / Watchlist)
 
 Added July 2026, extended later that month with X-ray/Earnings Volatility columns, named
-Views, and an Advanced Filter builder. Desktop-only (≥769px). Four independent additions to
+Views, and an Advanced Filter builder. Desktop-only (≥769px). Five related additions to
 the Portfolio (`/portfolio`) and Watchlist (`/watchlist`) DataTables:
 
 1. A **Columns** picker (toolbar dropdown) letting the user show/hide columns, from a catalog
@@ -14,7 +14,8 @@ the Portfolio (`/portfolio`) and Watchlist (`/watchlist`) DataTables:
    next to `+ Add Ticker` on Watchlist) for building multi-condition row filters over any column,
    independent of the pre-existing quick-filter dropdowns (Signal/Tags/Score/Sector). See
    "Advanced Filter" below.
-4. A **sticky table header** that stays pinned under the navbar while scrolling, using the
+4. **Column reordering** by dragging desktop table headers with a mouse. Ticker stays first and visible; touch input and narrow screens cannot initiate a drag.
+5. A **sticky table header** that stays pinned under the navbar while scrolling, using the
    page's own scrollbar — no inner table scroll container.
 
 ## Column registry — `table_columns_helpers.py`
@@ -85,7 +86,7 @@ Five columns needing a genuinely new JOIN, deliberately deferred from the first 
 
 ## Views — `DEFAULT_PORTFOLIO_VIEWS` / `DEFAULT_WATCHLIST_VIEWS` + `resolve_views()`
 
-A view is `{"name": str, "columns": [key, ...]}` — the explicit set of column keys
+A view is `{"name": str, "columns": [key, ...], "column_order": [key, ...]}`. `columns` lists the keys
 that should be visible when applied; everything else (except the pinned Ticker
 column) is hidden. Views are defined **per page**, not shared across both, because
 several concepts have different core-column keys on each page (e.g. Portfolio's
@@ -113,9 +114,9 @@ the complete updated list, matching `POST /api/ui-preferences/columns`'s existin
 pattern rather than adding separate add/rename/delete endpoints.
 
 **Applying a view does not introduce a second visibility engine.** `column_picker.js`'s
-`ColumnPicker.applyView(columnKeys)` recomputes the same `hidden_core_columns`/
+`ColumnPicker.applyView(columnKeys, columnOrder)` recomputes the same `hidden_core_columns`/
 `shown_optional_columns` state the individual checkboxes already maintain, applies it
-column-by-column via the same `table.column(idx).visible()` calls, and saves it
+column-by-column via the same `table.column(key + ':name').visible()` calls, and saves it
 through the same `/api/ui-preferences/columns` endpoint — a view is purely a bulk
 shortcut for setting that one piece of state, not a separate persisted "current view"
 concept. This is why leaving the Columns picker open after applying a view shows the
@@ -189,18 +190,7 @@ to pin missing rows to the bottom/top of a sort (e.g. `-999`, `9999-12-31`) woul
 satisfy an unrelated numeric/date range filter — a missing RSI (`data-sort="-999"`)
 matching `rsi < 70` would be wrong, not just unhelpful.
 
-**Cell lookup is by DataTables column index, not `data-col-key`.** Core-column `<td>`
-elements were never tagged with `data-col-key` (only optional/position-sizing columns
-are) since `column_picker.js` addresses core columns by index. Rather than retrofitting
-every core `<td>` in both templates, `advanced_filter.js` resolves a condition's column
-key to its index in the same `allColumns` array the page already exposes
-(`window.PORTFOLIO_COLUMNS`/`WATCHLIST_COLUMNS`, core + optional in exact DataTables
-column order) and reads the cell via `table.cell(dataIndex, colIndex).node()` — the same
-approach the pre-existing Sector quick-filter predicate already uses via
-`table.row(dataIndex).node()`. Position Sizing (`client` fmt) columns work the same way:
-`renderPositionSizing()` already runs before `.DataTable()` is constructed, so their
-`data-sort`/text are populated before the filter predicate (or the page's initial
-`localStorage` restore) ever runs.
+**Cell lookup uses stable DataTables column names.** Both pages initialize each column's `name` from its registry key. The picker, quick filters and Advanced Filter use `table.column(key + ':name')`, so reordered positions cannot redirect filtering or visibility changes to another column. Score filtering resolves its current index by name before reading DataTables' search data. Position Sizing and live price updates retain their existing cell-key/element-ID lookups.
 
 **Persistence has two independent layers, exactly mirroring how Views already treat
 column visibility:**
@@ -241,7 +231,7 @@ saved view object — Advanced Filter passes `{filter: advFilter.getCurrentFilte
 
 **Active-view indicator and delete confirmation (2026-07-19):** the Views dropdown marks
 whichever saved view (if any) exactly matches the *current* live state — visible-column
-set plus active filter — with a "✓ Active" badge, via `initViewsMenu`'s private
+set, full column order and active filter — with a "✓ Active" badge, via `initViewsMenu`'s private
 `isViewActive(view)` (column-set equality via `_columnSetsEqual`, filter equality via
 `_filtersEqual`, both comparing structurally rather than with `JSON.stringify` so object
 key order can't produce a false mismatch). This derives "active" from state comparison on
@@ -264,7 +254,7 @@ filter) with no undo.
 Shared module (same pattern as `chart_fullscreen.js` for charts), two entry points:
 
 - `ColumnPicker.init(opts)` — wires the Columns dropdown menu (grouped by
-  `category`), returns `{isVisible, applyView, getCurrentVisibleKeys}`.
+  `category`), returns `{isVisible, applyView, getCurrentVisibleKeys, getColumnOrder, getDefaultOrder}`.
   `ColumnPicker.resolveVisible(key, allColumns, prefs)` is also exported standalone
   (a pure function, no DOM/table needed) so pages can compute the initial
   `columnDefs` `visible` array *before* `.DataTable()` is even constructed,
@@ -289,3 +279,13 @@ own scrollbar with no extra JS. `top` is a CSS custom property
 (`static/js/utils.js`) from the navbar's actual rendered height (not hardcoded —
 the navbar's height varies slightly, e.g. when the freshness badge wraps),
 recomputed on `window.resize`.
+
+## Column order
+
+DataTables ColReorder 1.7.0 is vendored locally alongside DataTables 1.13.7 and loaded only by Portfolio and Watchlist. Its drag feedback styles live in `static/css/styles.css`. The shared picker initializes it with Ticker fixed on the left and moves columns on drop. Dragging requires a viewport of at least 769px, hover and a fine pointer; touch-start handlers are removed, and resizing reevaluates whether dragging is enabled. Saved layouts still restore on mobile, where Responsive controls which cells fit.
+
+The complete order is stored as stable keys, including hidden columns, through the existing column-preferences endpoint in `UI_PREFERENCES.PORTFOLIO_COLUMN_ORDER` / `WATCHLIST_COLUMN_ORDER`. `normalize_column_order()` pins Ticker first, removes unknown/duplicate keys, and appends missing/new columns in registry order. The server supplies the normalized order on page load. Preference writes are serialized so rapid drops cannot overwrite a newer layout with an older request.
+
+Save Current records `column_order` alongside the visible `columns` and Advanced Filter. Applying a View restores all three; older/built-in Views without an order use registry order. The Active indicator compares the full order too. Hiding/showing a column preserves its position. Reordering the live table does not overwrite a named View until Save Current is used with that name.
+
+Operator browser checklist: on both pages drag Price/Score, reload, hide/show a moved column, save a View, change order, apply the View and verify the Active badge. Check sorting, Signal/Tags/Score and Advanced Filter, live Change/Price and Position Sizing. Confirm Ticker cannot move or hide, and neither phone nor touch input starts a drag.
