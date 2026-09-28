@@ -228,10 +228,14 @@ def _today():
 @pytest.fixture(autouse=True)
 def clean_backfill_state():
     """Wipe quant_scan_states before each test in this module."""
-    conn = _db_module.get_connection()
-    conn.execute("DELETE FROM quant_scan_states WHERE scan_type = 'ml_backfill'")
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        conn.execute("DELETE FROM quant_scan_states WHERE scan_type = 'ml_backfill'")
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 
 def _run_backfill_mocked(tickers):
@@ -259,32 +263,44 @@ class TestMLBackfillResume:
 
     def test_fresh_run_creates_in_progress_state(self):
         _run_backfill_mocked(["AAPL", "MSFT"])
-        conn = _db_module.get_connection()
-        row = conn.execute(
-            "SELECT status FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
-        ).fetchone()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            row = conn.execute(
+                "SELECT status FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
+            ).fetchone()
+        finally:
+            if conn:
+                conn.close()
         assert row is not None
 
     def test_completed_run_marks_state_completed(self):
         _run_backfill_mocked(["AAPL"])
-        conn = _db_module.get_connection()
-        row = conn.execute(
-            "SELECT status FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
-        ).fetchone()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            row = conn.execute(
+                "SELECT status FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
+            ).fetchone()
+        finally:
+            if conn:
+                conn.close()
         assert row["status"] == "COMPLETED"
 
     def test_resume_skips_already_processed_tickers(self):
         """Seed IN_PROGRESS with last_processed_ticker='MSFT'; only NVDA must be fetched."""
-        conn = _db_module.get_connection()
-        conn.execute(
-            "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
-            "VALUES (?, 'ml_backfill', 'MSFT', 'IN_PROGRESS')",
-            (_today(),),
-        )
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            conn.execute(
+                "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
+                "VALUES (?, 'ml_backfill', 'MSFT', 'IN_PROGRESS')",
+                (_today(),),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
 
         fetched = _run_backfill_mocked(["AAPL", "MSFT", "NVDA"])
         assert "AAPL" not in fetched, "AAPL already processed — must be skipped"
@@ -293,13 +309,17 @@ class TestMLBackfillResume:
 
     def test_resume_cross_day_finds_previous_in_progress(self):
         """An IN_PROGRESS row from yesterday must still be found and resumed."""
-        conn = _db_module.get_connection()
-        conn.execute(
-            "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
-            "VALUES ('2026-01-01', 'ml_backfill', 'AAPL', 'IN_PROGRESS')",
-        )
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            conn.execute(
+                "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
+                "VALUES ('2026-01-01', 'ml_backfill', 'AAPL', 'IN_PROGRESS')",
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
 
         fetched = _run_backfill_mocked(["AAPL", "MSFT"])
         assert "AAPL" not in fetched
@@ -308,11 +328,15 @@ class TestMLBackfillResume:
     def test_empty_ticker_list_returns_without_state(self):
         from ai_prediction_engine import run_historical_backfill
         run_historical_backfill([])
-        conn = _db_module.get_connection()
-        row = conn.execute(
-            "SELECT 1 FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
-        ).fetchone()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            row = conn.execute(
+                "SELECT 1 FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
+            ).fetchone()
+        finally:
+            if conn:
+                conn.close()
         assert row is None
 
 
@@ -357,12 +381,16 @@ class TestRelStrengthSurvivesSpyLag:
         ):
             run_historical_backfill(["ZZBACKFILLRS"])
 
-        conn = _db_module.get_connection()
-        row = conn.execute(
-            "SELECT rel_strength_5d, rel_strength_20d FROM quant_signals "
-            "WHERE ticker = 'ZZBACKFILLRS' ORDER BY date DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            row = conn.execute(
+                "SELECT rel_strength_5d, rel_strength_20d FROM quant_signals "
+                "WHERE ticker = 'ZZBACKFILLRS' ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            if conn:
+                conn.close()
         assert row is not None
         assert row["rel_strength_5d"] is not None
         assert row["rel_strength_20d"] is not None
@@ -375,30 +403,34 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
 
     @staticmethod
     def _seed_universe(n=30, date_str="2026-01-01"):
-        conn = _db_module.get_connection()
-        rng = np.random.default_rng(3)
-        for i in range(n):
-            ticker = f"MLU{i:02d}"
-            conn.execute("INSERT OR REPLACE INTO stock_signals (ticker) VALUES (?)", (ticker,))
-            conn.execute(
-                """INSERT OR REPLACE INTO quant_signals
-                   (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
-                    sma_50, sma_200, volume_surge, bullish_cross,
-                    mom_1m, mom_3m, mom_6m, mom_12m_skip1m, atr_pct, hist_vol_20,
-                    rel_strength_5d, rel_strength_20d)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    ticker, date_str,
-                    100.0 + rng.normal(0, 5), 1_000_000 + rng.normal(0, 1000),
-                    50.0 + rng.normal(0, 5), rng.normal(0, 1), rng.normal(0, 1), rng.normal(0, 1),
-                    95.0 + rng.normal(0, 5), 90.0 + rng.normal(0, 5), 0, 0,
-                    rng.normal(0, 0.05), rng.normal(0, 0.1), rng.normal(0, 0.15), rng.normal(0, 0.2),
-                    0.02 + abs(rng.normal(0, 0.005)), 0.2 + abs(rng.normal(0, 0.05)),
-                    rng.normal(0, 0.02), rng.normal(0, 0.03),
-                ),
-            )
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            rng = np.random.default_rng(3)
+            for i in range(n):
+                ticker = f"MLU{i:02d}"
+                conn.execute("INSERT OR REPLACE INTO stock_signals (ticker) VALUES (?)", (ticker,))
+                conn.execute(
+                    """INSERT OR REPLACE INTO quant_signals
+                       (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
+                        sma_50, sma_200, volume_surge, bullish_cross,
+                        mom_1m, mom_3m, mom_6m, mom_12m_skip1m, atr_pct, hist_vol_20,
+                        rel_strength_5d, rel_strength_20d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        ticker, date_str,
+                        100.0 + rng.normal(0, 5), 1_000_000 + rng.normal(0, 1000),
+                        50.0 + rng.normal(0, 5), rng.normal(0, 1), rng.normal(0, 1), rng.normal(0, 1),
+                        95.0 + rng.normal(0, 5), 90.0 + rng.normal(0, 5), 0, 0,
+                        rng.normal(0, 0.05), rng.normal(0, 0.1), rng.normal(0, 0.15), rng.normal(0, 0.2),
+                        0.02 + abs(rng.normal(0, 0.005)), 0.2 + abs(rng.normal(0, 0.05)),
+                        rng.normal(0, 0.02), rng.normal(0, 0.03),
+                    ),
+                )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
         return [f"MLU{i:02d}" for i in range(n)]
 
     def _fake_inference_df(self, tickers, date_str="2026-01-01"):
@@ -438,8 +470,9 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
             mock_stats_path.exists.return_value = False
             update_daily_ml_predictions(target)
 
-        conn = _db_module.get_connection()
+        conn = None
         try:
+            conn = _db_module.get_connection()
             for ticker in target:
                 qs_row = conn.execute(
                     "SELECT ml_confidence_score FROM quant_signals WHERE ticker = ? AND date = '2026-01-01'",
@@ -452,3 +485,114 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
                 assert ss_row["ml_confidence"] == 80.0
         finally:
             conn.close()
+
+
+@pytest.fixture
+def training_history():
+    tickers = [f"MEMTEST{i:02d}" for i in range(12)]
+    dates = pd.date_range("2025-01-01", periods=220, freq="B").strftime("%Y-%m-%d")
+    frame = TestUpdateDailyMlPredictionsSyncsStockSignals()._fake_inference_df(tickers * len(dates))
+    frame["date"] = np.repeat(dates, len(tickers))
+    from ai_prediction_engine import FUNDAMENTAL_FEATURES
+
+    rows = frame.drop(columns=FUNDAMENTAL_FEATURES + ["sector"])
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        rows.to_sql("quant_signals", conn, if_exists="append", index=False)
+        yield frame
+    finally:
+        if conn:
+            conn.execute("DELETE FROM quant_signals WHERE ticker LIKE 'MEMTEST%'")
+            conn.commit()
+            conn.close()
+
+
+def test_training_load_uses_batches_without_changing_rows(training_history):
+    import ai_prediction_engine as engine
+
+    read_sql = pd.read_sql_query
+    queries = []
+
+    def read_batches(query, conn, **kwargs):
+        assert kwargs["chunksize"] == 10_000
+        queries.append(query)
+        return read_sql(query, conn, chunksize=137)
+
+    with patch.object(engine.pd, "read_sql_query", side_effect=read_batches):
+        actual = engine._load_training_history()
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        expected = read_sql(queries[0], conn)
+    finally:
+        if conn:
+            conn.close()
+    pd.testing.assert_frame_equal(actual, expected)
+    assert actual.index.equals(pd.RangeIndex(len(actual)))
+    assert set(training_history["ticker"]) <= set(actual["ticker"])
+
+
+def test_training_load_closes_connection_after_partial_read_failure():
+    import sqlite3
+    import ai_prediction_engine as engine
+
+    connections = []
+    get_connection = engine.get_connection
+
+    def opened_connection():
+        conn = get_connection()
+        connections.append(conn)
+        return conn
+
+    def failing_batches(*args, **kwargs):
+        yield pd.DataFrame({"ticker": ["TEST"]})
+        raise RuntimeError("read failed")
+
+    with patch.object(engine, "get_connection", side_effect=opened_connection), \
+         patch.object(engine.pd, "read_sql_query", side_effect=failing_batches):
+        with pytest.raises(RuntimeError, match="read failed"):
+            engine._load_training_history()
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connections[0].execute("SELECT 1")
+
+
+@pytest.mark.parametrize("kind", ["classifier", "quantile"])
+def test_training_completes_after_releasing_intermediates(training_history, tmp_path, kind):
+    import ai_prediction_engine as engine
+
+    search_class = engine.RandomizedSearchCV
+    regressor_class = engine.XGBRegressor
+
+    def small_search(**kwargs):
+        kwargs["param_distributions"] = {"n_estimators": [2], "max_depth": [2]}
+        kwargs["n_iter"] = 1
+        return search_class(**kwargs)
+
+    def small_regressor(**kwargs):
+        kwargs["n_estimators"] = 2
+        kwargs["max_depth"] = 2
+        return regressor_class(**kwargs)
+
+    paths = ["MODEL_PATH", "FEATURE_STATS_PATH", "QUANTILE_Q10_PATH", "QUANTILE_Q90_PATH"]
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        for name in paths:
+            stack.enter_context(patch.object(engine, name, tmp_path / (name + ".joblib")))
+        stack.enter_context(patch.object(engine, "RandomizedSearchCV", side_effect=small_search))
+        stack.enter_context(patch.object(engine, "XGBRegressor", side_effect=small_regressor))
+        stack.enter_context(patch.object(engine, "log_notification"))
+        stack.enter_context(patch.object(engine.psutil, "virtual_memory", return_value=MagicMock(available=8 * 1024**3)))
+        if kind == "classifier":
+            engine.train_global_ml_model()
+            model = engine.joblib.load(engine.MODEL_PATH)
+            scores = model.predict_proba(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
+            assert np.isfinite(scores).all()
+            assert engine.FEATURE_STATS_PATH.exists()
+        else:
+            engine.train_quantile_models()
+            for path in [engine.QUANTILE_Q10_PATH, engine.QUANTILE_Q90_PATH]:
+                model = engine.joblib.load(path)
+                scores = model.predict(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
+                assert np.isfinite(scores).all()

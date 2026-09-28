@@ -78,6 +78,7 @@ class YahooEngine:
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
+        self._next_cache_prune = 0.0
         # Central intraday-data-gap tracker (see _track_intraday_gap_misses/_hits): in-memory,
         # not DB-backed — resets on restart, which is fine since a persisting gap re-detects and
         # re-times itself within _INTRADAY_GAP_ALERT_MINUTES regardless.
@@ -97,18 +98,35 @@ class YahooEngine:
             return _TTLS.get(f"intraday_{interval}", _TTLS["intraday"])
         return _TTLS.get(data_type, 300)
 
+    def _prune_expired_locked(self, now: float) -> None:
+        expired = [key for key, entry in self._cache.items() if entry.expires_at <= now]
+        for key in expired:
+            del self._cache[key]
+        self._next_cache_prune = now + 60
+
+    def prune_expired(self) -> None:
+        with self._lock:
+            self._prune_expired_locked(time.time())
+
     def _get(self, key: str):
         with self._lock:
+            now = time.time()
+            if now >= self._next_cache_prune:
+                self._prune_expired_locked(now)
             entry = self._cache.get(key)
-            if entry is not None and time.time() < entry.expires_at:
+            if entry is not None and now < entry.expires_at:
                 self._hits += 1
                 return entry.data
+            self._cache.pop(key, None)
             self._misses += 1
             return None
 
     def _set(self, key: str, data, ttl: int) -> None:
         with self._lock:
-            self._cache[key] = _CacheEntry(data=data, expires_at=time.time() + ttl)
+            now = time.time()
+            if now >= self._next_cache_prune:
+                self._prune_expired_locked(now)
+            self._cache[key] = _CacheEntry(data=data, expires_at=now + ttl)
 
     @staticmethod
     def _slice_bulk(
