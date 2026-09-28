@@ -88,6 +88,7 @@ class TestCacheMechanics:
         self.eng._set("history:AAPL:2y:1d", df, ttl=0)
         time.sleep(0.01)
         assert self.eng._get("history:AAPL:2y:1d") is None
+        assert "history:AAPL:2y:1d" not in self.eng._cache
 
     def test_hit_counter_increments(self):
         df = _price_df()
@@ -1210,3 +1211,39 @@ class TestSingleton:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+@pytest.mark.parametrize("operation", ["get", "set", "prune"])
+def test_expired_cache_releases_unvisited_payloads(operation):
+    import weakref
+
+    engine = YahooEngine()
+    frame = _price_df()
+    retained = weakref.ref(frame)
+    with patch("yahoo_engine.time.time", return_value=1000):
+        engine._set("abandoned", frame, ttl=10)
+        engine._set("fresh", "keep", ttl=3600)
+    del frame
+    assert retained() is not None
+
+    with patch("yahoo_engine.time.time", return_value=1061):
+        if operation == "get":
+            assert engine._get("fresh") == "keep"
+        elif operation == "set":
+            engine._set("new", "value", ttl=300)
+        else:
+            engine.prune_expired()
+        assert engine._get("fresh") == "keep"
+    assert retained() is None
+    assert "abandoned" not in engine._cache
+
+
+def test_cache_sweep_is_throttled_between_accesses():
+    engine = YahooEngine()
+    with patch("yahoo_engine.time.time", return_value=1000):
+        engine._set("short", "expired soon", ttl=10)
+    with patch("yahoo_engine.time.time", return_value=1011):
+        engine._get("unrelated")
+        assert "short" in engine._cache
+        assert engine._get("short") is None
+        assert "short" not in engine._cache

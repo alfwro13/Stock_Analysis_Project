@@ -597,3 +597,30 @@ train_global_ml_model()
 update_daily_ml_predictions(get_target_tickers())
 ```
 
+
+
+### Training memory (September 2026)
+
+Both the classifier and Q10/Q90 training read the full eligible history through
+`ai_prediction_engine._load_training_history()`. SQLite results are fetched in
+10,000-row batches and concatenated before feature engineering. This bounds the
+transient Python row objects from SQL ingestion; it does **not** sample tickers,
+truncate history, normalize individual batches, or alter the temporal splits.
+Feature engineering and cross-sectional statistics still use the full population.
+Wide intermediate tables and evaluation models are released before later fits.
+
+The September investigation found 1,317,065 eligible rows in the copied database.
+On dev, loading that same query in a fresh process peaked at 2,618 MiB RSS before
+batching and 693 MiB after batching (about 74% less). These measurements cover SQL
+loading only, not the full training run. The resulting table was about 305 MiB.
+Production's September 20 kernel log recorded a global OOM kill at approximately
+6.26 GiB anonymous RSS on a 7.8 GiB host with no swap; the application log stopped
+before feature extraction after reporting only 1.0 GB available.
+
+Expired Yahoo cache entries are reclaimed before checking available memory.
+The loader logs row count, table size, process RSS, and available system memory.
+The existing available-memory check remains a coarse guard: reducing randomized
+search iterations does not reduce the size of the training dataset, and neither
+batching nor that guard guarantees protection from concurrent system-wide load.
+The evidence establishes a SQL-load peak and an expired-cache retention defect;
+it does not attribute all long-running process growth to either one.
