@@ -1383,3 +1383,38 @@ def test_post_learn_session_with_study_all_includes_locked_levels(client):
         assert len(unlocked_resp.json()["cards"]) == 30
     finally:
         conn.close()
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("scope", ["portfolio", "watchlist"])
+def test_post_column_order_persists_normalized_order(client, scope):
+    from table_columns_helpers import normalize_column_order
+    with patch("api_routes.update_config_atomic") as update:
+        response = client.post("/api/ui-preferences/columns", json={
+            "scope": scope, "column_order": ["score", "price", "score", "unknown"]})
+    assert response.status_code == 200
+    assert update.call_args.args[0]["UI_PREFERENCES"][f"{scope.upper()}_COLUMN_ORDER"] == normalize_column_order(["score", "price"], scope)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("scope", ["portfolio", "watchlist"])
+def test_post_view_preserves_order_visibility_and_filter(client, scope):
+    from table_columns_helpers import normalize_column_order
+    view = {"name": "Ordered", "columns": ["ticker", "score", "price"],
+            "column_order": ["score", "price"],
+            "filter": {"logic": "AND", "conditions": [{"key": "score", "operator": "gt", "value": "60"}]}}
+    with patch("api_routes.update_config_atomic") as update:
+        response = client.post("/api/ui-preferences/views", json={"scope": scope, "views": [view]})
+    assert response.status_code == 200
+    saved = update.call_args.args[0]["UI_PREFERENCES"][f"{scope.upper()}_VIEWS"][0]
+    assert saved == dict(view, column_order=normalize_column_order(view["column_order"], scope))
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("endpoint,payload", [
+    ("columns", {"column_order": "price"}),
+    ("views", {"views": [{"name": "Invalid", "columns": [], "column_order": [42]}]}),
+])
+def test_post_column_order_rejects_invalid_types(client, endpoint, payload):
+    response = client.post(f"/api/ui-preferences/{endpoint}", json=dict(scope="portfolio", **payload))
+    assert response.status_code == 422

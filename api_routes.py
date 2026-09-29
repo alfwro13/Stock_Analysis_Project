@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from api_deps import limiter, require_confirm_token, _error_500
 from pydantic import BaseModel, Field
 
+from table_columns_helpers import normalize_column_order
 from log_config import configure_file_logging
 from config import (
     load_config,
@@ -337,6 +338,7 @@ class TableColumnPreferenceBody(BaseModel):
     scope: str
     hidden_core_columns: List[str] = []
     shown_optional_columns: List[str] = []
+    column_order: Optional[List[str]] = None
 
 
 @api_router.post("/ui-preferences/columns")
@@ -345,10 +347,13 @@ async def api_table_column_preference(body: TableColumnPreferenceBody):
         return JSONResponse(status_code=400, content={"status": "error", "message": "invalid scope"})
     try:
         prefix = body.scope.upper()
-        update_config_atomic({"UI_PREFERENCES": {
+        prefs = {
             f"{prefix}_HIDDEN_CORE_COLUMNS": body.hidden_core_columns,
             f"{prefix}_SHOWN_OPTIONAL_COLUMNS": body.shown_optional_columns,
-        }})
+        }
+        if body.column_order is not None:
+            prefs[f"{prefix}_COLUMN_ORDER"] = normalize_column_order(body.column_order, body.scope)
+        update_config_atomic({"UI_PREFERENCES": prefs})
         return JSONResponse(content={"status": "success"})
     except Exception as e:
         logger.exception("ui-preferences/columns failed")
@@ -370,6 +375,7 @@ class TableFilterSpec(BaseModel):
 class TableView(BaseModel):
     name: str
     columns: List[str]
+    column_order: Optional[List[str]] = None
     filter: Optional[TableFilterSpec] = None
 
 
@@ -384,9 +390,11 @@ async def api_table_views_preference(body: TableViewsPreferenceBody):
         return JSONResponse(status_code=400, content={"status": "error", "message": "invalid scope"})
     try:
         prefix = body.scope.upper()
-        update_config_atomic({"UI_PREFERENCES": {
-            f"{prefix}_VIEWS": [v.model_dump(exclude_none=True) for v in body.views],
-        }})
+        views = [v.model_dump(exclude_none=True) for v in body.views]
+        for view in views:
+            if "column_order" in view:
+                view["column_order"] = normalize_column_order(view["column_order"], body.scope)
+        update_config_atomic({"UI_PREFERENCES": {f"{prefix}_VIEWS": views}})
         return JSONResponse(content={"status": "success"})
     except Exception as e:
         logger.exception("ui-preferences/views failed")

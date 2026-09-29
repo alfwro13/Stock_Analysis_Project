@@ -20,6 +20,47 @@ window.ColumnPicker = (function () {
             shown_optional_columns: (opts.prefs && opts.prefs.shown_optional_columns) || []
         };
         const menuEl = document.getElementById(opts.menuId);
+        const defaultOrder = allColumns.map(function (col) { return col.key; });
+        const dragMedia = window.matchMedia('(min-width: 769px) and (hover: hover) and (pointer: fine)');
+        let applyingView = true;
+        let saveQueue = Promise.resolve();
+
+        function getColumnOrder() {
+            return table.colReorder.order().map(function (idx) { return allColumns[idx].key; });
+        }
+
+        function applyOrder(keys) {
+            table.colReorder.order((keys || defaultOrder).map(function (key) {
+                return defaultOrder.indexOf(key);
+            }), true);
+        }
+
+        new $.fn.dataTable.ColReorder(table, {
+            fixedColumnsLeft: 1,
+            realtime: false,
+            enable: dragMedia.matches,
+            // The completion callback runs once, after all internal column moves finish.
+            reorderCallback: function () {
+                if (applyingView) return;
+                table.columns.adjust().draw(false);
+                table.responsive.recalc();
+                savePrefs();
+            }
+        });
+        const tableNode = table.table().node();
+        tableNode.classList.add('column-reorder-table');
+        $(table.columns().header()).off('touchstart.ColReorder');
+        function updateDragEnabled() {
+            table.colReorder.enable(dragMedia.matches);
+        }
+        dragMedia.addEventListener('change', updateDragEnabled);
+        table.on('destroy.dt', function () {
+            dragMedia.removeEventListener('change', updateDragEnabled);
+        });
+        applyOrder(opts.prefs && opts.prefs.column_order);
+        applyingView = false;
+        table.columns.adjust().draw(false);
+        table.responsive.recalc();
 
         function userWants(key) {
             return resolveVisible(key, allColumns, prefs);
@@ -28,19 +69,27 @@ window.ColumnPicker = (function () {
         function applyColumn(key) {
             const idx = allColumns.findIndex(function (c) { return c.key === key; });
             if (idx === -1) return;
-            table.column(idx).visible(userWants(key));
+            table.column(key + ':name').visible(userWants(key));
         }
 
         function savePrefs() {
-            fetch('/api/ui-preferences/columns', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scope: scope,
-                    hidden_core_columns: prefs.hidden_core_columns,
-                    shown_optional_columns: prefs.shown_optional_columns
-                })
-            }).catch(function () {});
+            const body = JSON.stringify({
+                scope: scope,
+                hidden_core_columns: prefs.hidden_core_columns,
+                shown_optional_columns: prefs.shown_optional_columns,
+                column_order: getColumnOrder()
+            });
+            saveQueue = saveQueue.then(function () {
+                return fetch('/api/ui-preferences/columns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
+                }).then(function (response) {
+                    if (!response.ok) throw new Error('Column preferences could not be saved.');
+                });
+            }).catch(function () {
+                alert('Column preferences could not be saved. Please try again.');
+            });
         }
 
         function setUserPref(key, visible) {
@@ -89,7 +138,9 @@ window.ColumnPicker = (function () {
             });
         }
 
-        function applyView(columnKeys) {
+        function applyView(columnKeys, columnOrder) {
+            applyingView = true;
+            applyOrder(columnOrder);
             const keySet = new Set(columnKeys);
             const hiddenCore = [];
             const shownOptional = [];
@@ -104,21 +155,18 @@ window.ColumnPicker = (function () {
             });
             prefs.hidden_core_columns = hiddenCore;
             prefs.shown_optional_columns = shownOptional;
-            // Applying ~90 columns one at a time via applyColumn() triggers a full DataTables
-            // redraw per call (column().visible()'s default redrawCalculations=true) — with
-            // 100 rows that's a multi-second freeze. Defer every redraw to a single pass instead.
-            allColumns.forEach(function (col, idx) {
-                table.column(idx).visible(userWants(col.key), false);
+            allColumns.forEach(function (col) {
+                table.column(col.key + ':name').visible(userWants(col.key), false);
             });
             table.columns.adjust().draw(false);
+            table.responsive.recalc();
+            applyingView = false;
             renderMenu();
             savePrefs();
         }
 
         function getCurrentVisibleKeys() {
-            return allColumns
-                .filter(function (col) { return userWants(col.key); })
-                .map(function (col) { return col.key; });
+            return getColumnOrder().filter(userWants);
         }
 
         renderMenu();
@@ -126,7 +174,9 @@ window.ColumnPicker = (function () {
         return {
             isVisible: userWants,
             applyView: applyView,
-            getCurrentVisibleKeys: getCurrentVisibleKeys
+            getCurrentVisibleKeys: getCurrentVisibleKeys,
+            getColumnOrder: getColumnOrder,
+            getDefaultOrder: function () { return defaultOrder.slice(); }
         };
     }
 
@@ -154,17 +204,27 @@ window.ColumnPicker = (function () {
         const scope = opts.scope;
         const menuEl = document.getElementById(opts.menuId);
         let views = (opts.views || []).slice();
+        let saveQueue = Promise.resolve();
 
         function saveViews() {
-            fetch('/api/ui-preferences/views', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scope: scope, views: views })
-            }).catch(function () {});
+            const body = JSON.stringify({ scope: scope, views: views });
+            saveQueue = saveQueue.then(function () {
+                return fetch('/api/ui-preferences/views', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
+                }).then(function (response) {
+                    if (!response.ok) throw new Error('Views could not be saved.');
+                });
+            }).catch(function () {
+                alert('Views could not be saved. Please try again.');
+            });
         }
 
         function isViewActive(view) {
             if (!_columnSetsEqual(picker.getCurrentVisibleKeys(), view.columns || [])) return false;
+            const order = view.column_order || picker.getDefaultOrder();
+            if (!picker.getColumnOrder().every(function (key, idx) { return key === order[idx]; })) return false;
             const extra = (typeof opts.getExtraViewData === 'function') ? opts.getExtraViewData() : {};
             return _filtersEqual(extra.filter, view.filter);
         }
@@ -191,7 +251,7 @@ window.ColumnPicker = (function () {
                 el.addEventListener('click', function () {
                     const view = views[parseInt(el.dataset.idx, 10)];
                     if (!view) return;
-                    picker.applyView(view.columns);
+                    picker.applyView(view.columns, view.column_order);
                     if (typeof opts.onApplyView === 'function') opts.onApplyView(view);
                     renderMenu();
                 });
@@ -216,7 +276,7 @@ window.ColumnPicker = (function () {
                     if (!name) return;
                     const columns = picker.getCurrentVisibleKeys();
                     const extra = (typeof opts.getExtraViewData === 'function') ? opts.getExtraViewData() : {};
-                    const view = Object.assign({ name: name, columns: columns }, extra);
+                    const view = Object.assign({ name: name, columns: columns, column_order: picker.getColumnOrder() }, extra);
                     const existingIdx = views.findIndex(function (v) { return v.name === name; });
                     if (existingIdx !== -1) { views[existingIdx] = view; }
                     else { views.push(view); }
