@@ -24,6 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
 from maintenance_engine import MaintenanceEngine
+from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS
+from db_accounts import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
+from db_helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -78,6 +81,48 @@ def _engine() -> MaintenanceEngine:
 
 
 # ── prune_database_logs ───────────────────────────────────────────────────────
+
+def test_pension_benchmarks_and_notes_are_restored_without_duplicates():
+    account_id = get_watchlist_account()["id"]
+    tickers = PENSION_BENCHMARK_WATCHLIST_TICKERS
+    note_text = PENSION_BENCHMARK_WATCHLIST_NOTE
+    for ticker in tickers:
+        remove_watchlist_ticker(account_id, ticker)
+        for note in get_ticker_notes(ticker):
+            if note["note_text"] == note_text:
+                delete_ticker_note(note["id"], ticker)
+    unrelated_id = add_ticker_note("URTH", "Personal research note")
+    try:
+        eng = _engine()
+        with patch("maintenance_engine.resolve_watchlist_metadata", return_value={}):
+            eng.ensure_pension_benchmarks_on_watchlist()
+            eng.ensure_pension_benchmarks_on_watchlist()
+
+            items = {row["ticker"]: row for row in get_watchlist_items(account_id) if row["ticker"] in tickers}
+            assert set(items) == set(tickers)
+            assert eng.metrics["benchmark_watchlist_tickers_added"] == 2
+            assert eng.metrics["benchmark_notes_added"] == 1
+            assert sum(note["note_text"] == note_text for note in get_ticker_notes("URTH")) == 0
+            assert sum(note["note_text"] == note_text for note in get_ticker_notes("VWRL.L")) == 1
+            assert any(note["id"] == unrelated_id for note in get_ticker_notes("URTH"))
+
+            remove_watchlist_ticker(account_id, "URTH")
+            delete_ticker_note(unrelated_id, "URTH")
+            eng.ensure_pension_benchmarks_on_watchlist()
+
+        assert {row["ticker"] for row in get_watchlist_items(account_id)}.issuperset(tickers)
+        assert eng.metrics["benchmark_watchlist_tickers_added"] == 3
+        assert eng.metrics["benchmark_notes_added"] == 2
+        assert sum(note["note_text"] == note_text for note in get_ticker_notes("URTH")) == 1
+    finally:
+        for ticker in tickers:
+            remove_watchlist_ticker(account_id, ticker)
+            for note in get_ticker_notes(ticker):
+                if note["note_text"] == note_text:
+                    delete_ticker_note(note["id"], ticker)
+        if unrelated_id is not None:
+            delete_ticker_note(unrelated_id, "URTH")
+
 
 class TestPruneDatabaseLogs:
     def setup_method(self):

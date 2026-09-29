@@ -1540,6 +1540,7 @@ Most nodes are scheduled jobs (`status` of `green`/`amber`/`red`/`disabled`). Tw
 ### `POST /api/maintenance/run`
 
 Triggers the weekly `MaintenanceEngine` as a background task. Returns immediately; progress is visible in the Notifications panel.
+The same run restores URTH and VWRL.L to the built-in Watchlist if either is missing, so the nightly Update Pipeline continues refreshing the Pension benchmark series. For each ticker with no existing notes, it adds a Pension benchmark reminder visible on Stock Detail; existing notes are left untouched.
 
 **Request body:** none
 

@@ -9,11 +9,16 @@ from config import (
     PORTFOLIO_PATH, HISTORICAL_DIR,
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 )
-from database import get_connection, get_watchlist_tickers, log_notification as _db_log_notification
+from database import (
+    add_watchlist_item, get_connection, get_watchlist_account, get_watchlist_tickers,
+    log_notification as _db_log_notification,
+)
+from db_helpers import add_ticker_note, get_ticker_notes
 from ghostfolio_sync import purge_ghostfolio_files
-from accounts_engine import get_combined_holdings
+from accounts_engine import get_combined_holdings, resolve_watchlist_metadata
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
+from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -29,8 +34,31 @@ class MaintenanceEngine:
             "deleted_files": [],
             "pulse_cache_deleted": 0,
             "vacuum_success": False,
-            "ghostfolio_files_purged": 0
+            "ghostfolio_files_purged": 0,
+            "benchmark_watchlist_tickers_added": 0,
+            "benchmark_notes_added": 0
         }
+
+    def ensure_pension_benchmarks_on_watchlist(self):
+        account = get_watchlist_account()
+        if account is None:
+            logger.error("Cannot restore pension benchmarks: Watchlist account is missing")
+            return
+        existing = set(get_watchlist_tickers())
+        for ticker in PENSION_BENCHMARK_WATCHLIST_TICKERS:
+            if ticker not in existing:
+                metadata = resolve_watchlist_metadata(ticker)
+                item_id = add_watchlist_item(account["id"], ticker, **metadata)
+                if item_id is None:
+                    logger.error("Failed to restore pension benchmark %s to Watchlist", ticker)
+                    continue
+                self.metrics["benchmark_watchlist_tickers_added"] += 1
+                logger.info("Restored pension benchmark %s to Watchlist", ticker)
+            if not get_ticker_notes(ticker):
+                if add_ticker_note(ticker, PENSION_BENCHMARK_WATCHLIST_NOTE) is None:
+                    logger.error("Failed to add Pension benchmark note for %s", ticker)
+                    continue
+                self.metrics["benchmark_notes_added"] += 1
 
     def enforce_ghostfolio_disabled(self):
         """Backstop: portfolio.json/watchlist.json must not linger once Ghostfolio integration is disabled."""
@@ -235,6 +263,8 @@ class MaintenanceEngine:
                 f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}"
                 f"{files_section}\n"
                 f"• Ghostfolio Files Purged (integration disabled): {self.metrics['ghostfolio_files_purged']}\n"
+                f"• Pension Benchmarks Restored to Watchlist: {self.metrics['benchmark_watchlist_tickers_added']}\n"
+                f"• Pension Benchmark Notes Added: {self.metrics['benchmark_notes_added']}\n"
                 f"• DB Defragmentation: {vac_status}"
             )
             _db_log_notification("Maintenance", msg)
@@ -297,6 +327,7 @@ class MaintenanceEngine:
 
     def run(self):
         logger.info("Maintenance engine initiated")
+        self.ensure_pension_benchmarks_on_watchlist()
         self.prune_database_logs()
         self.prune_pulse_cache()
         self.garbage_collect_files()

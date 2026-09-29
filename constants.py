@@ -62,6 +62,11 @@ IF_STRESS_VOL_WINDOW      = 20     # rolling window for VIX MA and SPY volume z-
 IF_STRESS_ALERT_THRESHOLD = 0.75   # score in [0,1] above which the alert check runs
 IF_STRESS_ALERT_DAYS      = 2      # consecutive days above threshold before firing
 
+PENSION_BENCHMARK_WATCHLIST_TICKERS = ("URTH", "VWRL.L")
+PENSION_BENCHMARK_WATCHLIST_NOTE = (
+    "Used for the Pension benchmark chart. Keep this ticker on the Watchlist so its price history updates nightly."
+)
+
 # ── Static asset versioning ───────────────────────────────────────────────────
 CSS_VERSION = "5.139"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
