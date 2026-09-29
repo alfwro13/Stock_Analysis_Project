@@ -1,11 +1,11 @@
 pytest>=9.1.1
 packaging>=23.0
-fastapi==0.139.2
+fastapi==0.141.1
 python-dotenv>=1.2.2
 slowapi>=0.1.10
 starlette-csrf>=3.0.0
 python-multipart
-uvicorn==0.51.0
+uvicorn==0.54.0
 yfinance==1.7.0
 pandas==3.0.6
 pyarrow==25.0.1
