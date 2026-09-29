@@ -94,6 +94,8 @@ UPDATE quant_signals SET sentiment_score = ?
    (upsert via INSERT ... ON CONFLICT if ticker has no existing row today)
 ```
 
+When Yahoo news requests fail after HTTP 5xx retries, hit a rate limit, or encounter a transport error, `yahoo_engine.get_news()` returns no items for that ticker and logs a one-line warning with the error. Unexpected news-fetch errors retain their traceback.
+
 ### 3.2 News Feed Article Scoring (`_score_unscoredrows` in `news_feed_engine.py`)
 
 When `run_news_feed_job()` inserts new articles, a second scoring pass runs against the `news_articles` table for any rows where `sentiment_score IS NULL`:
@@ -175,6 +177,8 @@ Yield metrics rely entirely on quantitative rate-of-change math and bypass the N
 ---
 
 ## 6. Test Coverage
+
+`tests/test_yahoo_engine.py::TestGetNews` covers the no-traceback log for expected Yahoo/network failures and traceback logging for unexpected exceptions.
 
 `tests/test_huggingface_engine.py` — 34 tests, fully offline (no model loaded, no network, no DB).
 
