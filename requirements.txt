@@ -27,7 +27,7 @@ lxml
 cssselect
 html5lib
 trafilatura>=2.1.0
-transformers>=5.13.1
+transformers>=5.17.0
 torch>=2.0.0
 hmmlearn>=0.3.3
 shap>=0.45.0
