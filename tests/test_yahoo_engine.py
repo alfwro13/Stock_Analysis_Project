@@ -687,13 +687,43 @@ class TestGetNews:
             self.eng.get_news("AAPL")
             assert mock_tk_cls.call_count == 1
 
+    @pytest.mark.parametrize("error", [
+        pytest.param("HTTP 500 from Yahoo Finance", id="server_error"),
+        pytest.param("HTTP 429 from Yahoo Finance", id="rate_limit"),
+        pytest.param("Yahoo connection timed out", id="transport_error"),
+    ])
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_transient_news_failure_logs_one_line_without_traceback(self, mock_ctx, error):
+        from curl_cffi import requests as cffi_requests
+        from tools.network_engine import _RateLimitedError, _TransientHTTPError
+
+        error_type = {
+            "HTTP 500 from Yahoo Finance": _TransientHTTPError,
+            "HTTP 429 from Yahoo Finance": _RateLimitedError,
+            "Yahoo connection timed out": cffi_requests.exceptions.Timeout,
+        }[error]
+        error = error_type(error)
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker", side_effect=error), \
+             patch("yahoo_engine.logger.warning") as mock_warning, \
+             patch("yahoo_engine.logger.error") as mock_error:
+            assert self.eng.get_news("SWDA.L") is None
+
+        mock_warning.assert_called_once_with("get_news failed for %s: %s", "SWDA.L", error)
+        mock_error.assert_not_called()
+
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_returns_none_on_exception(self, mock_ctx):
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("net")):
+        with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("net")), \
+             patch("yahoo_engine.logger.error") as mock_error:
             assert self.eng.get_news("BAD") is None
+
+        mock_error.assert_called_once_with("get_news failed for %s", "BAD", exc_info=True)
 
 
 class TestGetInsiderTransactions:

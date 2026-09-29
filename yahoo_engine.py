@@ -5,9 +5,10 @@ from collections import namedtuple
 from typing import Optional
 
 import yfinance as yf
+from curl_cffi import requests as cffi_requests
 import pandas as pd
 
-from tools.network_engine import yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset, suppress_yf_delisted_noise
+from tools.network_engine import _RateLimitedError, _TransientHTTPError, yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset, suppress_yf_delisted_noise
 from notification_engine import notify
 
 logger = logging.getLogger(__name__)
@@ -462,6 +463,8 @@ class YahooEngine:
             if news is not None:
                 self._set(key, news, _TTLS["news"])
                 return news
+        except (_TransientHTTPError, _RateLimitedError, cffi_requests.RequestsError) as e:
+            logger.warning("get_news failed for %s: %s", ticker, e)
         except Exception:
             logger.error("get_news failed for %s", ticker, exc_info=True)
         return None
