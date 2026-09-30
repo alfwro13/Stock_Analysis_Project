@@ -101,7 +101,7 @@ async def admin_reset_password_page(request: Request):
 
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
-    from scheduler_engine import scheduler_display_names
+    from scheduler_engine import CONFIG_KEY_TO_JOB, job_label
     from notification_engine import build_routing_panel
     config_data = load_config()
     auction_sched = config_data.get("SCHEDULING", {}).get("MACRO_AUCTIONS", {})
@@ -112,7 +112,8 @@ async def settings_page(request: Request):
         name="settings.html",
         context={
             "config": config_data,
-            "scheduler_job_labels": scheduler_display_names(),
+            "scheduler_job_ids": CONFIG_KEY_TO_JOB,
+            "scheduler_job_label": job_label,
             "notification_routing": build_routing_panel(config_data),
             "auction_am_input": auction_am_input,
             "auction_pm_input": auction_pm_input,

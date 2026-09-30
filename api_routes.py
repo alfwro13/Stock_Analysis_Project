@@ -40,7 +40,7 @@ from database import (
 )
 from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names
 from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
 from performance_analytics_engine import assemble_performance_report
@@ -642,7 +642,7 @@ async def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
     Use this after first setup or after adding new holdings to immediately
     populate the cache without waiting for the scheduled run.
     """
-    background_tasks.add_task(run_xray_risk_cache_job)
+    background_tasks.add_task(run_manual_job, "xray_risk_cache_job", run_xray_risk_cache_job)
     return JSONResponse(content={
         "status": "queued",
         "message": "X-ray risk cache job queued. Check system notifications for completion.",
@@ -721,7 +721,7 @@ async def get_news_feed(
 
 @api_router.post("/news-feed/run-now")
 async def run_news_feed_now(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_news_feed_job)
+    background_tasks.add_task(run_manual_job, "news_feed_job", run_news_feed_job)
     return JSONResponse(content={
         "status": "success",
         "message": "News feed fetch queued. New articles will appear shortly.",

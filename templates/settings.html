@@ -45,6 +45,34 @@
     </div>
 
 </div><!-- end row -->
+
+<div class="modal fade" id="schedulerRunHistoryModal" tabindex="-1" aria-labelledby="schedulerRunHistoryTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="schedulerRunHistoryTitle">Job Run History</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover w-100" id="schedulerRunHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Finished</th>
+                                <th>Duration</th>
+                                <th>Trigger</th>
+                                <th>Status</th>
+                                <th>Error Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedulerRunHistoryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

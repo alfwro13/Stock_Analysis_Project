@@ -169,6 +169,60 @@ class TestPruneDatabaseLogs:
         assert eng.metrics["logs_deleted"] == 1
 
 
+class TestPruneSchedulerRunHistory:
+    def setup_method(self):
+        conn = None
+        try:
+            conn = _conn()
+            conn.execute("DELETE FROM scheduler_run_history")
+            rows = []
+            for job_id, count in (("job_a", 25), ("job_b", 22)):
+                for index in range(count):
+                    timestamp = f"2026-01-{index + 1:02d} 00:00:00"
+                    rows.append((job_id, timestamp, timestamp, 1.0, "scheduled", "success"))
+            conn.executemany(
+                "INSERT INTO scheduler_run_history "
+                "(job_id, started_at, finished_at, duration_sec, trigger_source, status) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                rows,
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def teardown_method(self):
+        conn = None
+        try:
+            conn = _conn()
+            conn.execute("DELETE FROM scheduler_run_history")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def test_keeps_latest_twenty_runs_per_job(self):
+        eng = _engine()
+        eng.prune_scheduler_run_history()
+
+        conn = None
+        try:
+            conn = _conn()
+            counts = dict(conn.execute(
+                "SELECT job_id, COUNT(*) FROM scheduler_run_history GROUP BY job_id"
+            ).fetchall())
+            oldest = conn.execute(
+                "SELECT MIN(started_at) FROM scheduler_run_history WHERE job_id = 'job_a'"
+            ).fetchone()[0]
+        finally:
+            if conn:
+                conn.close()
+
+        assert counts == {"job_a": 20, "job_b": 20}
+        assert oldest == "2026-01-06 00:00:00"
+        assert eng.metrics["scheduler_runs_deleted"] == 7
+
+
 # ── prune_pulse_cache ─────────────────────────────────────────────────────────
 
 class TestPrunePulseCache:

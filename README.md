@@ -62,7 +62,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 
 **Platform & Infrastructure**
 * **Multi-Dimensional Data Engine** — 2-year daily, 1-day intraday, and deep fundamentals data via Yahoo Finance.
-* **Built-in Task Scheduler** — fully autonomous APScheduler background jobs, no external cron.
+* **Built-in Task Scheduler** — fully autonomous APScheduler background jobs, no external cron, with the latest 20 scheduled and manual runs available from each job name in the Settings matrix.
 * **Crash-Proof Local Storage & Maintenance** — Parquet + SQLite storage with weekly automated pruning/defrag. Maintenance also restores URTH and VWRL.L to the Watchlist for Pension benchmark history and adds a Stock Detail reminder when either ticker has no note.
 * **System Health Check Engine** — daily validation of scheduling/ML-coverage config with UI banner alerts.
 * **Workflow Monitor** — dependency flow-chart of every scheduled job with traffic-light status and conflict detection.

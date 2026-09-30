@@ -179,9 +179,15 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Page-level filtering (client-side only):** the `/notifications` page's type filter buttons (`static/js/notifications.js`) are multi-select — clicking more than one (e.g. Crash and Moonshot) shows the union of both — plus an independent "Unread Only" toggle ANDed against the type selection. Both are pure DOM filters over the server-rendered/polled cards (no new query params on `GET /api/notifications/latest`) and persist across reloads via `localStorage` (`notif_active_types`, `notif_unread_only`).
 
 #### `scheduler_run_log`
-* **Purpose:** Records the last-run timestamp per APScheduler job ID so jobs can guard against re-running within their minimum interval. Also stores per-job timing/outcome used by the Workflow Monitor.
+* **Purpose:** Records the latest run timestamp and aggregate timing per APScheduler job ID so jobs can guard against re-running within their minimum interval and the Workflow Monitor can report current health.
 * **Key Columns:** `job_id` (PK), `last_run`, `last_started`, `last_duration_sec`, `avg_duration_sec` (EMA of run duration), `last_status` (`success`/`error`).
-* **Written by:** each job's `record_job_run()` (`last_run`) plus the APScheduler event listener `_on_job_event` (start, duration, status) registered in `start_scheduler()`.
+* **Written by:** each job's `record_job_run()` (`last_run`) plus the shared scheduler execution wrapper (`last_started`, duration, status) used by scheduled and Settings **Run Now** paths.
+
+#### `scheduler_run_history`
+* **Purpose:** Stores per-execution details for the run-history window opened by clicking a job name in Settings → System Diagnostics → Master APScheduler Matrix.
+* **Key Columns:** `id` (PK autoincrement), `job_id`, `started_at` (UTC), `finished_at` (UTC), `duration_sec`, `trigger_source` (`scheduled`/`manual`), `status` (`success`/`error`), `error_detail`.
+* **Written by:** the shared scheduler execution wrapper for scheduled jobs and mapped **Run Now** actions.
+* **Retention:** **Database & File Maintenance** keeps the newest 20 rows per `job_id` and deletes older executions.
 
 #### `score_history`
 * **Purpose:** Per-ticker daily score + signal + close price history. Accumulates over time to enable forward-returns analysis.
@@ -475,6 +481,6 @@ The Workflow Monitor (Settings UI) does not store a graph in the database — it
 
 * **`JOB_GRAPH`** (`scheduler_manifest.py`): one entry per `scheduler.add_job(... id=X)`. Each entry declares the data **artifacts** a job reads (`consumes`) and writes (`produces`) — e.g. `quant_signals`, `ml_model`, `ml_predictions`, `historical_parquet`, `portfolio`, `sentiment`. Dynamic per-config jobs (ETF predictors, and the per-account Account Price Scraper jobs — `account_scraper_{account_id}_job`, matched via `_DYNAMIC_ACCOUNT_SCRAPER_RE`) are matched in `_resolve_manifest()`.
 * **Edges** are derived, never hand-listed: a dependency `A → B` exists iff `A.produces ∩ B.consumes ≠ ∅`. Adding a job with correct declarations auto-wires it into the graph.
-* **Live overlay:** `build_workflow_graph()` (`scheduler_monitor.py`) merges the manifest with `scheduler.get_jobs()` (enabled? next run?) and `scheduler_run_log` (last run, avg duration, last status) to colour each node and compute conflicts.
+* **Live overlay:** `build_workflow_graph()` (`scheduler_monitor.py`) merges the manifest with `scheduler.get_jobs()` (enabled? next run?) and `scheduler_run_log` (last run, average duration, last status) to colour each node and compute conflicts. Individual executions remain in `scheduler_run_history` for the Settings Master APScheduler Matrix detail window.
 * **Conflict engine** (`detect_workflow_conflicts()` in `scheduler_monitor.py`): `overlap_risk` (consumer scheduled within the producer's average run duration), `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`.
 * **Enforcement:** the manifest-completeness test fails CI if any registered job lacks a `JOB_GRAPH` entry, keeping the map in sync with the scheduler automatically.

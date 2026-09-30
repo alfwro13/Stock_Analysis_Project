@@ -18,7 +18,7 @@ from scheduler_engine import (
     reload_scheduler, run_sentiment_scan, run_index_scraper,
     run_fundamentals_profiler, run_universe_deep_sync_job,
     run_xray_risk_cache_job, run_anomaly_training_job, record_job_run,
-    run_maintenance_engine,
+    run_maintenance_engine, run_manual_job,
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import get_backup_status, restore_backup, run_backup
@@ -163,7 +163,7 @@ def bg_run_macro_pipeline():
 @triggers_router.post("/macro/init-pipeline")
 @limiter.limit("2/minute")
 async def trigger_macro_init_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_init_macro_pipeline)
+    background_tasks.add_task(run_manual_job, "macro_calendar_job", bg_init_macro_pipeline)
     return JSONResponse(content={
         "status": "success",
         "message": "Macro AI Initialization started in the background. Check notifications."
@@ -172,7 +172,7 @@ async def trigger_macro_init_endpoint(request: Request, background_tasks: Backgr
 @triggers_router.post("/macro/run-pipeline")
 @limiter.limit("2/minute")
 async def trigger_macro_run_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_run_macro_pipeline)
+    background_tasks.add_task(run_manual_job, "macro_calendar_job", bg_run_macro_pipeline)
     return JSONResponse(content={
         "status": "success",
         "message": "Macro AI Run initiated in the background. Check notifications."
@@ -182,8 +182,8 @@ async def trigger_macro_run_endpoint(request: Request, background_tasks: Backgro
 @triggers_router.post("/trigger-treasury-auction-check")
 @limiter.limit("10/minute")
 async def trigger_treasury_auction_check_endpoint(request: Request, background_tasks: BackgroundTasks):
-    from scheduler_engine import run_treasury_auction_check, _with_job_source
-    background_tasks.add_task(_with_job_source("macro_auction_job_am", lambda: run_treasury_auction_check("am")))
+    from scheduler_engine import run_treasury_auction_check
+    background_tasks.add_task(run_manual_job, "macro_auction_job_am", run_treasury_auction_check, "am")
     return JSONResponse(content={
         "status": "success",
         "message": "Sovereign Debt Auction Monitor check initiated in the background. Check System Notifications for progress updates."
@@ -205,7 +205,7 @@ async def get_macro_regime_allocation(request: Request):
 @triggers_router.post("/ml/trigger-backfill")
 @limiter.limit("2/minute")
 async def trigger_ml_backfill_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_historical_backfill)
+    background_tasks.add_task(run_manual_job, "ml_backfill_job", run_historical_backfill)
     return JSONResponse(content={
         "status": "success",
         "message": "ML Historical Backfill initiated in the background. Check System Notifications."
@@ -214,7 +214,7 @@ async def trigger_ml_backfill_endpoint(request: Request, background_tasks: Backg
 @triggers_router.post("/ml/trigger-training")
 @limiter.limit("2/minute")
 async def trigger_ml_training_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_execute_ml_training)
+    background_tasks.add_task(run_manual_job, "ml_training_job", bg_execute_ml_training)
     return JSONResponse(content={
         "status": "success",
         "message": "Global ML Walk-Forward Training initiated in the background. Check System Notifications."
@@ -223,7 +223,7 @@ async def trigger_ml_training_endpoint(request: Request, background_tasks: Backg
 @triggers_router.post("/ml/trigger-inference")
 @limiter.limit("2/minute")
 async def trigger_ml_inference_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_execute_ml_inference)
+    background_tasks.add_task(run_manual_job, "ml_inference_job", bg_execute_ml_inference)
     return JSONResponse(content={
         "status": "success",
         "message": "Daily ML Inference initiated in the background. Check System Notifications."
@@ -232,7 +232,7 @@ async def trigger_ml_inference_endpoint(request: Request, background_tasks: Back
 @triggers_router.post("/ml/trigger-anomaly-training")
 @limiter.limit("2/minute")
 async def trigger_anomaly_training_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_anomaly_training_job)
+    background_tasks.add_task(run_manual_job, "anomaly_training_job", run_anomaly_training_job)
     return JSONResponse(content={
         "status": "success",
         "message": "Isolation Forest anomaly training initiated in the background. Check System Notifications."
@@ -241,7 +241,7 @@ async def trigger_anomaly_training_endpoint(request: Request, background_tasks: 
 @triggers_router.post("/trigger-quant-scan")
 @limiter.limit("10/minute")
 async def trigger_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_execute_quant_scan)
+    background_tasks.add_task(run_manual_job, "overnight_quant_scan_job", bg_execute_quant_scan)
     return JSONResponse(content={
         "status": "success",
         "message": "Portfolio Quant Scan initiated in the background. Check System Notifications for progress updates."
@@ -250,7 +250,7 @@ async def trigger_quant_scan_endpoint(request: Request, background_tasks: Backgr
 @triggers_router.post("/trigger-earnings-scan")
 @limiter.limit("10/minute")
 async def trigger_earnings_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_execute_earnings_scan)
+    background_tasks.add_task(run_manual_job, "weekend_earnings_vol_scan_job", bg_execute_earnings_scan)
     return JSONResponse(content={
         "status": "success",
         "message": "Earnings Volatility Scan initiated in the background. Check System Notifications for progress updates."
@@ -259,7 +259,7 @@ async def trigger_earnings_scan_endpoint(request: Request, background_tasks: Bac
 @triggers_router.post("/trigger-universe-update")
 @limiter.limit("10/minute")
 async def trigger_universe_update_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(update_market_universe)
+    background_tasks.add_task(run_manual_job, "universe_routine_job", update_market_universe)
     return JSONResponse(content={
         "status": "success",
         "message": "Market Universe update initiated in the background. Check System Notifications for progress."
@@ -287,7 +287,7 @@ async def get_profiler_status():
 @triggers_router.post("/universe/sync-indices")
 @limiter.limit("10/minute")
 async def trigger_sync_indices_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_index_scraper)
+    background_tasks.add_task(run_manual_job, "index_scraper_job", run_index_scraper)
     return JSONResponse(content={
         "status": "success",
         "message": "Index Constituent scraping initiated in the background. Check System Notifications for progress."
@@ -296,7 +296,7 @@ async def trigger_sync_indices_endpoint(request: Request, background_tasks: Back
 @triggers_router.post("/universe/sync-profiler")
 @limiter.limit("2/minute")
 async def trigger_sync_profiler_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_fundamentals_profiler)
+    background_tasks.add_task(run_manual_job, "fundamentals_profiler_job", run_fundamentals_profiler)
     return JSONResponse(content={
         "status": "success",
         "message": "Fundamentals Profiler initiated in the background. Check System Notifications for progress."
@@ -313,7 +313,7 @@ async def trigger_universe_deep_sync_endpoint(request: Request, background_tasks
     FREETRADE_ONLY_MODE for the Freetrade firewall. Returns immediately
     while the pipeline runs in the background (≈30–45 minutes).
     """
-    background_tasks.add_task(run_universe_deep_sync_job)
+    background_tasks.add_task(run_manual_job, "universe_deep_sync_job", run_universe_deep_sync_job)
     return JSONResponse(content={
         "status": "success",
         "message": (
@@ -327,7 +327,7 @@ async def trigger_universe_deep_sync_endpoint(request: Request, background_tasks
 @triggers_router.post("/trigger-universe-quant-scan")
 @limiter.limit("2/minute")
 async def trigger_universe_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_execute_universe_quant_scan)
+    background_tasks.add_task(run_manual_job, "universe_routine_job", bg_execute_universe_quant_scan)
     return JSONResponse(content={
         "status": "success",
         "message": "Full Universe Quant Scan initiated in the background. This will take over an hour. Check System Notifications for progress."
@@ -336,7 +336,7 @@ async def trigger_universe_quant_scan_endpoint(request: Request, background_task
 @triggers_router.post("/trigger-sentiment-scan")
 @limiter.limit("10/minute")
 async def trigger_sentiment_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_sentiment_scan)
+    background_tasks.add_task(run_manual_job, "sentiment_scan_job", run_sentiment_scan)
     return JSONResponse(content={
         "status": "success",
         "message": "Sentiment Scan initiated in the background. Check System Notifications for progress."
@@ -418,19 +418,19 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
 @triggers_router.post("/update")
 @limiter.limit("10/minute")
 async def trigger_update(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_update_pipeline)
+    background_tasks.add_task(run_manual_job, "quant_analysis_job", run_update_pipeline)
     return JSONResponse(content={"status": "success"})
 
 @triggers_router.post("/sync-ghostfolio")
 @limiter.limit("10/minute")
 async def trigger_ghostfolio_sync(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_ghostfolio_sync)
+    background_tasks.add_task(run_manual_job, "ghostfolio_sync_job", run_ghostfolio_sync)
     return JSONResponse(content={"status": "success"})
 
 @triggers_router.post("/trigger-freetrade-sync")
 @limiter.limit("10/minute")
 async def trigger_freetrade_sync_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_freetrade_sync)
+    background_tasks.add_task(run_manual_job, "freetrade_sync_job", run_freetrade_sync)
     return JSONResponse(content={
         "status": "success",
         "message": "Freetrade synchronization initiated in the background. Check System Notifications for progress updates."
@@ -439,7 +439,7 @@ async def trigger_freetrade_sync_endpoint(request: Request, background_tasks: Ba
 @triggers_router.post("/maintenance/run")
 @limiter.limit("5/minute")
 async def trigger_maintenance_run(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_maintenance_engine)
+    background_tasks.add_task(run_manual_job, "maintenance_job", run_maintenance_engine)
     return JSONResponse(content={"status": "success", "message": "Maintenance job started in the background. Check System Notifications for the summary."})
 
 @triggers_router.post("/maintenance/dry-run")
@@ -463,7 +463,7 @@ def bg_execute_backup_run():
 @triggers_router.post("/backup/run")
 @limiter.limit("5/minute")
 async def trigger_backup_run(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_execute_backup_run)
+    background_tasks.add_task(run_manual_job, "backup_job", bg_execute_backup_run)
     return JSONResponse(content={"status": "success", "message": "Backup started in the background. Check System Notifications for the summary."})
 
 

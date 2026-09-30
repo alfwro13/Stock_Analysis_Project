@@ -33,6 +33,7 @@ class MaintenanceEngine:
             "files_deleted": 0,
             "deleted_files": [],
             "pulse_cache_deleted": 0,
+            "scheduler_runs_deleted": 0,
             "vacuum_success": False,
             "ghostfolio_files_purged": 0,
             "benchmark_watchlist_tickers_added": 0,
@@ -126,6 +127,27 @@ class MaintenanceEngine:
             logger.info("Removed %d stale notifications", self.metrics["logs_deleted"])
         except Exception as e:
             logger.error("Error pruning notification database: %s", e)
+        finally:
+            if conn:
+                conn.close()
+
+    def prune_scheduler_run_history(self):
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM scheduler_run_history WHERE id IN ("
+                "SELECT id FROM ("
+                "SELECT id, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY started_at DESC, id DESC) AS run_number "
+                "FROM scheduler_run_history"
+                ") WHERE run_number > 20)"
+            )
+            self.metrics["scheduler_runs_deleted"] = cursor.rowcount
+            conn.commit()
+            logger.info("Removed %d old scheduler run records", self.metrics["scheduler_runs_deleted"])
+        except Exception as e:
+            logger.error("Error pruning scheduler run history: %s", e)
         finally:
             if conn:
                 conn.close()
@@ -260,6 +282,7 @@ class MaintenanceEngine:
             msg = (
                 f"Automated System Maintenance completed.\n"
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
+                f"• Old Scheduler Runs Trimmed: {self.metrics['scheduler_runs_deleted']}\n"
                 f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}"
                 f"{files_section}\n"
                 f"• Ghostfolio Files Purged (integration disabled): {self.metrics['ghostfolio_files_purged']}\n"
@@ -329,6 +352,7 @@ class MaintenanceEngine:
         logger.info("Maintenance engine initiated")
         self.ensure_pension_benchmarks_on_watchlist()
         self.prune_database_logs()
+        self.prune_scheduler_run_history()
         self.prune_pulse_cache()
         self.garbage_collect_files()
         self.enforce_ghostfolio_disabled()
