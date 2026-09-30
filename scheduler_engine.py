@@ -1,12 +1,13 @@
 import logging
 import functools as _functools
 import threading as _threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from config import load_config
 import time_engine
@@ -107,6 +108,87 @@ def get_all_job_last_runs() -> dict:
 
 _job_start_times: dict[str, float] = {}
 _DURATION_EMA_ALPHA = 0.3
+_model_retraining_queue: list[str] = []
+_model_retraining_queued: set[str] = set()
+_model_retraining_current: str | None = None
+_model_retraining_lock = _threading.Lock()
+_MODEL_RETRAIN_RUNNERS: dict[str, object] = {}
+
+
+def _dispatch_next_model_retraining() -> None:
+    global _model_retraining_current
+    with _model_retraining_lock:
+        if _model_retraining_current is not None or not _model_retraining_queue:
+            return
+        job_id = _model_retraining_queue.pop(0)
+        _model_retraining_queued.discard(job_id)
+        _model_retraining_current = job_id
+
+    runner = _MODEL_RETRAIN_RUNNERS.get(job_id)
+    if runner is None:
+        logger.error("No retraining runner is registered for %s", job_id)
+        with _model_retraining_lock:
+            _model_retraining_current = None
+        _dispatch_next_model_retraining()
+        return
+
+    run_at = datetime.now(timezone.utc) + timedelta(seconds=2)
+    if scheduler.get_job(job_id) is not None:
+        scheduler.modify_job(job_id, next_run_time=run_at)
+    else:
+        scheduler.add_job(
+            runner,
+            DateTrigger(run_date=run_at, timezone=timezone.utc),
+            id=job_id,
+        )
+
+
+def queue_model_retraining(job_id: str, artifact_path, original_version: str) -> None:
+    """Queue an affected training job once and run model families sequentially."""
+    with _model_retraining_lock:
+        if job_id == _model_retraining_current or job_id in _model_retraining_queued:
+            return
+        _model_retraining_queue.append(job_id)
+        _model_retraining_queued.add(job_id)
+        should_dispatch = _model_retraining_current is None
+
+    notify(
+        "system_update_status",
+        "Warning",
+        (
+            f"{job_label(job_id)} was trained with scikit-learn {original_version}. "
+            "The incompatible artifact will not be used. Retraining is queued to begin "
+            "immediately after startup, one model family at a time."
+        ),
+        level="warning",
+    )
+    logger.warning(
+        "Queued %s after incompatible model %s was detected",
+        job_id,
+        artifact_path,
+    )
+    if not should_dispatch and scheduler.get_job(job_id) is not None:
+        scheduler.pause_job(job_id)
+    if should_dispatch:
+        _dispatch_next_model_retraining()
+
+
+def _finish_model_retraining(job_id: str) -> None:
+    global _model_retraining_current
+    with _model_retraining_lock:
+        if job_id != _model_retraining_current:
+            return
+        _model_retraining_current = None
+    _dispatch_next_model_retraining()
+
+
+def start_model_compatibility_guard() -> None:
+    """Register automatic retraining and inspect persisted models after scheduler startup."""
+    from model_compatibility_engine import scan_model_compatibility, set_retraining_callback
+
+    set_retraining_callback(queue_model_retraining)
+    scan_model_compatibility()
+
 
 
 def _record_job_duration(job_id: str, started_iso: str, duration_sec: float, status: str) -> None:
@@ -140,12 +222,12 @@ def _on_job_event(event) -> None:
         _job_start_times[event.job_id] = now.timestamp()
         return
     started_ts = _job_start_times.pop(event.job_id, None)
-    if started_ts is None:
-        return
-    duration = max(0.0, now.timestamp() - started_ts)
-    started_iso = datetime.fromtimestamp(started_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    status = "error" if event.code == EVENT_JOB_ERROR else "success"
-    _record_job_duration(event.job_id, started_iso, duration, status)
+    if started_ts is not None:
+        duration = max(0.0, now.timestamp() - started_ts)
+        started_iso = datetime.fromtimestamp(started_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        status = "error" if event.code == EVENT_JOB_ERROR else "success"
+        _record_job_duration(event.job_id, started_iso, duration, status)
+    _finish_model_retraining(event.job_id)
 
 
 def reload_scheduler():
@@ -977,7 +1059,7 @@ from scheduler_jobs import (
     run_sentiment_scan, run_overnight_quant_scan, run_weekend_earnings_scan,
     run_weekend_universe_routine, run_index_scraper, run_fundamentals_profiler,
     run_universe_deep_sync_job, run_ml_backfill, run_ml_training, run_ml_inference,
-    run_macro_calendar_update, run_central_bank_nlp_check, run_macro_data_update,
+    run_macro_calendar_update, run_central_bank_nlp_check, run_macro_data_update, run_macro_model_training_job,
     run_xray_risk_cache_job, run_risk_orchestrator_job, run_risk_orchestrator_digest_job, run_anomaly_training_job, run_intraday_dip_scan,
     run_intraday_dip_reset, _build_contagion_feed_text, _build_contagion_message,
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
@@ -991,3 +1073,13 @@ from scheduler_jobs import (
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
     run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job,
 )
+
+
+_MODEL_RETRAIN_RUNNERS.update({
+    "ml_training_job": run_ml_training,
+    "anomaly_training_job": run_anomaly_training_job,
+    "alert_referee_training_job": run_alert_referee_training_job,
+    "confluence_referee_training_job": run_confluence_referee_training_job,
+    "macro_model_training_job": run_macro_model_training_job,
+    "quant_analysis_job": run_update_pipeline,
+})

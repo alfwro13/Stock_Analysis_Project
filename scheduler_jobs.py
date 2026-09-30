@@ -537,6 +537,29 @@ def run_ml_inference():
         _mark_job_done(job_label("ml_inference_job"))
         record_job_run('ml_inference_job')
 
+def run_macro_model_training_job():
+    """Retrain persisted macro models after a scikit-learn version change."""
+    _mark_job_started(job_label("macro_model_training_job"))
+    engine = None
+    try:
+        log_sched_notification("Scheduler", "Started Macroeconomic Automation Schedulers (Model Training)...")
+        from macro_ai_engine import MacroAIEngine
+
+        engine = MacroAIEngine()
+        engine.train_regime_clustering()
+        engine.train_consensus_miss_probability()
+        engine.train_volatility_magnitude()
+        log_sched_notification("Success", "Macroeconomic Automation Schedulers (Model Training) completed.")
+    except Exception as e:
+        logger.error("Macroeconomic Automation Schedulers (Model Training) failed: %s", e)
+        log_sched_notification("Error", f"Macroeconomic Automation Schedulers (Model Training) failed: {e}")
+    finally:
+        if engine is not None:
+            engine.close()
+        _mark_job_done(job_label("macro_model_training_job"))
+        record_job_run("macro_model_training_job")
+
+
 def run_macro_calendar_update():
     _mark_job_started(job_label("macro_calendar_job"))
     try:

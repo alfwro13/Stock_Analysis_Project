@@ -5,7 +5,6 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 import ta
@@ -13,6 +12,7 @@ from sklearn.ensemble import IsolationForest
 
 from config import ANOMALY_MODELS_DIR
 from database import get_connection
+from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
 from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class AnomalyEngine:
     def _load_model(self, ticker: str, model_path: Path) -> dict:
         """Return a validated payload dict from cache or disk."""
         if ticker not in self._model_cache:
-            payload = joblib.load(model_path)
+            payload = load_sklearn_artifact(model_path, "anomaly_training_job")
             self._validate_payload(payload, ticker)
             self._model_cache[ticker] = payload
         return self._model_cache[ticker]
@@ -156,7 +156,7 @@ class AnomalyEngine:
             'score_max': score_max,
             'trained_at': datetime.now(timezone.utc).isoformat(),
         }
-        joblib.dump(payload, out_path)
+        dump_sklearn_artifact(payload, out_path)
         self._model_cache[ticker] = payload  # keep cache current
         logger.debug("Saved anomaly model for %s (%d rows) → %s", ticker, len(feature_df), out_path)
 

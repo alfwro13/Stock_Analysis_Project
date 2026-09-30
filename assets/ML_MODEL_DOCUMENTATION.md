@@ -546,6 +546,9 @@ The full pipeline runs via APScheduler:
 |---|---|---|
 | `ml_ensemble.joblib` | `models/` | Serialised VotingClassifier ensemble |
 | `feature_stats.joblib` | `models/` | Training population means and stds per feature (diagnostic use) |
+| `*.joblib.sklearn-version` | Beside each persisted estimator | Exact scikit-learn version used to train that artifact; startup queues Global Model Training (Walk-Forward) when it differs from the installed version |
+
+The shared `model_compatibility_engine.py` loader checks the sidecar before unpickling. Existing artifacts created before sidecars were introduced are checked by promoting scikit-learn's `InconsistentVersionWarning` to an error; a compatible legacy artifact receives its sidecar on first load.
 
 ### Database Columns Written
 

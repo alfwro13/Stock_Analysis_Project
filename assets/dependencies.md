@@ -72,7 +72,7 @@ and what should I test?" without grepping the whole codebase first.
 
 | Package | Used for | What could break |
 |---|---|---|
-| `scikit-learn` | RF models, cross-sectional scaling (`ai_prediction_engine.py`, `regime_engine.py`, `macro_ai_engine.py`) | Estimator API/hyperparameter defaults changing — a silent accuracy regression, not a crash; re-run backfill + training after upgrading and compare accuracy metrics |
+| `scikit-learn` | RF models, cross-sectional scaling (`ai_prediction_engine.py`, `regime_engine.py`, `macro_ai_engine.py`) | Persisted estimators are not supported across versions. `model_compatibility_engine.py` records a version sidecar, rejects mismatches before unpickling, and queues the affected APScheduler training jobs sequentially after restart. Legacy artifacts without a sidecar fall back to `InconsistentVersionWarning` detection and gain a sidecar after a compatible load. |
 | `xgboost` | Gradient-boosted models in the ML ensemble (`ai_prediction_engine.py`) | Same as scikit-learn — silent accuracy drift risk, not a crash risk |
 | `hmmlearn` | GaussianHMM regime classification (`regime_engine.py`, `macro_ai_engine.py`) | Model API stability — this package has historically had breaking API changes across majors; pin conservatively |
 | `scipy` | Statistical/optimization routines underpinning `scikit-learn`/`hmmlearn` and used directly in risk calculations | Rarely breaking on its own; mostly a transitive-compatibility concern with scikit-learn/hmmlearn pins |

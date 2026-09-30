@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import joblib
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 
 from config import BASE_DIR, HISTORICAL_DIR, load_config
 from database import get_connection
+from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -503,7 +503,7 @@ def train_referee_model(engine: str = TRAP_MONITOR_ENGINE) -> dict:
 
     trained_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     model_path = _model_path(engine)
-    joblib.dump({"model": model, "feature_cols": feature_cols, "trained_at": trained_at,
+    dump_sklearn_artifact({"model": model, "feature_cols": feature_cols, "trained_at": trained_at,
                  "sample_count": sample_count}, model_path)
 
     conn = None
@@ -541,7 +541,12 @@ def load_model(engine: str = TRAP_MONITOR_ENGINE) -> Optional[dict]:
     if not path.exists():
         return None
     try:
-        return joblib.load(path)
+        job_id = (
+            "alert_referee_training_job"
+            if engine == TRAP_MONITOR_ENGINE
+            else "confluence_referee_training_job"
+        )
+        return load_sklearn_artifact(path, job_id)
     except Exception as e:
         logger.error("alert_referee_engine: failed to load model for %s: %s", engine, e)
         return None

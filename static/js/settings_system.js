@@ -175,7 +175,14 @@ async function refreshActiveJobs() {
     try {
         const resp = await fetch('/api/system/active-jobs', { cache: 'no-store' });
         const data = await resp.json();
-        document.getElementById('requirements-changed-banner')?.classList.toggle('d-none', !data.requirements_changed_pending);
+        const requirementsBanner = document.getElementById('requirements-changed-banner');
+        if (requirementsBanner) {
+            requirementsBanner.classList.toggle('d-none', !data.requirements_changed_pending);
+            const change = data.scikit_learn_change_pending;
+            requirementsBanner.textContent = change
+                ? `⚠️ scikit-learn will change from ${change.from_version} to ${change.to_version}. Dependencies will be reinstalled before restart. After the app starts, affected model retraining will begin automatically, normally within seconds, and run one model family at a time.`
+                : '⚠️ The last pull updated requirements.txt. Dependencies will be reinstalled automatically before the service restarts.';
+        }
         const el = document.getElementById('active-jobs-display');
         if (!el) return;
         if (!data.busy) {

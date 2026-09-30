@@ -1031,6 +1031,45 @@ def test_git_pull_flags_requirements_txt_change(client, confirm_token):
 
 
 @pytest.mark.api
+def test_git_pull_warns_when_scikit_learn_pin_changes(client, confirm_token):
+    import api_routes_system
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
+        if cmd[:2] == ["git", "pull"]:
+            return MagicMock(returncode=0, stdout="Updating oldsha..newsha\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return MagicMock(returncode=0, stdout="requirements.txt\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    api_routes_system._requirements_changed_pending = False
+    api_routes_system._sklearn_change_pending = None
+    with (
+        patch("api_routes_system.subprocess.run", side_effect=fake_run),
+        patch(
+            "api_routes_system.Path.read_text",
+            side_effect=["scikit-learn==1.9.0\n", "scikit-learn==1.9.1\n"],
+        ),
+    ):
+        resp = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+
+    body = _json(resp)
+    assert resp.status_code == 200
+    assert body["scikit_learn_changed"] is True
+    assert body["scikit_learn_change"] == {
+        "from_version": "1.9.0",
+        "to_version": "1.9.1",
+    }
+    assert "normally within seconds" in body["message"]
+
+    status = _json(client.get("/api/system/active-jobs"))
+    assert status["scikit_learn_change_pending"] == body["scikit_learn_change"]
+    api_routes_system._requirements_changed_pending = False
+    api_routes_system._sklearn_change_pending = None
+
+
+@pytest.mark.api
 def test_git_pull_does_not_flag_unrelated_changes(client, confirm_token):
     """POST /api/system/git-pull must not flag requirements_changed when requirements.txt wasn't touched."""
     import api_routes_system
