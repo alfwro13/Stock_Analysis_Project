@@ -12,10 +12,13 @@ from scheduler_engine import (
     log_sched_notification,
     record_job_run,
     get_all_job_last_runs,
+    get_job_run_history,
+    run_manual_job,
     resume_interrupted_scans,
     _mark_job_started,
     _mark_job_done,
     get_active_jobs,
+    _with_job_source,
 )
 import scheduler_engine as _sched_module
 
@@ -30,6 +33,7 @@ def clean_tables():
     conn = _db_module.get_connection()
     conn.execute("DELETE FROM system_notifications")
     conn.execute("DELETE FROM scheduler_run_log")
+    conn.execute("DELETE FROM scheduler_run_history")
     conn.execute("DELETE FROM quant_scan_states")
     conn.commit()
     conn.close()
@@ -364,7 +368,7 @@ from scheduler_engine import (
     _on_job_event,
 )
 import config as _config_module
-from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from apscheduler.events import EVENT_JOB_EXECUTED
 
 
 def _wf_node(**kw):
@@ -379,9 +383,10 @@ def _wf_node(**kw):
 
 
 class _Evt:
-    def __init__(self, code, job_id):
+    def __init__(self, code, job_id, exception=None):
         self.code = code
         self.job_id = job_id
+        self.exception = exception
 
 
 class TestWorkflowManifest:
@@ -654,24 +659,54 @@ class TestJobStatus:
         assert status == "green"
 
 
-class TestDurationListener:
-    def test_executed_records_duration_and_success(self):
-        _on_job_event(_Evt(EVENT_JOB_SUBMITTED, "dur_job"))
-        _on_job_event(_Evt(EVENT_JOB_EXECUTED, "dur_job"))
+class TestScheduledRunHistory:
+    def test_successful_scheduled_run_is_recorded(self):
+        assert _with_job_source("dur_job", lambda: "done")() == "done"
         runs = get_all_job_last_runs()
-        assert "dur_job" in runs
         assert runs["dur_job"]["last_status"] == "success"
         assert runs["dur_job"]["last_duration_sec"] is not None
         assert runs["dur_job"]["avg_duration_sec"] is not None
+        assert get_job_run_history("dur_job")[0]["trigger_source"] == "scheduled"
 
-    def test_error_records_error_status(self):
-        _on_job_event(_Evt(EVENT_JOB_SUBMITTED, "err_job"))
-        _on_job_event(_Evt(EVENT_JOB_ERROR, "err_job"))
-        assert get_all_job_last_runs()["err_job"]["last_status"] == "error"
+    def test_logged_error_marks_scheduled_run_as_failed(self):
+        def report_failure():
+            log_sched_notification("Error", "scheduled failure")
 
-    def test_executed_without_submitted_is_noop(self):
-        _on_job_event(_Evt(EVENT_JOB_EXECUTED, "ghost_job"))
-        assert "ghost_job" not in get_all_job_last_runs()
+        _with_job_source("err_job", report_failure)()
+        history = get_job_run_history("err_job")
+        assert history[0]["status"] == "error"
+        assert history[0]["error_detail"] == "scheduled failure"
+
+    def test_listener_finishes_model_retraining(self):
+        with patch("scheduler_engine._finish_model_retraining") as finish:
+            _on_job_event(_Evt(EVENT_JOB_EXECUTED, "model_job"))
+        finish.assert_called_once_with("model_job")
+
+
+class TestManualRunHistory:
+    def test_successful_manual_run_is_recorded(self):
+        assert run_manual_job("manual_job", lambda value: value + 1, 4) == 5
+        history = get_job_run_history("manual_job")
+        assert len(history) == 1
+        assert history[0]["trigger_source"] == "manual"
+        assert history[0]["status"] == "success"
+        assert history[0]["error_detail"] is None
+
+    def test_failed_manual_run_records_error_and_reraises(self):
+        def fail():
+            raise RuntimeError("manual failure")
+
+        with pytest.raises(RuntimeError, match="manual failure"):
+            run_manual_job("manual_error_job", fail)
+
+        history = get_job_run_history("manual_error_job")
+        assert history[0]["status"] == "error"
+        assert history[0]["error_detail"] == "manual failure"
+
+    def test_history_limit_is_capped_at_twenty(self):
+        for _ in range(25):
+            run_manual_job("limited_job", lambda: None)
+        assert len(get_job_run_history("limited_job", limit=100)) == 20
 
 
 class TestModelRetrainingQueue:

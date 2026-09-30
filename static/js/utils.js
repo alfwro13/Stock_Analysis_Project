@@ -41,3 +41,14 @@ function applyStickyTheadOffset() {
         document.documentElement.style.setProperty('--sticky-thead-top', navbar.getBoundingClientRect().height + 'px');
     }
 }
+
+function formatDuration(seconds) {
+    if (seconds === null || seconds === undefined) return '—';
+    const total = Math.max(0, Math.round(Number(seconds)));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (hours) return `${hours}h ${minutes}m ${secs}s`;
+    if (minutes) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+}

@@ -19,6 +19,7 @@ from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from data_engine import DataEngine
 from sentiment_engine import get_latest_fear_greed
+from scheduler_engine import run_manual_job
 from utils import normalize_ticker, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
@@ -71,7 +72,7 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
     """Manually triggers an AI Contagion scan in the background (useful for testing)."""
     try:
         from scheduler_engine import run_ai_contagion_job
-        background_tasks.add_task(run_ai_contagion_job)
+        background_tasks.add_task(run_manual_job, "ai_contagion_job", run_ai_contagion_job)
         return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
     except Exception as e:
         logger.error(f"Failed to trigger AI Contagion scan: {e}")
@@ -116,7 +117,7 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Trap Monitor scan in the background."""
     try:
         from scheduler_engine import run_trap_monitor_job
-        background_tasks.add_task(run_trap_monitor_job)
+        background_tasks.add_task(run_manual_job, "trap_monitor_job", run_trap_monitor_job)
         return JSONResponse(content={"status": "success", "message": "Trap Monitor scan triggered."})
     except Exception as e:
         logger.error("Failed to trigger Trap Monitor scan: %s", e)
@@ -188,9 +189,9 @@ async def train_alert_referee(request: Request, background_tasks: BackgroundTask
         from alert_referee_engine import CONFLUENCE_ENGINE
         from scheduler_engine import run_alert_referee_training_job, run_confluence_referee_training_job
         if engine == CONFLUENCE_ENGINE:
-            background_tasks.add_task(run_confluence_referee_training_job)
+            background_tasks.add_task(run_manual_job, "confluence_referee_training_job", run_confluence_referee_training_job)
             return JSONResponse(content={"status": "success", "message": "Cross-Engine Alert Referee (Confluence) training triggered."})
-        background_tasks.add_task(run_alert_referee_training_job)
+        background_tasks.add_task(run_manual_job, "alert_referee_training_job", run_alert_referee_training_job)
         return JSONResponse(content={"status": "success", "message": "Alert Confidence Referee training triggered."})
     except Exception as e:
         logger.error("Failed to trigger Alert Confidence Referee training: %s", e)
@@ -232,7 +233,7 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Bubble Radar scan in the background."""
     try:
         from scheduler_engine import run_bubble_radar_job
-        background_tasks.add_task(run_bubble_radar_job)
+        background_tasks.add_task(run_manual_job, "bubble_radar_job", run_bubble_radar_job)
         return JSONResponse(content={"status": "success", "message": "Bubble Radar scan triggered."})
     except Exception as e:
         logger.error("Failed to trigger Bubble Radar scan: %s", e)
@@ -245,7 +246,7 @@ async def run_risk_orchestrator(request: Request, background_tasks: BackgroundTa
     """Manually triggers a Portfolio Heat Index scan in the background."""
     try:
         from scheduler_engine import run_risk_orchestrator_job
-        background_tasks.add_task(run_risk_orchestrator_job)
+        background_tasks.add_task(run_manual_job, "risk_orchestrator_job", run_risk_orchestrator_job)
         return JSONResponse(content={"status": "success", "message": "Risk Orchestrator scan triggered."})
     except Exception as e:
         logger.error("Failed to trigger Risk Orchestrator scan: %s", e)
@@ -347,7 +348,7 @@ async def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTa
     """Manually triggers a Pairs Spread Monitor scan (Portfolio + Watchlist scope) in the background."""
     try:
         from scheduler_engine import run_pairs_spread_monitor_job
-        background_tasks.add_task(run_pairs_spread_monitor_job)
+        background_tasks.add_task(run_manual_job, "pairs_spread_monitor_job", run_pairs_spread_monitor_job)
         return JSONResponse(content={"status": "success", "message": "Pairs Spread Monitor scan triggered."})
     except Exception as e:
         logger.error("Failed to trigger Pairs Spread Monitor scan: %s", e)
@@ -434,7 +435,7 @@ async def run_pattern_detection_scan(request: Request, background_tasks: Backgro
     """Manually triggers a Pattern Detection scan (every registered family) in the background."""
     try:
         from scheduler_engine import run_pattern_detection_job
-        background_tasks.add_task(run_pattern_detection_job)
+        background_tasks.add_task(run_manual_job, "pattern_detection_job", run_pattern_detection_job)
         return JSONResponse(content={"status": "success", "message": "Pattern Detection scan triggered."})
     except Exception as e:
         logger.error("Failed to trigger Pattern Detection scan: %s", e)
@@ -622,8 +623,8 @@ async def get_forensic_scores(request: Request):
 async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Quarterly Data Fetch in the background."""
     try:
-        from scheduler_engine import run_forensic_quarterly_fetch_job, _with_job_source
-        background_tasks.add_task(_with_job_source("forensic_quarterly_fetch_job", run_forensic_quarterly_fetch_job))
+        from scheduler_engine import run_forensic_quarterly_fetch_job
+        background_tasks.add_task(run_manual_job, "forensic_quarterly_fetch_job", run_forensic_quarterly_fetch_job)
         return JSONResponse(content={"status": "success", "message": "Forensic Quarterly Data Fetch triggered."})
     except Exception as e:
         logger.error("Failed to trigger Forensic Quarterly Data Fetch: %s", e)
@@ -635,8 +636,8 @@ async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundT
 async def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Accounting Scores computation in the background."""
     try:
-        from scheduler_engine import run_forensic_scores_job, _with_job_source
-        background_tasks.add_task(_with_job_source("forensic_scores_job", run_forensic_scores_job))
+        from scheduler_engine import run_forensic_scores_job
+        background_tasks.add_task(run_manual_job, "forensic_scores_job", run_forensic_scores_job)
         return JSONResponse(content={"status": "success", "message": "Forensic Accounting Scores triggered."})
     except Exception as e:
         logger.error("Failed to trigger Forensic Accounting Scores: %s", e)

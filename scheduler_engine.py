@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
-from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from config import load_config
 import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
@@ -24,11 +24,7 @@ def _with_job_source(job_id, fn):
     """Tags the worker thread with its job id so log_sched_notification routes to that job's status source."""
     @_functools.wraps(fn)
     def _runner(*args, **kwargs):
-        set_job_source(job_id)
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            clear_job_source()
+        return _run_tracked_job(job_id, "scheduled", fn, *args, **kwargs)
     return _runner
 
 
@@ -44,6 +40,7 @@ scheduler.add_job = _tracked_add_job
 
 _active_jobs: dict[str, str] = {}
 _active_jobs_lock = _threading.Lock()
+_job_execution_context = _threading.local()
 
 def _mark_job_started(name: str) -> None:
     with _active_jobs_lock:
@@ -63,6 +60,9 @@ def force_clear_active_jobs() -> None:
 
 def log_sched_notification(msg_type: str, msg_text: str):
     level = "error" if msg_type == "Error" else ("warning" if msg_type == "Warning" else "info")
+    context = getattr(_job_execution_context, "current", None)
+    if context is not None and msg_type == "Error":
+        context["error_detail"] = msg_text
     notify(current_job_source() or SCHEDULER_STATUS_SOURCE, msg_type, msg_text, level=level)
 
 def record_job_run(job_id: str):
@@ -106,7 +106,6 @@ def get_all_job_last_runs() -> dict:
             conn.close()
 
 
-_job_start_times: dict[str, float] = {}
 _DURATION_EMA_ALPHA = 0.3
 _model_retraining_queue: list[str] = []
 _model_retraining_queued: set[str] = set()
@@ -191,7 +190,15 @@ def start_model_compatibility_guard() -> None:
 
 
 
-def _record_job_duration(job_id: str, started_iso: str, duration_sec: float, status: str) -> None:
+def _record_job_duration(
+    job_id: str,
+    started_iso: str,
+    finished_iso: str,
+    duration_sec: float,
+    status: str,
+    trigger_source: str,
+    error_detail: str | None = None,
+) -> None:
     conn = None
     try:
         conn = get_connection()
@@ -203,10 +210,16 @@ def _record_job_duration(job_id: str, started_iso: str, duration_sec: float, sta
         cursor.execute(
             "INSERT INTO scheduler_run_log (job_id, last_run, last_started, last_duration_sec, avg_duration_sec, last_status) "
             "VALUES (?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(job_id) DO UPDATE SET last_started = excluded.last_started, "
+            "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run, last_started = excluded.last_started, "
             "last_duration_sec = excluded.last_duration_sec, avg_duration_sec = excluded.avg_duration_sec, "
             "last_status = excluded.last_status",
-            (job_id, started_iso, started_iso, duration_sec, new_avg, status),
+            (job_id, finished_iso, started_iso, duration_sec, new_avg, status),
+        )
+        cursor.execute(
+            "INSERT INTO scheduler_run_history "
+            "(job_id, started_at, finished_at, duration_sec, trigger_source, status, error_detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (job_id, started_iso, finished_iso, duration_sec, trigger_source, status, error_detail),
         )
         conn.commit()
     except Exception as e:
@@ -216,18 +229,56 @@ def _record_job_duration(job_id: str, started_iso: str, duration_sec: float, sta
             conn.close()
 
 
+def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
+    started = datetime.now(timezone.utc)
+    previous_context = getattr(_job_execution_context, "current", None)
+    context = {"error_detail": None}
+    _job_execution_context.current = context
+    set_job_source(job_id)
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        context["error_detail"] = str(e)
+        raise
+    finally:
+        finished = datetime.now(timezone.utc)
+        status = "error" if context["error_detail"] else "success"
+        _record_job_duration(
+            job_id,
+            started.strftime("%Y-%m-%d %H:%M:%S"),
+            finished.strftime("%Y-%m-%d %H:%M:%S"),
+            max(0.0, (finished - started).total_seconds()),
+            status,
+            trigger_source,
+            context["error_detail"],
+        )
+        _job_execution_context.current = previous_context
+        clear_job_source()
+
+
 def _on_job_event(event) -> None:
-    now = datetime.now(timezone.utc)
-    if event.code == EVENT_JOB_SUBMITTED:
-        _job_start_times[event.job_id] = now.timestamp()
-        return
-    started_ts = _job_start_times.pop(event.job_id, None)
-    if started_ts is not None:
-        duration = max(0.0, now.timestamp() - started_ts)
-        started_iso = datetime.fromtimestamp(started_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        status = "error" if event.code == EVENT_JOB_ERROR else "success"
-        _record_job_duration(event.job_id, started_iso, duration, status)
-    _finish_model_retraining(event.job_id)
+    if event.code in (EVENT_JOB_EXECUTED, EVENT_JOB_ERROR):
+        _finish_model_retraining(event.job_id)
+
+
+def run_manual_job(job_id: str, fn, *args, **kwargs):
+    return _run_tracked_job(job_id, "manual", fn, *args, **kwargs)
+
+
+def get_job_run_history(job_id: str, limit: int = 20) -> list[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, job_id, started_at, finished_at, duration_sec, trigger_source, status, error_detail "
+            "FROM scheduler_run_history WHERE job_id = ? "
+            "ORDER BY started_at DESC, id DESC LIMIT ?",
+            (job_id, min(max(limit, 1), 20)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn:
+            conn.close()
 
 
 def reload_scheduler():
@@ -1037,7 +1088,7 @@ def reload_scheduler():
 
 
 def start_scheduler():
-    scheduler.add_listener(_on_job_event, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+    scheduler.add_listener(_on_job_event, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     scheduler.start()
 
 

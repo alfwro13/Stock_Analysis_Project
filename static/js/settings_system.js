@@ -871,6 +871,67 @@ async function rotateConfirmToken() {
     }
 }
 
+let schedulerRunHistoryTable = null;
+
+async function openSchedulerRunHistory(jobId, label) {
+    const title = document.getElementById('schedulerRunHistoryTitle');
+    const body = document.getElementById('schedulerRunHistoryBody');
+    if (schedulerRunHistoryTable) {
+        schedulerRunHistoryTable.destroy();
+        schedulerRunHistoryTable = null;
+    }
+    title.textContent = `${label} — Last 20 Runs`;
+    body.innerHTML = '<tr><td colspan="6" class="text-muted">Loading run history…</td></tr>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('schedulerRunHistoryModal')).show();
+
+    try {
+        const response = await fetch(`/api/system/scheduler-jobs/${encodeURIComponent(jobId)}/runs`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            body.innerHTML = `<tr><td colspan="6" class="text-danger">${escapeHtml(data.message || 'Failed to load run history.')}</td></tr>`;
+            return;
+        }
+        if (!data.runs.length) {
+            body.innerHTML = '<tr><td colspan="6" class="text-muted">No completed runs have been recorded yet.</td></tr>';
+            return;
+        }
+        body.innerHTML = data.runs.map(run => {
+            const source = run.trigger_source === 'manual' ? 'Manual' : 'Scheduled';
+            const statusClass = run.status === 'success' ? 'text-bg-success' : 'text-bg-danger';
+            const status = run.status === 'success' ? 'Success' : 'Error';
+            return `<tr>
+                <td class="font-monospace">${escapeHtml(run.started_at_display)}</td>
+                <td class="font-monospace">${escapeHtml(run.finished_at_display)}</td>
+                <td>${escapeHtml(formatDuration(run.duration_sec))}</td>
+                <td>${source}</td>
+                <td><span class="badge ${statusClass}">${status}</span></td>
+                <td class="text-break">${escapeHtml(run.error_detail || '—')}</td>
+            </tr>`;
+        }).join('');
+        schedulerRunHistoryTable = $('#schedulerRunHistoryTable').DataTable({
+            responsive: true,
+            pageLength: 20,
+            lengthChange: false,
+            searching: false,
+            info: false,
+            order: [],
+            columnDefs: [
+                { responsivePriority: 1, targets: [0, 2, 4] },
+                { responsivePriority: 2, targets: [1, 3] },
+                { responsivePriority: 3, targets: 5 }
+            ]
+        });
+    } catch (error) {
+        body.innerHTML = '<tr><td colspan="6" class="text-danger">Network error while loading run history.</td></tr>';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.scheduler-job-history-btn').forEach(button => {
+        button.addEventListener('click', () => openSchedulerRunHistory(button.dataset.jobId, button.dataset.jobLabel));
+    });
+});
+
 let _schedSortAsc = true;
 function sortSchedulerMatrix() {
     const tbody = document.querySelector('#scheduler-matrix tbody');

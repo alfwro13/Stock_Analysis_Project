@@ -64,6 +64,44 @@ def test_get_workflow_monitor_status_returns_200(client):
 
 
 @pytest.mark.api
+def test_get_scheduler_job_runs_returns_history(client):
+    import database
+
+    conn = None
+    try:
+        conn = database.get_connection()
+        conn.execute(
+            "INSERT INTO scheduler_run_history "
+            "(job_id, started_at, finished_at, duration_sec, trigger_source, status, error_detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                "maintenance_job", "2026-01-01 10:00:00", "2026-01-01 10:00:05",
+                5.0, "manual", "error", "test failure",
+            ),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+    resp = client.get("/api/system/scheduler-jobs/maintenance_job/runs")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["job_label"] == "Database & File Maintenance"
+    assert data["runs"][0]["trigger_source"] == "manual"
+    assert data["runs"][0]["error_detail"] == "test failure"
+    assert data["runs"][0]["started_at_display"]
+
+
+@pytest.mark.api
+def test_get_scheduler_job_runs_rejects_unknown_job(client):
+    resp = client.get("/api/system/scheduler-jobs/not-a-real-job/runs")
+    assert resp.status_code == 404
+    assert _json(resp)["status"] == "error"
+
+
+@pytest.mark.api
 def test_get_notifications_with_last_id_filter(client):
     """GET /api/notifications/latest?last_id=9999 must return an empty list (no notifications above that ID)."""
     resp = client.get("/api/notifications/latest?last_id=9999999")

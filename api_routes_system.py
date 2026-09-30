@@ -32,7 +32,8 @@ import markets_engine
 from notification_engine import notify
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
-    reload_scheduler, run_xray_risk_cache_job, CONFIG_KEY_TO_JOB,
+    get_job_run_history, job_label, reload_scheduler, run_xray_risk_cache_job,
+    CONFIG_KEY_TO_JOB, _resolve_manifest,
 )
 from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
@@ -1129,6 +1130,30 @@ async def get_latest_notifications(last_id: int = 0):
     finally:
         if conn:
             conn.close()
+
+
+@system_router.get("/system/scheduler-jobs/{job_id}/runs")
+async def get_scheduler_job_runs(job_id: str):
+    if _resolve_manifest(job_id) is None:
+        return JSONResponse(
+            status_code=404,
+            content={"status": "error", "message": "Scheduled job not found."},
+        )
+
+    runs = get_job_run_history(job_id)
+    for run in runs:
+        started = datetime.strptime(run["started_at"], "%Y-%m-%d %H:%M:%S")
+        finished = datetime.strptime(run["finished_at"], "%Y-%m-%d %H:%M:%S")
+        run["started_at_display"] = time_engine.fmt_datetime(started)
+        run["finished_at_display"] = time_engine.fmt_datetime(finished)
+        run["duration_sec"] = round(run["duration_sec"], 3)
+
+    return JSONResponse(content={
+        "status": "success",
+        "job_id": job_id,
+        "job_label": job_label(job_id),
+        "runs": runs,
+    })
 
 
 @system_router.get("/workflow-monitor/status")

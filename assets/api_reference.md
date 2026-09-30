@@ -1539,7 +1539,7 @@ Most nodes are scheduled jobs (`status` of `green`/`amber`/`red`/`disabled`). Tw
 
 ### `POST /api/maintenance/run`
 
-Triggers the weekly `MaintenanceEngine` as a background task. Returns immediately; progress is visible in the Notifications panel.
+Triggers the weekly `MaintenanceEngine` as a background task. Returns immediately; progress is visible in the Notifications panel. The run removes scheduler execution-history rows older than the newest 20 entries for each job.
 The same run restores URTH and VWRL.L to the built-in Watchlist if either is missing, so the nightly Update Pipeline continues refreshing the Pension benchmark series. For each ticker with no existing notes, it adds a Pension benchmark reminder visible on Stock Detail; existing notes are left untouched.
 
 **Request body:** none
@@ -1768,6 +1768,38 @@ Pulls the latest code from the Git remote. Returns the git output. Also diffs th
   "scikit_learn_change": null
 }
 ```
+
+---
+
+### `GET /api/system/scheduler-jobs/{job_id}/runs`
+
+Returns up to the latest 20 executions for a job shown in Settings → System Diagnostics → Master APScheduler Matrix. Scheduled executions and mapped **Run Now** actions use the same history. Start and finish values are stored as UTC and returned with local-time display fields.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "job_id": "ml_training_job",
+  "job_label": "Global Model Training (Walk-Forward)",
+  "runs": [
+    {
+      "id": 42,
+      "job_id": "ml_training_job",
+      "started_at": "2026-09-30 01:30:00",
+      "finished_at": "2026-09-30 01:31:32",
+      "started_at_display": "2026-09-30 02:30 BST",
+      "finished_at_display": "2026-09-30 02:31 BST",
+      "duration_sec": 92.4,
+      "trigger_source": "scheduled",
+      "status": "success",
+      "error_detail": null
+    }
+  ]
+}
+```
+
+Returns HTTP **404** when `job_id` is not present in the scheduler manifest.
 
 ---
 
@@ -2005,6 +2037,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/system/metrics` | System diagnostic data |
 | `GET` | `/api/system/checks` | Active scheduling health warnings/errors |
 | `GET` | `/api/system/active-jobs` | Currently executing scheduler jobs (busy indicator) |
+| `GET` | `/api/system/scheduler-jobs/{job_id}/runs` | Latest 20 scheduled/manual executions for a scheduler job |
 | `POST` | `/api/system/git-pull` | Pull latest code from git |
 | `POST` | `/api/system/restart` | Graceful application restart (409 if jobs running) |
 | `POST` | `/api/system/force-restart` | Graceful application restart, skips active-jobs check |

@@ -55,8 +55,8 @@ from notification_engine import notify
 from profile_engine import update_single_profile
 from scheduler_engine import (
     get_all_job_last_runs, register_account_scraper_job, register_account_topup_job,
-    run_account_value_snapshot, run_treasury_bill_maturity_sweep, unregister_account_scraper_job,
-    unregister_account_topup_job,
+    run_account_value_snapshot, run_manual_job, run_treasury_bill_maturity_sweep,
+    unregister_account_scraper_job, unregister_account_topup_job,
 )
 from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
 from utils import has_cached_fundamentals, is_excluded_from_yahoo_fetch, normalize_ticker
@@ -731,7 +731,7 @@ async def api_import_csv(request: Request, account_id: int, background_tasks: Ba
 
 @accounts_router.post("/accounts/value-snapshot/trigger")
 async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_account_value_snapshot, scheduled=False)
+    background_tasks.add_task(run_manual_job, "account_value_snapshot_job", run_account_value_snapshot, False)
     return JSONResponse(content={
         "status": "queued",
         "message": "Account Value Snapshot job queued. Check system notifications for completion.",
@@ -740,7 +740,7 @@ async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
 
 @accounts_router.post("/accounts/treasury-bills/maturity-sweep/trigger")
 async def api_trigger_treasury_bill_maturity_sweep(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_treasury_bill_maturity_sweep)
+    background_tasks.add_task(run_manual_job, "treasury_bill_maturity_sweep_job", run_treasury_bill_maturity_sweep)
     return JSONResponse(content={
         "status": "queued",
         "message": "UK Treasury Bill Maturity Sweep queued. Check system notifications for completion.",

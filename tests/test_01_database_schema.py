@@ -75,6 +75,7 @@ EXPECTED_TABLES = [
     "intraday_monitor_results",
     "macro_regimes",
     "scheduler_run_log",
+    "scheduler_run_history",
     "news_articles",
     "model_training_log",
     "trap_monitor_results",
@@ -148,6 +149,16 @@ def test_scheduler_run_log_has_duration_columns():
     required = {"job_id", "last_run", "last_started", "last_duration_sec", "avg_duration_sec", "last_status"}
     missing = required - cols
     assert not missing, f"scheduler_run_log missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_scheduler_run_history_has_required_columns():
+    cols = _columns("scheduler_run_history")
+    required = {
+        "id", "job_id", "started_at", "finished_at", "duration_sec",
+        "trigger_source", "status", "error_detail",
+    }
+    assert not required - cols
 
 
 @pytest.mark.db

@@ -696,6 +696,23 @@ def init_db() -> None:
             if col_name not in sched_log_cols:
                 cursor.execute(f"ALTER TABLE scheduler_run_log ADD COLUMN {col_name} {data_type}")
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS scheduler_run_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL,
+                duration_sec REAL NOT NULL,
+                trigger_source TEXT NOT NULL CHECK(trigger_source IN ('scheduled', 'manual')),
+                status TEXT NOT NULL CHECK(status IN ('success', 'error')),
+                error_detail TEXT
+            )
+        ''')
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scheduler_run_history_job_started "
+            "ON scheduler_run_history(job_id, started_at DESC, id DESC)"
+        )
+
         # --- X-RAY RISK CACHE (Tier C — yfinance pre-compute) ---
         # Per-ticker beta and annualised volatility vs the configured benchmark.
         cursor.execute('''

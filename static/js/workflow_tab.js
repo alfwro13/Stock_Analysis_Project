@@ -64,12 +64,6 @@
 
     var statusColors = { green: "#43a047", amber: "#ffb300", red: "#ef5350", disabled: "#555", external: "#00bcd4", manual: "#ab47bc" };
 
-    function formatDuration(sec) {
-        if (!sec) return "—";
-        if (sec < 60) return Math.round(sec) + "s";
-        return Math.floor(sec / 60) + "m " + Math.round(sec % 60) + "s";
-    }
-
     function chips(arr) {
         if (!arr || !arr.length) return '<span class="wf-pnl-val">—</span>';
         return '<div class="wf-pnl-chips">' + arr.map(function (a) { return '<span class="wf-chip">' + a + '</span>'; }).join("") + "</div>";
