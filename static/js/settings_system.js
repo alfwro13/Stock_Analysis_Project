@@ -929,6 +929,12 @@ async function openSchedulerRunHistory(jobId, label) {
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.scheduler-job-history-btn').forEach(button => {
         button.addEventListener('click', () => openSchedulerRunHistory(button.dataset.jobId, button.dataset.jobLabel));
+        button.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                button.click();
+            }
+        });
     });
 });
 

@@ -75,6 +75,14 @@ def test_settings_page_loads(client):
 
 
 @pytest.mark.pages
+def test_settings_scheduler_job_names_keep_plain_table_text(client):
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert '<span role="button" tabindex="0" class="scheduler-job-history-btn"' in resp.text
+    assert 'btn-link p-0 text-start font-bold scheduler-job-history-btn' not in resp.text
+
+
+@pytest.mark.pages
 def test_notifications_page_loads(client):
     """GET /notifications must load the notification center."""
     _assert_page_ok(client, "/notifications", label="Notifications")

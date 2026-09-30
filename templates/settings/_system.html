@@ -83,8 +83,8 @@
                         {% for job_name, job_cfg in config.SCHEDULING.items() %}
                         {% if job_name != 'MACRO_AUCTIONS' %}
                         <tr>
-                            <td>
-                                <button type="button" class="btn btn-link p-0 text-start font-bold scheduler-job-history-btn" data-job-id="{{ scheduler_job_ids[job_name] }}" data-job-label="{{ scheduler_job_label(scheduler_job_ids[job_name]) | e }}">{{ scheduler_job_label(scheduler_job_ids[job_name]) }}</button>
+                            <td class="font-bold">
+                                <span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="{{ scheduler_job_ids[job_name] }}" data-job-label="{{ scheduler_job_label(scheduler_job_ids[job_name]) | e }}">{{ scheduler_job_label(scheduler_job_ids[job_name]) }}</span>
                             </td>
                             <td>
                                 {% if job_cfg.ENABLED %}
@@ -119,7 +119,7 @@
                         {% endfor %}
                         {% set _auction_cfg = config.SCHEDULING.MACRO_AUCTIONS if config.SCHEDULING.MACRO_AUCTIONS else {} %}
                         <tr>
-                            <td><button type="button" class="btn btn-link p-0 text-start font-bold scheduler-job-history-btn" data-job-id="macro_auction_job_am" data-job-label="{{ scheduler_job_label('macro_auction_job_am') | e }}">{{ scheduler_job_label('macro_auction_job_am') }}</button></td>
+                            <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="macro_auction_job_am" data-job-label="{{ scheduler_job_label('macro_auction_job_am') | e }}">{{ scheduler_job_label('macro_auction_job_am') }}</span></td>
                             <td>
                                 {% if _auction_cfg.ENABLED != false %}
                                     <span class="status-pill status-enabled">ACTIVE</span>
@@ -132,7 +132,7 @@
                             <td class="text-muted font-monospace" data-sched-key="macro_auction_job_am">—</td>
                         </tr>
                         <tr>
-                            <td><button type="button" class="btn btn-link p-0 text-start font-bold scheduler-job-history-btn" data-job-id="macro_auction_job_pm" data-job-label="{{ scheduler_job_label('macro_auction_job_pm') | e }}">{{ scheduler_job_label('macro_auction_job_pm') }}</button></td>
+                            <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="macro_auction_job_pm" data-job-label="{{ scheduler_job_label('macro_auction_job_pm') | e }}">{{ scheduler_job_label('macro_auction_job_pm') }}</span></td>
                             <td>
                                 {% if _auction_cfg.ENABLED != false %}
                                     <span class="status-pill status-enabled">ACTIVE</span>
@@ -145,21 +145,21 @@
                             <td class="text-muted font-monospace" data-sched-key="macro_auction_job_pm">—</td>
                         </tr>
                         <tr>
-                            <td><button type="button" class="btn btn-link p-0 text-start font-bold scheduler-job-history-btn" data-job-id="anomaly_training_job" data-job-label="{{ scheduler_job_label('anomaly_training_job') | e }}">{{ scheduler_job_label('anomaly_training_job') }}</button></td>
+                            <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="anomaly_training_job" data-job-label="{{ scheduler_job_label('anomaly_training_job') | e }}">{{ scheduler_job_label('anomaly_training_job') }}</span></td>
                             <td><span class="status-pill status-scheduled">NOTIFICATIONS</span></td>
                             <td>MON-FRI</td>
                             <td class="font-monospace">18:30</td>
                             <td class="text-muted font-monospace" data-sched-key="ANOMALY_ALERTS">—</td>
                         </tr>
                         <tr>
-                            <td><button type="button" class="btn btn-link p-0 text-start font-bold scheduler-job-history-btn" data-job-id="xray_risk_cache_job" data-job-label="{{ scheduler_job_label('xray_risk_cache_job') | e }}">{{ scheduler_job_label('xray_risk_cache_job') }}</button></td>
+                            <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="xray_risk_cache_job" data-job-label="{{ scheduler_job_label('xray_risk_cache_job') | e }}">{{ scheduler_job_label('xray_risk_cache_job') }}</span></td>
                             <td><span class="status-pill status-scheduled">ALWAYS ON</span></td>
                             <td>MON-FRI</td>
                             <td class="font-monospace">19:00</td>
                             <td class="text-muted font-monospace" data-sched-key="XRAY_RISK_CACHE">—</td>
                         </tr>
                         <tr>
-                            <td><button type="button" class="btn btn-link p-0 text-start font-bold scheduler-job-history-btn" data-job-id="system_check_job" data-job-label="{{ scheduler_job_label('system_check_job') | e }}">{{ scheduler_job_label('system_check_job') }}</button></td>
+                            <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="system_check_job" data-job-label="{{ scheduler_job_label('system_check_job') | e }}">{{ scheduler_job_label('system_check_job') }}</span></td>
                             <td><span class="status-pill status-scheduled">DAILY</span></td>
                             <td>MON-SUN</td>
                             <td class="font-monospace">06:00</td>
