@@ -156,7 +156,7 @@ Normalising against a single live point has no statistical meaning. The training
 ## 6. Training Pipeline
 
 **Entry point:** `AnomalyEngine.train_all(tickers, parquet_dir)`  
-**Triggered by:** `run_anomaly_training_job()` in `scheduler_jobs.py` (nightly 18:30, registered in `scheduler_engine.reload_scheduler()`) or the "Train Models Now" button in Settings → Machine Learning & AI Engine.
+**Triggered by:** `run_anomaly_training_job()` in `scheduler_jobs.py` (nightly 18:30, registered in `scheduler_engine.reload_scheduler()`) or the "Train Models Now" button in Settings → Machine Learning & AI Engine. It is also queued within seconds of startup when `model_compatibility_engine.py` detects that the saved Isolation Forest family was trained by a different scikit-learn version.
 
 ```
 For each ticker:
@@ -167,6 +167,7 @@ For each ticker:
   5. Fit IsolationForest on feature matrix
   6. Compute score_min, score_max over training set
   7. Save {model, score_min, score_max} → data/anomaly_models/{ticker}.joblib
+  8. Save the installed scikit-learn version → data/anomaly_models/{ticker}.joblib.sklearn-version
 ```
 
 **Minimum data requirement:** 50 clean rows. This ensures:

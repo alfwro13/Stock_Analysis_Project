@@ -1753,7 +1753,7 @@ At-a-glance market/system status for the Home Assistant integration's sensors. `
 
 ### `POST /api/system/git-pull`
 
-Pulls the latest code from the Git remote. Returns the git output. Also diffs the pre-pull and post-pull commits to detect whether `requirements.txt` changed; if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down.
+Pulls the latest code from the Git remote. Returns the git output. Also diffs the pre-pull and post-pull commits to detect whether `requirements.txt` changed; if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down. When the pinned scikit-learn version changed, `scikit_learn_changed` is `true`, `scikit_learn_change` contains the old/new versions, and the message warns that affected model retraining begins automatically within seconds of the restarted app starting.
 
 **Request body:** none
 
@@ -1763,7 +1763,9 @@ Pulls the latest code from the Git remote. Returns the git output. Also diffs th
 {
   "status": "success",
   "message": "Update successful. Please restart the service if required.\n\nAlready up to date.",
-  "requirements_changed": false
+  "requirements_changed": false,
+  "scikit_learn_changed": false,
+  "scikit_learn_change": null
 }
 ```
 
@@ -1783,11 +1785,12 @@ Returns a snapshot of all scheduler jobs that are currently executing. The regis
     "Global Model Training (Walk-Forward)": "2026-06-10T14:32:01",
     "Daily Quant Screener (Portfolio & Watchlist)": "2026-06-10T14:28:45"
   },
-  "requirements_changed_pending": false
+  "requirements_changed_pending": false,
+  "scikit_learn_change_pending": null
 }
 ```
 
-`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner.
+`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
 
 ---
 

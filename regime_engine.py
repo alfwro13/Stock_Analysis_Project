@@ -3,12 +3,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 from database import get_connection
+from model_compatibility_engine import dump_sklearn_artifact
 from config import HISTORICAL_DIR
 from yahoo_engine import yahoo_engine
 from constants import (
@@ -263,7 +263,7 @@ def run_market_stress_if() -> dict:
     today_date  = feature_df.index[-1].strftime("%Y-%m-%d")
     today_features = {col: round(float(feature_df.iloc[-1][col]), 4) for col in _IF_FEATURE_COLS}
 
-    joblib.dump({"model": model, "score_min": score_min, "score_max": score_max,
+    dump_sklearn_artifact({"model": model, "score_min": score_min, "score_max": score_max,
                  "trained_at": datetime.now(timezone.utc).isoformat()}, _IF_MODEL_PATH)
 
     conn = None

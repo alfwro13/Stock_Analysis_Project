@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -387,6 +388,16 @@ class SettingsConfig(BaseModel):
 
 
 _requirements_changed_pending = False
+_sklearn_change_pending: dict[str, str] | None = None
+
+
+def _pinned_requirement_version(contents: str, package: str) -> str | None:
+    match = re.search(
+        rf"(?im)^{re.escape(package)}\s*==\s*([^\s;#]+)",
+        contents,
+    )
+    return match.group(1) if match else None
+
 
 
 async def execute_restart():
@@ -842,7 +853,8 @@ async def get_system_metrics():
             for _jf in ANOMALY_MODELS_DIR.glob("*.joblib"):
                 anomaly_model_cnt += 1
                 try:
-                    _payload = joblib.load(_jf)
+                    from model_compatibility_engine import load_sklearn_artifact
+                    _payload = load_sklearn_artifact(_jf, "anomaly_training_job")
                     _trained_at = _payload.get('trained_at')
                     if not _trained_at:
                         anomaly_stale_cnt += 1
@@ -986,8 +998,10 @@ async def api_market_status(background_tasks: BackgroundTasks):
 
 @system_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
 async def git_pull_update():
-    global _requirements_changed_pending
+    global _requirements_changed_pending, _sklearn_change_pending
     try:
+        requirements_path = BASE_DIR / "requirements.txt"
+        old_requirements = requirements_path.read_text()
         old_head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR)).stdout.strip()
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         if result.returncode != 0:
@@ -995,10 +1009,31 @@ async def git_pull_update():
         diff = subprocess.run(["git", "diff", "--name-only", old_head, "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         requirements_changed = "requirements.txt" in diff.stdout.splitlines()
         _requirements_changed_pending = _requirements_changed_pending or requirements_changed
+        old_sklearn = _pinned_requirement_version(old_requirements, "scikit-learn")
+        new_sklearn = _pinned_requirement_version(requirements_path.read_text(), "scikit-learn")
+        sklearn_changed = requirements_changed and old_sklearn != new_sklearn
+        if sklearn_changed:
+            _sklearn_change_pending = {
+                "from_version": old_sklearn or "not installed",
+                "to_version": new_sklearn or "removed",
+            }
         message = f"Update successful. Please restart the service if required.\n\n{result.stdout}"
         if requirements_changed:
             message += "\n\n⚠️ requirements.txt changed — dependencies will be reinstalled automatically before the next restart."
-        return JSONResponse(content={"status": "success", "message": message, "requirements_changed": requirements_changed})
+        if sklearn_changed:
+            message += (
+                f"\n\n⚠️ scikit-learn changed from {old_sklearn or 'not installed'} "
+                f"to {new_sklearn or 'removed'}. After restart, affected model retraining "
+                "will begin automatically during startup, normally within seconds, and "
+                "will run one model family at a time."
+            )
+        return JSONResponse(content={
+            "status": "success",
+            "message": message,
+            "requirements_changed": requirements_changed,
+            "scikit_learn_changed": sklearn_changed,
+            "scikit_learn_change": _sklearn_change_pending if sklearn_changed else None,
+        })
     except Exception as e:
         return _error_500(e)
 
@@ -1007,7 +1042,13 @@ async def git_pull_update():
 async def get_active_jobs_status():
     from scheduler_engine import get_active_jobs
     jobs = get_active_jobs()
-    return JSONResponse(content={"status": "success", "active_jobs": jobs, "busy": bool(jobs), "requirements_changed_pending": _requirements_changed_pending})
+    return JSONResponse(content={
+        "status": "success",
+        "active_jobs": jobs,
+        "busy": bool(jobs),
+        "requirements_changed_pending": _requirements_changed_pending,
+        "scikit_learn_change_pending": _sklearn_change_pending,
+    })
 
 
 @system_router.post("/system/restart", dependencies=[Depends(require_confirm_token)])

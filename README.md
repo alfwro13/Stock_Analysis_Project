@@ -157,6 +157,8 @@ This will run securely in the background. It downloads 2 years of daily data for
 
 The app itself also checks, on every startup, whether the packages actually installed in your virtual environment still match the pins in `requirements.txt`, and logs/notifies (Settings → Notifications) if they've drifted — for example if `requirements.txt` was updated but `pip install -r requirements.txt` was never re-run. This catches drift regardless of how the server was last restarted.
 
+Persisted scikit-learn models carry a version sidecar. After a scikit-learn upgrade, startup rejects incompatible artifacts and queues only their owning training jobs through APScheduler. Affected model families run sequentially, beginning within seconds of startup, while their inference paths remain unavailable until compatible artifacts are written. Settings → System Updates & Power warns about this before restart when Pull Latest from GitHub detects a changed scikit-learn pin.
+
 ## **💻 Usage & The Web UI**
 
 To start the server, simply run the main application file. The system will automatically build the SQLite database on its first boot.

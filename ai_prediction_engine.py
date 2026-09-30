@@ -28,6 +28,7 @@ from sklearn.base import clone
 from sklearn.frozen import FrozenEstimator
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.calibration import CalibratedClassifierCV
+from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
 
 from config import BASE_DIR
 from database import get_connection, log_notification
@@ -908,7 +909,7 @@ def train_global_ml_model() -> None:
         production_ensemble.classes_    = np.array([0, 1])
         # n_features_in_ is auto-derived from estimators_ in sklearn 1.6+
 
-        joblib.dump(production_ensemble, MODEL_PATH)
+        dump_sklearn_artifact(production_ensemble, MODEL_PATH)
         logger.info('✅ Production ML Ensemble saved to %s', MODEL_PATH)
         log_notification(
             "Success",
@@ -965,7 +966,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
     conn = None
     try:
-        model = joblib.load(MODEL_PATH)
+        model = load_sklearn_artifact(MODEL_PATH, "ml_training_job")
         conn  = get_connection()
 
         query = """
@@ -1267,8 +1268,8 @@ def train_quantile_models() -> None:
         final_q10.fit(X_full, y_full)
         final_q90.fit(X_full, y_full)
 
-        joblib.dump(final_q10, QUANTILE_Q10_PATH)
-        joblib.dump(final_q90, QUANTILE_Q90_PATH)
+        dump_sklearn_artifact(final_q10, QUANTILE_Q10_PATH)
+        dump_sklearn_artifact(final_q90, QUANTILE_Q90_PATH)
         logger.info(
             '✅ Quantile models saved — Q10: %s, Q90: %s', QUANTILE_Q10_PATH, QUANTILE_Q90_PATH
         )
@@ -1305,8 +1306,8 @@ def score_quantile_predictions(tickers: List[str]) -> None:
 
     conn = None
     try:
-        q10_model = joblib.load(QUANTILE_Q10_PATH)
-        q90_model = joblib.load(QUANTILE_Q90_PATH)
+        q10_model = load_sklearn_artifact(QUANTILE_Q10_PATH, "ml_training_job")
+        q90_model = load_sklearn_artifact(QUANTILE_Q90_PATH, "ml_training_job")
         conn = get_connection()
 
         query = """

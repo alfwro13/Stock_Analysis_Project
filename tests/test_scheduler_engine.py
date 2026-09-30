@@ -674,6 +674,57 @@ class TestDurationListener:
         assert "ghost_job" not in get_all_job_last_runs()
 
 
+class TestModelRetrainingQueue:
+    def setup_method(self):
+        _sched_module._model_retraining_queue.clear()
+        _sched_module._model_retraining_queued.clear()
+        _sched_module._model_retraining_current = None
+
+    def teardown_method(self):
+        _sched_module._model_retraining_queue.clear()
+        _sched_module._model_retraining_queued.clear()
+        _sched_module._model_retraining_current = None
+
+    def test_jobs_are_deduplicated_and_dispatched_sequentially(self):
+        runners = {
+            "ml_training_job": MagicMock(),
+            "anomaly_training_job": MagicMock(),
+        }
+        with (
+            patch.dict(_sched_module._MODEL_RETRAIN_RUNNERS, runners, clear=True),
+            patch.object(_sched_module.scheduler, "get_job", return_value=MagicMock()),
+            patch.object(_sched_module.scheduler, "modify_job") as modify_job,
+            patch.object(_sched_module.scheduler, "pause_job") as pause_job,
+            patch.object(_sched_module, "notify"),
+        ):
+            _sched_module.queue_model_retraining(
+                "ml_training_job",
+                "/tmp/ml_ensemble.joblib",
+                "1.9.0",
+            )
+            _sched_module.queue_model_retraining(
+                "anomaly_training_job",
+                "/tmp/AAPL.joblib",
+                "1.9.0",
+            )
+            _sched_module.queue_model_retraining(
+                "anomaly_training_job",
+                "/tmp/MSFT.joblib",
+                "1.9.0",
+            )
+
+            assert _sched_module._model_retraining_current == "ml_training_job"
+            assert _sched_module._model_retraining_queue == ["anomaly_training_job"]
+            assert modify_job.call_count == 1
+            pause_job.assert_called_once_with("anomaly_training_job")
+
+            _sched_module._finish_model_retraining("ml_training_job")
+
+            assert _sched_module._model_retraining_current == "anomaly_training_job"
+            assert _sched_module._model_retraining_queue == []
+            assert modify_job.call_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Canonical job naming — one name per job across all surfaces
 # ---------------------------------------------------------------------------
