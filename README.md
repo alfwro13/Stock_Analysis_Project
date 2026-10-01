@@ -117,6 +117,8 @@ The Quantamental system features an automated configuration engine. You do not n
 - **Dual round-robin** (both `true`): alternates between IPv4 and IPv6 on successive calls to spread load and bypass per-IP rate limits.
 The **Yahoo Finance API Usage** panel immediately below shows daily request counts, interface breakdown, HTTP 429 hits, error counts, and a separate yfinance-logged count for the past 8 days (sourced from `GET /api/system/yahoo-api-stats`) — the latter tracks ERROR-level lines the `yfinance` library itself logs (e.g. no data for a ticker/period, a 404 on a module Yahoo doesn't support for that instrument) without raising an exception, so they show up in the Log Viewer but wouldn't otherwise count as a request failure. Click a row to open a detail chart in a new tab, breaking that day's requests into 15-minute intervals stacked by which scheduled job was running at the time (or "Manual / On-Demand" for requests triggered by browsing a page).
 
+**Request Timing:** Portfolio, Watchlist, Stock Detail, intraday refresh, and Home Assistant account responses expose stage durations in the browser's `Server-Timing` header. Slow requests and event loop pauses are logged for navigation troubleshooting; the timing logs omit tickers and financial values.
+
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless

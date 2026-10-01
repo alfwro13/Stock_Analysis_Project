@@ -24,7 +24,7 @@ from config import load_config, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACC
 import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
-from utils import normalize_ticker, ignored_tickers_set
+from utils import normalize_ticker, ignored_tickers_set, measure_request_stage, time_request_call
 from fundamentals_helpers import compute_quality_grade
 from visuals import (
     create_macro_chart,
@@ -299,12 +299,14 @@ def _fetch_portfolio_signal_rows(benchmark_symbol: str):
 async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
     from xray_engine import BENCHMARK_SYMBOL
 
-    db_rows, macro_regime, global_updated = await run_in_threadpool(_fetch_portfolio_signal_rows, BENCHMARK_SYMBOL)
+    with measure_request_stage("sql"):
+        db_rows, macro_regime, global_updated = await run_in_threadpool(_fetch_portfolio_signal_rows, BENCHMARK_SYMBOL)
 
     config_data = load_config()
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
-    position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
+    with measure_request_stage("fx_context"):
+        position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
     account_options = [{"id": "all", "name": "Global (All Accounts)"}]
     for acc in discovered_accounts:
         if acc["id"] in active_accounts:
@@ -391,7 +393,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     price_map = current_price_map(list(set(portfolio_tickers)))
 
     from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS
-    anchor_closes = get_period_anchor_closes(list(set(portfolio_tickers)))
+    with measure_request_stage("history_anchors"):
+        anchor_closes = get_period_anchor_closes(list(set(portfolio_tickers)))
 
     change_period = request.cookies.get("portfolio_change_period", "1d")
     if change_period not in CHANGE_PERIODS:
@@ -439,7 +442,8 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
                         break
 
             cost_in_base = shares * buy_price_base
-            exchange_rate = get_rate_to_base(row_dict['currency'])
+            with measure_request_stage("fx_rate"):
+                exchange_rate = get_rate_to_base(row_dict['currency'])
             val_in_base = (shares * current_price) * exchange_rate
             row_dict['market_value_base'] = round(val_in_base, 2)
             row_dict['global_market_value'] = round(val_in_base, 2)
@@ -491,7 +495,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "portfolio")
     views = table_columns_helpers.resolve_views(config_data, "portfolio")
 
-    return templates.TemplateResponse(
+    return time_request_call("template", templates.TemplateResponse,
         request=request, name="portfolio.html",
         context={
             "portfolio": portfolio_data,
@@ -756,7 +760,8 @@ def _fetch_watchlist_signal_rows(benchmark_symbol: str):
 async def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
     from xray_engine import BENCHMARK_SYMBOL
 
-    db_rows, global_updated = await run_in_threadpool(_fetch_watchlist_signal_rows, BENCHMARK_SYMBOL)
+    with measure_request_stage("sql"):
+        db_rows, global_updated = await run_in_threadpool(_fetch_watchlist_signal_rows, BENCHMARK_SYMBOL)
 
     watchlist_tickers = get_watchlist_tickers()
 
@@ -765,7 +770,8 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     all_holding_limits = get_all_holding_price_limits()
 
     from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS
-    anchor_closes = get_period_anchor_closes(list(set(watchlist_tickers)))
+    with measure_request_stage("history_anchors"):
+        anchor_closes = get_period_anchor_closes(list(set(watchlist_tickers)))
 
     change_period = request.cookies.get("watchlist_change_period", "1d")
     if change_period not in CHANGE_PERIODS:
@@ -862,12 +868,13 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
 
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-    position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
+    with measure_request_stage("fx_context"):
+        position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
     optional_columns = table_columns_helpers.columns_for_page("watchlist")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "watchlist")
     views = table_columns_helpers.resolve_views(config_data, "watchlist")
 
-    return templates.TemplateResponse(
+    return time_request_call("template", templates.TemplateResponse,
         request=request, name="watchlist.html",
         context={
             "watchlist": watchlist_data,
@@ -1578,7 +1585,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute('''
+        time_request_call("sql", cursor.execute, '''
             SELECT s.*, p.business_summary,
                    (SELECT ml_confidence_score FROM quant_signals
                     WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
@@ -1882,7 +1889,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
     if user_asset and stock_data and stock_data.get('current_price'):
         priced = current_price_map([ticker]).get(ticker)
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
-        exchange_rate = await run_in_threadpool(get_rate_from_base, stock_data['currency'])
+        with measure_request_stage("fx_rate"):
+            exchange_rate = await run_in_threadpool(get_rate_from_base, stock_data['currency'])
         price_in_pence = user_asset.get('price_in_pence', False)
 
         global_math = calculate_pnl(
@@ -1962,7 +1970,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             except Exception:
                 df_baseline = None
 
-        macro_html = create_macro_chart(df_macro, df_baseline, ticker)
+        with measure_request_stage("chart"):
+            macro_html = create_macro_chart(df_macro, df_baseline, ticker)
 
         if not df_macro.empty:
             last_day = df_macro.iloc[-1]
@@ -2005,14 +2014,15 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         s2_val = price_action['s2'] if price_action else None
         mkt_tz = intraday_market_tz(ticker, currency)
         delay_min = EXCHANGE_DELAYS.get(currency, 0)
-        intraday_html = create_intraday_chart(
-            df_intraday, ticker, s1=s1_val, s2=s2_val,
-            live_pattern_name=live_pattern_name,
-            live_pattern_tooltip=live_pattern_tooltip,
-            live_pattern_score=live_pattern_score,
-            market_tz=mkt_tz,
-            data_delay_minutes=delay_min,
-        )
+        with measure_request_stage("chart"):
+            intraday_html = create_intraday_chart(
+                df_intraday, ticker, s1=s1_val, s2=s2_val,
+                live_pattern_name=live_pattern_name,
+                live_pattern_tooltip=live_pattern_tooltip,
+                live_pattern_score=live_pattern_score,
+                market_tz=mkt_tz,
+                data_delay_minutes=delay_min,
+            )
     except FileNotFoundError:
         intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span><span class='chart-ph__hint'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"
     except Exception:
@@ -2050,7 +2060,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
             anomaly_threshold = float(
                 config_data.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("THRESHOLD", 0.7)
             )
-            anomaly_chart_html = create_anomaly_score_chart(df_anomaly, ticker, threshold=anomaly_threshold)
+            with measure_request_stage("chart"):
+                anomaly_chart_html = create_anomaly_score_chart(df_anomaly, ticker, threshold=anomaly_threshold)
 
             latest_score = df_anomaly["anomaly_score"].iloc[-1]
             history = df_anomaly["anomaly_score"]
@@ -2111,7 +2122,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
     regime_weighted = compute_regime_weighted_score(ticker)
     buy_recommendation = evaluate_buy_recommendation(ticker)
 
-    return templates.TemplateResponse(
+    return time_request_call("template", templates.TemplateResponse,
         request=request, name="stock_detail.html",
         context={
             "stock": stock_data,

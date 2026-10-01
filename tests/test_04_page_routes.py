@@ -1779,3 +1779,62 @@ def test_danger_zone_with_delete_confirmation_on_all_three_detail_pages(client):
         _db.soft_delete_account(trading_id)
         _db.soft_delete_account(pension_id)
         _db.soft_delete_account(house_id)
+
+
+def test_request_timing_reports_stages_without_query_values(client, caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="main"):
+        response = client.get("/portfolio?embed_token=private-marker")
+    assert response.status_code == 200
+    timing = response.headers["Server-Timing"]
+    assert "app;dur=" in timing
+    assert "sql;dur=" in timing
+    assert "private-marker" not in caplog.text
+    assert "route=/portfolio" in caplog.text
+    assert "embed_token" not in caplog.text
+
+
+def test_account_request_timing_keeps_response_contract(client):
+    response = client.get("/api/accounts/other-accounts-list")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "metrics;dur=" in response.headers["Server-Timing"]
+
+
+def test_intraday_timing_measures_stubbed_upstream(client):
+    import time
+
+    def stalled_fetch(*args, **kwargs):
+        time.sleep(0.03)
+        return {}
+
+    with patch("api_routes.yahoo_engine.get_intraday", side_effect=stalled_fetch):
+        response = client.post("/api/intraday-chart/refresh", json={"ticker": "TSTTIMING"})
+    assert response.status_code == 200
+    timing = response.headers["Server-Timing"]
+    assert "yahoo_fetch;dur=" in timing
+    value = float(timing.split("yahoo_fetch;dur=")[1].split(",")[0])
+    assert value >= 20
+
+
+def test_event_loop_lag_probe_reports_blocked_loop(caplog):
+    import asyncio
+    import logging
+    import time
+    from main import _watch_event_loop_lag
+
+    async def exercise():
+        task = asyncio.create_task(_watch_event_loop_lag())
+        await asyncio.sleep(0.01)
+        time.sleep(0.4)
+        await asyncio.sleep(0.01)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with caplog.at_level(logging.WARNING, logger="main"):
+        asyncio.run(exercise())
+    assert "event_loop_lag lag_ms=" in caplog.text

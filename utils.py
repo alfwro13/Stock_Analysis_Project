@@ -2,9 +2,33 @@
 import logging
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
+from time import perf_counter
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+_request_stages: ContextVar[list[tuple[str, float]] | None] = ContextVar("request_stages", default=None)
+
+
+@contextmanager
+def measure_request_stage(name: str):
+    stages = _request_stages.get()
+    if stages is None:
+        yield
+        return
+    started = perf_counter()
+    try:
+        yield
+    finally:
+        stages.append((name, (perf_counter() - started) * 1000))
+
+
+def time_request_call(stage_name: str, function, *args, **kwargs):
+    with measure_request_stage(stage_name):
+        return function(*args, **kwargs)
+
 
 _SAFE_TICKER_PATH_RE = re.compile(r"^[A-Za-z0-9^.=_\-]+$")
 
