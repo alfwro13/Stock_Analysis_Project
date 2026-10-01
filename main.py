@@ -3,6 +3,8 @@ import logging
 import os
 import re
 import secrets
+import sys
+import threading
 from contextlib import suppress
 from time import perf_counter
 import uvicorn
@@ -44,19 +46,90 @@ _TIMED_ROUTES = {
 }
 
 
+class _EventLoopLagSampler:
+    def __init__(self, loop_thread_id):
+        self._loop_thread_id = loop_thread_id
+        self._condition = threading.Condition()
+        self._generation = 0
+        self._deadline = 0.0
+        self._sample = None
+        self._stopped = False
+        self._thread = threading.Thread(target=self._run, name="event-loop-lag-sampler", daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def arm(self, deadline):
+        with self._condition:
+            self._generation += 1
+            self._deadline = deadline
+            self._sample = None
+            self._condition.notify()
+            return self._generation
+
+    def sample(self, generation):
+        with self._condition:
+            return self._sample if generation == self._generation else None
+
+    def stop(self):
+        with self._condition:
+            self._stopped = True
+            self._condition.notify()
+        self._thread.join(timeout=1)
+
+    def _run(self):
+        project_root = os.path.dirname(os.path.abspath(__file__)) + os.sep
+        while True:
+            with self._condition:
+                while not self._stopped:
+                    generation = self._generation
+                    if not generation:
+                        self._condition.wait()
+                        continue
+                    remaining = self._deadline + 0.1 - perf_counter()
+                    if remaining > 0:
+                        self._condition.wait(timeout=remaining)
+                        continue
+                    break
+                if self._stopped:
+                    return
+            frame = sys._current_frames().get(self._loop_thread_id)
+            location = None
+            while frame is not None:
+                filename = os.path.abspath(frame.f_code.co_filename)
+                if filename.startswith(project_root):
+                    relative = filename[len(project_root):]
+                    if not relative.startswith(("venv" + os.sep, ".venv" + os.sep)):
+                        location = f"{relative}:{frame.f_code.co_name}:{frame.f_lineno}"
+                        break
+                frame = frame.f_back
+            with self._condition:
+                if generation == self._generation:
+                    self._sample = location
+                    self._condition.wait_for(lambda: generation != self._generation or self._stopped)
+
+
 async def _watch_event_loop_lag():
     loop = asyncio.get_running_loop()
-    while True:
-        target = loop.time() + 0.25
-        await asyncio.sleep(0.25)
-        lag_ms = max(0.0, (loop.time() - target) * 1000)
-        if lag_ms >= 100:
-            logger.warning("event_loop_lag lag_ms=%.1f", lag_ms)
+    sampler = _EventLoopLagSampler(threading.get_ident())
+    sampler.start()
+    try:
+        while True:
+            target = loop.time() + 0.25
+            generation = sampler.arm(perf_counter() + 0.25)
+            await asyncio.sleep(0.25)
+            lag_ms = max(0.0, (loop.time() - target) * 1000)
+            if lag_ms >= 100:
+                logger.warning(
+                    "event_loop_lag lag_ms=%.1f suspected_blocker=%s",
+                    lag_ms, sampler.sample(generation) or "unavailable",
+                )
+    finally:
+        sampler.stop()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import threading
     logger.info("Initializing application lifecycle...")
     init_db()
     from utils import ensure_workflow_assets, notify_requirements_drift
