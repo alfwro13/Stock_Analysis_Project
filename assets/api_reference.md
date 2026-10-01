@@ -79,6 +79,10 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 
 ---
 
+### Timing response header
+
+`GET /api/accounts/portfolio-totals`, `/list-with-metrics`, `/holdings-list`, `/other-accounts-list`, and `POST /api/intraday-chart/refresh` include `Server-Timing` on completed responses. `app` is handler time in milliseconds; available named stages describe metrics calculation, Yahoo fetch/lock wait, and chart rendering. This diagnostic header does not change JSON bodies, authentication, or refresh completion behaviour. The Portfolio, Watchlist, and Stock Detail HTML pages use the same header.
+
 ## 2. Notifications
 
 ### `GET /api/notifications/latest`

@@ -57,7 +57,7 @@ from news_feed_engine import run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, fetch_and_save_single_ticker
 import glossary_learn_engine
-from utils import normalize_ticker
+from utils import normalize_ticker, measure_request_stage
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from fundamentals_helpers import compute_quality_grade, get_earnings_days
@@ -951,14 +951,15 @@ async def refresh_intraday_chart(req: TickerRequest):
             conn_meta.close()
 
     try:
-        with yahoo_engine._lock:
-            yahoo_engine._cache.pop(f"intraday:{ticker}:1d:5m:", None)
-        result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
-        df_fetched = result.get(ticker, pd.DataFrame())
-        if not df_fetched.empty:
-            if df_fetched.index.tz is not None:
-                df_fetched.index = df_fetched.index.tz_convert(None)
-            df_fetched.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine="pyarrow")
+        with measure_request_stage("yahoo_fetch"):
+            with yahoo_engine._lock:
+                yahoo_engine._cache.pop(f"intraday:{ticker}:1d:5m:", None)
+            result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
+            df_fetched = result.get(ticker, pd.DataFrame())
+            if not df_fetched.empty:
+                if df_fetched.index.tz is not None:
+                    df_fetched.index = df_fetched.index.tz_convert(None)
+                df_fetched.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine="pyarrow")
     except Exception:
         pass
 
@@ -1003,15 +1004,16 @@ async def refresh_intraday_chart(req: TickerRequest):
     except Exception:
         pass
 
-    html = create_intraday_chart(
-        df_intraday, ticker, s1=s1, s2=s2,
-        live_pattern_name=live_pattern_name,
-        live_pattern_tooltip=live_pattern_tooltip,
-        live_pattern_score=live_pattern_score,
-        include_plotlyjs=False,
-        market_tz=mkt_tz,
-        data_delay_minutes=delay_min,
-    )
+    with measure_request_stage("chart"):
+        html = create_intraday_chart(
+            df_intraday, ticker, s1=s1, s2=s2,
+            live_pattern_name=live_pattern_name,
+            live_pattern_tooltip=live_pattern_tooltip,
+            live_pattern_score=live_pattern_score,
+            include_plotlyjs=False,
+            market_tz=mkt_tz,
+            data_delay_minutes=delay_min,
+        )
     return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
 
 def _active_log_path() -> Path | None:

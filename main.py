@@ -1,7 +1,10 @@
+import asyncio
 import logging
 import os
 import re
 import secrets
+from contextlib import suppress
+from time import perf_counter
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -19,6 +22,7 @@ from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
 from log_config import configure_file_logging
+from utils import _request_stages
 
 from api_routes import api_router
 from page_routes import page_router
@@ -31,6 +35,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 configure_file_logging(load_config())
+
+_TIMED_ROUTES = {
+    "/portfolio", "/watchlist", "/stock/{ticker}",
+    "/api/intraday-chart/refresh",
+    "/api/accounts/portfolio-totals", "/api/accounts/list-with-metrics",
+    "/api/accounts/holdings-list", "/api/accounts/other-accounts-list",
+}
+
+
+async def _watch_event_loop_lag():
+    loop = asyncio.get_running_loop()
+    while True:
+        target = loop.time() + 0.25
+        await asyncio.sleep(0.25)
+        lag_ms = max(0.0, (loop.time() - target) * 1000)
+        if lag_ms >= 100:
+            logger.warning("event_loop_lag lag_ms=%.1f", lag_ms)
 
 
 @asynccontextmanager
@@ -46,12 +67,52 @@ async def lifespan(app: FastAPI):
     reload_scheduler()
     start_model_compatibility_guard()
     threading.Thread(target=resume_interrupted_scans, daemon=True).start()
-    yield
-    shutdown_scheduler()
+    lag_task = asyncio.create_task(_watch_event_loop_lag())
+    try:
+        yield
+    finally:
+        lag_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await lag_task
+        shutdown_scheduler()
     logger.info("Application lifecycle terminated safely.")
 
 
 app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def request_timing_middleware(request: Request, call_next):
+    path = request.url.path
+    route_path = "/stock/{ticker}" if path.startswith("/stock/") and path.count("/") == 2 else path
+    if route_path not in _TIMED_ROUTES:
+        return await call_next(request)
+    started = perf_counter()
+    stages = []
+    response = None
+    token = _request_stages.set(stages)
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        _request_stages.reset(token)
+        duration_ms = (perf_counter() - started) * 1000
+        totals = {}
+        for name, elapsed_ms in stages:
+            totals[name] = totals.get(name, 0.0) + elapsed_ms
+        if response is not None:
+            response.headers["Server-Timing"] = ", ".join(
+                [f"app;dur={duration_ms:.1f}"]
+                + [f"{name};dur={value:.1f}" for name, value in sorted(totals.items())]
+            )
+        logger.log(
+            logging.INFO if duration_ms >= 1000 else logging.DEBUG,
+            "request_timing route=%s method=%s status=%s duration_ms=%.1f stages_ms=%s",
+            route_path, request.method, response.status_code if response else 500, duration_ms,
+            ",".join(f"{name}:{value:.1f}" for name, value in sorted(totals.items())),
+        )
+
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)

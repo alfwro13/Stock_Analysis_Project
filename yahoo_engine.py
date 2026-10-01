@@ -10,6 +10,7 @@ import pandas as pd
 
 from tools.network_engine import _RateLimitedError, _TransientHTTPError, yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset, suppress_yf_delisted_noise
 from notification_engine import notify
+from utils import measure_request_stage
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,9 @@ class _RateLimitAwareLock:
         self._lock = threading.Lock()
 
     def __enter__(self):
-        wait_for_yahoo_rate_limit_reset()
-        return self._lock.__enter__()
+        with measure_request_stage("yahoo_lock_wait"):
+            wait_for_yahoo_rate_limit_reset()
+            return self._lock.__enter__()
 
     def __exit__(self, *args):
         return self._lock.__exit__(*args)

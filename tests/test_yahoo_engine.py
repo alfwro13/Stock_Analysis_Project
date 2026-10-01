@@ -1277,3 +1277,19 @@ def test_cache_sweep_is_throttled_between_accesses():
         assert "short" in engine._cache
         assert engine._get("short") is None
         assert "short" not in engine._cache
+
+
+def test_yahoo_lock_wait_is_measured_for_active_request():
+    from utils import _request_stages
+    from yahoo_engine import _RateLimitAwareLock
+
+    stages = []
+    token = _request_stages.set(stages)
+    try:
+        with patch("yahoo_engine.wait_for_yahoo_rate_limit_reset", side_effect=lambda: time.sleep(0.03)):
+            with _RateLimitAwareLock():
+                pass
+    finally:
+        _request_stages.reset(token)
+    assert stages[0][0] == "yahoo_lock_wait"
+    assert stages[0][1] >= 20

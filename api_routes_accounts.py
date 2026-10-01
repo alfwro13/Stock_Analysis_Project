@@ -59,7 +59,7 @@ from scheduler_engine import (
     unregister_account_scraper_job, unregister_account_topup_job,
 )
 from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
-from utils import has_cached_fundamentals, is_excluded_from_yahoo_fetch, normalize_ticker
+from utils import has_cached_fundamentals, is_excluded_from_yahoo_fetch, normalize_ticker, measure_request_stage
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -765,7 +765,9 @@ def maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
 async def api_portfolio_totals(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
-        return JSONResponse(content={"status": "success", **portfolio_totals()})
+        with measure_request_stage("metrics"):
+            result = portfolio_totals()
+        return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_portfolio_totals failed: %s", e)
         return _error_500(e)
@@ -775,7 +777,9 @@ async def api_portfolio_totals(background_tasks: BackgroundTasks):
 async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
-        return JSONResponse(content={"status": "success", **account_metrics_list()})
+        with measure_request_stage("metrics"):
+            result = account_metrics_list()
+        return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_accounts_list_with_metrics failed: %s", e)
         return _error_500(e)
@@ -785,7 +789,9 @@ async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
 async def api_holdings_list(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
-        return JSONResponse(content={"status": "success", **holdings_with_metrics_all_accounts()})
+        with measure_request_stage("metrics"):
+            result = holdings_with_metrics_all_accounts()
+        return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_holdings_list failed: %s", e)
         return _error_500(e)
@@ -794,7 +800,9 @@ async def api_holdings_list(background_tasks: BackgroundTasks):
 @accounts_router.get("/accounts/other-accounts-list")
 async def api_other_accounts_list():
     try:
-        return JSONResponse(content={"status": "success", **other_accounts_list()})
+        with measure_request_stage("metrics"):
+            result = other_accounts_list()
+        return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_other_accounts_list failed: %s", e)
         return _error_500(e)
