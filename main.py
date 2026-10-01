@@ -94,18 +94,17 @@ class _EventLoopLagSampler:
                 if self._stopped:
                     return
             frame = sys._current_frames().get(self._loop_thread_id)
-            location = None
-            while frame is not None:
+            locations = []
+            while frame is not None and len(locations) < 12:
                 filename = os.path.abspath(frame.f_code.co_filename)
                 if filename.startswith(project_root):
                     relative = filename[len(project_root):]
                     if not relative.startswith(("venv" + os.sep, ".venv" + os.sep)):
-                        location = f"{relative}:{frame.f_code.co_name}:{frame.f_lineno}"
-                        break
+                        locations.append(f"{relative}:{frame.f_code.co_name}:{frame.f_lineno}")
                 frame = frame.f_back
             with self._condition:
                 if generation == self._generation:
-                    self._sample = location
+                    self._sample = locations
                     self._condition.wait_for(lambda: generation != self._generation or self._stopped)
 
 
@@ -120,9 +119,12 @@ async def _watch_event_loop_lag():
             await asyncio.sleep(0.25)
             lag_ms = max(0.0, (loop.time() - target) * 1000)
             if lag_ms >= 100:
+                locations = sampler.sample(generation) or []
                 logger.warning(
-                    "event_loop_lag lag_ms=%.1f suspected_blocker=%s",
-                    lag_ms, sampler.sample(generation) or "unavailable",
+                    "event_loop_lag lag_ms=%.1f suspected_blocker=%s callers=%s",
+                    lag_ms,
+                    locations[0] if locations else "unavailable",
+                    ">".join(locations[1:]) if len(locations) > 1 else "unavailable",
                 )
     finally:
         sampler.stop()
