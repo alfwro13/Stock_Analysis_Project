@@ -1,6 +1,7 @@
 import time
 import logging
 import threading
+import math
 from collections import namedtuple
 from typing import Optional
 
@@ -63,7 +64,6 @@ _TTLS: dict[str, int] = {
     "earnings_dates":        86400,
     "fund_holdings":         86400,
     "ticker_actions":        86400,
-    "fx_rate":                 600,  # 10 min
     "annual_financials":     86400,  # 24 h — annual statements change quarterly
     "isin_search":           86400,  # 24 h — ISIN→ticker mapping is stable
     "ticker_search":          3600,  # 1 h — company-name/ticker autocomplete
@@ -591,19 +591,52 @@ class YahooEngine:
             logger.error("get_annual_financials failed for %s", ticker, exc_info=True)
         return (None, None, None)
 
-    def get_fx_rate(self, pair: str) -> Optional[float]:
-        # Returns None on failure; callers should use their own stale-cache fallback.
+    def get_cached_fx_rate(self, pair: str, *, refresh=True) -> dict:
+        from config import load_config
+        from db_helpers import get_cached_fx_quote
+        from cache_refresh_helpers import request_cache_refresh
+
+        policy = load_config()["PERFORMANCE"]
+        quote = get_cached_fx_quote(pair)
+        age = max(0, time.time() - quote["updated_at"]) if quote else None
+        stale = age is None or age > policy["FX_FRESH_SECONDS"]
+        usable = age is not None and age <= policy["FX_MAX_USABLE_SECONDS"]
+        if stale and refresh:
+            request_cache_refresh("fx:" + pair, lambda: self._fetch_fx_rate(pair))
+        return {
+            "pair": pair,
+            "rate": quote["rate"] if usable else None,
+            "updated_at": quote["updated_at"] if quote else None,
+            "stale": stale,
+            "available": usable,
+        }
+
+    def get_fx_rate(self, pair: str, *, force=False) -> Optional[float]:
+        from cache_refresh_helpers import submit_cache_refresh
+
         key = f"fx_rate:{pair}"
-        cached = self._get(key)
-        if cached is not None:
-            return cached
+        if not force:
+            cached = self._get(key)
+            if cached is not None:
+                return cached
+        future = submit_cache_refresh("fx:" + pair, lambda: self._fetch_fx_rate(pair), force=force)
+        return future.result() if future is not None else None
+
+    def _fetch_fx_rate(self, pair: str) -> Optional[float]:
+        from config import load_config
+        from db_helpers import upsert_fx_quote
+
         try:
             with _yf_singleton_lock:
                 with yahoo_connection_boundary(f"FX Rate: {pair}", lock=_yf_singleton_lock) as session:
                     df = yf.Ticker(pair, session=session).history(period="1d")
             if not df.empty:
                 rate = float(df["Close"].iloc[-1])
-                self._set(key, rate, _TTLS["fx_rate"])
+                if not math.isfinite(rate) or rate <= 0:
+                    logger.warning("Invalid FX rate received for %s", pair)
+                    return None
+                upsert_fx_quote(pair, rate, time.time())
+                self._set(f"fx_rate:{pair}", rate, load_config()["PERFORMANCE"]["FX_FRESH_SECONDS"])
                 return rate
         except Exception:
             logger.error("get_fx_rate failed for %s", pair, exc_info=True)

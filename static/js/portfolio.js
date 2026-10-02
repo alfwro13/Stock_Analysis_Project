@@ -190,6 +190,7 @@ function _updateRowPnl(rowEl, rawPrice) {
 window._updateRowPnl = _updateRowPnl;
 
 function _recomputePortfolioSummary() {
+    if (window.FX_INCOMPLETE) return;
     var rows = window._portfolioTable
         ? window._portfolioTable.rows().nodes()
         : document.querySelectorAll('#dataTable tbody tr');

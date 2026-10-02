@@ -910,3 +910,63 @@ class TestTickerRegistryAccessors:
             conn.commit()
             conn.close()
             _mp.reload_ticker_registry()
+
+
+@pytest.mark.parametrize("price", [0.81, 0.0, float("nan"), float("inf")])
+def test_live_fx_writer_preserves_successful_snapshot(price):
+    from db_helpers import get_cached_fx_quote, upsert_fx_quote
+
+    ticker = "USDGBP=X"
+    _clear_cache(ticker, "GBPUSD=X")
+    try:
+        upsert_fx_quote(ticker, 0.8, 100.0)
+        _mp.upsert_live_price(ticker, ticker, price, 0.8)
+        quote = get_cached_fx_quote(ticker)
+        if price == 0.81:
+            assert quote["rate"] == price
+            assert quote["updated_at"] > 100.0
+        else:
+            assert quote == {"rate": 0.8, "updated_at": 100.0}
+    finally:
+        _clear_cache(ticker)
+
+
+def test_pulse_fx_success_then_failed_heartbeat_keeps_success_time():
+    from db_helpers import get_cached_fx_quote
+
+    ticker = "USDGBP=X"
+    _clear_cache(ticker, "GBPUSD=X")
+    try:
+        p1, p2 = _pulse_patches(ticker, _flat_daily_df([0.8, 0.81]), pd.DataFrame())
+        with p1, p2:
+            _mp.fetch_and_save_pulse([ticker])
+        quote = get_cached_fx_quote(ticker)
+        assert quote["rate"] == pytest.approx(0.81)
+        conn = None
+        try:
+            conn = _conn()
+            conn.execute("UPDATE market_pulse_cache SET fx_updated_at = 100 WHERE ticker = ?", (ticker,))
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+        p1, p2 = _pulse_patches(ticker, pd.DataFrame(), pd.DataFrame())
+        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
+            _mp.fetch_and_save_pulse([ticker])
+        assert _read_cache(ticker)["last_updated"] > 100
+        assert get_cached_fx_quote(ticker)["updated_at"] == 100
+        assert not _mp.yahoo_engine.get_cached_fx_rate(ticker, refresh=False)["available"]
+    finally:
+        _clear_cache(ticker)
+
+
+def test_legacy_pulse_heartbeat_is_not_successful_fx_quote():
+    from db_helpers import get_cached_fx_quote
+
+    ticker = "USDGBP=X"
+    _clear_cache(ticker, "GBPUSD=X")
+    try:
+        _seed_cache(ticker, 0.8, datetime.now(timezone.utc).timestamp())
+        assert get_cached_fx_quote(ticker) is None
+    finally:
+        _clear_cache(ticker)

@@ -15,7 +15,8 @@ from database import (
 )
 from db_helpers import add_ticker_note, get_ticker_notes
 from ghostfolio_sync import purge_ghostfolio_files
-from accounts_engine import get_combined_holdings, resolve_watchlist_metadata
+from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, native_currencies
+from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
 from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS
@@ -182,6 +183,13 @@ class MaintenanceEngine:
             if conn:
                 conn.close()
 
+        currencies = set(load_config()["ACCOUNT_CURRENCIES"])
+        currencies.update(native_currencies(list(active_tickers)).values())
+        for currency in currencies:
+            for from_base in (False, True):
+                pair = fx_pair(currency, from_base=from_base)
+                if pair:
+                    active_tickers.add(pair)
         return active_tickers
 
     def prune_pulse_cache(self):
@@ -192,8 +200,9 @@ class MaintenanceEngine:
             cursor = conn.cursor()
             placeholders = ",".join("?" * len(active_tickers))
             cursor.execute(
-                f"DELETE FROM market_pulse_cache WHERE last_updated <= ? AND ticker NOT IN ({placeholders})",
-                (time.time() - 86400, *active_tickers)
+                f"DELETE FROM market_pulse_cache WHERE last_updated <= ? AND ticker NOT IN ({placeholders}) "
+                "AND (fx_updated_at IS NULL OR fx_updated_at < ?)",
+                (time.time() - 86400, *active_tickers, time.time() - load_config()["PERFORMANCE"]["FX_MAX_USABLE_SECONDS"])
             )
             self.metrics["pulse_cache_deleted"] = cursor.rowcount
             conn.commit()

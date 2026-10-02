@@ -362,7 +362,8 @@ class TestBuildPositionSizingContext:
         with patch("page_helpers.get_position_sizing_config", return_value={}), \
              patch("page_helpers.get_rate_to_base", return_value=1.25):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, [])
-        assert set(result.keys()) == {"config", "fx_rates", "base_currency"}
+        assert set(result.keys()) == {"config", "fx_rates", "fx_status", "base_currency"}
+        assert result["fx_status"] == []
 
     def test_base_currency_always_has_rate_1(self):
         with patch("page_helpers.get_position_sizing_config", return_value={}), \

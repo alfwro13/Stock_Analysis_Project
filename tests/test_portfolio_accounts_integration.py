@@ -172,7 +172,7 @@ def test_change_period_cookie_reflects_anchor_close_not_1d(client, monkeypatch):
 
     monkeypatch.setattr(
         "price_history_helpers.get_period_anchor_closes",
-        lambda tickers: {t: {"5d": None, "1m": None, "6m": 80.0, "ytd": None, "1y": None} for t in tickers},
+        lambda tickers, **kwargs: {t: {"5d": None, "1m": None, "6m": 80.0, "ytd": None, "1y": None} for t in tickers},
     )
 
     resp = client.get(f"/portfolio?account_id=acct:{aid}", cookies={"portfolio_change_period": "6m"})
@@ -201,7 +201,7 @@ def test_ignored_ticker_excluded_from_period_anchor_fetch(client, monkeypatch):
     monkeypatch.setattr("page_routes.load_config", lambda: merged_config)
 
     captured = {}
-    def _fake_anchor_closes(tickers):
+    def _fake_anchor_closes(tickers, **kwargs):
         captured["tickers"] = tickers
         return {t: {"5d": None, "1m": None, "6m": None, "ytd": None, "1y": None} for t in tickers}
     monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", _fake_anchor_closes)
@@ -222,7 +222,7 @@ def test_change_period_missing_history_renders_na(client, monkeypatch):
 
     monkeypatch.setattr(
         "price_history_helpers.get_period_anchor_closes",
-        lambda tickers: {t: {"5d": None, "1m": None, "6m": None, "ytd": None, "1y": None} for t in tickers},
+        lambda tickers, **kwargs: {t: {"5d": None, "1m": None, "6m": None, "ytd": None, "1y": None} for t in tickers},
     )
 
     resp = client.get(f"/portfolio?account_id=acct:{aid}", cookies={"portfolio_change_period": "1y"})
@@ -348,12 +348,12 @@ def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_pat
     monkeypatch.setattr(accounts_engine, "PORTFOLIO_PATH", portfolio_path)
     monkeypatch.setattr(accounts_engine, "load_config", lambda: config)
     monkeypatch.setattr(page_routes, "load_config", lambda: config)
-    monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", lambda tickers: {})
+    monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", lambda tickers, **kwargs: {})
 
     rates = {"GBP": 1.0, "GBp": 0.01, "USD": 0.8, "EUR": 0.9}
     original_fetch = page_routes._fetch_portfolio_signal_rows
     with patch("page_routes._fetch_portfolio_signal_rows", wraps=original_fetch) as fetch, \
-         patch("page_helpers.get_rate_to_base", side_effect=lambda currency: rates.get(currency, 1.0)) as fx, \
+         patch("page_helpers.get_rate_to_base", side_effect=lambda currency, **kwargs: rates.get(currency, 1.0)) as fx, \
          patch("page_routes.get_rate_to_base", return_value=1.0) as valuation_fx:
         all_response = client.get("/portfolio")
         assert all_response.status_code == 200
@@ -396,3 +396,75 @@ def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_pat
         assert empty.status_code == 200
         assert fetch.call_args.args[1] == []
         assert sorted(call.args[0] for call in fx.call_args_list) == ["GBP"]
+
+
+@pytest.mark.pages
+def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    import cache_refresh_helpers as refresh_helpers
+    import data_engine
+    from db_helpers import upsert_fx_quote
+    from yahoo_engine import yahoo_engine
+
+    ticker = "ZZSTEP3CACHED"
+    _seed_stock_signal(ticker, 100.0, "USD")
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('USDGBP=X', 'GBPUSD=X')")
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    upsert_fx_quote("USDGBP=X", 0.8, time.time() - 3600)
+    holdings = {ticker: {"ticker": ticker, "global_shares": 2.0, "global_buy_price": 50.0, "accounts": []}}
+    monkeypatch.setattr("accounts_engine.get_combined_holdings", lambda: holdings)
+    monkeypatch.setattr(data_engine, "HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr("fx_drag_engine._GBPUSD_PARQUET", tmp_path / "missing-baseline.parquet")
+    monkeypatch.setattr(refresh_helpers, "request_cache_refresh", refresh_helpers.submit_cache_refresh)
+    started, release = threading.Event(), threading.Event()
+    def stalled(*args, **kwargs):
+        started.set()
+        release.wait(10)
+        return None
+    monkeypatch.setattr(yahoo_engine, "_fetch_fx_rate", stalled)
+    monkeypatch.setattr(data_engine, "_fetch_daily_history", stalled)
+    try:
+        started_at = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=1) as requests:
+            portfolio = requests.submit(client.get, "/portfolio").result(timeout=5)
+            assert started.wait(2)
+            assert not release.is_set()
+            detail = requests.submit(client.get, "/stock/" + ticker).result(timeout=5)
+            unrelated = requests.submit(client.get, "/api/accounts/other-accounts-list").result(timeout=5)
+        elapsed = time.perf_counter() - started_at
+        assert portfolio.status_code == detail.status_code == unrelated.status_code == 200
+        assert _global_market_value(portfolio.text, ticker) == pytest.approx(160.0)
+        assert "using cached rate" in portfolio.text
+        assert "using cached rate" in detail.text
+        assert not release.is_set()
+        print(f"Cached Portfolio + Detail + HA completed before upstream release in {elapsed:.3f}s")
+        for label, response in (("Portfolio", portfolio), ("Detail", detail), ("HA", unrelated)):
+            print(label, response.headers.get("Server-Timing"))
+    finally:
+        release.set()
+        with refresh_helpers._lock:
+            pending = list(refresh_helpers._pending.values())
+        for future in pending:
+            future.result(timeout=5)
+
+
+@pytest.mark.pages
+def test_missing_fx_marks_portfolio_total_unavailable(client, monkeypatch):
+    ticker = "ZZSTEP3MISSING"
+    _seed_stock_signal(ticker, 100.0, "BRL")
+    monkeypatch.setattr("accounts_engine.get_combined_holdings", lambda: {
+        ticker: {"ticker": ticker, "global_shares": 2.0, "global_buy_price": 50.0, "accounts": []}
+    })
+    response = client.get("/portfolio")
+    assert response.status_code == 200
+    assert "Unavailable — missing FX" in response.text
+    assert "conversion unavailable" in response.text
+    assert 'window.FX_INCOMPLETE = true;' in response.text
+    assert 'data-fx-rate=""' in response.text

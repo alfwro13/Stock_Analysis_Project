@@ -1245,3 +1245,41 @@ def get_auction_summary() -> List[dict]:
     finally:
         if conn:
             conn.close()
+
+
+def get_cached_fx_quote(pair: str):
+    inverse = pair[3:6] + pair[:3] + "=X"
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT ticker, fx_rate, fx_updated_at FROM market_pulse_cache WHERE ticker IN (?, ?)",
+            (pair, inverse),
+        ).fetchall()
+        quotes = []
+        for row in rows:
+            rate, updated = row["fx_rate"], row["fx_updated_at"]
+            if rate is not None and updated is not None:
+                quotes.append({"rate": rate if row["ticker"] == pair else 1 / rate, "updated_at": updated})
+        return max(quotes, key=lambda quote: quote["updated_at"]) if quotes else None
+    finally:
+        if conn:
+            conn.close()
+
+
+def upsert_fx_quote(pair: str, rate: float, updated_at: float, conn=None):
+    owns_conn = conn is None
+    try:
+        if owns_conn:
+            conn = get_connection()
+        conn.execute(
+            """INSERT INTO market_pulse_cache (ticker, price, last_updated, fx_rate, fx_updated_at)
+            VALUES (?, ?, ?, ?, ?) ON CONFLICT(ticker) DO UPDATE SET
+            fx_rate = excluded.fx_rate, fx_updated_at = excluded.fx_updated_at""",
+            (pair, rate, updated_at, rate, updated_at),
+        )
+        if owns_conn:
+            conn.commit()
+    finally:
+        if owns_conn and conn:
+            conn.close()

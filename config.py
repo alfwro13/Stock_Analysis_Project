@@ -67,6 +67,12 @@ DEFAULT_CONFIG = {
     "YAHOO_USE_IPV6": False,
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
+    "PERFORMANCE": {
+        "FX_FRESH_SECONDS": 600,
+        "FX_MAX_USABLE_SECONDS": 604800,
+        "CACHE_REFRESH_RETRY_SECONDS": 60,
+        "DAILY_HISTORY_FRESH_SECONDS": 14400,
+    },
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting
     "HOME_EXCHANGE": "LSE",             # NYSE | LSE | XETRA | TSE — drives default market-window logic
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
@@ -605,7 +611,7 @@ def load_config() -> dict:
             # Use Deep Copy so we don't mutate the global defaults dictionary
             merged_config = copy.deepcopy(DEFAULT_CONFIG)
             for key, val in data.items():
-                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING", "XRAY_TARGETS", "REGIME_TARGETS", "FILE_LOGGING", "REPORTS_DEFAULTS", "NOTIFICATION_ROUTING", "META_SCORING"] and isinstance(val, dict):
+                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING", "XRAY_TARGETS", "REGIME_TARGETS", "FILE_LOGGING", "REPORTS_DEFAULTS", "NOTIFICATION_ROUTING", "META_SCORING", "PERFORMANCE"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
                         # Silently drop keys removed in later releases (backward compat).
                         if key == "SCHEDULING" and sub_key in DEPRECATED_SCHEDULE_KEYS:
@@ -655,6 +661,13 @@ def load_config() -> dict:
                     if _k in _old_alerts:
                         hs_alerts[_k] = _old_alerts[_k]
 
+            performance = merged_config["PERFORMANCE"]
+            for key in DEFAULT_CONFIG["PERFORMANCE"]:
+                value = performance[key]
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value < float("inf"):
+                    raise ValueError(f"PERFORMANCE.{key} must be a finite non-negative number")
+            if performance["FX_MAX_USABLE_SECONDS"] < performance["FX_FRESH_SECONDS"]:
+                raise ValueError("FX_MAX_USABLE_SECONDS must be at least FX_FRESH_SECONDS")
             return merged_config
     except Exception as e:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")

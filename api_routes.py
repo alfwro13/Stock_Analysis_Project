@@ -142,7 +142,7 @@ async def api_watchlist_remove(req: TickerRequest):
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from watchlist."})
 
 @api_router.post("/data/refresh-single")
-async def api_data_refresh_single(req: TickerRequest):
+def api_data_refresh_single(req: TickerRequest):
     try:
         update_single_profile(req.ticker)
         data_engine = DataEngine()
@@ -150,6 +150,9 @@ async def api_data_refresh_single(req: TickerRequest):
         if not data_engine.fetch_and_save_data(req.ticker):
             return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
         quant_engine.analyze_ticker(req.ticker)
+        from accounts_engine import native_currencies
+        from portfolio_service import refresh_fx_rates
+        refresh_fx_rates(native_currencies([req.ticker]).values())
         target_list = [req.ticker]
         update_daily_ml_predictions(target_list)
         update_all_tail_risks(target_list)
@@ -628,10 +631,10 @@ async def get_xray_report(request: Request, account_id: str = "all"):
         report = assemble_xray_report(account_id)
         return JSONResponse(content=report)
     except RuntimeError as e:
-        logger.warning(f"X-ray report failed for account_id={account_id!r}: {e}")
+        logger.warning('X-ray report failed for account_id=%r: %s', account_id, e)
         return JSONResponse(status_code=503, content={"error": str(e)})
     except Exception as e:
-        logger.error(f"X-ray report unexpected error: {e}")
+        logger.error('X-ray report unexpected error: %s', e)
         return JSONResponse(status_code=500, content={"error": "Internal error — check server logs."})
 
 

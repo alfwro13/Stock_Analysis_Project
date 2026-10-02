@@ -185,8 +185,11 @@ class QuantEngine:
         safe_ticker = safe_ticker_filename(ticker)
         if not safe_ticker:
             return None
-        filepath = HISTORICAL_DIR / f"{safe_ticker}.parquet"
-        if not filepath.exists():
+        history_root = os.path.realpath(HISTORICAL_DIR)
+        filepath = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+        if not filepath.startswith(history_root + os.sep):
+            return None
+        if not os.path.exists(filepath):
             return None
         return pd.read_parquet(filepath)
 
@@ -194,8 +197,11 @@ class QuantEngine:
         safe_ticker = safe_ticker_filename(ticker)
         if not safe_ticker:
             return {}
-        filepath = FUNDAMENTALS_DIR / f"{safe_ticker}.json"
-        if not filepath.exists():
+        fundamentals_root = os.path.realpath(FUNDAMENTALS_DIR)
+        filepath = os.path.realpath(os.path.join(fundamentals_root, f"{safe_ticker}.json"))
+        if not filepath.startswith(fundamentals_root + os.sep):
+            return {}
+        if not os.path.exists(filepath):
             return self._fundamentals_from_profile(ticker)
         with open(filepath, 'r') as f:
             return json.load(f)

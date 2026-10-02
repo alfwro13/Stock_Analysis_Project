@@ -97,3 +97,28 @@ Every user-facing notification — scheduled-job status (start/success/error) an
 `model_compatibility_engine.py` is the shared persistence boundary for every saved scikit-learn estimator. Training writes the joblib artifact and a sibling `.sklearn-version` file. Loading compares that sidecar with the installed version before unpickling; legacy artifacts without a sidecar are loaded with `InconsistentVersionWarning` promoted to an exception.
 
 After `reload_scheduler()` completes during startup, the compatibility scan probes each persisted model family. A mismatch queues the owning canonical training job. `scheduler_engine.py` pauses later affected jobs and advances the queue from APScheduler completion events, so only one model family retrains at a time. Existing recurring jobs retain their normal schedules; disabled or otherwise absent jobs are added as one-time jobs under their canonical job IDs. Until retraining replaces an incompatible artifact, its loader returns through the feature's existing unavailable-model path.
+
+### Cached Navigation
+
+Portfolio, Watchlist and Stock Detail request assembly uses cache-only FX and daily-history reads. These reads never wait for Yahoo, its session lock or its rate-limit cooldown. Stale or absent data requests a coordinated background refresh through `cache_refresh_helpers.py`: two dedicated workers, at most 64 pending keys, one outstanding refresh per key, and configurable retry suppression after failure. Completed futures release their payloads. This pool is separate from the web request pool; it is on-demand work, not a new scheduled job. `scheduler_manifest.JOB_GRAPH["cached_navigation_source"]` exposes the artifact flow in the Workflow Monitor.
+
+Edit the following section in `config.json`; missing entries inherit `config.py:DEFAULT_CONFIG` and readers reload it at runtime. These keys can be exposed by a future Settings → Performance panel without changing their consumers. There is no new Settings panel in this step.
+
+```json
+"PERFORMANCE": {
+  "FX_FRESH_SECONDS": 600,
+  "FX_MAX_USABLE_SECONDS": 604800,
+  "CACHE_REFRESH_RETRY_SECONDS": 60,
+  "DAILY_HISTORY_FRESH_SECONDS": 14400
+}
+```
+
+All values are finite, non-negative seconds, and the maximum usable FX age must be at least the fresh age. Invalid configuration follows the existing logged default-config fallback. FX age means time since the last successful fetch, stored as a UTC epoch timestamp; a process restart does not reset it. Daily-history age uses the source Parquet's modification time; its default four-hour window matches the existing Yahoo daily-history cache window.
+
+`yahoo_engine.get_cached_fx_rate(pair)` returns `rate`, `updated_at`, `stale`, and `available`, and can request refresh without awaiting it. Last-successful FX quotes are stored in the existing `market_pulse_cache.fx_rate/fx_updated_at` columns. They survive ordinary pulse updates and failed refreshes. Successful FX price writers update the same snapshot; readers can also use reciprocal quotes. Legacy pulse rows without a successful-FX timestamp remain unavailable until a successful refresh, because ordinary pulse timestamps can advance on failed fetches. `get_fx_rate(pair, force=True)` awaits a coordinated refresh and persists successful results; failures never replace a successful quote. Existing engine calls without cache-only mode retain their awaited fetch behaviour and legacy fallback semantics. Historical transaction FX is untouched.
+
+Fresh FX is used immediately. Older FX remains usable through the configured maximum, with a displayed last-successful-update time. Missing/too-old FX leaves converted portfolio values, P&L and position sizing unavailable; incomplete portfolio totals are labelled explicitly and client-side live-price updates cannot turn them into partial totals. Native prices and recorded cost information remain available. Page freshness notices require a reload after a successful refresh. In-scope FX pairs are exempt from orphan cleanup, and otherwise usable FX snapshots survive the pulse cache's usual 24-hour cutoff.
+
+`load_or_fetch_daily_history(ticker, cache_only=True)` returns the local file or `None` immediately and requests a refresh when absent, unreadable or older than the configured window. Default engine calls continue to await missing-history fetches. Refresh writes replace Parquet files atomically, retain last-good files on failure, and exclude synthetic/ignored tickers through the canonical filter. Background file refreshes bypass Yahoo’s transient history cache before completed-bar checks, so a pre-close memory response cannot be stamped as a new post-close file. Completed-bar checks use `time_engine` and `utils.is_daily_bar_still_forming`. Period-return anchors use cache-only mode during navigation. The Stock Detail FX-breakdown fallback also uses cached GBPUSD history rather than fetching inline when its baseline is missing.
+
+Explicit Stock Detail Refresh and Home Assistant Refresh Now await required FX refresh attempts before reporting success. FX failure returns the existing error response and retains cached data; the HA immediate re-poll contract and all response field names are preserved. Automatic intraday timer/force-eviction changes remain Step 4.

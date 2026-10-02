@@ -771,3 +771,28 @@ def test_notify_requirements_drift_noop_when_no_mismatch(monkeypatch):
     monkeypatch.setattr("notification_engine.notify", lambda *a, **kw: calls.append((a, kw)))
     utils.notify_requirements_drift()
     assert calls == []
+
+
+@pytest.mark.config
+def test_performance_settings_merge_and_reload(tmp_path, monkeypatch):
+    import config
+
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(config, "SECRETS_PATH", config_path)
+    config_path.write_text(json.dumps({"PERFORMANCE": {"FX_FRESH_SECONDS": 120}}))
+    first = config.load_config()["PERFORMANCE"]
+    assert first["FX_FRESH_SECONDS"] == 120
+    assert first["FX_MAX_USABLE_SECONDS"] == 604800
+    config_path.write_text(json.dumps({"PERFORMANCE": {"FX_FRESH_SECONDS": 300, "FX_MAX_USABLE_SECONDS": 3600}}))
+    assert config.load_config()["PERFORMANCE"]["FX_FRESH_SECONDS"] == 300
+    assert config.load_config()["PERFORMANCE"]["FX_MAX_USABLE_SECONDS"] == 3600
+
+
+@pytest.mark.parametrize("settings", [{"FX_FRESH_SECONDS": -1}, {"FX_FRESH_SECONDS": "600"}, {"FX_FRESH_SECONDS": 100, "FX_MAX_USABLE_SECONDS": 50}])
+def test_invalid_performance_settings_fall_back_to_defaults(tmp_path, monkeypatch, settings):
+    import config
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"PERFORMANCE": settings}))
+    monkeypatch.setattr(config, "SECRETS_PATH", config_path)
+    assert config.load_config()["PERFORMANCE"] == config.DEFAULT_CONFIG["PERFORMANCE"]

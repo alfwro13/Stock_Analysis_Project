@@ -10,9 +10,10 @@
 <script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
 {% endblock %}
 
-{% from "partials/_macros.html" import display_price, pattern_tags %}
+{% from "partials/_macros.html" import display_price, pattern_tags, fx_cache_notice %}
 
 {% block content %}
+{{ fx_cache_notice(position_sizing.fx_status) }}
 
 <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
     <span id="watchlist-star" class="star-icon relative" title="Toggle Watchlist" onclick="toggleWatchlist()">

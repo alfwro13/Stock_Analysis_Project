@@ -16,15 +16,19 @@ logger = logging.getLogger(__name__)
 _GBPUSD_PARQUET = HISTORICAL_DIR / "GBPUSD_BASELINE.parquet"
 
 
-def _load_gbpusd_series() -> pd.Series:
+def _load_gbpusd_series(*, cache_only: bool = False) -> pd.Series:
     try:
         df = pd.read_parquet(_GBPUSD_PARQUET)
         return df["Close"].sort_index()
     except Exception:
         pass
     try:
-        raw = yahoo_engine.get_price_history(["GBPUSD=X"], period="2y")
-        df = raw.get("GBPUSD=X")
+        if cache_only:
+            from data_engine import load_or_fetch_daily_history
+            df = load_or_fetch_daily_history("GBPUSD=X", cache_only=True)
+        else:
+            raw = yahoo_engine.get_price_history(["GBPUSD=X"], period="2y")
+            df = raw.get("GBPUSD=X")
         if df is not None and not df.empty:
             return df["Close"].sort_index()
     except Exception as e:
@@ -37,7 +41,7 @@ def _ytd_days() -> int:
     return (today - today.replace(month=1, day=1)).days or 1
 
 
-def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:
+def compute_fx_breakdown(ticker: str, period_days: int, *, cache_only: bool = False) -> dict | None:
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
         return None
@@ -45,7 +49,7 @@ def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:
     if not parquet_path.exists():
         return None
 
-    gbpusd = _load_gbpusd_series()
+    gbpusd = _load_gbpusd_series(cache_only=True) if cache_only else _load_gbpusd_series()
     if gbpusd.empty:
         return None
 

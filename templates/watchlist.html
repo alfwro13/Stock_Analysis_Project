@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/_macros.html" import display_price as fmt_target_price, pattern_tags %}
+{% from "partials/_macros.html" import display_price as fmt_target_price, pattern_tags, fx_cache_notice %}
 
 {% block title %}Quantamental - Watchlist{% endblock %}
 
@@ -8,6 +8,7 @@
 {% endblock %}
 
 {% block content %}
+{{ fx_cache_notice(position_sizing.fx_status) }}
 <script>
 window.WATCHLIST_COLUMNS = {{ all_columns | tojson }};
 window.WATCHLIST_COLUMN_PREFS = {{ column_prefs | tojson }};

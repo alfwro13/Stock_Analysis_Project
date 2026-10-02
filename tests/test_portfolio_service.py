@@ -1,10 +1,3 @@
-"""
-tests/test_portfolio_service.py
-
-Unit tests for portfolio_service.py FX rate helpers.
-No network calls — yahoo_engine is patched.
-"""
-
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -13,10 +6,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-
-# ---------------------------------------------------------------------------
-# get_rate_to_base
-# ---------------------------------------------------------------------------
 
 class TestGetRateToBase:
     """Tests for the Native→Base conversion helper."""
@@ -84,7 +73,6 @@ class TestGetRateToBase:
 
     def test_yahoo_none_no_stale_returns_1_0_fallback(self):
         import portfolio_service
-        # Remove any stale entry that might have been written by other tests
         portfolio_service._last_known_rates.pop("SEKCURRENCY=X", None)
         portfolio_service._last_known_rates.pop("SEKGBP=X", None)
         with patch("portfolio_service.BASE_CURRENCY", "GBP"):
@@ -94,10 +82,6 @@ class TestGetRateToBase:
                 result = get_rate_to_base("SEK")
         assert result == 1.0
 
-
-# ---------------------------------------------------------------------------
-# get_rate_from_base
-# ---------------------------------------------------------------------------
 
 class TestGetRateFromBase:
     """Tests for the Base→Native conversion helper."""
@@ -135,3 +119,33 @@ class TestGetRateFromBase:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+def test_navigation_missing_fx_returns_none_and_preserves_pence():
+    import portfolio_service
+
+    with patch.object(portfolio_service.yahoo_engine, "get_cached_fx_rate", return_value={"rate": None}), patch.object(portfolio_service.yahoo_engine, "get_fx_rate", side_effect=AssertionError("navigation network")):
+        assert portfolio_service.get_rate_to_base("USD", cache_only=True) is None
+        assert portfolio_service.get_rate_from_base("USD", cache_only=True) is None
+        assert portfolio_service.get_rate_to_base("GBp", cache_only=True) == 0.01
+        with patch.object(portfolio_service, "BASE_CURRENCY", "USD"):
+            assert portfolio_service.get_rate_to_base("GBp", cache_only=True) is None
+            assert portfolio_service.get_rate_from_base("GBP", cache_only=True) is None
+            assert portfolio_service.get_rate_from_base("GBp", cache_only=True) is None
+
+
+def test_explicit_fx_refresh_reports_failure(_block_explicit_fx_refresh):
+    import portfolio_service
+
+    with patch.object(portfolio_service.yahoo_engine, "get_fx_rate", return_value=None):
+        with pytest.raises(RuntimeError, match="last-good cached data retained"):
+            _block_explicit_fx_refresh(["USD"])
+
+
+@pytest.mark.parametrize("currency", ["GBP", "GBp"])
+def test_cached_from_non_gbp_base_uses_actual_gbp_pair(currency):
+    import portfolio_service
+
+    with patch.object(portfolio_service, "BASE_CURRENCY", "USD"), patch.object(portfolio_service.yahoo_engine, "get_cached_fx_rate", return_value={"rate": 0.8}) as quote:
+        assert portfolio_service.get_rate_from_base(currency, cache_only=True) == 0.8
+    quote.assert_called_once_with("USDGBP=X")

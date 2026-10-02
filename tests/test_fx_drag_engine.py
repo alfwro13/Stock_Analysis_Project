@@ -274,3 +274,14 @@ class TestLifetimeBuyStats:
         assert abs(equity_pct - 20.0) < 0.01
         assert abs(fx_pct) < 0.01
         assert abs(total_pct - 20.0) < 0.1
+
+
+def test_detail_cache_only_missing_baseline_never_fetches_inline(tmp_path):
+    from data_engine import load_or_fetch_daily_history
+
+    _make_parquet(tmp_path, "ZZFXCACHED", 100, 110)
+    with patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path), patch.object(fx_drag_engine, "_GBPUSD_PARQUET", tmp_path / "missing.parquet"), patch("data_engine.HISTORICAL_DIR", tmp_path), patch("fx_drag_engine.yahoo_engine.get_price_history") as fetch, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert fx_drag_engine.compute_fx_breakdown("ZZFXCACHED", 20, cache_only=True) is None
+    fetch.assert_not_called()
+    refresh.assert_called_once()
+    assert refresh.call_args.args[0] == "daily:GBPUSD=X"

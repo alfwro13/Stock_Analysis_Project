@@ -31,11 +31,11 @@ def _anchor_cutoffs(today: date) -> Dict[str, date]:
     }
 
 
-def _anchor_closes_for_ticker(ticker: str, today: date) -> Dict[str, Optional[float]]:
+def _anchor_closes_for_ticker(ticker: str, today: date, *, cache_only: bool = False) -> Dict[str, Optional[float]]:
     anchors: Dict[str, Optional[float]] = {key: None for key in PERIOD_KEYS}
     if is_synthetic_ticker(ticker):
         return anchors
-    df = load_or_fetch_daily_history(ticker)
+    df = load_or_fetch_daily_history(ticker, cache_only=True) if cache_only else load_or_fetch_daily_history(ticker)
     if df is None or df.empty:
         return anchors
 
@@ -52,13 +52,13 @@ def _anchor_closes_for_ticker(ticker: str, today: date) -> Dict[str, Optional[fl
     return anchors
 
 
-def get_period_anchor_closes(tickers: list) -> Dict[str, Dict[str, Optional[float]]]:
+def get_period_anchor_closes(tickers: list, *, cache_only: bool = False) -> Dict[str, Dict[str, Optional[float]]]:
     """Batch-once-then-enrich (mirrors accounts_engine.current_price_map); returns each period's reference CLOSE (not a %) so callers can combine it with the live price at render/recompute time."""
     today = datetime.now(timezone.utc).date()
     result: Dict[str, Dict[str, Optional[float]]] = {}
     for ticker in tickers:
         try:
-            result[ticker] = _anchor_closes_for_ticker(ticker, today)
+            result[ticker] = _anchor_closes_for_ticker(ticker, today, cache_only=cache_only)
         except Exception as e:
             logger.error("Failed to compute period anchor closes for %s: %s", ticker, e)
             result[ticker] = {key: None for key in PERIOD_KEYS}
