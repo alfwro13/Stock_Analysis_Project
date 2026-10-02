@@ -126,6 +126,8 @@ def test_same_ticker_coexistence_sums(client, tmp_path, monkeypatch):
         }
     }))
     monkeypatch.setattr("accounts_engine.PORTFOLIO_PATH", portfolio_json_path)
+    from config import load_config
+    monkeypatch.setattr("accounts_engine.load_config", lambda: {**load_config(), "GHOSTFOLIO_ENABLED": True})
 
     aid = create_account("Integ Coex", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCOEX", company_name="Coex Co",
@@ -252,3 +254,145 @@ def test_stock_detail_position_value_matches_portfolio_page_live_price(client):
     assert match, "Current Value not found on stock detail page"
     detail_value = float(match.group(1).replace(",", "").replace("GBP", "").strip())
     assert detail_value == pytest.approx(portfolio_mv)
+
+
+def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
+    from page_routes import _fetch_portfolio_signal_rows
+
+    held = "ZZSTEP2HELD"
+    unrelated = [f"ZZSTEP2UNRELATED{i:04d}" for i in range(1200)]
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO stock_signals (ticker, last_updated, company_name, currency, current_price) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (held, "2026-10-01 10:00:00", "Signal Name", "USD", 100.0),
+        )
+        conn.executemany(
+            "INSERT INTO stock_signals (ticker, last_updated, currency) VALUES (?, ?, ?)",
+            [(ticker, "9999-01-01 00:00:00", "JPY") for ticker in unrelated],
+        )
+        conn.execute(
+            "INSERT INTO company_name_overrides (ticker, display_name) VALUES (?, ?)",
+            (held, "Preferred Name"),
+        )
+        conn.executemany(
+            "INSERT INTO quant_signals (ticker, date, ml_confidence_score, var_95, atr_pct) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (held, "2026-09-29", 0.62, 4.0, 1.0),
+                (held, "2026-09-30", None, 5.0, 2.0),
+            ],
+        )
+        conn.commit()
+
+        rows, macro, updated = _fetch_portfolio_signal_rows("SPY", [*(f"ZZSTEP2MISSING{i:04d}" for i in range(900)), held])
+        assert [row["ticker"] for row in rows] == [held]
+        assert rows[0]["resolved_company_name"] == "Preferred Name"
+        assert rows[0]["ml_confidence_score"] == pytest.approx(0.62)
+        assert rows[0]["var_95"] == pytest.approx(5.0)
+        assert rows[0]["atr_pct"] == pytest.approx(2.0)
+        assert updated == "9999-01-01 00:00:00"
+        assert macro is None or isinstance(macro, dict)
+
+        empty_rows, _, empty_updated = _fetch_portfolio_signal_rows("SPY", [])
+        assert empty_rows == []
+        assert empty_updated == updated
+    finally:
+        conn.execute("DELETE FROM quant_signals WHERE ticker = ?", (held,))
+        conn.execute("DELETE FROM company_name_overrides WHERE ticker = ?", (held,))
+        conn.execute("DELETE FROM stock_signals WHERE ticker = ? OR ticker LIKE 'ZZSTEP2UNRELATED%'", (held,))
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.pages
+def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_path, monkeypatch):
+    import accounts_engine
+    import page_routes
+    from config import load_config
+
+    first = create_account("Step2 First", "GBP")
+    second = create_account("Step2 Second", "GBP")
+    holdings = [
+        (first, "ZZS2USD", "USD", 100.0, 2.0),
+        (first, "ZZS2GBPENCE", "GBp", 500.0, 3.0),
+        (first, "ZZS2IGNORED", "JPY", 300.0, 1.0),
+        (first, "ZZS2MISSING", "GBP", None, 1.0),
+        (second, "ZZS2EUR", "EUR", 50.0, 4.0),
+    ]
+    for aid, ticker, currency, price, quantity in holdings:
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, company_name=ticker,
+                        currency="GBP", quantity=quantity, unit_price=10, exchange_rate=1.0)
+        if price is not None:
+            _seed_stock_signal(ticker, price, currency)
+    _seed_stock_signal("ZZS2UNRELATED", 100.0, "ZZZ")
+    _seed_stock_signal("ZZS2GHOST", 40.0, "GBP")
+
+    portfolio_path = tmp_path / "portfolio.json"
+    portfolio_path.write_text(json.dumps({
+        "ZZS2USD": {
+            "ticker": "ZZS2USD", "currency": "USD", "global_shares": 1.0,
+            "global_buy_price": 10.0,
+            "accounts": [{"id": "gf:step2", "name": "Ghostfolio Step2", "shares": 1.0,
+                          "buy_price": 10.0, "total_investment": 10.0}],
+        },
+        "ZZS2GHOST": {
+            "ticker": "ZZS2GHOST", "currency": "GBP", "global_shares": 1.0,
+            "global_buy_price": 10.0,
+            "accounts": [{"id": "gf:step2", "name": "Ghostfolio Step2", "shares": 1.0,
+                          "buy_price": 10.0, "total_investment": 10.0}],
+        },
+    }))
+    config = {**load_config(), "GHOSTFOLIO_ENABLED": True, "IGNORED_TICKERS": ["ZZS2IGNORED"]}
+    monkeypatch.setattr(accounts_engine, "PORTFOLIO_PATH", portfolio_path)
+    monkeypatch.setattr(accounts_engine, "load_config", lambda: config)
+    monkeypatch.setattr(page_routes, "load_config", lambda: config)
+    monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", lambda tickers: {})
+
+    rates = {"GBP": 1.0, "GBp": 0.01, "USD": 0.8, "EUR": 0.9}
+    original_fetch = page_routes._fetch_portfolio_signal_rows
+    with patch("page_routes._fetch_portfolio_signal_rows", wraps=original_fetch) as fetch, \
+         patch("page_helpers.get_rate_to_base", side_effect=lambda currency: rates.get(currency, 1.0)) as fx, \
+         patch("page_routes.get_rate_to_base", return_value=1.0) as valuation_fx:
+        all_response = client.get("/portfolio")
+        assert all_response.status_code == 200
+        assert {"ZZS2USD", "ZZS2GBPENCE", "ZZS2EUR", "ZZS2GHOST", "ZZS2MISSING"} <= set(fetch.call_args.args[1])
+        assert "ZZS2IGNORED" not in fetch.call_args.args[1]
+        assert "ZZS2UNRELATED" not in fetch.call_args.args[1]
+        for ticker in ("ZZS2USD", "ZZS2GBPENCE", "ZZS2EUR", "ZZS2GHOST"):
+            assert f'data-ticker="{ticker}"' in all_response.text
+        for ticker in ("ZZS2IGNORED", "ZZS2MISSING", "ZZS2UNRELATED"):
+            assert f'data-ticker="{ticker}"' not in all_response.text
+        assert _global_market_value(all_response.text, "ZZS2USD") == pytest.approx(240.0)
+        assert _global_market_value(all_response.text, "ZZS2GBPENCE") == pytest.approx(15.0)
+        all_fx_currencies = [call.args[0] for call in fx.call_args_list]
+        assert {"EUR", "GBP", "GBp", "USD"} <= set(all_fx_currencies)
+        assert "ZZZ" not in all_fx_currencies
+        assert len(all_fx_currencies) == len(set(all_fx_currencies))
+
+        fx.reset_mock()
+        valuation_fx.reset_mock()
+        selected = client.get(f"/portfolio?account_id=acct:{first}")
+        assert selected.status_code == 200
+        assert set(fetch.call_args.args[1]) == {"ZZS2USD", "ZZS2GBPENCE", "ZZS2MISSING"}
+        assert _global_market_value(selected.text, "ZZS2USD") == pytest.approx(160.0)
+        assert 'data-ticker="ZZS2EUR"' not in selected.text
+        assert 'data-ticker="ZZS2GHOST"' not in selected.text
+        assert sorted(call.args[0] for call in fx.call_args_list) == ["GBP", "GBp", "USD"]
+        assert not valuation_fx.called
+
+        fx.reset_mock()
+        valuation_fx.reset_mock()
+        ghost = client.get("/portfolio?account_id=gf:step2")
+        assert ghost.status_code == 200
+        assert set(fetch.call_args.args[1]) == {"ZZS2USD", "ZZS2GHOST"}
+        assert _global_market_value(ghost.text, "ZZS2USD") == pytest.approx(80.0)
+        assert sorted(call.args[0] for call in fx.call_args_list) == ["GBP", "USD"]
+        assert not valuation_fx.called
+
+        fx.reset_mock()
+        empty = client.get("/portfolio?account_id=acct:999999")
+        assert empty.status_code == 200
+        assert fetch.call_args.args[1] == []
+        assert sorted(call.args[0] for call in fx.call_args_list) == ["GBP"]
