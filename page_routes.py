@@ -223,12 +223,17 @@ async def home():
     return RedirectResponse(url="/portfolio")
 
 
-def _fetch_portfolio_signal_rows(benchmark_symbol: str):
+def _fetch_portfolio_signal_rows(benchmark_symbol: str, tickers: list[str]):
     conn = get_connection()
     try:
         cursor = conn.cursor()
 
-        cursor.execute("""
+        db_rows = []
+        # Leave room for the benchmark parameter under SQLite's older 999-variable limit.
+        for start in range(0, len(tickers), 900):
+            batch = tickers[start:start + 900]
+            placeholders = ",".join("?" for _ in batch)
+            cursor.execute(f"""
             SELECT s.*,
                    (SELECT ml_confidence_score FROM quant_signals
                     WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
@@ -279,8 +284,9 @@ def _fetch_portfolio_signal_rows(benchmark_symbol: str):
             LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             LEFT JOIN ticker_risk_contribution rc ON s.ticker = rc.ticker
-        """, (benchmark_symbol,))
-        db_rows = cursor.fetchall()
+            WHERE s.ticker IN ({placeholders})
+        """, (benchmark_symbol, *batch))
+            db_rows.extend(cursor.fetchall())
 
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
         macro_row = cursor.fetchone()
@@ -299,25 +305,8 @@ def _fetch_portfolio_signal_rows(benchmark_symbol: str):
 def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
     from xray_engine import BENCHMARK_SYMBOL
 
-    with measure_request_stage("sql"):
-        db_rows, macro_regime, global_updated = _fetch_portfolio_signal_rows(BENCHMARK_SYMBOL)
-
     config_data = load_config()
-    active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
-    discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
-    with measure_request_stage("fx_context"):
-        position_sizing_context = _build_position_sizing_context(config_data, db_rows)
-    account_options = [{"id": "all", "name": "Global (All Accounts)"}]
-    for acc in discovered_accounts:
-        if acc["id"] in active_accounts:
-            account_options.append({"id": acc["id"], "name": acc["name"]})
-
     from accounts_engine import get_combined_holdings
-    from database import get_accounts
-    for acc in get_accounts():
-        if acc["account_type"] == "Trading":
-            account_options.append({"id": f"acct:{acc['id']}", "name": acc["name"]})
-
     portfolio_json = get_combined_holdings()
     portfolio_tickers = []
 
@@ -332,7 +321,26 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
                         break
 
     ignored_tickers = ignored_tickers_set(config_data)
-    portfolio_tickers = [t for t in portfolio_tickers if normalize_ticker(t) not in ignored_tickers]
+    portfolio_tickers = list(dict.fromkeys(
+        t for t in portfolio_tickers if normalize_ticker(t) not in ignored_tickers
+    ))
+
+    with measure_request_stage("sql"):
+        db_rows, macro_regime, global_updated = _fetch_portfolio_signal_rows(BENCHMARK_SYMBOL, portfolio_tickers)
+    with measure_request_stage("fx_context"):
+        position_sizing_context = _build_position_sizing_context(config_data, db_rows)
+
+    active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
+    discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
+    account_options = [{"id": "all", "name": "Global (All Accounts)"}]
+    for acc in discovered_accounts:
+        if acc["id"] in active_accounts:
+            account_options.append({"id": acc["id"], "name": acc["name"]})
+
+    from database import get_accounts
+    for acc in get_accounts():
+        if acc["account_type"] == "Trading":
+            account_options.append({"id": f"acct:{acc['id']}", "name": acc["name"]})
 
     portfolio_data = []
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
@@ -443,7 +451,9 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
 
             cost_in_base = shares * buy_price_base
             with measure_request_stage("fx_rate"):
-                exchange_rate = get_rate_to_base(row_dict['currency'])
+                exchange_rate = position_sizing_context["fx_rates"].get(row_dict['currency'])
+                if exchange_rate is None:
+                    exchange_rate = get_rate_to_base(row_dict['currency'])
             val_in_base = (shares * current_price) * exchange_rate
             row_dict['market_value_base'] = round(val_in_base, 2)
             row_dict['global_market_value'] = round(val_in_base, 2)
