@@ -172,8 +172,16 @@ def test_password():
 
 @pytest.fixture(autouse=True)
 def _block_navigation_cache_refresh():
-    with patch("cache_refresh_helpers.request_cache_refresh"):
-        yield
+    import cache_refresh_helpers
+
+    with cache_refresh_helpers._lock:
+        cache_refresh_helpers._retry_after.clear()
+    try:
+        with patch("cache_refresh_helpers.request_cache_refresh"):
+            yield
+    finally:
+        with cache_refresh_helpers._lock:
+            cache_refresh_helpers._retry_after.clear()
 
 
 @pytest.fixture(autouse=True)

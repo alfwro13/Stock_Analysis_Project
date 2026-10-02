@@ -683,3 +683,31 @@ def test_stale_daily_refresh_bypasses_partial_yahoo_memory_cache(tmp_path):
         assert refresh.call_args.args[1]()["Close"].iloc[-1] == 12.0
     fetch.assert_called_once_with([ticker], period="2y", interval="1d", force_refresh=True)
     assert pd.read_parquet(path)["Close"].iloc[-1] == 12.0
+
+
+def test_cache_only_history_rejects_symlink_outside_cache_root(tmp_path):
+    import pandas as pd
+    from data_engine import load_or_fetch_daily_history
+
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    outside = tmp_path / "outside.parquet"
+    pd.DataFrame({"Close": [99.0]}).to_parquet(outside)
+    (cache_root / "ZZLINK.parquet").symlink_to(outside)
+    with patch("data_engine.HISTORICAL_DIR", cache_root), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert load_or_fetch_daily_history("ZZLINK", cache_only=True) is None
+    refresh.assert_not_called()
+
+
+def test_history_refresh_rejects_symlink_outside_cache_root(tmp_path):
+    from data_engine import _fetch_daily_history
+
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    outside = tmp_path / "outside.parquet"
+    outside.write_bytes(b"unchanged")
+    (cache_root / "ZZLINK.parquet").symlink_to(outside)
+    with patch("data_engine.HISTORICAL_DIR", cache_root), patch("data_engine.yahoo_engine.get_price_history") as fetch:
+        assert _fetch_daily_history("ZZLINK") is None
+    fetch.assert_not_called()
+    assert outside.read_bytes() == b"unchanged"

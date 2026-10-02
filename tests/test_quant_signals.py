@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
@@ -184,3 +186,20 @@ class TestLoadFundamentalsProfileFallback:
     def test_missing_fundamentals_and_no_profile_returns_empty(self, tmp_path):
         with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path):
             assert QuantEngine().load_fundamentals("ZZNOPROFILE.L") == {}
+
+
+def test_quant_cache_readers_reject_symlinks_outside_cache_roots(tmp_path):
+    history_root = tmp_path / "history"
+    fundamentals_root = tmp_path / "fundamentals"
+    history_root.mkdir()
+    fundamentals_root.mkdir()
+    outside_parquet = tmp_path / "outside.parquet"
+    outside_json = tmp_path / "outside.json"
+    pd.DataFrame({"Close": [123.0]}).to_parquet(outside_parquet)
+    outside_json.write_text('{"currency": "USD"}')
+    (history_root / "ZZLINK.parquet").symlink_to(outside_parquet)
+    (fundamentals_root / "ZZLINK.json").symlink_to(outside_json)
+    with patch("quant_signals.HISTORICAL_DIR", history_root), patch("quant_signals.FUNDAMENTALS_DIR", fundamentals_root):
+        engine = QuantEngine()
+        assert engine.load_parquet("ZZLINK") is None
+        assert engine.load_fundamentals("ZZLINK") == {}
