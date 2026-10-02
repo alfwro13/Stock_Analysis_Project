@@ -422,7 +422,7 @@ async def execute_restart():
 
 
 @system_router.post("/market-pulse")
-async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTasks):
+def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTasks):
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
     pulse_data = get_cached_pulse_from_db(request.tickers, refresh_rate)
@@ -433,7 +433,7 @@ async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTa
     return JSONResponse(content={"status": "success", "data": pulse_data})
 
 @system_router.get("/market-pulse")
-async def api_market_pulse_get(background_tasks: BackgroundTasks):
+def api_market_pulse_get(background_tasks: BackgroundTasks):
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
     pulse_data = get_cached_pulse_from_db([], refresh_rate)
@@ -444,7 +444,7 @@ async def api_market_pulse_get(background_tasks: BackgroundTasks):
 
 
 @system_router.get("/markets")
-async def api_markets(background_tasks: BackgroundTasks, view: str = "dynamic"):
+def api_markets(background_tasks: BackgroundTasks, view: str = "dynamic"):
     payload = markets_engine.assemble_markets_payload(view)
     needs_fetch = {
         tile["ticker"]
@@ -464,7 +464,7 @@ async def api_markets(background_tasks: BackgroundTasks, view: str = "dynamic"):
 
 
 @system_router.get("/system/market-status/all")
-async def api_market_status_all(background_tasks: BackgroundTasks):
+def api_market_status_all(background_tasks: BackgroundTasks):
     """Net-new, generalized N-exchange market status — does NOT change the existing
     /system/market-status response (that contract is consumed as-is by the Home Assistant
     integration; see AGENTS.md rule on additive-only changes to that endpoint)."""
@@ -483,7 +483,7 @@ async def api_market_status_all(background_tasks: BackgroundTasks):
 
 
 @system_router.get("/markets/registry")
-async def api_markets_registry_list():
+def api_markets_registry_list():
     return JSONResponse(content={"status": "success", "registry": get_ticker_registry(enabled_only=False)})
 
 
@@ -504,7 +504,7 @@ def _invalid_exchange_error(exchange: Optional[str]):
 
 
 @system_router.post("/markets/registry")
-async def api_markets_registry_create(body: TickerRegistryBody):
+def api_markets_registry_create(body: TickerRegistryBody):
     ticker = (body.ticker or "").strip()
     if not ticker:
         return JSONResponse(status_code=422, content={"status": "error", "message": "ticker is required."})
@@ -521,7 +521,7 @@ async def api_markets_registry_create(body: TickerRegistryBody):
 
 
 @system_router.put("/markets/registry/{ticker}")
-async def api_markets_registry_update(ticker: str, body: TickerRegistryBody):
+def api_markets_registry_update(ticker: str, body: TickerRegistryBody):
     if get_ticker_registry_row(ticker) is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"{ticker} not found in the registry."})
     exchange_error = _invalid_exchange_error(body.exchange)
@@ -535,7 +535,7 @@ async def api_markets_registry_update(ticker: str, body: TickerRegistryBody):
 
 
 @system_router.delete("/markets/registry/{ticker}")
-async def api_markets_registry_delete(ticker: str):
+def api_markets_registry_delete(ticker: str):
     if get_ticker_registry_row(ticker) is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"{ticker} not found in the registry."})
     soft_delete_ticker_registry_row(ticker)
@@ -954,7 +954,7 @@ async def get_system_metrics():
 
 
 @system_router.get("/system/checks")
-async def get_system_checks(request: Request):
+def get_system_checks(request: Request):
     from system_check_engine import run_system_checks
     issues = run_system_checks()
     return JSONResponse(content={"status": "success", "issues": issues})
@@ -975,7 +975,7 @@ def _yahoo_ok() -> bool:
 
 
 @system_router.get("/system/market-status")
-async def api_market_status(background_tasks: BackgroundTasks):
+def api_market_status(background_tasks: BackgroundTasks):
     from system_check_engine import run_system_checks
     issues = run_system_checks()
     # Home Assistant's coordinator polls this endpoint unconditionally every cycle regardless of

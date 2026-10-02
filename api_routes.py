@@ -933,7 +933,7 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
 
 
 @api_router.post("/intraday-chart/refresh")
-async def refresh_intraday_chart(req: TickerRequest):
+def refresh_intraday_chart(req: TickerRequest):
     """Fetch fresh intraday data from Yahoo Finance, persist to parquet, return re-rendered chart HTML."""
     ticker = req.ticker.upper()
 

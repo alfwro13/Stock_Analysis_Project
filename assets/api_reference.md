@@ -81,7 +81,7 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 
 ### Timing response header
 
-`GET /api/accounts/portfolio-totals`, `/list-with-metrics`, `/holdings-list`, `/other-accounts-list`, and `POST /api/intraday-chart/refresh` include `Server-Timing` on completed responses. `app` is handler time in milliseconds; available named stages describe metrics calculation, Yahoo fetch/lock wait, and chart rendering. This diagnostic header does not change JSON bodies, authentication, or refresh completion behaviour. The Portfolio, Watchlist, and Stock Detail HTML pages use the same header.
+`GET /api/accounts/portfolio-totals`, `/list-with-metrics`, `/holdings-list`, `/other-accounts-list`, and `POST /api/intraday-chart/refresh` include `Server-Timing` on completed responses. `app` is handler time in milliseconds; available named stages describe metrics calculation, Yahoo fetch/lock wait, and chart rendering. This diagnostic header does not change JSON bodies, authentication, or refresh completion behaviour. The Portfolio, Watchlist, and Stock Detail HTML pages use the same header. The intraday refresh, account summary/holding-limit, Market Pulse/Markets/registry, and system/market-check handlers run blocking database, file, chart, and upstream calls in request workers so an unrelated request can be dispatched while one of them waits. This changes execution scheduling only; the route paths, responses, authentication, and background refresh behavior are unchanged.
 
 ## 2. Notifications
 
