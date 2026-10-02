@@ -762,7 +762,7 @@ def maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
 
 
 @accounts_router.get("/accounts/portfolio-totals")
-async def api_portfolio_totals(background_tasks: BackgroundTasks):
+def api_portfolio_totals(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
         with measure_request_stage("metrics"):
@@ -774,7 +774,7 @@ async def api_portfolio_totals(background_tasks: BackgroundTasks):
 
 
 @accounts_router.get("/accounts/list-with-metrics")
-async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
+def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
         with measure_request_stage("metrics"):
@@ -786,7 +786,7 @@ async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
 
 
 @accounts_router.get("/accounts/holdings-list")
-async def api_holdings_list(background_tasks: BackgroundTasks):
+def api_holdings_list(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
         with measure_request_stage("metrics"):
@@ -798,7 +798,7 @@ async def api_holdings_list(background_tasks: BackgroundTasks):
 
 
 @accounts_router.get("/accounts/other-accounts-list")
-async def api_other_accounts_list():
+def api_other_accounts_list():
     try:
         with measure_request_stage("metrics"):
             result = other_accounts_list()
@@ -809,7 +809,7 @@ async def api_other_accounts_list():
 
 
 @accounts_router.post("/accounts/holding-price-limit")
-async def api_set_holding_price_limit(body: HoldingPriceLimitBody):
+def api_set_holding_price_limit(body: HoldingPriceLimitBody):
     try:
         fields = body.model_dump(include={"low_limit", "high_limit"}, exclude_unset=True)
         set_holding_price_limit(body.account_id, body.ticker, **fields)

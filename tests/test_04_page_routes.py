@@ -1841,3 +1841,46 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
     assert "event_loop_lag lag_ms=" in caplog.text
     assert "suspected_blocker=database.py:_retry_on_locked:" in caplog.text
     assert "callers=tests/test_04_page_routes.py:exercise:" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "method,path,patch_target,stub_result",
+    [
+        ("post", "/api/intraday-chart/refresh", "api_routes.yahoo_engine.get_intraday", {}),
+        ("get", "/portfolio", "price_history_helpers.get_period_anchor_closes", {}),
+        ("get", "/api/accounts/portfolio-totals", "api_routes_accounts.portfolio_totals", {}),
+        ("get", "/api/markets", "markets_engine.assemble_markets_payload", {"regions": []}),
+        ("get", "/api/system/market-status", "system_check_engine.run_system_checks", []),
+    ],
+    ids=["intraday-yahoo", "portfolio-history", "ha-metrics", "markets-payload", "ha-market-status"],
+)
+def test_blocked_request_does_not_stall_unrelated_request(
+    client, method, path, patch_target, stub_result,
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered = Event()
+    release = Event()
+
+    def stalled_call(*args, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return stub_result
+
+    def request():
+        if method == "post":
+            return client.post(path, json={"ticker": "TSTBLOCK"})
+        return client.get(path)
+
+    with patch(patch_target, side_effect=stalled_call):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            slow = pool.submit(request)
+            try:
+                assert entered.wait(10)
+                unrelated = pool.submit(client.get, "/static/css/styles.css")
+                assert unrelated.result(timeout=3).status_code == 200
+                assert not slow.done()
+            finally:
+                release.set()
+            assert slow.result(timeout=20).status_code == 200

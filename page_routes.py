@@ -296,17 +296,17 @@ def _fetch_portfolio_signal_rows(benchmark_symbol: str):
 
 
 @page_router.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
+def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
     from xray_engine import BENCHMARK_SYMBOL
 
     with measure_request_stage("sql"):
-        db_rows, macro_regime, global_updated = await run_in_threadpool(_fetch_portfolio_signal_rows, BENCHMARK_SYMBOL)
+        db_rows, macro_regime, global_updated = _fetch_portfolio_signal_rows(BENCHMARK_SYMBOL)
 
     config_data = load_config()
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
     with measure_request_stage("fx_context"):
-        position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
+        position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     account_options = [{"id": "all", "name": "Global (All Accounts)"}]
     for acc in discovered_accounts:
         if acc["id"] in active_accounts:
@@ -526,7 +526,7 @@ async def portfolio_page(request: Request, background_tasks: BackgroundTasks, ac
 
 
 @page_router.get("/accounts", response_class=HTMLResponse)
-async def accounts_page(request: Request):
+def accounts_page(request: Request):
     return templates.TemplateResponse(
         request=request, name="accounts.html",
         context={
@@ -538,7 +538,7 @@ async def accounts_page(request: Request):
 
 
 @page_router.get("/accounts/{account_id}", response_class=HTMLResponse)
-async def account_detail_page(request: Request, account_id: int):
+def account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
         account_summary, cash_history, closed_positions, filter_value_history_by_period,
         holdings_with_market_value, is_unresolved_ticker, refresh_performance_cache,
@@ -580,19 +580,19 @@ async def account_detail_page(request: Request, account_id: int):
         chart_period = "max"
     chart_initial = filter_value_history_by_period(get_value_history(account_id), chart_period)
 
-    holdings = await run_in_threadpool(holdings_with_market_value, account_id)
+    holdings = holdings_with_market_value(account_id)
     pricing_warning = stale_pricing_warning(holdings)
 
     performance = get_performance_cache(account_id)
     if performance is None:
-        await run_in_threadpool(refresh_performance_cache, account_id)
+        refresh_performance_cache(account_id)
         performance = get_performance_cache(account_id)
 
     return templates.TemplateResponse(
         request=request, name="account_detail.html",
         context={
             "account": acc,
-            "summary": await run_in_threadpool(account_summary, account_id),
+            "summary": account_summary(account_id),
             "holdings": holdings,
             "pricing_warning": pricing_warning,
             "closed_positions": closed_positions(account_id),
@@ -614,7 +614,7 @@ async def account_detail_page(request: Request, account_id: int):
 
 
 @page_router.get("/accounts/{account_id}/pension", response_class=HTMLResponse)
-async def pension_account_detail_page(request: Request, account_id: int):
+def pension_account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
         account_summary, pension_activities, pension_benchmark_overlay, pension_display_label,
         scraped_price_performance,
@@ -638,12 +638,12 @@ async def pension_account_detail_page(request: Request, account_id: int):
     if value_history:
         value_df = pd.DataFrame(value_history).set_index("snapshot_date")
         value_df.index = pd.to_datetime(value_df.index)
-        benchmark_series = await run_in_threadpool(pension_benchmark_overlay, account_id, value_df)
+        benchmark_series = pension_benchmark_overlay(account_id, value_df)
         value_chart_html = create_pension_value_chart(value_df, benchmark_series)
     else:
         value_chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
 
-    summary = await run_in_threadpool(account_summary, account_id)
+    summary = account_summary(account_id)
     return templates.TemplateResponse(
         request=request, name="account_detail_pension.html",
         context={
@@ -661,7 +661,7 @@ async def pension_account_detail_page(request: Request, account_id: int):
 
 
 @page_router.get("/accounts/{account_id}/house", response_class=HTMLResponse)
-async def house_account_detail_page(request: Request, account_id: int):
+def house_account_detail_page(request: Request, account_id: int):
     from database import get_account, get_price_history
 
     acc = get_account(account_id)
@@ -757,11 +757,11 @@ def _fetch_watchlist_signal_rows(benchmark_symbol: str):
 
 
 @page_router.get("/watchlist", response_class=HTMLResponse)
-async def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
+def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
     from xray_engine import BENCHMARK_SYMBOL
 
     with measure_request_stage("sql"):
-        db_rows, global_updated = await run_in_threadpool(_fetch_watchlist_signal_rows, BENCHMARK_SYMBOL)
+        db_rows, global_updated = _fetch_watchlist_signal_rows(BENCHMARK_SYMBOL)
 
     watchlist_tickers = get_watchlist_tickers()
 
@@ -869,7 +869,7 @@ async def watchlist_page(request: Request, embed: bool = False, embed_token: str
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
     with measure_request_stage("fx_context"):
-        position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, db_rows)
+        position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     optional_columns = table_columns_helpers.columns_for_page("watchlist")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "watchlist")
     views = table_columns_helpers.resolve_views(config_data, "watchlist")
@@ -1046,7 +1046,7 @@ async def dividend_harvest_page(request: Request):
 
 
 @page_router.get("/markets", response_class=HTMLResponse)
-async def markets_page(request: Request):
+def markets_page(request: Request):
     default_view = request.cookies.get("markets_view", "dynamic")
     if default_view not in ("dynamic", "static"):
         default_view = "dynamic"
@@ -1576,7 +1576,7 @@ async def score_history_page(request: Request, filter: str = "all", ref: str = "
 
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
-async def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token: str = ""):
+def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token: str = ""):
     ticker = normalize_ticker(ticker)
     if ticker in get_index_tickers():
         return RedirectResponse(f"/index/{ticker}", status_code=302)
@@ -1890,7 +1890,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
         priced = current_price_map([ticker]).get(ticker)
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
         with measure_request_stage("fx_rate"):
-            exchange_rate = await run_in_threadpool(get_rate_from_base, stock_data['currency'])
+            exchange_rate = get_rate_from_base(stock_data['currency'])
         price_in_pence = user_asset.get('price_in_pence', False)
 
         global_math = calculate_pnl(
@@ -2030,7 +2030,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False, embed
 
     config_data = load_config()
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
-    position_sizing_context = await run_in_threadpool(_build_position_sizing_context, config_data, fake_rows)
+    position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
     anomaly_chart_html = (
         "<div class='chart-ph chart-ph--lg'>"
         "<span class='chart-ph__icon'>📊</span>"
