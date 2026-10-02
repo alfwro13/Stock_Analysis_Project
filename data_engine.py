@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import random
 import logging
@@ -126,7 +127,7 @@ class DataEngine:
             mutual_funds = get_mutual_fund_tickers(tickers)
             intraday_targets = [t for t in ticker_dfs if t not in mutual_funds]
             live_dfs = yahoo_engine.get_intraday(intraday_targets, period="1d", interval="5m") if intraday_targets else {}
-            history_root = HISTORICAL_DIR.resolve()
+            history_root = os.path.realpath(HISTORICAL_DIR)
             for ticker, df in ticker_dfs.items():
                 if df is None or df.empty:
                     continue
@@ -134,8 +135,8 @@ class DataEngine:
                 if not safe_ticker:
                     logger.warning("Skipping historical write for unsafe ticker %r.", ticker)
                     continue
-                path = (history_root / f"{safe_ticker}.parquet").resolve()
-                if not path.is_relative_to(history_root):
+                path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+                if not path.startswith(history_root + os.sep):
                     logger.warning("Skipping historical path outside cache root for ticker %r.", ticker)
                     continue
                 df = df.dropna(subset=['Close', 'Volume'])
@@ -163,7 +164,7 @@ class DataEngine:
             ticker_dfs = yahoo_engine.get_intraday(tickers, period="1d", interval="5m")
             if not ticker_dfs:
                 return
-            intraday_root = INTRADAY_DIR.resolve()
+            intraday_root = os.path.realpath(INTRADAY_DIR)
             for ticker, df in ticker_dfs.items():
                 if df is None or df.empty:
                     continue
@@ -171,8 +172,8 @@ class DataEngine:
                 if not safe_ticker:
                     logger.warning("Skipping intraday write for unsafe ticker %r.", ticker)
                     continue
-                path = (intraday_root / f"{safe_ticker}_intraday.parquet").resolve()
-                if not path.is_relative_to(intraday_root):
+                path = os.path.realpath(os.path.join(intraday_root, f"{safe_ticker}_intraday.parquet"))
+                if not path.startswith(intraday_root + os.sep):
                     logger.warning("Skipping intraday path outside cache root for ticker %r.", ticker)
                     continue
                 df = df.dropna(subset=['Close'])
@@ -187,21 +188,21 @@ class DataEngine:
         Mitigates strict JSON-endpoint rate-limiting.
         """
         logger.info('Drip-feeding Fundamental JSONs for %s assets...', len(tickers))
-        fundamentals_root = FUNDAMENTALS_DIR.resolve()
+        fundamentals_root = os.path.realpath(FUNDAMENTALS_DIR)
         for i, ticker in enumerate(tickers):
             try:
                 safe_ticker = safe_ticker_filename(ticker)
                 if not safe_ticker:
                     logger.warning("Skipping fundamentals fetch for unsafe ticker %r.", ticker)
                     continue
-                path = (fundamentals_root / f"{safe_ticker}.json").resolve()
-                if not path.is_relative_to(fundamentals_root):
+                path = os.path.realpath(os.path.join(fundamentals_root, f"{safe_ticker}.json"))
+                if not path.startswith(fundamentals_root + os.sep):
                     logger.warning("Skipping fundamentals path outside cache root for ticker %r.", ticker)
                     continue
                 fundamentals = yahoo_engine.get_ticker_info(ticker)
 
                 if fundamentals:
-                    with path.open('w') as f:
+                    with open(path, 'w') as f:
                         json.dump(fundamentals, f, default=str)
 
                 if i > 0 and i % 50 == 0:
@@ -220,16 +221,16 @@ class DataEngine:
         if not safe_ticker:
             logger.error("Refusing to fetch unsafe ticker %r.", ticker)
             return False
-        intraday_root = INTRADAY_DIR.resolve()
-        intraday_path = (intraday_root / f"{safe_ticker}_intraday.parquet").resolve()
-        history_root = HISTORICAL_DIR.resolve()
-        history_path = (history_root / f"{safe_ticker}.parquet").resolve()
-        fundamentals_root = FUNDAMENTALS_DIR.resolve()
-        fundamentals_path = (fundamentals_root / f"{safe_ticker}.json").resolve()
+        intraday_root = os.path.realpath(INTRADAY_DIR)
+        intraday_path = os.path.realpath(os.path.join(intraday_root, f"{safe_ticker}_intraday.parquet"))
+        history_root = os.path.realpath(HISTORICAL_DIR)
+        history_path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+        fundamentals_root = os.path.realpath(FUNDAMENTALS_DIR)
+        fundamentals_path = os.path.realpath(os.path.join(fundamentals_root, f"{safe_ticker}.json"))
         if (
-            not intraday_path.is_relative_to(intraday_root)
-            or not history_path.is_relative_to(history_root)
-            or not fundamentals_path.is_relative_to(fundamentals_root)
+            not intraday_path.startswith(intraday_root + os.sep)
+            or not history_path.startswith(history_root + os.sep)
+            or not fundamentals_path.startswith(fundamentals_root + os.sep)
         ):
             logger.error("Refusing cache path outside configured root for ticker %r.", ticker)
             return False
@@ -260,7 +261,7 @@ class DataEngine:
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
             if fundamentals:
-                with fundamentals_path.open('w') as f:
+                with open(fundamentals_path, 'w') as f:
                     json.dump(fundamentals, f, default=str)
 
             if not persisted:
@@ -300,9 +301,9 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
         return None
-    history_root = HISTORICAL_DIR.resolve()
-    path = (history_root / f"{safe_ticker}.parquet").resolve()
-    if not path.is_relative_to(history_root):
+    history_root = os.path.realpath(HISTORICAL_DIR)
+    path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+    if not path.startswith(history_root + os.sep):
         logger.error("Refusing historical path outside cache root for ticker %r.", ticker)
         return None
     if force_refresh:
@@ -341,19 +342,19 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Opt
     if not safe_ticker:
         logger.error("Refusing to load history for unsafe ticker %r.", ticker)
         return None
-    history_root = HISTORICAL_DIR.resolve()
-    path = (history_root / f"{safe_ticker}.parquet").resolve()
-    if not path.is_relative_to(history_root):
+    history_root = os.path.realpath(HISTORICAL_DIR)
+    path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+    if not path.startswith(history_root + os.sep):
         logger.error("Refusing historical path outside cache root for ticker %r.", ticker)
         return None
     df = None
-    if path.exists():
+    if os.path.exists(path):
         try:
             df = pd.read_parquet(path)
         except Exception as e:
             logger.error("Failed to read historical parquet for %s: %s", ticker, e)
     if cache_only:
-        stale = df is None or time.time() - path.stat().st_mtime > load_config()["PERFORMANCE"]["DAILY_HISTORY_FRESH_SECONDS"]
+        stale = df is None or time.time() - os.path.getmtime(path) > load_config()["PERFORMANCE"]["DAILY_HISTORY_FRESH_SECONDS"]
         if stale and not is_excluded_from_yahoo_fetch(ticker):
             request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
         return df
