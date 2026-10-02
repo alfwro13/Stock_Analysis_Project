@@ -195,7 +195,7 @@ function _updatePensionFeePreview() {
             return;
         }
     }
-    if (isNaN(price)) {
+    if (isNaN(price) || _pensionFeeUnitsBefore === null) {
         preview.textContent = '';
         return;
     }
@@ -204,7 +204,12 @@ function _updatePensionFeePreview() {
         return;
     }
     const currency = (window.CURRENT_ACCOUNT && window.CURRENT_ACCOUNT.currency) || '';
-    preview.textContent = `This will remove ${removed.toFixed(6)} units, costing ${(removed * price).toFixed(2)} ${currency}.`;
+    const remainingUnits = _pensionFeeUnitsBefore - removed;
+    preview.replaceChildren(
+        document.createTextNode(`This will remove ${removed.toFixed(6)} units, costing ${(removed * price).toFixed(2)} ${currency}.`),
+        document.createElement('br'),
+        document.createTextNode(`Pension value will be: ${(remainingUnits * price).toFixed(2)} ${currency}`),
+    );
 }
 
 async function submitPensionFee() {

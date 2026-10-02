@@ -1740,6 +1740,14 @@ def test_pension_detail_page_loads_with_actions(client):
         _db.soft_delete_account(account_id)
 
 
+def test_pension_admin_fee_preview_shows_post_fee_account_value():
+    script = (Path(__file__).parent.parent / "static" / "js" / "account_detail_pension.js").read_text()
+    assert "isNaN(price) || _pensionFeeUnitsBefore === null" in script
+    assert "const remainingUnits = _pensionFeeUnitsBefore - removed;" in script
+    assert "Pension value will be: ${(remainingUnits * price).toFixed(2)} ${currency}" in script
+    assert "document.createElement('br')" in script
+
+
 @pytest.mark.pages
 def test_pension_activities_table_has_no_edit_button(client):
     """Every Pension activity row is system-generated (Opening Balance / Pay In / Admin Fee) —
