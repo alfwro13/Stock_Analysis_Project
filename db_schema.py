@@ -406,7 +406,9 @@ def init_db() -> None:
                 extended_price REAL,
                 extended_change_pts REAL,
                 extended_change_pct REAL,
-                extended_session TEXT
+                extended_session TEXT,
+                fx_rate REAL,
+                fx_updated_at REAL
             )
         ''')
 
@@ -1644,6 +1646,7 @@ def migrate_db(conn, cursor) -> None:
     for extended_col, col_type in (
         ('extended_price', 'REAL'), ('extended_change_pts', 'REAL'),
         ('extended_change_pct', 'REAL'), ('extended_session', 'TEXT'),
+        ('fx_rate', 'REAL'), ('fx_updated_at', 'REAL'),
     ):
         if extended_col not in existing_pulse_columns:
             try:

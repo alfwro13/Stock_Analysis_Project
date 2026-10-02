@@ -462,3 +462,20 @@ class TestEnforceGhostfolioDisabled:
             eng.enforce_ghostfolio_disabled()
         mock_purge.assert_not_called()
         assert eng.metrics["ghostfolio_files_purged"] == 0
+
+
+def test_pulse_pruning_retains_usable_persisted_fx():
+    from db_helpers import upsert_fx_quote
+
+    upsert_fx_quote("ZARJPY=X", 8.0, time.time() - 3 * 86400)
+    eng = _engine()
+    with patch.object(eng, "_get_pulse_active_tickers", return_value=set()):
+        eng.prune_pulse_cache()
+    assert _count_pulse("ZARJPY=X") == 1
+
+
+def test_pulse_retention_includes_configured_fx_pairs():
+    eng = _engine()
+    with patch("maintenance_engine.get_combined_holdings", return_value={}), patch("maintenance_engine.get_watchlist_tickers", return_value=[]):
+        active = eng._get_pulse_active_tickers()
+    assert {"GBPUSD=X", "USDGBP=X", "GBPEUR=X", "EURGBP=X"} <= active

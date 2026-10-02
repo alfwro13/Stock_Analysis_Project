@@ -1293,3 +1293,132 @@ def test_yahoo_lock_wait_is_measured_for_active_request():
         _request_stages.reset(token)
     assert stages[0][0] == "yahoo_lock_wait"
     assert stages[0][1] >= 20
+
+
+@pytest.mark.parametrize("age,available,stale", [(20, True, False), (3600, True, True), (604801, False, True)])
+def test_persisted_fx_age_policy(age, available, stale, monkeypatch):
+    import time
+    from db_helpers import upsert_fx_quote
+
+    from database import get_connection
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('AUDCHF=X', 'CHFAUD=X')")
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    now = time.time()
+    upsert_fx_quote("AUDCHF=X", 0.6, now - age)
+    monkeypatch.setattr("yahoo_engine.time.time", lambda: now)
+    engine = YahooEngine()
+    with patch.object(engine, "_fetch_fx_rate", side_effect=AssertionError("interactive network")):
+        quote = engine.get_cached_fx_rate("AUDCHF=X", refresh=False)
+    assert quote["available"] is available
+    assert quote["stale"] is stale
+    assert quote["rate"] == (0.6 if available else None)
+    assert quote["updated_at"] == now - age
+
+
+def test_fx_cache_survives_engine_restart_and_reuses_inverse():
+    import time
+    from db_helpers import upsert_fx_quote
+
+    upsert_fx_quote("CADNZD=X", 1.2, time.time())
+    first = YahooEngine().get_cached_fx_rate("CADNZD=X", refresh=False)
+    second = YahooEngine().get_cached_fx_rate("NZDCAD=X", refresh=False)
+    assert first["rate"] == pytest.approx(1.2)
+    assert second["rate"] == pytest.approx(1 / 1.2)
+    assert first["updated_at"] == second["updated_at"]
+
+
+def test_fx_failed_refresh_retains_quote_and_backs_off(monkeypatch):
+    import time
+    from db_helpers import upsert_fx_quote
+    import cache_refresh_helpers as refresh_helpers
+
+    engine = YahooEngine()
+    upsert_fx_quote("NOKSEK=X", 0.95, time.time() - 3600)
+    monkeypatch.setattr(refresh_helpers, "request_cache_refresh", refresh_helpers.submit_cache_refresh)
+    with patch.object(engine, "_fetch_fx_rate", return_value=None) as fetch:
+        future = refresh_helpers.submit_cache_refresh("fx:NOKSEK=X", lambda: engine._fetch_fx_rate("NOKSEK=X"), force=True)
+        assert future.result(timeout=5) is None
+        for _ in range(5):
+            quote = engine.get_cached_fx_rate("NOKSEK=X")
+            assert quote["rate"] == pytest.approx(0.95)
+        assert fetch.call_count == 1
+
+
+def test_simultaneous_cached_fx_readers_share_blocked_refresh(monkeypatch):
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from db_helpers import upsert_fx_quote
+    import cache_refresh_helpers as refresh_helpers
+
+    engine = YahooEngine()
+    started, release = threading.Event(), threading.Event()
+    upsert_fx_quote("DKKJPY=X", 20.0, time.time() - 3600)
+    def stalled():
+        started.set()
+        release.wait(10)
+        return None
+    monkeypatch.setattr(refresh_helpers, "request_cache_refresh", refresh_helpers.submit_cache_refresh)
+    with patch.object(engine, "_fetch_fx_rate", side_effect=lambda pair: stalled()) as fetch:
+        try:
+            with ThreadPoolExecutor(max_workers=8) as readers:
+                quotes = list(readers.map(lambda _: engine.get_cached_fx_rate("DKKJPY=X"), range(20)))
+            assert started.wait(2)
+            assert not release.is_set()
+            assert all(quote["rate"] == 20.0 for quote in quotes)
+            assert fetch.call_count == 1
+        finally:
+            release.set()
+            refresh_helpers._executor.submit(lambda: None).result(timeout=5)
+
+
+def test_missing_cached_fx_is_unavailable_without_network():
+    engine = YahooEngine()
+    with patch.object(engine, "_fetch_fx_rate", side_effect=AssertionError("interactive network")):
+        quote = engine.get_cached_fx_rate("MXNPLN=X", refresh=False)
+    assert quote["rate"] is None
+    assert quote["updated_at"] is None
+    assert not quote["available"]
+
+
+def test_force_fx_refresh_awaits_and_persists_success():
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from db_helpers import upsert_fx_quote
+    import time
+
+    engine = YahooEngine()
+    started, release = threading.Event(), threading.Event()
+    def refresh(pair):
+        started.set()
+        release.wait(10)
+        upsert_fx_quote(pair, 1.5, time.time())
+        return 1.5
+    with patch.object(engine, "_fetch_fx_rate", side_effect=refresh), ThreadPoolExecutor(max_workers=1) as callers:
+        try:
+            pending = callers.submit(engine.get_fx_rate, "CADAUD=X", force=True)
+            assert started.wait(2)
+            assert not pending.done()
+        finally:
+            release.set()
+        assert pending.result(timeout=5) == 1.5
+    assert YahooEngine().get_cached_fx_rate("CADAUD=X", refresh=False)["rate"] == 1.5
+
+
+def test_invalid_upstream_fx_does_not_replace_last_good_quote():
+    import time
+    from db_helpers import upsert_fx_quote
+
+    engine = YahooEngine()
+    upsert_fx_quote("AUDNZD=X", 1.1, time.time() - 3600)
+    with patch("yahoo_engine.yahoo_connection_boundary") as boundary, patch("yahoo_engine.yf.Ticker") as ticker:
+        boundary.return_value.__enter__.return_value = MagicMock()
+        ticker.return_value.history.return_value = pd.DataFrame({"Close": [float("nan")]})
+        assert engine.get_fx_rate("AUDNZD=X", force=True) is None
+    assert engine.get_cached_fx_rate("AUDNZD=X", refresh=False)["rate"] == 1.1

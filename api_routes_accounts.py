@@ -822,6 +822,9 @@ def api_set_holding_price_limit(body: HoldingPriceLimitBody):
 def _run_refresh_now(tickers: list) -> None:
     try:
         fetch_and_save_pulse(tickers)
+        from accounts_engine import native_currencies
+        from portfolio_service import refresh_fx_rates
+        refresh_fx_rates(native_currencies(tickers).values())
         for acc in get_accounts():
             if acc["account_type"] == "Trading":
                 refresh_performance_cache(acc["id"])

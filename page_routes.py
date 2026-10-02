@@ -44,7 +44,7 @@ from visuals_ai import (
     create_ai_contagion_performance_chart,
     create_ai_contagion_correlation_heatmap,
 )
-from portfolio_service import get_rate_to_base, get_rate_from_base
+from portfolio_service import get_rate_to_base, get_rate_from_base, get_fx_cache_status
 from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from quant_signals import get_candlestick_patterns
 import table_columns_helpers
@@ -343,6 +343,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
             account_options.append({"id": f"acct:{acc['id']}", "name": acc["name"]})
 
     portfolio_data = []
+    missing_fx = False
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
     pattern_tags_by_ticker = get_pattern_tags_by_ticker(portfolio_tickers)
 
@@ -402,7 +403,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
 
     from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS
     with measure_request_stage("history_anchors"):
-        anchor_closes = get_period_anchor_closes(list(set(portfolio_tickers)))
+        anchor_closes = get_period_anchor_closes(list(set(portfolio_tickers)), cache_only=True)
 
     change_period = request.cookies.get("portfolio_change_period", "1d")
     if change_period not in CHANGE_PERIODS:
@@ -453,20 +454,26 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
             with measure_request_stage("fx_rate"):
                 exchange_rate = position_sizing_context["fx_rates"].get(row_dict['currency'])
                 if exchange_rate is None:
-                    exchange_rate = get_rate_to_base(row_dict['currency'])
-            val_in_base = (shares * current_price) * exchange_rate
-            row_dict['market_value_base'] = round(val_in_base, 2)
-            row_dict['global_market_value'] = round(val_in_base, 2)
-            row_dict['live_shares'] = shares
-            row_dict['live_cost_base'] = cost_in_base
-            row_dict['live_fx_rate'] = exchange_rate
-
-            summary_math["value"] += val_in_base
+                    exchange_rate = get_rate_to_base(row_dict['currency'], cache_only=True)
+            row_dict["live_shares"] = shares
+            row_dict["live_cost_base"] = cost_in_base
             summary_math["cost"] += cost_in_base
+            if exchange_rate is None:
+                missing_fx = True
+            else:
+                val_in_base = (shares * current_price) * exchange_rate
+                row_dict['market_value_base'] = round(val_in_base, 2)
+                row_dict['global_market_value'] = round(val_in_base, 2)
+                row_dict['live_shares'] = shares
+                row_dict['live_cost_base'] = cost_in_base
+                row_dict['live_fx_rate'] = exchange_rate
 
-            pnl_in_base = val_in_base - cost_in_base
-            row_dict['global_unrealized_pnl'] = round(pnl_in_base, 2)
-            row_dict['global_unrealized_pnl_pct'] = round((pnl_in_base / cost_in_base) * 100, 2) if cost_in_base else None
+                summary_math["value"] += val_in_base
+
+                pnl_in_base = val_in_base - cost_in_base
+                row_dict['global_unrealized_pnl'] = round(pnl_in_base, 2)
+                row_dict['global_unrealized_pnl_pct'] = round((pnl_in_base / cost_in_base) * 100, 2) if cost_in_base else None
+
 
         row_dict['quality_grade'] = compute_quality_grade(row_dict)
 
@@ -488,7 +495,15 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
 
         row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "portfolio")
 
-    if summary_math["cost"] > 0:
+    if missing_fx:
+        formatted_summary = {
+            "value": "Unavailable — missing FX",
+            "cost": f"{summary_math['cost']:,.2f} {BASE_CURRENCY}",
+            "pnl": "Unavailable",
+            "pnl_pct": "—",
+            "is_positive": False,
+        }
+    elif summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
         summary_math["pnl_pct"] = (summary_math["pnl"] / summary_math["cost"]) * 100
         formatted_summary = {
@@ -517,6 +532,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
             "selected_account": account_id,
             "auto_xray": xray,
             "summary_math": formatted_summary,
+            "fx_incomplete": missing_fx,
             "config": config_data,
             "cached_pulse": live_pulse,
             "macro_regime": macro_regime,
@@ -781,7 +797,7 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
 
     from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS
     with measure_request_stage("history_anchors"):
-        anchor_closes = get_period_anchor_closes(list(set(watchlist_tickers)))
+        anchor_closes = get_period_anchor_closes(list(set(watchlist_tickers)), cache_only=True)
 
     change_period = request.cookies.get("watchlist_change_period", "1d")
     if change_period not in CHANGE_PERIODS:
@@ -1900,7 +1916,7 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
         priced = current_price_map([ticker]).get(ticker)
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
         with measure_request_stage("fx_rate"):
-            exchange_rate = get_rate_from_base(stock_data['currency'])
+            exchange_rate = get_rate_from_base(stock_data['currency'], cache_only=True)
         price_in_pence = user_asset.get('price_in_pence', False)
 
         global_math = calculate_pnl(
@@ -1962,7 +1978,7 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
     if portfolio_math and stock_data and stock_data.get("currency") == "USD":
         now = datetime.now(timezone.utc)
         ytd_days = (now.date() - now.date().replace(month=1, day=1)).days or 1
-        fx_breakdown = compute_fx_breakdown(ticker, ytd_days)
+        fx_breakdown = compute_fx_breakdown(ticker, ytd_days, cache_only=True)
 
     price_action = None
     try:
@@ -2041,6 +2057,8 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
     config_data = load_config()
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
     position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
+    if user_asset and stock_data:
+        position_sizing_context["fx_status"].extend(get_fx_cache_status([stock_data["currency"]], from_base=True))
     anomaly_chart_html = (
         "<div class='chart-ph chart-ph--lg'>"
         "<span class='chart-ph__icon'>📊</span>"

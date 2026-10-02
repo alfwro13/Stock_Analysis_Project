@@ -2467,3 +2467,21 @@ def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_refresh_now_awaits_fx_and_reports_fx_failure(client, monkeypatch):
+    completed = []
+    monkeypatch.setattr("accounts_engine.native_currencies", lambda tickers: {"ZZFX": "USD"})
+    def refresh(currencies):
+        completed.extend(currencies)
+    monkeypatch.setattr("portfolio_service.refresh_fx_rates", refresh)
+    response = client.post("/api/accounts/refresh-now")
+    assert response.status_code == 200
+    assert completed == ["USD"]
+    def failed(currencies):
+        raise RuntimeError("FX refresh failed; cached data retained")
+    monkeypatch.setattr("portfolio_service.refresh_fx_rates", failed)
+    response = client.post("/api/accounts/refresh-now")
+    assert response.status_code == 500
+    assert response.json()["status"] == "error"

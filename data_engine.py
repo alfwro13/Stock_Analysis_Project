@@ -40,7 +40,7 @@ class DataEngine:
             try:
                 Path(directory).mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                logger.error(f"Failed to create data directory {directory}: {e}")
+                logger.error('Failed to create data directory %s: %s', directory, e)
 
     @staticmethod
     def _strip_tz(df: pd.DataFrame) -> pd.DataFrame:
@@ -105,19 +105,19 @@ class DataEngine:
                 logger.info("All Market and Intermarket Baselines secured successfully.")
 
         except Exception as e:
-            logger.error(f"Failed to fetch Market baselines: {e}")
+            logger.error('Failed to fetch Market baselines: %s', e)
 
         try:
             GiltDataService().sync_gilt_data()
         except Exception as e:
-            logger.error(f"Gilt data sync failed (independent of Yahoo baselines): {e}")
+            logger.error('Gilt data sync failed (independent of Yahoo baselines): %s', e)
 
     def bulk_download_historical(self, tickers: List[str]) -> None:
         """Vectorized bulk download of 2-year daily prices to bypass rate limits."""
         if not tickers:
             return
 
-        logger.info(f"Bulk downloading 2Y Macro Historical data for {len(tickers)} assets...")
+        logger.info('Bulk downloading 2Y Macro Historical data for %s assets...', len(tickers))
         try:
             ticker_dfs = yahoo_engine.get_price_history(tickers, period="2y", interval="1d", force_refresh=True)
             if not ticker_dfs:
@@ -137,7 +137,7 @@ class DataEngine:
                 if not df.empty:
                     df.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
         except Exception as e:
-            logger.error(f"Fatal error during bulk historical download: {e}")
+            logger.error('Fatal error during bulk historical download: %s', e)
 
     def bulk_download_intraday(self, tickers: List[str]) -> None:
         if not tickers:
@@ -149,7 +149,7 @@ class DataEngine:
         if not tickers:
             return
 
-        logger.info(f"Bulk downloading 1D Intraday data for {len(tickers)} assets...")
+        logger.info('Bulk downloading 1D Intraday data for %s assets...', len(tickers))
         try:
             ticker_dfs = yahoo_engine.get_intraday(tickers, period="1d", interval="5m")
             if not ticker_dfs:
@@ -161,14 +161,14 @@ class DataEngine:
                 if not df.empty:
                     df.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
         except Exception as e:
-            logger.error(f"Fatal error during bulk intraday download: {e}")
+            logger.error('Fatal error during bulk intraday download: %s', e)
 
     def drip_feed_fundamentals(self, tickers: List[str]) -> None:
         """
         Slow, randomized drip-feed loop to fetch the raw .info JSON payloads.
         Mitigates strict JSON-endpoint rate-limiting.
         """
-        logger.info(f"Drip-feeding Fundamental JSONs for {len(tickers)} assets...")
+        logger.info('Drip-feeding Fundamental JSONs for %s assets...', len(tickers))
         for i, ticker in enumerate(tickers):
             try:
                 safe_ticker = safe_ticker_filename(ticker)
@@ -182,17 +182,17 @@ class DataEngine:
                         json.dump(fundamentals, f, default=str)
 
                 if i > 0 and i % 50 == 0:
-                    logger.info(f"Fundamentals progress: {i}/{len(tickers)}...")
+                    logger.info('Fundamentals progress: %s/%s...', i, len(tickers))
 
             except Exception as e:
-                logger.warning(f"Failed to fetch fundamentals for {ticker}: {e}")
+                logger.warning('Failed to fetch fundamentals for %s: %s', ticker, e)
             finally:
                 # Institutional Anti-Bot Randomization — pacing stays here, not in the engine
                 time.sleep(random.uniform(0.5, 2.0))
 
     def fetch_and_save_data(self, ticker: str) -> bool:
         """Legacy single-ticker fetcher used by manual UI refresh."""
-        logger.info(f"Processing Data for single ticker {ticker}...")
+        logger.info('Processing Data for single ticker %s...', ticker)
         safe_ticker = safe_ticker_filename(ticker)
         if not safe_ticker:
             logger.error("Refusing to fetch unsafe ticker %r.", ticker)
@@ -228,19 +228,19 @@ class DataEngine:
                     json.dump(fundamentals, f, default=str)
 
             if not persisted:
-                logger.warning(f"No price data returned for {ticker} — nothing persisted.")
+                logger.warning('No price data returned for %s — nothing persisted.', ticker)
                 return False
 
             return True
         except Exception as e:
-            logger.error(f"Pipeline failed for {ticker}: {str(e)}")
+            logger.error('Pipeline failed for %s: %s', ticker, str(e))
             return False
 
     def update_all_data(self) -> None:
         self.fetch_market_baseline()
 
         tickers = self.get_all_tickers()
-        logger.info(f"Target Acquisition: Found {len(tickers)} unique assets.")
+        logger.info('Target Acquisition: Found %s unique assets.', len(tickers))
 
         if not tickers:
             return
@@ -258,30 +258,68 @@ def fetch_and_save_single_ticker(ticker: str) -> bool:
     return DataEngine.__new__(DataEngine).fetch_and_save_data(ticker)
 
 
-def load_or_fetch_daily_history(ticker: str) -> Optional[pd.DataFrame]:
-    """Reads the daily parquet this ticker's own nightly fetch already wrote; only hits Yahoo (and caches the result) when no parquet exists yet for it."""
+def _fetch_daily_history(ticker: str, *, force_refresh=False):
+    import tempfile
+
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
+        return None
+    path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
+    if force_refresh:
+        data = yahoo_engine.get_price_history([ticker], period="2y", interval="1d", force_refresh=True)
+    else:
+        data = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+    df = data.get(ticker)
+    if df is None or df.empty:
+        return None
+    df = df.copy()
+    exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker))
+    last_date = df.index[-1].date()
+    if is_daily_bar_still_forming(last_date, last_date, exchange_open):
+        df = df.iloc[:-1]
+    if df.empty:
+        return None
+    if df.index.tz is not None:
+        df.index = df.index.tz_convert(None)
+    HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=HISTORICAL_DIR, suffix=".parquet", delete=False) as handle:
+            temporary = Path(handle.name)
+        df.to_parquet(temporary, engine="pyarrow")
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return df
+
+
+def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Optional[pd.DataFrame]:
+    from cache_refresh_helpers import submit_cache_refresh, request_cache_refresh
+
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
         logger.error("Refusing to load history for unsafe ticker %r.", ticker)
         return None
     path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
-    if not path.exists():
+    df = None
+    if path.exists():
         try:
-            data = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
-            df = data.get(ticker)
-            if df is None or df.empty:
-                return None
-            if df.index.tz is not None:
-                df.index = df.index.tz_convert(None)
-            HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
-            df.to_parquet(path, engine="pyarrow")
+            df = pd.read_parquet(path)
         except Exception as e:
-            logger.error("Failed to fetch fallback history for %s: %s", ticker, e)
-            return None
+            logger.error("Failed to read historical parquet for %s: %s", ticker, e)
+    if cache_only:
+        stale = df is None or time.time() - path.stat().st_mtime > load_config()["PERFORMANCE"]["DAILY_HISTORY_FRESH_SECONDS"]
+        if stale and not is_excluded_from_yahoo_fetch(ticker):
+            request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
+        return df
+    if df is not None:
+        return df
     try:
-        return pd.read_parquet(path)
+        future = submit_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker))
+        return future.result() if future is not None else None
     except Exception as e:
-        logger.error("Failed to read historical parquet for %s: %s", ticker, e)
+        logger.error("Failed to fetch fallback history for %s: %s", ticker, e)
         return None
 
 
@@ -307,8 +345,7 @@ def run_yfinance_smoke_test() -> bool:
             return False
 
         logger.info(
-            f"yfinance schema OK — SPY {len(df)} rows, "
-            f"columns: {sorted(df.columns.tolist())}"
+            'yfinance schema OK — SPY %s rows, columns: %s', len(df), sorted(df.columns.tolist())
         )
         return True
 

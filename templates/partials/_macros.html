@@ -15,3 +15,13 @@
         </div>
     {% endfor %}
 {% endmacro %}
+
+{% macro fx_cache_notice(statuses) %}
+    {% for status in statuses %}
+        <p class="text-warning mb-2">
+            FX {{ status.pair }}: {% if status.available %}using cached rate{% else %}conversion unavailable{% endif %}.
+            {% if status.updated_display %}Last successful update: {{ status.updated_display }}.{% else %}No successful update cached.{% endif %}
+            Refresh requested in the background; reload to see updated values.
+        </p>
+    {% endfor %}
+{% endmacro %}

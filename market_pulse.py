@@ -1,4 +1,5 @@
 import time
+import math
 import logging
 import threading
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ import pandas as pd
 import notification_engine
 from config import load_config, HISTORICAL_DIR
 from database import get_connection, get_mutual_fund_tickers, get_ticker_registry
-from db_helpers import resolve_live_price
+from db_helpers import resolve_live_price, upsert_fx_quote
 from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
@@ -630,12 +631,14 @@ def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn:
     """Shares a price another engine already fetched for its own use instead of it being discarded; keeps an existing name if one is already on record."""
     if price is None or not prev_close:
         return
+    if ticker.endswith("=X") and (not math.isfinite(float(price)) or price <= 0):
+        return
     change_pts = price - prev_close
     change_pct = (change_pts / prev_close) * 100.0
     owns_conn = conn is None
-    if owns_conn:
-        conn = get_connection()
     try:
+        if owns_conn:
+            conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
@@ -648,6 +651,8 @@ def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn:
                 is_positive = excluded.is_positive,
                 last_updated = excluded.last_updated
         ''', (ticker, name, price, change_pts, change_pct, int(change_pts >= 0), time.time()))
+        if ticker.endswith("=X"):
+            upsert_fx_quote(ticker, float(price), time.time(), conn=conn)
         conn.commit()
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to upsert live price for %s: %s", ticker, e)
@@ -853,6 +858,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
                 if not skip_price_update:
+                    if ticker.endswith("=X") and (not math.isfinite(float(current_price)) or current_price <= 0):
+                        continue
                     if abs(change_pct) > 50.0:
                         logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
                         continue
@@ -879,6 +886,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                             extended_session = excluded.extended_session
                     ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time,
                           market_state, extended_price, extended_change_pts, extended_change_pct, extended_session))
+                    if ticker.endswith("=X"):
+                        upsert_fx_quote(ticker, float(current_price), time.time(), conn=conn)
 
                 # Full replace, not append — the mini sparkline is inherently "today's session".
                 # Skipped when t_live is empty (market closed) so the last session's line persists
@@ -898,7 +907,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
 
             except Exception as e:
-                logger.error(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
+                logger.error("[MARKET PULSE BACKGROUND] Error processing %s: %s", ticker, e)
                 
         if handle_gilt:
             try:
@@ -911,9 +920,9 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         df_gilt_hist = pd.read_parquet(parquet_path)
                         if not df_gilt_hist.empty:
                             live_gilt_yield = float(df_gilt_hist['Close'].iloc[-1])
-                            logger.info(f"Live FT scrape returned None. Falling back to Parquet value: {live_gilt_yield}")
+                            logger.info("Live FT scrape returned None. Falling back to Parquet value: %s", live_gilt_yield)
                     except Exception as ex:
-                        logger.error(f"Failed to read Parquet fallback for market pulse: {ex}")
+                        logger.error("Failed to read Parquet fallback for market pulse: %s", ex)
                 
                 if live_gilt_yield is not None:
                     gilt_prev_close: float = live_gilt_yield
@@ -950,11 +959,11 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     else:
                         cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = 'UK10YG'")
             except Exception as ex:
-                logger.error(f"[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: {ex}")
+                logger.error("[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: %s", ex)
                 
         conn.commit()
     except Exception as e:
-        logger.error(f"[MARKET PULSE BACKGROUND] Batch download failed: {e}")
+        logger.error("[MARKET PULSE BACKGROUND] Batch download failed: %s", e)
     finally:
         if conn:
             conn.close()

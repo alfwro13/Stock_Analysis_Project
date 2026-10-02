@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/_macros.html" import pattern_tags %}
+{% from "partials/_macros.html" import pattern_tags, fx_cache_notice %}
 
 {% block title %}Quantamental - Portfolio{% endblock %}
 
@@ -10,9 +10,11 @@
 {% block body_class %}body-portfolio{% endblock %}
 
 {% block content %}
+{{ fx_cache_notice(position_sizing.fx_status) }}
 <script>
 window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
 window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
+window.FX_INCOMPLETE = {{ fx_incomplete | tojson }};
 window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
 window.ENABLE_LIVE_ASSETS = {% if not embed and config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
 window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000{% else %}60000{% endif %};

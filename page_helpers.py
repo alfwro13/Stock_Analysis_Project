@@ -7,7 +7,7 @@ import time_engine
 from config import FUNDAMENTALS_DIR
 from database import get_connection
 from position_sizing import get_position_sizing_config
-from portfolio_service import get_rate_to_base
+from portfolio_service import get_rate_to_base, get_fx_cache_status
 from utils import safe_ticker_filename
 from fundamentals_helpers import (
     compute_quality_grade,
@@ -233,7 +233,7 @@ def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
     fx_rates = {}
     for cur in currencies:
         try:
-            rate = get_rate_to_base(cur)
+            rate = get_rate_to_base(cur, cache_only=True)
             if rate is not None and rate > 0:
                 fx_rates[cur] = float(rate)
         except Exception:
@@ -243,6 +243,7 @@ def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
     return {
         "config":       get_position_sizing_config(config_data),
         "fx_rates":     fx_rates,
+        "fx_status":    get_fx_cache_status(currencies),
         "base_currency": base_currency,
     }
 
@@ -254,7 +255,7 @@ def calculate_pnl(
     current_price: float,
     price_in_pence: bool = False,
 ) -> Optional[dict]:
-    if shares <= 0:
+    if shares <= 0 or exchange_rate is None:
         return None
     bp_adj = buy_price_base * exchange_rate
     if price_in_pence:

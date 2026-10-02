@@ -168,3 +168,16 @@ def test_username():
 @pytest.fixture(scope="session")
 def test_password():
     return _TEST_PASSWORD
+
+
+@pytest.fixture(autouse=True)
+def _block_navigation_cache_refresh():
+    with patch("cache_refresh_helpers.request_cache_refresh"):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _block_explicit_fx_refresh():
+    from portfolio_service import refresh_fx_rates
+    with patch("portfolio_service.refresh_fx_rates"):
+        yield refresh_fx_rates

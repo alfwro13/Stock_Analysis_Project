@@ -122,3 +122,7 @@ A compact inline "FX Breakdown (YTD)" row appended to the "Your Position" box fo
 - **2-year Parquet cap.** The `GBPUSD_BASELINE.parquet` covers ~2 years of daily data. The 2Y period may have sparse or missing data near its boundary, in which case `compute_fx_breakdown` returns `None`.
 - **USD positions only.** Positions where `stock_signals.currency != 'USD'` are excluded. EUR, GBX, GBP positions have different FX dynamics not covered by this tool.
 - **BASE_CURRENCY guard.** If `BASE_CURRENCY` in `config.json` is not `"GBP"`, `portfolio_fx_breakdown` returns an empty list — the analysis is only meaningful for GBP-base investors.
+
+### Cached Stock Detail fallback
+
+Stock Detail calls `compute_fx_breakdown(..., cache_only=True)`. When `GBPUSD_BASELINE.parquet` cannot be read, the fallback uses the canonical cached `GBPUSD=X` daily-history Parquet and requests a coordinated background refresh if necessary. It never waits for Yahoo during page assembly. Missing usable history returns `None`, leaving the page usable without an FX decomposition. The standalone analyzer's default on-demand fetch behaviour is preserved. FX conversion cache policy and explicit Refresh behaviour are documented in `system_architecture.md` under Cached Navigation.

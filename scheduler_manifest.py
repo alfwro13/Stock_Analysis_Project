@@ -4,6 +4,7 @@ import re
 # the same wording is searchable in both places — never use code-style names here.
 # Jobs that share one Settings panel use that panel's name plus a parenthetical.
 JOB_GRAPH: dict[str, dict] = {
+    "cached_navigation_source": {"label": "Cached Navigation", "category": "manual", "engine": "page_routes.py", "produces": ["market_pulse_cache", "historical_parquet"], "consumes": ["portfolio", "watchlist_items", "stock_signals", "market_pulse_cache", "historical_parquet", "yahoo_price_data"], "non_job": True, "settings_anchor": None},
     # External data sources — not scheduled jobs; rendered with distinct styling in the graph.
     "yahoo_finance_source":           {"label": "Yahoo Finance",                                  "category": "external",    "engine": "yahoo_engine.py",               "produces": ["yahoo_price_data"],                                           "consumes": [],                                                                   "settings_anchor": None},
 

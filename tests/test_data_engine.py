@@ -598,3 +598,88 @@ def test_fetch_and_save_data_trims_in_progress_last_bar(tmp_path):
     saved = pd.read_parquet(tmp_path / "AMD.parquet")
     assert len(saved) == 1
     assert saved["Close"].iloc[-1] == 517.82
+
+
+def test_cache_only_missing_history_schedules_without_fetch(tmp_path):
+    from data_engine import load_or_fetch_daily_history
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history") as network, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert load_or_fetch_daily_history("ZZCOLD", cache_only=True) is None
+    network.assert_not_called()
+    refresh.assert_called_once()
+    assert refresh.call_args.args[0] == "daily:ZZCOLD"
+    assert not (tmp_path / "ZZCOLD.parquet").exists()
+
+
+def test_cache_only_stale_history_returns_last_good_after_failed_refresh(tmp_path):
+    import os
+    import time
+    import pandas as pd
+    from data_engine import load_or_fetch_daily_history
+
+    path = tmp_path / "ZZSTALE.parquet"
+    df = pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2026-01-01"]))
+    df.to_parquet(path)
+    os.utime(path, (time.time() - 86400, time.time() - 86400))
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={}), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        result = load_or_fetch_daily_history("ZZSTALE", cache_only=True)
+        assert result["Close"].iloc[-1] == 100.0
+        assert refresh.call_args.args[1]() is None
+        pd.testing.assert_frame_equal(pd.read_parquet(path), df)
+
+
+@pytest.mark.parametrize("ticker", ["TBILL-999", "PENSION-999", "GBP"])
+def test_cache_only_history_never_refreshes_excluded_tickers(tmp_path, ticker):
+    from data_engine import load_or_fetch_daily_history
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert load_or_fetch_daily_history(ticker, cache_only=True) is None
+    refresh.assert_not_called()
+
+
+@pytest.mark.parametrize("market_open,expected_rows", [(True, 2), (False, 3)])
+def test_history_refresh_preserves_completed_bar_rules(tmp_path, market_open, expected_rows):
+    from datetime import datetime, timezone
+    import pandas as pd
+    from data_engine import _fetch_daily_history
+
+    today = datetime.now(timezone.utc).date()
+    df = pd.DataFrame({"Close": [10.0, 11.0, 12.0]}, index=pd.date_range(end=today, periods=3))
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZBAR": df}), patch("time_engine.is_market_open", return_value=market_open):
+        fetched = _fetch_daily_history("ZZBAR")
+    assert len(fetched) == expected_rows
+    assert len(pd.read_parquet(tmp_path / "ZZBAR.parquet")) == expected_rows
+
+
+def test_cache_only_fresh_history_does_not_schedule_refresh(tmp_path):
+    import pandas as pd
+    from data_engine import load_or_fetch_daily_history
+
+    pd.DataFrame({"Close": [10.0]}, index=pd.to_datetime(["2026-01-01"])).to_parquet(tmp_path / "ZZFRESH.parquet")
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert load_or_fetch_daily_history("ZZFRESH", cache_only=True)["Close"].iloc[-1] == 10.0
+    refresh.assert_not_called()
+
+
+def test_stale_daily_refresh_bypasses_partial_yahoo_memory_cache(tmp_path):
+    import pandas as pd
+    import os
+    import time
+    from datetime import datetime, timezone
+    from data_engine import load_or_fetch_daily_history
+
+    ticker = "ZZSETTLED"
+    path = tmp_path / (ticker + ".parquet")
+    today = datetime.now(timezone.utc).date()
+    old = pd.DataFrame({"Close": [10.0, 11.0]}, index=pd.date_range(end=today, periods=2))
+    old.to_parquet(path)
+    os.utime(path, (time.time() - 86400, time.time() - 86400))
+    settled = old.copy()
+    settled.iloc[-1, 0] = 12.0
+    def history(tickers, **kwargs):
+        return {ticker: settled if kwargs.get("force_refresh") else old}
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", side_effect=history) as fetch, patch("time_engine.is_market_open", return_value=False), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert load_or_fetch_daily_history(ticker, cache_only=True)["Close"].iloc[-1] == 11.0
+        assert refresh.call_args.args[1]()["Close"].iloc[-1] == 12.0
+    fetch.assert_called_once_with([ticker], period="2y", interval="1d", force_refresh=True)
+    assert pd.read_parquet(path)["Close"].iloc[-1] == 12.0

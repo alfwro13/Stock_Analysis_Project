@@ -1,17 +1,3 @@
-/*
- * position_sizing.js — Client-side risk-parity position sizing
- *
- * Mirrors the Python function in position_sizing.py exactly.
- * Used by watchlist, portfolio, and stock_detail pages to render
- * suggested share counts and position values per row.
- *
- * Globals expected on each page:
- *   window.POSITION_SIZING_CONFIG  — { ACCOUNT_VALUE, RISK_PCT, STOP_MULTIPLE }
- *   window.BASE_CURRENCY           — "GBP" | "USD" | "EUR" | ...
- *   window.FX_RATES                — { "USD": 0.79, "EUR": 0.85, "GBP": 1.0, ... }
- *                                     Rate is BASE per native unit.
- */
-
 window.PositionSizing = (function () {
     "use strict";
 
@@ -70,7 +56,6 @@ function formatCurrency(amount, currencyCode, locale) {
         }
         
         if (!locale) {
-            // Sensible locale defaults based on currency
             locale = ({
                 "GBP": "en-GB",
                 "USD": "en-US",
@@ -85,19 +70,14 @@ function formatCurrency(amount, currencyCode, locale) {
                 maximumFractionDigits: 2,
             }).format(amount);
         } catch (e) {
-            // Fallback if browser doesn't support the currency code
             return currencyCode + " " + amount.toFixed(2);
         }
     }
 
-    /**
-     * Convenience wrapper used in row-by-row table rendering.
-     * Reads config from window globals and returns a render-ready object.
-     */
     function calculateForRow(entryPriceNative, atrPct, currencyNative) {
         const cfg = window.POSITION_SIZING_CONFIG || {};
         const fxRates = window.FX_RATES || {};
-        const fxRate = fxRates[currencyNative] != null ? fxRates[currencyNative] : 1.0;
+        const fxRate = fxRates[currencyNative] != null ? fxRates[currencyNative] : null;
 
         return calculate({
             accountValue:  cfg.ACCOUNT_VALUE,
