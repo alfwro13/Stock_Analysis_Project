@@ -78,6 +78,8 @@ Finally, the schematic maps how the Web Terminal combines both data streams to r
 * **Interactive Charts (Plotly.js):** Charts use engine-provided time series and summaries; heavy price history comes from Parquet while relational results and caches come from SQLite.
 * **Nextcloud Talk:** Alerts are delivered through the unified notification router according to each source's configured channels.
 
+Stock Detail converts the recorded base-currency average cost into the ticker's native quote units before calculating unrealized P&L, for both the global position and each account. The pence conversion follows `stock_signals.currency == "GBp"`, independently of the transaction currency or `price_in_pence` flag. A pence-quoted holding bought in GBP therefore keeps the same cost basis and percentage return as Portfolio.
+
 ### Request latency diagnostics
 
 `main.py` times Portfolio, Watchlist, Stock Detail, intraday refresh, and the four Home Assistant account-list/summary routes. Their `Server-Timing` response header reports application handler time plus measured stages when present: `sql`, `fx_context`, `fx_rate`, `history_anchors`, `yahoo_lock_wait`, `yahoo_fetch`, `chart`, `template`, and `metrics`. The `template` stage measures Jinja response rendering after context values are assembled. Stage values are elapsed milliseconds and can overlap when one measured call invokes another. The header ends when the response is assembled; it does not measure browser rendering or network transfer. Requests over one second write an INFO `request_timing` line; faster requests write the same line at DEBUG. Logs use fixed route patterns, method, status, and durations only, without query strings, tickers, cookies, headers, or response bodies.

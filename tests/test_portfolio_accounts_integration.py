@@ -468,3 +468,42 @@ def test_missing_fx_marks_portfolio_total_unavailable(client, monkeypatch):
     assert "conversion unavailable" in response.text
     assert 'window.FX_INCOMPLETE = true;' in response.text
     assert 'data-fx-rate=""' in response.text
+
+
+@pytest.mark.pages
+@pytest.mark.parametrize("quote_currency,trade_currency,pence_flag", [
+    ("GBp", "GBP", False),
+    ("GBp", "GBp", True),
+    ("GBP", "GBp", True),
+])
+def test_stock_detail_pnl_uses_quote_units_across_accounts(
+    client, quote_currency, trade_currency, pence_flag,
+):
+    ticker = f"ZZPNL{int(quote_currency == 'GBp')}{int(trade_currency == 'GBp')}{int(pence_flag)}.L"
+    trade_scale = 100 if trade_currency == "GBp" else 1
+    for name, shares, cost in (("First", 10, 10), ("Second", 5, 10)):
+        aid = create_account(f"Pnl {name} {ticker}", "GBP")
+        add_transaction(
+            aid, "Buy", "2026-01-05", ticker=ticker, currency=trade_currency,
+            quantity=shares, unit_price=cost * trade_scale,
+            exchange_rate=1 / trade_scale, price_in_pence=pence_flag,
+        )
+    _seed_stock_signal(ticker, 800 if quote_currency == "GBp" else 8, quote_currency)
+    _seed_market_pulse(ticker, 900 if quote_currency == "GBp" else 9)
+
+    portfolio = client.get("/portfolio")
+    assert portfolio.status_code == 200
+    assert _global_market_value(portfolio.text, ticker) == pytest.approx(135)
+    row = re.search(rf'data-ticker="{ticker}".*?</tr>', portfolio.text, re.DOTALL)
+    assert "-15.00" in row.group(0)
+
+    detail = client.get(f"/stock/{ticker}")
+    assert detail.status_code == 200
+    position = detail.text.split("Your Position (Global Aggregation)", 1)[1].split("Account Breakdown", 1)[0]
+    position = " ".join(position.split())
+    assert re.search(r"Current Value:</span>\s*<strong>\s*135.00 GBP\s*</strong>", position)
+    assert "-15.00 GBP (-10.0%)" in position
+    breakdown = detail.text.split("Account Breakdown", 1)[1].split("Position Targets", 1)[0]
+    breakdown = " ".join(breakdown.split())
+    assert "-10.00 GBP (-10.0%)" in breakdown
+    assert "-5.00 GBP (-10.0%)" in breakdown
