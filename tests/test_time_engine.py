@@ -1,7 +1,7 @@
 """Tests for time_engine public API."""
 import json
 import pytest
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
@@ -124,10 +124,22 @@ class TestTickerExchangeOrNone:
 # ---------------------------------------------------------------------------
 
 class TestMarketWindowUtc:
-    def test_open_before_close_for_all_exchanges(self):
-        for exchange in EXCHANGE_HOURS:
-            open_utc, close_utc = market_window_utc(exchange)
-            assert open_utc < close_utc, f"{exchange}: open >= close"
+    @pytest.mark.parametrize("fixed_utc", [_SUMMER_UTC, _WINTER_UTC])
+    def test_session_duration_for_all_exchanges(self, fixed_utc):
+        with patch("time_engine.datetime", _fake_datetime(fixed_utc)):
+            for exchange, info in EXCHANGE_HOURS.items():
+                open_utc, close_utc = market_window_utc(exchange)
+                actual = (datetime.combine(fixed_utc.date(), close_utc)
+                          - datetime.combine(fixed_utc.date(), open_utc)) % timedelta(days=1)
+                expected = (datetime.combine(fixed_utc.date(), time_engine._parse_hm(info["close"]))
+                            - datetime.combine(fixed_utc.date(), time_engine._parse_hm(info["open"])))
+                assert actual == expected, f"{exchange}: session duration mismatch"
+
+    def test_asx_daylight_saving_session_crosses_utc_midnight(self):
+        with patch("time_engine.datetime", _fake_datetime(_WINTER_UTC)):
+            open_utc, close_utc = market_window_utc("ASX")
+        assert open_utc == dtime(23, 0)
+        assert close_utc == dtime(5, 0)
 
     def test_nyse_summer_open_is_1330_utc(self):
         with patch("time_engine.datetime", _fake_datetime(_SUMMER_UTC)):
