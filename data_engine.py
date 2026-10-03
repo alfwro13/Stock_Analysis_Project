@@ -383,6 +383,8 @@ def load_or_fetch_intraday_history(ticker: str):
         return None
 
     def read_fresh():
+        if not path.startswith(root + os.sep):
+            return None
         try:
             df = pd.read_parquet(path)
             fetched_at = df.attrs.get("yahoo_fetched_at", os.path.getmtime(path))
