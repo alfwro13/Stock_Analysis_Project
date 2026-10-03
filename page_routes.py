@@ -1924,7 +1924,7 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
         with measure_request_stage("fx_rate"):
             exchange_rate = get_rate_from_base(stock_data['currency'], cache_only=True)
-        price_in_pence = user_asset.get('price_in_pence', False)
+        price_in_pence = stock_data['currency'] == 'GBp'
 
         global_math = calculate_pnl(
             user_asset.get('global_shares', 0),
