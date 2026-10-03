@@ -1,0 +1,128 @@
+name: 🐞 Bug report
+description: Something is broken in the dashboard. Please complete every section.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Please read before submitting
+
+        This is a **hobby project** provided "as is". There is **no guaranteed support** and no promised response time (see the Support & Disclaimer section of the README).
+        Reports that skip the steps below, or have no logs, will be closed without a reply.
+
+        **This form is for bugs only.** Setup help, "how do I..." questions and market/trading questions are not bugs.
+
+  - type: checkboxes
+    id: self_help
+    attributes:
+      label: Before you submit, I confirm that I have
+      options:
+        - label: Read the README and the relevant files in the `assets/` folder, including the in-app Glossary where relevant
+          required: true
+        - label: Searched existing open AND closed issues and this is not a duplicate
+          required: true
+        - label: Updated to the latest `main`, run `pip install -r requirements.txt` again, and restarted the app
+          required: true
+        - label: Checked Settings → Notifications and the System Health banner for related warnings
+          required: true
+        - label: Asked an AI assistant (ChatGPT, Claude, Gemini, etc.) to help diagnose the problem using my logs, and tried its suggestions
+          required: true
+        - label: Enabled file logging (Settings → Core System & Currencies → FILE_LOGGING) and attached the relevant log lines below
+          required: true
+        - label: Removed all secrets from anything I post (see the warning in the logs section)
+          required: true
+
+  - type: textarea
+    id: ai_tried
+    attributes:
+      label: What did the AI assistant suggest, and what happened when you tried it?
+      description: Name the AI you used, summarise what it said, and what the result was. "Didn't try" is not acceptable.
+      placeholder: "Claude suggested X, I tried it and got Y."
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What is wrong?
+      description: Describe what you did, what you expected, and what actually happened. Include the page or feature (e.g. Portfolio, Watchlist, ML training, Ghostfolio sync, Backup).
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area is affected?
+      options:
+        - Install / first start
+        - Login / password
+        - Portfolio / Watchlist
+        - Built-in Accounts / CSV import
+        - Ghostfolio sync
+        - ML / AI engine (training, predictions)
+        - Scheduler / background jobs
+        - Yahoo Finance data / rate limits
+        - Alerts / Nextcloud Talk
+        - Backup / restore
+        - Home Assistant / embed
+        - Nginx / systemd
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version / commit
+      description: "Output of `git rev-parse --short HEAD` run in the project folder."
+      placeholder: "e.g. a1b2c3d"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Paste the output of the commands below (this is safe to share).
+      placeholder: |
+        Run these and paste the result:
+          python3 --version
+          cat /etc/os-release | head -3
+          uname -m
+          pip list 2>/dev/null | grep -i -E "yfinance|pandas|numpy|xgboost|scikit-learn|fastapi"
+        Also say: systemd service, Docker, or manual run? Behind Nginx? Raspberry Pi / NAS / VM?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        **REQUIRED.** Paste the relevant lines from `logs/app.log` (or the Log Viewer at `/log-viewer`), including the lines **before** the error. If you run it as a service, also include `sudo journalctl -u stock_analysis_project -n 200 --no-pager`.
+        Set the log LEVEL to DEBUG, reproduce the problem once, then copy the output.
+
+        ⚠️ **Remove secrets first:** Ghostfolio token, API keys, embed tokens, passwords, SMTP credentials, Nextcloud webhook URLs, public domain names and anything from `.env` or `config.json`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
+      description: Optional. Drag and drop screenshots here. Do not include portfolio values you want to keep private.
+    validations:
+      required: false
