@@ -1,0 +1,41 @@
+name: 💡 Feature request
+description: Suggest an improvement. This is a hobby project, so there is no promise it will be built.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a personal hobby project, so **requests may never be implemented**. Pull requests are welcome.
+        This is not investment advice software and trading-strategy debates are out of scope.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit, I confirm that I have
+      options:
+        - label: Read the README, the `assets/` docs and the in-app Glossary, and the feature does not already exist
+          required: true
+        - label: Searched open AND closed issues for a similar request
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to see?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you have tried
+    validations:
+      required: false

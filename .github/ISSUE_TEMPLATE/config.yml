@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Read the documentation first
+    url: https://github.com/alfwro13/Stock_Analysis_Project#readme
+    about: Setup, Settings, logging, Nginx, systemd and Home Assistant are all covered in the README and the assets/ folder.
