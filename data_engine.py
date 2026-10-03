@@ -375,9 +375,9 @@ def load_or_fetch_intraday_history(ticker: str):
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
         return None
-    root = INTRADAY_DIR.resolve()
-    path = (root / f"{safe_ticker}_intraday.parquet").resolve()
-    if not path.is_relative_to(root):
+    root = os.path.realpath(INTRADAY_DIR)
+    path = os.path.realpath(os.path.join(root, f"{safe_ticker}_intraday.parquet"))
+    if not path.startswith(root + os.sep):
         return None
     if ticker in get_mutual_fund_tickers([ticker]):
         return None
@@ -385,7 +385,7 @@ def load_or_fetch_intraday_history(ticker: str):
     def read_fresh():
         try:
             df = pd.read_parquet(path)
-            fetched_at = df.attrs.get("yahoo_fetched_at", path.stat().st_mtime)
+            fetched_at = df.attrs.get("yahoo_fetched_at", os.path.getmtime(path))
             if not df.empty and time.time() - fetched_at < yahoo_engine._ttl("intraday", "5m"):
                 return df
         except (OSError, ValueError):
@@ -406,7 +406,7 @@ def load_or_fetch_intraday_history(ticker: str):
         df = df.copy()
         if df.index.tz is not None:
             df.index = df.index.tz_convert(None)
-        root.mkdir(parents=True, exist_ok=True)
+        os.makedirs(root, exist_ok=True)
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(dir=root, suffix=".parquet", delete=False) as handle:

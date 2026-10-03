@@ -787,12 +787,15 @@ def test_intraday_history_exclusions_do_not_fetch(tmp_path, ticker):
     fetch.assert_not_called()
 
 
-def test_intraday_history_rejects_symlink_escape(tmp_path):
+@pytest.mark.parametrize("outside_directory", ["outside", "cache-sibling"])
+def test_intraday_history_rejects_symlink_escape(tmp_path, outside_directory):
     from data_engine import load_or_fetch_intraday_history
 
     root = tmp_path / "cache"
     root.mkdir()
-    outside = tmp_path / "outside.parquet"
+    outside_root = tmp_path / outside_directory
+    outside_root.mkdir()
+    outside = outside_root / "outside.parquet"
     outside.write_text("untouched")
     (root / "STEP4ESCAPE_intraday.parquet").symlink_to(outside)
     with patch("data_engine.INTRADAY_DIR", root), \
