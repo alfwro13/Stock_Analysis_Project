@@ -50,6 +50,7 @@ from quant_signals import get_candlestick_patterns
 import table_columns_helpers
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
 from page_helpers import (
+    intraday_chart_revision,
     _load_fundamentals_extra,
     _utc_str_to_local,
     _build_position_sizing_context,
@@ -1980,11 +1981,12 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
         ytd_days = (now.date() - now.date().replace(month=1, day=1)).days or 1
         fx_breakdown = compute_fx_breakdown(ticker, ytd_days, cache_only=True)
 
+    currency = stock_data.get("currency", "USD") if stock_data else "USD"
+    intraday_revision = intraday_chart_revision(ticker, currency)
     price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
 
-        currency = stock_data.get('currency', 'USD') if stock_data else 'USD'
         if ticker.endswith('.L') or currency in ['GBp', 'GBP']:
             try:
                 df_baseline = pd.read_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet")
@@ -2050,8 +2052,10 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
                 data_delay_minutes=delay_min,
             )
     except FileNotFoundError:
+        intraday_revision = ""
         intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span><span class='chart-ph__hint'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"
     except Exception:
+        intraday_revision = ""
         intraday_html = "<div class='chart-ph chart-ph--sm chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Intraday data unavailable</span></div>"
 
     config_data = load_config()
@@ -2158,6 +2162,7 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
             "sector_weightings": sector_weightings,
             "macro_html": macro_html,
             "intraday_html": intraday_html,
+            "intraday_revision": intraday_revision,
             "anomaly_chart_html": anomaly_chart_html,
             "anomaly_radar_html": anomaly_radar_html,
             "anomaly_percentile": anomaly_percentile,

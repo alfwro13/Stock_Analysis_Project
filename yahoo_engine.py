@@ -281,18 +281,27 @@ class YahooEngine:
                 # tracking + escalation mechanism (see class docstring-level comment there).
                 suppress_yf_delisted_noise(True)
                 with _yf_singleton_lock:
+                    for t in missing:
+                        cached = self._get(key_fn(t))
+                        if cached is not None:
+                            result[t] = cached
+                    missing = [t for t in missing if result[t] is None]
+                    if not missing:
+                        return {t: df for t, df in result.items() if df is not None}
                     with yahoo_connection_boundary(f"Intraday {period}/{interval}", lock=_yf_singleton_lock) as session:
                         df_bulk = yf.download(
                             missing, period=period, interval=interval, prepost=prepost,
                             group_by="ticker", auto_adjust=True, progress=False,
                             session=session,
                         )
-                if not df_bulk.empty:
-                    is_single = len(missing) == 1
-                    for t in missing:
-                        df = self._slice_bulk(df_bulk, t, is_single)
-                        self._set(key_fn(t), df, ttl)
-                        result[t] = df
+                    if not df_bulk.empty:
+                        is_single = len(missing) == 1
+                        for t in missing:
+                            df = self._slice_bulk(df_bulk, t, is_single)
+                            if df is not None and not df.empty:
+                                df.attrs["yahoo_fetched_at"] = time.time()
+                            self._set(key_fn(t), df, ttl)
+                            result[t] = df
             except Exception:
                 logger.error("get_intraday failed for %s", missing, exc_info=True)
             finally:

@@ -782,6 +782,7 @@
 <script>
     window.IS_IN_WATCHLIST        = {{ 'true' if is_in_watchlist else 'false' }};
     window.STOCK_HAS_NAME_OVERRIDE = {{ 'true' if stock.has_name_override else 'false' }};
+    window.INTRADAY_REVISION = {{ intraday_revision | tojson }};
     window.STOCK_TICKER      = "{{ stock.ticker }}";
     window.STOCK_QUOTE_TYPE  = "{{ stock.quote_type }}";
     window.IS_DIP_MONITORED  = {{ 'true' if is_dip_monitored else 'false' }};

@@ -38,7 +38,7 @@ from visuals import (
     create_uk_inflation_chart,
 )
 from constants import CSS_VERSION
-from page_helpers import get_unread_count, _utc_str_to_local
+from page_helpers import get_unread_count, _utc_str_to_local, intraday_chart_revision
 
 logger = logging.getLogger(__name__)
 
@@ -395,6 +395,7 @@ async def index_detail(request: Request, ticker: str):
     finally:
         conn.close()
 
+    intraday_revision = await run_in_threadpool(intraday_chart_revision, ticker, currency)
     price_action = None
     # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
     # — but a future's own page must never fall back to its spot row's baseline (a different
@@ -434,8 +435,10 @@ async def index_detail(request: Request, ticker: str):
         intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
                                               market_tz=mkt_tz, data_delay_minutes=delay_min)
     except FileNotFoundError:
+        intraday_revision = ""
         intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span></div>"
     except Exception:
+        intraday_revision = ""
         intraday_html = "<div class='chart-ph chart-ph--sm chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Intraday data unavailable</span></div>"
 
     return templates.TemplateResponse(
@@ -456,6 +459,7 @@ async def index_detail(request: Request, ticker: str):
             "context_blurb": (registry_row.get("context_blurb") if registry_row else None) or "",
             "macro_html":    macro_html,
             "intraday_html": intraday_html,
+            "intraday_revision": intraday_revision,
             "price_action":  price_action,
             "unread_count":  get_unread_count(),
             "config":        load_config(),
