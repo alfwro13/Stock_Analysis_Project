@@ -1957,3 +1957,38 @@ vm.runInContext(fs.readFileSync(0, 'utf8'), context);
 """
     result = subprocess.run([node, "-e", script, page], input=timer, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.pages
+@pytest.mark.parametrize("url", ["/portfolio", "/watchlist", "/stock/ZZREUSE"])
+def test_page_buy_recommendations_reuse_existing_scores(client, url):
+    import database
+
+    confluence = {"ZZREUSE": {"bullish_pillars": ["technical", "ml"], "bearish_pillars": [], "confluence": True, "direction": "bullish"}}
+    regime = {"ZZREUSE": {"score": 80, "regime": "Bull", "components": {}}}
+    conn = None
+    try:
+        conn = database.get_connection()
+        conn.execute("INSERT INTO stock_signals (ticker, current_price, currency, quote_type) VALUES ('ZZREUSE', 50, 'GBP', 'EQUITY')")
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    try:
+        with patch("score_analysis.evaluate_pillar_confluence_batch", return_value=confluence) as pillars, \
+             patch("score_analysis.compute_regime_weighted_score_batch", return_value=regime) as scores, \
+             patch("position_sizing.passes_risk_reward_gate_batch", return_value={}), \
+             patch("cache_refresh_helpers.request_cache_refresh"):
+            response = client.get(url)
+        assert response.status_code == 200
+        assert pillars.call_count == 1
+        assert scores.call_count == 1
+    finally:
+        conn = None
+        try:
+            conn = database.get_connection()
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'ZZREUSE'")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()

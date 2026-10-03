@@ -335,8 +335,30 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     return df
 
 
+def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
+    from cache_refresh_helpers import request_cache_refresh
+
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        return None
+    history_root = os.path.realpath(HISTORICAL_DIR)
+    path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+    if not path.startswith(history_root + os.sep):
+        return None
+    try:
+        state = os.stat(path)
+    except FileNotFoundError:
+        state = None
+    if refresh_stale and not is_excluded_from_yahoo_fetch(ticker):
+        if state is None or time.time() - state.st_mtime > load_config()["PERFORMANCE"]["DAILY_HISTORY_FRESH_SECONDS"]:
+            request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
+    if state is None:
+        return None
+    return (path, state.st_dev, state.st_ino, state.st_size, state.st_mtime_ns, state.st_ctime_ns)
+
+
 def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Optional[pd.DataFrame]:
-    from cache_refresh_helpers import submit_cache_refresh, request_cache_refresh
+    from cache_refresh_helpers import submit_cache_refresh
 
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
@@ -354,9 +376,12 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Opt
         except Exception as e:
             logger.error("Failed to read historical parquet for %s: %s", ticker, e)
     if cache_only:
-        stale = df is None or time.time() - os.path.getmtime(path) > load_config()["PERFORMANCE"]["DAILY_HISTORY_FRESH_SECONDS"]
-        if stale and not is_excluded_from_yahoo_fetch(ticker):
-            request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
+        if df is None:
+            from cache_refresh_helpers import request_cache_refresh
+            if not is_excluded_from_yahoo_fetch(ticker):
+                request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
+        else:
+            daily_history_cache_revision(ticker, refresh_stale=True)
         return df
     if df is not None:
         return df

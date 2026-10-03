@@ -170,51 +170,46 @@ def _recent_window_dates(rows: list[dict], window: int = _CONFLUENCE_WINDOW) -> 
 
 
 def _trading_windows_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, set]:
-    """Each ticker's last 5 trading days, derived from quant_signals (written every trading day
-    the nightly quant scan runs) rather than from pattern_detection_history's own scan_date
-    column — pattern_detection_engine.PatternDetectionEngine.run_scan() deliberately skips
-    logging a history row when a pattern instance is unchanged from the previous scan, so that
-    table's own distinct dates are sparse and can silently span far more than 5 trading days for
-    a quiet ticker. trap_phase_history logs unconditionally every scan so it doesn't have this
-    problem on its own, but sharing one window keeps both sources' cutoffs identical.
-
-    as_of, when given (a 'YYYY-MM-DD' string), reconstructs the window as it stood on that
-    historical date instead of today — used by the Cross-Engine Alert Referee's historical
-    backfill to score an already-resolved trap_phase_history/pattern_detection_history row with
-    the pillar votes that were actually available at the time, not today's."""
+    """The existing 30-day cutoff bounds the latest five quant scan dates, including historical calls."""
     if not tickers:
         return {}
-    placeholders = ",".join("?" * len(tickers))
     as_of_dt = datetime.strptime(as_of, "%Y-%m-%d") if as_of else datetime.now(timezone.utc)
-    # 30 calendar days comfortably covers 5 trading days through any holiday stretch, without
-    # pulling a ticker's full multi-year quant_signals history just to keep the last 5 dates.
     recent_cutoff = (as_of_dt - timedelta(days=30)).strftime("%Y-%m-%d")
-    params = tickers + [recent_cutoff]
+    requested = ",".join("(?)" for _ in tickers)
+    params = list(tickers) + [recent_cutoff]
     upper_bound_sql = ""
     if as_of:
         upper_bound_sql = " AND date <= ?"
         params.append(as_of)
+    params.append(_CONFLUENCE_WINDOW)
     trading_dates = conn.execute(
-        f"SELECT DISTINCT ticker, date AS scan_date FROM quant_signals WHERE ticker IN ({placeholders}) AND date >= ?{upper_bound_sql}",
+        f"""WITH requested(ticker) AS (VALUES {requested})
+            SELECT q.ticker, q.date AS scan_date FROM requested
+            JOIN quant_signals q ON q.rowid IN (
+                SELECT rowid FROM quant_signals WHERE ticker = requested.ticker
+                AND date >= ?{upper_bound_sql} ORDER BY date DESC LIMIT ?
+            )""",
         params,
     ).fetchall()
     return _recent_window_dates([dict(r) for r in trading_dates])
 
 
 def _pattern_signals_batch(tickers: list[str], conn, trading_windows: dict[str, set]) -> dict[str, list[str]]:
-    """Confirmed Pattern Detection results only, windowed. Any registered family — new families
-    need zero changes here since direction is resolved via each family's own
-    DETECTORS[family].PATTERN_TYPES dict."""
+    """Registered pattern families supply direction; only quant-window dates count."""
     from pattern_detection_engine import DETECTORS
 
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
+    dates = sorted({d for t in tickers for d in trading_windows.get(t, set())})
+    if not dates:
+        return signals
     placeholders = ",".join("?" * len(tickers))
+    date_placeholders = ",".join("?" * len(dates))
     confirmed_rows = conn.execute(
         f"""SELECT ticker, pattern_family, pattern_type, scan_date FROM pattern_detection_history
-            WHERE ticker IN ({placeholders}) AND phase = 'CONFIRMED'""",
-        tickers,
+            WHERE ticker IN ({placeholders}) AND scan_date IN ({date_placeholders}) AND phase = 'CONFIRMED'""",
+        list(tickers) + dates,
     ).fetchall()
     for row in confirmed_rows:
         row = dict(row)
@@ -236,10 +231,15 @@ def _trap_signals_batch(tickers: list[str], conn, trading_windows: dict[str, set
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
+    dates = sorted({d for t in tickers for d in trading_windows.get(t, set())})
+    if not dates:
+        return signals
     placeholders = ",".join("?" * len(tickers))
+    date_placeholders = ",".join("?" * len(dates))
     trap_rows = conn.execute(
-        f"SELECT ticker, phase, scan_date FROM trap_phase_history WHERE ticker IN ({placeholders})",
-        tickers,
+        f"""SELECT ticker, phase, scan_date FROM trap_phase_history
+            WHERE ticker IN ({placeholders}) AND scan_date IN ({date_placeholders})""",
+        list(tickers) + dates,
     ).fetchall()
     for row in trap_rows:
         row = dict(row)
@@ -265,33 +265,30 @@ def _technical_signals_batch(tickers: list[str], conn, as_of: Optional[str] = No
 
 
 def _statistical_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, list[str]]:
-    """earnings_volatility_history drift sign, gated on a real mispricing edge (edge_score>0),
-    windowed to each ticker's last 5 scan runs (earnings_vol_engine only scans a ticker within
-    ~14 days of its next earnings date, so these 5 rows may span several weeks of calendar
-    time for a ticker that isn't near-term). as_of bounds the window to a historical date for
-    the Cross-Engine Alert Referee's historical backfill instead of "most recent 5"."""
+    """Earnings runs are sparse, so limit observations before applying the edge gate."""
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
-    placeholders = ",".join("?" * len(tickers))
+    requested = ",".join("(?)" for _ in tickers)
     params: list = list(tickers)
     as_of_sql = ""
     if as_of:
         as_of_sql = " AND scan_date <= ?"
         params.append(as_of)
+    params.append(_CONFLUENCE_WINDOW)
     rows = conn.execute(
-        f"""SELECT ticker, scan_date, edge_score, drift_avg_pct_5d FROM earnings_volatility_history
-            WHERE ticker IN ({placeholders}){as_of_sql} ORDER BY ticker, scan_date DESC""",
+        f"""WITH requested(ticker) AS (VALUES {requested})
+            SELECT h.ticker, h.scan_date, h.edge_score, h.drift_avg_pct_5d FROM requested
+            JOIN earnings_volatility_history h ON h.rowid IN (
+                SELECT rowid FROM earnings_volatility_history WHERE ticker = requested.ticker{as_of_sql}
+                ORDER BY scan_date DESC LIMIT ?
+            ) ORDER BY h.ticker, h.scan_date DESC""",
         params,
     ).fetchall()
 
-    counts: dict[str, int] = {}
     for row in rows:
         row = dict(row)
         ticker = row["ticker"]
-        counts[ticker] = counts.get(ticker, 0) + 1
-        if counts[ticker] > _CONFLUENCE_WINDOW:
-            continue
         if row["edge_score"] is None or row["edge_score"] <= 0 or row["drift_avg_pct_5d"] is None:
             continue
         if row["drift_avg_pct_5d"] > 0:
@@ -303,31 +300,30 @@ def _statistical_signals_batch(tickers: list[str], conn, as_of: Optional[str] = 
 
 
 def _ml_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, list[str]]:
-    """quant_signals.ml_confidence_score across each ticker's last 5 trading days. as_of bounds
-    the window to a historical date for the Cross-Engine Alert Referee's historical backfill."""
+    """Only non-NULL ML observations count toward the five-observation window."""
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
-    placeholders = ",".join("?" * len(tickers))
+    requested = ",".join("(?)" for _ in tickers)
     params: list = list(tickers)
     as_of_sql = ""
     if as_of:
         as_of_sql = " AND date <= ?"
         params.append(as_of)
+    params.append(_CONFLUENCE_WINDOW)
     rows = conn.execute(
-        f"""SELECT ticker, date, ml_confidence_score FROM quant_signals
-            WHERE ticker IN ({placeholders}) AND ml_confidence_score IS NOT NULL{as_of_sql}
-            ORDER BY ticker, date DESC""",
+        f"""WITH requested(ticker) AS (VALUES {requested})
+            SELECT h.ticker, h.date, h.ml_confidence_score FROM requested
+            JOIN quant_signals h ON h.rowid IN (
+                SELECT rowid FROM quant_signals WHERE ticker = requested.ticker AND ml_confidence_score IS NOT NULL{as_of_sql}
+                ORDER BY date DESC LIMIT ?
+            ) ORDER BY h.ticker, h.date DESC""",
         params,
     ).fetchall()
 
-    counts: dict[str, int] = {}
     for row in rows:
         row = dict(row)
         ticker = row["ticker"]
-        counts[ticker] = counts.get(ticker, 0) + 1
-        if counts[ticker] > _CONFLUENCE_WINDOW:
-            continue
         score = row["ml_confidence_score"]
         if score > _ML_CONFIDENCE_BULLISH:
             signals[ticker].append("up")
@@ -539,18 +535,11 @@ def compute_regime_weighted_score_as_of(ticker: str, as_of_date: str) -> Optiona
     return compute_regime_weighted_score_batch([ticker], as_of=as_of_date).get(ticker)
 
 
-def evaluate_buy_recommendation_batch(tickers: list[str]) -> dict[str, Optional[dict]]:
-    """Buy-Signal Confluence Pipeline Part D: labels a ticker a Buy Recommendation only when
-    Idea A's Pillar Confluence is bullish AND Part D's Recommendation Risk/Reward Gate
-    (position_sizing.passes_risk_reward_gate_batch()) passes. Idea B's Regime-Weighted
-    Conviction Score is carried along as context only, not as a gating condition — it is
-    documented elsewhere as deliberately never a competing Buy/Sell verdict, so it isn't part of
-    this boolean either; Pillar Confluence's own bullish/bearish call is the only directional
-    trigger between Ideas A and B.
-
-    Maps to None (not a candidate) whenever confluence isn't bullish or the R:R gate has no
-    signal (missing entry/stop/take-profit inputs) — never a fabricated recommendation from
-    partial data, same convention as the rest of this pipeline."""
+def evaluate_buy_recommendation_batch(
+    tickers: list[str], *, confluence_by_ticker: Optional[dict] = None,
+    regime_score_by_ticker: Optional[dict] = None,
+) -> dict[str, Optional[dict]]:
+    """Reuse request-local results when supplied; the regime score is context rather than a gate."""
     from position_sizing import passes_risk_reward_gate_batch
 
     tickers = list(dict.fromkeys(tickers))
@@ -558,13 +547,15 @@ def evaluate_buy_recommendation_batch(tickers: list[str]) -> dict[str, Optional[
     if not tickers:
         return results
 
-    confluence_by_ticker = evaluate_pillar_confluence_batch(tickers)
+    if confluence_by_ticker is None:
+        confluence_by_ticker = evaluate_pillar_confluence_batch(tickers)
     bullish_tickers = [t for t in tickers if (confluence_by_ticker.get(t) or {}).get("direction") == "bullish"]
     if not bullish_tickers:
         return results
 
     rr_by_ticker = passes_risk_reward_gate_batch(bullish_tickers)
-    regime_score_by_ticker = compute_regime_weighted_score_batch(bullish_tickers)
+    if regime_score_by_ticker is None:
+        regime_score_by_ticker = compute_regime_weighted_score_batch(bullish_tickers)
 
     for ticker in bullish_tickers:
         rr = rr_by_ticker.get(ticker)

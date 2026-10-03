@@ -286,6 +286,17 @@ bullish or the Risk/Reward Gate itself returned `None` — a non-`None`, non-rec
 (bullish confluence that failed the gate) is still returned so the UI can show *why* a ticker
 didn't qualify rather than omitting it silently.
 
+Portfolio, Watchlist and Stock Detail pass their existing request-local pillar and regime results
+into `evaluate_buy_recommendation_batch(..., confluence_by_ticker=..., regime_score_by_ticker=...)`.
+Omitted maps are computed by the canonical functions; supplied empty maps retain their no-signal
+meaning. Recommendations keep the same gates and formulas, with no cross-request score cache.
+
+History reads are bounded in SQL. Technical windows retain the latest five quant scan dates
+within the existing 30-calendar-day search bound; Pattern Detection and Trap Monitor read only
+candidate window dates and then apply each ticker's exact window. Earnings uses its latest five
+observations, even across sparse calendar history, before the positive-edge/drift gate. ML uses
+its latest five non-NULL observations. Historical `as_of` bounds apply before each limit.
+
 **Surfaced as:** a `🎯 Buy Recommendation (R:R X:1)` badge on Portfolio/Watchlist (in the same
 "Setups & Tags" cell as Pillar Confluence/Trap Monitor/Bubble Radar/Pattern Detection tags), a
 "Buy Recommendation" row on Stock Detail (showing the computed ratio and, when it fails, the

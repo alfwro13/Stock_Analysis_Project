@@ -1,16 +1,22 @@
 """Per-ticker calendar-period price returns (5D/1M/6M/YTD/1Y), derived from the parquet history every ticker already has cached; no DB, no Yahoo Finance calls of its own."""
 import calendar
 import logging
+from collections import OrderedDict
 from datetime import date, datetime, timezone
+from threading import Lock
 from typing import Dict, Optional
 
-from data_engine import load_or_fetch_daily_history
+from data_engine import daily_history_cache_revision, load_or_fetch_daily_history
 from utils import is_synthetic_ticker
 
 logger = logging.getLogger(__name__)
 
 PERIOD_KEYS = ("5d", "1m", "6m", "ytd", "1y")
 CHANGE_PERIODS = ("1d",) + PERIOD_KEYS
+
+_ANCHOR_CACHE_LIMIT = 512
+_anchor_cache = OrderedDict()
+_anchor_cache_lock = Lock()
 
 
 def _calendar_offset(d: date, months_back: int) -> date:
@@ -35,6 +41,15 @@ def _anchor_closes_for_ticker(ticker: str, today: date, *, cache_only: bool = Fa
     anchors: Dict[str, Optional[float]] = {key: None for key in PERIOD_KEYS}
     if is_synthetic_ticker(ticker):
         return anchors
+    revision = daily_history_cache_revision(ticker, refresh_stale=cache_only)
+    with _anchor_cache_lock:
+        for key in list(_anchor_cache):
+            if _anchor_cache[key][0] != today:
+                del _anchor_cache[key]
+        cached = _anchor_cache.pop(ticker, None)
+        if revision is not None and cached is not None and cached[:2] == (today, revision):
+            _anchor_cache[ticker] = cached
+            return dict(cached[2])
     df = load_or_fetch_daily_history(ticker, cache_only=True) if cache_only else load_or_fetch_daily_history(ticker)
     if df is None or df.empty:
         return anchors
@@ -49,6 +64,12 @@ def _anchor_closes_for_ticker(ticker: str, today: date, *, cache_only: bool = Fa
         if not matching.empty:
             anchors[key] = float(matching.iloc[-1])
 
+    if revision is not None and daily_history_cache_revision(ticker) == revision:
+        with _anchor_cache_lock:
+            _anchor_cache[ticker] = (today, revision, dict(anchors))
+            _anchor_cache.move_to_end(ticker)
+            while len(_anchor_cache) > _ANCHOR_CACHE_LIMIT:
+                _anchor_cache.popitem(last=False)
     return anchors
 
 
