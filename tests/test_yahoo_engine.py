@@ -1422,3 +1422,42 @@ def test_invalid_upstream_fx_does_not_replace_last_good_quote():
         ticker.return_value.history.return_value = pd.DataFrame({"Close": [float("nan")]})
         assert engine.get_fx_rate("AUDNZD=X", force=True) is None
     assert engine.get_cached_fx_rate("AUDNZD=X", refresh=False)["rate"] == 1.1
+
+
+def test_intraday_concurrent_scanner_and_chart_share_yahoo_download():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    import time
+
+    engine = YahooEngine()
+    entered, release, checked = Event(), Event(), Event()
+    original_get = engine._get
+    lookups = []
+
+    def lookup(key):
+        lookups.append(key)
+        if len(lookups) >= 3:
+            checked.set()
+        return original_get(key)
+
+    def download(*args, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return _yf_multi_df(["STEP4YAHOO"])
+
+    with patch.object(engine, "_get", side_effect=lookup), \
+         patch("yahoo_engine.yahoo_connection_boundary") as boundary, \
+         patch("yahoo_engine.yf.download", side_effect=download) as network:
+        boundary.return_value.__enter__.return_value = MagicMock()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(engine.get_intraday, ["STEP4YAHOO"])
+            try:
+                assert entered.wait(5)
+                second = pool.submit(engine.get_intraday, ["STEP4YAHOO"])
+                assert checked.wait(5)
+            finally:
+                release.set()
+            assert "STEP4YAHOO" in first.result(timeout=5)
+            result = second.result(timeout=5)
+    assert network.call_count == 1
+    assert time.time() - result["STEP4YAHOO"].attrs["yahoo_fetched_at"] < 5

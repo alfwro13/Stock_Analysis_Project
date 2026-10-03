@@ -368,6 +368,62 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Opt
         return None
 
 
+def load_or_fetch_intraday_history(ticker: str):
+    from cache_refresh_helpers import submit_cache_refresh
+    import tempfile
+
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
+        return None
+    root = os.path.realpath(INTRADAY_DIR)
+    path = os.path.realpath(os.path.join(root, f"{safe_ticker}_intraday.parquet"))
+    if not path.startswith(root + os.sep):
+        return None
+    if ticker in get_mutual_fund_tickers([ticker]):
+        return None
+
+    def read_fresh():
+        if not path.startswith(root + os.sep):
+            return None
+        try:
+            df = pd.read_parquet(path)
+            fetched_at = df.attrs.get("yahoo_fetched_at", os.path.getmtime(path))
+            if not df.empty and time.time() - fetched_at < yahoo_engine._ttl("intraday", "5m"):
+                return df
+        except (OSError, ValueError):
+            pass
+        return None
+
+    cached = read_fresh()
+    if cached is not None:
+        return cached
+
+    def refresh():
+        cached = read_fresh()
+        if cached is not None:
+            return cached
+        df = yahoo_engine.get_intraday([ticker], period="1d", interval="5m").get(ticker)
+        if df is None or df.empty:
+            return None
+        df = df.copy()
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert(None)
+        os.makedirs(root, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=root, suffix=".parquet", delete=False) as handle:
+                temporary = Path(handle.name)
+            df.to_parquet(temporary, engine="pyarrow")
+            temporary.replace(path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return df
+
+    future = submit_cache_refresh("intraday:1d:5m:" + ticker, refresh)
+    return future.result() if future is not None else None
+
+
 _EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}
 
 def run_yfinance_smoke_test() -> bool:

@@ -711,3 +711,95 @@ def test_history_refresh_rejects_symlink_outside_cache_root(tmp_path):
         assert _fetch_daily_history("ZZLINK") is None
     fetch.assert_not_called()
     assert outside.read_bytes() == b"unchanged"
+
+
+@pytest.mark.parametrize("age", [0, 86400 * 3])
+def test_intraday_history_reuses_only_fresh_file(tmp_path, age):
+    import os
+    import time
+    import pandas as pd
+    from data_engine import load_or_fetch_intraday_history
+
+    path = tmp_path / "STEP4FRESH_intraday.parquet"
+    df = pd.DataFrame({"Close": [10]}, index=pd.to_datetime(["2026-10-02 14:00"]))
+    df.to_parquet(path)
+    os.utime(path, (time.time() - age, time.time() - age))
+    new = df * 2
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_intraday", return_value={"STEP4FRESH": new}) as fetch:
+        result = load_or_fetch_intraday_history("STEP4FRESH")
+    assert result.iloc[-1]["Close"] == (10 if age == 0 else 20)
+    assert fetch.call_count == (0 if age == 0 else 1)
+
+
+def test_intraday_history_uses_fetch_timestamp_not_rewrite_time(tmp_path):
+    import time
+    import pandas as pd
+    from data_engine import load_or_fetch_intraday_history
+
+    df = pd.DataFrame({"Close": [10]}, index=pd.to_datetime(["2026-10-02 14:00"]))
+    df.attrs["yahoo_fetched_at"] = time.time() - 600
+    df.to_parquet(tmp_path / "STEP4STAMP_intraday.parquet")
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_intraday", return_value={}) as fetch:
+        assert load_or_fetch_intraday_history("STEP4STAMP") is None
+    fetch.assert_called_once()
+    assert pd.read_parquet(tmp_path / "STEP4STAMP_intraday.parquet").iloc[-1]["Close"] == 10
+
+
+def test_intraday_history_coalesces_concurrent_fetches_and_awaits(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    import pandas as pd
+    from data_engine import load_or_fetch_intraday_history
+
+    entered, release = Event(), Event()
+    df = pd.DataFrame({"Close": [10]}, index=pd.to_datetime(["2026-10-02 14:00"]))
+
+    def fetch(*args, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return {"STEP4SHARED": df}
+
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_intraday", side_effect=fetch) as network:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(load_or_fetch_intraday_history, "STEP4SHARED")
+            try:
+                assert entered.wait(5)
+                second = pool.submit(load_or_fetch_intraday_history, "STEP4SHARED")
+                assert not first.done()
+            finally:
+                release.set()
+            assert first.result(timeout=5).equals(df)
+            assert second.result(timeout=5).equals(df)
+    assert network.call_count == 1
+
+
+@pytest.mark.parametrize("ticker", ["0P00018XAR.L", "../ESCAPE", "TBILL-123", "IGNORED"])
+def test_intraday_history_exclusions_do_not_fetch(tmp_path, ticker):
+    from data_engine import load_or_fetch_intraday_history
+
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("utils.ignored_tickers_set", return_value={"IGNORED"}), \
+         patch("data_engine.yahoo_engine.get_intraday") as fetch:
+        assert load_or_fetch_intraday_history(ticker) is None
+    fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("outside_directory", ["outside", "cache-sibling"])
+def test_intraday_history_rejects_symlink_escape(tmp_path, outside_directory):
+    from data_engine import load_or_fetch_intraday_history
+
+    root = tmp_path / "cache"
+    root.mkdir()
+    outside_root = tmp_path / outside_directory
+    outside_root.mkdir()
+    outside = outside_root / "outside.parquet"
+    outside.write_text("untouched")
+    (root / "STEP4ESCAPE_intraday.parquet").symlink_to(outside)
+    with patch("data_engine.INTRADAY_DIR", root), \
+         patch("data_engine.yahoo_engine.get_intraday") as fetch:
+        assert load_or_fetch_intraday_history("STEP4ESCAPE") is None
+    fetch.assert_not_called()
+    assert outside.read_text() == "untouched"

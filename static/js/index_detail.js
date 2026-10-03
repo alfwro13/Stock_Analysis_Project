@@ -56,19 +56,26 @@
     // ─── Intraday Auto-Refresh ────────────────────────────────────────────────────
     var _intradayBusy = false;
     var _intradayTimer = null;
+    var _intradayRevision = window.INTRADAY_REVISION || null;
+    var _intradayRefreshFailed = false;
 
     async function _refreshIntradayChart() {
-        if (_intradayBusy) return;
+        if (_intradayBusy || document.hidden) return;
         _intradayBusy = true;
         try {
             const resp = await fetch('/api/intraday-chart/refresh', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticker: TICKER })
+                body: JSON.stringify({ ticker: TICKER, revision: _intradayRevision })
             });
-            if (!resp.ok) return;
+            if (!resp.ok) {
+                _intradayRefreshFailed = true;
+                return;
+            }
             const data = await resp.json();
+            _intradayRefreshFailed = !data || !!data.refresh_failed;
             if (!data || !data.html) return;
+            _intradayRevision = data.revision || null;
             const wrapper = document.getElementById('intraday-wrapper');
             if (!wrapper) return;
             const btn = wrapper.querySelector('.fullscreen-btn');
@@ -90,20 +97,18 @@
                 s.textContent = oldScript.textContent;
                 wrapper.appendChild(s);
             });
-            // The freshly re-rendered chart comes back at its server-default height —
-            // if the wrapper is mid-fullscreen, re-apply that state (see toggleFullscreen).
-            if (wrapper.classList.contains('is-fullscreen')) {
-                ChartFullscreen.relayoutForCurrentState('intraday-wrapper', _indexChartOpts('intraday-wrapper'));
-            }
+            ChartFullscreen.relayoutForCurrentState('intraday-wrapper', _indexChartOpts('intraday-wrapper'));
         } catch (e) {
-            // silently ignore — next tick will retry
+            _intradayRefreshFailed = true;
         } finally {
             _intradayBusy = false;
         }
     }
 
     function startIntradayAutoRefresh() {
-        if (!window.ENABLE_LIVE_ASSETS) return;
+        if (_intradayTimer) clearInterval(_intradayTimer);
+        _intradayTimer = null;
+        if (!window.ENABLE_LIVE_ASSETS || document.hidden) return;
         _refreshIntradayChart();
         _intradayTimer = setInterval(function () {
             resetCountdown();
@@ -118,6 +123,10 @@
     function updateCountdownDisplay() {
         const el = document.getElementById('refresh-status');
         if (!el) return;
+        if (_intradayRefreshFailed) {
+            el.innerHTML = '<span class="stale-text">Intraday update unavailable — keeping the last chart</span>';
+            return;
+        }
         const m = Math.floor(_countdownSecs / 60);
         const s = _countdownSecs % 60;
         el.innerHTML = '<span class="pulse-dot pulse-dot-live"></span> Next update in ' + m + ':' + String(s).padStart(2, '0');
@@ -137,10 +146,16 @@
         }
         resetCountdown();
         _countdownTick = setInterval(function () {
+            if (document.hidden) return;
             _countdownSecs = Math.max(0, _countdownSecs - 1);
             updateCountdownDisplay();
         }, 1000);
     }
+
+    document.addEventListener('visibilitychange', function () {
+        startIntradayAutoRefresh();
+        if (!document.hidden) resetCountdown();
+    });
 
     startIntradayAutoRefresh();
     document.addEventListener('DOMContentLoaded', initRefreshStatus);

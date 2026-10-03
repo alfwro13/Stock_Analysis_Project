@@ -1892,3 +1892,68 @@ def test_blocked_request_does_not_stall_unrelated_request(
             finally:
                 release.set()
             assert slow.result(timeout=20).status_code == 200
+
+
+@pytest.mark.parametrize("page", ["stock_detail", "index_detail"])
+def test_intraday_timer_pauses_and_coalesces_load_and_resume(page):
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required for timer behavior checks")
+    source = (Path(__file__).resolve().parents[1] / "static" / "js" / (page + ".js")).read_text()
+    timer = source[source.index("    var _intradayBusy"):source.index("    // ─── Refresh Status Countdown")]
+    script = r"""
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const timers = new Map();
+let nextId = 0;
+let calls = 0;
+let release;
+const context = {
+    window: {ENABLE_LIVE_ASSETS: true, STOCK_QUOTE_TYPE: 'EQUITY', STOCK_TICKER: 'TEST'},
+    document: {hidden: false},
+    TICKER: 'TEST', refreshRate: 60000,
+    setInterval: callback => {timers.set(++nextId, callback); return nextId;},
+    clearInterval: id => timers.delete(id),
+    resetCountdown: () => {},
+    fetch: () => {calls++; return new Promise(resolve => {release = resolve;});}
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(0, 'utf8'), context);
+(async () => {
+    context.startIntradayAutoRefresh();
+    assert.equal(calls, 1);
+    assert.equal(timers.size, 1);
+    context.startIntradayAutoRefresh();
+    assert.equal(timers.size, 1);
+    context.document.hidden = true;
+    context.startIntradayAutoRefresh();
+    assert.equal(timers.size, 0);
+    await context._refreshIntradayChart();
+    assert.equal(calls, 1);
+    context.document.hidden = false;
+    context.startIntradayAutoRefresh();
+    assert.equal(calls, 1);
+    assert.equal(timers.size, 1);
+    const pending = context._refreshIntradayChart();
+    await context._refreshIntradayChart();
+    assert.equal(calls, 1);
+    release({ok: false});
+    await pending;
+    context.window.ENABLE_LIVE_ASSETS = false;
+    context.startIntradayAutoRefresh();
+    assert.equal(timers.size, 0);
+    context.window.ENABLE_LIVE_ASSETS = true;
+    context.window.STOCK_QUOTE_TYPE = 'MUTUALFUND';
+    context.startIntradayAutoRefresh();
+    if (context.window.STOCK_TICKER && process.argv[1] === 'stock_detail') {
+        assert.equal(timers.size, 0);
+    }
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+    result = subprocess.run([node, "-e", script, page], input=timer, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr

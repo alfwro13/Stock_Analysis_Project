@@ -407,3 +407,125 @@ class TestNormaliseConstituents:
         result = _normalise_constituents(items)
         assert abs(sum(r["weight"] for r in result) - 1.0) < 1e-9
         assert abs(result[0]["weight"] - 0.5) < 1e-9
+
+
+@pytest.mark.parametrize("ticker", ["../escape", "A/B", "", "A" * 21])
+def test_intraday_refresh_rejects_unsafe_ticker(client, ticker):
+    with patch("api_routes.load_or_fetch_intraday_history") as fetch:
+        response = client.post("/api/intraday-chart/refresh", json={"ticker": ticker})
+    assert response.status_code == 422
+    fetch.assert_not_called()
+
+
+def test_intraday_refresh_keeps_chart_on_failed_fetch(client):
+    with patch("api_routes.load_or_fetch_intraday_history", return_value=None), \
+         patch("api_routes.create_intraday_chart") as chart:
+        response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTFAIL"})
+    assert response.status_code == 200
+    assert response.json() == {"html": "", "refresh_failed": True}
+    chart.assert_not_called()
+
+
+def test_intraday_refresh_does_not_rebuild_unchanged_chart(client):
+    import pandas as pd
+
+    with patch("api_routes.load_or_fetch_intraday_history", return_value=pd.DataFrame({"Close": [1]})), \
+         patch("api_routes.intraday_chart_revision", return_value="same"), \
+         patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
+         patch("api_routes.create_intraday_chart") as chart:
+        response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTSAME", "revision": "same"})
+    assert response.json() == {"html": "", "revision": "same", "unchanged": True}
+    chart.assert_not_called()
+
+
+def test_intraday_refresh_returns_changed_chart(client, tmp_path):
+    import pandas as pd
+
+    df = pd.DataFrame({"Open": [1], "High": [2], "Low": [1], "Close": [2], "Volume": [10]},
+                      index=pd.to_datetime(["2026-10-02 14:00"]))
+    df.to_parquet(tmp_path / "CHARTNEW_intraday.parquet")
+    with patch("api_routes.load_or_fetch_intraday_history", return_value=df), \
+         patch("api_routes.INTRADAY_DIR", tmp_path), \
+         patch("api_routes.HISTORICAL_DIR", tmp_path), \
+         patch("api_routes.intraday_chart_revision", return_value="new"), \
+         patch("api_routes.create_intraday_chart", return_value="<div>new chart</div>") as chart:
+        response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTNEW", "revision": "old"})
+    assert response.json()["revision"] == "new"
+    assert "new chart" in response.json()["html"]
+    chart.assert_called_once()
+
+
+def test_fresh_intraday_polling_fetch_counts_and_latency(client, tmp_path):
+    import pandas as pd
+    import statistics
+    from page_helpers import intraday_chart_revision
+
+    ticker = "STEP4PERF"
+    df = pd.DataFrame({"Close": [10]}, index=pd.to_datetime(["2026-10-02 14:00"]))
+    df.to_parquet(tmp_path / (ticker + "_intraday.parquet"))
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("page_helpers.INTRADAY_DIR", tmp_path), \
+         patch("page_helpers.HISTORICAL_DIR", tmp_path), \
+         patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
+         patch("data_engine.yahoo_engine.get_intraday") as network, \
+         patch("api_routes.create_intraday_chart") as chart:
+        revision = intraday_chart_revision(ticker)
+        durations = []
+        for _ in range(5):
+            response = client.post("/api/intraday-chart/refresh", json={"ticker": ticker, "revision": revision})
+            assert response.status_code == 200
+            assert response.json()["unchanged"]
+            durations.append(float(response.headers["Server-Timing"].split("app;dur=")[1].split(",")[0]))
+    network.assert_not_called()
+    chart.assert_not_called()
+    print("Fresh intraday polling: n=5, network=0, chart builds=0, median_ms=%.1f, max_ms=%.1f" %
+          (statistics.median(durations), max(durations)))
+
+
+def test_intraday_failed_chart_read_preserves_browser_chart(client):
+    import pandas as pd
+    from fastapi.responses import JSONResponse
+
+    with patch("api_routes.load_or_fetch_intraday_history", return_value=pd.DataFrame({"Close": [1]})), \
+         patch("api_routes.intraday_chart_revision", return_value="read-failure"), \
+         patch("api_routes.get_intraday_chart", return_value=JSONResponse({"html": "placeholder", "available": False})):
+        response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTREAD"})
+    assert response.json() == {"html": "", "refresh_failed": True}
+
+
+def test_intraday_refresh_wait_does_not_delay_home_assistant(client, tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    import time
+    import pandas as pd
+
+    entered, release = Event(), Event()
+    df = pd.DataFrame({"Open": [1], "High": [2], "Low": [1], "Close": [2], "Volume": [10]},
+                      index=pd.to_datetime(["2026-10-02 14:00"]))
+
+    def blocked_fetch(*args, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return {"STEP4HA": df}
+
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("api_routes.INTRADAY_DIR", tmp_path), \
+         patch("api_routes.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_intraday", side_effect=blocked_fetch) as network, \
+         patch("api_routes.create_intraday_chart", return_value="<div>chart</div>"):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            intraday = pool.submit(client.post, "/api/intraday-chart/refresh", json={"ticker": "STEP4HA"})
+            try:
+                assert entered.wait(5)
+                start = time.perf_counter()
+                ha = pool.submit(client.get, "/api/accounts/other-accounts-list")
+                response = ha.result(timeout=5)
+                elapsed = (time.perf_counter() - start) * 1000
+                assert response.status_code == 200
+                assert response.json()["status"] == "success"
+                assert not intraday.done()
+            finally:
+                release.set()
+            assert intraday.result(timeout=10).json()["html"] == "<div>chart</div>"
+    network.assert_called_once()
+    print("Blocked intraday upstream: HA completed before release in %.1f ms (n=1)" % elapsed)

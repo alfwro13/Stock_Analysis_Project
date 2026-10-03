@@ -443,7 +443,13 @@ Pass `"display_name": ""` to clear an existing override.
 
 ### `POST /api/intraday-chart/refresh`
 
-Fetches fresh 5-minute intraday data from Yahoo Finance for a single ticker, persists it to parquet, then returns re-rendered chart HTML. Used by both the Stock Detail and Index Detail page auto-refresh timers to keep the Intraday Pulse chart current without a full page reload.
+Checks the shared 5-minute intraday data for one ticker and **awaits** a refresh when it is missing or older than Yahoo's existing 300-second cache window. Fresh scan-written Parquet or Yahoo cache data is reused without forced eviction. Successful fetches replace the chart Parquet atomically; failed fetches retain the last-good file and browser chart. Concurrent requests for the same ticker share fetch work, and overlapping renders of the same source revision share rendering work.
+
+Stock Detail and Index Detail perform one check on load and on hidden-tab resume, then poll at the configured interval while visible. Hidden tabs pause only their browser chart timer; scheduled scans, Crash & Moonshot Alerts, Market Pulse and Home Assistant refresh contracts are unchanged. Existing gray stale-price styling is preserved. The Refresh button still uses its existing awaited data-refresh endpoint.
+
+Clients may supply `revision`, the opaque source revision returned by this endpoint or embedded in the initial page. When the source files, quote currency and display timezone have not changed, the response contains `html: ""`, `revision` and `unchanged: true`; the browser keeps the already-rendered chart and its fullscreen state. Omitting `revision` returns chart HTML after a successful freshness check. No force-refresh option is introduced.
+
+When no usable refresh can be obtained, the response contains `html: ""` and `refresh_failed: true`. The browser keeps its last chart and shows a gray “Intraday update unavailable” message until a successful check. This does not label old data as fresh. The shared coordinator suppresses repeated failed attempts according to `PERFORMANCE.CACHE_REFRESH_RETRY_SECONDS`.
 
 **Request body**
 
@@ -454,8 +460,10 @@ Fetches fresh 5-minute intraday data from Yahoo Finance for a single ticker, per
 **Response**
 
 ```json
-{ "html": "<plotly chart HTML string>" }
+{ "html": "<plotly chart HTML string>", "revision": "<opaque revision>" }
 ```
+
+`GET /api/intraday-chart/{ticker}` remains a local-only chart read. It performs no upstream refresh and runs its database/file/rendering work in a request worker. Missing/unreadable intraday files return the existing placeholder HTML with `available: false`; the refresh endpoint uses this flag to preserve the browser’s last-good chart.
 
 ---
 

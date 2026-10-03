@@ -316,6 +316,7 @@
 
 {% block scripts %}
 <script>
+    window.INTRADAY_REVISION = {{ intraday_revision | tojson }};
     window.INDEX_TICKER = {{ ticker | tojson }};
     window.INDEX_REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
     window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};

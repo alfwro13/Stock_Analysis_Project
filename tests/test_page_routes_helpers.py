@@ -458,3 +458,25 @@ class TestComputeBadgeTagsPatternPassthrough:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+def test_intraday_chart_revision_tracks_files_and_display_inputs(tmp_path):
+    from page_helpers import intraday_chart_revision
+    from unittest.mock import patch
+
+    with patch("page_helpers.INTRADAY_DIR", tmp_path), \
+         patch("page_helpers.HISTORICAL_DIR", tmp_path), \
+         patch("page_helpers.load_config", return_value={"USER_TIMEZONE": "configured-zone"}):
+        before = intraday_chart_revision("STEP4REV")
+        (tmp_path / "STEP4REV_intraday.parquet").write_bytes(b"intraday")
+        intraday = intraday_chart_revision("STEP4REV")
+        assert intraday != before
+        assert intraday_chart_revision("STEP4REV") == intraday
+        (tmp_path / "STEP4REV.parquet").write_bytes(b"historical")
+        history = intraday_chart_revision("STEP4REV")
+        assert history != intraday
+        assert intraday_chart_revision("STEP4REV", "GBp") != history
+        assert intraday_chart_revision("STEP4REV", None) == intraday_chart_revision("STEP4REV", "")
+        with patch("page_helpers.load_config", return_value={"USER_TIMEZONE": "changed-zone"}):
+            assert intraday_chart_revision("STEP4REV") != history
+        assert intraday_chart_revision("../ESCAPE") == ""

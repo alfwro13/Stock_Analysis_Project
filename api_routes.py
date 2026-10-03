@@ -55,9 +55,11 @@ from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from news_feed_engine import run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
-from data_engine import DataEngine, fetch_and_save_single_ticker
+from data_engine import DataEngine, fetch_and_save_single_ticker, load_or_fetch_intraday_history
 import glossary_learn_engine
 from utils import normalize_ticker, measure_request_stage
+from page_helpers import intraday_chart_revision
+from cache_refresh_helpers import submit_cache_refresh
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from fundamentals_helpers import compute_quality_grade, get_earnings_days
@@ -88,6 +90,11 @@ api_router = APIRouter(prefix="/api")
 
 class TickerRequest(BaseModel):
     ticker: str
+
+class IntradayChartRequest(BaseModel):
+    ticker: str = Field(pattern=r"^[A-Za-z0-9.\-\^=]{1,20}$")
+    revision: Optional[str] = Field(default=None, max_length=64)
+
 
 class DipRadarAddRequest(BaseModel):
     ticker: str
@@ -864,7 +871,7 @@ def _intraday_gap_notice_html(ticker: str) -> str:
 
 
 @api_router.get("/intraday-chart/{ticker}")
-async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     """Return freshly rendered intraday chart HTML for a given ticker."""
     ticker = ticker.upper()
     s1 = s2 = None
@@ -901,10 +908,10 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
     except FileNotFoundError:
         html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
-        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
+        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html, "available": False})
     except Exception:
         html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
-        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
+        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html, "available": False})
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
@@ -936,88 +943,37 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
 
 
 @api_router.post("/intraday-chart/refresh")
-def refresh_intraday_chart(req: TickerRequest):
-    """Fetch fresh intraday data from Yahoo Finance, persist to parquet, return re-rendered chart HTML."""
+def refresh_intraday_chart(req: IntradayChartRequest):
     ticker = req.ticker.upper()
+    with measure_request_stage("yahoo_fetch"):
+        df = load_or_fetch_intraday_history(ticker)
+    if df is None:
+        return JSONResponse(content={"html": "", "refresh_failed": True})
 
-    conn_meta = None
+    conn = None
     try:
-        conn_meta = get_connection()
-        row = conn_meta.execute(
-            "SELECT currency FROM stock_signals WHERE ticker = ? LIMIT 1", (ticker,)
-        ).fetchone()
+        conn = get_connection()
+        row = conn.execute("SELECT currency FROM stock_signals WHERE ticker = ? LIMIT 1", (ticker,)).fetchone()
         currency = row["currency"] if row else "USD"
-    except Exception:
-        currency = "USD"
     finally:
-        if conn_meta:
-            conn_meta.close()
-
-    try:
-        with measure_request_stage("yahoo_fetch"):
-            with yahoo_engine._lock:
-                yahoo_engine._cache.pop(f"intraday:{ticker}:1d:5m:", None)
-            result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
-            df_fetched = result.get(ticker, pd.DataFrame())
-            if not df_fetched.empty:
-                if df_fetched.index.tz is not None:
-                    df_fetched.index = df_fetched.index.tz_convert(None)
-                df_fetched.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine="pyarrow")
-    except Exception:
-        pass
-
-    s1 = s2 = None
-    df_macro = pd.DataFrame()
-    try:
-        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
-        if not df_macro.empty and len(df_macro) > 1:
-            prev_day = df_macro.iloc[-2]
-            P = (prev_day["High"] + prev_day["Low"] + prev_day["Close"]) / 3
-            s1 = P * 2 - prev_day["High"]
-            s2 = P - (prev_day["High"] - prev_day["Low"])
-    except Exception:
-        pass
-
-    try:
-        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
-    except FileNotFoundError:
-        html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
-        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
-    except Exception:
-        html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
-        return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
-
-    mkt_tz = intraday_market_tz(ticker, currency)
-    delay_min = EXCHANGE_DELAYS.get(currency, 0)
-
-    live_pattern_name = live_pattern_tooltip = live_pattern_score = None
-    try:
-        if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 2:
-            curr_pseudo = pd.Series({
-                "Open": df_intraday["Open"].iloc[0],
-                "High": df_intraday["High"].max(),
-                "Low": df_intraday["Low"].min(),
-                "Close": df_intraday["Close"].iloc[-1],
-            })
-            live_patterns = get_candlestick_patterns(df_macro.iloc[-2], df_macro.iloc[-1], curr_pseudo)
-            if live_patterns:
-                live_pattern_name = live_patterns[0]["name"]
-                live_pattern_tooltip = live_patterns[0]["tooltip"]
-                live_pattern_score = live_patterns[0]["score"]
-    except Exception:
-        pass
-
+        if conn:
+            conn.close()
+    revision = intraday_chart_revision(ticker, currency)
+    if req.revision == revision and not yahoo_engine.is_intraday_gap_alerted(ticker):
+        return JSONResponse(content={"html": "", "revision": revision, "unchanged": True})
     with measure_request_stage("chart"):
-        html = create_intraday_chart(
-            df_intraday, ticker, s1=s1, s2=s2,
-            live_pattern_name=live_pattern_name,
-            live_pattern_tooltip=live_pattern_tooltip,
-            live_pattern_score=live_pattern_score,
-            include_plotlyjs=False,
-            market_tz=mkt_tz,
-            data_delay_minutes=delay_min,
-        )
-    return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html})
+        future = submit_cache_refresh("intraday-chart:" + ticker + ":" + revision, lambda: get_intraday_chart(ticker))
+        if future is None:
+            return JSONResponse(content={"html": "", "refresh_failed": True})
+        response = future.result()
+    if response is None:
+        return JSONResponse(content={"html": "", "refresh_failed": True})
+    payload = json.loads(response.body)
+    if not payload.get("available", True):
+        return JSONResponse(content={"html": "", "refresh_failed": True})
+    payload["revision"] = revision
+    return JSONResponse(content=payload)
+
 
 def _active_log_path() -> Path | None:
     cfg = load_config()

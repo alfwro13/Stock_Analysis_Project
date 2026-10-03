@@ -1,10 +1,11 @@
 import json
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 import time_engine
-from config import FUNDAMENTALS_DIR
+from config import FUNDAMENTALS_DIR, HISTORICAL_DIR, INTRADAY_DIR, load_config
 from database import get_connection
 from position_sizing import get_position_sizing_config
 from portfolio_service import get_rate_to_base, get_fx_cache_status
@@ -295,3 +296,21 @@ def get_all_scope_heat_tier() -> Optional[str]:
     """The "all"-scope Portfolio Heat Index tier — drives the visual-only BUY-signal warning badge."""
     row = get_portfolio_heat_row("all")
     return row["tier"] if row else None
+
+
+def intraday_chart_revision(ticker: str, currency: str = "USD") -> str:
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        return ""
+    parts = [currency or "", load_config().get("USER_TIMEZONE", "")]
+    for root, filename in ((HISTORICAL_DIR, f"{safe_ticker}.parquet"),
+                           (INTRADAY_DIR, f"{safe_ticker}_intraday.parquet")):
+        path = (root / filename).resolve()
+        if not path.is_relative_to(root.resolve()):
+            return ""
+        try:
+            stat = path.stat()
+            parts.append(f"{stat.st_mtime_ns}:{stat.st_size}")
+        except FileNotFoundError:
+            parts.append("missing")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
