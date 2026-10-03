@@ -121,3 +121,154 @@ def test_pct_from_anchor_ratio_and_none_passthrough():
     assert pct_from_anchor(100.0, None) is None
     assert pct_from_anchor(None, 100.0) is None
     assert pct_from_anchor(100.0, 0.0) is None
+
+
+@pytest.fixture
+def anchor_files(tmp_path, monkeypatch):
+    import data_engine
+    import price_history_helpers
+
+    monkeypatch.setattr(data_engine, "HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr(data_engine, "is_excluded_from_yahoo_fetch", lambda ticker: False)
+    with price_history_helpers._anchor_cache_lock:
+        price_history_helpers._anchor_cache.clear()
+    yield tmp_path
+    with price_history_helpers._anchor_cache_lock:
+        price_history_helpers._anchor_cache.clear()
+
+
+def test_anchor_cache_reuses_reads_and_returns_independent_results(anchor_files):
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    df.to_parquet(anchor_files / "TEST.parquet")
+    today = date(2024, 7, 6)
+    with patch("data_engine.pd.read_parquet", wraps=pd.read_parquet) as read:
+        first = _anchor_closes_for_ticker("TEST", today, cache_only=True)
+        expected = dict(first)
+        first["5d"] = -1
+        second = _anchor_closes_for_ticker("TEST", today, cache_only=True)
+    assert second == expected
+    assert read.call_count == 1
+
+
+def test_anchor_cache_invalidates_on_replace_edit_delete_and_recreate(anchor_files):
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    path = anchor_files / "TEST.parquet"
+    df.to_parquet(path)
+    today = date(2024, 7, 6)
+    initial = _anchor_closes_for_ticker("TEST", today, cache_only=True)
+    replacement = anchor_files / "replacement.parquet"
+    (df * 2).to_parquet(replacement)
+    replacement.replace(path)
+    assert _anchor_closes_for_ticker("TEST", today, cache_only=True)["5d"] == initial["5d"] * 2
+    (df * 3).to_parquet(path)
+    assert _anchor_closes_for_ticker("TEST", today, cache_only=True)["5d"] == initial["5d"] * 3
+    path.unlink()
+    with patch("cache_refresh_helpers.request_cache_refresh"):
+        assert all(value is None for value in _anchor_closes_for_ticker("TEST", today, cache_only=True).values())
+    df.to_parquet(path)
+    assert _anchor_closes_for_ticker("TEST", today, cache_only=True) == initial
+
+
+def test_anchor_cache_date_rollover_prunes_old_entries(anchor_files):
+    import price_history_helpers
+
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    for ticker in ("AAA", "BBB"):
+        df.to_parquet(anchor_files / f"{ticker}.parquet")
+        _anchor_closes_for_ticker(ticker, date(2024, 7, 6), cache_only=True)
+    expected = float(df.loc[df.index.date <= date(2024, 6, 7), "Close"].iloc[-1])
+    assert _anchor_closes_for_ticker("AAA", date(2024, 7, 7), cache_only=True)["1m"] == expected
+    assert list(price_history_helpers._anchor_cache) == ["AAA"]
+
+
+def test_stale_anchor_cache_hit_still_requests_coordinated_refresh(anchor_files):
+    import os
+    import data_engine
+
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    path = anchor_files / "TEST.parquet"
+    df.to_parquet(path)
+    os.utime(path, (1, 1))
+    today = date(2024, 7, 6)
+    with patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
+         patch("data_engine.pd.read_parquet", wraps=pd.read_parquet) as read:
+        initial = _anchor_closes_for_ticker("TEST", today, cache_only=True)
+        refresh.reset_mock()
+        assert _anchor_closes_for_ticker("TEST", today, cache_only=True) == initial
+        assert read.call_count == 1
+        assert refresh.call_count == 1
+        assert refresh.call_args.args[0] == "daily:TEST"
+        with patch.object(data_engine, "_fetch_daily_history") as fetch:
+            refresh.call_args.args[1]()
+        fetch.assert_called_once_with("TEST", force_refresh=True)
+
+
+def test_anchor_cache_is_bounded(anchor_files, monkeypatch):
+    import price_history_helpers
+
+    monkeypatch.setattr(price_history_helpers, "_ANCHOR_CACHE_LIMIT", 2)
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    for ticker in ("AAA", "BBB", "CCC"):
+        df.to_parquet(anchor_files / f"{ticker}.parquet")
+        _anchor_closes_for_ticker(ticker, date(2024, 7, 6), cache_only=True)
+    assert list(price_history_helpers._anchor_cache) == ["BBB", "CCC"]
+
+
+def test_anchor_revision_rejects_unsafe_and_symlink_escape(anchor_files):
+    from data_engine import daily_history_cache_revision
+
+    outside = anchor_files.parent / (anchor_files.name + "-sibling")
+    outside.mkdir()
+    _fake_ohlcv("2024-01-01", "2024-07-05").to_parquet(outside / "TEST.parquet")
+    (anchor_files / "TEST.parquet").symlink_to(outside / "TEST.parquet")
+    with patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
+         patch("data_engine.os.stat", wraps=__import__("os").stat) as stat:
+        assert daily_history_cache_revision("../TEST", refresh_stale=True) is None
+        assert daily_history_cache_revision("TEST", refresh_stale=True) is None
+    refresh.assert_not_called()
+    stat.assert_not_called()
+
+
+def test_anchor_cache_does_not_publish_during_source_change(anchor_files):
+    import price_history_helpers
+
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    path = anchor_files / "TEST.parquet"
+    df.to_parquet(path)
+
+    def changed_source(*args, **kwargs):
+        (df * 2).to_parquet(path)
+        return df
+
+    with patch("price_history_helpers.load_or_fetch_daily_history", side_effect=changed_source):
+        initial = _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)
+    assert "TEST" not in price_history_helpers._anchor_cache
+    assert _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)["5d"] == initial["5d"] * 2
+
+
+def test_anchor_cache_changes_with_cache_root(anchor_files, monkeypatch):
+    import data_engine
+
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    df.to_parquet(anchor_files / "TEST.parquet")
+    first = _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)
+    other_root = anchor_files / "new-root"
+    other_root.mkdir()
+    (df * 2).to_parquet(other_root / "TEST.parquet")
+    monkeypatch.setattr(data_engine, "HISTORICAL_DIR", other_root)
+    assert _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)["5d"] == first["5d"] * 2
+
+
+def test_cached_anchors_are_independent_across_concurrent_readers(anchor_files):
+    from concurrent.futures import ThreadPoolExecutor
+
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    df.to_parquet(anchor_files / "TEST.parquet")
+    today = date(2024, 7, 6)
+    expected = _anchor_closes_for_ticker("TEST", today, cache_only=True)
+    with patch("price_history_helpers.load_or_fetch_daily_history", side_effect=AssertionError("cached read should not reload")):
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda _: _anchor_closes_for_ticker("TEST", today, cache_only=True), range(20)))
+    assert all(result == expected for result in results)
+    results[0]["5d"] = -1
+    assert all(result == expected for result in results[1:])

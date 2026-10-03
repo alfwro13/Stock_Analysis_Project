@@ -710,3 +710,122 @@ class TestBuyRecommendationLabel:
 
     def test_none_result_returns_none(self):
         assert buy_recommendation_label(None) is None
+
+
+@pytest.mark.parametrize("rr", [_PASSING_RR, _FAILING_RR, None])
+def test_buy_recommendation_reuses_request_results_exactly(rr):
+    confluence = {"UP": _BULLISH_CONFLUENCE, "DOWN": _BEARISH_CONFLUENCE}
+    regime = {"UP": {"score": 78.5, "regime": "Bull"}, "DOWN": None}
+    with patch("score_analysis.evaluate_pillar_confluence_batch", return_value=confluence) as pillars, \
+         patch("score_analysis.compute_regime_weighted_score_batch", return_value=regime) as scores, \
+         patch("position_sizing.passes_risk_reward_gate_batch", return_value={"UP": rr}):
+        expected = evaluate_buy_recommendation_batch(["UP", "DOWN"])
+        pillars.reset_mock()
+        scores.reset_mock()
+        actual = evaluate_buy_recommendation_batch(
+            ["UP", "DOWN", "UP"], confluence_by_ticker=confluence, regime_score_by_ticker=regime,
+        )
+        pillars.assert_not_called()
+        scores.assert_not_called()
+    assert actual == expected
+
+
+def test_buy_recommendation_empty_supplied_maps_do_not_recompute():
+    with patch("score_analysis.evaluate_pillar_confluence_batch") as pillars, \
+         patch("score_analysis.compute_regime_weighted_score_batch") as scores:
+        assert evaluate_buy_recommendation_batch(["UP"], confluence_by_ticker={}, regime_score_by_ticker={}) == {"UP": None}
+    pillars.assert_not_called()
+    scores.assert_not_called()
+
+
+@pytest.mark.parametrize("as_of", [None, "2020-08-01"])
+def test_sparse_observation_queries_return_only_five_per_ticker(as_of):
+    import sqlite3
+    from score_analysis import _ml_signals_batch, _statistical_signals_batch
+
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        for ticker in ("BOUND1", "BOUND2"):
+            for index in range(20):
+                day = (datetime(2020, 1, 1, tzinfo=timezone.utc) + timedelta(days=index * 30)).strftime("%Y-%m-%d")
+                conn.execute(
+                    "INSERT INTO earnings_volatility_history (ticker, scan_date, edge_score, drift_avg_pct_5d) VALUES (?, ?, ?, ?)",
+                    (ticker, day, 0 if index % 2 else 1, -2 if index % 3 else 2),
+                )
+                conn.execute(
+                    "INSERT INTO quant_signals (ticker, date, ml_confidence_score) VALUES (?, ?, ?)",
+                    (ticker, day, None if index % 3 == 0 else (75 if index % 2 else 25)),
+                )
+        conn.commit()
+        for function, table, date_column, non_null in (
+            (_statistical_signals_batch, "earnings_volatility_history", "scan_date", ""),
+            (_ml_signals_batch, "quant_signals", "date", " AND ml_confidence_score IS NOT NULL"),
+        ):
+            expected = {}
+            for ticker in ("BOUND1", "BOUND2"):
+                rows = conn.execute(
+                    f"SELECT * FROM {table} WHERE ticker = ?{non_null} ORDER BY {date_column} DESC", (ticker,),
+                ).fetchall()
+                rows = [row for row in rows if not as_of or row[date_column] <= as_of][:5]
+                if table == "quant_signals":
+                    expected[ticker] = ["up" if row["ml_confidence_score"] > 50 else "down" for row in rows]
+                else:
+                    expected[ticker] = ["up" if row["drift_avg_pct_5d"] > 0 else "down" for row in rows if row["edge_score"] > 0]
+            returned = []
+
+            def count_rows(cursor, row):
+                returned.append(row)
+                return sqlite3.Row(cursor, row)
+
+            conn.row_factory = count_rows
+            assert function(["BOUND1", "BOUND2"], conn, as_of=as_of) == expected
+            assert len(returned) == 10
+            conn.row_factory = sqlite3.Row
+    finally:
+        if conn:
+            conn.close()
+
+
+def test_trading_and_technical_queries_keep_ticker_specific_as_of_windows():
+    import sqlite3
+    from score_analysis import _trading_windows_batch, _pattern_signals_batch, _trap_signals_batch
+
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        for ticker, dates in (("WINDOW1", range(1, 21)), ("WINDOW2", range(1, 21, 2))):
+            for day in dates:
+                scan_date = f"2020-01-{day:02d}"
+                conn.execute("INSERT INTO quant_signals (ticker, date) VALUES (?, ?)", (ticker, scan_date))
+                conn.execute(
+                    "INSERT INTO pattern_detection_history (ticker, scan_date, pattern_family, pattern_type, phase, scan_ts) VALUES (?, ?, ?, ?, ?, ?)",
+                    (ticker, scan_date, "double_top_bottom", "double_bottom", "CONFIRMED", scan_date),
+                )
+                conn.execute("INSERT INTO trap_phase_history (ticker, scan_date, phase, scan_ts) VALUES (?, ?, ?, ?)", (ticker, scan_date, "ACCUMULATION", scan_date))
+        conn.commit()
+        rows_read = []
+
+        def count_rows(cursor, row):
+            rows_read.append(row)
+            return sqlite3.Row(cursor, row)
+
+        conn.row_factory = count_rows
+        windows = _trading_windows_batch(["WINDOW1", "WINDOW2"], conn, as_of="2020-01-15")
+        assert windows == {
+            "WINDOW1": {f"2020-01-{day:02d}" for day in range(11, 16)},
+            "WINDOW2": {f"2020-01-{day:02d}" for day in range(7, 16, 2)},
+        }
+        assert len(rows_read) == 10
+        rows_read.clear()
+        patterns = _pattern_signals_batch(["WINDOW1", "WINDOW2"], conn, windows)
+        traps = _trap_signals_batch(["WINDOW1", "WINDOW2"], conn, windows)
+        assert patterns == {"WINDOW1": ["up"] * 5, "WINDOW2": ["up"] * 5}
+        assert traps == {"WINDOW1": ["up"] * 5, "WINDOW2": ["up"] * 5}
+        assert len(rows_read) < 60
+        assert _trading_windows_batch(["WINDOW1"], conn, as_of="2021-01-15") == {}
+        assert _pattern_signals_batch(["WINDOW1"], conn, {}) == {"WINDOW1": []}
+        assert _trap_signals_batch(["WINDOW1"], conn, {}) == {"WINDOW1": []}
+    finally:
+        if conn:
+            conn.close()

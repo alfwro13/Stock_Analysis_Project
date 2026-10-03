@@ -357,7 +357,10 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
     )
     confluence_by_ticker = evaluate_pillar_confluence_batch(portfolio_tickers)
     regime_score_by_ticker = compute_regime_weighted_score_batch(portfolio_tickers)
-    buy_recommendation_by_ticker = evaluate_buy_recommendation_batch(portfolio_tickers)
+    buy_recommendation_by_ticker = evaluate_buy_recommendation_batch(
+        portfolio_tickers, confluence_by_ticker=confluence_by_ticker,
+        regime_score_by_ticker=regime_score_by_ticker,
+    )
 
     for row in db_rows:
         row_dict = dict(row)
@@ -818,7 +821,10 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
     )
     confluence_by_ticker = evaluate_pillar_confluence_batch(watchlist_tickers)
     regime_score_by_ticker = compute_regime_weighted_score_batch(watchlist_tickers)
-    buy_recommendation_by_ticker = evaluate_buy_recommendation_batch(watchlist_tickers)
+    buy_recommendation_by_ticker = evaluate_buy_recommendation_batch(
+        watchlist_tickers, confluence_by_ticker=confluence_by_ticker,
+        regime_score_by_ticker=regime_score_by_ticker,
+    )
 
     for row in db_rows:
         row_dict = dict(row)
@@ -2149,10 +2155,13 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
         if conn_risk:
             conn_risk.close()
 
-    from score_analysis import compute_regime_weighted_score, evaluate_buy_recommendation, evaluate_pillar_confluence
+    from score_analysis import compute_regime_weighted_score, evaluate_buy_recommendation_batch, evaluate_pillar_confluence
     pillar_confluence = evaluate_pillar_confluence(ticker)
     regime_weighted = compute_regime_weighted_score(ticker)
-    buy_recommendation = evaluate_buy_recommendation(ticker)
+    buy_recommendation = evaluate_buy_recommendation_batch(
+        [ticker], confluence_by_ticker={ticker: pillar_confluence},
+        regime_score_by_ticker={ticker: regime_weighted},
+    ).get(ticker)
 
     return time_request_call("template", templates.TemplateResponse,
         request=request, name="stock_detail.html",
