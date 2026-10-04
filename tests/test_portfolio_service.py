@@ -149,3 +149,21 @@ def test_cached_from_non_gbp_base_uses_actual_gbp_pair(currency):
     with patch.object(portfolio_service, "BASE_CURRENCY", "USD"), patch.object(portfolio_service.yahoo_engine, "get_cached_fx_rate", return_value={"rate": 0.8}) as quote:
         assert portfolio_service.get_rate_from_base(currency, cache_only=True) == 0.8
     quote.assert_called_once_with("USDGBP=X")
+
+
+def test_fx_status_includes_fresh_quotes_only_when_requested(monkeypatch):
+    import portfolio_service
+    import time_engine
+    from datetime import datetime, timezone
+
+    quote = {"pair": "USDGBP=X", "rate": 0.75, "updated_at": 1791024000,
+             "stale": False, "available": True}
+    calls = []
+    def read(pair, *, refresh):
+        calls.append((pair, refresh))
+        return dict(quote)
+    monkeypatch.setattr(portfolio_service.yahoo_engine, "get_cached_fx_rate", read)
+    assert portfolio_service.get_fx_cache_status(["USD", "USD", "GBP", "GBp"]) == []
+    statuses = portfolio_service.get_fx_cache_status(["USD", "GBP"], include_fresh=True)
+    assert statuses[0]["updated_display"] == time_engine.fmt_datetime(datetime.fromtimestamp(quote["updated_at"], timezone.utc))
+    assert calls == [("USDGBP=X", False), ("USDGBP=X", False)]

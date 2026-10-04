@@ -903,6 +903,8 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
     with measure_request_stage("fx_context"):
         position_sizing_context = _build_position_sizing_context(config_data, db_rows)
+    fx_currencies = sorted({row["currency"] for row in db_rows if row["currency"]})
+    position_sizing_context["fx_status"] = get_fx_cache_status(fx_currencies, include_fresh=True)
     optional_columns = table_columns_helpers.columns_for_page("watchlist")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "watchlist")
     views = table_columns_helpers.resolve_views(config_data, "watchlist")
@@ -911,6 +913,7 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
         request=request, name="watchlist.html",
         context={
             "watchlist": watchlist_data,
+            "fx_currencies": fx_currencies,
             "sectors": sectors,
             "present_signals": present_signals,
             "present_tags": present_tags,

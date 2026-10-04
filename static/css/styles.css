@@ -1633,3 +1633,13 @@ div.DTCR_pointer {
         cursor: grab;
     }
 }
+
+.fx-status-trigger {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}

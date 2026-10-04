@@ -51,7 +51,7 @@ def fx_pair(currency, *, from_base=False):
     return f"{BASE_CURRENCY}{native}=X" if from_base else f"{native}{BASE_CURRENCY}=X"
 
 
-def get_fx_cache_status(currencies, *, from_base=False):
+def get_fx_cache_status(currencies, *, from_base=False, include_fresh=False):
     import time_engine
     from datetime import datetime, timezone
 
@@ -59,7 +59,7 @@ def get_fx_cache_status(currencies, *, from_base=False):
     pairs = {fx_pair(currency, from_base=from_base) for currency in currencies}
     for pair in sorted(pair for pair in pairs if pair):
         status = yahoo_engine.get_cached_fx_rate(pair, refresh=False)
-        if status["stale"]:
+        if include_fresh or status["stale"]:
             status["updated_display"] = time_engine.fmt_datetime(
                 datetime.fromtimestamp(status["updated_at"], timezone.utc)
             ) if status["updated_at"] is not None else None

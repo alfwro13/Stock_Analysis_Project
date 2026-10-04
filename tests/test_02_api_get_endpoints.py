@@ -1447,3 +1447,28 @@ def test_alert_referee_log_filters_by_ticker_and_vetoed(client):
         conn.execute("DELETE FROM alert_referee_log WHERE engine=?", (are.TRAP_MONITOR_ENGINE,))
         conn.commit()
         conn.close()
+
+
+@pytest.mark.api
+def test_fx_status_reads_persisted_fresh_stale_and_missing_quotes(client, monkeypatch):
+    import time
+    from db_helpers import upsert_fx_quote
+    from yahoo_engine import yahoo_engine
+
+    upsert_fx_quote("USDGBP=X", 0.75, time.time())
+    upsert_fx_quote("EURGBP=X", 0.86, time.time() - 3600)
+    monkeypatch.setattr(yahoo_engine, "get_fx_rate", lambda *args, **kwargs: pytest.fail("status must not fetch"))
+    data = client.get("/api/fx/status?currencies=USD,EUR,ZZZ,GBP,GBp").json()
+    assert data["status"] == "success"
+    quotes = {quote["pair"]: quote for quote in data["quotes"]}
+    assert set(quotes) == {"USDGBP=X", "EURGBP=X", "ZZZGBP=X"}
+    assert not quotes["USDGBP=X"]["stale"]
+    assert quotes["EURGBP=X"]["stale"] and quotes["EURGBP=X"]["available"]
+    assert quotes["ZZZGBP=X"]["updated_display"] is None
+    assert not quotes["ZZZGBP=X"]["available"]
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("currencies", ["../USD", "usd", "USD,", "USD=X", "USD," * 40 + "USD"])
+def test_fx_status_rejects_invalid_currencies(client, currencies):
+    assert client.get("/api/fx/status", params={"currencies": currencies}).status_code == 422

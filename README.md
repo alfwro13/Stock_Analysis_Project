@@ -119,7 +119,7 @@ The **Yahoo Finance API Usage** panel immediately below shows daily request coun
 
 **Request Timing:** Portfolio, Watchlist, Stock Detail, intraday refresh, and Home Assistant account responses expose stage durations in the browser's `Server-Timing` header. Slow requests and event loop pauses are logged for navigation troubleshooting; lag warnings include the sampled project function and its callers when available. The timing logs omit tickers and financial values. Blocking work in the main portfolio, market, account, and refresh routes runs in request workers so a slow upstream call does not freeze unrelated navigation.
 
-Portfolio, Watchlist and Stock Detail use cached FX and historical data during navigation, with visible FX freshness and unavailable values when required conversion data is missing or too old. Cache age limits are configurable under `PERFORMANCE` in `config.json`; see [Cached Navigation](assets/system_architecture.md#cached-navigation). Explicit Refresh waits for its FX refresh attempt to complete.
+Portfolio, Watchlist and Stock Detail use cached FX and historical data during navigation, with visible FX freshness and unavailable values when required conversion data is missing or too old. Cache age limits are configurable under `PERFORMANCE` in `config.json`; see [Cached Navigation](assets/system_architecture.md#cached-navigation). Explicit Refresh waits for its FX refresh attempt to complete. On Watchlist, click the FX timestamp beside Prices to view pair details and Force Refresh progress.
 
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server

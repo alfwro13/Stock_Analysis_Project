@@ -1457,3 +1457,41 @@ def test_post_view_preserves_order_visibility_and_filter(client, scope):
 def test_post_column_order_rejects_invalid_types(client, endpoint, payload):
     response = client.post(f"/api/ui-preferences/{endpoint}", json=dict(scope="portfolio", **payload))
     assert response.status_code == 422
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("success", [True, False])
+def test_fx_refresh_awaits_force_attempt_and_retains_last_good(client, monkeypatch, success):
+    from db_helpers import get_cached_fx_quote, upsert_fx_quote
+    from yahoo_engine import yahoo_engine
+
+    upsert_fx_quote("CADGBP=X", 0.6, 1000)
+    def refresh(pair, *, force):
+        assert pair == "CADGBP=X" and force is True
+        if success:
+            upsert_fx_quote(pair, 0.65, 2000)
+            return 0.65
+        return None
+    monkeypatch.setattr(yahoo_engine, "get_fx_rate", refresh)
+    response = client.post("/api/fx/refresh", json={"currency": "CAD"})
+    assert response.status_code == 200
+    assert response.json()["status"] == ("success" if success else "error")
+    assert get_cached_fx_quote("CADGBP=X")["rate"] == (0.65 if success else 0.6)
+    assert response.json()["quotes"][0]["updated_at"] == (2000 if success else 1000)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("currency", ["../USD", "USDGBP=X", "usd", "", "USDD"])
+def test_fx_refresh_rejects_invalid_currency(client, currency):
+    assert client.post("/api/fx/refresh", json={"currency": currency}).status_code == 422
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("currency", ["GBP", "GBp"])
+def test_fx_refresh_base_currency_needs_no_network(client, monkeypatch, currency):
+    from yahoo_engine import yahoo_engine
+
+    monkeypatch.setattr(yahoo_engine, "get_fx_rate", lambda *args, **kwargs: pytest.fail("base currency must not fetch"))
+    response = client.post("/api/fx/refresh", json={"currency": currency})
+    assert response.json()["status"] == "success"
+    assert response.json()["quotes"] == []

@@ -148,6 +148,29 @@ async def api_watchlist_remove(req: TickerRequest):
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from watchlist."})
 
+class FxRefreshRequest(BaseModel):
+    currency: str = Field(pattern=r"^(?:[A-Z]{3}|GBp)$")
+
+
+@api_router.get("/fx/status")
+def api_fx_status(currencies: str = Query(max_length=127, pattern=r"^(?:[A-Z]{3}|GBp)(?:,(?:[A-Z]{3}|GBp))*$")):
+    from portfolio_service import get_fx_cache_status
+
+    return {"status": "success", "message": "FX cache status.",
+            "quotes": get_fx_cache_status(currencies.split(","), include_fresh=True)}
+
+
+@api_router.post("/fx/refresh")
+def api_fx_refresh(req: FxRefreshRequest):
+    from portfolio_service import fx_pair, get_fx_cache_status
+
+    pair = fx_pair(req.currency)
+    refreshed = pair is None or yahoo_engine.get_fx_rate(pair, force=True) is not None
+    return {"status": "success" if refreshed else "error",
+            "message": "FX refresh complete." if refreshed else "FX refresh failed; last-good cached data retained.",
+            "quotes": get_fx_cache_status([req.currency], include_fresh=True)}
+
+
 @api_router.post("/data/refresh-single")
 def api_data_refresh_single(req: TickerRequest):
     try:
