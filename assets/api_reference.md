@@ -4545,6 +4545,12 @@ already `approve`, or when reducing size doesn't change the tier (e.g. the const
 `Drawdown`, which doesn't scale with this position's size). Returns `400` (not `500`) if the scope
 has no holdings or Ghostfolio is configured but unreachable.
 
+### Watchlist FX status and refresh
+
+`GET /api/fx/status?currencies=USD,EUR` reads persisted FX cache status without requesting a refresh. `currencies` is a comma-separated list of three-letter uppercase currencies (or `GBp`), at most 127 characters. Returns `{status: "success", message, quotes}`. Each quote includes `pair`, `rate` (null when unavailable), `updated_at` (UTC epoch seconds), `updated_display` (configured local timezone), `stale`, and `available`. Base-currency conversions need no FX pair and are omitted.
+
+`POST /api/fx/refresh` accepts `{ "currency": "USD" }`. It awaits one forced native-to-base FX refresh in a request worker, coalescing with existing refresh work. Returns `{status, message, quotes}` after the attempt: `status` is `error` if Yahoo returned no usable new rate, with last-good persisted data retained. Invalid currency input returns HTTP 422. Normal authentication and session CSRF protection apply. The Watchlist modal calls pairs sequentially so completed attempts and failures remain visible as progress.
+
 ---
 
 *Generated: 2026-06-06 · Quantamental Dashboard*

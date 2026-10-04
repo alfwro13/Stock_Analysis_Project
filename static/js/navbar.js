@@ -69,6 +69,7 @@ async function loadFreshnessBadge() {
         slot.innerHTML =
             `<span class="${d.model_state}">${modelLabel}</span>` +
             `<span class="${d.prices_state}">${pricesLabel}</span>`;
+        if (window.renderWatchlistFxBadge) window.renderWatchlistFxBadge();
     } catch (e) { /* fail silently — badge is non-critical */ }
 }
 

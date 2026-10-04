@@ -1992,3 +1992,83 @@ def test_page_buy_recommendations_reuse_existing_scores(client, url):
         finally:
             if conn:
                 conn.close()
+
+
+def test_watchlist_fx_details_are_in_centered_modal(client):
+    response = client.get('/watchlist')
+    assert response.status_code == 200
+    assert 'modal-dialog-centered' in response.text
+    assert 'id="watchlistFxModal"' in response.text
+    assert 'id="watchlistFxRefresh"' in response.text
+    assert 'window.WATCHLIST_FX_STATUS =' in response.text
+    assert 'window.WATCHLIST_FX_CURRENCIES =' in response.text
+    assert 'Refresh requested in the background; reload to see updated values.' not in response.text
+
+
+def test_watchlist_fx_progress_continues_after_failure_and_cleans_polling():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('Node is required for FX interaction checks')
+    source = (Path(__file__).resolve().parents[1] / 'static/js/watchlist.js').read_text()
+    script = r"""
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const elements = new Map();
+function element(id) {
+    const el = {id, textContent: '', children: [], dataset: {}, handlers: {},
+        appendChild(child) {this.children.push(child); if(child.id) elements.set(child.id, child);},
+        replaceChildren() {this.children = [];}, setAttribute() {},
+        addEventListener(event, callback) {this.handlers[event] = callback;}};
+    if(id) elements.set(id, el);
+    return el;
+}
+['watchlistFxModal','watchlistFxDetails','watchlistFxProgress','watchlistFxRefresh'].forEach(element);
+const prices = element();
+element('freshness-badge-slot').lastElementChild = prices;
+const quote = (currency, updated) => ({pair: currency + 'GBP=X', updated_at: updated,
+    updated_display: 'time-' + updated, available: true, stale: true});
+const initial = [quote('USD', 200), quote('EUR', 100)];
+const requests = [];
+const timers = new Map();
+let attempts = 0;
+const context = {window: {WATCHLIST_FX_STATUS: initial, WATCHLIST_FX_CURRENCIES: ['USD','EUR']},
+    document: {getElementById: id => elements.get(id), createElement: () => element(), createTextNode: text => ({textContent: text})},
+    setInterval: callback => {timers.set(1, callback); return 1;}, clearInterval: id => timers.delete(id),
+    fetch: async (url, options) => {
+        requests.push(url);
+        if (!options) return {ok: true, json: async () => ({status: 'success', quotes: initial})};
+        const currency = JSON.parse(options.body).currency;
+        const progress = elements.get('watchlistFxProgress').textContent;
+        assert.ok(progress.includes('Refreshing ' + currency + 'GBP=X'));
+        if(attempts === 0) assert.ok(progress.includes('0/2 refreshed'));
+        attempts++;
+        return {ok: true, json: async () => ({status: currency === 'USD' ? 'error' : 'success',
+            message: 'failed; cache retained', quotes: [quote(currency, currency === 'USD' ? 200 : 300)]})};
+    }};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(0, 'utf8'), context);
+(async () => {
+    assert.equal(elements.get('watchlistFxBadge').textContent, 'FX: time-100');
+    assert.equal(prices.children.length, 2);
+    context.window.renderWatchlistFxBadge();
+    assert.equal(prices.children.length, 2);
+    elements.get('watchlistFxModal').handlers['shown.bs.modal']();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(timers.size, 1);
+    await elements.get('watchlistFxRefresh').handlers.click();
+    assert.equal(attempts, 2);
+    assert.ok(elements.get('watchlistFxProgress').textContent.includes('1/2 refreshed, 2/2 completed'));
+    assert.equal(elements.get('watchlistFxRefresh').disabled, false);
+    assert.ok(elements.get('watchlistFxDetails').children[0].textContent.includes('failed; cache retained'));
+    assert.equal(elements.get('watchlistFxBadge').textContent, 'FX: time-200');
+    elements.get('watchlistFxModal').handlers['hidden.bs.modal']();
+    assert.equal(timers.size, 0);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+    result = subprocess.run([node, '-e', script], input=source[source.rindex('(() => {'):], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
