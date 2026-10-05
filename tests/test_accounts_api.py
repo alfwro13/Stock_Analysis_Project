@@ -2485,3 +2485,49 @@ def test_refresh_now_awaits_fx_and_reports_fx_failure(client, monkeypatch):
     response = client.post("/api/accounts/refresh-now")
     assert response.status_code == 500
     assert response.json()["status"] == "error"
+
+
+def test_dividend_fx_calculator_uses_net_cash_and_withholding():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is unavailable")
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const fields = Object.fromEntries([
+    ['txn-dividend-total', '1.23'], ['txn-quantity', '6'],
+    ['txn-price', '0.32'], ['txn-fee', '0.29'],
+    ['txn-currency', 'USD'], ['txn-fee-currency', 'USD'],
+    ['txn-fx', ''], ['txn-fee-fx', ''],
+    ['txn-type', 'Dividend'], ['txn-total-preview', ''],
+    ['txn-dividend-fx-status', ''],
+].map(([id, value]) => [id, {value, textContent: ''}]));
+const context = {
+    document: {getElementById: id => fields[id], addEventListener: () => {}},
+    window: {BASE_CURRENCY: 'GBP'},
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+context.calculateDividendFx();
+assert.ok(Math.abs(Number(fields['txn-fx'].value) - 1.23 / 1.63) < 1e-8);
+assert.equal(fields['txn-fee-fx'].value, fields['txn-fx'].value);
+assert.match(fields['txn-total-preview'].textContent, /Fee \(-0\.29 USD\)/);
+assert.match(fields['txn-total-preview'].textContent, /Cash impact: \+1\.23 GBP/);
+fields['txn-fee-currency'].value = 'GBP';
+fields['txn-fee-fx'].value = '1';
+context.calculateDividendFx();
+assert.ok(Math.abs(Number(fields['txn-fx'].value) - 1.52 / 1.92) < 1e-8);
+fields['txn-fee-currency'].value = 'USD';
+fields['txn-fee'].value = '2';
+context.calculateDividendFx();
+assert.match(fields['txn-dividend-fx-status'].textContent, /withholding must be less/);
+"""
+    result = subprocess.run(
+        [node, "-e", script, str(Path(__file__).parent.parent / "static/js/accounts.js")],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr

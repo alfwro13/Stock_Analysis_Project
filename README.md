@@ -40,7 +40,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 
 **Portfolio & Accounts**
 * **Auto-Syncing Portfolio (Ghostfolio, opt-in)** — live holdings sync with selective account discovery and multi-currency P&L.
-* **Built-in Accounts (Native Ledger)** — self-hosted Trading/House/Pension/Watchlist accounts with a full transaction ledger, CSV import/export, Auto Top-up, UK Treasury Bill tracking, and an Account Price Scraper for House/Pension valuations.
+* **Built-in Accounts (Native Ledger)** — self-hosted Trading/House/Pension/Watchlist accounts with a full transaction ledger, dividend FX calculation from the net amount received, CSV import/export, Auto Top-up, UK Treasury Bill tracking, and an Account Price Scraper for House/Pension valuations.
 * **Change Period (1D/5D/1M/6M/YTD/1Y)** — togglable lookback window on the Portfolio/Watchlist Change column.
 * **Pre-Market / After-Hours Prices** — optional display of the latest extended-hours tick alongside the settled close.
 * **Monte Carlo Wealth Simulator** — 1,000 correlated GBM paths projecting portfolio wealth 10/20/30 years out.
