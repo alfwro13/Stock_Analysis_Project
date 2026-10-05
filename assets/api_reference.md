@@ -3237,7 +3237,7 @@ Native, database-backed brokerage accounts + transaction ledger (`/accounts`). C
 
 ### `GET /accounts`
 
-HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal.
+HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal. For foreign-currency dividends, the modal can calculate the trade and matching fee exchange rate from the net amount received in base currency, quantity, per-share amount, and withholding; the calculated rate is submitted as the transaction's explicit `exchange_rate`.
 
 ### `GET /accounts/{id}`
 
