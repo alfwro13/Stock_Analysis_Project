@@ -65,7 +65,7 @@ async function loadFreshnessBadge() {
         const modelLabel = d.model_date
             ? `Model: ${d.model_date} (${d.model_days_ago}d ago)`
             : 'Model: not trained';
-        const pricesLabel = d.prices_date ? `Prices: ${d.prices_date}` : 'Prices: no data';
+        const pricesLabel = d.prices_date ? `Quant: ${d.prices_date}` : 'Quant: no data';
         slot.innerHTML =
             `<span class="${d.model_state}">${modelLabel}</span>` +
             `<span class="${d.prices_state}">${pricesLabel}</span>`;

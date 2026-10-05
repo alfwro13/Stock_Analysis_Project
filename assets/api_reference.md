@@ -469,7 +469,7 @@ When no usable refresh can be obtained, the response contains `html: ""` and `re
 
 ### `GET /api/freshness`
 
-Returns how up-to-date the ML model file and price data are, along with CSS state classes for the UI freshness badge.
+Returns how up-to-date the ML model file and latest quant-signal daily bar are, along with CSS state classes for the UI freshness badge. The navbar labels the latter **Quant**; its date is the latest scanned daily bar, not a live quote timestamp.
 
 **Response**
 
