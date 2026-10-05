@@ -203,6 +203,8 @@ Authenticates with Ghostfolio and discovers all available portfolio accounts. Sa
 
 Adds a ticker to the native Watchlist account (the star toggle on `/stock/{ticker}` calls this, as does the "+ Add Ticker" button on `/watchlist` itself). Resolves company name/currency/quote type via Yahoo and exchange via `time_engine.ticker_exchange()` before inserting into `watchlist_items`. Re-adding an already-watched ticker is a no-op. If the ticker has no existing `asset_profiles` row, also queues a background profile update (`profile_engine.update_single_profile`) and price-history fetch (`data_engine.fetch_and_save_single_ticker`) so it doesn't sit unpriced until the next nightly scan.
 
+On the Watchlist page, a user can choose a company-name search result or submit a known ticker symbol directly from the Add Ticker modal. Direct symbol entry remains available when Yahoo search returns no matches.
+
 **Request body**
 
 ```json
