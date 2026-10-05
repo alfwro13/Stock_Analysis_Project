@@ -18,9 +18,11 @@ async function _wlRunAddSearch(query) {
         results.innerHTML = '';
         return;
     }
+    results.innerHTML = '<span class="msg-info">Searching...</span>';
     try {
         const r = await fetch(`/api/ticker-search?q=${encodeURIComponent(query.trim())}`);
         const data = await r.json();
+        if (!r.ok || data.status !== 'success') throw new Error(data.message || 'Search failed.');
         const matches = data.results || [];
         if (matches.length === 0) {
             results.innerHTML = '<p class="text-muted small mb-0">No matches found.</p>';
@@ -59,6 +61,19 @@ async function addTickerToWatchlist(ticker) {
 }
 
 $(document).ready(function () {
+    $('#wl-add-search').on('input', function () {
+        clearTimeout(_wlAddSearchTimer);
+        var query = this.value;
+        _wlAddSearchTimer = setTimeout(function () { _wlRunAddSearch(query); }, 300);
+    });
+    $('#wl-add-direct').on('click', function () {
+        const ticker = document.getElementById('wl-add-search').value.trim();
+        if (!ticker) {
+            document.getElementById('wl-add-status').innerHTML = '<span class="msg-error">Enter a ticker symbol.</span>';
+            return;
+        }
+        addTickerToWatchlist(ticker);
+    });
     $('#dataTable_length').append(
         '<div class="btn-group change-period-group ms-2" id="changePeriodGroup" role="group" aria-label="Change Period">'
         + '<button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1d">1D</button>'
@@ -71,10 +86,4 @@ $(document).ready(function () {
     );
     $('#dataTable_length').append('<button type="button" id="addTickerBtn" class="btn btn-sm btn-primary ms-2" onclick="openAddTickerModal()">+ Add Ticker</button>');
     window._watchlistChangePeriod.setButtons(window.WATCHLIST_CHANGE_PERIOD || '1d');
-
-    $('#wl-add-search').on('input', function () {
-        clearTimeout(_wlAddSearchTimer);
-        var query = this.value;
-        _wlAddSearchTimer = setTimeout(function () { _wlRunAddSearch(query); }, 300);
-    });
 });
