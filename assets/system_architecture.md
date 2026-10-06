@@ -88,6 +88,8 @@ A lifecycle task samples the event loop every 250 ms and writes `event_loop_lag`
 
 ### Request execution during blocking work
 
+The Fundamentals Profiler status endpoint awaits its SQLite queue breakdown in a request worker. A slow status query can still delay that response, while unrelated requests continue to run.
+
 Portfolio, Watchlist, Stock Detail, built-in account pages, intraday chart refresh, Home Assistant account summaries and holding limits, Market Pulse/Markets registry operations, and system/market checks run their synchronous database, file, chart, and Yahoo work in Starlette's request worker pool. A stalled call still delays its own response, but no longer occupies the event loop that must dispatch unrelated requests. Database connections are created and closed inside the same worker invocation; response bodies, authentication, background refresh scheduling, and awaited refresh completion retain their existing contracts. The shared worker pool and Yahoo lock remain finite resources; other upstream waits and expensive queries remain for later steps. The Portfolio page now resolves the selected holdings before querying `stock_signals`, runs the signal/quant/risk enrichment only for those tickers, and keeps the global freshness timestamp from the full table. Position-sizing FX preparation uses only displayed signal rows; the same resolved rate is reused for each holding's market value. Holdings with no signal row retain their existing unavailable display behavior, and the Watchlist query is unchanged.
 
 ### 5. Unified Notification Router (`notification_engine.py`)

@@ -7,6 +7,7 @@ from typing import List
 import time_engine
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from api_deps import limiter, _error_500, require_confirm_token
@@ -274,14 +275,14 @@ async def get_profiler_status():
     external callers depending on the original API shape.
     """
     try:
-        breakdown = get_profiler_queue_breakdown()
+        breakdown = await run_in_threadpool(get_profiler_queue_breakdown)
         return JSONResponse(content={
             "status": "success",
             "pending_count": breakdown.get("pending_count", 0),
             "breakdown": breakdown
         })
     except Exception as e:
-        logger.error(f"Failed to compute profiler status: {e}")
+        logger.error("Failed to compute profiler status: %s", e)
         return _error_500(e)
 
 @triggers_router.post("/universe/sync-indices")
