@@ -2,17 +2,19 @@ import hashlib
 import json
 import math
 import os
+import re
 import stat
 import tempfile
 import threading
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 
 from config import DATA_DIR, HISTORICAL_DIR
 from database import get_connection
 from quant_signals import QuantEngine
-from utils import normalize_ticker, safe_ticker_filename
+from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
 
@@ -27,10 +29,13 @@ class PriceRepairError(ValueError):
 
 def _history_path(ticker):
     ticker = normalize_ticker(ticker)
-    safe = safe_ticker_filename(ticker)
-    if not safe or safe != ticker:
+    if not re.fullmatch(r"[A-Z0-9^.=_-]+", ticker):
         raise PriceRepairError("Invalid ticker.")
-    return os.path.join(HISTORICAL_DIR, safe + ".parquet")
+    history_root = Path(HISTORICAL_DIR).resolve()
+    path = (history_root / f"{ticker}.parquet").resolve()
+    if path.parent != history_root:
+        raise PriceRepairError("Invalid ticker path.")
+    return path
 
 
 def _bar(row):
@@ -162,7 +167,7 @@ def remove_daily_bar(ticker, bar_date, fingerprint):
         if ticker in updated_repairs and not updated_repairs[ticker]:
             updated_repairs.pop(ticker)
         try:
-            fd, temporary = tempfile.mkstemp(prefix=".price-repair-remove-", suffix=".parquet", dir=os.path.dirname(path))
+            fd, temporary = tempfile.mkstemp(prefix=".price-repair-remove-", suffix=".parquet", dir=HISTORICAL_DIR)
             os.close(fd)
             try:
                 updated_df.to_parquet(temporary, engine="pyarrow")
@@ -188,7 +193,7 @@ def remove_daily_bar(ticker, bar_date, fingerprint):
                 if conn:
                     conn.close()
         except Exception:
-            fd, rollback_path = tempfile.mkstemp(prefix=".price-repair-remove-rollback-", dir=os.path.dirname(path))
+            fd, rollback_path = tempfile.mkstemp(prefix=".price-repair-remove-rollback-", dir=HISTORICAL_DIR)
             try:
                 with os.fdopen(fd, "wb") as file:
                     file.write(original_bytes)

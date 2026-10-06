@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 
 from database import get_connection
-from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, repair_daily_bar, remove_daily_bar, _fingerprint
+from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, repair_daily_bar, remove_daily_bar, _fingerprint, _history_path
 
 
 def _history(path):
@@ -16,6 +16,15 @@ def _history(path):
     )
     df.to_parquet(path)
     return df
+
+
+def test_history_path_rejects_path_traversal_ticker():
+    try:
+        _history_path("../../outside")
+    except PriceRepairError as exc:
+        assert "Invalid ticker" in str(exc)
+    else:
+        assert False
 
 
 def test_check_and_manual_repair_updates_stored_and_direct_prices(tmp_path):
