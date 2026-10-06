@@ -11,6 +11,7 @@ from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
+from price_repair_engine import apply_saved_repairs
 import time_engine
 
 from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename  # noqa: F401 — normalize_ticker re-exported for callers
@@ -144,6 +145,7 @@ class DataEngine:
                     mask = (df[col] == 0) & (df['Close'] > 0)
                     df.loc[mask, col] = df.loc[mask, 'Close']
                 df = _drop_in_progress_last_bar(df, live_dfs.get(ticker), ticker)
+                df = apply_saved_repairs(ticker, df)
                 if not df.empty:
                     df.to_parquet(path, engine='pyarrow')
         except Exception as e:
@@ -255,6 +257,7 @@ class DataEngine:
                     mask = (df_daily[col] == 0) & (df_daily['Close'] > 0)
                     df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
                 df_daily = _drop_in_progress_last_bar(df_daily, df_live, ticker)
+                df_daily = apply_saved_repairs(ticker, df_daily)
                 if not df_daily.empty:
                     df_daily.to_parquet(history_path, engine='pyarrow')
                     persisted = True

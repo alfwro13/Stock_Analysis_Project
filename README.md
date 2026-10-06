@@ -121,6 +121,8 @@ The **Yahoo Finance API Usage** panel immediately below shows daily request coun
 
 Portfolio, Watchlist and Stock Detail use cached FX and historical data during navigation, with visible FX freshness and unavailable values when required conversion data is missing or too old. Cache age limits are configurable under `PERFORMANCE` in `config.json`; see [Cached Navigation](assets/system_architecture.md#cached-navigation). Explicit Refresh waits for its FX refresh attempt to complete. On Watchlist, click the FX timestamp beside Prices to view pair details and Force Refresh progress.
 
+Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**. The repair dialog checks an incorrect daily price bar against fresh Yahoo data and also accepts manually verified OHLCV when Yahoo remains wrong. Corrections remain in effect after later data refreshes.
+
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless

@@ -388,6 +388,14 @@ Persists the Portfolio/Watchlist "Views" picker's full list of named column pres
 
 ## 4. Data Refresh
 
+### `GET /api/price-repair/check`
+
+Checks one stored daily bar against a fresh Yahoo daily fetch without changing data. Query parameters are `ticker` and optional `date` (`YYYY-MM-DD`; omitted means the latest stored bar). The response includes stored and Yahoo OHLCV, adjacent bars, direct SQLite price records, any saved correction, and a file fingerprint required by Repair. A missing Yahoo bar is reported as `null` so the operator can use manual entry.
+
+### `POST /api/price-repair/repair`
+
+Repairs the checked daily bar. Body: `ticker`, `date`, `fingerprint`, `source` (`yahoo` or `manual`), plus `checked_yahoo_bar` for Yahoo source or `manual_bar` with `Open`, `High`, `Low`, `Close`, `Volume` for manual source. The endpoint rejects a stale fingerprint, invalid OHLCV, or a Yahoo bar that changed since Check. It updates the daily Parquet bar and the matching `quant_signals` and `score_history` close/volume fields, then reruns the current Stock Detail verdict. The correction is saved in `data/price_repairs.json` and reapplied during future daily downloads. Historical rolling metrics in other engines are refreshed by their normal jobs.
+
 ### `POST /api/data/refresh-single`
 
 Fetches fresh price history, runs a full quant analysis, ML inference, tail risk, and sentiment for a single ticker. Runs to completion in a request worker (may take 10–30 seconds); unrelated event-loop requests remain free to run. Before success it also awaits a coordinated FX refresh for the ticker’s native currency, persisting the rate for cached navigation. An FX failure returns the existing `500` error shape and retains last-good cached data.

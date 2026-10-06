@@ -72,6 +72,42 @@
     <a href="/trap-monitor" class="btn btn-outline-secondary btn-sm">{{ stock.trap_phase_label }}</a>
     {% endif %}
 </nav>
+<div class="modal fade" id="price-repair-modal" tabindex="-1" aria-labelledby="price-repair-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="price-repair-title">Repair daily price for {{ stock.ticker }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="price-repair-date" class="form-label">Trading date (leave blank for latest stored bar)</label>
+                <input type="date" class="form-control mb-3" id="price-repair-date">
+                <p class="text-muted">Check compares the stored daily bar with a fresh Yahoo bar and nearby closes. Review the values before repairing.</p>
+                <div id="price-repair-result" aria-live="polite"></div>
+                <div id="price-repair-source" hidden>
+                    <label for="price-repair-mode" class="form-label">Replacement source</label>
+                    <select class="form-select mb-3" id="price-repair-mode">
+                        <option value="yahoo">Fresh Yahoo daily bar</option>
+                        <option value="manual">Enter OHLCV manually</option>
+                    </select>
+                    <div id="price-repair-manual" class="row g-2 mb-3" hidden>
+                        {% for field in ['Open', 'High', 'Low', 'Close', 'Volume'] %}
+                        <div class="col-6 col-md-4">
+                            <label for="price-repair-{{ field|lower }}" class="form-label">{{ field }}</label>
+                            <input type="number" class="form-control" id="price-repair-{{ field|lower }}" min="0" step="any">
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-primary" id="price-repair-check">Check</button>
+                <button type="button" class="btn btn-warning" id="price-repair-apply" disabled>Repair</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% set show_indexes = False %}
 {% include 'macro_cards.html' %}
 {% endif %}
@@ -240,9 +276,13 @@
                 <div class="flex-between-center flex-wrap gap-2">
                     <h2 class="m-0 border-none p-0">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100){% if risk_paused and 'BUY' in (stock.overall_signal or '') %} <abbr class="badge-warn" title="Portfolio Heat Index is Red — new buy signals are flagged for extra caution until risk cools down.">RISK PAUSED</abbr>{% endif %}</h2>
                     <div class="inline-flex-gap-10">
-                        <button id="refreshDataBtn" onclick="refreshSingleData()" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
+                        <button id="refreshDataBtn" onclick="toggleRefreshDropdown(event)" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}" aria-haspopup="true" aria-expanded="false">
                             <span class="btn-icon">&#8635;</span> Refresh
                         </button>
+                        <div id="refreshDropdown" class="ai-dropdown-content">
+                            <a href="javascript:void(0)" onclick="refreshSingleData()">Refresh Values</a>
+                            <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#price-repair-modal">Repair Data</a>
+                        </div>
                         <button id="stockAIBtn" onclick="toggleAIDropdown('aiDropdown')" class="ai-btn">&#10024; AI</button>
                         <div id="aiDropdown" class="ai-dropdown-content">
                             <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', &quot;The Devil's Advocate analysis&quot;, document.getElementById('stockAIBtn'))">The Devil's Advocate analysis</a>

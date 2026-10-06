@@ -21,14 +21,16 @@ A self-hosted **FastAPI** web application that merges quantitative analysis, fun
 
 The detailed reference material that used to live in this file now lives in `agents/`. It was moved out of this file, not dropped. The `agents/` files are part of AGENTS.md: the same rule applies to them — do not edit them yourself; propose changes to the operator (see "AGENTS.md (this file)" under Documentation Maintenance).
 
+`agents/` and `audit/` are local, Git-ignored directories shared with feature worktrees through symlinks. Keep those symlinks in place for the entire task. If the operator approves an edit to either directory, edit the shared file through the link; do not replace the link with a worktree copy or stage those local files in a PR. `AGENTS.md` itself is tracked and belongs on the feature branch.
+
 **How to use this index:** before you write or change code, read — in full — every file below whose "Read when" condition matches your task. If you are unsure whether a condition applies, read the file. A one-line stub in the rule list below is a pointer, not the rule: do not act on a stubbed rule without reading its file.
 
 | File | Read when |
 |---|---|
 | `agents/DIRECTORY_LAYOUT.md` | You need to know where a module, template or JS file lives, or before creating any new file. |
 | `agents/DATABASE_SCHEMA.md` | You touch any SQLite table, query, migration or `db_*.py` file. |
-| `agents/RULES_DATA_CACHING_HELPERS.md` | Rules 3, 15, 16, 17 — you fetch or cache external data, decide which tickers get fetched, compute a value another engine may already compute, or write ANY new utility/calculation function (always read before adding a helper). |
-| `agents/RULE_12_CENTRAL_ENGINES.md` | Rule 12 — you touch time/timezone, Yahoo Finance, scheduling, notifications, font sizes, price scraping, backup, Pattern Detection or the market ticker registry; you add or split files; ALWAYS for the POST-TASK AUDIT central-engine compliance check. |
+| `agents/RULES_DATA_CACHING_HELPERS.md` | Rules 3, 15, 16, 17 — you fetch or cache external data, coordinate an on-demand refresh, change FX or historical-data freshness policy, decide which tickers get fetched, compute a value another engine may already compute, or write ANY new utility/calculation function (always read before adding a helper). |
+| `agents/RULE_12_CENTRAL_ENGINES.md` | Rule 12 — you touch time/timezone, Yahoo Finance, scheduling, notifications, persisted scikit-learn models, font sizes, price scraping, backup, Pattern Detection or the market ticker registry; you add or split files; ALWAYS for the POST-TASK AUDIT central-engine compliance check. |
 | `agents/RULE_12_DATA_PITFALLS.md` | Rule 12, continued — you touch daily-bar completeness, live-quote or price freshness, ticker-list filtering before Yahoo calls, `roe`/`debt_to_equity` units, "fill in the actual" backfill loops, or ticker-native vs transaction currency. |
 | `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` | Rules 10, 19, 20 — you add sleeps, retries, locks or blocking calls inside an `async def` route; you touch alert firing, dedup or cooldown logic; you change `requirements.txt` or any dependency. |
 | `agents/RULES_FRONTEND_UI.md` | Rules 11, 18 and Settings page structure — you touch any template, page, CSS, JS, Plotly chart, DataTables column or Settings card. |
@@ -83,6 +85,8 @@ The detailed reference material that used to live in this file now lives in `age
 19. **Alert dedup gates must never auto-fire solely because a calendar day rolled over.** → **moved:** `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` — read it before touching any alert firing, dedup or cooldown logic.
 
 20. **Dependency updates are CI-gated, documented, and self-verified at runtime.** → **moved:** `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` — read it before changing `requirements.txt` or any dependency.
+
+21. **Persisted scikit-learn estimators use the shared compatibility helper.** Write with `model_compatibility_engine.dump_sklearn_artifact()` and load with `model_compatibility_engine.load_sklearn_artifact(path, retraining_job_id)` so version sidecars, incompatible-load detection, and automatic retraining remain connected. Do not call `joblib.dump()` or `joblib.load()` directly for a persisted estimator. The retraining job ID must match the model family registered by `model_compatibility_engine.scan_model_compatibility()` and `scheduler_engine.start_model_compatibility_guard()`.
 
 ---
 

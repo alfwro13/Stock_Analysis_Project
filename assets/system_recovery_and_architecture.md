@@ -4,6 +4,8 @@ The Quantamental Dashboard utilizes a **Dual-Storage Architecture** to maximize 
 
 ## 🏗️ The Dual-Storage Architecture
 
+Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**. The Repair Data dialog provides a controlled correction for one bad daily OHLCV bar. **Check** compares the stored Parquet bar with a fresh Yahoo fetch and adjacent days. **Repair** accepts either the checked Yahoo bar or manually entered OHLCV, then corrects the direct SQLite price records. Corrections are stored in `data/price_repairs.json` and reapplied after later Yahoo daily downloads, so a recurring source error cannot immediately undo a repair. The file fingerprint prevents applying a stale Check after another data refresh. Repairs to earlier bars may require the normal downstream scans to rebuild rolling indicators; the dialog does not rewrite historical account snapshots or retract alerts already sent.
+
 ### 1. The Relational Database (`data/analysis.db`)
 This SQLite database stores all structured, queryable data:
 * **System Verdicts & Scores:** The 0-100 composite scores and "STRONG BUY" / "BEARISH" signals.
