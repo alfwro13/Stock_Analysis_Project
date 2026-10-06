@@ -79,13 +79,13 @@
                 <input type="number" id="txn-fee-fx" step="0.000001" placeholder="auto" oninput="_updateTxnTotalPreview()">
             </div>
         </div>
-        <div class="form-group d-none" id="txn-dividend-total-group">
-            <label for="txn-dividend-total">Net Dividend Received ({{ base_currency }})</label>
+        <div class="form-group d-none" id="txn-fx-total-group">
+            <label for="txn-fx-total" id="txn-fx-total-label">Net Dividend Received ({{ base_currency }})</label>
             <div class="d-flex gap-2">
-                <input type="number" id="txn-dividend-total" step="0.01" min="0" placeholder="Amount shown by your broker">
-                <button type="button" class="btn btn-outline-secondary" onclick="calculateDividendFx()">Calculate FX</button>
+                <input type="number" id="txn-fx-total" step="0.01" min="0" placeholder="Amount shown by your broker">
+                <button type="button" class="btn btn-outline-secondary" onclick="calculateTransactionFx()">Calculate FX</button>
             </div>
-            <div id="txn-dividend-fx-status" class="status-msg-sm" role="status"></div>
+            <div id="txn-fx-calc-status" class="status-msg-sm" role="status"></div>
         </div>
         <div class="form-group">
             <label for="txn-notes">Notes</label>
