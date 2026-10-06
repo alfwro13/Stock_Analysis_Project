@@ -1859,8 +1859,9 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
         ("get", "/api/accounts/portfolio-totals", "api_routes_accounts.portfolio_totals", {}),
         ("get", "/api/markets", "markets_engine.assemble_markets_payload", {"regions": []}),
         ("get", "/api/system/market-status", "system_check_engine.run_system_checks", []),
+        ("get", "/api/universe/profiler-status", "api_routes_triggers.get_profiler_queue_breakdown", {"pending_count": 3}),
     ],
-    ids=["intraday-yahoo", "portfolio-history", "ha-metrics", "markets-payload", "ha-market-status"],
+    ids=["intraday-yahoo", "portfolio-history", "ha-metrics", "markets-payload", "ha-market-status", "profiler-status"],
 )
 def test_blocked_request_does_not_stall_unrelated_request(
     client, method, path, patch_target, stub_result,

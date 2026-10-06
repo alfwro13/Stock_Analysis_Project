@@ -816,6 +816,7 @@ The market universe is a catalogue of 4,000+ tickers (S&P 500, FTSE 100, Freetra
 ### `GET /api/universe/profiler-status`
 
 Returns the Fundamentals Profiler queue breakdown — how many tickers are eligible for profiling, already profiled, or stale.
+The database read runs in a request worker, so a slow status query does not hold up unrelated requests. The endpoint waits for the counts before responding.
 
 **Response**
 
