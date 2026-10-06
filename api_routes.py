@@ -72,6 +72,7 @@ from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, update_single_profile
 from tools.network_engine import GLOBAL_IPV6_STATUS
 from yahoo_engine import yahoo_engine
+from price_repair_engine import PriceRepairError, check_daily_bar, repair_daily_bar, BAR_FIELDS
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
 from macro_calendar_engine import update_macro_calendar
@@ -191,6 +192,49 @@ def api_data_refresh_single(req: TickerRequest):
     except Exception as e:
         logger.exception("refresh-single failed for %s", req.ticker)
         return _error_500(e)
+
+
+class DailyBarRepairRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=32)
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source: Literal["yahoo", "manual"]
+    manual_bar: Optional[dict[str, float]] = None
+    checked_yahoo_bar: Optional[dict[str, float]] = None
+
+
+@api_router.get("/price-repair/check")
+def api_price_repair_check(ticker: str, date: Optional[str] = None):
+    try:
+        ticker = normalize_ticker(ticker)
+        result = check_daily_bar(ticker, date)
+        return {"status": "success", "message": "Daily bar checked.", "check": result}
+    except (PriceRepairError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api_router.post("/price-repair/repair")
+def api_price_repair_apply(req: DailyBarRepairRequest):
+    try:
+        ticker = normalize_ticker(req.ticker)
+        if req.source == "yahoo":
+            fresh = yahoo_engine.get_price_history([ticker], period="2y", interval="1d", force_refresh=True).get(ticker)
+            if fresh is None or fresh.empty:
+                raise PriceRepairError("Yahoo returned no daily data. Use manual OHLCV entry.")
+            matched = fresh.loc[fresh.index.strftime("%Y-%m-%d") == req.date]
+            if len(matched) != 1:
+                raise PriceRepairError("Yahoo has no daily bar for this date. Use manual OHLCV entry.")
+            replacement = {field: float(matched.iloc[0][field]) for field in BAR_FIELDS}
+            if req.checked_yahoo_bar != replacement:
+                raise PriceRepairError("Yahoo's bar changed since Check. Run Check again.")
+        else:
+            if req.manual_bar is None or set(req.manual_bar) != set(BAR_FIELDS):
+                raise PriceRepairError("Enter all five OHLCV values.")
+            replacement = req.manual_bar
+        result = repair_daily_bar(ticker, req.date, req.fingerprint, replacement)
+        return {"status": "success", "message": "Daily bar and direct price records repaired.", "repair": result}
+    except (PriceRepairError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @api_router.post("/ticker/{ticker}/name-override")

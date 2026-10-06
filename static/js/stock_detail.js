@@ -276,6 +276,7 @@
     // ─── Single Asset Refresh ─────────────────────────────────────────────────────
     async function refreshSingleData() {
         const ticker = window.STOCK_TICKER;
+        document.getElementById('refreshDropdown')?.classList.remove('show');
         _intradayBusy = true;
         if (_intradayTimer) clearInterval(_intradayTimer);
 
@@ -309,6 +310,141 @@
     }
 
     window.refreshSingleData = refreshSingleData;
+
+    function toggleRefreshDropdown(event) {
+        event.stopPropagation();
+        const menu = document.getElementById('refreshDropdown');
+        const open = menu.classList.toggle('show');
+        document.getElementById('refreshDataBtn').setAttribute('aria-expanded', String(open));
+    }
+    window.toggleRefreshDropdown = toggleRefreshDropdown;
+    document.addEventListener('click', event => {
+        if (!event.target.closest('#refreshDropdown')) {
+            document.getElementById('refreshDropdown')?.classList.remove('show');
+            document.getElementById('refreshDataBtn')?.setAttribute('aria-expanded', 'false');
+        }
+    });
+    document.getElementById('refreshDropdown')?.addEventListener('click', () => {
+        document.getElementById('refreshDropdown').classList.remove('show');
+        document.getElementById('refreshDataBtn').setAttribute('aria-expanded', 'false');
+    });
+
+    const repairModal = document.getElementById('price-repair-modal');
+    if (repairModal) {
+        const dateInput = document.getElementById('price-repair-date');
+        const result = document.getElementById('price-repair-result');
+        const sourcePanel = document.getElementById('price-repair-source');
+        const mode = document.getElementById('price-repair-mode');
+        const manual = document.getElementById('price-repair-manual');
+        const checkButton = document.getElementById('price-repair-check');
+        const applyButton = document.getElementById('price-repair-apply');
+        let checked = null;
+        const fields = ['Open', 'High', 'Low', 'Close', 'Volume'];
+
+        function showRepairMessage(message) {
+            result.replaceChildren();
+            const paragraph = document.createElement('p');
+            paragraph.textContent = message;
+            result.appendChild(paragraph);
+        }
+
+        function showRepairComparison(check) {
+            const table = document.createElement('table');
+            table.className = 'table table-sm table-hover';
+            const head = table.createTHead().insertRow();
+            ['Source', ...fields].forEach(label => {
+                const cell = document.createElement('th');
+                cell.textContent = label;
+                head.appendChild(cell);
+            });
+            const body = table.createTBody();
+            [['Stored', check.stored], ['Fresh Yahoo', check.yahoo], ['Previous day', check.previous], ['Next day', check.next]].forEach(([label, bar]) => {
+                const row = body.insertRow();
+                [label, ...fields.map(field => bar ? String(bar[field]) : 'Unavailable')].forEach(value => {
+                    const cell = row.insertCell();
+                    cell.textContent = value;
+                });
+            });
+            result.replaceChildren(table);
+            const note = document.createElement('p');
+            note.textContent = `Related records: quant close ${check.quant_close ?? 'none'}, score history close ${check.score_close ?? 'none'}, current stock price ${check.current_price ?? 'none'}. Repair updates the selected daily bar and direct price records, then recalculates the current verdict.`;
+            result.appendChild(note);
+            if (check.saved_repair) {
+                const saved = document.createElement('p');
+                saved.textContent = 'A saved correction already exists for this date and will be reapplied after future Yahoo downloads.';
+                result.appendChild(saved);
+            }
+        }
+
+        mode.addEventListener('change', () => {
+            manual.hidden = mode.value !== 'manual';
+            applyButton.disabled = !checked || (mode.value === 'yahoo' && !checked.yahoo);
+        });
+        dateInput.addEventListener('change', () => {
+            checked = null;
+            sourcePanel.hidden = true;
+            applyButton.disabled = true;
+            result.replaceChildren();
+        });
+        checkButton.addEventListener('click', async () => {
+            checked = null;
+            applyButton.disabled = true;
+            sourcePanel.hidden = true;
+            checkButton.disabled = true;
+            showRepairMessage('Checking stored history and Yahoo...');
+            try {
+                const params = new URLSearchParams({ ticker: window.STOCK_TICKER });
+                if (dateInput.value) params.set('date', dateInput.value);
+                const response = await fetch('/api/price-repair/check?' + params);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || data.message || 'Check failed.');
+                checked = data.check;
+                dateInput.value = checked.date;
+                showRepairComparison(checked);
+                sourcePanel.hidden = false;
+                mode.value = checked.yahoo ? 'yahoo' : 'manual';
+                mode.dispatchEvent(new Event('change'));
+            } catch (error) {
+                showRepairMessage(error.message);
+            } finally {
+                checkButton.disabled = false;
+            }
+        });
+        applyButton.addEventListener('click', async () => {
+            if (!checked) return;
+            const request = {
+                ticker: window.STOCK_TICKER, date: checked.date,
+                fingerprint: checked.fingerprint, source: mode.value,
+                checked_yahoo_bar: checked.yahoo
+            };
+            if (mode.value === 'manual') {
+                request.manual_bar = {};
+                for (const field of fields) {
+                    const input = document.getElementById('price-repair-' + field.toLowerCase());
+                    if (input.value === '') {
+                        showRepairMessage('Enter all five OHLCV values.');
+                        return;
+                    }
+                    request.manual_bar[field] = Number(input.value);
+                }
+            }
+            applyButton.disabled = true;
+            showRepairMessage('Repairing daily price...');
+            try {
+                const response = await fetch('/api/price-repair/repair', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(request)
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || data.message || 'Repair failed.');
+                showRepairMessage('Repair complete. Reloading Stock Detail...');
+                window.location.reload();
+            } catch (error) {
+                showRepairMessage(error.message);
+                applyButton.disabled = false;
+            }
+        });
+    }
 
     // ─── Fullscreen Toggle ────────────────────────────────────────────────────────
     // These three charts are server-rendered (visuals.py's fig.to_html()), so
