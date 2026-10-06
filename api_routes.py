@@ -72,7 +72,7 @@ from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, update_single_profile
 from tools.network_engine import GLOBAL_IPV6_STATUS
 from yahoo_engine import yahoo_engine
-from price_repair_engine import PriceRepairError, check_daily_bar, repair_daily_bar, BAR_FIELDS
+from price_repair_engine import PriceRepairError, check_daily_bar, repair_daily_bar, remove_daily_bar, yahoo_bar_status, BAR_FIELDS
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
 from macro_calendar_engine import update_macro_calendar
@@ -203,6 +203,12 @@ class DailyBarRepairRequest(BaseModel):
     checked_yahoo_bar: Optional[dict[str, float]] = None
 
 
+class DailyBarRemovalRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=32)
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 @api_router.get("/price-repair/check")
 def api_price_repair_check(ticker: str, date: Optional[str] = None):
     try:
@@ -225,6 +231,9 @@ def api_price_repair_apply(req: DailyBarRepairRequest):
             if len(matched) != 1:
                 raise PriceRepairError("Yahoo has no daily bar for this date. Use manual OHLCV entry.")
             replacement = {field: float(matched.iloc[0][field]) for field in BAR_FIELDS}
+            yahoo_usable, yahoo_note = yahoo_bar_status(ticker, req.date, replacement)
+            if not yahoo_usable:
+                raise PriceRepairError(yahoo_note)
             if req.checked_yahoo_bar != replacement:
                 raise PriceRepairError("Yahoo's bar changed since Check. Run Check again.")
         else:
@@ -233,6 +242,16 @@ def api_price_repair_apply(req: DailyBarRepairRequest):
             replacement = req.manual_bar
         result = repair_daily_bar(ticker, req.date, req.fingerprint, replacement)
         return {"status": "success", "message": "Daily bar and direct price records repaired.", "repair": result}
+    except (PriceRepairError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api_router.post("/price-repair/remove")
+def api_price_repair_remove(req: DailyBarRemovalRequest):
+    try:
+        ticker = normalize_ticker(req.ticker)
+        result = remove_daily_bar(ticker, req.date, req.fingerprint)
+        return {"status": "success", "message": "Daily bar and direct price records removed.", "repair": result}
     except (PriceRepairError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

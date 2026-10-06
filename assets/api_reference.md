@@ -390,11 +390,15 @@ Persists the Portfolio/Watchlist "Views" picker's full list of named column pres
 
 ### `GET /api/price-repair/check`
 
-Checks one stored daily bar against a fresh Yahoo daily fetch without changing data. Query parameters are `ticker` and optional `date` (`YYYY-MM-DD`; omitted means the latest stored bar). The response includes stored and Yahoo OHLCV, adjacent bars, direct SQLite price records, any saved correction, and a file fingerprint required by Repair. A missing Yahoo bar is reported as `null` so the operator can use manual entry.
+Checks one stored daily bar against a fresh Yahoo daily fetch without changing data. Query parameters are `ticker` and optional `date` (`YYYY-MM-DD`; omitted means the latest stored bar). The response includes stored and Yahoo OHLCV, adjacent bars, direct SQLite price records, any saved correction, and a file fingerprint required by Repair or Remove. A Yahoo bar whose close is over ten times adjacent closes and has zero volume is marked unusable; use verified historical OHLCV or remove the interior bar.
 
 ### `POST /api/price-repair/repair`
 
-Repairs the checked daily bar. Body: `ticker`, `date`, `fingerprint`, `source` (`yahoo` or `manual`), plus `checked_yahoo_bar` for Yahoo source or `manual_bar` with `Open`, `High`, `Low`, `Close`, `Volume` for manual source. The endpoint rejects a stale fingerprint, invalid OHLCV, or a Yahoo bar that changed since Check. It updates the daily Parquet bar and the matching `quant_signals` and `score_history` close/volume fields, then reruns the current Stock Detail verdict. The correction is saved in `data/price_repairs.json` and reapplied during future daily downloads. Historical rolling metrics in other engines are refreshed by their normal jobs.
+Repairs the checked daily bar. Body: `ticker`, `date`, `fingerprint`, `source` (`yahoo` or `manual`), plus `checked_yahoo_bar` for Yahoo source or `manual_bar` with `Open`, `High`, `Low`, `Close`, `Volume` for manual source. The endpoint rejects a stale fingerprint, invalid OHLCV, a Yahoo bar that changed since Check, and any replacement OHLC prices over ten times the adjacent closes. It updates the daily Parquet bar and the matching `quant_signals` and `score_history` close/volume fields, then reruns the current Stock Detail verdict. The correction is saved in `data/price_repairs.json` and reapplied during future daily downloads. Historical rolling metrics in other engines are refreshed by their normal jobs.
+
+### `POST /api/price-repair/remove`
+
+Removes a checked interior historical bar when no verified correction is available. Body: `ticker`, `date`, `fingerprint`. It rejects the first or latest bar, removes the date from daily Parquet, `quant_signals`, and `score_history`, and deletes any saved correction for that date. This leaves a visible missing date in history; later rolling analytics are refreshed by their normal jobs.
 
 ### `POST /api/data/refresh-single`
 

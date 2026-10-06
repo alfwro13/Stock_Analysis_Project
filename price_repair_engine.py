@@ -67,6 +67,37 @@ def _validate_bar(bar):
     return values
 
 
+def _assess_yahoo_bar(bar, previous, following):
+    if bar is None:
+        return False, "Yahoo has no bar for this date; enter verified OHLCV manually."
+    adjacent = [item["Close"] for item in (previous, following) if item]
+    if adjacent and bar["Close"] > max(adjacent) * 10 and bar["Volume"] == 0:
+        return False, "Yahoo's bar is over 10 times adjacent closes and has zero volume; verify OHLCV manually."
+    return True, "Yahoo's bar is available; compare it with adjacent closes before using it."
+
+
+def _validate_against_neighbors(bar, previous, following):
+    adjacent = [item["Close"] for item in (previous, following) if item]
+    if adjacent and max(bar[field] for field in BAR_FIELDS[:4]) > max(adjacent) * 10:
+        raise PriceRepairError("Replacement prices are over 10 times adjacent closes. Verify the correct historical OHLCV before repairing.")
+
+
+def _check_repair_neighbors(df, pos):
+    previous = _bar(df.iloc[pos - 1]) if pos else None
+    following = _bar(df.iloc[pos + 1]) if pos + 1 < len(df) else None
+    return previous, following
+
+
+def yahoo_bar_status(ticker, bar_date, bar):
+    _, df = _read_history(ticker)
+    positions = [i for i, value in enumerate(df.index.strftime("%Y-%m-%d")) if value == bar_date]
+    if len(positions) != 1:
+        raise PriceRepairError("That date is not present in stored daily history.")
+    pos = positions[0]
+    previous, following = _check_repair_neighbors(df, pos)
+    return _assess_yahoo_bar(bar, previous, following)
+
+
 def _saved_repairs():
     if not REPAIRS_PATH.exists():
         return {}
@@ -107,6 +138,79 @@ def _restore_repairs(previous):
         _write_repairs(previous)
 
 
+def remove_daily_bar(ticker, bar_date, fingerprint):
+    date.fromisoformat(bar_date)
+    path, df = _read_history(ticker)
+    if _fingerprint(path) != fingerprint:
+        raise PriceRepairError("Stored history changed since Check. Run Check again.")
+    dates = df.index.strftime("%Y-%m-%d")
+    positions = [i for i, value in enumerate(dates) if value == bar_date]
+    if len(positions) != 1:
+        raise PriceRepairError("That date is not present in stored daily history.")
+    pos = positions[0]
+    if pos == 0 or pos == len(df) - 1:
+        raise PriceRepairError("Only an interior historical bar can be removed safely.")
+    latest_bar = _bar(df.iloc[-1])
+    with open(path, "rb") as file:
+        original_bytes = file.read()
+    original_mode = stat.S_IMODE(os.stat(path).st_mode)
+    updated_df = df.drop(df.index[pos])
+    with _repair_lock:
+        prior_repairs = _saved_repairs() if REPAIRS_PATH.exists() else None
+        updated_repairs = {} if prior_repairs is None else json.loads(json.dumps(prior_repairs))
+        updated_repairs.get(ticker, {}).pop(bar_date, None)
+        if ticker in updated_repairs and not updated_repairs[ticker]:
+            updated_repairs.pop(ticker)
+        try:
+            fd, temporary = tempfile.mkstemp(prefix=".price-repair-remove-", suffix=".parquet", dir=os.path.dirname(path))
+            os.close(fd)
+            try:
+                updated_df.to_parquet(temporary, engine="pyarrow")
+                os.chmod(temporary, original_mode)
+                if _fingerprint(path) != fingerprint:
+                    raise PriceRepairError("Stored history changed during removal. Run Check again.")
+                os.replace(temporary, path)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+            if updated_repairs != prior_repairs:
+                if updated_repairs:
+                    _write_repairs(updated_repairs)
+                else:
+                    REPAIRS_PATH.unlink(missing_ok=True)
+            conn = None
+            try:
+                conn = get_connection()
+                conn.execute("DELETE FROM quant_signals WHERE ticker=? AND date=?", (ticker, bar_date))
+                conn.execute("DELETE FROM score_history WHERE ticker=? AND date=?", (ticker, bar_date))
+                conn.commit()
+            finally:
+                if conn:
+                    conn.close()
+        except Exception:
+            fd, rollback_path = tempfile.mkstemp(prefix=".price-repair-remove-rollback-", dir=os.path.dirname(path))
+            try:
+                with os.fdopen(fd, "wb") as file:
+                    file.write(original_bytes)
+                os.chmod(rollback_path, original_mode)
+                os.replace(rollback_path, path)
+            finally:
+                if os.path.exists(rollback_path):
+                    os.unlink(rollback_path)
+                _restore_repairs(prior_repairs)
+            raise
+    QuantEngine().analyze_ticker(ticker)
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute("UPDATE stock_signals SET current_price=? WHERE ticker=?", (latest_bar["Close"], ticker))
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    return {"ticker": ticker, "date": bar_date, "removed": True}
+
+
 def check_daily_bar(ticker, bar_date):
     path, df = _read_history(ticker)
     if not bar_date:
@@ -119,6 +223,8 @@ def check_daily_bar(ticker, bar_date):
     pos = positions[0]
     fresh = yahoo_engine.get_price_history([ticker], period="2y", interval="1d", force_refresh=True).get(ticker)
     yahoo_bar = _row_for_date(fresh, bar_date) if fresh is not None and not fresh.empty else None
+    previous, following = _check_repair_neighbors(df, pos)
+    yahoo_usable, yahoo_note = _assess_yahoo_bar(yahoo_bar, previous, following)
     conn = None
     try:
         conn = get_connection()
@@ -131,8 +237,10 @@ def check_daily_bar(ticker, bar_date):
     return {
         "ticker": ticker, "date": bar_date, "fingerprint": _fingerprint(path),
         "stored": _bar(df.iloc[pos]), "yahoo": yahoo_bar,
-        "previous": _bar(df.iloc[pos - 1]) if pos else None,
-        "next": _bar(df.iloc[pos + 1]) if pos + 1 < len(df) else None,
+        "previous": previous,
+        "next": following,
+        "yahoo_usable": yahoo_usable,
+        "yahoo_note": yahoo_note,
         "quant_close": quant[0] if quant else None,
         "score_close": score[0] if score else None,
         "current_price": stock[0] if stock else None,
@@ -155,6 +263,8 @@ def repair_daily_bar(ticker, bar_date, fingerprint, replacement):
     if len(positions) != 1:
         raise PriceRepairError("That date is not present in stored daily history.")
     pos = positions[0]
+    previous, following = _check_repair_neighbors(df, pos)
+    _validate_against_neighbors(replacement, previous, following)
     for field, value in replacement.items():
         df.iloc[pos, df.columns.get_loc(field)] = value
     directory = os.path.dirname(path)
