@@ -90,7 +90,7 @@
                         <option value="yahoo" id="price-repair-yahoo-option">Fresh Yahoo daily bar</option>
                         <option value="manual">Enter OHLCV manually</option>
                     </select>
-                    <p id="price-repair-manual-guidance" class="text-warning" hidden>Enter the verified historical row for this exact date. Do not copy today's quote or the flagged stored/Yahoo values. Repair rejects prices over 10 times neighboring closes.</p>
+                    <p id="price-repair-manual-guidance" class="text-warning" hidden>Enter the verified historical row for this exact date. Do not copy today's quote or the flagged stored/Yahoo values. Repair rejects prices over 10 times neighboring closes. Historical data in tabular form is available on <a href="https://markets.ft.com/data" target="_blank" rel="noopener noreferrer">FT Markets</a>.</p>
                     <div id="price-repair-manual" class="row g-2 mb-3" hidden>
                         {% for field in ['Open', 'High', 'Low', 'Close', 'Volume'] %}
                         <div class="col-6 col-md-4">

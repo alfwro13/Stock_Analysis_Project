@@ -116,12 +116,17 @@ def apply_saved_repairs(ticker, df):
         return df
     df = df.copy()
     for bar_date, bar in corrections.items():
+        if bar_date == "_removed_dates":
+            continue
         index = pd.Timestamp(bar_date)
         if index in df.index:
             for field in BAR_FIELDS:
                 df.loc[index, field] = bar[field]
         else:
             df.loc[index, list(BAR_FIELDS)] = [bar[field] for field in BAR_FIELDS]
+    removed_dates = [pd.Timestamp(value) for value in corrections.get("_removed_dates", [])]
+    if removed_dates:
+        df = df.drop(index=df.index.intersection(removed_dates))
     return df.sort_index()
 
 
@@ -153,19 +158,21 @@ def remove_daily_bar(ticker, bar_date, fingerprint):
     if len(positions) != 1:
         raise PriceRepairError("That date is not present in stored daily history.")
     pos = positions[0]
-    if pos == 0 or pos == len(df) - 1:
-        raise PriceRepairError("Only an interior historical bar can be removed safely.")
-    latest_bar = _bar(df.iloc[-1])
+    if len(df) < 2:
+        raise PriceRepairError("The only remaining historical bar cannot be removed.")
     with open(path, "rb") as file:
         original_bytes = file.read()
     original_mode = stat.S_IMODE(os.stat(path).st_mode)
     updated_df = df.drop(df.index[pos])
+    latest_bar = _bar(updated_df.iloc[-1])
     with _repair_lock:
         prior_repairs = _saved_repairs() if REPAIRS_PATH.exists() else None
         updated_repairs = {} if prior_repairs is None else json.loads(json.dumps(prior_repairs))
-        updated_repairs.get(ticker, {}).pop(bar_date, None)
-        if ticker in updated_repairs and not updated_repairs[ticker]:
-            updated_repairs.pop(ticker)
+        ticker_repairs = updated_repairs.setdefault(ticker, {})
+        ticker_repairs.pop(bar_date, None)
+        removed_dates = set(ticker_repairs.get("_removed_dates", []))
+        removed_dates.add(bar_date)
+        ticker_repairs["_removed_dates"] = sorted(removed_dates)
         try:
             fd, temporary = tempfile.mkstemp(prefix=".price-repair-remove-", suffix=".parquet", dir=HISTORICAL_DIR)
             os.close(fd)
@@ -276,7 +283,14 @@ def repair_daily_bar(ticker, bar_date, fingerprint, replacement):
     with _repair_lock:
         prior_repairs = _saved_repairs() if REPAIRS_PATH.exists() else None
         updated_repairs = {} if prior_repairs is None else json.loads(json.dumps(prior_repairs))
-        updated_repairs.setdefault(ticker, {})[bar_date] = replacement
+        ticker_repairs = updated_repairs.setdefault(ticker, {})
+        ticker_repairs[bar_date] = replacement
+        removed_dates = set(ticker_repairs.get("_removed_dates", []))
+        removed_dates.discard(bar_date)
+        if removed_dates:
+            ticker_repairs["_removed_dates"] = sorted(removed_dates)
+        else:
+            ticker_repairs.pop("_removed_dates", None)
         _write_repairs(updated_repairs)
         replaced = False
         try:

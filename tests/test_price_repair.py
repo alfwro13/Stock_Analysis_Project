@@ -1,5 +1,6 @@
 from unittest.mock import patch
 import sqlite3
+import json
 
 import pandas as pd
 
@@ -119,14 +120,58 @@ def test_remove_interior_bar_clears_direct_records_and_saved_override(tmp_path):
         conn.close()
     repairs = tmp_path / "price_repairs.json"
     repairs.write_text('{"LCJP.L":{"2026-10-05":{"Open":21,"High":21,"Low":21,"Close":21,"Volume":0}}}')
-    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), patch("price_repair_engine.REPAIRS_PATH", repairs):
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), patch("price_repair_engine.REPAIRS_PATH", repairs), \
+         patch("price_repair_engine.QuantEngine.analyze_ticker"):
         remove_daily_bar("LCJP.L", "2026-10-05", _fingerprint(str(path)))
         assert list(pd.read_parquet(path).index.strftime("%Y-%m-%d")) == ["2026-10-02", "2026-10-06"]
-        assert not repairs.exists()
+        assert json.loads(repairs.read_text())["LCJP.L"]["_removed_dates"] == ["2026-10-05"]
+        downloaded = pd.DataFrame(
+            {"Open": [20, 4331.41, 22], "High": [20.5, 4331.41, 22.5],
+             "Low": [19.5, 4331.41, 21.5], "Close": [20, 4331.41, 22], "Volume": [100, 0, 100]},
+            index=pd.to_datetime(["2026-10-02", "2026-10-05", "2026-10-06"]),
+        )
+        reapplied = apply_saved_repairs("LCJP.L", downloaded)
+        assert list(reapplied.index.strftime("%Y-%m-%d")) == ["2026-10-02", "2026-10-06"]
     conn = get_connection()
     try:
         assert conn.execute("SELECT 1 FROM quant_signals WHERE ticker='LCJP.L' AND date='2026-10-05'").fetchone() is None
         assert conn.execute("SELECT 1 FROM score_history WHERE ticker='LCJP.L' AND date='2026-10-05'").fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_remove_latest_bar_is_supported_and_updates_current_price(tmp_path):
+    ticker = "REMOVE_LATEST_TEST"
+    path = tmp_path / f"{ticker}.parquet"
+    pd.DataFrame(
+        {"Open": [20, 4331.41], "High": [20.5, 4331.41], "Low": [19.5, 4331.41],
+         "Close": [20, 4331.41], "Volume": [100, 0]},
+        index=pd.to_datetime(["2026-10-02", "2026-10-05"]),
+    ).to_parquet(path)
+    conn = get_connection()
+    try:
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker,current_price) VALUES (?,?)", (ticker, 4331.41))
+        conn.commit()
+    finally:
+        conn.close()
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), \
+         patch("price_repair_engine.REPAIRS_PATH", tmp_path / "price_repairs.json"), \
+         patch("price_repair_engine.QuantEngine.analyze_ticker"):
+        remove_daily_bar(ticker, "2026-10-05", _fingerprint(str(path)))
+        remaining = pd.read_parquet(path)
+        assert list(remaining.index.strftime("%Y-%m-%d")) == ["2026-10-02"]
+        assert remaining.iloc[-1]["Close"] == 20
+        reapplied = apply_saved_repairs(ticker, pd.DataFrame(
+            {"Open": [20, 4331.41], "High": [20.5, 4331.41], "Low": [19.5, 4331.41],
+             "Close": [20, 4331.41], "Volume": [100, 0]},
+            index=pd.to_datetime(["2026-10-02", "2026-10-05"]),
+        ))
+        assert list(reapplied.index.strftime("%Y-%m-%d")) == ["2026-10-02"]
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT current_price FROM stock_signals WHERE ticker=?", (ticker,)).fetchone()[0] == 20
+        conn.execute("DELETE FROM stock_signals WHERE ticker=?", (ticker,))
+        conn.commit()
     finally:
         conn.close()
 
