@@ -338,6 +338,8 @@
         const manual = document.getElementById('price-repair-manual');
         const checkButton = document.getElementById('price-repair-check');
         const applyButton = document.getElementById('price-repair-apply');
+        const removeButton = document.getElementById('price-repair-remove');
+        const manualGuidance = document.getElementById('price-repair-manual-guidance');
         let checked = null;
         const fields = ['Open', 'High', 'Low', 'Close', 'Volume'];
 
@@ -346,6 +348,12 @@
             const paragraph = document.createElement('p');
             paragraph.textContent = message;
             result.appendChild(paragraph);
+        }
+
+        function updateRepairControls() {
+            manual.hidden = mode.value !== 'manual';
+            manualGuidance.hidden = mode.value !== 'manual';
+            applyButton.disabled = !checked || (mode.value === 'yahoo' && !checked.yahoo_usable);
         }
 
         function showRepairComparison(check) {
@@ -366,6 +374,16 @@
                 });
             });
             result.replaceChildren(table);
+            const yahooStatus = document.createElement('p');
+            yahooStatus.className = check.yahoo_usable ? 'text-muted' : 'text-warning';
+            yahooStatus.textContent = check.yahoo_note;
+            result.appendChild(yahooStatus);
+            if (check.yahoo && fields.every(field => check.yahoo[field] === check.stored[field])) {
+                const match = document.createElement('p');
+                match.className = 'text-warning';
+                match.textContent = 'Fresh Yahoo matches the stored bar exactly, so it cannot correct this value.';
+                result.appendChild(match);
+            }
             const note = document.createElement('p');
             note.textContent = `Related records: quant close ${check.quant_close ?? 'none'}, score history close ${check.score_close ?? 'none'}, current stock price ${check.current_price ?? 'none'}. Repair updates the selected daily bar and direct price records, then recalculates the current verdict.`;
             result.appendChild(note);
@@ -377,18 +395,19 @@
         }
 
         mode.addEventListener('change', () => {
-            manual.hidden = mode.value !== 'manual';
-            applyButton.disabled = !checked || (mode.value === 'yahoo' && !checked.yahoo);
+            updateRepairControls();
         });
         dateInput.addEventListener('change', () => {
             checked = null;
             sourcePanel.hidden = true;
             applyButton.disabled = true;
+            removeButton.disabled = true;
             result.replaceChildren();
         });
         checkButton.addEventListener('click', async () => {
             checked = null;
             applyButton.disabled = true;
+            removeButton.disabled = true;
             sourcePanel.hidden = true;
             checkButton.disabled = true;
             showRepairMessage('Checking stored history and Yahoo...');
@@ -402,16 +421,48 @@
                 dateInput.value = checked.date;
                 showRepairComparison(checked);
                 sourcePanel.hidden = false;
-                mode.value = checked.yahoo ? 'yahoo' : 'manual';
-                mode.dispatchEvent(new Event('change'));
+                removeButton.disabled = checked.is_latest || !checked.previous || !checked.next;
+                const yahooOption = document.getElementById('price-repair-yahoo-option');
+                yahooOption.disabled = !checked.yahoo_usable;
+                mode.value = checked.yahoo_usable ? 'yahoo' : 'manual';
+                updateRepairControls();
             } catch (error) {
                 showRepairMessage(error.message);
             } finally {
                 checkButton.disabled = false;
             }
         });
+        removeButton.addEventListener('click', async () => {
+            if (!checked || removeButton.disabled) return;
+            if (!window.confirm(`Remove the ${checked.date} bar for ${checked.ticker}? This creates a gap in the price history.`)) return;
+            removeButton.disabled = true;
+            showRepairMessage('Removing invalid daily bar...');
+            try {
+                const response = await fetch('/api/price-repair/remove', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: checked.ticker, date: checked.date, fingerprint: checked.fingerprint })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || data.message || 'Removal failed.');
+                showRepairMessage('Invalid bar removed. Reloading Stock Detail...');
+                window.location.reload();
+            } catch (error) {
+                showRepairMessage(error.message);
+                removeButton.disabled = false;
+            }
+        });
         applyButton.addEventListener('click', async () => {
             if (!checked) return;
+            if (mode.value === 'manual' && (checked.previous || checked.next)) {
+                const neighborLimit = Math.max(checked.previous?.Close || 0, checked.next?.Close || 0) * 10;
+                for (const field of ['Open', 'High', 'Low', 'Close']) {
+                    const value = Number(document.getElementById('price-repair-' + field.toLowerCase()).value);
+                    if (value > neighborLimit) {
+                        showRepairMessage('Replacement rejected: prices are over 10 times neighboring closes. Verify OHLCV for this exact date, or remove the invalid bar.');
+                        return;
+                    }
+                }
+            }
             const request = {
                 ticker: window.STOCK_TICKER, date: checked.date,
                 fingerprint: checked.fingerprint, source: mode.value,

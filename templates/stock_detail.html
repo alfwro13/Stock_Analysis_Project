@@ -87,9 +87,10 @@
                 <div id="price-repair-source" hidden>
                     <label for="price-repair-mode" class="form-label">Replacement source</label>
                     <select class="form-select mb-3" id="price-repair-mode">
-                        <option value="yahoo">Fresh Yahoo daily bar</option>
+                        <option value="yahoo" id="price-repair-yahoo-option">Fresh Yahoo daily bar</option>
                         <option value="manual">Enter OHLCV manually</option>
                     </select>
+                    <p id="price-repair-manual-guidance" class="text-warning" hidden>Enter the verified historical row for this exact date. Do not copy today's quote or the flagged stored/Yahoo values. Repair rejects prices over 10 times neighboring closes.</p>
                     <div id="price-repair-manual" class="row g-2 mb-3" hidden>
                         {% for field in ['Open', 'High', 'Low', 'Close', 'Volume'] %}
                         <div class="col-6 col-md-4">
@@ -104,6 +105,7 @@
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-outline-primary" id="price-repair-check">Check</button>
                 <button type="button" class="btn btn-warning" id="price-repair-apply" disabled>Repair</button>
+                <button type="button" class="btn btn-outline-danger" id="price-repair-remove" disabled>Remove invalid bar</button>
             </div>
         </div>
     </div>

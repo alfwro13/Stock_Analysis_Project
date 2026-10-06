@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 
 from database import get_connection
-from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, repair_daily_bar
+from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, repair_daily_bar, remove_daily_bar, _fingerprint, _history_path
 
 
 def _history(path):
@@ -16,6 +16,15 @@ def _history(path):
     )
     df.to_parquet(path)
     return df
+
+
+def test_history_path_rejects_path_traversal_ticker():
+    try:
+        _history_path("../../outside")
+    except PriceRepairError as exc:
+        assert "Invalid ticker" in str(exc)
+    else:
+        assert False
 
 
 def test_check_and_manual_repair_updates_stored_and_direct_prices(tmp_path):
@@ -37,6 +46,8 @@ def test_check_and_manual_repair_updates_stored_and_direct_prices(tmp_path):
         check = check_daily_bar("LCJP.L", "2026-10-05")
         assert check["stored"]["Close"] == 4331.41
         assert check["yahoo"] is None
+        assert not check["yahoo_usable"]
+        assert "no bar" in check["yahoo_note"]
         assert check["previous"]["Close"] == 20.4
         with patch("price_repair_engine.QuantEngine.analyze_ticker"):
             repair_daily_bar("LCJP.L", "2026-10-05", check["fingerprint"],
@@ -74,6 +85,64 @@ def test_repair_rejects_stale_check_and_invalid_ohlcv(tmp_path):
         else:
             assert False
         assert pd.read_parquet(path).iloc[-1]["Close"] == 4331.41
+
+
+def test_manual_repair_rejects_wild_neighbor_outlier(tmp_path):
+    path = tmp_path / "LCJP.L.parquet"
+    _history(path)
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), \
+         patch("price_repair_engine.REPAIRS_PATH", tmp_path / "price_repairs.json"):
+        fingerprint = _fingerprint(str(path))
+        try:
+            repair_daily_bar("LCJP.L", "2026-10-05", fingerprint,
+                             {"Open": 4331.41, "High": 4331.41, "Low": 4331.41, "Close": 4331.41, "Volume": 0})
+        except PriceRepairError as exc:
+            assert "10 times" in str(exc)
+        else:
+            assert False
+        assert pd.read_parquet(path).iloc[-1]["Close"] == 4331.41
+
+
+def test_remove_interior_bar_clears_direct_records_and_saved_override(tmp_path):
+    path = tmp_path / "LCJP.L.parquet"
+    pd.DataFrame(
+        {"Open": [20, 21, 22], "High": [20.5, 21.5, 22.5], "Low": [19.5, 20.5, 21.5],
+         "Close": [20, 21, 22], "Volume": [100, 0, 100]},
+        index=pd.to_datetime(["2026-10-02", "2026-10-05", "2026-10-06"]),
+    ).to_parquet(path)
+    conn = get_connection()
+    try:
+        conn.execute("INSERT OR REPLACE INTO quant_signals (ticker,date,close_price,volume) VALUES (?,?,?,?)", ("LCJP.L", "2026-10-05", 21, 0))
+        conn.execute("INSERT OR REPLACE INTO score_history (ticker,date,close_price,score,signal) VALUES (?,?,?,?,?)", ("LCJP.L", "2026-10-05", 21, 50, "HOLD"))
+        conn.commit()
+    finally:
+        conn.close()
+    repairs = tmp_path / "price_repairs.json"
+    repairs.write_text('{"LCJP.L":{"2026-10-05":{"Open":21,"High":21,"Low":21,"Close":21,"Volume":0}}}')
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), patch("price_repair_engine.REPAIRS_PATH", repairs):
+        remove_daily_bar("LCJP.L", "2026-10-05", _fingerprint(str(path)))
+        assert list(pd.read_parquet(path).index.strftime("%Y-%m-%d")) == ["2026-10-02", "2026-10-06"]
+        assert not repairs.exists()
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT 1 FROM quant_signals WHERE ticker='LCJP.L' AND date='2026-10-05'").fetchone() is None
+        assert conn.execute("SELECT 1 FROM score_history WHERE ticker='LCJP.L' AND date='2026-10-05'").fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_check_flags_yahoo_bar_that_matches_extreme_zero_volume_bar(tmp_path):
+    path = tmp_path / "LCJP.L.parquet"
+    history = _history(path)
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), \
+         patch("price_repair_engine.REPAIRS_PATH", tmp_path / "price_repairs.json"), \
+         patch("price_repair_engine.yahoo_engine.get_price_history", return_value={
+             "LCJP.L": history,
+         }):
+        check = check_daily_bar("LCJP.L", "2026-10-05")
+    assert check["yahoo"] == check["stored"]
+    assert not check["yahoo_usable"]
+    assert "over 10 times" in check["yahoo_note"]
 
 
 def test_price_repair_api_check_and_rejects_stale_write(tmp_path):
