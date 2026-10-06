@@ -386,7 +386,8 @@ function _refreshTxnCurrencyUI() {
 
     const showFx = !hideAssetFields && currency && currency !== base;
     document.getElementById('txn-fx-group').classList.toggle('d-none', !showFx);
-    document.getElementById('txn-dividend-total-group').classList.toggle('d-none', type !== 'Dividend' || !showFx);
+    document.getElementById('txn-fx-total-group').classList.toggle('d-none', !showFx || (type !== 'Buy' && type !== 'Dividend'));
+    document.getElementById('txn-fx-total-label').textContent = type === 'Buy' ? `Total Cost Including Fee (${base})` : `Net Dividend Received (${base})`;
 
     document.getElementById('txn-fee-currency-group').classList.toggle('d-none', hideAssetFields);
     if (hideAssetFields) _setFeeCurrencySelectValue(base);
@@ -472,9 +473,9 @@ function _updateTxnTotalPreview() {
     preview.textContent = `Total: ${totalNative.toFixed(2)} ${currency}${feeText} → Cash impact: ${cashImpact >= 0 ? '+' : ''}${cashImpact.toFixed(2)} ${base}`;
 }
 
-function calculateDividendFx() {
-    const status = document.getElementById('txn-dividend-fx-status');
-    const net = parseFloat(document.getElementById('txn-dividend-total').value);
+function calculateTransactionFx() {
+    const status = document.getElementById('txn-fx-calc-status');
+    const total = parseFloat(document.getElementById('txn-fx-total').value);
     const quantity = parseFloat(document.getElementById('txn-quantity').value);
     const price = parseFloat(document.getElementById('txn-price').value);
     const fee = parseFloat(document.getElementById('txn-fee').value || '0');
@@ -482,20 +483,20 @@ function calculateDividendFx() {
     const feeCurrency = document.getElementById('txn-fee-currency').value;
     const feeFx = parseFloat(document.getElementById('txn-fee-fx').value);
     const sameCurrency = currency === feeCurrency;
-    const denominator = quantity * price - (sameCurrency ? fee : 0);
-    const numerator = net + (sameCurrency ? 0 : fee * feeFx);
-    if (!Number.isFinite(net) || net <= 0 || !Number.isFinite(quantity) || quantity <= 0 ||
+    const isBuy = document.getElementById('txn-type').value === 'Buy';
+    const gross = quantity * price;
+    const denominator = gross + (sameCurrency ? (isBuy ? fee : -fee) : 0);
+    const numerator = total + (sameCurrency ? 0 : (isBuy ? -fee : fee) * feeFx);
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(quantity) || quantity <= 0 ||
         !Number.isFinite(price) || price <= 0 || !Number.isFinite(fee) || fee < 0 ||
-        !Number.isFinite(denominator) || denominator <= 0 ||
+        !Number.isFinite(denominator) || denominator <= 0 || !Number.isFinite(numerator) || numerator <= 0 ||
         (!sameCurrency && (!Number.isFinite(feeFx) || feeFx <= 0))) {
-        status.textContent = 'Enter a positive net dividend, quantity and amount per share; withholding must be less than the gross dividend. Check the fee exchange rate if its currency differs.';
+        status.textContent = isBuy
+            ? 'Enter a positive total cost, quantity and amount per share; the total cost must exceed the fee. Check the fee exchange rate if its currency differs.'
+            : 'Enter a positive net dividend, quantity and amount per share; withholding must be less than the gross dividend. Check the fee exchange rate if its currency differs.';
         return;
     }
     const rate = numerator / denominator;
-    if (!Number.isFinite(rate) || rate <= 0) {
-        status.textContent = 'Unable to calculate a positive exchange rate from these amounts.';
-        return;
-    }
     document.getElementById('txn-fx').value = rate.toFixed(8);
     if (sameCurrency) document.getElementById('txn-fee-fx').value = rate.toFixed(8);
     status.textContent = `Calculated exchange rate: 1 ${currency} = ${rate.toFixed(8)} ${window.BASE_CURRENCY}.`;
@@ -520,8 +521,8 @@ function openTxnModal(accountId = null, txn = null) {
     _setFeeCurrencySelectValue(txn ? (txn.fee_currency || txn.currency || window.BASE_CURRENCY) : window.BASE_CURRENCY);
     document.getElementById('txn-fee-fx').value = txn ? (txn.fee_exchange_rate ?? '') : '';
     document.getElementById('txn-notes').value = txn ? (txn.notes || '') : '';
-    document.getElementById('txn-dividend-total').value = '';
-    document.getElementById('txn-dividend-fx-status').textContent = '';
+    document.getElementById('txn-fx-total').value = '';
+    document.getElementById('txn-fx-calc-status').textContent = '';
     document.getElementById('txn-ticker-result').innerHTML = '';
     document.getElementById('txn-status').innerHTML = '';
     _updateTxnFieldsForType();

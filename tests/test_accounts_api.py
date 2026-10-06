@@ -2487,7 +2487,7 @@ def test_refresh_now_awaits_fx_and_reports_fx_failure(client, monkeypatch):
     assert response.json()["status"] == "error"
 
 
-def test_dividend_fx_calculator_uses_net_cash_and_withholding():
+def test_transaction_fx_calculator_uses_broker_total_and_fee():
     import shutil
     import subprocess
 
@@ -2499,12 +2499,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const fields = Object.fromEntries([
-    ['txn-dividend-total', '1.23'], ['txn-quantity', '6'],
+    ['txn-fx-total', '1.23'], ['txn-quantity', '6'],
     ['txn-price', '0.32'], ['txn-fee', '0.29'],
     ['txn-currency', 'USD'], ['txn-fee-currency', 'USD'],
     ['txn-fx', ''], ['txn-fee-fx', ''],
     ['txn-type', 'Dividend'], ['txn-total-preview', ''],
-    ['txn-dividend-fx-status', ''],
+    ['txn-fx-calc-status', ''],
 ].map(([id, value]) => [id, {value, textContent: ''}]));
 const context = {
     document: {getElementById: id => fields[id], addEventListener: () => {}},
@@ -2512,19 +2512,38 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
-context.calculateDividendFx();
+context.calculateTransactionFx();
 assert.ok(Math.abs(Number(fields['txn-fx'].value) - 1.23 / 1.63) < 1e-8);
 assert.equal(fields['txn-fee-fx'].value, fields['txn-fx'].value);
 assert.match(fields['txn-total-preview'].textContent, /Fee \(-0\.29 USD\)/);
 assert.match(fields['txn-total-preview'].textContent, /Cash impact: \+1\.23 GBP/);
 fields['txn-fee-currency'].value = 'GBP';
 fields['txn-fee-fx'].value = '1';
-context.calculateDividendFx();
+context.calculateTransactionFx();
 assert.ok(Math.abs(Number(fields['txn-fx'].value) - 1.52 / 1.92) < 1e-8);
 fields['txn-fee-currency'].value = 'USD';
 fields['txn-fee'].value = '2';
-context.calculateDividendFx();
-assert.match(fields['txn-dividend-fx-status'].textContent, /withholding must be less/);
+context.calculateTransactionFx();
+assert.match(fields['txn-fx-calc-status'].textContent, /withholding must be less/);
+fields['txn-type'].value = 'Buy';
+fields['txn-fx-total'].value = '119.20';
+fields['txn-quantity'].value = '2.65943182';
+fields['txn-price'].value = '58.9186';
+fields['txn-fee'].value = '0.70';
+fields['txn-fee-currency'].value = 'GBP';
+fields['txn-fee-fx'].value = '1';
+context.calculateTransactionFx();
+assert.ok(Math.abs(Number(fields['txn-fx'].value) - 118.50 / (2.65943182 * 58.9186)) < 1e-8);
+assert.match(fields['txn-total-preview'].textContent, /Cash impact: -119\.20 GBP/);
+fields['txn-fee-currency'].value = 'USD';
+context.calculateTransactionFx();
+assert.ok(Math.abs(Number(fields['txn-fx'].value) - 119.20 / (2.65943182 * 58.9186 + 0.70)) < 1e-8);
+assert.equal(fields['txn-fee-fx'].value, fields['txn-fx'].value);
+fields['txn-fee-currency'].value = 'GBP';
+fields['txn-fee-fx'].value = '1';
+fields['txn-fee'].value = '120';
+context.calculateTransactionFx();
+assert.match(fields['txn-fx-calc-status'].textContent, /total cost must exceed the fee/);
 """
     result = subprocess.run(
         [node, "-e", script, str(Path(__file__).parent.parent / "static/js/accounts.js")],
