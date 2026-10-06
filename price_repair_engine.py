@@ -7,7 +7,6 @@ import stat
 import tempfile
 import threading
 from datetime import date
-from pathlib import Path
 
 import pandas as pd
 
@@ -31,11 +30,12 @@ def _history_path(ticker):
     ticker = normalize_ticker(ticker)
     if not re.fullmatch(r"[A-Z0-9^.=_-]+", ticker):
         raise PriceRepairError("Invalid ticker.")
-    history_root = Path(HISTORICAL_DIR).resolve()
-    path = (history_root / f"{ticker}.parquet").resolve()
-    if path.parent != history_root:
-        raise PriceRepairError("Invalid ticker path.")
-    return path
+    expected_name = f"{ticker}.parquet"
+    with os.scandir(HISTORICAL_DIR) as entries:
+        for entry in entries:
+            if entry.name == expected_name and entry.is_file(follow_symlinks=False):
+                return entry.path
+    raise PriceRepairError("No stored daily history exists for this ticker.")
 
 
 def _bar(row):
