@@ -390,7 +390,7 @@ Persists the Portfolio/Watchlist "Views" picker's full list of named column pres
 
 ### `GET /api/price-repair/check`
 
-Checks one stored daily bar against a fresh Yahoo daily fetch without changing data. Query parameters are `ticker` and optional `date` (`YYYY-MM-DD`; omitted means the latest stored bar). The response includes stored and Yahoo OHLCV, adjacent bars, direct SQLite price records, any saved correction, and a file fingerprint required by Repair or Remove. A Yahoo bar whose close is over ten times adjacent closes and has zero volume is marked unusable; use verified historical OHLCV or remove the interior bar.
+Checks one stored daily bar against a fresh Yahoo daily fetch without changing data. Query parameters are `ticker` and optional `date` (`YYYY-MM-DD`; omitted means the latest stored bar). The response includes stored and Yahoo OHLCV, adjacent bars, direct SQLite price records, any saved correction, and a file fingerprint required by Repair or Remove. A Yahoo bar whose close is over ten times adjacent closes and has zero volume is marked unusable; use verified historical OHLCV or remove the invalid bar.
 
 ### `POST /api/price-repair/repair`
 
@@ -398,7 +398,7 @@ Repairs the checked daily bar. Body: `ticker`, `date`, `fingerprint`, `source` (
 
 ### `POST /api/price-repair/remove`
 
-Removes a checked interior historical bar when no verified correction is available. Body: `ticker`, `date`, `fingerprint`. It rejects the first or latest bar, removes the date from daily Parquet, `quant_signals`, and `score_history`, and deletes any saved correction for that date. This leaves a visible missing date in history; later rolling analytics are refreshed by their normal jobs.
+Removes a checked historical bar when no verified correction is available, provided at least one other bar remains. Body: `ticker`, `date`, `fingerprint`. It removes the date from daily Parquet, `quant_signals`, and `score_history`, and records the date in the saved price overlay so later Yahoo downloads do not restore it. This leaves a visible gap in history; later rolling analytics are refreshed by their normal jobs.
 
 ### `POST /api/data/refresh-single`
 

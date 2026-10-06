@@ -421,7 +421,7 @@
                 dateInput.value = checked.date;
                 showRepairComparison(checked);
                 sourcePanel.hidden = false;
-                removeButton.disabled = checked.is_latest || !checked.previous || !checked.next;
+                removeButton.disabled = !checked.previous && !checked.next;
                 const yahooOption = document.getElementById('price-repair-yahoo-option');
                 yahooOption.disabled = !checked.yahoo_usable;
                 mode.value = checked.yahoo_usable ? 'yahoo' : 'manual';
