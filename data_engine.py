@@ -253,6 +253,7 @@ class DataEngine:
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
                 self._strip_tz(df_daily)
+                df_daily = df_daily.dropna(subset=["Close"])
                 for col in ('Open', 'High', 'Low'):
                     mask = (df_daily[col] == 0) & (df_daily['Close'] > 0)
                     df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
@@ -317,6 +318,9 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     if df is None or df.empty:
         return None
     df = df.copy()
+    df = df.dropna(subset=["Close"])
+    if df.empty:
+        return None
     exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker))
     last_date = df.index[-1].date()
     if is_daily_bar_still_forming(last_date, last_date, exchange_open):
