@@ -5,6 +5,23 @@ function _fmt_pct(v) {
     return (v * 100).toFixed(2) + "%";
 }
 
+function _fmt_pp(weight, current) {
+    if (weight === null || weight === undefined) return "—";
+    var pp = (weight - current) * 100;
+    if (Math.abs(pp) < 0.005) return "0.00 pp";
+    return (pp > 0 ? "+" : "") + pp.toFixed(2) + " pp";
+}
+
+function _ppClass(weight, current) {
+    if (weight === null || weight === undefined || Math.abs(weight - current) < 0.00005) return "text-muted";
+    return weight > current ? "text-success" : "text-danger";
+}
+
+function _weightCells(weight, current) {
+    return "<td>" + _fmt_pct(weight) + "</td>"
+        + "<td class='" + _ppClass(weight, current) + "'>" + _fmt_pp(weight, current) + "</td>";
+}
+
 function _showWarning(text) {
     var el = document.getElementById("po-warning");
     el.textContent = text;
@@ -32,9 +49,9 @@ window.addEventListener("resize", function () {
     ChartFullscreen.relayoutForCurrentState("po-chart-outer", _PO_CHART_OPTS);
 });
 
-function renderWeightsTable(weights) {
+function renderWeightsTable(data) {
     var tbody = document.getElementById("po-weights-tbody");
-    tbody.innerHTML = weights.map(function (w) {
+    var rows = data.weights.map(function (w) {
         var badges = "";
         if (w.is_new_addition) {
             badges += ' <abbr class="badge bg-info" title="You don\'t currently hold this — the model thinks adding it would have helped, based on its past prices.">Not held yet</abbr>';
@@ -45,13 +62,43 @@ function renderWeightsTable(weights) {
         return "<tr>"
             + "<td>" + escapeHtml(w.symbol) + badges + "<div class='text-muted small'>" + escapeHtml(w.name) + "</div></td>"
             + "<td>" + _fmt_pct(w.current_weight) + "</td>"
-            + "<td>" + _fmt_pct(w.suggested_weight_mv) + "</td>"
-            + "<td>" + _fmt_pct(w.suggested_weight_ms) + "</td>"
+            + _weightCells(w.suggested_weight_mv, w.current_weight)
+            + _weightCells(w.suggested_weight_ms, w.current_weight)
+            + _weightCells(w.suggested_weight_ew, w.current_weight)
             + "</tr>";
-    }).join("");
+    });
+    if (data.cash_reserve) {
+        var hasMs = data.weights.some(function (w) { return w.suggested_weight_ms !== null; });
+        rows.push("<tr>"
+            + "<td>Cash Reserve<div class='text-muted small'>Held back as cash</div></td>"
+            + "<td>" + _fmt_pct(0) + "</td>"
+            + _weightCells(data.cash_reserve, 0)
+            + _weightCells(hasMs ? data.cash_reserve : null, 0)
+            + _weightCells(data.cash_reserve, 0)
+            + "</tr>");
+    }
+    tbody.innerHTML = rows.join("");
 }
 
-function renderFrontierChart(frontier) {
+function renderResultsMeta(data) {
+    var parts = [];
+    var win = data.estimation_window;
+    if (win) {
+        parts.push("Based on " + win.trading_days + " overlapping trading days (" + win.start + " to " + win.end + ").");
+    }
+    parts.push("Returns are measured in each ticker's own trading currency, with no currency conversion.");
+    if (data.mode === "long_only") {
+        parts.push("Long-Only rules: Weight Cap " + _fmt_pct(data.max_weight) + ", Cash Reserve " + _fmt_pct(data.cash_reserve) + ".");
+        if (data.cash_reserve) {
+            parts.push("The Cash Reserve is assumed to earn the " + _fmt_pct(data.risk_free_rate) + " risk-free rate — an estimation assumption, not a quoted rate.");
+        }
+    } else {
+        parts.push("Unconstrained mode: pure textbook maths, so negative amounts and large single-ticker weights are possible.");
+    }
+    document.getElementById("po-results-meta").textContent = parts.join(" ");
+}
+
+function renderFrontierChart(frontier, longOnly) {
     var el = document.getElementById("po-chart");
     if (!frontier) {
         el.innerHTML = "<p class='text-muted'>Efficient frontier unavailable for this candidate set.</p>";
@@ -61,8 +108,10 @@ function renderFrontierChart(frontier) {
         {
             x: frontier.points.map(function (p) { return p.volatility * 100; }),
             y: frontier.points.map(function (p) { return p.return * 100; }),
-            mode: "lines", name: "Best possible mixes",
+            mode: frontier.points.length > 1 ? "lines" : "markers",
+            name: longOnly ? "Best possible mixes within your rules" : "Best possible mixes",
             line: { color: "#b366ff", width: 2 },
+            marker: { color: "#b366ff", size: 8 },
             hovertemplate: "Bumpiness %{x:.2f}%, Return %{y:.2f}%<extra></extra>",
         },
         {
@@ -70,12 +119,21 @@ function renderFrontierChart(frontier) {
             mode: "markers", name: "Steadiest Mix (Min-Variance)",
             marker: { color: "#00ffcc", size: 12, symbol: "diamond" },
         },
-        {
+    ];
+    if (frontier.max_sharpe) {
+        traces.push({
             x: [frontier.max_sharpe.volatility * 100], y: [frontier.max_sharpe.return * 100],
             mode: "markers", name: "Best Reward-for-Risk (Max-Sharpe)",
             marker: { color: "#ffaa00", size: 12, symbol: "star" },
-        },
-    ];
+        });
+    }
+    if (frontier.equal_weight) {
+        traces.push({
+            x: [frontier.equal_weight.volatility * 100], y: [frontier.equal_weight.return * 100],
+            mode: "markers", name: "Equal Weight Mix",
+            marker: { color: "#4da6ff", size: 11, symbol: "square" },
+        });
+    }
     if (frontier.current) {
         traces.push({
             x: [frontier.current.volatility * 100], y: [frontier.current.return * 100],
@@ -93,6 +151,28 @@ function renderFrontierChart(frontier) {
         yaxis: { title: "Yearly Return →", ticksuffix: "%", automargin: true, gridcolor: "#333" },
     };
     Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
+}
+
+function _selectedMode() {
+    return document.querySelector("input[name=po-mode]:checked").value;
+}
+
+function _syncModeControls() {
+    var longOnly = _selectedMode() === "long_only";
+    document.getElementById("po-max-weight").disabled = !longOnly;
+    document.getElementById("po-cash-reserve").disabled = !longOnly;
+    document.getElementById("po-mode-help").textContent = longOnly
+        ? "Every suggestion is a mix you could actually hold: no negative amounts and no ticker above the Weight Cap."
+        : "Pure textbook maths with no rules — weights can be negative or very large. Weight Cap and Cash Reserve don't apply.";
+}
+
+function _readPercentInput(id, min, max, inclusiveMin, label) {
+    var value = parseFloat(document.getElementById(id).value);
+    var aboveMin = inclusiveMin ? value >= min : value > min;
+    if (!isFinite(value) || !aboveMin || value > max) {
+        throw new Error(label);
+    }
+    return value / 100;
 }
 
 function _selectedCandidateTickers() {
@@ -113,13 +193,25 @@ function runOptimization() {
         return;
     }
 
+    var payload = { account_id: selectedAccountId, include_tickers: tickers, mode: _selectedMode() };
+    if (payload.mode === "long_only") {
+        try {
+            payload.max_weight = _readPercentInput("po-max-weight", 0, 100, false, "Weight Cap must be above 0% and at most 100%.");
+            payload.cash_reserve = _readPercentInput("po-cash-reserve", 0, 99.99, true, "Cash Reserve must be at least 0% and below 100%.");
+        } catch (e) {
+            errEl.textContent = e.message;
+            errEl.classList.remove("d-none");
+            return;
+        }
+    }
+
     btn.disabled = true;
     btn.textContent = "Running…";
 
     fetch("/api/portfolio-optimizer/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_id: selectedAccountId, include_tickers: tickers }),
+        body: JSON.stringify(payload),
     })
         .then(function (resp) { return resp.json(); })
         .then(function (data) {
@@ -138,8 +230,9 @@ function runOptimization() {
             }
             document.getElementById("po-placeholder").classList.add("d-none");
             document.getElementById("po-results").classList.remove("d-none");
-            renderWeightsTable(data.weights);
-            renderFrontierChart(data.efficient_frontier);
+            renderResultsMeta(data);
+            renderWeightsTable(data);
+            renderFrontierChart(data.efficient_frontier, data.mode === "long_only");
         })
         .catch(function (err) {
             errEl.textContent = "Request failed: " + err.message;
@@ -239,6 +332,10 @@ function loadAccounts() {
 
 function initPage() {
     loadAccounts();
+    _syncModeControls();
+    document.querySelectorAll("input[name=po-mode]").forEach(function (el) {
+        el.addEventListener("change", _syncModeControls);
+    });
     document.getElementById("po-run-btn").addEventListener("click", runOptimization);
     document.getElementById("po-select-all-watchlist").addEventListener("change", function (e) {
         document.querySelectorAll("#po-candidates-list .po-candidate-checkbox").forEach(function (cb) {

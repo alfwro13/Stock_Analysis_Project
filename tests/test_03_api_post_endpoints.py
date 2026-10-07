@@ -966,6 +966,77 @@ def test_portfolio_optimizer_run_full_report(client):
     assert data["weights"] is not None
     assert {w["symbol"] for w in data["weights"]} == {"POAT1", "POAT2"}
     assert data["efficient_frontier"] is not None
+    assert data["mode"] == "unconstrained"
+    assert all("suggested_weight_ew" in w for w in data["weights"])
+
+
+@pytest.mark.api
+def test_portfolio_optimizer_run_long_only_respects_cap(client):
+    """Long-Only weights must stay within [0, max_weight] and sum to 1 − cash_reserve."""
+    import json as _json_mod
+    import numpy as np
+    import pandas as pd
+    import database as _db
+    from xray_engine import BENCHMARK_SYMBOL
+
+    tickers = ("POAL1", "POAL2", "POAL3", "POAL4")
+    conn = _db.get_connection()
+    try:
+        rng = np.random.default_rng(12)
+        dates = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2025-01-01", periods=252)]
+        for i, ticker in enumerate(tickers):
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+                (ticker, 100.0, "GBP"),
+            )
+            rets = rng.normal(0.0003 + 0.0001 * i, 0.008 + 0.002 * i, 252).tolist()
+            conn.execute(
+                """INSERT OR REPLACE INTO xray_returns_cache
+                   (ticker, benchmark, last_updated, dates_json, returns_json)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (ticker, BENCHMARK_SYMBOL, "2026-06-03", _json_mod.dumps(dates), _json_mod.dumps(rets)),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    account_id = _db.create_account("POA Long-Only Test", "GBP")
+    for ticker in tickers:
+        _db.add_transaction(account_id, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                             quantity=10, unit_price=80, exchange_rate=1.0)
+
+    with patch("xray_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}, "RISK_FREE_RATE": 0.045}), \
+         patch("portfolio_optimizer_engine.load_config", return_value={"RISK_FREE_RATE": 0.045}):
+        resp = client.post("/api/portfolio-optimizer/run", json={
+            "account_id": f"acct:{account_id}", "include_tickers": list(tickers),
+            "mode": "long_only", "max_weight": 0.3, "cash_reserve": 0.05,
+        })
+
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["mode"] == "long_only"
+    assert data["max_weight"] == 0.3
+    assert data["cash_reserve"] == 0.05
+    mv = [w["suggested_weight_mv"] for w in data["weights"]]
+    assert sum(mv) == pytest.approx(0.95, abs=1e-3)
+    assert min(mv) >= 0 and max(mv) <= 0.3 + 1e-4
+    assert data["efficient_frontier"]["equal_weight"] is not None
+    assert data["estimation_window"]["trading_days"] == 252
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("body", [
+    {"mode": "short_only"},
+    {"mode": "long_only", "max_weight": 0},
+    {"mode": "long_only", "max_weight": 1.5},
+    {"mode": "long_only", "cash_reserve": 1.0},
+    {"mode": "long_only", "cash_reserve": -0.1},
+])
+def test_portfolio_optimizer_run_rejects_invalid_rules(client, body):
+    """Mode, Weight Cap and Cash Reserve are validated at the API boundary (422)."""
+    resp = client.post("/api/portfolio-optimizer/run", json={"account_id": "all", **body})
+    assert resp.status_code == 422, f"Expected 422 for {body}, got {resp.status_code}"
 
 
 # ── Backup & Recovery ────────────────────────────────────────────────────────
