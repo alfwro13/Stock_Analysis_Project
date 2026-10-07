@@ -183,11 +183,17 @@ def api_data_refresh_single(req: TickerRequest):
         quant_engine.analyze_ticker(req.ticker)
         from accounts_engine import native_currencies
         from portfolio_service import refresh_fx_rates
-        refresh_fx_rates(native_currencies([req.ticker]).values())
+        fx_error = None
+        try:
+            refresh_fx_rates(native_currencies([req.ticker]).values())
+        except RuntimeError as e:
+            fx_error = e
         target_list = [req.ticker]
         update_daily_ml_predictions(target_list)
         update_all_tail_risks(target_list)
         update_all_sentiment(target_list)
+        if fx_error:
+            raise fx_error
         return JSONResponse(content={"status": "success"})
     except Exception as e:
         logger.exception("refresh-single failed for %s", req.ticker)

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional
 
@@ -323,6 +323,28 @@ def is_trading_session(exchange: Optional[str] = None, include_premarket: bool =
     if datetime.now(timezone.utc).weekday() >= 5:
         return False
     return is_market_open(exchange, include_premarket=include_premarket)
+
+
+def last_settled_session_close_utc(exchange: Optional[str] = None) -> datetime:
+    """When the latest completed session's final close became available from the exchange's delayed quote feed."""
+    if exchange is None:
+        exchange = _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
+    info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[_FALLBACK_EXCHANGE])
+    delay = timedelta(minutes=info.get("quote_delay_minutes", 0))
+    settled_by = datetime.now(timezone.utc) - delay
+    calendar = _get_exchange_calendar(exchange)
+    if calendar is not None:
+        try:
+            return calendar.previous_close(pd.Timestamp(settled_by).floor("min")).to_pydatetime() + delay
+        except Exception as exc:
+            logger.error("Failed to resolve previous session close for %s: %s", exchange, exc)
+    tz = ZoneInfo(info["tz"])
+    day = settled_by.astimezone(tz).date()
+    while True:
+        close = datetime.combine(day, _parse_hm(info["close"]), tzinfo=tz).astimezone(timezone.utc)
+        if day.weekday() < 5 and close <= settled_by:
+            return close + delay
+        day -= timedelta(days=1)
 
 
 def reset_cron_trigger_params(exchange: Optional[str] = None) -> dict:

@@ -20,6 +20,7 @@ class TestGetRateToBase:
             else:
                 with patch("portfolio_service.yahoo_engine") as mock_yf:
                     mock_yf.get_fx_rate.return_value = None
+                    mock_yf.get_cached_fx_rate.return_value = {"rate": None}
                     from portfolio_service import get_rate_to_base
                     return get_rate_to_base(stock_currency)
 
@@ -67,9 +68,22 @@ class TestGetRateToBase:
         with patch("portfolio_service.BASE_CURRENCY", "GBP"):
             with patch("portfolio_service.yahoo_engine") as mock_yf:
                 mock_yf.get_fx_rate.return_value = None
+                mock_yf.get_cached_fx_rate.return_value = {"rate": None}
                 from portfolio_service import get_rate_to_base
                 result = get_rate_to_base("EUR")
         assert result == pytest.approx(0.86)
+
+    def test_yahoo_returns_none_prefers_persisted_quote(self):
+        import portfolio_service
+        portfolio_service._last_known_rates["CHFGBP=X"] = 0.5
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"):
+            with patch("portfolio_service.yahoo_engine") as mock_yf:
+                mock_yf.get_fx_rate.return_value = None
+                mock_yf.get_cached_fx_rate.return_value = {"rate": 0.91}
+                from portfolio_service import get_rate_to_base
+                result = get_rate_to_base("CHF")
+        assert result == pytest.approx(0.91)
+        mock_yf.get_cached_fx_rate.assert_called_once_with("CHFGBP=X", refresh=False)
 
     def test_yahoo_none_no_stale_returns_1_0_fallback(self):
         import portfolio_service
@@ -78,6 +92,7 @@ class TestGetRateToBase:
         with patch("portfolio_service.BASE_CURRENCY", "GBP"):
             with patch("portfolio_service.yahoo_engine") as mock_yf:
                 mock_yf.get_fx_rate.return_value = None
+                mock_yf.get_cached_fx_rate.return_value = {"rate": None}
                 from portfolio_service import get_rate_to_base
                 result = get_rate_to_base("SEK")
         assert result == 1.0
@@ -140,6 +155,16 @@ def test_explicit_fx_refresh_reports_failure(_block_explicit_fx_refresh):
     with patch.object(portfolio_service.yahoo_engine, "get_fx_rate", return_value=None):
         with pytest.raises(RuntimeError, match="last-good cached data retained"):
             _block_explicit_fx_refresh(["USD"])
+
+
+def test_explicit_fx_refresh_attempts_every_pair_before_reporting(_block_explicit_fx_refresh):
+    import portfolio_service
+
+    with patch.object(portfolio_service, "BASE_CURRENCY", "GBP"), \
+         patch.object(portfolio_service.yahoo_engine, "get_fx_rate", side_effect=lambda pair, force: None if pair == "EURGBP=X" else 0.8) as fetch:
+        with pytest.raises(RuntimeError, match="EURGBP=X"):
+            _block_explicit_fx_refresh(["EUR", "USD"])
+    assert [call.args[0] for call in fetch.call_args_list] == ["EURGBP=X", "USDGBP=X"]
 
 
 @pytest.mark.parametrize("currency", ["GBP", "GBp"])

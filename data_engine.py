@@ -29,6 +29,23 @@ def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.Data
     return df_daily
 
 
+def _prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame], *, drop_missing_volume: bool = False) -> pd.DataFrame:
+    """Single cleaning path for every daily-history writer so saved repairs survive any refresh; df_live=None means no live feed was fetched, so the exchange state and the bar's own date decide whether the last bar is still forming."""
+    df = df.dropna(subset=["Close", "Volume"] if drop_missing_volume else ["Close"])
+    for col in ("Open", "High", "Low"):
+        if col in df.columns:
+            mask = (df[col] == 0) & (df["Close"] > 0)
+            df.loc[mask, col] = df.loc[mask, "Close"]
+    if df_live is not None:
+        df = _drop_in_progress_last_bar(df, df_live, ticker)
+    elif not df.empty:
+        exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker))
+        last_date = df.index[-1].date()
+        if is_daily_bar_still_forming(last_date, last_date, exchange_open):
+            df = df.iloc[:-1]
+    return apply_saved_repairs(ticker, df)
+
+
 class DataEngine:
     def __init__(self) -> None:
         self.watchlist: Dict[str, Any] = {"watchlist": get_watchlist_tickers()}
@@ -140,12 +157,7 @@ class DataEngine:
                 if not path.startswith(history_root + os.sep):
                     logger.warning("Skipping historical path outside cache root for ticker %r.", ticker)
                     continue
-                df = df.dropna(subset=['Close', 'Volume'])
-                for col in ('Open', 'High', 'Low'):
-                    mask = (df[col] == 0) & (df['Close'] > 0)
-                    df.loc[mask, col] = df.loc[mask, 'Close']
-                df = _drop_in_progress_last_bar(df, live_dfs.get(ticker), ticker)
-                df = apply_saved_repairs(ticker, df)
+                df = _prepare_daily_history(ticker, df, live_dfs.get(ticker, pd.DataFrame()), drop_missing_volume=True)
                 if not df.empty:
                     df.to_parquet(path, engine='pyarrow')
         except Exception as e:
@@ -239,7 +251,7 @@ class DataEngine:
         try:
             persisted = False
 
-            df_live = None
+            df_live = pd.DataFrame()
             if ticker not in get_mutual_fund_tickers([ticker]):
                 _intraday = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
                 df_intraday = _intraday.get(ticker, pd.DataFrame())
@@ -253,12 +265,7 @@ class DataEngine:
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
                 self._strip_tz(df_daily)
-                df_daily = df_daily.dropna(subset=["Close"])
-                for col in ('Open', 'High', 'Low'):
-                    mask = (df_daily[col] == 0) & (df_daily['Close'] > 0)
-                    df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
-                df_daily = _drop_in_progress_last_bar(df_daily, df_live, ticker)
-                df_daily = apply_saved_repairs(ticker, df_daily)
+                df_daily = _prepare_daily_history(ticker, df_daily, df_live)
                 if not df_daily.empty:
                     df_daily.to_parquet(history_path, engine='pyarrow')
                     persisted = True
@@ -318,17 +325,11 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     if df is None or df.empty:
         return None
     df = df.copy()
-    df = df.dropna(subset=["Close"])
-    if df.empty:
-        return None
-    exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker))
-    last_date = df.index[-1].date()
-    if is_daily_bar_still_forming(last_date, last_date, exchange_open):
-        df = df.iloc[:-1]
-    if df.empty:
-        return None
     if df.index.tz is not None:
         df.index = df.index.tz_convert(None)
+    df = _prepare_daily_history(ticker, df, None)
+    if df.empty:
+        return None
     HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -357,7 +358,8 @@ def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
     except FileNotFoundError:
         state = None
     if refresh_stale and not is_excluded_from_yahoo_fetch(ticker):
-        if state is None or time.time() - state.st_mtime > load_config()["PERFORMANCE"]["DAILY_HISTORY_FRESH_SECONDS"]:
+        settled_close = time_engine.last_settled_session_close_utc(time_engine.ticker_exchange_from_suffix(ticker))
+        if state is None or state.st_mtime < settled_close.timestamp():
             request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
     if state is None:
         return None

@@ -71,7 +71,6 @@ DEFAULT_CONFIG = {
         "FX_FRESH_SECONDS": 600,
         "FX_MAX_USABLE_SECONDS": 604800,
         "CACHE_REFRESH_RETRY_SECONDS": 60,
-        "DAILY_HISTORY_FRESH_SECONDS": 14400,
     },
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting
     "HOME_EXCHANGE": "LSE",             # NYSE | LSE | XETRA | TSE — drives default market-window logic
@@ -662,12 +661,14 @@ def load_config() -> dict:
                         hs_alerts[_k] = _old_alerts[_k]
 
             performance = merged_config["PERFORMANCE"]
-            for key in DEFAULT_CONFIG["PERFORMANCE"]:
-                value = performance[key]
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value < float("inf"):
-                    raise ValueError(f"PERFORMANCE.{key} must be a finite non-negative number")
-            if performance["FX_MAX_USABLE_SECONDS"] < performance["FX_FRESH_SECONDS"]:
-                raise ValueError("FX_MAX_USABLE_SECONDS must be at least FX_FRESH_SECONDS")
+            invalid = [
+                key for key in DEFAULT_CONFIG["PERFORMANCE"]
+                if isinstance(performance[key], bool) or not isinstance(performance[key], (int, float))
+                or not 0 <= performance[key] < float("inf")
+            ]
+            if invalid or performance["FX_MAX_USABLE_SECONDS"] < performance["FX_FRESH_SECONDS"]:
+                print(f"[WARNING] Invalid PERFORMANCE settings in config.json ({', '.join(invalid) or 'FX_MAX_USABLE_SECONDS below FX_FRESH_SECONDS'}). Using PERFORMANCE defaults only.")
+                merged_config["PERFORMANCE"] = copy.deepcopy(DEFAULT_CONFIG["PERFORMANCE"])
             return merged_config
     except Exception as e:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
