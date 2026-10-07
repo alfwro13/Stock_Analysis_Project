@@ -3252,6 +3252,8 @@ Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns s
  "estimation_window": null, "data_warnings": ["Need at least 2 tickers to optimize a portfolio."]}
 ```
 
+If the selected tickers share fewer than 30 overlapping trading days, the tickers with the shortest history are removed one at a time (ties broken by symbol) until the rest do, and a `data_warnings` entry names each one with its day count: `"Removed NEWCO (15 days) — not enough overlapping cached return history with the other selected tickers (need at least 30 overlapping trading days)."` The run then continues with the remaining tickers. Tickers with no history at all are listed separately (`"... excluded — no aligned return history: ..."`).
+
 `estimation_window` is filled in once return history has resolved (so it is present on an infeasible-cap response). A Weight Cap is infeasible when `N × max_weight < 1 − cash_reserve` for the N tickers left after exclusions; the warning names the smallest workable cap.
 
 **Response (scope has no holdings):** `{"status": "error", "message": "No holdings found for this scope..."}`.

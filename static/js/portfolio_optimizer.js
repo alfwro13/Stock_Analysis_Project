@@ -248,7 +248,10 @@ function _candidateRowHtml(c) {
     return '<div class="form-check po-candidate-row">'
         + '<input class="form-check-input po-candidate-checkbox" type="checkbox" value="' + escapeHtml(c.symbol) + '" id="po-cand-' + escapeHtml(c.symbol) + '"'
         + (c.held ? " checked" : "") + ' data-held="' + c.held + '">'
-        + '<label class="form-check-label small" for="po-cand-' + escapeHtml(c.symbol) + '">' + escapeHtml(c.symbol) + "</label>"
+        + '<label class="form-check-label small po-candidate-label" for="po-cand-' + escapeHtml(c.symbol) + '">'
+        + '<span class="po-candidate-symbol">' + escapeHtml(c.symbol) + "</span>"
+        + '<span class="po-candidate-name">' + (c.name && c.name !== c.symbol ? escapeHtml(c.name) : "") + "</span>"
+        + "</label>"
         + "</div>";
 }
 
