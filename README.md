@@ -45,7 +45,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Pre-Market / After-Hours Prices** — optional display of the latest extended-hours tick alongside the settled close.
 * **Monte Carlo Wealth Simulator** — 1,000 correlated GBM paths projecting portfolio wealth 10/20/30 years out.
 * **Portfolio Tearsheet** — native quantstats-equivalent performance report (Sortino, Calmar, drawdown analytics, and more).
-* **Portfolio Optimizer** — closed-form Min-Variance / Max-Sharpe suggested allocation with an efficient-frontier chart.
+* **Portfolio Optimizer** — Min-Variance / Max-Sharpe suggested allocations next to an Equal Weight baseline, with the change from your current weights and an efficient-frontier chart. Long-Only mode (the default) keeps every suggestion holdable with a per-ticker Weight Cap and an optional Cash Reserve; Unconstrained mode shows the pure textbook maths.
 * **Watchlist Analytics & Selection Tools** — Quality Grade, Market Reports tags, Trap/Bubble flags, heatmap, sector/score scatter.
 * **Custom Display Name Override** — set a personal display label for any ticker.
 * **Ticker Notes** — timestamped free-text research notes on any ticker.

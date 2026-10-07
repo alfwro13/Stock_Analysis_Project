@@ -117,7 +117,7 @@ JOB_GRAPH: dict[str, dict] = {
     # earnings_drift_predictions (written by overnight_quant_scan_job above).
     "earnings_drift_accuracy_source": {"label": "Earnings Volatility Accuracy",                    "category": "manual",      "engine": "earnings_vol_engine.py",        "produces": [],                                                             "consumes": ["earnings_drift_predictions"],                                       "non_job": True, "settings_anchor": None},
 
-    # Portfolio Optimizer — not a scheduled job; closed-form calculation over the same
+    # Portfolio Optimizer — not a scheduled job; on-demand calculation over the same
     # xray_returns_cache-derived return series X-ray uses (plus a parquet fallback for
     # never-held Watchlist tickers), no new artifact produced.
     "portfolio_optimizer_source":    {"label": "Portfolio Optimizer",                            "category": "manual",      "engine": "portfolio_optimizer_engine.py",   "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},

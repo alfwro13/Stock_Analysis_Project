@@ -1,8 +1,10 @@
 import logging
+import math
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import minimize
 
 from config import load_config
 from database import get_connection
@@ -17,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 TRADING_DAYS = 252
 RIDGE = 1e-8
+SOLVER_TOL = 1e-6
+ZERO_VARIANCE = 1e-12
+FRONTIER_POINTS = 25
+MODE_UNCONSTRAINED = "unconstrained"
+MODE_LONG_ONLY = "long_only"
 MIN_TICKERS_WARNING = "Need at least 2 tickers to optimize a portfolio."
 NOT_ENOUGH_DATA_WARNING = (
     "Not enough overlapping cached return history for this candidate set yet — need at least "
@@ -72,9 +79,7 @@ def list_candidates(account_id: str) -> Dict:
 
 
 def _returns_matrix_for_candidates(tickers: List[str]) -> Tuple[Optional[pd.DataFrame], List[str]]:
-    """Two-tier read: xray_returns_cache first (covers held tickers), then a direct parquet
-    read for anything missing (covers Watchlist-only tickers — the nightly X-ray precompute
-    only ever scans get_combined_holdings(), so a never-held ticker has no cache row)."""
+    """Parquet fallback because the nightly X-ray precompute never caches a never-held (Watchlist-only) ticker."""
     cached_df, warnings = get_scope_returns_matrix(tickers, include_benchmark=False)
     cached_symbols = set(cached_df.columns) if cached_df is not None else set()
     missing = [t for t in tickers if t not in cached_symbols]
@@ -99,9 +104,7 @@ def _returns_matrix_for_candidates(tickers: List[str]) -> Tuple[Optional[pd.Data
 
 
 def _closed_form_weights(mu: np.ndarray, cov: np.ndarray, rf: float) -> Dict:
-    """Unconstrained closed-form Min-Variance (w ∝ Σ⁻¹·1) and Max-Sharpe/tangency
-    (w ∝ Σ⁻¹·(μ−rf)) weights, each normalized to sum to 1. No shorting/position-cap
-    constraints — entries can be negative; callers must surface that, never clip it."""
+    """Unconstrained weights can be negative; callers must surface that, never clip it."""
     n = len(mu)
     ones = np.ones(n)
     cov_reg = cov + RIDGE * np.eye(n)
@@ -139,32 +142,173 @@ def _closed_form_weights(mu: np.ndarray, cov: np.ndarray, rf: float) -> Dict:
     return {"w_mv": w_mv, "w_ms": w_ms, "warnings": warnings}
 
 
-def _efficient_frontier(w_mv: np.ndarray, w_ms: np.ndarray, mu: np.ndarray, cov: np.ndarray) -> Dict:
-    """Two-fund separation — every point on the mean-variance frontier is a linear combination
-    of any two frontier portfolios, so sweeping t traces the curve without a second optimization."""
-    points = []
-    for t in np.linspace(-0.5, 1.5, 25):
-        w = w_mv + t * (w_ms - w_mv)
-        ret = float(w @ mu)
-        var = float(w @ cov @ w)
-        points.append({"return": round(ret, 4), "volatility": round(max(var, 0.0) ** 0.5, 4)})
+def _risk_return_point(w: np.ndarray, mu: np.ndarray, cov: np.ndarray, cash_return: float = 0.0) -> Dict:
     return {
-        "points": points,
-        "min_variance": {
-            "return": round(float(w_mv @ mu), 4),
-            "volatility": round(max(float(w_mv @ cov @ w_mv), 0.0) ** 0.5, 4),
-        },
-        "max_sharpe": {
-            "return": round(float(w_ms @ mu), 4),
-            "volatility": round(max(float(w_ms @ cov @ w_ms), 0.0) ** 0.5, 4),
-        },
+        "return": round(float(w @ mu) + cash_return, 4),
+        "volatility": round(max(float(w @ cov @ w), 0.0) ** 0.5, 4),
     }
 
 
-def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = None) -> Dict:
-    """Closed-form Min-Variance / Max-Sharpe suggested weights for an account scope plus any
-    opted-in Watchlist tickers — pure computation, no DB writes, mirrors
-    performance_analytics_engine.assemble_performance_report()'s shape."""
+def _efficient_frontier(w_mv: np.ndarray, w_ms: np.ndarray, mu: np.ndarray, cov: np.ndarray) -> Dict:
+    """Two-fund separation: blending any two frontier portfolios traces the curve without re-optimizing."""
+    return {
+        "points": [
+            _risk_return_point(w_mv + t * (w_ms - w_mv), mu, cov)
+            for t in np.linspace(-0.5, 1.5, FRONTIER_POINTS)
+        ],
+        "min_variance": _risk_return_point(w_mv, mu, cov),
+        "max_sharpe": _risk_return_point(w_ms, mu, cov),
+    }
+
+
+def _validated_solution(res, cap: float, budget: float) -> Optional[np.ndarray]:
+    """Rejects a failed or constraint-violating result instead of repairing it; only sub-tolerance noise is trimmed."""
+    if not res.success:
+        return None
+    w = np.asarray(res.x, dtype=float)
+    if (
+        not np.all(np.isfinite(w))
+        or abs(w.sum() - budget) > SOLVER_TOL
+        or w.min() < -SOLVER_TOL
+        or w.max() > cap + SOLVER_TOL
+    ):
+        return None
+    return np.clip(w, 0.0, cap)
+
+
+def _budget_constraint(n: int, budget: float) -> Dict:
+    return {"type": "eq", "fun": lambda w: w.sum() - budget, "jac": lambda w: np.ones(n)}
+
+
+def _long_only_min_variance(
+    cov: np.ndarray, cap: float, budget: float,
+    mu: Optional[np.ndarray] = None, target_return: Optional[float] = None,
+    x0: Optional[np.ndarray] = None,
+) -> Optional[np.ndarray]:
+    n = cov.shape[0]
+    constraints = [_budget_constraint(n, budget)]
+    if target_return is not None:
+        constraints.append({"type": "eq", "fun": lambda w: w @ mu - target_return, "jac": lambda w: mu})
+    res = minimize(
+        lambda w: w @ cov @ w,
+        np.full(n, budget / n) if x0 is None else x0,
+        jac=lambda w: 2 * cov @ w,
+        method="SLSQP",
+        bounds=[(0.0, cap)] * n,
+        constraints=constraints,
+        options={"maxiter": 1000, "ftol": 1e-12},
+    )
+    w = _validated_solution(res, cap, budget)
+    if w is not None and target_return is not None and abs(w @ mu - target_return) > SOLVER_TOL:
+        return None
+    return w
+
+
+def _max_return_weights(mu: np.ndarray, cap: float, budget: float) -> np.ndarray:
+    """Highest-expected-return mix under the bounds: fill the best tickers to the cap in turn."""
+    w = np.zeros(len(mu))
+    remaining = budget
+    for i in np.argsort(-mu, kind="stable"):
+        w[i] = min(cap, remaining)
+        remaining -= w[i]
+        if remaining <= 0:
+            break
+    return w
+
+
+def _long_only_max_sharpe(
+    mu: np.ndarray, cov: np.ndarray, rf: float, cap: float, budget: float
+) -> Tuple[Optional[np.ndarray], Optional[str]]:
+    """Starts from the max-excess mix: the ratio is quasi-concave where wᵀ(μ − rf) > 0, so SLSQP's local optimum is global."""
+    excess = mu - rf
+    x0 = _max_return_weights(mu, cap, budget)
+    if float(x0 @ excess) <= ZERO_VARIANCE:
+        return None, (
+            "No long-only mix of these tickers has a historical return above the risk-free rate, "
+            "so the Best Reward-for-Risk Mix is unavailable."
+        )
+
+    def neg_sharpe(w):
+        return -float(w @ excess) / max(float(w @ cov @ w), ZERO_VARIANCE) ** 0.5
+
+    def neg_sharpe_grad(w):
+        var = max(float(w @ cov @ w), ZERO_VARIANCE)
+        return -(excess / var ** 0.5 - float(w @ excess) * (cov @ w) / var ** 1.5)
+
+    res = minimize(
+        neg_sharpe, x0, jac=neg_sharpe_grad, method="SLSQP", bounds=[(0.0, cap)] * len(mu),
+        constraints=[_budget_constraint(len(mu), budget)],
+        options={"maxiter": 1000, "ftol": 1e-12},
+    )
+    w = _validated_solution(res, cap, budget)
+    if w is None:
+        return None, "The Best Reward-for-Risk Mix solver did not converge for this candidate set."
+    if float(w @ cov @ w) <= ZERO_VARIANCE:
+        return None, (
+            "The Best Reward-for-Risk Mix has zero historical volatility for this candidate set, so "
+            "its reward-for-risk ratio is undefined."
+        )
+    return w, None
+
+
+def _long_only_frontier(
+    mu: np.ndarray, cov: np.ndarray, w_mv: np.ndarray, cap: float, budget: float, cash_return: float
+) -> List[Dict]:
+    """Per-target min-variance solves, because the unconstrained two-fund blend can breach the bounds."""
+    low = float(w_mv @ mu)
+    high = float(_max_return_weights(mu, cap, budget) @ mu)
+    if high - low <= SOLVER_TOL:
+        return [_risk_return_point(w_mv, mu, cov, cash_return)]
+    points = []
+    x0 = w_mv
+    for target in np.linspace(low, high, FRONTIER_POINTS):
+        w = _long_only_min_variance(cov, cap, budget, mu=mu, target_return=float(target), x0=x0)
+        if w is None:
+            continue
+        points.append(_risk_return_point(w, mu, cov, cash_return))
+        x0 = w
+    return points
+
+
+def _pct(fraction: float) -> str:
+    return f"{fraction * 100:g}%"
+
+
+def _cap_infeasible_warning(n: int, cap: float, cash_reserve: float) -> str:
+    budget = 1.0 - cash_reserve
+    min_cap = math.ceil(round(budget / n * 1000, 9)) / 1000
+    return (
+        f"A {_pct(cap)} Weight Cap can't be met with {n} tickers: {n} × {_pct(cap)} = "
+        f"{_pct(round(n * cap, 6))}, less than the {_pct(round(budget, 6))} to be invested"
+        + (f" after the {_pct(cash_reserve)} Cash Reserve" if cash_reserve > 0 else "")
+        + f". Raise the Weight Cap to at least {_pct(min_cap)}"
+        + (", tick more tickers, or raise the Cash Reserve." if cash_reserve > 0 else " or tick more tickers.")
+    )
+
+
+def optimize_portfolio(
+    account_id: str,
+    include_tickers: Optional[List[str]] = None,
+    mode: str = MODE_UNCONSTRAINED,
+    max_weight: float = 1.0,
+    cash_reserve: float = 0.0,
+) -> Dict:
+    """Pure computation, no DB writes; Long-Only cap/cash arguments are ignored in unconstrained mode."""
+    long_only = mode == MODE_LONG_ONLY
+    budget = 1.0 - cash_reserve if long_only else 1.0
+    settings = {
+        "mode": mode,
+        "max_weight": max_weight if long_only else None,
+        "cash_reserve": cash_reserve if long_only else None,
+    }
+
+    def _no_result(warnings: List[str], window: Optional[Dict] = None) -> Dict:
+        return {
+            "status": "success", "account_id": account_id, **settings, "weights": None,
+            "risk_free_rate": None, "efficient_frontier": None, "estimation_window": window,
+            "data_warnings": warnings,
+        }
+
     try:
         holdings, _ = resolve_scope_holdings(account_id)
     except RuntimeError as e:
@@ -176,21 +320,13 @@ def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = N
     candidate_tickers = list(dict.fromkeys(t for t in candidate_tickers if t))
 
     if len(candidate_tickers) < 2:
-        return {
-            "status": "success", "account_id": account_id, "weights": None,
-            "risk_free_rate": None, "efficient_frontier": None,
-            "data_warnings": [MIN_TICKERS_WARNING],
-        }
+        return _no_result([MIN_TICKERS_WARNING])
 
     returns_df, data_warnings = _returns_matrix_for_candidates(candidate_tickers)
     data_warnings = list(data_warnings)
     if returns_df is None or returns_df.shape[1] < 2:
         data_warnings.append(NOT_ENOUGH_DATA_WARNING)
-        return {
-            "status": "success", "account_id": account_id, "weights": None,
-            "risk_free_rate": None, "efficient_frontier": None,
-            "data_warnings": data_warnings,
-        }
+        return _no_result(data_warnings)
 
     resolved_tickers = list(returns_df.columns)
     if len(resolved_tickers) < len(candidate_tickers):
@@ -202,6 +338,11 @@ def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = N
         )
 
     overlapping_days = len(returns_df)
+    estimation_window = {
+        "start": pd.Timestamp(returns_df.index.min()).strftime("%Y-%m-%d"),
+        "end": pd.Timestamp(returns_df.index.max()).strftime("%Y-%m-%d"),
+        "trading_days": overlapping_days,
+    }
     n = len(resolved_tickers)
     if n > overlapping_days / 3:
         data_warnings.append(
@@ -210,12 +351,33 @@ def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = N
             "unstable. Consider selecting fewer candidates."
         )
 
+    if long_only and n * max_weight < budget - SOLVER_TOL:
+        data_warnings.append(_cap_infeasible_warning(n, max_weight, cash_reserve))
+        return _no_result(data_warnings, estimation_window)
+
     mu = returns_df.mean(axis=0).to_numpy() * TRADING_DAYS
     cov = returns_df.cov().to_numpy() * TRADING_DAYS
     rf = float(load_config().get("RISK_FREE_RATE", 0.045))
 
-    result = _closed_form_weights(mu, cov, rf)
-    data_warnings.extend(result["warnings"])
+    if long_only:
+        if np.linalg.cond(cov) > 1e10:
+            data_warnings.append(
+                "Covariance matrix is singular or near-singular (e.g. duplicate, highly correlated "
+                "or flat-priced tickers) — several different mixes can be almost equally good, so "
+                "treat individual weights loosely."
+            )
+        w_mv = _long_only_min_variance(cov, max_weight, budget)
+        if w_mv is None:
+            data_warnings.append("The Steadiest Mix solver did not converge for this candidate set.")
+            return _no_result(data_warnings, estimation_window)
+        w_ms, ms_warning = _long_only_max_sharpe(mu, cov, rf, max_weight, budget)
+        if ms_warning:
+            data_warnings.append(ms_warning)
+    else:
+        result = _closed_form_weights(mu, cov, rf)
+        data_warnings.extend(result["warnings"])
+        w_mv, w_ms = result["w_mv"], result["w_ms"]
+    w_ew = np.full(n, budget / n)
 
     names = _ticker_names([t for t in resolved_tickers if t not in held])
     for ticker in resolved_tickers:
@@ -226,16 +388,17 @@ def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = N
     weights_out = []
     for i, ticker in enumerate(resolved_tickers):
         current_weight = held.get(ticker, {}).get("weight", 0.0)
-        w_mv = float(result["w_mv"][i])
-        w_ms = float(result["w_ms"][i]) if result["w_ms"] is not None else None
-        is_short = w_mv < 0 or (w_ms is not None and w_ms < 0)
+        mv = float(w_mv[i])
+        ms = float(w_ms[i]) if w_ms is not None else None
+        is_short = mv < 0 or (ms is not None and ms < 0)
         any_short = any_short or is_short
         weights_out.append({
             "symbol": ticker,
             "name": names.get(ticker, ticker),
             "current_weight": round(current_weight, 4),
-            "suggested_weight_mv": round(w_mv, 4),
-            "suggested_weight_ms": round(w_ms, 4) if w_ms is not None else None,
+            "suggested_weight_mv": round(mv, 4),
+            "suggested_weight_ms": round(ms, 4) if ms is not None else None,
+            "suggested_weight_ew": round(float(w_ew[i]), 4),
             "is_new_addition": current_weight == 0.0,
             "is_short": is_short,
         })
@@ -257,23 +420,28 @@ def optimize_portfolio(account_id: str, include_tickers: Optional[List[str]] = N
                 "positions were left unchecked), so the 'Your Portfolio Today' point on the "
                 "chart only reflects the tickers included here, not your full account."
             )
-        current_point = {
-            "return": round(float(current_w @ mu), 4),
-            "volatility": round(max(float(current_w @ cov @ current_w), 0.0) ** 0.5, 4),
-        }
+        current_point = _risk_return_point(current_w, mu, cov)
 
-    frontier = (
-        _efficient_frontier(result["w_mv"], result["w_ms"], mu, cov)
-        if result["w_ms"] is not None else None
-    )
+    cash_return = (1.0 - budget) * rf
+    if long_only:
+        frontier = {
+            "points": _long_only_frontier(mu, cov, w_mv, max_weight, budget, cash_return),
+            "min_variance": _risk_return_point(w_mv, mu, cov, cash_return),
+            "max_sharpe": _risk_return_point(w_ms, mu, cov, cash_return) if w_ms is not None else None,
+        }
+    else:
+        frontier = _efficient_frontier(w_mv, w_ms, mu, cov) if w_ms is not None else None
     if frontier is not None:
+        frontier["equal_weight"] = _risk_return_point(w_ew, mu, cov, cash_return)
         frontier["current"] = current_point
 
     return {
         "status": "success",
         "account_id": account_id,
+        **settings,
         "weights": weights_out,
         "risk_free_rate": rf,
         "efficient_frontier": frontier,
+        "estimation_window": estimation_window,
         "data_warnings": data_warnings,
     }

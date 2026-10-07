@@ -2544,23 +2544,23 @@ CARDS = [
             "Deletes any holding with a suggested weight below 5%",
             "Requires a brokerage API key to compute the suggestions",
         ],
-        "explanation": """<p>In plain terms: it looks at how your tickers have actually moved in the past and works out two alternative ways you could have mixed them — one aimed at the smoothest ride, one aimed at the best return for the bumps involved. It then shows those next to what you actually hold today, so you can see how your real mix compares.</p>
-<p>More precisely, the <strong>Portfolio Optimizer</strong> computes two textbook "optimal" allocations for a chosen account scope — <strong>Min-Variance</strong> (the Steadiest Mix) and <strong>Max-Sharpe</strong> (the Best Reward-for-Risk Mix) — using closed-form matrix algebra rather than a numerical optimization library.</p>
+        "explanation": """<p>In plain terms: it looks at how your tickers have actually moved in the past and works out alternative ways you could have mixed them — one aimed at the smoothest ride, one aimed at the best return for the bumps involved, and a plain equal split as a baseline. It then shows those next to what you actually hold today, with the change for each ticker, so you can see how your real mix compares.</p>
+<p>More precisely, the <strong>Portfolio Optimizer</strong> computes two textbook "optimal" allocations for a chosen account scope — <strong>Min-Variance</strong> (the Steadiest Mix) and <strong>Max-Sharpe</strong> (the Best Reward-for-Risk Mix) — plus the <strong>Equal Weight Mix</strong>. In <strong>Long-Only</strong> mode (the page default) it solves them numerically within your Weight Cap and Cash Reserve; in <strong>Unconstrained</strong> mode it uses closed-form matrix algebra with no rules at all. Returns are measured in each ticker's own trading currency, with no currency conversion.</p>
 <p>It's informational only: this app has no order execution, so nothing is rebalanced automatically. Held tickers are pre-selected candidates; <a href="/watchlist">Watchlist</a> tickers can be opted in to see them suggested as a brand-new position with a nonzero weight.</p>""",
     },
     {
         "term_key": "min-variance-portfolio",
         "section_id": "portfolio-optimizer",
         "term_title": "Min-Variance Portfolio (\"Steadiest Mix\")",
-        "question": "How is the Min-Variance (Steadiest Mix) Portfolio's weight vector computed?",
-        "answer": "In closed form from the covariance matrix (w ∝ Σ⁻¹ · 1), with no iterative solver",
+        "question": "How does the Portfolio Optimizer compute the Min-Variance (Steadiest Mix) weights?",
+        "answer": "With a numerical solver inside the Long-Only rules, or in closed form (w ∝ Σ⁻¹ · 1) when Unconstrained",
         "distractors": [
             "By running 1,000 random simulations and picking the smoothest one",
             "By always weighting every candidate ticker equally",
             "By maximizing expected return regardless of risk",
         ],
         "explanation": """<p>The mix of your selected tickers that would have bounced around the <strong>least</strong> historically — the smoothest ride, not necessarily the highest return.</p>
-<p>This is a closed-form solution — no iterative solver, no shorting or position-size constraints. It answers "if I only cared about the smoothest possible ride, how would I have weighted these holdings?"</p>""",
+<p>In Long-Only mode a numerical solver finds the steadiest mix that follows your rules; in Unconstrained mode it's the closed-form answer with no shorting or position-size limits. Either way it answers "if I only cared about the smoothest possible ride, how would I have weighted these holdings?"</p>""",
     },
     {
         "term_key": "max-sharpe-portfolio",
@@ -2574,34 +2574,90 @@ CARDS = [
             "Dividend income only",
         ],
         "explanation": """<p>The mix of your selected tickers that would have given the <strong>most return for the amount of bumpiness</strong> involved — the best trade-off between reward and risk, not simply the highest return on its own.</p>
-<p>Like the Steadiest Mix, this is closed-form and unconstrained. If a candidate's expected return sits below the risk-free rate, or the spread of expected returns across candidates is too thin, the Optimizer surfaces a warning instead of a misleading number.</p>""",
+<p>If no allowed mix has a historical return above the risk-free rate, or the best mix has zero volatility, the ratio is meaningless, so the Optimizer marks this mix as unavailable and explains why instead of showing a misleading number. In Unconstrained mode it warns when expected returns sit below the risk-free rate or their spread is too thin.</p>""",
+    },
+    {
+        "term_key": "equal-weight-mix",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Equal Weight Mix",
+        "question": "What is the Equal Weight Mix used for in the Portfolio Optimizer?",
+        "answer": "A simple 1/N baseline to judge whether the optimized mixes are actually worth their extra complexity",
+        "distractors": [
+            "It is the Optimizer's recommended final allocation",
+            "It weights each ticker by its market capitalization",
+            "It copies the weights you currently hold",
+        ],
+        "explanation": """<p>The simplest possible mix: every selected ticker gets the same share. It needs no history or maths at all, which is exactly why it's a useful baseline — if the Steadiest Mix or the Best Reward-for-Risk Mix can't clearly beat it, the extra complexity may not be worth much.</p>
+<p>It is shown as its own table column and as a blue square on the chart. When a Weight Cap is set, the Equal Weight Mix always respects it, because a cap too small for an equal split is rejected before anything is calculated.</p>""",
+    },
+    {
+        "term_key": "long-only-mode",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Long-Only vs Unconstrained Mode",
+        "question": "What does Long-Only mode guarantee about the Portfolio Optimizer's suggested weights?",
+        "answer": "No negative weights, none above the Weight Cap, and the weights plus the Cash Reserve add up to 100%",
+        "distractors": [
+            "Every ticker gets exactly the same weight",
+            "The suggested mix will have the highest possible return",
+            "Weights are rounded to the nearest 5%",
+        ],
+        "explanation": """<p><strong>Long-Only</strong> mode (the page default) only allows mixes you could actually hold: no negative (bet-against) amounts, no ticker above the Weight Cap, and an optional Cash Reserve held back. Because those rules rule out the textbook formulas, the Optimizer uses a numerical solver (SLSQP) to find the best mix that obeys them, then checks the answer genuinely meets every rule — a result that doesn't is reported as unavailable, never quietly adjusted.</p>
+<p><strong>Unconstrained</strong> mode shows the pure closed-form maths with no rules, which can suggest negative weights or putting most of the money in one ticker. It is useful as a reference for what the numbers want in theory; the Weight Cap and Cash Reserve don't apply there.</p>""",
+    },
+    {
+        "term_key": "weight-cap",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Weight Cap",
+        "question": "Why can a 20% Weight Cap be rejected when only 4 tickers are selected?",
+        "answer": "4 × 20% is only 80%, so the tickers can't hold the whole invested amount without breaking the cap",
+        "distractors": [
+            "The Weight Cap must always be below 10%",
+            "The Optimizer needs at least 10 tickers in every mode",
+            "A Weight Cap only works when a Cash Reserve is also set",
+        ],
+        "explanation": """<p>The most any single ticker may make up of the whole portfolio in Long-Only mode — 20% by default. It stops the Optimizer from piling most of the money into whichever ticker happened to do best in the past.</p>
+<p>A cap can be too tight to be possible: with N tickers each limited to the cap, they can hold at most N × cap between them. If that is less than the share to be invested (100% minus any Cash Reserve), the Optimizer says so and suggests the smallest workable cap instead of bending the rule — for example, a 20% cap needs at least 5 tickers.</p>""",
+    },
+    {
+        "term_key": "cash-reserve",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Cash Reserve",
+        "question": "How does the Portfolio Optimizer treat a Cash Reserve when estimating a mix's return?",
+        "answer": "The cash is assumed to earn the configured risk-free rate with zero volatility",
+        "distractors": [
+            "The cash is assumed to earn nothing and is ignored entirely",
+            "The cash is invested in the best-performing ticker",
+            "The cash is assumed to track the S&P 500",
+        ],
+        "explanation": """<p>A share of the portfolio deliberately kept in cash in Long-Only mode — 0% by default. The tickers then share only what is left (for a 10% Cash Reserve, their weights add up to 90%), and the table shows the cash as its own row so every column still adds up to 100%.</p>
+<p>For the chart and the Best Reward-for-Risk Mix, cash is assumed to earn the app's configured risk-free rate with no ups and downs. That is an estimation assumption, not a quoted savings rate.</p>""",
     },
     {
         "term_key": "efficient-frontier",
         "section_id": "portfolio-optimizer",
         "term_title": "Efficient Frontier (the curve on the chart)",
-        "question": "How does the Portfolio Optimizer trace the efficient frontier without a second optimization pass?",
-        "answer": "Two-fund separation — every frontier point is a linear combination of the Min-Variance and Max-Sharpe portfolios",
+        "question": "How does the Portfolio Optimizer trace the efficient frontier in Long-Only mode?",
+        "answer": "It solves for the steadiest rule-following mix at a series of target returns",
         "distractors": [
             "It re-runs the Monte Carlo Wealth Simulator for each point",
             "It queries a third-party portfolio-optimization API",
-            "It only plots the two named portfolios, not a curve",
+            "It blends the two named mixes, even if that breaks the Weight Cap",
         ],
         "explanation": """<p>Imagine plotting every possible way of mixing your selected tickers as a dot, with bumpiness on one axis and return on the other. The efficient frontier is the curve connecting the <em>best</em> of those dots — the mixes where you can't get more return without accepting more bumpiness, or less bumpiness without giving up return. Your own portfolio's dot is also shown, so you can see how far it sits from that curve.</p>
-<p>The Optimizer traces the curve using <strong>two-fund separation</strong>: every point on the frontier is a linear combination of the Steadiest Mix and the Best Reward-for-Risk Mix, so sweeping a blend factor between (and slightly beyond) the two traces the whole curve without a second optimization pass.</p>""",
+<p>In Unconstrained mode the Optimizer traces the curve using <strong>two-fund separation</strong>: every point on the frontier is a linear combination of the Steadiest Mix and the Best Reward-for-Risk Mix, so sweeping a blend factor between (and slightly beyond) the two traces the whole curve without a second optimization pass. Blending can break the Long-Only rules, so in Long-Only mode it instead solves for the steadiest rule-following mix at a series of target returns, from the Steadiest Mix up to the highest return the rules allow.</p>""",
     },
     {
         "term_key": "negative-short-weights",
         "section_id": "portfolio-optimizer",
         "term_title": "Negative (Short) Weights — the \"Model says: avoid\" tag",
         "question": "Why can the Portfolio Optimizer show a negative suggested weight?",
-        "answer": "The math is unconstrained (no shorting/position-cap rule), so a negative weight is the true closed-form result and is shown as-is",
+        "answer": "In Unconstrained mode there is no shorting or position-cap rule, so a negative weight is the true closed-form result and is shown as-is",
         "distractors": [
             "It's a display bug and should be reported",
             "It means the ticker will be automatically sold short",
             "Negative weights are always clipped to zero before display",
         ],
-        "explanation": """<p>Occasionally the maths comes back wanting a <em>negative</em> amount of a ticker — in plain terms, betting against it rather than owning it. Because the Optimizer is unconstrained — no "no shorting" rule, no per-position cap — this can happen: it reflects the true closed-form math, not a recommendation to actually short a position, and <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result.</p>""",
+        "explanation": """<p>Occasionally the maths comes back wanting a <em>negative</em> amount of a ticker — in plain terms, betting against it rather than owning it. This can only happen in <strong>Unconstrained</strong> mode, which has no "no shorting" rule and no per-position cap: it reflects the true closed-form math, not a recommendation to actually short a position, and <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result. Long-Only mode never produces them.</p>""",
     },
     # --- stress-tester ---
     {

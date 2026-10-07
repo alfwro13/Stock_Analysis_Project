@@ -1196,6 +1196,9 @@ async def api_performance_analytics_report(request: Request, account_id: str = "
 class PortfolioOptimizerRunRequest(BaseModel):
     account_id: str = "all"
     include_tickers: List[str] = []
+    mode: Literal["unconstrained", "long_only"] = "unconstrained"
+    max_weight: float = Field(1.0, gt=0, le=1)
+    cash_reserve: float = Field(0.0, ge=0, lt=1)
 
 
 @api_router.get("/portfolio-optimizer/accounts")
@@ -1225,11 +1228,14 @@ async def api_portfolio_optimizer_candidates(request: Request, account_id: str =
 @limiter.limit("10/minute")
 async def api_portfolio_optimizer_run(request: Request, req: PortfolioOptimizerRunRequest):
     """
-    Closed-form (numpy-only) Min-Variance / Max-Sharpe suggested weights for the given account
-    scope plus any opted-in Watchlist tickers — informational only, no order execution.
+    Min-Variance / Max-Sharpe / Equal Weight suggested weights for the given account scope plus
+    any opted-in Watchlist tickers — informational only, no order execution.
     """
     try:
-        report = await asyncio.to_thread(_po_optimize_portfolio, req.account_id, req.include_tickers)
+        report = await asyncio.to_thread(
+            _po_optimize_portfolio, req.account_id, req.include_tickers,
+            req.mode, req.max_weight, req.cash_reserve,
+        )
         return JSONResponse(content=report)
     except Exception as e:
         return _error_500(e)

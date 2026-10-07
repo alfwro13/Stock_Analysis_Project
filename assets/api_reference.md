@@ -3191,7 +3191,7 @@ Returns the candidate-ticker checklist for an account scope: every held ticker (
 
 ### `POST /api/portfolio-optimizer/run`
 
-Runs the closed-form **Portfolio Optimizer** for a chosen candidate ticker set and returns suggested Min-Variance and Max-Sharpe weights plus an efficient-frontier curve. Pure computation via `portfolio_optimizer_engine.optimize_portfolio()` — no `cvxpy`/convex-optimization dependency, no DB writes, no scheduled job. Held tickers use `xray_returns_cache`; any candidate never held (e.g. a Watchlist-only ticker) falls back to a direct parquet read (`xray_engine.fetch_close_returns_from_parquet`).
+Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns suggested Min-Variance, Max-Sharpe and Equal Weight weights plus an efficient-frontier curve. Two allocation modes: `unconstrained` (the API default; closed-form, weights may be negative) and `long_only` (`scipy.optimize.minimize(method="SLSQP")` with `0 ≤ w ≤ max_weight` and `Σw = 1 − cash_reserve`; the page selects this mode by default). Pure computation via `portfolio_optimizer_engine.optimize_portfolio()` — no `cvxpy` dependency, no DB writes, no scheduled job. Returns are each ticker's native-currency daily returns; no FX conversion is applied. Held tickers use `xray_returns_cache`; any candidate never held (e.g. a Watchlist-only ticker) falls back to a direct parquet read (`xray_engine.fetch_close_returns_from_parquet`).
 
 **Auth:** Required (session cookie).
 
@@ -3200,13 +3200,17 @@ Runs the closed-form **Portfolio Optimizer** for a chosen candidate ticker set a
 **Request body:**
 
 ```json
-{"account_id": "acct:5", "include_tickers": ["VWRL.L", "IGLT.L", "AAPL"]}
+{"account_id": "acct:5", "include_tickers": ["VWRL.L", "IGLT.L", "AAPL"],
+ "mode": "long_only", "max_weight": 0.2, "cash_reserve": 0.05}
 ```
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `account_id` | string | `"all"` | Same scope semantics as the other endpoints above |
 | `include_tickers` | array of strings | `[]` | The checked candidate tickers from `GET .../candidates`; must be ≥2 after resolution |
+| `mode` | `"unconstrained"` \| `"long_only"` | `"unconstrained"` | Allocation mode; any other value returns 422 |
+| `max_weight` | float in (0, 1] | `1.0` | **Weight Cap** per ticker (decimal). Used only in `long_only`; out-of-range returns 422 |
+| `cash_reserve` | float in [0, 1) | `0.0` | **Cash Reserve** held back as cash (decimal). Used only in `long_only`; out-of-range returns 422 |
 
 **Response (sufficient data):**
 
@@ -3214,35 +3218,49 @@ Runs the closed-form **Portfolio Optimizer** for a chosen candidate ticker set a
 {
   "status": "success",
   "account_id": "acct:5",
+  "mode": "unconstrained",
+  "max_weight": null,
+  "cash_reserve": null,
   "weights": [
     {"symbol": "VWRL.L", "name": "Vanguard FTSE All-World UCITS ETF", "current_weight": 0.62,
-     "suggested_weight_mv": 0.41, "suggested_weight_ms": 0.55, "is_new_addition": false, "is_short": false},
+     "suggested_weight_mv": 0.41, "suggested_weight_ms": 0.55, "suggested_weight_ew": 0.3333,
+     "is_new_addition": false, "is_short": false},
     {"symbol": "AAPL", "name": "Apple Inc.", "current_weight": 0.0,
-     "suggested_weight_mv": -0.03, "suggested_weight_ms": 0.12, "is_new_addition": true, "is_short": true}
+     "suggested_weight_mv": -0.03, "suggested_weight_ms": 0.12, "suggested_weight_ew": 0.3333,
+     "is_new_addition": true, "is_short": true}
   ],
   "risk_free_rate": 0.045,
   "efficient_frontier": {
     "points": [{"return": 0.041, "volatility": 0.089}, "..."],
     "min_variance": {"return": 0.052, "volatility": 0.081},
     "max_sharpe": {"return": 0.071, "volatility": 0.095},
+    "equal_weight": {"return": 0.058, "volatility": 0.092},
     "current": {"return": 0.048, "volatility": 0.104}
   },
+  "estimation_window": {"start": "2025-10-06", "end": "2026-10-06", "trading_days": 251},
   "data_warnings": []
 }
 ```
 
 `efficient_frontier.current` is the requesting account's actual current allocation (using each ticker's real `current_weight`, not a suggested one) plotted on the same return/volatility axes — `null` if none of the resolved candidate tickers are currently held (e.g. every included ticker is a not-yet-held Watchlist addition). If the checked candidate set excludes some of the account's real holdings, a `data_warnings` entry says so, since `current` then only reflects the included tickers, not the whole account.
 
-**Response (fewer than 2 tickers, or fewer than 30 overlapping cached days):**
+**Response (fewer than 2 tickers, fewer than 30 overlapping cached days, or an infeasible Weight Cap):**
 
 ```json
-{"status": "success", "account_id": "acct:5", "weights": null, "risk_free_rate": null,
- "efficient_frontier": null, "data_warnings": ["Need at least 2 tickers to optimize a portfolio."]}
+{"status": "success", "account_id": "acct:5", "mode": "long_only", "max_weight": 0.2,
+ "cash_reserve": 0.0, "weights": null, "risk_free_rate": null, "efficient_frontier": null,
+ "estimation_window": null, "data_warnings": ["Need at least 2 tickers to optimize a portfolio."]}
 ```
+
+`estimation_window` is filled in once return history has resolved (so it is present on an infeasible-cap response). A Weight Cap is infeasible when `N × max_weight < 1 − cash_reserve` for the N tickers left after exclusions; the warning names the smallest workable cap.
 
 **Response (scope has no holdings):** `{"status": "error", "message": "No holdings found for this scope..."}`.
 
-`suggested_weight_mv`/`suggested_weight_ms` are unconstrained closed-form results (`w ∝ Σ⁻¹·1` and `w ∝ Σ⁻¹·(μ−rf)` respectively, each normalized to sum to 1) — no shorting/position-cap constraints, so a weight can be negative (`is_short: true`); it is never clipped. `risk_free_rate` is read from `config.json`'s `RISK_FREE_RATE` key, the same value X-ray/Tearsheet use for their own Sharpe/Sortino/Omega calculations.
+In `unconstrained` mode `suggested_weight_mv`/`suggested_weight_ms` are closed-form results (`w ∝ Σ⁻¹·1` and `w ∝ Σ⁻¹·(μ−rf)` respectively, each normalized to sum to 1) — no shorting/position-cap constraints, so a weight can be negative (`is_short: true`); it is never clipped. `max_weight`/`cash_reserve` are echoed as `null` and ignored, and these weights are identical to the pre-Long-Only responses.
+
+In `long_only` mode Min-Variance minimises `wᵀΣw` and Max-Sharpe minimises `−(wᵀμ + c·rf − rf)/√(wᵀΣw)` (c = `cash_reserve`; cash is assumed to earn `risk_free_rate`), both with SLSQP under `0 ≤ w ≤ max_weight`, `Σw = 1 − c`. Each solution is checked for solver success, finite values and constraint residuals; a failed check is reported as unavailable, never clipped or renormalised. `suggested_weight_ms` is `null` for every row (and `efficient_frontier.max_sharpe` is `null`) when no allowed mix earns more than the risk-free rate or the optimum has zero volatility — a `data_warnings` entry explains which. The frontier `points` are minimum-variance solves at up to 25 target returns between the Min-Variance mix and the highest return the bounds allow (the two-fund blend is used only in `unconstrained` mode); in `long_only` their `return` values include the cash contribution `c·rf`. A near-singular covariance matrix adds a warning. `is_short` is always `false`.
+
+`suggested_weight_ew` is the Equal Weight Mix, `(1 − c)/N` per ticker (`1/N` in `unconstrained`), plotted as `efficient_frontier.equal_weight`. `estimation_window` gives the first/last date and count of the overlapping daily returns used. `risk_free_rate` is read from `config.json`'s `RISK_FREE_RATE` key, the same value X-ray/Tearsheet use for their own Sharpe/Sortino/Omega calculations.
 
 ---
 

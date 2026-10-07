@@ -11,7 +11,9 @@
 <p class="text-muted mb-3">
     Compares your current mix of holdings against two "textbook" alternative mixes, worked out purely from how these tickers have actually moved in the past:
     a <abbr title="The mix of your tickers that would have bounced around the least — the smoothest, steadiest ride, even if the returns weren't the highest.">Steadiest Mix</abbr>
-    and a <abbr title="The mix of your tickers that would have given you the most return for the amount of ups-and-downs you had to put up with.">Best Reward-for-Risk Mix</abbr>.
+    and a <abbr title="The mix of your tickers that would have given you the most return for the amount of ups-and-downs you had to put up with.">Best Reward-for-Risk Mix</abbr>,
+    plus a plain <abbr title="Every selected ticker gets the same share — a simple baseline to compare the other mixes against.">Equal Weight Mix</abbr> as a baseline.
+    In <abbr title="No negative (bet-against) amounts, and no single ticker above your Weight Cap.">Long-Only</abbr> mode every suggestion is a mix you could actually hold.
     This is a reference point only — nothing here is a buy/sell instruction, and this app cannot place trades or rebalance anything automatically.
 </p>
 
@@ -36,6 +38,25 @@
                 </div>
                 <div id="po-candidates-count" class="po-candidates-count mb-2"></div>
                 <div id="po-candidates-list" class="po-candidates-list mb-3"></div>
+
+                <h6 class="card-title mb-2">Allocation Rules</h6>
+                <div class="btn-group btn-group-sm w-100 mb-2" role="group" aria-label="Allocation mode">
+                    <input type="radio" class="btn-check" name="po-mode" id="po-mode-long-only" value="long_only" checked>
+                    <label class="btn btn-outline-primary" for="po-mode-long-only">Long-Only</label>
+                    <input type="radio" class="btn-check" name="po-mode" id="po-mode-unconstrained" value="unconstrained">
+                    <label class="btn btn-outline-primary" for="po-mode-unconstrained">Unconstrained</label>
+                </div>
+                <p id="po-mode-help" class="text-muted small mb-2"></p>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label for="po-max-weight" class="form-label small mb-1"><abbr title="The most any single ticker may make up of the whole portfolio, in Long-Only mode.">Weight Cap</abbr> (%)</label>
+                        <input type="number" class="form-control form-control-sm" id="po-max-weight" min="0.5" max="100" step="0.5" value="20">
+                    </div>
+                    <div class="col-6">
+                        <label for="po-cash-reserve" class="form-label small mb-1"><abbr title="A share of the portfolio deliberately kept in cash, in Long-Only mode. It is assumed to earn the configured risk-free rate.">Cash Reserve</abbr> (%)</label>
+                        <input type="number" class="form-control form-control-sm" id="po-cash-reserve" min="0" max="99" step="0.5" value="0">
+                    </div>
+                </div>
                 <button type="button" class="btn btn-primary btn-sm w-100" id="po-run-btn">&#9654; Run Optimization</button>
                 <div id="po-error" class="text-danger small mt-2 d-none"></div>
             </div>
@@ -50,8 +71,9 @@
         </div>
 
         <div id="po-results" class="d-none">
+            <p id="po-results-meta" class="text-muted small mb-2"></p>
             <p class="text-muted small mb-2">
-                For each ticker: what you hold now, versus what the Steadiest Mix and the Best Reward-for-Risk Mix would have suggested instead.
+                For each ticker: what you hold now, versus what the Steadiest Mix, the Best Reward-for-Risk Mix and the Equal Weight Mix would have suggested instead, each followed by the change (Δ) from what you hold now.
                 A <span class="badge bg-info">Not held yet</span> tag means it's a Watchlist ticker you ticked in — the model thinks adding it would have helped.
                 A <span class="badge bg-danger">Model says: avoid</span> tag means the maths actually wants a <em>negative</em> amount of that ticker (like betting against it) — this app has no way to act on that, so treat it purely as a signal that this holding dragged the mix down, not as an instruction.
             </p>
@@ -62,7 +84,11 @@
                             <th>Ticker</th>
                             <th>What You Hold Now</th>
                             <th><abbr title="The steadiest possible mix of these tickers — lowest ups-and-downs historically, not necessarily the highest return.">Steadiest Mix</abbr></th>
+                            <th><abbr title="Change from what you hold now, in percentage points.">Δ</abbr></th>
                             <th><abbr title="The mix that historically gave the most return for the amount of ups-and-downs involved.">Best Reward-for-Risk</abbr></th>
+                            <th><abbr title="Change from what you hold now, in percentage points.">Δ</abbr></th>
+                            <th><abbr title="Every selected ticker gets the same share — a simple baseline to compare the other mixes against.">Equal Weight Mix</abbr></th>
+                            <th><abbr title="Change from what you hold now, in percentage points.">Δ</abbr></th>
                         </tr>
                     </thead>
                     <tbody id="po-weights-tbody"></tbody>
@@ -78,8 +104,8 @@
                     <span class="sentiment-footer-title">How to read this chart:</span>
                     <div class="sentiment-footer-text">
                         <p class="mb-2">Every dot on this chart is one possible way of mixing the tickers you selected. The further <strong>right</strong> a dot sits, the bumpier that mix's year-to-year ride has been historically; the further <strong>up</strong> a dot sits, the more it would have returned per year.</p>
-                        <p class="mb-2">The <strong>white circle</strong> is where your actual portfolio sits today. The <strong>purple curve</strong> is every mix that gave the best possible return for its level of bumpiness — no mix below-and-right of that curve makes sense, since you could always get more return for the same bumpiness (or less bumpiness for the same return) by picking a mix that's on the curve instead.</p>
-                        <p class="mb-0">The <strong>green diamond</strong> is the single steadiest mix on the curve; the <strong>orange star</strong> is the mix that historically gave the best return for its bumpiness. If your white circle sits well below or to the right of the curve, it means — purely based on how these tickers moved in the past — a different mix of the exact same tickers could plausibly have done better. It is not advice to act on; it's a comparison point.</p>
+                        <p class="mb-2">The <strong>white circle</strong> is where your actual portfolio sits today. The <strong>purple curve</strong> is every mix that gave the best possible return for its level of bumpiness — no mix below-and-right of that curve makes sense, since you could always get more return for the same bumpiness (or less bumpiness for the same return) by picking a mix that's on the curve instead. In Long-Only mode the curve only includes mixes that follow your rules (no negative amounts, nothing above the Weight Cap, the Cash Reserve held back).</p>
+                        <p class="mb-0">The <strong>green diamond</strong> is the single steadiest mix on the curve; the <strong>orange star</strong> is the mix that historically gave the best return for its bumpiness; the <strong>blue square</strong> is the Equal Weight Mix. If your white circle sits well below or to the right of the curve, it means — purely based on how these tickers moved in the past — a different mix of the exact same tickers could plausibly have done better. It is not advice to act on; it's a comparison point.</p>
                     </div>
                 </div>
             </div>
@@ -116,8 +142,8 @@
                     <div class="col-12 col-md-6 col-xl-3">
                         <div class="sentiment-module module-default mb-0">
                             <div class="p-3">
-                                <h4 class="text-primary small fw-semibold">3. Read the Table</h4>
-                                <p class="mb-0 small text-muted lh-base">A negative number means the model would want to bet against that ticker — you can't actually do that here, so read it as "this one dragged the mix down," not as an instruction.</p>
+                                <h4 class="text-primary small fw-semibold">3. Set the Rules</h4>
+                                <p class="mb-0 small text-muted lh-base">Long-Only keeps every suggestion holdable: no negative amounts, no ticker above the Weight Cap, and an optional Cash Reserve kept aside. Unconstrained shows the pure textbook maths, where a negative number means the model would bet against that ticker.</p>
                             </div>
                         </div>
                     </div>
