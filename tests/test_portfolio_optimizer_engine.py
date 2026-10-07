@@ -28,6 +28,7 @@ from portfolio_optimizer_engine import (
     MODE_LONG_ONLY,
     NOT_ENOUGH_DATA_WARNING,
     _cap_infeasible_warning,
+    _drop_short_history,
     _closed_form_weights,
     _long_only_frontier,
     _long_only_max_sharpe,
@@ -144,7 +145,7 @@ class TestReturnsMatrixForCandidates:
         _seed_returns_cache(
             {RM_T1: rng.normal(0, 0.01, 40).tolist(), RM_T2: rng.normal(0, 0.01, 40).tolist()}, dates
         )
-        df, warnings = _returns_matrix_for_candidates([RM_T1, RM_T2])
+        df, warnings, _ = _returns_matrix_for_candidates([RM_T1, RM_T2])
         assert df is not None
         assert set(df.columns) == {RM_T1, RM_T2}
         assert len(df) >= 30
@@ -162,17 +163,35 @@ class TestReturnsMatrixForCandidates:
             "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=fallback_df,
         ):
-            df, warnings = _returns_matrix_for_candidates([RM_T1, RM_T3])
+            df, warnings, _ = _returns_matrix_for_candidates([RM_T1, RM_T3])
 
         assert df is not None
         assert set(df.columns) == {RM_T1, RM_T3}
+
+    def test_short_history_ticker_removed_and_named(self):
+        dates = _bdate_strings(60)
+        rng = np.random.default_rng(4)
+        _seed_returns_cache(
+            {RM_T1: rng.normal(0, 0.01, 60).tolist(), RM_T2: rng.normal(0, 0.01, 60).tolist()}, dates
+        )
+        short = pd.Series(rng.normal(0, 0.01, 10), index=pd.to_datetime(dates[-10:]))
+        fallback_df = pd.DataFrame({"POE_RM_SHORT": short}, index=pd.to_datetime(dates))
+        with patch(
+            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            return_value=fallback_df,
+        ):
+            df, _, removed = _returns_matrix_for_candidates([RM_T1, RM_T2, "POE_RM_SHORT"])
+
+        assert df is not None
+        assert set(df.columns) == {RM_T1, RM_T2}
+        assert removed == [("POE_RM_SHORT", 10)]
 
     def test_no_data_anywhere_returns_none(self):
         with patch(
             "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=pd.DataFrame(),
         ):
-            df, warnings = _returns_matrix_for_candidates(["NOPE1", "NOPE2"])
+            df, warnings, _ = _returns_matrix_for_candidates(["NOPE1", "NOPE2"])
         assert df is None
 
 
@@ -562,7 +581,7 @@ class TestOptimizePortfolioLongOnly:
         assert report["cash_reserve"] is None
         assert len(report["efficient_frontier"]["points"]) == 25
 
-        df, _ = _returns_matrix_for_candidates(LO_TICKERS[:3])
+        df, _, _ = _returns_matrix_for_candidates(LO_TICKERS[:3])
         expected = _closed_form_weights(
             df.mean(axis=0).to_numpy() * 252, df.cov().to_numpy() * 252, 0.045
         )
@@ -578,3 +597,48 @@ class TestOptimizePortfolioLongOnly:
         with_args = _run(aid, max_weight=0.2, cash_reserve=0.5)
         assert with_args["weights"] == plain["weights"]
         assert with_args["max_weight"] is None and with_args["cash_reserve"] is None
+
+
+class TestDropShortHistory:
+    def _frame(self, lengths, n_days=60):
+        idx = pd.bdate_range("2025-01-01", periods=n_days)
+        rng = np.random.default_rng(5)
+        return pd.DataFrame({
+            t: pd.Series(rng.normal(0, 0.01, n), index=idx[-n:]) for t, n in lengths.items()
+        }, index=idx)
+
+    def test_keeps_everything_when_overlap_is_enough(self):
+        df, removed = _drop_short_history(self._frame({"A": 60, "B": 40}))
+        assert list(df.columns) == ["A", "B"]
+        assert removed == []
+
+    def test_removes_only_as_many_as_needed_shortest_first(self):
+        df, removed = _drop_short_history(self._frame({"A": 60, "B": 60, "C": 12, "D": 20, "E": 45}))
+        assert removed == [("C", 12), ("D", 20)]
+        assert set(df.columns) == {"A", "B", "E"}
+        assert len(df.dropna(how="any")) >= 30
+
+    def test_ties_break_on_ticker(self):
+        _, removed = _drop_short_history(self._frame({"A": 60, "Z": 10, "M": 10}))
+        assert removed == [("M", 10), ("Z", 10)]
+
+    def test_stops_at_one_ticker(self):
+        df, removed = _drop_short_history(self._frame({"A": 20, "B": 10}))
+        assert removed == [("B", 10)]
+        assert list(df.columns) == ["A"]
+
+
+class TestShortHistoryWarningInReport:
+    def test_report_names_removed_ticker_and_still_optimizes(self):
+        aid = _seed_long_only_account("PoeShortHistAcc", LO_TICKERS[:3], seed=40)
+        dates = _bdate_strings(252)
+        short = pd.Series(np.random.default_rng(41).normal(0, 0.01, 15), index=pd.to_datetime(dates[-15:]))
+        with patch(
+            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            return_value=pd.DataFrame({"POE_NEWLIST": short}),
+        ):
+            report = _run(aid, include_tickers=LO_TICKERS[:3] + ["POE_NEWLIST"])
+
+        assert {w["symbol"] for w in report["weights"]} == set(LO_TICKERS[:3])
+        assert any(w.startswith("Removed POE_NEWLIST (15 days)") for w in report["data_warnings"])
+        assert not any("no aligned return history" in w for w in report["data_warnings"])

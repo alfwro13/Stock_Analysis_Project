@@ -24,6 +24,7 @@ ZERO_VARIANCE = 1e-12
 FRONTIER_POINTS = 25
 MODE_UNCONSTRAINED = "unconstrained"
 MODE_LONG_ONLY = "long_only"
+MIN_OVERLAP_DAYS = 30
 MIN_TICKERS_WARNING = "Need at least 2 tickers to optimize a portfolio."
 NOT_ENOUGH_DATA_WARNING = (
     "Not enough overlapping cached return history for this candidate set yet — need at least "
@@ -78,29 +79,50 @@ def list_candidates(account_id: str) -> Dict:
     return {"status": "success", "account_id": account_id, "candidates": candidates}
 
 
-def _returns_matrix_for_candidates(tickers: List[str]) -> Tuple[Optional[pd.DataFrame], List[str]]:
+def _drop_short_history(returns: pd.DataFrame) -> Tuple[pd.DataFrame, List[Tuple[str, int]]]:
+    """Removes the fewest tickers needed for the rest to share MIN_OVERLAP_DAYS, shortest history first."""
+    removed: List[Tuple[str, int]] = []
+    while returns.shape[1] >= 2 and len(returns.dropna(how="any")) < MIN_OVERLAP_DAYS:
+        ticker, days = min(returns.notna().sum().items(), key=lambda kv: (kv[1], kv[0]))
+        removed.append((ticker, int(days)))
+        returns = returns.drop(columns=ticker)
+    return returns, removed
+
+
+def _returns_matrix_for_candidates(
+    tickers: List[str],
+) -> Tuple[Optional[pd.DataFrame], List[str], List[Tuple[str, int]]]:
     """Parquet fallback because the nightly X-ray precompute never caches a never-held (Watchlist-only) ticker."""
     cached_df, warnings = get_scope_returns_matrix(tickers, include_benchmark=False)
     cached_symbols = set(cached_df.columns) if cached_df is not None else set()
     missing = [t for t in tickers if t not in cached_symbols]
 
     if not missing:
-        return cached_df, warnings
+        return cached_df, warnings, []
 
     fallback_prices = fetch_close_returns_from_parquet(missing)
     if cached_df is None and fallback_prices.empty:
-        return None, warnings
+        return None, warnings, []
     if cached_df is None:
         combined = fallback_prices
     elif fallback_prices.empty:
         combined = cached_df
     else:
-        combined = cached_df.join(fallback_prices, how="inner")
+        combined = cached_df.join(fallback_prices, how="left")
 
+    combined, removed = _drop_short_history(combined)
     combined = combined.dropna(how="any")
-    if len(combined) < 30 or combined.shape[1] < 2:
-        return None, warnings
-    return combined, warnings
+    if len(combined) < MIN_OVERLAP_DAYS or combined.shape[1] < 2:
+        return None, warnings, removed
+    return combined, warnings, removed
+
+
+def _short_history_warning(removed: List[Tuple[str, int]]) -> str:
+    return (
+        "Removed " + ", ".join(f"{t} ({days} days)" for t, days in removed)
+        + f" — not enough overlapping cached return history with the other selected tickers "
+        f"(need at least {MIN_OVERLAP_DAYS} overlapping trading days)."
+    )
 
 
 def _closed_form_weights(mu: np.ndarray, cov: np.ndarray, rf: float) -> Dict:
@@ -322,15 +344,17 @@ def optimize_portfolio(
     if len(candidate_tickers) < 2:
         return _no_result([MIN_TICKERS_WARNING])
 
-    returns_df, data_warnings = _returns_matrix_for_candidates(candidate_tickers)
+    returns_df, data_warnings, short_history = _returns_matrix_for_candidates(candidate_tickers)
     data_warnings = list(data_warnings)
+    if short_history:
+        data_warnings.append(_short_history_warning(short_history))
     if returns_df is None or returns_df.shape[1] < 2:
         data_warnings.append(NOT_ENOUGH_DATA_WARNING)
         return _no_result(data_warnings)
 
     resolved_tickers = list(returns_df.columns)
-    if len(resolved_tickers) < len(candidate_tickers):
-        dropped = sorted(set(candidate_tickers) - set(resolved_tickers))
+    dropped = sorted(set(candidate_tickers) - set(resolved_tickers) - {t for t, _ in short_history})
+    if dropped:
         data_warnings.append(
             f"{len(dropped)} candidate ticker(s) excluded — no aligned return history: "
             + ", ".join(dropped[:5])
