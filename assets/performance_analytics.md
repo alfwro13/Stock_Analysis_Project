@@ -112,7 +112,7 @@ Full schema: see `assets/api_reference.md`.
 
 ## UI surface
 
-`/performance-analytics` (Tools page card: "📊 Portfolio Tearsheet") — on-demand, no scheduler job. `scheduler_manifest.JOB_GRAPH` has no entry for it, matching the Monte Carlo Wealth Simulator precedent (also absent from the graph despite consuming `xray_correlation_matrix`/`xray_risk_cache`). This is a known minor gap versus AGENTS.md rule 13's "every subsystem visible in the Workflow Monitor" guidance, not a considered exception — see `audit/audit.md` Needs Review.
+`/performance-analytics` (Tools page card: "📊 Portfolio Tearsheet") — on-demand, no scheduler job. It appears in the Workflow Monitor as the `performance_analytics_source` `non_job` entry in `scheduler_manifest.JOB_GRAPH` (consumes `xray_caches` and `portfolio`, produces nothing), matching the Monte Carlo Wealth Simulator's `monte_carlo_source` entry.
 
 ## Limitations
 
