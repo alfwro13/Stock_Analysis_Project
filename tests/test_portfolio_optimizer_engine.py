@@ -29,6 +29,7 @@ from portfolio_optimizer_engine import (
     NOT_ENOUGH_DATA_WARNING,
     _cap_infeasible_warning,
     _drop_short_history,
+    _history_days,
     _closed_form_weights,
     _long_only_frontier,
     _long_only_max_sharpe,
@@ -310,6 +311,7 @@ class TestOptimizePortfolio:
             assert by_symbol[T1]["current_weight"] > 0
             assert by_symbol[T2]["held"] is False
             assert by_symbol[T2]["current_weight"] == 0.0
+            assert all(isinstance(c["history_days"], int) for c in result["candidates"])
         finally:
             remove_watchlist_ticker(watchlist_account["id"], T2)
 
@@ -642,3 +644,46 @@ class TestShortHistoryWarningInReport:
         assert {w["symbol"] for w in report["weights"]} == set(LO_TICKERS[:3])
         assert any(w.startswith("Removed POE_NEWLIST (15 days)") for w in report["data_warnings"])
         assert not any("no aligned return history" in w for w in report["data_warnings"])
+
+
+class TestMinHistoryDays:
+    def _returns(self, lengths, n_days=60):
+        idx = pd.bdate_range("2025-01-01", periods=n_days)
+        rng = np.random.default_rng(6)
+        return pd.DataFrame({
+            t: pd.Series(rng.normal(0, 0.01, n), index=idx[-n:]) for t, n in lengths.items()
+        }, index=idx)
+
+    def test_history_days_counts_cached_returns_without_fetching(self):
+        with patch(
+            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            return_value=self._returns({"A": 60, "B": 12}),
+        ) as fetch:
+            days = _history_days(["A", "B", "NOPE"])
+        assert days == {"A": 60, "B": 12, "NOPE": 0}
+        assert fetch.call_args.kwargs == {"cache_only": True}
+
+    def test_tickers_below_minimum_are_removed_and_named(self):
+        aid = _seed_long_only_account("PoeMinHistAcc", LO_TICKERS[:3], seed=50)
+        fake_days = {LO_TICKERS[0]: 251, LO_TICKERS[1]: 251, LO_TICKERS[2]: 80}
+        with patch("portfolio_optimizer_engine._history_days", side_effect=lambda ts: {t: fake_days[t] for t in ts}):
+            report = _run(aid, min_history_days=100)
+
+        assert {w["symbol"] for w in report["weights"]} == set(LO_TICKERS[:2])
+        assert report["data_warnings"][0] == f"Removed {LO_TICKERS[2]} (80 days) — below the 100-day Min Days of History."
+
+    def test_minimum_leaving_fewer_than_two_tickers_returns_no_result(self):
+        aid = _seed_long_only_account("PoeMinHistAllAcc", LO_TICKERS[:2], seed=51)
+        with patch("portfolio_optimizer_engine._history_days", side_effect=lambda ts: {t: 40 for t in ts}):
+            report = _run(aid, min_history_days=100)
+
+        assert report["weights"] is None
+        assert report["data_warnings"][0].startswith("Removed ")
+        assert MIN_TICKERS_WARNING in report["data_warnings"]
+
+    def test_zero_minimum_skips_history_lookup(self):
+        aid = _seed_long_only_account("PoeMinHistOffAcc", LO_TICKERS[:2], seed=52)
+        with patch("portfolio_optimizer_engine._history_days") as lookup:
+            report = _run(aid)
+        lookup.assert_not_called()
+        assert len(report["weights"]) == 2

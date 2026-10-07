@@ -57,6 +57,10 @@
                         <input type="number" class="form-control form-control-sm" id="po-cash-reserve" min="0" max="99" step="0.5" value="0">
                     </div>
                 </div>
+                <div class="mb-3">
+                    <label for="po-min-history" class="form-label small mb-1"><abbr title="Tickers with fewer days of price history than this are unticked and skipped. The days shown next to each ticker are its history in the last year.">Min Days of History</abbr></label>
+                    <input type="number" class="form-control form-control-sm" id="po-min-history" min="0" max="252" step="1" value="30">
+                </div>
                 <button type="button" class="btn btn-primary btn-sm w-100" id="po-run-btn">&#9654; Run Optimization</button>
                 <div id="po-error" class="text-danger small mt-2 d-none"></div>
             </div>

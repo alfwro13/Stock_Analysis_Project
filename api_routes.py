@@ -1199,6 +1199,7 @@ class PortfolioOptimizerRunRequest(BaseModel):
     mode: Literal["unconstrained", "long_only"] = "unconstrained"
     max_weight: float = Field(1.0, gt=0, le=1)
     cash_reserve: float = Field(0.0, ge=0, lt=1)
+    min_history_days: int = Field(0, ge=0, le=252)
 
 
 @api_router.get("/portfolio-optimizer/accounts")
@@ -1234,7 +1235,7 @@ async def api_portfolio_optimizer_run(request: Request, req: PortfolioOptimizerR
     try:
         report = await asyncio.to_thread(
             _po_optimize_portfolio, req.account_id, req.include_tickers,
-            req.mode, req.max_weight, req.cash_reserve,
+            req.mode, req.max_weight, req.cash_reserve, req.min_history_days,
         )
         return JSONResponse(content=report)
     except Exception as e:
