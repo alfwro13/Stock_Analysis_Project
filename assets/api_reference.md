@@ -3178,12 +3178,14 @@ Returns the candidate-ticker checklist for an account scope: every held ticker (
   "status": "success",
   "account_id": "acct:5",
   "candidates": [
-    {"symbol": "VWRL.L", "name": "Vanguard FTSE All-World UCITS ETF", "current_weight": 0.62, "held": true},
-    {"symbol": "IGLT.L", "name": "iShares UK Gilts 0-5yr UCITS ETF", "current_weight": 0.38, "held": true},
-    {"symbol": "AAPL", "name": "Apple Inc.", "current_weight": 0.0, "held": false}
+    {"symbol": "VWRL.L", "name": "Vanguard FTSE All-World UCITS ETF", "current_weight": 0.62, "held": true, "history_days": 251},
+    {"symbol": "IGLT.L", "name": "iShares UK Gilts 0-5yr UCITS ETF", "current_weight": 0.38, "held": true, "history_days": 251},
+    {"symbol": "AAPL", "name": "Apple Inc.", "current_weight": 0.0, "held": false, "history_days": 251}
   ]
 }
 ```
+
+`history_days` is the number of daily returns in the ticker's last year of cached price history (up to ~251), read with `xray_engine.fetch_close_returns_from_parquet(..., cache_only=True)` so this endpoint never triggers a Yahoo fetch; `0` when no history is cached. The page shows it in the checklist and unticks tickers below the **Min Days of History** box.
 
 **Response (scope has no holdings):** `{"status": "error", "message": "No holdings found for this scope..."}`.
 
@@ -3210,6 +3212,7 @@ Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns s
 | `include_tickers` | array of strings | `[]` | The checked candidate tickers from `GET .../candidates`; must be ≥2 after resolution |
 | `mode` | `"unconstrained"` \| `"long_only"` | `"unconstrained"` | Allocation mode; any other value returns 422 |
 | `max_weight` | float in (0, 1] | `1.0` | **Weight Cap** per ticker (decimal). Used only in `long_only`; out-of-range returns 422 |
+| `min_history_days` | int in [0, 252] | `0` | **Min Days of History**: candidates with fewer days of cached history (same count as `history_days` from `GET .../candidates`) are removed before solving and named in `data_warnings` (`"Removed X (12 days) — below the 30-day Min Days of History."`). `0` disables the filter; the page sends 30 by default |
 | `cash_reserve` | float in [0, 1) | `0.0` | **Cash Reserve** held back as cash (decimal). Used only in `long_only`; out-of-range returns 422 |
 
 **Response (sufficient data):**

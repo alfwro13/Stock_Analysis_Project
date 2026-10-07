@@ -2633,6 +2633,20 @@ CARDS = [
 <p>For the chart and the Best Reward-for-Risk Mix, cash is assumed to earn the app's configured risk-free rate with no ups and downs. That is an estimation assumption, not a quoted savings rate.</p>""",
     },
     {
+        "term_key": "min-days-of-history",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Min Days of History",
+        "question": "Why does the Portfolio Optimizer have a Min Days of History setting?",
+        "answer": "It can only learn from days every selected ticker has a price, so one short-history ticker shrinks the window for all of them",
+        "distractors": [
+            "It controls how many years the Monte Carlo simulation projects forward",
+            "It sets how long the suggested weights stay valid before expiring",
+            "It limits how many tickers can be selected at once",
+        ],
+        "explanation": """<p>The number of days of price history (from the last year) a ticker must have before the Portfolio Optimizer will use it — 30 by default. Each ticker in the "Which Tickers to Consider" list shows its own days of history on the right; raising the minimum unticks and greys out every ticker below it, and lowering it again puts them back.</p>
+<p>It exists because the Optimizer can only learn from the days on which <em>every</em> selected ticker has a price. One recently listed ticker with a few weeks of history shrinks that shared window for all the others. Separately, if the selected tickers still share fewer than 30 trading days, the ones with the shortest history are removed automatically and named in the warning box.</p>""",
+    },
+    {
         "term_key": "efficient-frontier",
         "section_id": "portfolio-optimizer",
         "term_title": "Efficient Frontier (the curve on the chart)",

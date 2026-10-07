@@ -57,6 +57,12 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Min Days of History</span>
+                <p>The number of days of price history (from the last year) a ticker must have before the Portfolio Optimizer will use it — 30 by default. Each ticker in the "Which Tickers to Consider" list shows its own days of history on the right; raising the minimum unticks and greys out every ticker below it, and lowering it again puts them back.</p>
+                <p>It exists because the Optimizer can only learn from the days on which <em>every</em> selected ticker has a price. One recently listed ticker with a few weeks of history shrinks that shared window for all the others. Separately, if the selected tickers still share fewer than 30 trading days, the ones with the shortest history are removed automatically and named in the warning box.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Efficient Frontier (the curve on the chart)</span>
                 <p>Imagine plotting every possible way of mixing your selected tickers as a dot, with bumpiness on one axis and return on the other. The efficient frontier is the curve connecting the <em>best</em> of those dots — the mixes where you can't get more return without accepting more bumpiness, or less bumpiness without giving up return. Your own portfolio's dot is also shown, so you can see how far it sits from that curve.</p>
                 <p>In Unconstrained mode the Optimizer traces the curve using <strong>two-fund separation</strong>: every point on the frontier is a linear combination of the Steadiest Mix and the Best Reward-for-Risk Mix, so sweeping a blend factor between (and slightly beyond) the two traces the whole curve without a second optimization pass. Blending can break the Long-Only rules, so in Long-Only mode it instead solves for the steadiest rule-following mix at a series of target returns, from the Steadiest Mix up to the highest return the rules allow.</p>

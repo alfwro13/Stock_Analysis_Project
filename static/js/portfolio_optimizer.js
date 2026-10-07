@@ -193,7 +193,10 @@ function runOptimization() {
         return;
     }
 
-    var payload = { account_id: selectedAccountId, include_tickers: tickers, mode: _selectedMode() };
+    var payload = {
+        account_id: selectedAccountId, include_tickers: tickers, mode: _selectedMode(),
+        min_history_days: _minHistoryDays(),
+    };
     if (payload.mode === "long_only") {
         try {
             payload.max_weight = _readPercentInput("po-max-weight", 0, 100, false, "Weight Cap must be above 0% and at most 100%.");
@@ -247,10 +250,11 @@ function runOptimization() {
 function _candidateRowHtml(c) {
     return '<div class="form-check po-candidate-row">'
         + '<input class="form-check-input po-candidate-checkbox" type="checkbox" value="' + escapeHtml(c.symbol) + '" id="po-cand-' + escapeHtml(c.symbol) + '"'
-        + (c.held ? " checked" : "") + ' data-held="' + c.held + '">'
+        + (c.held ? " checked" : "") + ' data-held="' + c.held + '" data-days="' + c.history_days + '">'
         + '<label class="form-check-label small po-candidate-label" for="po-cand-' + escapeHtml(c.symbol) + '">'
         + '<span class="po-candidate-symbol">' + escapeHtml(c.symbol) + "</span>"
         + '<span class="po-candidate-name">' + (c.name && c.name !== c.symbol ? escapeHtml(c.name) : "") + "</span>"
+        + '<span class="po-candidate-days">' + c.history_days + "d</span>"
         + "</label>"
         + "</div>";
 }
@@ -270,11 +274,39 @@ function _renderCandidatesList(candidates) {
         html += watchlist.map(_candidateRowHtml).join("");
     }
     container.innerHTML = html;
+    _syncWatchlistTicks();
+    _applyMinHistory();
 
     var countEl = document.getElementById("po-candidates-count");
     if (countEl) {
-        countEl.textContent = held.length + " held, " + watchlist.length + " on your Watchlist. Scroll the box below to see them all.";
+        countEl.textContent = held.length + " held, " + watchlist.length + " on your Watchlist. Scroll the box below to see them all. The number on the right is each ticker's days of price history.";
     }
+}
+
+function _minHistoryDays() {
+    var value = parseInt(document.getElementById("po-min-history").value, 10);
+    return isFinite(value) && value > 0 ? value : 0;
+}
+
+function _syncWatchlistTicks() {
+    var tickAll = document.getElementById("po-select-all-watchlist").checked;
+    document.querySelectorAll("#po-candidates-list .po-candidate-checkbox").forEach(function (cb) {
+        if (cb.dataset.held !== "true" && !cb.disabled) cb.checked = tickAll;
+    });
+}
+
+function _applyMinHistory() {
+    var minDays = _minHistoryDays();
+    var tickAll = document.getElementById("po-select-all-watchlist").checked;
+    document.querySelectorAll("#po-candidates-list .po-candidate-checkbox").forEach(function (cb) {
+        if (Number(cb.dataset.days) < minDays) {
+            cb.checked = false;
+            cb.disabled = true;
+        } else if (cb.disabled) {
+            cb.disabled = false;
+            cb.checked = cb.dataset.held === "true" || tickAll;
+        }
+    });
 }
 
 function loadCandidates(accountId) {
@@ -340,11 +372,8 @@ function initPage() {
         el.addEventListener("change", _syncModeControls);
     });
     document.getElementById("po-run-btn").addEventListener("click", runOptimization);
-    document.getElementById("po-select-all-watchlist").addEventListener("change", function (e) {
-        document.querySelectorAll("#po-candidates-list .po-candidate-checkbox").forEach(function (cb) {
-            if (cb.dataset.held !== "true") cb.checked = e.target.checked;
-        });
-    });
+    document.getElementById("po-select-all-watchlist").addEventListener("change", _syncWatchlistTicks);
+    document.getElementById("po-min-history").addEventListener("input", _applyMinHistory);
 }
 
 document.addEventListener("DOMContentLoaded", initPage);

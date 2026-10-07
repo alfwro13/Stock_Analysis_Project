@@ -304,13 +304,13 @@ class GhostfolioXRayClient:
             return {"dividend_yield_pct": 0.0, "dividend_in_base_currency": 0.0}
 
 
-def fetch_close_returns_from_parquet(symbols: List[str]) -> pd.DataFrame:
-    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet)."""
+def fetch_close_returns_from_parquet(symbols: List[str], cache_only: bool = False) -> pd.DataFrame:
+    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet, unless cache_only)."""
     if not symbols:
         return pd.DataFrame()
     closes: Dict[str, pd.Series] = {}
     for t in symbols:
-        df = load_or_fetch_daily_history(t)
+        df = load_or_fetch_daily_history(t, cache_only=cache_only)
         if df is not None and "Close" in df.columns:
             closes[t] = df["Close"].tail(252)
     if not closes:

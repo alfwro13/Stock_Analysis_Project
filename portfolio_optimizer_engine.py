@@ -52,6 +52,13 @@ def _ticker_names(tickers: List[str]) -> Dict[str, str]:
             conn.close()
 
 
+def _history_days(tickers: List[str]) -> Dict[str, int]:
+    """Cache-only so listing candidates never triggers a Yahoo fetch."""
+    returns = fetch_close_returns_from_parquet(tickers, cache_only=True)
+    counts = returns.notna().sum() if not returns.empty else pd.Series(dtype=int)
+    return {t: int(counts.get(t, 0)) for t in tickers}
+
+
 def list_candidates(account_id: str) -> Dict:
     """Held tickers (pre-checked) + full Watchlist ticker list (opt-in) for the checklist UI."""
     try:
@@ -76,6 +83,9 @@ def list_candidates(account_id: str) -> Dict:
         {"symbol": t, "name": names.get(t, t), "current_weight": 0.0, "held": False}
         for t in watchlist_symbols
     ]
+    days = _history_days([c["symbol"] for c in candidates])
+    for c in candidates:
+        c["history_days"] = days[c["symbol"]]
     return {"status": "success", "account_id": account_id, "candidates": candidates}
 
 
@@ -314,6 +324,7 @@ def optimize_portfolio(
     mode: str = MODE_UNCONSTRAINED,
     max_weight: float = 1.0,
     cash_reserve: float = 0.0,
+    min_history_days: int = 0,
 ) -> Dict:
     """Pure computation, no DB writes; Long-Only cap/cash arguments are ignored in unconstrained mode."""
     long_only = mode == MODE_LONG_ONLY
@@ -341,11 +352,21 @@ def optimize_portfolio(
     candidate_tickers = list(include_tickers) if include_tickers else list(held.keys())
     candidate_tickers = list(dict.fromkeys(t for t in candidate_tickers if t))
 
+    below_minimum: List[Tuple[str, int]] = []
+    if min_history_days > 0 and len(candidate_tickers) >= 2:
+        days = _history_days(candidate_tickers)
+        below_minimum = [(t, days[t]) for t in candidate_tickers if days[t] < min_history_days]
+        candidate_tickers = [t for t in candidate_tickers if days[t] >= min_history_days]
+    min_history_warnings = [
+        "Removed " + ", ".join(f"{t} ({d} days)" for t, d in below_minimum)
+        + f" — below the {min_history_days}-day Min Days of History."
+    ] if below_minimum else []
+
     if len(candidate_tickers) < 2:
-        return _no_result([MIN_TICKERS_WARNING])
+        return _no_result(min_history_warnings + [MIN_TICKERS_WARNING])
 
     returns_df, data_warnings, short_history = _returns_matrix_for_candidates(candidate_tickers)
-    data_warnings = list(data_warnings)
+    data_warnings = min_history_warnings + list(data_warnings)
     if short_history:
         data_warnings.append(_short_history_warning(short_history))
     if returns_df is None or returns_df.shape[1] < 2:

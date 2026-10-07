@@ -189,7 +189,7 @@ class TestRunScan:
         _seed_currency(T_C, "USD")
         _seed_currency(T_D, "GBP")  # different currency bucket than A/B/C
 
-        def _loader(t):
+        def _loader(t, **_kwargs):
             return {
                 T_A: _make_df(close_a),
                 T_B: _make_df(close_b),
