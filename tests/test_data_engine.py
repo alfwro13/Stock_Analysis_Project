@@ -600,6 +600,32 @@ def test_fetch_and_save_data_trims_in_progress_last_bar(tmp_path):
     assert saved["Close"].iloc[-1] == 517.82
 
 
+def test_fetch_and_save_data_drops_rows_without_close(tmp_path):
+    import pandas as pd
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    daily_df = pd.DataFrame(
+        {"Open": [10.0, 11.0], "High": [10.0, 11.0], "Low": [10.0, 11.0],
+         "Close": [10.0, float("nan")], "Volume": [100, 100]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.INTRADAY_DIR", tmp_path),
+        patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
+        patch("data_engine.get_mutual_fund_tickers", return_value=set()),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={}),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZNAN": daily_df}),
+        patch("data_engine.yahoo_engine.get_ticker_info", return_value={}),
+        patch("data_engine.time_engine.is_market_open", return_value=False),
+    ):
+        assert engine.fetch_and_save_data("ZZNAN") is True
+
+    saved = pd.read_parquet(tmp_path / "ZZNAN.parquet")
+    assert saved["Close"].tolist() == [10.0]
+
+
 def test_cache_only_missing_history_schedules_without_fetch(tmp_path):
     from data_engine import load_or_fetch_daily_history
 
@@ -649,6 +675,24 @@ def test_history_refresh_preserves_completed_bar_rules(tmp_path, market_open, ex
         fetched = _fetch_daily_history("ZZBAR")
     assert len(fetched) == expected_rows
     assert len(pd.read_parquet(tmp_path / "ZZBAR.parquet")) == expected_rows
+
+
+def test_history_refresh_drops_rows_without_close(tmp_path):
+    import pandas as pd
+    from data_engine import _fetch_daily_history
+
+    df = pd.DataFrame(
+        {"Close": [10.0, float("nan")], "Volume": [100, 100]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZNAN": df}), \
+         patch("time_engine.is_market_open", return_value=False):
+        fetched = _fetch_daily_history("ZZNAN")
+
+    saved = pd.read_parquet(tmp_path / "ZZNAN.parquet")
+    assert fetched["Close"].tolist() == [10.0]
+    pd.testing.assert_frame_equal(saved, fetched)
 
 
 def test_cache_only_fresh_history_does_not_schedule_refresh(tmp_path):
