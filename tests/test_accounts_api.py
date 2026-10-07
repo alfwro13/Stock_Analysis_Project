@@ -2472,6 +2472,9 @@ def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
 @pytest.mark.api
 def test_refresh_now_awaits_fx_and_reports_fx_failure(client, monkeypatch):
     completed = []
+    refreshed_accounts = []
+    monkeypatch.setattr("api_routes_accounts.get_accounts", lambda: [{"id": 7, "account_type": "Trading"}])
+    monkeypatch.setattr("api_routes_accounts.refresh_performance_cache", refreshed_accounts.append)
     monkeypatch.setattr("accounts_engine.native_currencies", lambda tickers: {"ZZFX": "USD"})
     def refresh(currencies):
         completed.extend(currencies)
@@ -2485,6 +2488,7 @@ def test_refresh_now_awaits_fx_and_reports_fx_failure(client, monkeypatch):
     response = client.post("/api/accounts/refresh-now")
     assert response.status_code == 500
     assert response.json()["status"] == "error"
+    assert refreshed_accounts == [7, 7]
 
 
 def test_transaction_fx_calculator_uses_broker_total_and_fee():

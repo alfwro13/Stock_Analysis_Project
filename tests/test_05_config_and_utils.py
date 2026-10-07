@@ -789,10 +789,13 @@ def test_performance_settings_merge_and_reload(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("settings", [{"FX_FRESH_SECONDS": -1}, {"FX_FRESH_SECONDS": "600"}, {"FX_FRESH_SECONDS": 100, "FX_MAX_USABLE_SECONDS": 50}])
-def test_invalid_performance_settings_fall_back_to_defaults(tmp_path, monkeypatch, settings):
+def test_invalid_performance_settings_reset_only_performance_section(tmp_path, monkeypatch, settings):
     import config
 
     config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"PERFORMANCE": settings}))
+    config_path.write_text(json.dumps({"BASE_CURRENCY": "USD", "USER_TIMEZONE": "America/New_York", "PERFORMANCE": settings}))
     monkeypatch.setattr(config, "SECRETS_PATH", config_path)
-    assert config.load_config()["PERFORMANCE"] == config.DEFAULT_CONFIG["PERFORMANCE"]
+    loaded = config.load_config()
+    assert loaded["PERFORMANCE"] == config.DEFAULT_CONFIG["PERFORMANCE"]
+    assert loaded["BASE_CURRENCY"] == "USD"
+    assert loaded["USER_TIMEZONE"] == "America/New_York"

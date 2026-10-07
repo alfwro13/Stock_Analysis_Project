@@ -13,6 +13,7 @@ from time_engine import (
     market_window_utc,
     is_market_open,
     is_trading_session,
+    last_settled_session_close_utc,
     is_exchange_holiday,
     reset_cron_trigger_params,
     exchange_tz,
@@ -562,3 +563,20 @@ class TestFmtResetTime:
         with patch("time_engine._load_config", return_value=_UTC_CONFIG):
             result = fmt_reset_time("LSE")
         assert "16:35" in result
+
+
+class TestLastSettledSessionClose:
+    @pytest.mark.parametrize("now,expected", [
+        (datetime(2026, 7, 15, 15, 50, tzinfo=timezone.utc), datetime(2026, 7, 15, 15, 45, tzinfo=timezone.utc)),
+        (datetime(2026, 7, 15, 15, 40, tzinfo=timezone.utc), datetime(2026, 7, 14, 15, 45, tzinfo=timezone.utc)),
+        (datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc), datetime(2026, 7, 17, 15, 45, tzinfo=timezone.utc)),
+        (datetime(2026, 12, 28, 10, 0, tzinfo=timezone.utc), datetime(2026, 12, 24, 12, 45, tzinfo=timezone.utc)),
+    ], ids=["after-delayed-close", "before-delayed-close", "weekend", "holiday-after-early-close"])
+    def test_lse_calendar_close_plus_quote_delay(self, now, expected):
+        with patch("time_engine.datetime", _fake_datetime(now)):
+            assert last_settled_session_close_utc("LSE") == expected
+
+    def test_static_hours_fallback_skips_weekend(self):
+        with patch("time_engine.datetime", _fake_datetime(datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc))), \
+             patch("time_engine._get_exchange_calendar", return_value=None):
+            assert last_settled_session_close_utc("LSE") == datetime(2026, 7, 17, 15, 45, tzinfo=timezone.utc)

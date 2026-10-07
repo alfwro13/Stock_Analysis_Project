@@ -16,6 +16,10 @@ def _fx_rate(pair: str, *, cache_only: bool = False):
     if rate is not None:
         _last_known_rates[pair] = rate
         return rate
+    persisted = yahoo_engine.get_cached_fx_rate(pair, refresh=False)["rate"]
+    if persisted is not None:
+        logger.warning("Using last persisted FX rate for %s.", pair)
+        return persisted
     if pair in _last_known_rates:
         logger.warning("Using stale FX rate for %s.", pair)
         return _last_known_rates[pair]
@@ -69,6 +73,6 @@ def get_fx_cache_status(currencies, *, from_base=False, include_fresh=False):
 
 def refresh_fx_rates(currencies):
     pairs = {fx_pair(currency) for currency in currencies}
-    for pair in sorted(pair for pair in pairs if pair):
-        if yahoo_engine.get_fx_rate(pair, force=True) is None:
-            raise RuntimeError(f"FX refresh failed for {pair}; last-good cached data retained.")
+    failed = [pair for pair in sorted(pair for pair in pairs if pair) if yahoo_engine.get_fx_rate(pair, force=True) is None]
+    if failed:
+        raise RuntimeError(f"FX refresh failed for {', '.join(failed)}; last-good cached data retained.")

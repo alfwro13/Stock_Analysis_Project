@@ -626,6 +626,11 @@ def test_fetch_and_save_data_drops_rows_without_close(tmp_path):
     assert saved["Close"].tolist() == [10.0]
 
 
+def _settled_close_hours_ago(hours):
+    from datetime import datetime, timedelta, timezone
+    return datetime.now(timezone.utc) - timedelta(hours=hours)
+
+
 def test_cache_only_missing_history_schedules_without_fetch(tmp_path):
     from data_engine import load_or_fetch_daily_history
 
@@ -647,7 +652,8 @@ def test_cache_only_stale_history_returns_last_good_after_failed_refresh(tmp_pat
     df = pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2026-01-01"]))
     df.to_parquet(path)
     os.utime(path, (time.time() - 86400, time.time() - 86400))
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={}), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={}), patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
+         patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
         result = load_or_fetch_daily_history("ZZSTALE", cache_only=True)
         assert result["Close"].iloc[-1] == 100.0
         assert refresh.call_args.args[1]() is None
@@ -722,7 +728,8 @@ def test_stale_daily_refresh_bypasses_partial_yahoo_memory_cache(tmp_path):
     settled.iloc[-1, 0] = 12.0
     def history(tickers, **kwargs):
         return {ticker: settled if kwargs.get("force_refresh") else old}
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", side_effect=history) as fetch, patch("time_engine.is_market_open", return_value=False), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", side_effect=history) as fetch, patch("time_engine.is_market_open", return_value=False), patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
+         patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
         assert load_or_fetch_daily_history(ticker, cache_only=True)["Close"].iloc[-1] == 11.0
         assert refresh.call_args.args[1]()["Close"].iloc[-1] == 12.0
     fetch.assert_called_once_with([ticker], period="2y", interval="1d", force_refresh=True)
@@ -847,3 +854,94 @@ def test_intraday_history_rejects_symlink_escape(tmp_path, outside_directory):
         assert load_or_fetch_intraday_history("STEP4ESCAPE") is None
     fetch.assert_not_called()
     assert outside.read_text() == "untouched"
+
+
+@pytest.mark.parametrize("written_after_close,expected_refreshes", [(True, 0), (False, 1)])
+def test_cache_only_history_refreshes_only_when_latest_session_missing(tmp_path, written_after_close, expected_refreshes):
+    import os
+    import pandas as pd
+    from data_engine import load_or_fetch_daily_history
+
+    path = tmp_path / "ZZSESSION.parquet"
+    pd.DataFrame({"Close": [10.0]}, index=pd.to_datetime(["2026-01-01"])).to_parquet(path)
+    settled = _settled_close_hours_ago(30)
+    mtime = settled.timestamp() + (60 if written_after_close else -60)
+    os.utime(path, (mtime, mtime))
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("time_engine.last_settled_session_close_utc", return_value=settled), \
+         patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert load_or_fetch_daily_history("ZZSESSION", cache_only=True)["Close"].iloc[-1] == 10.0
+    assert refresh.call_count == expected_refreshes
+
+
+def test_navigation_history_refresh_applies_saved_repairs_and_bar_cleaning(tmp_path):
+    import pandas as pd
+    from data_engine import _fetch_daily_history
+
+    index = pd.to_datetime(["2026-01-05", "2026-01-06", "2026-01-07"])
+    downloaded = pd.DataFrame({
+        "Open": [10.0, 0.0, 120.0], "High": [11.0, 0.0, 130.0], "Low": [9.0, 0.0, 110.0],
+        "Close": [10.5, 11.5, 125.0], "Volume": [100, 100, 100],
+    }, index=index)
+    repairs = {"ZZREPAIR": {
+        "2026-01-07": {"Open": 12.0, "High": 13.0, "Low": 11.0, "Close": 12.5, "Volume": 90},
+        "_removed_dates": ["2026-01-05"],
+    }}
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZREPAIR": downloaded}), \
+         patch("time_engine.is_market_open", return_value=False), \
+         patch("price_repair_engine._saved_repairs", return_value=repairs):
+        fetched = _fetch_daily_history("ZZREPAIR", force_refresh=True)
+
+    saved = pd.read_parquet(tmp_path / "ZZREPAIR.parquet")
+    pd.testing.assert_frame_equal(saved, fetched)
+    assert list(saved.index) == list(index[1:])
+    assert saved.loc["2026-01-06", ["Open", "High", "Low"]].tolist() == [11.5, 11.5, 11.5]
+    assert saved.loc["2026-01-07", "Close"] == 12.5
+
+
+def test_awaited_refresh_is_not_starved_by_full_background_queue():
+    from threading import Event
+    import cache_refresh_helpers as refresh_helpers
+
+    release = Event()
+    def stalled():
+        release.wait(10)
+        return True
+    background = []
+    try:
+        for i in range(100):
+            future = refresh_helpers._submit(f"zz-saturate:{i}", stalled, force=False, awaited=False)
+            if future is None:
+                break
+            background.append(future)
+        assert future is None
+        awaited = refresh_helpers.submit_cache_refresh("zz-saturate-awaited", lambda: 1.25)
+        assert awaited.result(timeout=5) == 1.25
+        assert not release.is_set()
+    finally:
+        release.set()
+        for future in background:
+            future.result(timeout=10)
+
+
+def test_awaited_refresh_promotes_queued_background_job():
+    from threading import Event
+    import cache_refresh_helpers as refresh_helpers
+
+    release = Event()
+    ran = []
+    def stalled():
+        release.wait(10)
+        return True
+    blockers = [refresh_helpers._submit(f"zz-block:{i}", stalled, force=False, awaited=False) for i in range(2)]
+    queued = refresh_helpers._submit("zz-promote", lambda: ran.append("background") or True, force=False, awaited=False)
+    try:
+        promoted = refresh_helpers.submit_cache_refresh("zz-promote", lambda: ran.append("awaited") or 2.0)
+        assert promoted.result(timeout=5) == 2.0
+        assert queued.cancelled()
+        assert ran == ["awaited"]
+    finally:
+        release.set()
+        for future in blockers:
+            future.result(timeout=10)

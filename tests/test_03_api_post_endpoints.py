@@ -592,6 +592,26 @@ def test_post_data_refresh_single_with_mock(client):
     )
 
 
+@pytest.mark.api
+def test_refresh_single_completes_analysis_before_reporting_fx_failure(client, monkeypatch):
+    calls = []
+    def failed(currencies):
+        raise RuntimeError("FX refresh failed for USDGBP=X; last-good cached data retained.")
+    monkeypatch.setattr("portfolio_service.refresh_fx_rates", failed)
+    monkeypatch.setattr("accounts_engine.native_currencies", lambda tickers: {"AAPL": "USD"})
+    with patch("api_routes.update_single_profile"), \
+         patch("api_routes.DataEngine") as MockDE, \
+         patch("api_routes.QuantEngine"), \
+         patch("api_routes.update_daily_ml_predictions", side_effect=lambda tickers: calls.append("ml")), \
+         patch("api_routes.update_all_tail_risks", side_effect=lambda tickers: calls.append("tail_risk")), \
+         patch("api_routes.update_all_sentiment", side_effect=lambda tickers: calls.append("sentiment")):
+        MockDE.return_value.fetch_and_save_data.return_value = True
+        resp = client.post("/api/data/refresh-single", json={"ticker": "AAPL"})
+    assert resp.status_code == 500
+    assert resp.json()["status"] == "error"
+    assert calls == ["ml", "tail_risk", "sentiment"]
+
+
 # ── Safety net: no POST trigger returns 500 ──────────────────────────────────
 
 @pytest.mark.api
