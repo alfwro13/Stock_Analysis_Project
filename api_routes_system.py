@@ -240,6 +240,7 @@ class SchedulingConfig(BaseModel):
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
     PAIRS_SPREAD_MONITOR: Optional[ScheduleItemConfig] = None
+    SECTOR_RELATIVE_MOMENTUM: Optional[ScheduleItemConfig] = None
     PATTERN_DETECTION: Optional[PatternDetectionScheduleConfig] = None
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None

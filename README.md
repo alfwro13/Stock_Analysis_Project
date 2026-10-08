@@ -34,6 +34,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Bubble Radar** — composite valuation-euphoria score across seven metrics with tracked prediction accuracy.
 * **Forensic Screener** — monthly Piotroski F-Score, Altman Z-Score, and Beneish M-Score across holdings.
 * **Pairs Spread Monitor** — statistical-arbitrage z-score signal on correlated same-currency pairs.
+* **Sector-Relative Momentum** — ranks each stock's 63- and 126-session return against its sector peers, with a Reports page, optional Portfolio/Watchlist columns and a matching AI-prompt comparison.
 * **Macro Regime & Yield Curve Allocator** — classifies the economy into 5 regimes and scores portfolio alignment.
 * **FX Drag Analyzer** — decomposes USD-position GBP return into equity return and FX effect.
 * **Sovereign Debt Auction Monitor** — flags weak US Treasury auction demand vs. a rolling baseline.

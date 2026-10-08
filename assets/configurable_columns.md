@@ -84,6 +84,18 @@ Five columns needing a genuinely new JOIN, deliberately deferred from the first 
   (`earnings_vol_engine.py`, Saturday 10:00) only writes a row for tickers with
   earnings within ~14 days, so most rows are NULL most of the time.
 
+### Sector-Relative Momentum columns
+
+Four columns in the `Sector-Relative Momentum` category, on both pages, one pair per window:
+`sector_rel_mom_63` / `sector_rel_mom_126` (relative return in percentage points, `fmt: "ratio2"`)
+and `sector_rel_rank_63` / `sector_rel_rank_126` (1 = strongest in the cohort, `fmt: "int"`).
+Values come from `sector_relative_momentum_engine.get_column_values()`, one batched read of the
+latest `sector_relative_momentum_results` row per ticker, merged into each row dict by
+`page_routes.portfolio_page()` and `watchlist_page()` before `build_optional_column_cells()`.
+Only scored rows contribute a value; a ticker that is unavailable (not an equity, no sector, fewer
+than 5 comparable peers, ...) shows `N/A`, and the report at `/sector-relative-momentum` states the
+reason. See `assets/sector_relative_momentum.md`.
+
 ## Views — `DEFAULT_PORTFOLIO_VIEWS` / `DEFAULT_WATCHLIST_VIEWS` + `resolve_views()`
 
 A view is `{"name": str, "columns": [key, ...], "column_order": [key, ...]}`. `columns` lists the keys

@@ -209,6 +209,29 @@ def test_xray_dividend_yield_is_pct_raw_not_pct_from_fraction():
     assert display == "2.5%"
 
 
+# ── Sector-Relative Momentum ─────────────────────────────────────────────────
+
+@pytest.mark.config
+@pytest.mark.parametrize("window", [63, 126])
+def test_sector_relative_momentum_columns_on_both_pages(window):
+    by_key = {c["key"]: c for c in tch.OPTIONAL_COLUMNS}
+    assert by_key[f"sector_rel_mom_{window}"]["pages"] == tch._BOTH
+    assert by_key[f"sector_rel_rank_{window}"]["pages"] == tch._BOTH
+    assert by_key[f"sector_rel_mom_{window}"]["fmt"] == "ratio2"
+    assert by_key[f"sector_rel_rank_{window}"]["fmt"] == "int"
+
+
+@pytest.mark.config
+def test_sector_relative_momentum_cells_render_value_and_unavailable():
+    scored = {c["key"]: c for c in tch.build_optional_column_cells(
+        {"sector_rel_mom_63": -4.256, "sector_rel_rank_63": 7}, "portfolio")}
+    assert scored["sector_rel_mom_63"]["display"] == "-4.26"
+    assert scored["sector_rel_rank_63"]["display"] == "7"
+    unscored = {c["key"]: c for c in tch.build_optional_column_cells({}, "watchlist")}
+    assert unscored["sector_rel_mom_126"]["display"] == "N/A"
+    assert unscored["sector_rel_rank_126"]["display"] == "N/A"
+
+
 # ── Views ────────────────────────────────────────────────────────────────────
 
 @pytest.mark.config

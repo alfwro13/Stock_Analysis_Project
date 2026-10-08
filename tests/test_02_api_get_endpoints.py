@@ -527,6 +527,7 @@ def test_no_endpoint_returns_500(client):
         "/api/trap-monitor/results",
         "/api/macro-regime-allocation",
         "/api/pairs-spread/results",
+        "/api/sector-relative-momentum/results",
         "/api/predicted-movers/leaderboard",
         "/api/predicted-movers/accuracy",
         "/api/earnings-volatility/accuracy",
@@ -751,6 +752,29 @@ def test_pairs_spread_results_rejects_invalid_scope(client):
     """GET /api/pairs-spread/results?scope=bogus must 422 (FastAPI Query pattern validation), not 500."""
     resp = client.get("/api/pairs-spread/results?scope=bogus")
     assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_sector_relative_momentum_results_returns_200(client):
+    """GET /api/sector-relative-momentum/results must return 200 with a 'results' list and the available windows."""
+    resp = client.get("/api/sector-relative-momentum/results")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert isinstance(data["results"], list)
+    assert data["window"] == 63 and data["windows"] == [63, 126]
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("query", ["window=126", "scope=universe", "scope=universe&window=126"])
+def test_sector_relative_momentum_results_accepts_scope_and_window(client, query):
+    assert client.get(f"/api/sector-relative-momentum/results?{query}").status_code == 200
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("query", ["window=64", "scope=bogus"])
+def test_sector_relative_momentum_results_rejects_invalid_params(client, query):
+    assert client.get(f"/api/sector-relative-momentum/results?{query}").status_code == 422
 
 
 @pytest.mark.api

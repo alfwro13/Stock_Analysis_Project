@@ -10,7 +10,7 @@ import pandas as pd
 from data_engine import load_or_fetch_daily_history
 from database import get_connection
 from db_helpers import get_portfolio_watchlist_tickers, get_ticker_currency_map, get_universe_tickers
-from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_currency_bucket
 from xray_engine import fetch_close_returns_from_parquet
 
 logger = logging.getLogger(__name__)
@@ -22,13 +22,6 @@ MIN_OVERLAP_DAYS = 60
 
 SCOPE_PORTFOLIO_WATCHLIST = "portfolio_watchlist"
 SCOPE_UNIVERSE = "universe"
-
-
-def _normalize_currency(currency: Optional[str]) -> Optional[str]:
-    """GBp (LSE pence) and GBP both mean "British Pounds" for pairing purposes — Yahoo returns either depending on the ticker."""
-    if not currency:
-        return None
-    return "GBP" if currency in ("GBp", "GBP") else currency
 
 
 def _load_close(ticker: str) -> Optional[pd.Series]:
@@ -145,7 +138,7 @@ class PairsSpreadEngine:
     @staticmethod
     def _currency_map(tickers: list[str], conn) -> dict:
         raw = get_ticker_currency_map(tickers, conn)
-        return {t: _normalize_currency(c) for t, c in raw.items() if c}
+        return {t: normalize_currency_bucket(c) for t, c in raw.items() if c}
 
     def run_scan(self, scope: str = SCOPE_PORTFOLIO_WATCHLIST) -> list[dict]:
         tickers = self._get_universe(scope)

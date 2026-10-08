@@ -966,6 +966,43 @@
                 <div id="pairs-spread-monitor-msg" class="mt-10"></div>
             </div>
 
+            <div class="settings-panel border-left-cyan" id="sector-relative-momentum-card">
+                <h4 class="settings-panel-header text-cyan">&#129517; Sector-Relative Momentum</h4>
+                <p class="settings-desc">
+                    Ranks every stock in the market universe against its
+                    <abbr title="Other equities in the same Yahoo sector that are quoted in the same currency.">sector peers</abbr>
+                    over the last 63 and 126 trading sessions. It reads the price history and sector data that the Quantamental Analysis Engine
+                    has already cached, so set the time after that job finishes. Results appear at the
+                    <a href="/sector-relative-momentum" class="text-cyan">Sector-Relative Momentum report</a>, in the optional Portfolio and
+                    Watchlist columns, and in the AI prompt's sector comparison.
+                </p>
+
+                {% set srm_sched = config.SCHEDULING.SECTOR_RELATIVE_MOMENTUM if config.SCHEDULING.SECTOR_RELATIVE_MOMENTUM else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="SECTOR_RELATIVE_MOMENTUM_ENABLED" {% if srm_sched.ENABLED %}checked{% endif %}>
+                    <label for="SECTOR_RELATIVE_MOMENTUM_ENABLED">Enable daily ranking</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Active Days</label>
+                        <select id="SECTOR_RELATIVE_MOMENTUM_FREQ" class="form-select">
+                            {% set joined = srm_sched.DAYS | join(',') if srm_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                            <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
+                            <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <input type="time" id="SECTOR_RELATIVE_MOMENTUM_TIME" class="form-control" value="{{ srm_sched.TIME | default('19:20') }}">
+                    </div>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerSectorRelativeMomentumRun()">&#9654; Run Now</button>
+                </div>
+                <div id="sector-relative-momentum-msg" class="mt-10"></div>
+            </div>
+
             <div class="settings-panel border-left-cyan" id="pattern-detection-card">
                 <h4 class="settings-panel-header text-cyan">&#128200; Pattern Detection</h4>
                 <p class="settings-desc">

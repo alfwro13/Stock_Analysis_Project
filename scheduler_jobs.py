@@ -1125,6 +1125,23 @@ def run_pairs_spread_monitor_job():
         record_job_run("pairs_spread_monitor_job")
 
 
+def run_sector_relative_momentum_job():
+    from sector_relative_momentum_engine import run_sector_relative_momentum
+    _mark_job_started(job_label("sector_relative_momentum_job"))
+    try:
+        summary = run_sector_relative_momentum()
+        log_sched_notification(
+            "Success",
+            f"Sector-Relative Momentum complete — {summary['scored']} ticker(s) scored across {summary['cohorts']} cohort(s).",
+        )
+    except Exception as e:
+        logger.error("Sector-Relative Momentum failed: %s", e)
+        log_sched_notification("Error", f"Sector-Relative Momentum failed: {e}")
+    finally:
+        _mark_job_done(job_label("sector_relative_momentum_job"))
+        record_job_run("sector_relative_momentum_job")
+
+
 def run_pattern_detection_job():
     from pattern_detection_engine import PatternDetectionEngine, DETECTORS
     config = load_config()

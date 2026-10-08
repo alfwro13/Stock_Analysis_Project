@@ -1,10 +1,12 @@
-"""Per-ticker calendar-period price returns (5D/1M/6M/YTD/1Y), derived from the parquet history every ticker already has cached; no DB, no Yahoo Finance calls of its own."""
+"""Per-ticker calendar-period price returns (5D/1M/6M/YTD/1Y) and trailing N-session window returns, derived from the parquet history every ticker already has cached; no DB, no Yahoo Finance calls of its own."""
 import calendar
 import logging
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 from threading import Lock
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
+
+import pandas as pd
 
 from data_engine import daily_history_cache_revision, load_or_fetch_daily_history
 from utils import is_synthetic_ticker
@@ -90,3 +92,19 @@ def pct_from_anchor(current_price: Optional[float], anchor_close: Optional[float
     if current_price is None or anchor_close is None or anchor_close == 0:
         return None
     return (current_price - anchor_close) / anchor_close * 100
+
+
+def session_window_returns(
+    closes: pd.DataFrame, sessions: int, *, calendar_quorum: float = 0.5, min_coverage: float = 0.9,
+) -> Optional[Tuple[pd.Timestamp, pd.Timestamp, pd.Series]]:
+    """Cumulative return of each column over the last `sessions` sessions of the group's own calendar, where a calendar date is one on which at least `calendar_quorum` of the columns have a close (so a date only a few members traded never becomes the as-of date). A column is dropped unless it has both window endpoints and at least `min_coverage` of the window's closes. Returns (start, as_of, returns) or None when the calendar is too short."""
+    positive = closes.where(closes > 0)
+    calendar = positive.index[positive.notna().mean(axis=1) >= calendar_quorum]
+    if len(calendar) < sessions + 1:
+        return None
+    window = positive.reindex(calendar[-(sessions + 1):])
+    keep = window.notna().mean() >= min_coverage
+    keep &= window.iloc[0].notna() & window.iloc[-1].notna()
+    kept = window.loc[:, keep]
+    returns = kept.iloc[-1] / kept.iloc[0] - 1
+    return window.index[0], window.index[-1], returns

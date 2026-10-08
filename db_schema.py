@@ -1058,6 +1058,28 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sector_relative_momentum_results (
+                ticker             TEXT NOT NULL,
+                window_sessions    INTEGER NOT NULL,
+                as_of_date         TEXT NOT NULL,
+                status             TEXT NOT NULL,
+                sector             TEXT,
+                currency           TEXT,
+                window_start_date  TEXT,
+                cohort_size        INTEGER,
+                peer_count         INTEGER,
+                own_return         REAL,
+                peer_return        REAL,
+                relative_return_pp REAL,
+                rank               INTEGER,
+                percentile         REAL,
+                input_revision     TEXT,
+                computed_at        TEXT NOT NULL,
+                PRIMARY KEY (ticker, window_sessions, as_of_date)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS trap_phase_history (
                 id                    INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker                TEXT NOT NULL,

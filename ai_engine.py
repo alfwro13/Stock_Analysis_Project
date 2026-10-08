@@ -348,58 +348,35 @@ class AIPromptEngine:
         return "\n".join(lines)
 
     def _get_sector_peer_context(self, ticker: str, sector: Optional[str]) -> str:
-        """
-        Ranks the ticker's 20-day relative strength against its sector peers using
-        heavy SQL-side filtering (no bulk load into Python). Answers the question
-        the model previously could not: 'Is this stock leading or lagging its sector?'
-        """
+        """Reads the persisted Sector-Relative Momentum standing so the prompt, the report and the Portfolio/Watchlist columns share one set of numbers."""
         if not sector:
             return "Sector unknown; peer comparison unavailable."
 
         try:
-            with self._db() as cursor:
-                # Join each sector peer to its most-recent quant_signals relative-strength
-                # reading. Correlated subquery keeps us to the latest row per ticker.
-                cursor.execute("""
-                    SELECT s.ticker,
-                           s.company_name,
-                           q.rel_strength_20d
-                    FROM stock_signals s
-                    JOIN quant_signals q
-                      ON s.ticker = q.ticker
-                     AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-                    WHERE s.sector = ?
-                      AND q.rel_strength_20d IS NOT NULL
-                    ORDER BY q.rel_strength_20d DESC
-                """, (sector,))
-                peers = [dict(r) for r in cursor.fetchall()]
+            from sector_relative_momentum_engine import DEFAULT_WINDOW, STATUS_LABELS, get_cohort_standing
 
-            if not peers or len(peers) < 2:
-                return f"Sector '{sector}': insufficient peer data for ranking."
+            standing = get_cohort_standing(ticker, DEFAULT_WINDOW)
+            row = standing["row"] if standing else None
+            if row is None or row["status"] != "ok":
+                reason = STATUS_LABELS.get(row["status"], row["status"]) if row else "not computed yet"
+                return f"Sector '{sector}': insufficient peer data for ranking ({reason})."
 
-            total = len(peers)
-            rank = next((i for i, p in enumerate(peers) if p['ticker'] == ticker), None)
-
-            lines: List[str] = [f"Sector: {sector} ({total} peers with relative-strength data)"]
-            if rank is not None:
-                percentile = (1.0 - (rank / max(total - 1, 1))) * 100.0
-                position = "LEADER" if percentile >= 66 else ("LAGGARD" if percentile <= 33 else "MID-PACK")
-                lines.append(
-                    f"This stock ranks #{rank + 1} of {total} on 20-day relative strength "
-                    f"({percentile:.0f}th percentile — {position})."
-                )
-
-            # Show the strongest and weakest peers for context.
-            # Cap at total//2 so the two lists never overlap (e.g. 4 peers → top-2/bottom-2).
-            n = min(3, total // 2)
-            top = peers[:n]
-            bottom = peers[-n:]
-            lines.append("Strongest in sector (20D rel-strength): " + ", ".join(
-                f"{p['ticker']} {self._fmt_pct(p['rel_strength_20d'])}" for p in top
-            ))
-            lines.append("Weakest in sector (20D rel-strength): " + ", ".join(
-                f"{p['ticker']} {self._fmt_pct(p['rel_strength_20d'])}" for p in bottom
-            ))
+            total = row["cohort_size"]
+            percentile = row["percentile"]
+            position = "LEADER" if percentile >= 66 else ("LAGGARD" if percentile <= 33 else "MID-PACK")
+            lines: List[str] = [
+                f"Sector: {sector} ({total} comparable {row['currency']} equities scored over {DEFAULT_WINDOW} sessions to {row['as_of_date']})",
+                f"This stock ranks #{row['rank']} of {total} on {DEFAULT_WINDOW}-session return relative to its "
+                f"sector peers ({row['relative_return_pp']:+.1f} pp vs the peer average; "
+                f"{percentile:.0f}th percentile — {position}).",
+            ]
+            if standing["top"]:
+                lines.append(f"Strongest in sector ({DEFAULT_WINDOW}-session relative return): " + ", ".join(
+                    f"{p['ticker']} {p['relative_return_pp']:+.1f} pp" for p in standing["top"]
+                ))
+                lines.append(f"Weakest in sector ({DEFAULT_WINDOW}-session relative return): " + ", ".join(
+                    f"{p['ticker']} {p['relative_return_pp']:+.1f} pp" for p in standing["bottom"]
+                ))
             return "\n".join(lines)
 
         except Exception as e:

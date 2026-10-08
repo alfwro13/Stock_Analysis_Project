@@ -277,6 +277,11 @@ DEFAULT_CONFIG = {
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],
             "TIME": "19:25"
         },
+        "SECTOR_RELATIVE_MOMENTUM": {
+            "ENABLED": True,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "19:20"
+        },
         "ALERT_REFEREE_TRAINING": {
             "ENABLED": False,
             "DAYS": ["sun"],

@@ -42,14 +42,15 @@ CORE_TICKER = "AI_CORE_TEST"
 
 def _seed_sector_peers(num_peers: int):
     """
-    Seed `num_peers` stock_signals + quant_signals rows in the test DB
-    so that _get_sector_peer_context can rank them.
+    Seed `num_peers` stock_signals rows plus their persisted Sector-Relative Momentum rows
+    (rank 1 = strongest) so _get_sector_peer_context can read the standing.
     Returns the list of tickers seeded.
     """
     import database as db
     conn = db.get_connection()
     cur = conn.cursor()
     tickers = SECTOR_TICKERS[:num_peers]
+    cur.execute("DELETE FROM sector_relative_momentum_results WHERE sector = 'AI_TEST_SECTOR'")
     for i, ticker in enumerate(tickers):
         cur.execute(
             """INSERT OR REPLACE INTO stock_signals
@@ -59,10 +60,12 @@ def _seed_sector_peers(num_peers: int):
             (ticker, f"AI Test Co {i}"),
         )
         cur.execute(
-            """INSERT OR REPLACE INTO quant_signals
-               (ticker, date, rel_strength_20d)
-               VALUES (?, ?, ?)""",
-            (ticker, "2026-01-01", float(i) / 10.0),
+            """INSERT OR REPLACE INTO sector_relative_momentum_results
+               (ticker, window_sessions, as_of_date, status, sector, currency, cohort_size, peer_count,
+                relative_return_pp, rank, percentile, computed_at)
+               VALUES (?, 63, '2026-01-01', 'ok', 'AI_TEST_SECTOR', 'USD', ?, ?, ?, ?, ?, 't')""",
+            (ticker, num_peers, num_peers - 1, float(i), num_peers - i,
+             (i / (num_peers - 1)) * 100.0 if num_peers > 1 else 0.0),
         )
     conn.commit()
     conn.close()
@@ -243,24 +246,23 @@ class TestSectorPeerOverlap:
             f"With {num_peers} peers, tickers {overlap} appear in both Strongest and Weakest"
         )
 
-    def test_single_peer_returns_insufficient_data(self):
-        """Only 1 peer → should return the 'insufficient peer data' message."""
-        # Use a separate sector so earlier parametrized seeds don't pollute the count.
+    def test_unscored_ticker_returns_insufficient_data(self):
+        """A ticker with no scored Sector-Relative Momentum row → 'insufficient peer data' message."""
         import database as db
         conn = db.get_connection()
         conn.execute(
-            """INSERT OR REPLACE INTO stock_signals
-               (ticker, company_name, sector, current_price, composite_score,
-                overall_signal, currency)
-               VALUES ('AI_SOLO', 'Solo Co', 'AI_SINGLE_SECTOR', 100.0, 50, 'BULLISH', 'USD')"""
-        )
-        conn.execute(
-            """INSERT OR REPLACE INTO quant_signals (ticker, date, rel_strength_20d)
-               VALUES ('AI_SOLO', '2026-01-01', 0.1)"""
+            """INSERT OR REPLACE INTO sector_relative_momentum_results
+               (ticker, window_sessions, as_of_date, status, sector, currency, peer_count, computed_at)
+               VALUES ('AI_SOLO', 63, '2026-01-01', 'small_cohort', 'AI_SINGLE_SECTOR', 'USD', 0, 't')"""
         )
         conn.commit()
         conn.close()
         result = ENGINE._get_sector_peer_context("AI_SOLO", "AI_SINGLE_SECTOR")
+        assert "insufficient" in result.lower()
+        assert "fewer than 5" in result.lower()
+
+    def test_ticker_never_computed_returns_insufficient_data(self):
+        result = ENGINE._get_sector_peer_context("AI_NEVER_COMPUTED", "AI_SINGLE_SECTOR")
         assert "insufficient" in result.lower()
 
     def test_unknown_sector_returns_unavailable(self):

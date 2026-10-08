@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Sector-Relative Momentum{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#129517; Sector-Relative Momentum</h1>
+<p class="page-subtitle mb-4">
+    Each stock's cumulative return over the window versus the average return of its
+    <abbr title="Other equities in the same Yahoo sector that are quoted in the same currency, excluding the stock itself.">sector peers</abbr>.
+    The gap is shown in <abbr title="Percentage points: a stock up 12% against peers up 8% is +4.0 pp.">percentage points</abbr>
+    and is not a forecast. Peers always come from the whole equity universe, whichever rows are shown here, and a stock needs at least
+    5 comparable peers to be scored.
+</p>
+
+<div class="mb-3">
+    <a href="/reports" class="btn btn-outline-secondary btn-sm">&#8592; Back to Reports</a>
+</div>
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Scope">
+        <input type="radio" class="btn-check" name="srm-scope" id="srm-scope-pw" value="portfolio_watchlist" checked>
+        <label class="btn btn-outline-primary btn-sm" for="srm-scope-pw">Portfolio + Watchlist</label>
+        <input type="radio" class="btn-check" name="srm-scope" id="srm-scope-universe" value="universe">
+        <label class="btn btn-outline-primary btn-sm" for="srm-scope-universe">Universe</label>
+    </div>
+    <div class="btn-group" role="group" aria-label="Window">
+        <input type="radio" class="btn-check" name="srm-window" id="srm-window-63" value="63" checked>
+        <label class="btn btn-outline-secondary btn-sm" for="srm-window-63">63 Sessions</label>
+        <input type="radio" class="btn-check" name="srm-window" id="srm-window-126" value="126">
+        <label class="btn btn-outline-secondary btn-sm" for="srm-window-126">126 Sessions</label>
+    </div>
+</div>
+
+<div class="sentiment-module module-cyan">
+    <div class="p-3 pb-0">
+        <h3 class="tm-ticker-heading">
+            Sector-Relative Momentum
+            <span id="srm-count" class="tm-ticker-count"></span>
+        </h3>
+    </div>
+    <div class="overflow-auto p-3">
+        <table id="srm-table" class="tm-table w-100">
+            <thead>
+                <tr>
+                    <th class="tm-th-blue tm-th-left">Ticker</th>
+                    <th class="tm-th-muted tm-th-left">Company</th>
+                    <th class="tm-th-muted tm-th-left">Sector</th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="The window runs from this close to the as-of close.">Window Start</abbr></th>
+                    <th class="tm-th-muted tm-th-right">Own Return</th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="Average return of the other eligible stocks in the cohort over the same window.">Peer Return</abbr></th>
+                    <th class="tm-th-amber tm-th-right"><abbr title="Own return minus peer return, in percentage points.">Relative (pp)</abbr></th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="1 = strongest in the cohort.">Rank</abbr></th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="Number of scored stocks in the cohort, including this one.">Cohort</abbr></th>
+                    <th class="tm-th-dimmed tm-th-right">As Of</th>
+                </tr>
+            </thead>
+            <tbody id="srm-tbody">
+                <tr>
+                    <td colspan="10" class="text-center p-4 text-muted">Loading…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/sector_relative_momentum.js?v={{ css_version }}"></script>
+{% endblock %}

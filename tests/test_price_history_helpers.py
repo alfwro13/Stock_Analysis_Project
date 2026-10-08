@@ -272,3 +272,56 @@ def test_cached_anchors_are_independent_across_concurrent_readers(anchor_files):
     assert all(result == expected for result in results)
     results[0]["5d"] = -1
     assert all(result == expected for result in results[1:])
+
+
+class TestSessionWindowReturns:
+    @staticmethod
+    def _closes(**columns) -> pd.DataFrame:
+        n = max(len(v) for v in columns.values())
+        idx = pd.date_range("2026-01-05", periods=n, freq="B")
+        return pd.DataFrame({k: pd.Series(v, index=idx[:len(v)]) if len(v) < n else pd.Series(v, index=idx) for k, v in columns.items()})
+
+    def test_cumulative_return_over_window_endpoints(self):
+        from price_history_helpers import session_window_returns
+        closes = self._closes(A=[100, 105, 110, 121], B=[50, 50, 55, 50])
+        start, as_of, returns = session_window_returns(closes, 3)
+        assert start == closes.index[0] and as_of == closes.index[-1]
+        assert returns["A"] == pytest.approx(0.21)
+        assert returns["B"] == pytest.approx(0.0)
+
+    def test_window_uses_last_n_sessions_only(self):
+        from price_history_helpers import session_window_returns
+        closes = self._closes(A=[1, 100, 110, 121])
+        start, _, returns = session_window_returns(closes, 2)
+        assert start == closes.index[1]
+        assert returns["A"] == pytest.approx(0.21)
+
+    def test_too_short_history_returns_none(self):
+        from price_history_helpers import session_window_returns
+        assert session_window_returns(self._closes(A=[100, 101, 102]), 3) is None
+
+    def test_date_traded_by_minority_is_not_on_the_calendar(self):
+        from price_history_helpers import session_window_returns
+        closes = self._closes(A=[100, 110, 121, 133.1], B=[100, 110, 121, np.nan], C=[100, 110, 121, np.nan], D=[100, 110, 121, np.nan])
+        _, as_of, returns = session_window_returns(closes, 2)
+        assert as_of == closes.index[2]
+        assert returns["A"] == pytest.approx(0.21)
+
+    def test_column_missing_an_endpoint_is_dropped(self):
+        from price_history_helpers import session_window_returns
+        closes = self._closes(A=[100, 110, 121], B=[100, 110, np.nan], C=[100, 105, 110])
+        _, _, returns = session_window_returns(closes, 2)
+        assert set(returns.index) == {"A", "C"}
+
+    def test_sparse_column_below_coverage_is_dropped(self):
+        from price_history_helpers import session_window_returns
+        values = [100.0] + [np.nan] * 8 + [110.0]
+        closes = self._closes(A=list(np.linspace(100, 110, 10)), B=values)
+        _, _, returns = session_window_returns(closes, 9)
+        assert list(returns.index) == ["A"]
+
+    def test_non_positive_close_is_treated_as_missing(self):
+        from price_history_helpers import session_window_returns
+        closes = self._closes(A=[100, 110, 121], B=[100, 0, 121])
+        _, _, returns = session_window_returns(closes, 2, min_coverage=1.0)
+        assert list(returns.index) == ["A"]

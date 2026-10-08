@@ -1,0 +1,38 @@
+<div class="accordion-item glossary-section" id="sector-relative-momentum">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-sector-relative-momentum"
+                aria-expanded="false" aria-controls="collapse-sector-relative-momentum">
+            &#129517; Sector-Relative Momentum — Leading or Lagging Your Sector
+        </button>
+    </h2>
+    <div id="collapse-sector-relative-momentum" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Sector-Relative Momentum Measures</span>
+                <p><strong>Sector-Relative Momentum</strong> compares a stock's cumulative return over the last 63 or 126 trading sessions (roughly 3 or 6 months) with the average return of its sector peers. The gap is shown in <strong>percentage points (pp)</strong>: a stock up 12% against peers up 8% scores +4.0 pp.</p>
+                <p>It is a description of what already happened, not a forecast, and it is not blended with any ML or conviction score. A positive figure means the stock led its sector over the window; a negative one means it lagged.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Sector Cohort: Same Sector, Same Currency, At Least 5 Peers</span>
+                <p>A stock is only compared with other <strong>equities in the same Yahoo sector that are quoted in the same currency</strong>, so returns are comparable without any currency conversion and London and US trading calendars are never mixed. Pence-quoted and pound-quoted London stocks share one group. Funds, ETFs and stocks with an unknown sector are never ranked and never counted as peers.</p>
+                <p>A stock needs at least <strong>five other</strong> comparable peers to be scored. A smaller group shows "Fewer than 5 comparable peers" with the peer count instead of a number, because a ranking inside a tiny group would mostly be noise. The peer group always comes from the whole equity universe, so adding a ticker to your Watchlist never changes anyone else's score.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Peer Return, Rank and Percentile (Leave-One-Out)</span>
+                <p><strong>Peer return</strong> is the average cumulative return of the <em>other</em> eligible stocks in the group, held as an equal-weighted basket for the whole window. The stock itself is left out so it cannot drag the average toward its own result, which matters most in small groups.</p>
+                <p><strong>Rank</strong> orders the group by relative return, with 1 as the strongest (ties are listed alphabetically). <strong>Percentile</strong> runs from 0 (weakest) to 100 (strongest), with tied stocks sharing one value. The AI prompt labels a stock LEADER from the 66th percentile up, LAGGARD at the 33rd or below, and MID-PACK in between.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Sector-Relative Momentum vs Relative Strength 5D/20D</span>
+                <p>The existing <strong>Relative Strength 5D / 20D</strong> columns subtract the S&amp;P 500 (SPY) return from the stock's return, so they say whether a stock is beating the <em>market</em>. <strong>Sector-Relative Momentum</strong> instead compares the stock with the stocks in its own sector and currency, so it says whether it is beating its <em>peers</em>.</p>
+                <p>The two answer different questions: a technology stock can lag the market while still leading a weak technology sector, or beat the market while trailing its own sector. Neither is the same as the Relative Strength Leaders report, which screens for stocks above their 50-day average ranked by RSI and MACD rather than by relative return.</p>
+            </div>
+
+        </div>
+    </div>
+</div>
