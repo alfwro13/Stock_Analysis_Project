@@ -1464,6 +1464,14 @@ def test_predicted_movers_page_has_leaderboard_and_both_shortlist_tabs(client):
 
 
 @pytest.mark.pages
+def test_settings_stable_shortlist_card_is_searchable_by_page_names(client):
+    """The Stable Shortlist settings card must carry the Predicted Movers tab names as search keywords."""
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert b'id="stable-shortlist-card" data-search-keywords="predicted movers, ml upside shortlist' in resp.content
+
+
+@pytest.mark.pages
 def test_predicted_movers_accuracy_page_has_scope_toggle(client):
     """GET /predicted-movers/accuracy must offer the Portfolio/Watchlist split."""
     resp = client.get("/predicted-movers/accuracy")

@@ -201,9 +201,13 @@ class TestRun:
 
     def test_display_scope_does_not_change_scores(self, seeded):
         _run(seeded, display=[])
-        before = srm.get_latest_results(USD, 63)
+        def scores():
+            return {t: {k: v for k, v in r.items() if k != "computed_at"}
+                    for t, r in srm.get_latest_results(USD, 63).items()}
+
+        before = scores()
         _run(seeded, display=USD[:1])
-        assert srm.get_latest_results(USD, 63) == {t: {**r} for t, r in before.items()}
+        assert scores() == before
 
     def test_rerun_is_idempotent(self, seeded):
         _run(seeded, display=USD)
