@@ -271,6 +271,13 @@ async function saveSettings(silent = false) {
                 "CORRELATION_THRESHOLD": parseFloat(document.getElementById('PAIRS_SPREAD_CORRELATION_THRESHOLD').value) || 0.7,
                 "ZSCORE_THRESHOLD": parseFloat(document.getElementById('PAIRS_SPREAD_ZSCORE_THRESHOLD').value) || 2.0
             },
+            "SECTOR_RELATIVE_MOMENTUM": {
+                "ENABLED": document.getElementById('SECTOR_RELATIVE_MOMENTUM_ENABLED').checked,
+                "DAYS": document.getElementById('SECTOR_RELATIVE_MOMENTUM_FREQ').value === 'mon-sun'
+                    ? ['mon','tue','wed','thu','fri','sat','sun']
+                    : ['mon','tue','wed','thu','fri'],
+                "TIME": document.getElementById('SECTOR_RELATIVE_MOMENTUM_TIME').value
+            },
             "PATTERN_DETECTION": {
                 "ENABLED": document.getElementById('PATTERN_DETECTION_ENABLED').checked,
                 "MONITOR_PORTFOLIO": document.getElementById('PATTERN_DETECTION_PORTFOLIO').checked,

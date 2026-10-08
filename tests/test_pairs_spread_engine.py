@@ -2,7 +2,7 @@
 tests/test_pairs_spread_engine.py — Pairs Spread Monitor Tests
 
 Covers:
-  • _normalize_currency()          — GBp/GBP collapse to one bucket
+  • utils.normalize_currency_bucket() — GBp/GBP collapse to one bucket
   • compute_spread_zscore()        — known synthetic spread produces the expected z-score/direction
   • build_chart_series()           — normalized-price chart payload shape
   • PairsSpreadEngine._get_universe() — portfolio+watchlist scope vs universe scope
@@ -23,11 +23,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
+from utils import normalize_currency_bucket
 from pairs_spread_engine import (
     PairsSpreadEngine,
     SCOPE_PORTFOLIO_WATCHLIST,
     SCOPE_UNIVERSE,
-    _normalize_currency,
     compute_spread_zscore,
     build_chart_series,
 )
@@ -85,14 +85,14 @@ def _seed_currency(ticker: str, currency: str) -> None:
 
 class TestNormalizeCurrency:
     def test_gbp_and_gbx_collapse(self):
-        assert _normalize_currency("GBP") == _normalize_currency("GBp") == "GBP"
+        assert normalize_currency_bucket("GBP") == normalize_currency_bucket("GBp") == "GBP"
 
     def test_other_currency_passthrough(self):
-        assert _normalize_currency("USD") == "USD"
+        assert normalize_currency_bucket("USD") == "USD"
 
     def test_none_passthrough(self):
-        assert _normalize_currency(None) is None
-        assert _normalize_currency("") is None
+        assert normalize_currency_bucket(None) is None
+        assert normalize_currency_bucket("") is None
 
 
 class TestComputeSpreadZscore:

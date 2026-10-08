@@ -855,6 +855,23 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Pairs Spread Monitor: %s", e)
 
+    sector_rel_mom_cfg = scheduling.get("SECTOR_RELATIVE_MOMENTUM", {})
+    if sector_rel_mom_cfg.get("ENABLED", False):
+        try:
+            days = ",".join(sector_rel_mom_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
+            time_str = sector_rel_mom_cfg.get("TIME", "19:20")
+            run_h, run_m = map(int, time_str.split(":"))
+            scheduler.add_job(
+                run_sector_relative_momentum_job,
+                CronTrigger(day_of_week=days, hour=run_h, minute=run_m, timezone=user_tz),
+                id="sector_relative_momentum_job",
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Sector-Relative Momentum scheduled for %s at %s.", days, time_str)
+        except Exception as e:
+            logger.error("Failed to schedule Sector-Relative Momentum: %s", e)
+
     pattern_detection_cfg = scheduling.get("PATTERN_DETECTION", {})
     if pattern_detection_cfg.get("ENABLED", False):
         try:
@@ -1116,6 +1133,7 @@ from scheduler_jobs import (
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
     run_confluence_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,
+    run_sector_relative_momentum_job,
     run_pattern_detection_job, run_pattern_detection_accuracy_fill_job,
     register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,

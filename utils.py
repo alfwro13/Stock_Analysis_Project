@@ -174,6 +174,13 @@ def is_excluded_from_yahoo_fetch(ticker: str, ignored: Optional[set] = None) -> 
     return normalize_ticker(ticker) in ignored
 
 
+def normalize_currency_bucket(currency: Optional[str]) -> Optional[str]:
+    """Collapses LSE pence (GBp/GBX) and GBP into one "GBP" bucket for same-currency grouping — Yahoo reports either depending on the ticker. Ratio-based callers never need the 100x conversion."""
+    if not currency:
+        return None
+    return "GBP" if currency in ("GBp", "GBX", "GBP") else currency
+
+
 def trading_days_forward(date_str: str, n_days: int) -> str:
     """Approximate 'n_days trading days forward' of date_str using numpy's Mon-Fri business-day
     calendar (no exchange-holiday awareness) — acceptable wherever the consumer resolves the

@@ -33,6 +33,7 @@ LEVELS = [
     ("regime-weighted-score", "Regime-Weighted Conviction Score"),
     ("buy-recommendation", "Buy Recommendation"),
     ("predicted-movers", "Predicted Movers"),
+    ("sector-relative-momentum", "Sector-Relative Momentum"),
     ("ticker-notes", "Ticker Notes"),
     ("forensic-screener", "Forensic Screener"),
     ("fx-drag", "FX Drag Analyzer"),
@@ -2302,6 +2303,63 @@ CARDS = [
         ],
         "explanation": """<p>Each day, the predicted price band for every Portfolio+Watchlist ticker is snapshotted. Roughly 10 trading days later, once the outcome is known, that prediction is graded two independent ways: <strong>direction match</strong> — did the actual price move the same way (up or down) as the predicted midpoint? — and <strong>within-band match</strong> — did the actual price land anywhere inside the predicted Q10–Q90 range, regardless of which way the midpoint pointed?</p>
 <p>A prediction can't be graded until its ~10-trading-day horizon has actually passed, so the accuracy page always shows a mix of "Resolved" and "Pending" rows — a newly-tracked ticker shows no accuracy percentage at all for its first couple of weeks. This is expected: the horizon is what the model was trained to predict, so there's no way to grade it sooner.</p>""",
+    },
+    # --- sector-relative-momentum ---
+    {
+        "term_key": "what-sector-relative-momentum-measures",
+        "section_id": "sector-relative-momentum",
+        "term_title": "What Sector-Relative Momentum Measures",
+        "question": "What does a Sector-Relative Momentum figure of +6.1 pp mean?",
+        "answer": "The stock's return over the window beat the median return of its sector peers by 6.1 percentage points",
+        "distractors": [
+            "The stock is predicted to rise 6.1% over the next window",
+            "The stock beat the S&P 500 by 6.1 percentage points",
+            "The stock's sector gained 6.1% over the window",
+        ],
+        "explanation": """<p><strong>Sector-Relative Momentum</strong> compares a stock's cumulative return over the last 63 or 126 trading sessions (roughly 3 or 6 months) with the median return of its sector peers. The gap is shown in <strong>percentage points (pp)</strong>: a stock up 12% against peers up 8% scores +4.0 pp.</p>
+<p>It is a description of what already happened, not a forecast, and it is not blended with any ML or conviction score. A positive figure means the stock led its sector over the window; a negative one means it lagged.</p>""",
+    },
+    {
+        "term_key": "sector-cohort-and-minimum-peers",
+        "section_id": "sector-relative-momentum",
+        "term_title": "Sector Cohort: Same Sector, Same Currency, At Least 5 Peers",
+        "question": "Why can a stock show \"Fewer than 5 comparable peers\" instead of a Sector-Relative Momentum score?",
+        "answer": "Its sector and quote currency group has fewer than five other scored equities, which is too few to make a fair comparison",
+        "distractors": [
+            "Its sector is currently being reclassified by Yahoo Finance",
+            "It is held in more than one account, which blocks the calculation",
+            "Its price history is older than the 2-year cache limit",
+        ],
+        "explanation": """<p>A stock is only compared with other <strong>equities in the same Yahoo sector that are quoted in the same currency</strong>, so returns are comparable without any currency conversion and London and US trading calendars are never mixed. Pence-quoted and pound-quoted London stocks share one group. Funds, ETFs and stocks with an unknown sector are never ranked and never counted as peers.</p>
+<p>A stock needs at least <strong>five other</strong> comparable peers to be scored. A smaller group shows "Fewer than 5 comparable peers" with the peer count instead of a number, because a ranking inside a tiny group would mostly be noise. The peer group always comes from the whole equity universe, so adding a ticker to your Watchlist never changes anyone else's score.</p>""",
+    },
+    {
+        "term_key": "sector-relative-peer-return-rank-percentile",
+        "section_id": "sector-relative-momentum",
+        "term_title": "Peer Return, Rank and Percentile (Leave-One-Out)",
+        "question": "Why is the stock itself left out of its own Sector-Relative Momentum peer return?",
+        "answer": "Including it would pull the peer median toward its own return and understate how far it is ahead of or behind the others, especially in small groups",
+        "distractors": [
+            "Yahoo Finance does not publish a stock's own return",
+            "Leaving it out makes the calculation run faster",
+            "The stock's own return is always the same as the sector median",
+        ],
+        "explanation": """<p><strong>Peer return</strong> is the <strong>median</strong> cumulative return of the <em>other</em> eligible stocks in the group, so one extreme performer cannot skew it. The stock itself is left out so it cannot drag the median toward its own result, which matters most in small groups.</p>
+<p><strong>Rank</strong> orders the group by relative return, with 1 as the strongest (ties are listed alphabetically). <strong>Percentile</strong> runs from 0 (weakest) to 100 (strongest), with tied stocks sharing one value. The AI prompt labels a stock LEADER from the 66th percentile up, LAGGARD at the 33rd or below, and MID-PACK in between.</p>""",
+    },
+    {
+        "term_key": "sector-relative-momentum-vs-relative-strength",
+        "section_id": "sector-relative-momentum",
+        "term_title": "Sector-Relative Momentum vs Relative Strength 5D/20D",
+        "question": "How does Sector-Relative Momentum differ from the Relative Strength 5D/20D columns?",
+        "answer": "Relative Strength 5D/20D compares a stock with the market (SPY), while Sector-Relative Momentum compares it with its own sector peers",
+        "distractors": [
+            "They are the same measure shown over different time windows",
+            "Relative Strength 5D/20D uses ML predictions while Sector-Relative Momentum uses historical prices",
+            "Sector-Relative Momentum compares a stock with the S&P 500 and Relative Strength 5D/20D compares it with its sector",
+        ],
+        "explanation": """<p>The existing <strong>Relative Strength 5D / 20D</strong> columns subtract the S&amp;P 500 (SPY) return from the stock's return, so they say whether a stock is beating the <em>market</em>. <strong>Sector-Relative Momentum</strong> instead compares the stock with the stocks in its own sector and currency, so it says whether it is beating its <em>peers</em>.</p>
+<p>The two answer different questions: a technology stock can lag the market while still leading a weak technology sector, or beat the market while trailing its own sector. Neither is the same as the Relative Strength Leaders report, which screens for stocks above their 50-day average ranked by RSI and MACD rather than by relative return.</p>""",
     },
     # --- ticker-notes ---
     {

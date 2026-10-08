@@ -361,6 +361,8 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
         portfolio_tickers, confluence_by_ticker=confluence_by_ticker,
         regime_score_by_ticker=regime_score_by_ticker,
     )
+    from sector_relative_momentum_engine import get_column_values as get_sector_momentum_values
+    sector_momentum_by_ticker = get_sector_momentum_values(sorted(portfolio_tickers))
 
     for row in db_rows:
         row_dict = dict(row)
@@ -497,6 +499,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
         row_dict['low_target'] = next(iter(lows)) if len(lows) == 1 else None
         row_dict['high_target'] = next(iter(highs)) if len(highs) == 1 else None
 
+        row_dict.update(sector_momentum_by_ticker.get(row_dict['ticker'], {}))
         row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "portfolio")
 
     if missing_fx:
@@ -825,6 +828,8 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
         watchlist_tickers, confluence_by_ticker=confluence_by_ticker,
         regime_score_by_ticker=regime_score_by_ticker,
     )
+    from sector_relative_momentum_engine import get_column_values as get_sector_momentum_values
+    sector_momentum_by_ticker = get_sector_momentum_values(sorted(watchlist_tickers))
 
     for row in db_rows:
         row_dict = dict(row)
@@ -847,6 +852,7 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
             row_dict['low_target'] = limits.get('low_limit')
             row_dict['high_target'] = limits.get('high_limit')
 
+            row_dict.update(sector_momentum_by_ticker.get(row_dict['ticker'], {}))
             row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "watchlist")
 
             cp = cached_pulse.get(row_dict['ticker'])
@@ -1222,6 +1228,18 @@ async def predicted_movers_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="predicted_movers.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
+@page_router.get("/sector-relative-momentum", response_class=HTMLResponse)
+async def sector_relative_momentum_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="sector_relative_momentum.html",
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),

@@ -1352,6 +1352,7 @@ def test_no_page_route_returns_500(client):
         ("/treasury-auctions",  "Sovereign Debt Auction Monitor"),
         ("/yahoo-api-usage",    "Yahoo Finance API Usage"),
         ("/pairs-spread",       "Pairs Spread Monitor"),
+        ("/sector-relative-momentum", "Sector-Relative Momentum"),
         ("/reports",            "Reports"),
         ("/pattern-detection",  "Pattern Detection"),
         ("/pattern-detection/NOTAREALTICKER", "Pattern Detection Detail"),
@@ -1430,6 +1431,21 @@ def test_reports_page_links_to_pairs_spread(client):
     resp = client.get("/reports")
     assert resp.status_code == 200
     assert b'href="/pairs-spread"' in resp.content
+
+
+def test_reports_page_links_to_sector_relative_momentum(client):
+    """GET /reports must link to the Sector-Relative Momentum report."""
+    resp = client.get("/reports")
+    assert resp.status_code == 200
+    assert b'href="/sector-relative-momentum"' in resp.content
+
+
+@pytest.mark.pages
+def test_sector_relative_momentum_page_loads(client):
+    """GET /sector-relative-momentum must load with an empty results table without crashing."""
+    _assert_page_ok(client, "/sector-relative-momentum", label="Sector-Relative Momentum")
+    resp = client.get("/sector-relative-momentum")
+    assert b'href="/reports"' in resp.content
 
 
 # ── Sovereign Debt Auction Monitor ────────────────────────────────────────────

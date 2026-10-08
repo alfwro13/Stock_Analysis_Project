@@ -58,6 +58,7 @@ JOB_GRAPH: dict[str, dict] = {
     "etf_predictor_dynamic":          {"label": "ETF Price Predictors",                           "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": [],                        "dynamic": True,                          "settings_anchor": "tools-card"},
     "bubble_radar_job":               {"label": "Bubble Radar Scan",                              "category": "quant",       "engine": "bubble_radar_engine.py",        "produces": ["bubble_radar_metrics", "bubble_radar_history"],               "consumes": ["quant_signals", "stock_signals", "macro_indicators"],               "settings_anchor": "tools-card"},
     "pairs_spread_monitor_job":       {"label": "Pairs Spread Monitor",                           "category": "quant",       "engine": "pairs_spread_engine.py",        "produces": ["pairs_spread_results"],                                       "consumes": ["historical_parquet", "portfolio", "stock_signals"],                 "settings_anchor": "tools-card"},
+    "sector_relative_momentum_job":   {"label": "Sector-Relative Momentum",                       "category": "quant",       "engine": "sector_relative_momentum_engine.py", "produces": ["sector_relative_momentum_results"],                       "consumes": ["historical_parquet", "stock_signals"],                              "settings_anchor": "sector-relative-momentum-card"},
 
     # Pairs Spread Monitor's Universe scope — not a scheduled job; an operator-triggered,
     # on-demand-only full market-universe correlation scan (too expensive to run nightly).
@@ -163,6 +164,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "BUBBLE_RADAR":       "bubble_radar_job",
     "PAIRS_SPREAD_MONITOR": "pairs_spread_monitor_job",
     "PATTERN_DETECTION":  "pattern_detection_job",
+    "SECTOR_RELATIVE_MOMENTUM": "sector_relative_momentum_job",
     "MARKET_SENTIMENT":   "market_sentiment_job",
     "EARNINGS_ALERTS":          "earnings_alert_job",
     "INSIDER_TRADING":          "insider_alert_job",

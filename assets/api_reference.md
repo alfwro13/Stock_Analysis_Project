@@ -31,6 +31,7 @@
 25. [Glossary Learning](#25-glossary-learning)
 26. [Pairs Spread Monitor](#26-pairs-spread-monitor)
 27. [Pattern Detection](#27-pattern-detection)
+31. [Sector-Relative Momentum](#31-sector-relative-momentum)
 
 ---
 
@@ -4588,6 +4589,50 @@ has no holdings or Ghostfolio is configured but unreachable.
 `GET /api/fx/status?currencies=USD,EUR` reads persisted FX cache status without requesting a refresh. `currencies` is a comma-separated list of three-letter uppercase currencies (or `GBp`), at most 127 characters. Returns `{status: "success", message, quotes}`. Each quote includes `pair`, `rate` (null when unavailable), `updated_at` (UTC epoch seconds), `updated_display` (configured local timezone), `stale`, and `available`. Base-currency conversions need no FX pair and are omitted.
 
 `POST /api/fx/refresh` accepts `{ "currency": "USD" }`. It awaits one forced native-to-base FX refresh in a request worker, coalescing with existing refresh work. Returns `{status, message, quotes}` after the attempt: `status` is `error` if Yahoo returned no usable new rate, with last-good persisted data retained. Invalid currency input returns HTTP 422. Normal authentication and session CSRF protection apply. The Watchlist modal calls pairs sequentially so completed attempts and failures remain visible as progress.
+
+---
+
+## 31. Sector-Relative Momentum
+
+Ranks each equity's trailing-window return against its sector x currency peers. See `assets/sector_relative_momentum.md` for the algorithm, cohort rules and storage.
+
+### `GET /sector-relative-momentum`
+
+HTML page (Reports menu). Table for the selected scope and window, with a Portfolio+Watchlist/Universe scope toggle and a 63/126 Sessions window toggle. Tickers that cannot be scored show the reason instead of numbers.
+
+### `GET /api/sector-relative-momentum/results`
+
+Query params: `scope` (`portfolio_watchlist` default, or `universe`), `window` (`63` default, or `126` trading sessions). Rate limit 20/minute. Returns the latest stored row per ticker for that window: scored rows first (largest `relative_return_pp` first), then unavailable ones. `portfolio_watchlist` lists every Portfolio and Watchlist ticker, including ones the job has not stored a row for yet (`status: "not_computed"`); `universe` lists every stored row. Invalid `scope` or `window` returns 422.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "window": 63,
+  "windows": [63, 126],
+  "results": [
+    {
+      "ticker": "MSFT", "company_name": "Microsoft Corporation", "window_sessions": 63,
+      "as_of_date": "2026-10-07", "window_start_date": "2026-07-09", "status": "ok", "status_label": "Scored",
+      "sector": "Technology", "currency": "USD", "cohort_size": 128, "peer_count": 127,
+      "own_return": 0.142, "peer_return": 0.081, "relative_return_pp": 6.1,
+      "rank": 14, "percentile": 89.8, "input_revision": "3f9a1c0b7d2e", "computed_at": "2026-10-07 19:20:03"
+    },
+    {
+      "ticker": "SPY", "company_name": "SPDR S&P 500 ETF Trust", "window_sessions": 63,
+      "as_of_date": "2026-10-07", "status": "not_equity", "status_label": "Not an equity (funds and ETFs are not ranked)",
+      "sector": "Fund", "currency": "USD", "rank": null, "relative_return_pp": null
+    }
+  ]
+}
+```
+
+`status` is `ok` or one of `no_metadata`, `not_equity`, `no_sector`, `no_currency`, `no_history`, `insufficient_history`, `small_cohort` (fewer than 5 comparable peers; `peer_count` shows how many there were) or `not_computed`. Unavailable rows carry no return, rank or percentile.
+
+### `POST /api/sector-relative-momentum/run`
+
+Triggers a ranking run in the background (the same work the scheduled `sector_relative_momentum_job` does). Rate limit 4/minute. Returns `{"status": "success", "message": "Sector-Relative Momentum run triggered."}` immediately; results appear in `GET /api/sector-relative-momentum/results` once the run finishes.
 
 ---
 

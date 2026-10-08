@@ -403,6 +403,24 @@ async function triggerPairsSpreadScan() {
     }
 }
 
+async function triggerSectorRelativeMomentumRun() {
+    const btn = document.querySelector('button[onclick="triggerSectorRelativeMomentumRun()"]');
+    const msgEl = document.getElementById('sector-relative-momentum-msg');
+    btn.disabled = true;
+    btn.innerText = "⏳ Running...";
+    msgEl.innerHTML = '';
+    try {
+        const resp = await fetch('/api/sector-relative-momentum/run', { method: 'POST' });
+        const data = await resp.json();
+        const color = data.status === 'success' ? '#4caf50' : '#f44336';
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
+    } catch (err) {
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
+    } finally {
+        setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Now"; }, 3000);
+    }
+}
+
 async function triggerPatternDetectionScan() {
     const btn = document.querySelector('button[onclick="triggerPatternDetectionScan()"]');
     const msgEl = document.getElementById('pattern-detection-msg');

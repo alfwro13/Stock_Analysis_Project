@@ -9,6 +9,7 @@ import time_engine
 from fastapi import APIRouter, BackgroundTasks, Path as PathParam, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from api_deps import limiter, _error_500
 
@@ -527,6 +528,36 @@ async def get_predicted_movers_leaderboard(
         return JSONResponse(content={"status": "success", "results": results})
     except Exception as e:
         logger.error("predicted-movers/leaderboard failed: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.get("/sector-relative-momentum/results")
+@limiter.limit("20/minute")
+async def get_sector_relative_momentum_results(
+    request: Request,
+    scope: str = Query(default="portfolio_watchlist", pattern=r"^(portfolio_watchlist|universe)$"),
+    window: str = Query(default="63", pattern=r"^(63|126)$"),
+):
+    """Returns each ticker's latest sector-relative momentum row for `scope` and `window` (trading sessions), scored rows first, with an unavailable reason for the rest."""
+    try:
+        from sector_relative_momentum_engine import WINDOWS, get_report_rows
+        results = await run_in_threadpool(get_report_rows, scope, int(window))
+        return JSONResponse(content={"status": "success", "window": int(window), "windows": list(WINDOWS), "results": results})
+    except Exception as e:
+        logger.error("sector-relative-momentum/results failed: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.post("/sector-relative-momentum/run")
+@limiter.limit("4/minute")
+async def run_sector_relative_momentum_scan(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Sector-Relative Momentum ranking run in the background."""
+    try:
+        from scheduler_engine import run_sector_relative_momentum_job
+        background_tasks.add_task(run_manual_job, "sector_relative_momentum_job", run_sector_relative_momentum_job)
+        return JSONResponse(content={"status": "success", "message": "Sector-Relative Momentum run triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Sector-Relative Momentum run: %s", e)
         return _error_500(e)
 
 

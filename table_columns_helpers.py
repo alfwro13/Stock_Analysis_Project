@@ -127,6 +127,12 @@ OPTIONAL_COLUMNS = [
     {"key": "regime_weighted_score", "label": "Regime-Weighted Conviction Score", "category": "Scores", "pages": _BOTH, "fmt": "int"},
     {"key": "buy_recommendation", "label": "Buy Recommendation", "category": "Scores", "pages": _BOTH, "fmt": "text"},
 
+    # Sector-Relative Momentum — from sector_relative_momentum_results; empty until the daily job has scored the ticker
+    {"key": "sector_rel_mom_63", "label": "Sector-Relative Momentum (63 Sessions, pp)", "category": "Sector-Relative Momentum", "pages": _BOTH, "fmt": "ratio2"},
+    {"key": "sector_rel_rank_63", "label": "Sector Momentum Rank (63 Sessions)", "category": "Sector-Relative Momentum", "pages": _BOTH, "fmt": "int"},
+    {"key": "sector_rel_mom_126", "label": "Sector-Relative Momentum (126 Sessions, pp)", "category": "Sector-Relative Momentum", "pages": _BOTH, "fmt": "ratio2"},
+    {"key": "sector_rel_rank_126", "label": "Sector Momentum Rank (126 Sessions)", "category": "Sector-Relative Momentum", "pages": _BOTH, "fmt": "int"},
+
     # Portfolio parity gaps (Watchlist already shows these as core columns)
     {"key": "target_price", "label": "Target Price", "category": "Targets", "pages": ("portfolio",), "fmt": "price"},
     {"key": "piotroski_f_score", "label": "Piotroski F-Score", "category": "Scores", "pages": ("portfolio",), "fmt": "int"},

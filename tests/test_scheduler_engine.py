@@ -401,6 +401,14 @@ class TestWorkflowManifest:
         unmapped = [jid for jid in live_ids if _resolve_manifest(jid) is None]
         assert unmapped == [], f"Scheduler jobs missing a JOB_GRAPH entry: {unmapped}"
 
+    def test_sector_relative_momentum_job_is_registered_with_canonical_label(self):
+        reload_scheduler()
+        assert _sched_module.scheduler.get_job("sector_relative_momentum_job") is not None
+        node = next(n for n in build_workflow_graph()["nodes"] if n["id"] == "sector_relative_momentum_job")
+        assert node["label"] == "Sector-Relative Momentum"
+        assert node["produces"] == ["sector_relative_momentum_results"]
+        assert display_name_for_config_key("SECTOR_RELATIVE_MOMENTUM") == "Sector-Relative Momentum"
+
     def test_dynamic_etf_job_resolves(self):
         assert _resolve_manifest("etf_predictor_7_pre_job") is not None
         assert _resolve_manifest("etf_predictor_12_post_job") is not None
