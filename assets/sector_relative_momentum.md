@@ -1,6 +1,6 @@
 # Sector-Relative Momentum
 
-Sector-Relative Momentum answers "is this stock beating its own sector?". For every equity it compares the stock's cumulative return over the last 63 or 126 trading sessions with the average return of its sector peers, and ranks the stock inside that peer group. It measures strength against **peers**, not against the market — that is what `rel_strength_5d` / `rel_strength_20d` (ticker return minus SPY return) already do. It is not a forecast and not a conviction score.
+Sector-Relative Momentum answers "is this stock beating its own sector?". For every equity it compares the stock's cumulative return over the last 63 or 126 trading sessions with the median return of its sector peers, and ranks the stock inside that peer group. It measures strength against **peers**, not against the market — that is what `rel_strength_5d` / `rel_strength_20d` (ticker return minus SPY return) already do. It is not a forecast and not a conviction score.
 
 Page route: `GET /sector-relative-momentum` (Reports hub card)
 Engine: `sector_relative_momentum_engine.py`
@@ -25,7 +25,7 @@ For each cohort and window (63 or 126 sessions):
 1. **Cohort calendar.** A date counts as a session only if at least 50% of the cohort has a close that day. The window is the last `sessions + 1` such dates (`sessions` returns), and the last one is the as-of date. A date only a few members traded never becomes the as-of date.
 2. **Eligibility.** A member needs closes on both window endpoints and on at least 90% of the window's dates. Others are reported as `insufficient_history`; nothing is back-filled from later data.
 3. **Own return** `R_i = close(as_of) / close(start) - 1`, from the adjusted daily closes already in `data/historical/*.parquet`.
-4. **Leave-one-out peer return** `R_peers = mean of the other eligible members' R`. An equal-weighted basket held for the window, excluding the stock itself. (Upstream FinRL-X includes the asset in its own group return; excluding it avoids self-influence in small cohorts.)
+4. **Leave-one-out peer return** `R_peers = median of the other eligible members' R`, excluding the stock itself. The median keeps one extreme performer from skewing every peer return. (Upstream FinRL-X includes the asset in its own group return; excluding it avoids self-influence in small cohorts.)
 5. **Relative return** `relative_return_pp = 100 x (R_i - R_peers)` — percentage points.
 6. **Rank and percentile.** Rank 1 is the strongest, ties broken by ticker. Percentile is `(average ascending rank - 1) / (n - 1) x 100`, so ties share a percentile and 100 is strongest.
 
@@ -55,5 +55,5 @@ The Reports card "Relative Strength Leaders" is unrelated: it is an RSI / MACD s
 - Sector and currency are today's classification, so a window covering a reclassification uses the new sector throughout.
 - Sectors are Yahoo's coarse GICS-style groups; a large sector can hold very different businesses.
 - Cohorts are formed from tickers the app already tracks (`stock_signals`), not the whole listed market.
-- The peer return is an equal-weighted **mean**, so one extreme performer (for example a penny stock up several hundred percent) lifts every other member's peer return and widens everyone's gap in pp. Rank and percentile depend only on the order of own returns and are unaffected.
+- The peer return is a **median** (the plan proposed an equal-weighted mean; the operator chose the median because a single extreme performer, for example a penny stock up several hundred percent, would otherwise lift every member's peer return). Because the median of the others shifts slightly as each stock is left out, rank follows relative return, which can differ marginally from the order of own returns.
 - A member whose last cached bar is older than the cohort's as-of date (halted, delisted, or a stale cache) is dropped as `insufficient_history` rather than being carried forward.

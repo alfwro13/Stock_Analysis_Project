@@ -5,7 +5,7 @@
 {% block content %}
 <h1 class="mb-1">&#129517; Sector-Relative Momentum</h1>
 <p class="page-subtitle mb-4">
-    Each stock's cumulative return over the window versus the average return of its
+    Each stock's cumulative return over the window versus the median return of its
     <abbr title="Other equities in the same Yahoo sector that are quoted in the same currency, excluding the stock itself.">sector peers</abbr>.
     The gap is shown in <abbr title="Percentage points: a stock up 12% against peers up 8% is +4.0 pp.">percentage points</abbr>
     and is not a forecast. Peers always come from the whole equity universe, whichever rows are shown here, and a stock needs at least
@@ -47,7 +47,7 @@
                     <th class="tm-th-muted tm-th-left">Sector</th>
                     <th class="tm-th-muted tm-th-right"><abbr title="The window runs from this close to the as-of close.">Window Start</abbr></th>
                     <th class="tm-th-muted tm-th-right">Own Return</th>
-                    <th class="tm-th-muted tm-th-right"><abbr title="Average return of the other eligible stocks in the cohort over the same window.">Peer Return</abbr></th>
+                    <th class="tm-th-muted tm-th-right"><abbr title="Median return of the other eligible stocks in the cohort over the same window.">Peer Return</abbr></th>
                     <th class="tm-th-amber tm-th-right"><abbr title="Own return minus peer return, in percentage points.">Relative (pp)</abbr></th>
                     <th class="tm-th-muted tm-th-right"><abbr title="1 = strongest in the cohort.">Rank</abbr></th>
                     <th class="tm-th-muted tm-th-right"><abbr title="Number of scored stocks in the cohort, including this one.">Cohort</abbr></th>

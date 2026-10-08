@@ -367,7 +367,7 @@ class AIPromptEngine:
             lines: List[str] = [
                 f"Sector: {sector} ({total} comparable {row['currency']} equities scored over {DEFAULT_WINDOW} sessions to {row['as_of_date']})",
                 f"This stock ranks #{row['rank']} of {total} on {DEFAULT_WINDOW}-session return relative to its "
-                f"sector peers ({row['relative_return_pp']:+.1f} pp vs the peer average; "
+                f"sector peers ({row['relative_return_pp']:+.1f} pp vs the peer median; "
                 f"{percentile:.0f}th percentile — {position}).",
             ]
             if standing["top"]:

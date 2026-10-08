@@ -2310,13 +2310,13 @@ CARDS = [
         "section_id": "sector-relative-momentum",
         "term_title": "What Sector-Relative Momentum Measures",
         "question": "What does a Sector-Relative Momentum figure of +6.1 pp mean?",
-        "answer": "The stock's return over the window beat the average return of its sector peers by 6.1 percentage points",
+        "answer": "The stock's return over the window beat the median return of its sector peers by 6.1 percentage points",
         "distractors": [
             "The stock is predicted to rise 6.1% over the next window",
             "The stock beat the S&P 500 by 6.1 percentage points",
             "The stock's sector gained 6.1% over the window",
         ],
-        "explanation": """<p><strong>Sector-Relative Momentum</strong> compares a stock's cumulative return over the last 63 or 126 trading sessions (roughly 3 or 6 months) with the average return of its sector peers. The gap is shown in <strong>percentage points (pp)</strong>: a stock up 12% against peers up 8% scores +4.0 pp.</p>
+        "explanation": """<p><strong>Sector-Relative Momentum</strong> compares a stock's cumulative return over the last 63 or 126 trading sessions (roughly 3 or 6 months) with the median return of its sector peers. The gap is shown in <strong>percentage points (pp)</strong>: a stock up 12% against peers up 8% scores +4.0 pp.</p>
 <p>It is a description of what already happened, not a forecast, and it is not blended with any ML or conviction score. A positive figure means the stock led its sector over the window; a negative one means it lagged.</p>""",
     },
     {
@@ -2338,13 +2338,13 @@ CARDS = [
         "section_id": "sector-relative-momentum",
         "term_title": "Peer Return, Rank and Percentile (Leave-One-Out)",
         "question": "Why is the stock itself left out of its own Sector-Relative Momentum peer return?",
-        "answer": "Including it would pull the peer average toward its own return and understate how far it is ahead of or behind the others, especially in small groups",
+        "answer": "Including it would pull the peer median toward its own return and understate how far it is ahead of or behind the others, especially in small groups",
         "distractors": [
             "Yahoo Finance does not publish a stock's own return",
             "Leaving it out makes the calculation run faster",
-            "The stock's own return is always the same as the sector average",
+            "The stock's own return is always the same as the sector median",
         ],
-        "explanation": """<p><strong>Peer return</strong> is the average cumulative return of the <em>other</em> eligible stocks in the group, held as an equal-weighted basket for the whole window. The stock itself is left out so it cannot drag the average toward its own result, which matters most in small groups.</p>
+        "explanation": """<p><strong>Peer return</strong> is the <strong>median</strong> cumulative return of the <em>other</em> eligible stocks in the group, so one extreme performer cannot skew it. The stock itself is left out so it cannot drag the median toward its own result, which matters most in small groups.</p>
 <p><strong>Rank</strong> orders the group by relative return, with 1 as the strongest (ties are listed alphabetically). <strong>Percentile</strong> runs from 0 (weakest) to 100 (strongest), with tied stocks sharing one value. The AI prompt labels a stock LEADER from the 66th percentile up, LAGGARD at the 33rd or below, and MID-PACK in between.</p>""",
     },
     {

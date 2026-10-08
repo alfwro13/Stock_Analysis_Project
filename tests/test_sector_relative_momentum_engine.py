@@ -105,9 +105,19 @@ class TestScoreCohort:
         by = {r["ticker"]: r for r in rows}
         assert not failed
         assert by["A"]["own_return"] == pytest.approx(0.10)
-        assert by["A"]["peer_return"] == pytest.approx((0.20 + 0.30 + 0.40 + 0.50 + 0.60) / 5)
+        assert by["A"]["peer_return"] == pytest.approx(0.40)
         assert by["A"]["relative_return_pp"] == pytest.approx((0.10 - 0.40) * 100)
-        assert by["F"]["peer_return"] == pytest.approx((0.10 + 0.20 + 0.30 + 0.40 + 0.50) / 5)
+        assert by["F"]["peer_return"] == pytest.approx(0.30)
+        assert by["C"]["peer_return"] == pytest.approx(0.40)
+        assert by["D"]["peer_return"] == pytest.approx(0.30)
+
+    def test_peer_return_is_median_so_an_outlier_does_not_skew_it(self):
+        returns = {"A": 0.10, "B": 0.12, "C": 0.14, "D": 0.16, "E": 0.18, "F": 30.0}
+        rows, _ = srm.score_cohort(_closes_with_returns(returns), 63, sector="S", currency="USD", computed_at="t")
+        by = {r["ticker"]: r for r in rows}
+        assert by["A"]["peer_return"] == pytest.approx(0.16)
+        assert by["F"]["peer_return"] == pytest.approx(0.14)
+        assert by["A"]["relative_return_pp"] == pytest.approx((0.10 - 0.16) * 100)
 
     def test_rank_one_is_strongest_and_percentile_spans_0_to_100(self):
         returns = {"A": 0.10, "B": 0.20, "C": 0.30, "D": 0.40, "E": 0.50, "F": 0.60}

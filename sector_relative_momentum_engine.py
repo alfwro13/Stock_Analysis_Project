@@ -4,6 +4,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 from config import load_config
@@ -89,6 +90,12 @@ def _load_close(ticker: str) -> Optional[pd.Series]:
     return close[~close.index.duplicated(keep="last")]
 
 
+def _leave_one_out_median(returns: pd.Series) -> pd.Series:
+    """Median of every other member's return, so one extreme performer cannot skew the peer return."""
+    values = returns.to_numpy()
+    return pd.Series([np.median(np.delete(values, k)) for k in range(len(values))], index=returns.index)
+
+
 def score_cohort(
     closes: pd.DataFrame, sessions: int, *, sector: str, currency: str, computed_at: str,
 ) -> tuple[list[dict], dict[str, str]]:
@@ -113,8 +120,7 @@ def score_cohort(
     if n - 1 < MIN_PEERS:
         return [{**base, "ticker": t, "status": "small_cohort"} for t in returns.index], failed
 
-    total = float(returns.sum())
-    peer_return = (total - returns) / (n - 1)
+    peer_return = _leave_one_out_median(returns)
     relative_pp = ((returns - peer_return) * 100).round(8)
     percentile = (relative_pp.rank(method="average") - 1) / (n - 1) * 100
     order = sorted(returns.index, key=lambda t: (-relative_pp[t], t))
