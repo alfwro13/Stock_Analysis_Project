@@ -16,9 +16,10 @@ import pytest
 
 import database as db
 from database import create_account, add_transaction
-from xray_engine import BENCHMARK_SYMBOL
+from xray_engine import BENCHMARK_SYMBOL, annualized_return, native_max_drawdown
 from performance_analytics_engine import (
     assemble_performance_report,
+    compute_return_metrics,
     NOT_ENOUGH_DATA_WARNING,
     _calmar_ratio,
     _distribution_stats,
@@ -207,6 +208,29 @@ class TestMonthlyReturnsAndHeatmap:
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. assemble_performance_report() — integration
 # ─────────────────────────────────────────────────────────────────────────────
+
+class TestComputeReturnMetrics:
+    def _returns(self):
+        rng = np.random.default_rng(21)
+        return pd.Series(rng.normal(0.0005, 0.01, 120), index=pd.bdate_range("2026-01-05", periods=120))
+
+    def test_matches_the_individual_helpers(self):
+        rets = self._returns()
+        ann, metrics, drawdown = compute_return_metrics(rets, 0.04)
+        assert ann == pytest.approx(annualized_return(rets))
+        max_dd, curve = native_max_drawdown(rets)
+        assert metrics["drawdown_analytics"]["max_drawdown"] == round(max_dd, 4)
+        assert metrics["risk_adjusted_ratios"]["sortino_ratio"] == _sortino_ratio(rets, ann, 0.04)
+        assert metrics["risk_adjusted_ratios"]["calmar_ratio"] == _calmar_ratio(ann, max_dd)
+        pd.testing.assert_series_equal(drawdown, curve)
+        assert set(metrics) == {"risk_adjusted_ratios", "drawdown_analytics", "distribution_tail_stats", "win_loss_stats"}
+
+    def test_hand_computed_drawdown(self):
+        rets = pd.Series([0.1, -0.1] * 10, index=pd.bdate_range("2026-01-05", periods=20))
+        ann, metrics, drawdown = compute_return_metrics(rets, 0.0)
+        assert metrics["drawdown_analytics"]["max_drawdown"] == pytest.approx(0.99 ** 10 / 1.1 - 1, abs=1e-4)
+        assert drawdown.iloc[0] == 0.0
+
 
 class TestAssemblePerformanceReport:
     def test_not_enough_data_warns_and_leaves_metrics_none(self):

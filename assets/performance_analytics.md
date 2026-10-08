@@ -15,6 +15,7 @@ Key functions:
 | Function | Purpose |
 |----------|---------|
 | `assemble_performance_report(account_id)` | Public entrypoint — resolves the scope's holdings, fetches the return series, computes all metrics and chart data |
+| `compute_return_metrics(returns, rf)` | Public entrypoint for any supplied daily return series — returns the annualised return, the four metric groups and the dated drawdown series. `assemble_performance_report()` calls it, and the Strategy Backtester (`strategy_backtest_engine.py`) reuses it for each strategy's equity curve, so the Tearsheet and the Backtester always compute identical metrics |
 | `_sortino_ratio`, `_calmar_ratio`, `_omega_ratio`, `_profit_factor` | Risk-adjusted return ratios |
 | `_drawdown_stats` | Longest drawdown duration, time underwater, Ulcer Index — from the full dated drawdown series |
 | `_distribution_stats` | Best/worst day, best/worst month, tail ratio |

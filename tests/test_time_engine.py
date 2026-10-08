@@ -297,6 +297,47 @@ class TestIsExchangeHoliday:
                 assert is_exchange_holiday(None) is False
 
 
+class TestExchangeHadSession:
+    def test_ordinary_weekday_had_a_session(self):
+        assert time_engine.exchange_had_session("LSE", datetime(2026, 3, 4).date()) is True
+
+    def test_weekend_had_no_session(self):
+        assert time_engine.exchange_had_session("LSE", datetime(2026, 3, 7).date()) is False
+
+    def test_good_friday_is_a_lse_closure_but_not_a_weekday_rule(self):
+        assert time_engine.exchange_had_session("LSE", datetime(2025, 4, 18).date()) is False
+        assert time_engine.exchange_had_session("NYSE", datetime(2025, 4, 18).date()) is False
+
+    def test_exchanges_follow_their_own_holidays(self):
+        assert time_engine.exchange_had_session("LSE", datetime(2025, 7, 4).date()) is True
+        assert time_engine.exchange_had_session("NYSE", datetime(2025, 7, 4).date()) is False
+
+    def test_unmapped_exchange_falls_back_to_monday_to_friday(self):
+        try:
+            assert time_engine.exchange_had_session("BOGUS_EXCHANGE", datetime(2026, 3, 4).date()) is True
+            assert time_engine.exchange_had_session("BOGUS_EXCHANGE", datetime(2026, 3, 7).date()) is False
+        finally:
+            time_engine._calendar_cache.pop("BOGUS_EXCHANGE", None)
+            time_engine._uncovered_calendar_warned.discard("BOGUS_EXCHANGE")
+
+
+class TestSessionCloseUtc:
+    def test_regular_nyse_close_follows_daylight_saving(self):
+        assert time_engine.session_close_utc("NYSE", datetime(2026, 1, 6).date()) == datetime(2026, 1, 6, 21, 0, tzinfo=timezone.utc)
+        assert time_engine.session_close_utc("NYSE", datetime(2026, 7, 7).date()) == datetime(2026, 7, 7, 20, 0, tzinfo=timezone.utc)
+
+    def test_early_close_is_honoured(self):
+        assert time_engine.session_close_utc("NYSE", datetime(2025, 11, 28).date()) == datetime(2025, 11, 28, 18, 0, tzinfo=timezone.utc)
+
+    def test_lse_close_is_utc_aware(self):
+        close = time_engine.session_close_utc("LSE", datetime(2026, 7, 7).date())
+        assert close.tzinfo is not None and close == datetime(2026, 7, 7, 15, 30, tzinfo=timezone.utc)
+
+    def test_non_session_date_falls_back_to_static_hours(self):
+        saturday = time_engine.session_close_utc("NYSE", datetime(2026, 1, 3).date())
+        assert saturday == datetime(2026, 1, 3, 21, 0, tzinfo=timezone.utc)
+
+
 class TestIsMarketOpenHolidayVeto:
     def test_holiday_overrides_otherwise_open_hours(self):
         # 15:00 UTC on 2026-01-01 (Thursday) = 10:00 EST, mid NYSE session hours were it a

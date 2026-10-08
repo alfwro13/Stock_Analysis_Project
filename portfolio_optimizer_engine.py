@@ -302,6 +302,29 @@ def _long_only_frontier(
     return points
 
 
+def cap_is_infeasible(n: int, cap: float, budget: float) -> bool:
+    return n * cap < budget - SOLVER_TOL
+
+
+def long_only_allocations(mu: np.ndarray, cov: np.ndarray, rf: float, cap: float, budget: float) -> Dict:
+    """Min-Variance and Max-Sharpe long-only weights (None where unavailable) with their warnings; shared by the Portfolio Optimizer and the Strategy Backtester."""
+    warnings: List[str] = []
+    if np.linalg.cond(cov) > 1e10:
+        warnings.append(
+            "Covariance matrix is singular or near-singular (e.g. duplicate, highly correlated "
+            "or flat-priced tickers) — several different mixes can be almost equally good, so "
+            "treat individual weights loosely."
+        )
+    w_mv = _long_only_min_variance(cov, cap, budget)
+    if w_mv is None:
+        warnings.append("The Steadiest Mix solver did not converge for this candidate set.")
+        return {"w_mv": None, "w_ms": None, "warnings": warnings}
+    w_ms, ms_warning = _long_only_max_sharpe(mu, cov, rf, cap, budget)
+    if ms_warning:
+        warnings.append(ms_warning)
+    return {"w_mv": w_mv, "w_ms": w_ms, "warnings": warnings}
+
+
 def _pct(fraction: float) -> str:
     return f"{fraction * 100:g}%"
 
@@ -396,7 +419,7 @@ def optimize_portfolio(
             "unstable. Consider selecting fewer candidates."
         )
 
-    if long_only and n * max_weight < budget - SOLVER_TOL:
+    if long_only and cap_is_infeasible(n, max_weight, budget):
         data_warnings.append(_cap_infeasible_warning(n, max_weight, cash_reserve))
         return _no_result(data_warnings, estimation_window)
 
@@ -405,19 +428,11 @@ def optimize_portfolio(
     rf = float(load_config().get("RISK_FREE_RATE", 0.045))
 
     if long_only:
-        if np.linalg.cond(cov) > 1e10:
-            data_warnings.append(
-                "Covariance matrix is singular or near-singular (e.g. duplicate, highly correlated "
-                "or flat-priced tickers) — several different mixes can be almost equally good, so "
-                "treat individual weights loosely."
-            )
-        w_mv = _long_only_min_variance(cov, max_weight, budget)
+        solved = long_only_allocations(mu, cov, rf, max_weight, budget)
+        data_warnings.extend(solved["warnings"])
+        w_mv, w_ms = solved["w_mv"], solved["w_ms"]
         if w_mv is None:
-            data_warnings.append("The Steadiest Mix solver did not converge for this candidate set.")
             return _no_result(data_warnings, estimation_window)
-        w_ms, ms_warning = _long_only_max_sharpe(mu, cov, rf, max_weight, budget)
-        if ms_warning:
-            data_warnings.append(ms_warning)
     else:
         result = _closed_form_weights(mu, cov, rf)
         data_warnings.extend(result["warnings"])

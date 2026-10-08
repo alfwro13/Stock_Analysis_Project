@@ -306,6 +306,23 @@ def is_exchange_holiday(exchange: Optional[str] = None) -> bool:
     return not calendar.is_session(pd.Timestamp(local_date))
 
 
+def exchange_had_session(exchange: str, session_date) -> bool:
+    """True if *exchange* held a trading session on the local date *session_date* (any past date); unmapped exchanges fall back to Mon–Fri."""
+    calendar = _get_exchange_calendar(exchange)
+    if calendar is None:
+        return session_date.weekday() < 5
+    return bool(calendar.is_session(pd.Timestamp(session_date)))
+
+
+def session_close_utc(exchange: str, session_date) -> datetime:
+    """Tz-aware UTC close of *exchange*'s session on *session_date*, honouring early closes; static hours when the calendar has no such session."""
+    override = _session_window_override(exchange, session_date)
+    if override is not None:
+        return override[1].to_pydatetime()
+    info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[_FALLBACK_EXCHANGE])
+    return localize_naive_to_utc(datetime.combine(session_date, _parse_hm(info["close"])), exchange)
+
+
 def is_market_open(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
