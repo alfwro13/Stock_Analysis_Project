@@ -96,6 +96,16 @@ Only scored rows contribute a value; a ticker that is unavailable (not an equity
 than 5 comparable peers, ...) shows `N/A`, and the report at `/sector-relative-momentum` states the
 reason. See `assets/sector_relative_momentum.md`.
 
+### Stable Shortlist columns
+
+Four columns in the `Stable Shortlist` category, on both pages: `ml_shortlist_member` /
+`quant_shortlist_member` (`fmt: "bool01"`, Yes/No) and `ml_shortlist_rank` / `quant_shortlist_rank`
+(`fmt: "int"`, 1 = best). Values come from `stable_shortlist_engine.get_column_values()`, one
+batched read of each list's latest snapshot, merged into each row dict by `page_routes.portfolio_page()`
+and `watchlist_page()` before `build_optional_column_cells()`. Rank is the candidate's rank at the
+latest snapshot even when it was not selected; a ticker the snapshot did not track (or no snapshot
+yet) shows `N/A`. See `assets/stable_shortlist.md`.
+
 ## Views — `DEFAULT_PORTFOLIO_VIEWS` / `DEFAULT_WATCHLIST_VIEWS` + `resolve_views()`
 
 A view is `{"name": str, "columns": [key, ...], "column_order": [key, ...]}`. `columns` lists the keys

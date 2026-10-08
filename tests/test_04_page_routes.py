@@ -1353,6 +1353,8 @@ def test_no_page_route_returns_500(client):
         ("/yahoo-api-usage",    "Yahoo Finance API Usage"),
         ("/pairs-spread",       "Pairs Spread Monitor"),
         ("/sector-relative-momentum", "Sector-Relative Momentum"),
+        ("/predicted-movers",   "Predicted Movers"),
+        ("/predicted-movers/accuracy", "Predicted Movers Accuracy"),
         ("/reports",            "Reports"),
         ("/pattern-detection",  "Pattern Detection"),
         ("/pattern-detection/NOTAREALTICKER", "Pattern Detection Detail"),
@@ -1446,6 +1448,28 @@ def test_sector_relative_momentum_page_loads(client):
     _assert_page_ok(client, "/sector-relative-momentum", label="Sector-Relative Momentum")
     resp = client.get("/sector-relative-momentum")
     assert b'href="/reports"' in resp.content
+
+
+@pytest.mark.pages
+def test_predicted_movers_page_has_leaderboard_and_both_shortlist_tabs(client):
+    """GET /predicted-movers must offer the live leaderboard plus the two Stable Shortlist tabs with a Portfolio/Watchlist split."""
+    resp = client.get("/predicted-movers")
+    assert resp.status_code == 200
+    for fragment in (b"Live Leaderboard", b"ML Upside Shortlist", b"Quant Score Shortlist",
+                     b'id="pm-scope-portfolio"', b'id="pm-scope-watchlist"', b'id="pm-scope-universe"',
+                     b'id="sl-ml-scope-watchlist"', b'id="sl-quant-scope-portfolio"',
+                     b"/static/js/stable_shortlist.js"):
+        assert fragment in resp.content, f"Missing {fragment!r}"
+    assert b'id="pm-scope-pw"' not in resp.content
+
+
+@pytest.mark.pages
+def test_predicted_movers_accuracy_page_has_scope_toggle(client):
+    """GET /predicted-movers/accuracy must offer the Portfolio/Watchlist split."""
+    resp = client.get("/predicted-movers/accuracy")
+    assert resp.status_code == 200
+    assert b'id="pma-scope-portfolio"' in resp.content
+    assert b'id="pma-scope-watchlist"' in resp.content
 
 
 # ── Sovereign Debt Auction Monitor ────────────────────────────────────────────

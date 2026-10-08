@@ -1253,9 +1253,54 @@ def init_db() -> None:
                 actual_date          TEXT,
                 direction_correct    INTEGER,
                 within_band_correct  INTEGER,
+                scope                TEXT,
                 UNIQUE(ticker, predicted_date)
             )
         ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS stable_shortlist_snapshots (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                signal_type      TEXT NOT NULL,
+                scope            TEXT NOT NULL,
+                cycle_key        TEXT NOT NULL,
+                decision_ts      TEXT NOT NULL,
+                config_json      TEXT NOT NULL,
+                signal_version   TEXT,
+                signal_as_of     TEXT,
+                candidate_count  INTEGER NOT NULL,
+                member_count     INTEGER NOT NULL,
+                UNIQUE(signal_type, scope, cycle_key)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS stable_shortlist_members (
+                snapshot_id        INTEGER NOT NULL,
+                ticker             TEXT NOT NULL,
+                sector             TEXT,
+                signal_date        TEXT,
+                signal_value       REAL,
+                reference_close    REAL,
+                price_q10          REAL,
+                price_q90          REAL,
+                rank               INTEGER,
+                prev_rank          INTEGER,
+                eligible           INTEGER NOT NULL,
+                ineligible_reason  TEXT,
+                selected           INTEGER NOT NULL,
+                reason             TEXT NOT NULL,
+                cycles_held        INTEGER NOT NULL DEFAULT 0,
+                target_date        TEXT,
+                actual_price       REAL,
+                actual_date        TEXT,
+                forward_return_pct REAL,
+                direction_correct  INTEGER,
+                within_band_correct INTEGER,
+                PRIMARY KEY (snapshot_id, ticker)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_stable_shortlist_members_ticker ON stable_shortlist_members(ticker)')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS price_hmm_states (
@@ -1593,6 +1638,27 @@ def init_db() -> None:
 
     except Exception as e:
         logger.error("Failed to initialize database schema: %s", e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _tag_predicted_movers_history_scope() -> None:
+    """One-time tagging of pre-existing history rows by current membership; rows of tickers no longer in either list stay untagged."""
+    from db_helpers import get_portfolio_tickers, get_watchlist_only_tickers
+    conn = None
+    try:
+        conn = get_connection()
+        for scope, tickers in (("portfolio", get_portfolio_tickers()), ("watchlist", get_watchlist_only_tickers())):
+            for start in range(0, len(tickers), 500):
+                batch = tickers[start:start + 500]
+                conn.execute(
+                    f"UPDATE predicted_movers_history SET scope=? WHERE scope IS NULL AND ticker IN ({','.join('?' * len(batch))})",
+                    [scope, *batch],
+                )
+        conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to tag predicted_movers_history scope: %s", e)
     finally:
         if conn:
             conn.close()
@@ -2490,6 +2556,16 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE alert_referee_log ADD COLUMN direction TEXT")
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to add direction column to alert_referee_log: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(predicted_movers_history)")
+        if 'scope' not in {info['name'] for info in cursor.fetchall()}:
+            logger.info("[MIGRATION] Adding column: scope to predicted_movers_history...")
+            cursor.execute("ALTER TABLE predicted_movers_history ADD COLUMN scope TEXT")
+            conn.commit()
+            _tag_predicted_movers_history_scope()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add scope column to predicted_movers_history: %s", e)
 
     # One-time copy: head_shoulders_results/_history -> generic pattern_detection_results/_history,
     # folding Head & Shoulders in as the first pattern_family under the unified Pattern Detection

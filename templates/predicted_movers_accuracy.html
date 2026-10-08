@@ -5,7 +5,7 @@
 {% block content %}
 <h1 class="mb-1">&#127919; Predicted Movers Accuracy</h1>
 <p class="page-subtitle mb-4">
-    Per-ticker track record for Portfolio + Watchlist predictions, graded two ways once each
+    Per-ticker track record for the predictions logged for your Portfolio or your Watchlist, graded two ways once each
     prediction's ~10-trading-day target date has passed: whether the actual price moved the
     same direction as predicted, and whether it landed within the predicted
     <abbr title="10th/90th percentile price band from the quantile regression model.">quantile band</abbr>.
@@ -13,8 +13,14 @@
     "Pending" with no accuracy % for the first couple of weeks.
 </p>
 
-<div class="mb-3">
+<div class="mb-3 d-flex align-items-center gap-3 flex-wrap">
     <a href="/predicted-movers" class="btn btn-outline-secondary btn-sm">&#8592; Back to Predicted Movers</a>
+    <div class="btn-group" role="group" aria-label="Scope">
+        <input type="radio" class="btn-check" name="pma-scope" id="pma-scope-portfolio" value="portfolio" checked>
+        <label class="btn btn-outline-primary btn-sm" for="pma-scope-portfolio">Portfolio</label>
+        <input type="radio" class="btn-check" name="pma-scope" id="pma-scope-watchlist" value="watchlist">
+        <label class="btn btn-outline-primary btn-sm" for="pma-scope-watchlist">Watchlist</label>
+    </div>
 </div>
 
 <div class="row g-2 mb-3" id="pma-summary">

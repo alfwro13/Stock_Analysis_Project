@@ -409,6 +409,18 @@ class TestWorkflowManifest:
         assert node["produces"] == ["sector_relative_momentum_results"]
         assert display_name_for_config_key("SECTOR_RELATIVE_MOMENTUM") == "Sector-Relative Momentum"
 
+    def test_stable_shortlist_job_is_registered_with_canonical_label(self):
+        reload_scheduler()
+        job = _sched_module.scheduler.get_job("stable_shortlist_job")
+        assert job is not None
+        from config import load_config
+        configured_day = load_config()["SCHEDULING"]["STABLE_SHORTLIST"]["DAYS"][0]
+        assert f"day_of_week='{configured_day}'" in str(job.trigger)
+        node = next(n for n in build_workflow_graph()["nodes"] if n["id"] == "stable_shortlist_job")
+        assert node["label"] == "Stable Shortlist"
+        assert node["produces"] == ["stable_shortlist_snapshots"]
+        assert display_name_for_config_key("STABLE_SHORTLIST") == "Stable Shortlist"
+
     def test_dynamic_etf_job_resolves(self):
         assert _resolve_manifest("etf_predictor_7_pre_job") is not None
         assert _resolve_manifest("etf_predictor_12_post_job") is not None

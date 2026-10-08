@@ -4,13 +4,14 @@ Predicted Movers ranks tickers by ML-**predicted** forward price move — the mi
 10-trading-day-forward quantile regression price band (`price_q10`/`price_q90`) versus current
 price — as opposed to the Relative Strength Leaders report (`/relative-strength-leaders`), which
 ranks by *actual* historical movement. A second, linked page tracks how reliable those
-predictions have actually been.
+predictions have actually been. The page also hosts the two **Stable Shortlist** tabs (weekly,
+slow-moving lists — see `assets/stable_shortlist.md`).
 
-Page routes: `GET /predicted-movers` (leaderboard), `GET /predicted-movers/accuracy` (linked
-from the Reports hub, `/reports`, via the leaderboard page)
+Page routes: `GET /predicted-movers` (leaderboard + shortlist tabs), `GET /predicted-movers/accuracy`
+(linked from the Reports hub, `/reports`, via the leaderboard page)
 Engine: `predicted_movers_engine.py`
 Scheduler job: none dedicated — piggybacks on the existing `ml_inference_job`
-DB table: `predicted_movers_history`
+DB tables: `predicted_movers_history` (`stable_shortlist_snapshots` / `stable_shortlist_members` for the shortlists)
 
 ---
 
@@ -19,8 +20,9 @@ DB table: `predicted_movers_history`
 Unlike Pairs Spread Monitor, the leaderboard is a pure **on-demand live SELECT** — it reads
 already-computed `quant_signals.price_q10`/`price_q90` (written nightly by
 `ai_prediction_engine.score_quantile_predictions()`, called from `run_ml_inference()` /
-`ml_inference_job`), so there's no scan to trigger and no "Run Scan Now" button. Both scopes
-(Portfolio + Watchlist and Universe) are computed identically on every page load.
+`ml_inference_job`), so there's no scan to trigger and no "Run Scan Now" button. All three scopes
+(Portfolio, Watchlist and Universe) are computed identically on every page load. The only scheduled
+work tied to this page is the weekly Stable Shortlist job (`assets/stable_shortlist.md`).
 
 The accuracy-tracking writes — logging today's prediction and resolving past predictions whose
 horizon has elapsed — piggyback directly on `run_ml_inference()`, called right after
@@ -42,22 +44,30 @@ Represented in the Workflow Monitor: `ml_inference_job`'s `JOB_GRAPH` entry now 
 `predicted_movers_history`; the two pages' read surface is covered by the
 `predicted_movers_leaderboard_source` `non_job` entry (mirrors `monte_carlo_source`).
 
-## 2. Scope: Portfolio + Watchlist vs Universe (leaderboard only)
+## 2. Scope: Portfolio, Watchlist and Universe
 
-The leaderboard page has a scope toggle, same UX as Pairs Spread Monitor:
+The leaderboard has a three-way scope toggle (the combined Portfolio + Watchlist list was split in
+October 2026; `portfolio_watchlist` is no longer a valid scope):
 
-- **Portfolio + Watchlist** — `db_helpers.get_portfolio_watchlist_tickers()`, a shared helper
-  extracted from Pairs Spread Monitor's own inline union logic (`accounts_engine.get_combined_holdings().keys()`
-  ∪ `database.get_watchlist_tickers()`, ignored-ticker-filtered). Both engines now call this one
-  function rather than each maintaining their own copy.
+- **Portfolio** — held tickers, `db_helpers.get_portfolio_tickers()`
+  (`accounts_engine.get_combined_holdings()`, ignored-ticker-filtered).
+- **Watchlist** — Watchlist tickers you do **not** hold, `db_helpers.get_watchlist_only_tickers()`.
+  A ticker that is both held and watched appears under Portfolio only, so each ticker is in exactly
+  one list. `get_portfolio_watchlist_tickers()` (the union) still exists for other features.
 - **Universe** — the full market universe via `db_helpers.get_universe_tickers()`.
 
-The **accuracy page has no scope toggle** — `predicted_movers_history` is only ever populated
-for Portfolio + Watchlist tickers (`log_predictions()` defaults to
-`get_portfolio_watchlist_tickers()`, never the full universe list already in scope inside
-`run_ml_inference()`). This is a deliberate asymmetry: tracking prediction accuracy for the
-entire ~4,000-ticker universe every day would be a large, mostly-unused write volume for data
-nobody is actually holding or watching.
+The **accuracy page** has a Portfolio / Watchlist toggle and no Universe option —
+`predicted_movers_history` is only ever populated for Portfolio and Watchlist tickers
+(`log_predictions()` never logs the full universe list already in scope inside `run_ml_inference()`).
+This is a deliberate asymmetry: tracking prediction accuracy for the entire ~4,000-ticker universe
+every day would be a large, mostly-unused write volume for data nobody is actually holding or
+watching.
+
+Each history row carries the `scope` its ticker belonged to **when the row was logged**
+(`portfolio` or `watchlist`), so a ticker later moved between lists keeps its earlier predictions in
+the list they were made for. Rows that pre-date the column were tagged once by current membership
+(`db_schema._tag_predicted_movers_history_scope()`); rows of tickers in neither list stay untagged and
+do not appear on the accuracy page.
 
 ## 3. Leaderboard ranking
 
@@ -90,6 +100,7 @@ Monitor's correlation matrix.
 | `price_q10` / `price_q90` | The predicted band, snapshotted at logging time |
 | `target_date` | ~10 *trading* days forward of `predicted_date` |
 | `actual_price` / `actual_date` | First `quant_signals` close on/after `target_date`, once resolved |
+| `scope` | `portfolio` or `watchlist` — the list the ticker belonged to when the row was logged |
 | `direction_correct` | `NULL` until resolved; `1`/`0` — did the actual price move the same direction as the predicted midpoint? |
 | `within_band_correct` | `NULL` until resolved; `1`/`0` — did the actual price land within `[price_q10, price_q90]`? |
 
@@ -101,7 +112,8 @@ which self-corrects for the few-day slack a missed holiday introduces (it just f
 available close after the target, whatever day that turns out to be).
 
 **Logging** (`log_predictions()`) — `INSERT OR IGNORE` on `UNIQUE(ticker, predicted_date)`, so a
-same-day rerun of `ml_inference_job` is a safe no-op.
+same-day rerun of `ml_inference_job` is a safe no-op. Each row is tagged with its `scope`
+(`portfolio` or `watchlist`).
 
 **Resolving** (`backfill_actual_outcomes()`) — every run, scans the *entire* unresolved set
 (`WHERE direction_correct IS NULL AND target_date <= today`), not just the newest rows, per

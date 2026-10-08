@@ -4211,19 +4211,19 @@ Recomputes aligned price history for both tickers from parquet on demand — not
 
 ## 27. Predicted Movers
 
-Leaderboard ranking tickers by ML-predicted 10-trading-day forward price move (quantile regression band midpoint vs current price), plus a linked prediction-accuracy scorecard for Portfolio + Watchlist tickers. See `assets/predicted_movers.md` for the full algorithm, scope, and scoring-timeline reference.
+Leaderboard ranking tickers by ML-predicted 10-trading-day forward price move (quantile regression band midpoint vs current price), a linked prediction-accuracy scorecard for Portfolio and Watchlist tickers, and the Stable Shortlist tabs. Portfolio and Watchlist are separate lists: a ticker that is both held and watched belongs to Portfolio only. See `assets/predicted_movers.md` for the leaderboard, scope and scoring-timeline reference and `assets/stable_shortlist.md` for the shortlists.
 
 ### `GET /predicted-movers`
 
-HTML page. Leaderboard table for the selected scope, with a Portfolio+Watchlist/Universe scope toggle and a Gainers/Losers/Movers sort toggle. No scan trigger — this is a live query recomputed on every load.
+HTML page with three tabs. **Live Leaderboard**: table for the selected scope with a Portfolio/Watchlist/Universe scope toggle and a Gainers/Losers/Movers sort toggle — a live query recomputed on every load, no scan trigger. **ML Upside Shortlist** and **Quant Score Shortlist**: the latest weekly Stable Shortlist snapshot with a Portfolio/Watchlist toggle, the changes at that snapshot, the other candidates and the forward-only track record.
 
 ### `GET /predicted-movers/accuracy`
 
-HTML page. Per-ticker prediction accuracy scorecard for Portfolio + Watchlist tickers only (no scope toggle) — total/resolved/pending counts, direction-match %, within-band-match %.
+HTML page. Per-ticker prediction accuracy scorecard with a Portfolio/Watchlist toggle (no Universe option) — total/resolved/pending counts, direction-match %, within-band-match %.
 
 ### `GET /api/predicted-movers/leaderboard`
 
-Query params: `scope` (`portfolio_watchlist` default, or `universe`), `sort` (`movers` default, or `gainers`/`losers`), `limit` (default `200`, max `1000`). Returns tickers ranked by predicted % move for `scope`, ordered per `sort`.
+Query params: `scope` (`portfolio` default, `watchlist` or `universe`; the former `portfolio_watchlist` value is no longer accepted and returns 422), `sort` (`movers` default, or `gainers`/`losers`), `limit` (default `200`, max `1000`). Returns tickers ranked by predicted % move for `scope`, ordered per `sort`.
 
 **Response**
 
@@ -4244,7 +4244,7 @@ Query params: `scope` (`portfolio_watchlist` default, or `universe`), `sort` (`m
 
 ### `GET /api/predicted-movers/accuracy`
 
-Returns per-ticker + overall direction-match and within-band-match hit rates for logged Portfolio + Watchlist predictions. `resolved`/`pending` reflect whether each prediction's ~10-trading-day target date has passed; accuracy percentages are computed over resolved rows only.
+Query param: `scope` (`portfolio` default, or `watchlist`; anything else returns 422). Returns per-ticker + overall direction-match and within-band-match hit rates for the predictions logged under that list (each prediction keeps the list its ticker belonged to when it was logged). `resolved`/`pending` reflect whether each prediction's ~10-trading-day target date has passed; accuracy percentages are computed over resolved rows only.
 
 **Response**
 
@@ -4264,6 +4264,36 @@ Returns per-ticker + overall direction-match and within-band-match hit rates for
   }
 }
 ```
+
+### `GET /api/predicted-movers/shortlist`
+
+Query params: `signal` (`ml_upside` default, or `quant_score`), `scope` (`portfolio` default, or `watchlist`; anything else returns 422). Returns the latest Stable Shortlist snapshot for that signal and list, read from `stable_shortlist_snapshots` / `stable_shortlist_members`. Before the first snapshot, `snapshot` is `null` and the lists are empty.
+
+- `snapshot` — `id`, `cycle_key` (ISO week, e.g. `2026-W41`), `decision_ts` (UTC) and `decision_local`, `config` (the settings used), `signal_version`, `signal_as_of`, `candidate_count`, `member_count`.
+- `members` — selected rows ordered by `rank`: `ticker`, `company_name`, `sector`, `signal_date`, `signal_value` (ML: signed predicted upside in %; Quant: composite score), `reference_close`, `price_q10`/`price_q90` (ML only), `rank`, `prev_rank`, `cycles_held`, `reason`/`reason_label`.
+- `changes` — rows that entered (`reason: entered`) or left (`reason: dropped_rank|dropped_ineligible|dropped_sector_cap`) at this snapshot.
+- `others` — every other tracked name with the reason it was not selected (`not_selected`, `blocked_sector_cap`, `ineligible` with `ineligible_reason`/`ineligible_label`).
+- `evaluation` — `snapshots` (per resolved snapshot: member and other counts, average 10-session returns, `excess_pct`) and `summary` (forward-only totals; `direction_accuracy`/`within_band_accuracy` for the ML list only).
+- `schedule` — `enabled`, `days`, `time` of the weekly job.
+
+```json
+{
+  "status": "success", "signal_type": "ml_upside", "scope": "portfolio", "label": "ML Upside Shortlist",
+  "snapshot": {"id": 7, "cycle_key": "2026-W41", "decision_ts": "2026-10-09 19:30:00", "decision_local": "2026-10-09 20:30 BST",
+               "config": {"TOPK": 10, "N_DROP": 2, "HOLD_THRESH": 2, "SECTOR_CAP": 2, "MAX_SIGNAL_AGE_DAYS": 4, "MIN_QUANT_SCORE": 50},
+               "signal_version": "quantile models saved 2026-10-04 04:12:09", "signal_as_of": "2026-10-08",
+               "candidate_count": 18, "member_count": 9},
+  "members": [{"ticker": "AAPL", "company_name": "Apple Inc.", "sector": "Technology", "signal_value": 4.1, "reference_close": 227.5,
+               "price_q10": 221.0, "price_q90": 245.0, "rank": 1, "prev_rank": 2, "cycles_held": 3, "reason": "retained"}],
+  "changes": [], "others": [],
+  "evaluation": {"snapshots": [], "summary": {"snapshots_evaluated": 0, "snapshots_pending": 1}},
+  "schedule": {"enabled": true, "days": ["fri"], "time": "19:30"}
+}
+```
+
+### `POST /api/predicted-movers/shortlist/run`
+
+Triggers the Stable Shortlist job in the background: it resolves any finished outcomes, then takes this ISO week's snapshot for each of the four lists (ML Upside and Quant Score, Portfolio and Watchlist). A list that already has a snapshot for the current week, has no tickers, or has no signal newer than the Signal Max Age is skipped and reported in the job's notification. Rate limit 4/minute. Returns `{"status": "success", "message": "Stable Shortlist run triggered."}` immediately.
 
 ---
 

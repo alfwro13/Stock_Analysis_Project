@@ -363,6 +363,8 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
     )
     from sector_relative_momentum_engine import get_column_values as get_sector_momentum_values
     sector_momentum_by_ticker = get_sector_momentum_values(sorted(portfolio_tickers))
+    from stable_shortlist_reads import get_column_values as get_shortlist_values
+    shortlist_by_ticker = get_shortlist_values(sorted(portfolio_tickers))
 
     for row in db_rows:
         row_dict = dict(row)
@@ -500,6 +502,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
         row_dict['high_target'] = next(iter(highs)) if len(highs) == 1 else None
 
         row_dict.update(sector_momentum_by_ticker.get(row_dict['ticker'], {}))
+        row_dict.update(shortlist_by_ticker.get(row_dict['ticker'], {}))
         row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "portfolio")
 
     if missing_fx:
@@ -830,6 +833,8 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
     )
     from sector_relative_momentum_engine import get_column_values as get_sector_momentum_values
     sector_momentum_by_ticker = get_sector_momentum_values(sorted(watchlist_tickers))
+    from stable_shortlist_reads import get_column_values as get_shortlist_values
+    shortlist_by_ticker = get_shortlist_values(sorted(watchlist_tickers))
 
     for row in db_rows:
         row_dict = dict(row)
@@ -853,6 +858,7 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
             row_dict['high_target'] = limits.get('high_limit')
 
             row_dict.update(sector_momentum_by_ticker.get(row_dict['ticker'], {}))
+            row_dict.update(shortlist_by_ticker.get(row_dict['ticker'], {}))
             row_dict['optional_cols'] = table_columns_helpers.build_optional_column_cells(row_dict, "watchlist")
 
             cp = cached_pulse.get(row_dict['ticker'])

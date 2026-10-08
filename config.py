@@ -281,6 +281,17 @@ DEFAULT_CONFIG = {
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],
             "TIME": "19:20"
         },
+        "STABLE_SHORTLIST": {
+            "ENABLED": True,
+            "DAYS": ["fri"],
+            "TIME": "19:30",
+            "TOPK": 10,
+            "N_DROP": 2,
+            "HOLD_THRESH": 2,
+            "SECTOR_CAP": 2,
+            "MAX_SIGNAL_AGE_DAYS": 4,
+            "MIN_QUANT_SCORE": 50
+        },
         "ALERT_REFEREE_TRAINING": {
             "ENABLED": False,
             "DAYS": ["sun"],

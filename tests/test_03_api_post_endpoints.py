@@ -198,6 +198,31 @@ def test_post_settings_with_risk_orchestrator(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_with_stable_shortlist_round_trips(client, confirm_token):
+    """POST /api/settings with SCHEDULING.STABLE_SHORTLIST must persist every field and reload the scheduler."""
+    import config as _config
+    block = {"ENABLED": True, "DAYS": ["thu"], "TIME": "20:15", "TOPK": 8, "N_DROP": 3, "HOLD_THRESH": 1,
+             "SECTOR_CAP": 3, "MAX_SIGNAL_AGE_DAYS": 5, "MIN_QUANT_SCORE": 60}
+    resp = client.post("/api/settings", json={"SCHEDULING": {"STABLE_SHORTLIST": block}},
+                       headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    saved = _config.load_config()["SCHEDULING"]["STABLE_SHORTLIST"]
+    assert {k: saved[k] for k in block} == block
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("field,value", [
+    ("TOPK", 0), ("TOPK", 51), ("N_DROP", -1), ("HOLD_THRESH", 13), ("SECTOR_CAP", 0),
+    ("MAX_SIGNAL_AGE_DAYS", 0), ("MIN_QUANT_SCORE", 101),
+])
+def test_post_settings_rejects_out_of_range_stable_shortlist_values(client, confirm_token, field, value):
+    """The Stable Shortlist turnover settings are bounded at the settings boundary."""
+    resp = client.post("/api/settings", json={"SCHEDULING": {"STABLE_SHORTLIST": {field: value}}},
+                       headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 422, f"{field}={value} → {resp.status_code}"
+
+
+@pytest.mark.api
 def test_post_settings_with_alert_referee_training_confluence(client, confirm_token):
     """POST /api/settings with SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE (the Cross-Engine
     Alert Referee's own schedule/mode/threshold block) must persist and round-trip via
@@ -806,6 +831,18 @@ def test_sector_relative_momentum_run_returns_success(client):
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     assert resp.json().get("status") == "success"
     assert add_task.call_args.args[1] == "sector_relative_momentum_job"
+
+
+# ── Stable Shortlist ──────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_stable_shortlist_run_returns_success(client):
+    """POST /api/predicted-movers/shortlist/run must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None) as add_task:
+        resp = client.post("/api/predicted-movers/shortlist/run")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    assert resp.json().get("status") == "success"
+    assert add_task.call_args.args[1] == "stable_shortlist_job"
 
 
 # ── Forensic Screener ──────────────────────────────────────────────────────────

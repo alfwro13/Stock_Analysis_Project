@@ -19,7 +19,8 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Signal Pillar Confluence** — flags a ticker when Technical, Statistical, and ML signals independently agree.
 * **Regime-Weighted Conviction Score** — a composite 0–100 score reweighted by the current market regime.
 * **Buy Recommendation** — bullish Pillar Confluence gated by a minimum reward:risk ratio from ATR-based stop math.
-* **Predicted Movers** — leaderboard ranked by ML-predicted forward move, with a tracked prediction-accuracy page.
+* **Predicted Movers** — leaderboard ranked by ML-predicted forward move for your Portfolio, Watchlist or the wider universe, with a tracked prediction-accuracy page.
+* **Stable Shortlist** — two slow-moving weekly shortlists (ML Upside and Quant Score) for your Portfolio and Watchlist, with limited swaps, a minimum hold, a sector cap, optional Settings presets, optional Portfolio/Watchlist columns and a forward-only track record.
 * **Score History & Forward Returns** — tracks 3/6/12-month forward returns per historical signal bucket.
 * **Earnings Volatility** — signed post-earnings drift stats plus implied-vs-historical move edge scoring.
 

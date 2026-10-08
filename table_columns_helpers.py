@@ -133,6 +133,12 @@ OPTIONAL_COLUMNS = [
     {"key": "sector_rel_mom_126", "label": "Sector-Relative Momentum (126 Sessions, pp)", "category": "Sector-Relative Momentum", "pages": _BOTH, "fmt": "ratio2"},
     {"key": "sector_rel_rank_126", "label": "Sector Momentum Rank (126 Sessions)", "category": "Sector-Relative Momentum", "pages": _BOTH, "fmt": "int"},
 
+    # Stable Shortlist — from the latest stable_shortlist_snapshots; empty until the weekly job has run for the ticker's list
+    {"key": "ml_shortlist_member", "label": "ML Upside Shortlist Member", "category": "Stable Shortlist", "pages": _BOTH, "fmt": "bool01"},
+    {"key": "ml_shortlist_rank", "label": "ML Upside Shortlist Rank", "category": "Stable Shortlist", "pages": _BOTH, "fmt": "int"},
+    {"key": "quant_shortlist_member", "label": "Quant Score Shortlist Member", "category": "Stable Shortlist", "pages": _BOTH, "fmt": "bool01"},
+    {"key": "quant_shortlist_rank", "label": "Quant Score Shortlist Rank", "category": "Stable Shortlist", "pages": _BOTH, "fmt": "int"},
+
     # Portfolio parity gaps (Watchlist already shows these as core columns)
     {"key": "target_price", "label": "Target Price", "category": "Targets", "pages": ("portfolio",), "fmt": "price"},
     {"key": "piotroski_f_score", "label": "Piotroski F-Score", "category": "Scores", "pages": ("portfolio",), "fmt": "int"},

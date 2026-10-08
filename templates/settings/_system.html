@@ -1003,6 +1003,80 @@
                 <div id="sector-relative-momentum-msg" class="mt-10"></div>
             </div>
 
+            <div class="settings-panel border-left-cyan" id="stable-shortlist-card">
+                <h4 class="settings-panel-header text-cyan">&#128203; Stable Shortlist</h4>
+                <p class="settings-desc">
+                    Once a week, turns the nightly ML Upside and Quant Score rankings into two slow-moving shortlists, one for your Portfolio
+                    and one for your Watchlist. Only a few names are swapped per snapshot, so the lists change far less than the live
+                    leaderboard. It reads the ML predictions and quant scores that are already stored, so set the time after the
+                    Quantamental Analysis Engine has finished. Results appear on the
+                    <a href="/predicted-movers" class="text-cyan">Predicted Movers</a> page and in the optional Portfolio and Watchlist columns.
+                </p>
+
+                {% set sl_sched = config.SCHEDULING.STABLE_SHORTLIST if config.SCHEDULING.STABLE_SHORTLIST else {} %}
+                {% set sl_day = (sl_sched.DAYS[0] if sl_sched.DAYS else 'fri') %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="STABLE_SHORTLIST_ENABLED" {% if sl_sched.ENABLED %}checked{% endif %}>
+                    <label for="STABLE_SHORTLIST_ENABLED">Enable weekly snapshot</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Snapshot Day</label>
+                        <select id="STABLE_SHORTLIST_DAY" class="form-select">
+                            {% for d, label in [('mon','Monday'),('tue','Tuesday'),('wed','Wednesday'),('thu','Thursday'),('fri','Friday')] %}
+                            <option value="{{ d }}" {% if sl_day == d %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Run Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <input type="time" id="STABLE_SHORTLIST_TIME" class="form-control" value="{{ sl_sched.TIME | default('19:30') }}">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Fills the five turnover settings below. Editing any of them switches this back to Custom.">Preset</abbr></label>
+                        <select id="STABLE_SHORTLIST_PRESET" class="form-select">
+                            <option value="calm">Calm</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="active">Active</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The most names each shortlist holds. It can be shorter when fewer names qualify.">List Size</abbr></label>
+                        <input type="number" id="STABLE_SHORTLIST_TOPK" class="form-control sl-param" value="{{ sl_sched.TOPK | default(10) }}" min="1" max="50">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="The most members that can be swapped for better-ranked names at each snapshot.">Max Swaps per Snapshot</abbr></label>
+                        <input type="number" id="STABLE_SHORTLIST_N_DROP" class="form-control sl-param" value="{{ sl_sched.N_DROP | default(2) }}" min="0" max="50">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="A name must stay on the list for this many snapshots before it can be swapped out.">Minimum Hold (snapshots)</abbr></label>
+                        <input type="number" id="STABLE_SHORTLIST_HOLD_THRESH" class="form-control sl-param" value="{{ sl_sched.HOLD_THRESH | default(2) }}" min="0" max="12">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="The most names from one sector allowed on a shortlist. Names with no sector share one Unknown group.">Sector Cap</abbr></label>
+                        <input type="number" id="STABLE_SHORTLIST_SECTOR_CAP" class="form-control sl-param" value="{{ sl_sched.SECTOR_CAP | default(2) }}" min="1" max="50">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="A signal older than this many calendar days at snapshot time is treated as stale and cannot qualify.">Signal Max Age (days)</abbr></label>
+                        <input type="number" id="STABLE_SHORTLIST_MAX_SIGNAL_AGE_DAYS" class="form-control" value="{{ sl_sched.MAX_SIGNAL_AGE_DAYS | default(4) }}" min="1" max="30">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="The Quant Score Shortlist only considers names with at least this composite score (0-100).">Min Quant Score</abbr></label>
+                        <input type="number" id="STABLE_SHORTLIST_MIN_QUANT_SCORE" class="form-control" value="{{ sl_sched.MIN_QUANT_SCORE | default(50) }}" min="0" max="100">
+                    </div>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerStableShortlistRun()">&#9654; Run Now</button>
+                </div>
+                <div id="stable-shortlist-msg" class="mt-10"></div>
+            </div>
+
             <div class="settings-panel border-left-cyan" id="pattern-detection-card">
                 <h4 class="settings-panel-header text-cyan">&#128200; Pattern Detection</h4>
                 <p class="settings-desc">

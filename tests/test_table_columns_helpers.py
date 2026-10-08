@@ -232,6 +232,31 @@ def test_sector_relative_momentum_cells_render_value_and_unavailable():
     assert unscored["sector_rel_rank_126"]["display"] == "N/A"
 
 
+# ── Stable Shortlist ─────────────────────────────────────────────────────────
+
+@pytest.mark.config
+@pytest.mark.parametrize("prefix", ["ml_shortlist", "quant_shortlist"])
+def test_stable_shortlist_columns_on_both_pages(prefix):
+    by_key = {c["key"]: c for c in tch.OPTIONAL_COLUMNS}
+    assert by_key[f"{prefix}_member"]["pages"] == tch._BOTH
+    assert by_key[f"{prefix}_rank"]["pages"] == tch._BOTH
+    assert by_key[f"{prefix}_member"]["fmt"] == "bool01"
+    assert by_key[f"{prefix}_rank"]["fmt"] == "int"
+
+
+@pytest.mark.config
+def test_stable_shortlist_cells_render_member_rank_and_unlisted():
+    member = {c["key"]: c for c in tch.build_optional_column_cells(
+        {"ml_shortlist_member": 1, "ml_shortlist_rank": 2, "quant_shortlist_member": 0, "quant_shortlist_rank": 8}, "portfolio")}
+    assert member["ml_shortlist_member"]["display"] == "Yes"
+    assert member["ml_shortlist_rank"]["display"] == "2"
+    assert member["quant_shortlist_member"]["display"] == "No"
+    assert member["quant_shortlist_rank"]["display"] == "8"
+    unlisted = {c["key"]: c for c in tch.build_optional_column_cells({}, "watchlist")}
+    assert unlisted["ml_shortlist_member"]["display"] == "N/A"
+    assert unlisted["quant_shortlist_rank"]["display"] == "N/A"
+
+
 # ── Views ────────────────────────────────────────────────────────────────────
 
 @pytest.mark.config
