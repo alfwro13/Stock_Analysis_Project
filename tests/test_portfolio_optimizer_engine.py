@@ -34,6 +34,8 @@ from portfolio_optimizer_engine import (
     _long_only_frontier,
     _long_only_max_sharpe,
     _long_only_min_variance,
+    cap_is_infeasible,
+    long_only_allocations,
     _max_return_weights,
     _returns_matrix_for_candidates,
     _validated_solution,
@@ -486,6 +488,32 @@ def _run(aid, **kwargs):
     with patch("xray_engine.load_config", return_value=_builtin_config()), \
          patch("portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
         return optimize_portfolio(f"acct:{aid}", **kwargs)
+
+
+class TestSharedLongOnlyEntryPoint:
+    def test_returns_both_mixes_within_the_rules(self):
+        mu, cov = _random_problem(4)
+        out = long_only_allocations(mu, cov, 0.02, 0.5, 0.9)
+        for w in (out["w_mv"], out["w_ms"]):
+            _assert_feasible(w, 0.5, 0.9)
+        assert out["w_mv"] == pytest.approx(_long_only_min_variance(cov, 0.5, 0.9), abs=1e-8)
+
+    def test_max_sharpe_unavailable_is_reported_but_min_variance_still_returned(self):
+        mu = np.array([0.01, 0.02])
+        cov = np.array([[0.04, 0.0], [0.0, 0.09]])
+        out = long_only_allocations(mu, cov, 0.5, 1.0, 1.0)
+        assert out["w_mv"] is not None and out["w_ms"] is None
+        assert any("risk-free" in w for w in out["warnings"])
+
+    def test_singular_covariance_warns(self):
+        cov = np.array([[1.0, 1.0], [1.0, 1.0]])
+        out = long_only_allocations(np.array([0.1, 0.1]), cov, 0.0, 1.0, 1.0)
+        assert any("near-singular" in w for w in out["warnings"])
+
+    def test_cap_feasibility_boundary(self):
+        assert cap_is_infeasible(4, 0.2, 1.0) is True
+        assert cap_is_infeasible(5, 0.2, 1.0) is False
+        assert cap_is_infeasible(5, 0.2, 0.9) is False
 
 
 class TestOptimizePortfolioLongOnly:

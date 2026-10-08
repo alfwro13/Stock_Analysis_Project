@@ -614,6 +614,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .po-candidates-group-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 0 2px; border-bottom: 1px solid #2a2a2a; margin-bottom: 4px; }
 .po-candidates-group-label:first-child { padding-top: 0; }
 .po-candidates-count { font-size: 12px; color: #888; }
+.sb-scroll-box { max-height: 360px; overflow-y: auto; }
 .text-accent-cyan { color: #00ffcc; }
 .text-accent-purple { color: #b366ff; }
 /* --- 19. Algorithmic Breakdown Lists & Risk Warnings --- */

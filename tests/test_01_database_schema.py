@@ -848,6 +848,19 @@ def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results
 
 
 @pytest.mark.db
+def test_strategy_backtest_runs_table_exists_with_expected_columns():
+    conn = _conn()
+    try:
+        cols = {r["name"]: r for r in conn.execute("PRAGMA table_info(strategy_backtest_runs)").fetchall()}
+        assert {"id", "state", "created_at", "finished_at", "config_json", "basket_json", "inputs_json",
+                "summary_json", "decisions_json", "error"} <= set(cols)
+        assert cols["id"]["pk"] == 1
+        assert cols["config_json"]["notnull"] == 1 and cols["basket_json"]["notnull"] == 1
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
 def test_stable_shortlist_tables_exist_with_unique_snapshot_identity():
     conn = _conn()
     try:

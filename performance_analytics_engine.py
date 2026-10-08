@@ -2,7 +2,7 @@
 # fill gaps versus xray_engine's existing Sharpe/VaR/CVaR/skew/kurtosis (never duplicated here).
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -181,6 +181,27 @@ def _histogram_chart_data(returns: pd.Series) -> Dict:
     }
 
 
+def compute_return_metrics(returns: pd.Series, rf: float) -> Tuple[float, Dict, pd.Series]:
+    """Annualised return, the Tearsheet metric groups and the dated drawdown series for any supplied daily return series."""
+    ann_return = annualized_return(returns)
+    max_dd, drawdown_series = native_max_drawdown(returns)
+    metrics = {
+        "risk_adjusted_ratios": {
+            "sortino_ratio": _sortino_ratio(returns, ann_return, rf),
+            "calmar_ratio": _calmar_ratio(ann_return, max_dd),
+            "omega_ratio": _omega_ratio(returns, rf),
+            "profit_factor": _profit_factor(returns),
+        },
+        "drawdown_analytics": {
+            "max_drawdown": round(max_dd, 4),
+            **_drawdown_stats(drawdown_series),
+        },
+        "distribution_tail_stats": _distribution_stats(returns),
+        "win_loss_stats": {**_win_loss_stats(returns), **_max_consecutive(returns)},
+    }
+    return ann_return, metrics, drawdown_series
+
+
 def assemble_performance_report(account_id: str) -> Dict:
     """Native quantstats-parity performance report for a scope — pure computation, no DB
     writes, mirrors monte_carlo_engine.run_simulation()'s shape."""
@@ -205,23 +226,7 @@ def assemble_performance_report(account_id: str) -> Dict:
         }
 
     rf_rate = float(load_config().get("RISK_FREE_RATE", 0.045))
-    ann_return = annualized_return(port_rets)
-    max_dd, drawdown_series = native_max_drawdown(port_rets)
-
-    metrics = {
-        "risk_adjusted_ratios": {
-            "sortino_ratio": _sortino_ratio(port_rets, ann_return, rf_rate),
-            "calmar_ratio": _calmar_ratio(ann_return, max_dd),
-            "omega_ratio": _omega_ratio(port_rets, rf_rate),
-            "profit_factor": _profit_factor(port_rets),
-        },
-        "drawdown_analytics": {
-            "max_drawdown": round(max_dd, 4),
-            **_drawdown_stats(drawdown_series),
-        },
-        "distribution_tail_stats": _distribution_stats(port_rets),
-        "win_loss_stats": {**_win_loss_stats(port_rets), **_max_consecutive(port_rets)},
-    }
+    ann_return, metrics, drawdown_series = compute_return_metrics(port_rets, rf_rate)
 
     charts = {
         "underwater": _underwater_chart_data(drawdown_series),

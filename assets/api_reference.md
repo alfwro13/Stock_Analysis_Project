@@ -4666,4 +4666,105 @@ Triggers a ranking run in the background (the same work the scheduled `sector_re
 
 ---
 
+## 32. Strategy Backtester
+
+Replays allocation rules over cached daily prices with next-close execution, explicit cash, trading costs and weight drift. See `assets/strategy_backtester.md` for the rules and storage. All endpoints require a session; POST and DELETE are CSRF-protected like every other mutating route. Router: `api_routes_backtester.py`.
+
+### `GET /strategy-backtester`
+
+HTML page (Tools menu).
+
+### `GET /api/strategy-backtester/meta`
+
+Rate limit 30/minute. Returns the page's static options: `strategies` (`id`, `label`, `description`, `schedule`, `needs_current_weights`), `cadences`, `defaults` (cadence, lookback, initial capital, cost preset, cash rate, band, Weight Cap, Cash Reserve, history), `cost_presets` (`none` / `low` / `typical`, each with `commission_bps`, `spread_bps`, `slippage_bps`), `default_benchmarks` (`GBP` -> `SWDA.L`, `USD` -> `SPY`) and `limits` (`max_tickers` 40, `min_tickers` 2, `max_saved_runs` 20, `min_test_sessions` 30, `extended_period` `5y`).
+
+### `GET /api/strategy-backtester/accounts`
+
+Rate limit 10/minute. Same account-tile list and total as `GET /api/portfolio-optimizer/accounts` (shared `accounts_engine.list_scope_accounts_with_values()`).
+
+### `GET /api/strategy-backtester/candidates`
+
+Query param `account_id` (default `all`). Rate limit 10/minute. The Portfolio Optimizer's candidate list (held tickers with `current_weight`, then Watchlist-only tickers) plus, per candidate, `currency` (bucket: pence and pounds are `GBP`; `null` when unknown) and `history` (`standard` and `extended` coverage as `{start, end, sessions}`, `extended_usable`, and `state` of an extended download: `preparing` / `ready` / `failed` / null). `currencies` lists each bucket with its `held` and `watchlist` counts, most-held first. Reads caches only; never blocks on a download.
+
+### `GET /api/strategy-backtester/shortlists`
+
+Rate limit 10/minute. `baskets`: the latest snapshot of each Stable Shortlist that has one (`signal_type` `ml_upside` / `quant_score`, `scope` `portfolio` / `watchlist`, `label`, `snapshot_id`, `decision_ts`, `members` with `symbol`, `name`, `currency`, and `by_currency` mapping each currency bucket to its member tickers).
+
+### `GET /api/strategy-backtester/history-status`
+
+Query param `tickers` (comma-separated, at most 40 are read). Rate limit 30/minute. `tickers`: `{standard, extended, extended_usable, state}` per ticker, cache-only.
+
+### `POST /api/strategy-backtester/prepare-history`
+
+Rate limit 6/minute. Body `{"tickers": ["VWRL.L", "SWDA.L"]}` (1 to 41 symbols). Starts a background download of about 5 years of daily data into the separate extended cache (`data/backtest_history/`) through the shared cache-refresh coordinator. Returns `{"status": "success", "message": ..., "tickers": [...]}` immediately, or `{"status": "error", "message": ...}` when no fetchable ticker was given, too many were given, a recent attempt failed (retry back-off) or the background queue is full. Progress is visible through `history-status`.
+
+### `POST /api/strategy-backtester/run`
+
+Rate limit 10/minute. Validates and queues a run; the computation continues in the background.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `basket_type` | `"account"` \| `"shortlist"` | `"account"` | Where the tickers come from |
+| `account_id` | string | `"all"` | Scope for held weights (account baskets) |
+| `include_tickers` | array of strings | `[]` | Checked candidates (account baskets); at most 40 |
+| `shortlist_signal`, `shortlist_scope` | `"ml_upside"` \| `"quant_score"`, `"portfolio"` \| `"watchlist"` | null | Both required when `basket_type` is `shortlist`; the latest snapshot's members are used |
+| `currency` | string | null | Currency bucket to keep when the tickers span several |
+| `strategies` | array of ids | required (1-7) | `buy_hold_ew`, `rebalanced_ew`, `current_weights`, `inverse_vol`, `tolerance_band`, `min_variance`, `max_sharpe` |
+| `cadence` | `"monthly"` \| `"quarterly"` \| `"annual"` | `"quarterly"` | |
+| `lookback` | int 20-756 | 252 | Training Lookback in sessions |
+| `initial_capital` | float > 0 | 10000 | |
+| `cost_preset` | `"none"` \| `"low"` \| `"typical"` \| `"custom"` | `"typical"` | `custom` uses the three bps fields below |
+| `commission_bps`, `spread_bps`, `slippage_bps` | float 0-500 | 0 | Per side; used only with `custom` |
+| `cash_rate` | float -0.05 to 0.25 | 0 | Yearly return on cash (decimal) |
+| `band_pp` | float (0, 50] | 5 | Tolerance Band in percentage points |
+| `max_weight` | float (0, 1] | 0.20 | Weight Cap for the two rolling optimizer strategies |
+| `cash_reserve` | float [0, 1) | 0 | Cash Reserve for the two rolling optimizer strategies |
+| `benchmark` | string | `"auto"` | Symbol, `auto` (default by currency) or `none`; must be in the basket's currency |
+| `history` | `"standard"` \| `"extended"` | `"standard"` | `extended` uses the prepared long history where it is current |
+
+Out-of-range values return 422. A request that fails the basket rules (fewer than 2 tickers, mixed or unknown currency, benchmark in another currency, no snapshot, every strategy skipped) returns `{"status": "error", "message": ...}` with HTTP 200 and creates no run. Success returns `{"status": "success", "run_id": "<12 hex chars>"}`.
+
+### `GET /api/strategy-backtester/runs`
+
+Rate limit 30/minute. Newest first: `id`, `state`, `created_at` (local time), `error`, `basket` (label), `currency`, `tickers`, `strategies`, `period` (`start`, `end`, `sessions`) and `incomplete`.
+
+### `GET /api/strategy-backtester/runs/{run_id}`
+
+Rate limit 60/minute; `run_id` must be 12 lowercase hex characters (otherwise 422). Returns `run` (`id`, `state`, `created_at`, `finished_at`, `error`, immutable `config`, `basket`, and `inputs` with the per-ticker sources and the SHA-256 `digest`) and, when the state is `completed`, `result`:
+
+```json
+{
+  "dates": ["2026-01-02", "..."],
+  "period": {"start": "2026-01-02", "end": "2026-10-07", "sessions": 190},
+  "shared_window": {"start": "2024-10-08", "end": "2026-10-07", "sessions": 500},
+  "warnings": [], "issues": [], "issues_total": 0, "incomplete": false,
+  "strategies": [
+    {"id": "rebalanced_ew", "label": "Rebalanced Equal Weight", "available": true,
+     "summary": {"final_value": 10412.3, "total_return": 0.0412, "gross_total_return": 0.0436,
+                 "annualized_return": 0.0531, "volatility": 0.121, "sharpe_ratio": 0.07,
+                 "costs_total": 24.1, "trade_count": 14, "turnover_per_year": 0.31, "average_exposure": 1.0,
+                 "metrics": {"risk_adjusted_ratios": {}, "drawdown_analytics": {"max_drawdown": -0.081}}},
+     "equity": [], "drawdown": [], "cash_fraction": [],
+     "decisions": [{"decision_date": "2026-03-31", "decided_at_utc": "2026-03-31 15:30:00", "executed_date": "2026-04-01",
+                    "executed_at_utc": "2026-04-01 15:30:00", "status": "executed", "reason": "Scheduled rebalance to equal weight",
+                    "target": {"VWRL.L": 0.5, "IGLT.L": 0.5}, "cash_weight": 0.0}],
+     "transactions": [], "transactions_total": 14},
+    {"id": "min_variance", "label": "Rolling Steadiest Mix (Min-Variance)", "available": false, "reason": "..."}
+  ],
+  "benchmark": {"label": "SWDA.L", "summary": {}, "equity": [], "drawdown": []}
+}
+```
+
+Series are aligned to `dates`. `transactions` are capped at 500 per strategy (`transactions_total` is the full count). Decision `status` is `executed`, `held` (a later decision that kept the holdings, with the reason), `superseded`, `not_executed` or `pending`. Unknown or unfinished runs return `{"status": "error", "message": "Run not found."}`; a `queued` or `running` run returns `run` with `result: null`.
+
+### `GET /api/strategy-backtester/runs/{run_id}/allocations`
+
+Query param `strategy` (strategy id). Rate limit 60/minute. `dates`, `weights` (ticker -> share of the portfolio per date) and `cash` (share held as cash), read from the saved Parquet file. Unknown run or strategy returns an error body.
+
+### `DELETE /api/strategy-backtester/runs/{run_id}`
+
+Rate limit 20/minute. Deletes a finished run and its files. A queued or running run cannot be deleted.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

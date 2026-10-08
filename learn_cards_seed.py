@@ -39,6 +39,7 @@ LEVELS = [
     ("fx-drag", "FX Drag Analyzer"),
     ("performance-analytics", "Portfolio Tearsheet"),
     ("portfolio-optimizer", "Portfolio Optimizer"),
+    ("strategy-backtester", "Strategy Backtester"),
     ("stress-tester", "Stress Tester"),
     ("etf-predictor", "ETF Predictor"),
     ("sovereign-debt-auction", "Sovereign Debt Auction"),
@@ -2799,6 +2800,159 @@ CARDS = [
             "Negative weights are always clipped to zero before display",
         ],
         "explanation": """<p>Occasionally the maths comes back wanting a <em>negative</em> amount of a ticker — in plain terms, betting against it rather than owning it. This can only happen in <strong>Unconstrained</strong> mode, which has no "no shorting" rule and no per-position cap: it reflects the true closed-form math, not a recommendation to actually short a position, and <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result. Long-Only mode never produces them.</p>""",
+    },
+    # --- strategy-backtester ---
+    {
+        "term_key": "what-strategy-backtester-does",
+        "section_id": "strategy-backtester",
+        "term_title": "What the Strategy Backtester Does",
+        "question": "What does the Strategy Backtester do with the strategies it replays?",
+        "answer": "Compares how each rule would have performed on past prices, for comparison only — no orders are placed",
+        "distractors": [
+            "Places real trades following the best-performing rule",
+            "Predicts next year's return for each strategy",
+            "Retrains the machine-learning models on past data",
+        ],
+        "explanation": """<p>In plain terms: it replays the past. You pick a basket of tickers and a few ways of splitting the money between them, and it shows what each way would have turned the starting capital into, day by day, so you can compare the rules against each other before trusting any of them.</p>
+<p>More precisely, the <strong>Strategy Backtester</strong> (Tools menu) simulates rules such as Buy-and-Hold, Rebalanced Equal Weight, Current Portfolio Weights, Inverse-Volatility Weighting, Tolerance-Band Rebalancing and rolling versions of the Portfolio Optimizer's Steadiest and Best Reward-for-Risk mixes over the daily prices this app already stores. It keeps explicit cash, charges trading costs, lets weights drift between rebalances and compares everything with a benchmark. It is a comparison tool only: this app has no order execution, and a past result is not a forecast.</p>""",
+    },
+    {
+        "term_key": "fixed-current-basket-test",
+        "section_id": "strategy-backtester",
+        "term_title": "Fixed-Current-Basket Test (Survivorship Bias)",
+        "question": "Why is every Strategy Backtester run called a fixed-current-basket test?",
+        "answer": "It replays today's tickers over the past, so failed or dropped companies are missing and results look better than reality",
+        "distractors": [
+            "It keeps every weight fixed at today's value for the whole test",
+            "It only allows tickers that never changed their quote currency",
+            "It fixes the basket to the ten most liquid tickers",
+        ],
+        "explanation": """<p>Every backtest here uses the tickers you hold or follow <strong>today</strong>, replayed over the past. Companies that failed, were dropped from an index or were sold along the way are simply not in the basket, so the results look better than an honest investor in those years could have achieved. That is called survivorship bias.</p>
+<p>For that reason the Backtester labels every run a <strong>fixed-current-basket test</strong>. Use it to ask "which rule behaved better on these tickers?", not "how much would I have made?".</p>""",
+    },
+    {
+        "term_key": "next-close-execution",
+        "section_id": "strategy-backtester",
+        "term_title": "Next-Close Execution",
+        "question": "When does a backtested strategy trade after it decides on a day's closing prices?",
+        "answer": "At the next eligible day's closing price, never at the price it already knew",
+        "distractors": [
+            "At the same closing price the decision was based on",
+            "At the next day's opening price",
+            "At a random time during the next session",
+        ],
+        "explanation": """<p>A strategy decides using the closing prices of a day, but you could not have traded at a price you only learned when the market closed. So a decision made after day <em>t</em>'s close is carried out at the closing price of the <strong>next eligible day</strong>, and until then the old holdings keep earning their returns.</p>
+<p>This removes the most common backtesting cheat: profiting from a move that had already happened by the time the decision was made. The decision and execution times are saved in UTC with every run.</p>""",
+    },
+    {
+        "term_key": "rebalance-cadence-weight-drift",
+        "section_id": "strategy-backtester",
+        "term_title": "Rebalance Cadence and Weight Drift",
+        "question": "What is weight drift between rebalances?",
+        "answer": "Holdings that rose become a bigger share and holdings that fell a smaller share, because nothing is traded in between",
+        "distractors": [
+            "The slow loss of value when a portfolio holds cash",
+            "The gap between a strategy's decision date and its trade date",
+            "The change in a weight caused by trading costs",
+        ],
+        "explanation": """<p><strong>Rebalance Cadence</strong> is how often a strategy restores its target split: monthly, quarterly or annually, always decided on the last trading day of the period. Between rebalances nothing is traded, so the winners grow into a bigger share and the losers shrink. That is <strong>weight drift</strong>.</p>
+<p>Buy-and-Hold never rebalances, so its weights drift for the whole test. Rebalanced Equal Weight and the other cadence strategies pull the weights back at each date, paying trading costs to do so.</p>""",
+    },
+    {
+        "term_key": "tolerance-band-rebalancing",
+        "section_id": "strategy-backtester",
+        "term_title": "Tolerance-Band Rebalancing",
+        "question": "When does Tolerance-Band Rebalancing trade?",
+        "answer": "Only when a holding's weight drifts further than the band from its target, checked every session",
+        "distractors": [
+            "On every quarter end regardless of drift",
+            "Whenever a holding's price falls by more than the band",
+            "Only when the benchmark moves by more than the band",
+        ],
+        "explanation": """<p>A calmer rebalancing habit: start equal weight, then leave everything alone until one holding drifts further than a set number of percentage points from its target. Only then trade back to target. It trades far less than a calendar rule, and only when it matters.</p>
+<p>Unlike the other rebalancing strategies it checks every session, so the Rebalance Cadence setting does not apply to it.</p>""",
+    },
+    {
+        "term_key": "inverse-volatility-weighting",
+        "section_id": "strategy-backtester",
+        "term_title": "Inverse-Volatility Weighting",
+        "question": "How does Inverse-Volatility Weighting choose weights?",
+        "answer": "Each weight is proportional to 1 divided by the ticker's recent volatility, so calmer tickers get more",
+        "distractors": [
+            "Every ticker gets the same weight regardless of volatility",
+            "Weights are proportional to each ticker's recent return",
+            "Weights are chosen to maximise the Sharpe ratio",
+        ],
+        "explanation": """<p>A simple way to give calmer tickers more room: each ticker's weight is proportional to 1 divided by its recent volatility, so a steady ticker gets a bigger share than a jumpy one. It needs no forecast of returns, which makes it robust, and its weights always add up to 100%.</p>""",
+    },
+    {
+        "term_key": "rolling-strategies-training-lookback",
+        "section_id": "strategy-backtester",
+        "term_title": "Rolling Strategies and the Training Lookback",
+        "question": "What limits when the rolling Steadiest Mix and Best Reward-for-Risk Mix strategies can start?",
+        "answer": "They need a full Training Lookback of past sessions first, and every decision uses only data up to that day",
+        "distractors": [
+            "They start immediately and use future prices to improve",
+            "They wait until the benchmark has doubled in value",
+            "They need at least five years of history before any run",
+        ],
+        "explanation": """<p>The Rolling Steadiest Mix and Rolling Best Reward-for-Risk Mix strategies re-run the Portfolio Optimizer's long-only maths at every rebalance date, but using <strong>only the past trading days up to that date</strong>, never later prices. The number of past days used is the <strong>Training Lookback</strong> (default 252, about a year).</p>
+<p>If the solver cannot produce a valid mix on the very first date, or the Weight Cap is too small for the number of tickers, that strategy is reported as unavailable with the reason. Later failed decisions simply keep the existing holdings and are logged.</p>""",
+    },
+    {
+        "term_key": "trading-costs-commission-spread-slippage",
+        "section_id": "strategy-backtester",
+        "term_title": "Trading Costs: Commission, Spread and Slippage",
+        "question": "How are trading costs charged in a backtest?",
+        "answer": "As a share of the amount traded on both buys and sells, paid out of the money being invested",
+        "distractors": [
+            "Only on sells, as a flat fee per run",
+            "Only once, when the strategy first buys",
+            "As a yearly percentage of portfolio value whether or not it trades",
+        ],
+        "explanation": """<p>Every buy and sell costs something. <strong>Commission</strong> is the broker's fee, <strong>spread</strong> is the gap between the buying and selling price you cross, and <strong>slippage</strong> is the price moving a little against you before the order fills. The Backtester charges all three as a share of the amount traded, on both buys and sells.</p>
+<p>Cash is explicit: money is never created to pay costs, and the portfolio can never go negative on cash. UK stamp duty is not modelled.</p>""",
+    },
+    {
+        "term_key": "net-vs-gross-return-turnover",
+        "section_id": "strategy-backtester",
+        "term_title": "Net vs Gross Return and Turnover",
+        "question": "What is the difference between Net and Gross Return in the Strategy Backtester?",
+        "answer": "Net is after trading costs; Gross is the same rules with zero costs",
+        "distractors": [
+            "Net is after tax; Gross is before tax",
+            "Net includes cash interest; Gross excludes it",
+            "Net is the benchmark's return; Gross is the strategy's return",
+        ],
+        "explanation": """<p><strong>Net return</strong> is what the strategy earned after trading costs. <strong>Gross return</strong> is what the same rules would have earned with zero costs. The gap between them is the price of the strategy's trading. <strong>Turnover</strong> says how much trading that was: the share of the portfolio traded in a year.</p>
+<p>A strategy that beats the others gross but not net is trading too much for its own good.</p>""",
+    },
+    {
+        "term_key": "extended-history",
+        "section_id": "strategy-backtester",
+        "term_title": "Extended History",
+        "question": "Why would you prepare Extended History for a backtest?",
+        "answer": "To test over about five years instead of two, using a separate download that leaves the nightly price data untouched",
+        "distractors": [
+            "To make the nightly refresh download five years for every ticker",
+            "To convert prices between currencies",
+            "To remove the need for a benchmark",
+        ],
+        "explanation": """<p>The app normally stores about two years of daily prices, which gives the rolling strategies only about a year to be tested. <strong>Extended History</strong> downloads about five years of daily prices for just the tickers in your basket (and the benchmark) into a separate cache, so a run can span more than one kind of market.</p>
+<p>The date range each ticker actually covered is always shown with the results.</p>""",
+    },
+    {
+        "term_key": "incomplete-run",
+        "section_id": "strategy-backtester",
+        "term_title": "Incomplete Run",
+        "question": "What does an Incomplete label on a backtest mean?",
+        "answer": "A price was missing on a day the market was open; the previous price was carried for valuation only and the results should be treated with caution",
+        "distractors": [
+            "The run was stopped by the user before it finished",
+            "Some selected strategies made too few trades",
+            "The benchmark was quoted in a different currency",
+        ],
+        "explanation": """<p>A run is marked <strong>Incomplete</strong> when a ticker had no closing price on a day its market was open and not on a known holiday. The backtester never invents a price: the previous price is carried only so the portfolio can still be valued, and no trade is ever made using a carried price.</p>""",
     },
     # --- stress-tester ---
     {

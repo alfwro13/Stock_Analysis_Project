@@ -1336,6 +1336,15 @@ async def portfolio_optimizer_page(request: Request):
     )
 
 
+@page_router.get("/strategy-backtester", response_class=HTMLResponse)
+async def strategy_backtester_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="strategy_backtester.html",
+        context={"unread_count": get_unread_count()},
+    )
+
+
 @page_router.get("/treasury-auctions", response_class=HTMLResponse)
 async def treasury_auctions_page(request: Request):
     conn = None

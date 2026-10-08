@@ -1342,6 +1342,7 @@ def test_no_page_route_returns_500(client):
         ("/monte-carlo",        "Monte Carlo Wealth Simulator"),
         ("/performance-analytics", "Portfolio Tearsheet"),
         ("/portfolio-optimizer", "Portfolio Optimizer"),
+        ("/strategy-backtester", "Strategy Backtester"),
         ("/index/%5EGSPC",      "Index Detail (S&P 500)"),
         ("/index/%5EAXJO",      "Index Detail (ASX 200, no baseline parquet)"),
         ("/index/000001.SS",    "Index Detail (Shanghai Composite)"),

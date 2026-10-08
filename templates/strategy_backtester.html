@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Strategy Backtester{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#129514; Strategy Backtester</h1>
+<p class="text-muted mb-3">
+    Replays how a set of tickers would have fared under different ways of splitting the money, using only the past prices this app has stored.
+    Every decision is made from information available on the day, and every trade happens at the <abbr title="A decision made after one day's closing price is acted on at the next eligible day's closing price, never at the price you already knew.">next close</abbr>, with
+    <abbr title="Commission, bid-ask spread and slippage are charged on every buy and sell, and the cost of the trades comes out of the money being invested.">trading costs</abbr> and weight drift included.
+    This is a <abbr title="It tests the tickers you hold or follow today over the past. Companies that failed or were dropped along the way are not in it, so results look better than they honestly would have been.">fixed-current-basket test</abbr>:
+    a way to compare rules against each other, not a promise of what will happen. Nothing here is a buy/sell instruction and this app cannot place trades.
+</p>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <div class="card card-bg mb-3">
+            <div class="card-body">
+                <h6 class="card-title mb-2">1. Basket</h6>
+                <div class="btn-group btn-group-sm w-100 mb-2" role="group" aria-label="Basket source">
+                    <input type="radio" class="btn-check" name="sb-basket" id="sb-basket-account" value="account" checked>
+                    <label class="btn btn-outline-primary" for="sb-basket-account">Account Holdings</label>
+                    <input type="radio" class="btn-check" name="sb-basket" id="sb-basket-shortlist" value="shortlist">
+                    <label class="btn btn-outline-primary" for="sb-basket-shortlist">Stable Shortlist</label>
+                </div>
+
+                <div id="sb-account-section">
+                    <div id="sb-accounts-bar" class="d-none mb-2">
+                        <p class="text-muted small mb-1">Select account scope:</p>
+                        <div id="sb-accounts-tiles" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                    <p class="text-muted small mb-2">
+                        Everything you hold is ticked. <a href="/watchlist">Watchlist</a> tickers are listed too, unticked. A run uses one quote currency, so pick the currency first.
+                    </p>
+                </div>
+
+                <div id="sb-shortlist-section" class="d-none">
+                    <label for="sb-shortlist-select" class="form-label small mb-1">Which <a href="/predicted-movers">Stable Shortlist</a></label>
+                    <select class="form-select form-select-sm mb-2" id="sb-shortlist-select"></select>
+                    <p id="sb-shortlist-note" class="text-muted small mb-2"></p>
+                </div>
+
+                <label for="sb-currency" class="form-label small mb-1"><abbr title="Prices are never converted between currencies. Pence-quoted and pound-quoted London listings count as one currency.">Currency</abbr></label>
+                <select class="form-select form-select-sm mb-2" id="sb-currency"></select>
+
+                <div id="sb-candidates-count" class="text-muted small mb-1"></div>
+                <div id="sb-candidates-list" class="po-candidates-list mb-1"></div>
+            </div>
+        </div>
+
+        <div class="card card-bg mb-3">
+            <div class="card-body">
+                <h6 class="card-title mb-2">2. Strategies</h6>
+                <div id="sb-strategies" class="mb-1"></div>
+            </div>
+        </div>
+
+        <div class="card card-bg mb-3">
+            <div class="card-body">
+                <h6 class="card-title mb-2">3. Rules</h6>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label for="sb-cadence" class="form-label small mb-1"><abbr title="How often the rebalancing strategies restore their target weights. Tolerance-Band Rebalancing ignores this and checks every session.">Rebalance Cadence</abbr></label>
+                        <select class="form-select form-select-sm" id="sb-cadence"></select>
+                    </div>
+                    <div class="col-6">
+                        <label for="sb-capital" class="form-label small mb-1"><abbr title="The amount invested on the first day, in the currency of the basket.">Starting Capital</abbr></label>
+                        <input type="number" class="form-control form-control-sm" id="sb-capital" min="1" step="100">
+                    </div>
+                    <div class="col-6">
+                        <label for="sb-lookback" class="form-label small mb-1"><abbr title="How many past trading days the rolling strategies may look at when they decide. They start only once that much history exists.">Training Lookback</abbr> (sessions)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-lookback" min="20" max="756" step="1">
+                    </div>
+                    <div class="col-6">
+                        <label for="sb-band" class="form-label small mb-1"><abbr title="Tolerance-Band Rebalancing trades back to equal weight only when a holding drifts this many percentage points from its target.">Tolerance Band</abbr> (pp)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-band" min="0.5" max="50" step="0.5">
+                    </div>
+                    <div class="col-6">
+                        <label for="sb-max-weight" class="form-label small mb-1"><abbr title="The most any single ticker may make up of the portfolio in the two rolling optimizer strategies.">Weight Cap</abbr> (%)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-max-weight" min="0.5" max="100" step="0.5">
+                    </div>
+                    <div class="col-6">
+                        <label for="sb-cash-reserve" class="form-label small mb-1"><abbr title="A share of the portfolio the two rolling optimizer strategies deliberately keep in cash.">Cash Reserve</abbr> (%)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-cash-reserve" min="0" max="99" step="0.5">
+                    </div>
+                    <div class="col-12">
+                        <label for="sb-cash-rate" class="form-label small mb-1"><abbr title="Yearly interest earned by cash while waiting to invest or held back. Zero by default, so cash is never flattered.">Cash Return</abbr> (% per year)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-cash-rate" min="-5" max="25" step="0.1">
+                    </div>
+                </div>
+
+                <label for="sb-cost-preset" class="form-label small mb-1"><abbr title="Editable modelling assumptions, not broker quotes. Charged as a share of the traded amount on both buys and sells.">Trading Costs</abbr> (per side)</label>
+                <select class="form-select form-select-sm mb-2" id="sb-cost-preset"></select>
+                <div class="row g-2 mb-2">
+                    <div class="col-4">
+                        <label for="sb-commission" class="form-label small mb-1">Commission (bps)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-commission" min="0" max="500" step="0.5">
+                    </div>
+                    <div class="col-4">
+                        <label for="sb-spread" class="form-label small mb-1">Spread (bps)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-spread" min="0" max="500" step="0.5">
+                    </div>
+                    <div class="col-4">
+                        <label for="sb-slippage" class="form-label small mb-1">Slippage (bps)</label>
+                        <input type="number" class="form-control form-control-sm" id="sb-slippage" min="0" max="500" step="0.5">
+                    </div>
+                </div>
+
+                <label for="sb-benchmark" class="form-label small mb-1"><abbr title="A single buy-and-hold of this ticker, paying the same costs, drawn alongside the strategies. Leave on auto for the default of the basket's currency, or type none for no benchmark. It must be quoted in the basket's currency.">Benchmark</abbr></label>
+                <input type="text" class="form-control form-control-sm mb-3" id="sb-benchmark" maxlength="20" value="auto">
+
+                <label class="form-label small mb-1"><abbr title="Standard uses the roughly two years the app already stores. Extended uses a separate, longer download made only for the tickers you choose (the nightly data is untouched).">Price History</abbr></label>
+                <div class="btn-group btn-group-sm w-100 mb-2" role="group" aria-label="Price history">
+                    <input type="radio" class="btn-check" name="sb-history" id="sb-history-standard" value="standard" checked>
+                    <label class="btn btn-outline-primary" for="sb-history-standard">Standard (~2y)</label>
+                    <input type="radio" class="btn-check" name="sb-history" id="sb-history-extended" value="extended">
+                    <label class="btn btn-outline-primary" for="sb-history-extended">Extended (~5y)</label>
+                </div>
+                <div id="sb-history-box" class="d-none mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" id="sb-prepare-btn">Prepare Extended History</button>
+                    <div id="sb-history-status" class="small text-muted"></div>
+                </div>
+                <p id="sb-history-note" class="text-muted small mb-3"></p>
+
+                <button type="button" class="btn btn-primary btn-sm w-100" id="sb-run-btn">&#9654; Run Backtest</button>
+                <div id="sb-error" class="text-danger small mt-2 d-none"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+        <div id="sb-warning" class="alert alert-warning d-none" role="alert"></div>
+        <div id="sb-incomplete" class="alert alert-danger d-none" role="alert"></div>
+
+        <div id="sb-placeholder" class="chart-wrapper mc-chart-wrapper d-flex align-items-center justify-content-center text-muted">
+            Choose a basket and strategies, then click <strong class="ms-1">Run Backtest</strong>.
+        </div>
+
+        <div id="sb-progress" class="chart-wrapper mc-chart-wrapper d-none align-items-center justify-content-center text-muted">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            <span id="sb-progress-text">Running…</span>
+        </div>
+
+        <div id="sb-results" class="d-none">
+            <p id="sb-results-meta" class="text-muted small mb-2"></p>
+
+            <div class="table-responsive mb-3">
+                <table class="table table-sm table-hover w-100" id="sb-summary-table">
+                    <thead>
+                        <tr>
+                            <th>Strategy</th>
+                            <th class="text-end">Final Value</th>
+                            <th class="text-end"><abbr title="Total return after trading costs.">Net Return</abbr></th>
+                            <th class="text-end"><abbr title="The same rules with zero trading costs.">Gross Return</abbr></th>
+                            <th class="text-end"><abbr title="Annualised growth rate over the tested period.">CAGR</abbr></th>
+                            <th class="text-end"><abbr title="Yearly size of the daily ups and downs.">Volatility</abbr></th>
+                            <th class="text-end"><abbr title="(CAGR minus the risk-free rate) divided by volatility.">Sharpe</abbr></th>
+                            <th class="text-end"><abbr title="The deepest peak-to-trough fall.">Max Drawdown</abbr></th>
+                            <th class="text-end"><abbr title="Like Sharpe, but only downside swings count as risk.">Sortino</abbr></th>
+                            <th class="text-end"><abbr title="CAGR divided by the size of the maximum drawdown.">Calmar</abbr></th>
+                            <th class="text-end"><abbr title="Commission, spread and slippage paid in total.">Costs Paid</abbr></th>
+                            <th class="text-end">Trades</th>
+                            <th class="text-end"><abbr title="Share of the portfolio traded per year, one way, not counting the first purchase.">Turnover / yr</abbr></th>
+                            <th class="text-end"><abbr title="Average share of the portfolio invested rather than held as cash.">Exposure</abbr></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sb-summary-tbody"></tbody>
+                </table>
+            </div>
+
+            <div class="sentiment-module module-purple mb-3">
+                <div class="chart-wrapper" id="sb-equity-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('sb-equity-outer')">&#9638; Fullscreen</button>
+                    <div id="sb-equity-chart"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        <p class="mb-0">Each line is what the starting capital would have grown to under one strategy, after trading costs. The dashed white line is the benchmark. The lines start flat while the first purchase waits for the next close. A strategy that ends higher is not necessarily better: compare the drawdown chart and the Costs Paid and Turnover columns too.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sentiment-module module-purple mb-3">
+                <div class="chart-wrapper" id="sb-drawdown-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('sb-drawdown-outer')">&#9638; Fullscreen</button>
+                    <div id="sb-drawdown-chart"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        <p class="mb-0">How far each strategy sat below its own previous high on every day. Deeper and longer dips mean a harder ride, even if the ending value looks similar.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-bg mb-3">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <h6 class="card-title mb-0">Strategy Detail</h6>
+                        <select class="form-select form-select-sm w-auto" id="sb-detail-strategy"></select>
+                    </div>
+                    <p id="sb-detail-help" class="text-muted small mb-2"></p>
+
+                    <div class="sentiment-module module-purple mb-3">
+                        <div class="chart-wrapper" id="sb-alloc-outer">
+                            <button class="fullscreen-btn" onclick="toggleFullscreen('sb-alloc-outer')">&#9638; Fullscreen</button>
+                            <div id="sb-alloc-chart"></div>
+                        </div>
+                        <div class="sentiment-footer">
+                            <span class="sentiment-footer-title">How to read this chart:</span>
+                            <div class="sentiment-footer-text">
+                                <p class="mb-0">The share of the portfolio in each ticker (and in cash) over time. Between rebalances the shares drift with the prices, which is why they slope.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="small text-uppercase text-muted">Decisions</h6>
+                    <div class="table-responsive sb-scroll-box mb-3">
+                        <table class="table table-sm table-hover w-100">
+                            <thead><tr><th>Decided (close)</th><th>Executed (close)</th><th>Status</th><th>Why</th><th>Target mix</th></tr></thead>
+                            <tbody id="sb-decisions-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="small text-uppercase text-muted">Trades</h6>
+                    <p id="sb-trades-note" class="text-muted small mb-1"></p>
+                    <div class="table-responsive sb-scroll-box">
+                        <table class="table table-sm table-hover w-100">
+                            <thead><tr><th>Date</th><th>Ticker</th><th>Side</th><th class="text-end">Units</th><th class="text-end">Price</th><th class="text-end">Amount</th><th class="text-end">Costs</th></tr></thead>
+                            <tbody id="sb-trades-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-bg mb-3">
+                <div class="card-body">
+                    <h6 class="card-title mb-2">Data Used</h6>
+                    <p id="sb-data-note" class="text-muted small mb-2"></p>
+                    <div class="table-responsive">
+                        <table class="table table-sm w-100">
+                            <thead><tr><th>Ticker</th><th>History</th><th>From</th><th>To</th><th class="text-end">Sessions</th></tr></thead>
+                            <tbody id="sb-data-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-bg mt-3">
+            <div class="card-body">
+                <h6 class="card-title mb-2">Saved Runs</h6>
+                <p class="text-muted small mb-2">The latest runs are kept; older ones are removed automatically. A saved run never changes: a new run is needed after the data changes.</p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover w-100">
+                        <thead><tr><th>Run</th><th>Basket</th><th>Period</th><th>State</th><th></th></tr></thead>
+                        <tbody id="sb-runs-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="accordion mt-4" id="sbHelpAccordion">
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#sbHelp" aria-expanded="true" aria-controls="sbHelp">
+                &#9432; How to Use the Strategy Backtester
+            </button>
+        </h2>
+        <div id="sbHelp" class="accordion-collapse collapse show" data-bs-parent="#sbHelpAccordion">
+            <div class="accordion-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <div class="sentiment-module module-default mb-0">
+                            <div class="p-3">
+                                <h4 class="text-primary small fw-semibold">1. Pick a Basket</h4>
+                                <p class="mb-0 small text-muted lh-base">Choose your holdings (plus any Watchlist tickers) or the latest Stable Shortlist, then one currency. The basket is today's list, so treat results as a comparison between rules, not a forecast.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <div class="sentiment-module module-default mb-0">
+                            <div class="p-3">
+                                <h4 class="text-primary small fw-semibold">2. Choose Strategies</h4>
+                                <p class="mb-0 small text-muted lh-base">Start with Buy-and-Hold and Rebalanced Equal Weight as the baselines. Anything more complicated needs to beat them after costs to be worth the effort.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <div class="sentiment-module module-default mb-0">
+                            <div class="p-3">
+                                <h4 class="text-primary small fw-semibold">3. Set Realistic Costs</h4>
+                                <p class="mb-0 small text-muted lh-base">Costs are what quietly separates a busy strategy from a calm one. Try the same run at None and at Typical to see how much trading eats.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <div class="sentiment-module module-default mb-0">
+                            <div class="p-3">
+                                <h4 class="text-primary small fw-semibold">4. Mind the Window</h4>
+                                <p class="mb-0 small text-muted lh-base">With about two years of history the rolling strategies get roughly one year to be tested. Prepare Extended History for around five years, including more than one kind of market.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/utils.js?v={{ css_version }}"></script>
+<script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
+<script src="/static/js/strategy_backtester.js?v={{ css_version }}"></script>
+<script src="/static/js/strategy_backtester_results.js?v={{ css_version }}"></script>
+{% endblock %}

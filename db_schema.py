@@ -1303,6 +1303,21 @@ def init_db() -> None:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_stable_shortlist_members_ticker ON stable_shortlist_members(ticker)')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS strategy_backtest_runs (
+                id             TEXT PRIMARY KEY,
+                state          TEXT NOT NULL,
+                created_at     TEXT NOT NULL,
+                finished_at    TEXT,
+                config_json    TEXT NOT NULL,
+                basket_json    TEXT NOT NULL,
+                inputs_json    TEXT,
+                summary_json   TEXT,
+                decisions_json TEXT,
+                error          TEXT
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS price_hmm_states (
                 date      TEXT PRIMARY KEY,
                 state     INTEGER NOT NULL,

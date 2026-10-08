@@ -123,6 +123,10 @@ JOB_GRAPH: dict[str, dict] = {
     # xray_returns_cache-derived return series X-ray uses (plus a parquet fallback for
     # never-held Watchlist tickers), no new artifact produced.
     "portfolio_optimizer_source":    {"label": "Portfolio Optimizer",                            "category": "manual",      "engine": "portfolio_optimizer_engine.py",   "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
+    # Strategy Backtester — not a scheduled job; on-demand historical replay of the Portfolio
+    # Optimizer's allocation rules plus simple rebalancing rules over cached (or separately
+    # prepared extended) daily history. Saves each run under data/strategy_backtests/.
+    "strategy_backtester_source":    {"label": "Strategy Backtester",                            "category": "manual",      "engine": "strategy_backtest_engine.py",     "produces": ["strategy_backtest_runs"],                                   "consumes": ["historical_parquet", "portfolio", "stable_shortlist_snapshots"],     "non_job": True, "settings_anchor": None},
 
     # Pre-Trade Gatekeeper (Pillar A) — not a scheduled job; on-demand what-if VaR/correlation
     # simulation from the Stock Detail Position Sizing panel, using the same X-ray caches

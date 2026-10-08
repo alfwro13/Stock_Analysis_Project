@@ -16,6 +16,13 @@
     </div>
 
     <div class="guide-card">
+        <h4>🧪 Strategy Backtester</h4>
+        <p>Replays how a basket of tickers would have fared under different ways of splitting the money: <abbr title="Equal split on day one, then never trade again, so the weights drift with prices.">Buy-and-Hold</abbr>, regular rebalancing, <abbr title="Trade back to the target only when a holding drifts further than a set number of percentage points.">Tolerance-Band Rebalancing</abbr>, <abbr title="Calmer tickers get a bigger share (1 divided by recent volatility).">Inverse-Volatility Weighting</abbr>, and rolling versions of the Portfolio Optimizer's Steadiest and Best Reward-for-Risk mixes. Decisions use only past data, trades happen at the next close, and <abbr title="Commission, spread and slippage on every buy and sell.">trading costs</abbr> and weight drift are included.</p>
+        <div class="why-use-it">Use to compare rules against each other over the history this app holds. It tests today's tickers over the past, so it flatters results and is not a forecast. No trades are placed.</div>
+        <a href="/strategy-backtester" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
         <h4>📊 Portfolio Tearsheet</h4>
         <p>A native performance tearsheet computed entirely from your portfolio's own cached return history: <abbr title="Sortino, Calmar, Omega ratios and Profit Factor — risk-adjusted return measures that go beyond the X-ray's headline Sharpe ratio.">risk-adjusted return ratios</abbr>, <abbr title="Longest drawdown duration, current time underwater, and the Ulcer Index — how deep and how long the portfolio's declines have run, not just how deep.">drawdown duration analytics</abbr>, and win/loss statistics, alongside an underwater chart, a cumulative growth chart versus benchmark, and a monthly returns heatmap.</p>
         <div class="why-use-it">Use for a deeper historical performance read than the X-ray's headline risk cards — especially drawdown recovery time and win/loss consistency, which the X-ray doesn't show.</div>

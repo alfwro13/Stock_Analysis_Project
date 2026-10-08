@@ -38,6 +38,8 @@ INTRADAY_DIR = DATA_DIR / "intraday"
 FUNDAMENTALS_DIR = DATA_DIR / "fundamentals"
 FORENSIC_DIR = DATA_DIR / "fundamentals" / "quarterly"
 ANOMALY_MODELS_DIR = DATA_DIR / "anomaly_models"
+BACKTEST_HISTORY_DIR = DATA_DIR / "backtest_history"
+BACKTEST_RUNS_DIR = DATA_DIR / "strategy_backtests"
 
 DB_PATH = DATA_DIR / "analysis.db"
 PORTFOLIO_PATH = DATA_DIR / "portfolio.json"
@@ -49,6 +51,8 @@ INTRADAY_DIR.mkdir(parents=True, exist_ok=True)
 FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 FORENSIC_DIR.mkdir(parents=True, exist_ok=True)
 ANOMALY_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+BACKTEST_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+BACKTEST_RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 PORT = 8090
 BASE_CURRENCY = "GBP"
