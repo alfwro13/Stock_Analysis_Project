@@ -15,7 +15,7 @@ import joblib
 import time_engine
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api_deps import limiter, require_confirm_token, _error_500
 
@@ -175,6 +175,17 @@ class PatternFamilyScheduleConfig(BaseModel):
     ENGULFING_ENABLED: Optional[bool] = None
     PIN_BAR_ENABLED: Optional[bool] = None
 
+class StableShortlistScheduleConfig(BaseModel):
+    ENABLED: Optional[bool] = None
+    DAYS: Optional[List[str]] = None
+    TIME: Optional[str] = None
+    TOPK: Optional[int] = Field(default=None, ge=1, le=50)
+    N_DROP: Optional[int] = Field(default=None, ge=0, le=50)
+    HOLD_THRESH: Optional[int] = Field(default=None, ge=0, le=12)
+    SECTOR_CAP: Optional[int] = Field(default=None, ge=1, le=50)
+    MAX_SIGNAL_AGE_DAYS: Optional[int] = Field(default=None, ge=1, le=30)
+    MIN_QUANT_SCORE: Optional[int] = Field(default=None, ge=0, le=100)
+
 class PatternDetectionScheduleConfig(BaseModel):
     ENABLED: Optional[bool] = None
     MONITOR_PORTFOLIO: Optional[bool] = None
@@ -241,6 +252,7 @@ class SchedulingConfig(BaseModel):
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
     PAIRS_SPREAD_MONITOR: Optional[ScheduleItemConfig] = None
     SECTOR_RELATIVE_MOMENTUM: Optional[ScheduleItemConfig] = None
+    STABLE_SHORTLIST: Optional[StableShortlistScheduleConfig] = None
     PATTERN_DETECTION: Optional[PatternDetectionScheduleConfig] = None
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None

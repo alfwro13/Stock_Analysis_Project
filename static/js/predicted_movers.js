@@ -1,4 +1,4 @@
-let _pmScope = 'portfolio_watchlist';
+let _pmScope = 'portfolio';
 let _pmSort = 'movers';
 
 function _pmRenderTable(results) {

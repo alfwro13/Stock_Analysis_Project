@@ -1142,6 +1142,29 @@ def run_sector_relative_momentum_job():
         record_job_run("sector_relative_momentum_job")
 
 
+def run_stable_shortlist_job():
+    from stable_shortlist_engine import run_stable_shortlist
+    _mark_job_started(job_label("stable_shortlist_job"))
+    try:
+        summary = run_stable_shortlist()
+        created = sum(1 for s in summary["snapshots"] if s["status"] == "created")
+        errors = [s for s in summary["snapshots"] if s["status"] == "error"]
+        skipped = [s for s in summary["snapshots"] if s["status"] not in ("created", "error")]
+        message = f"Stable Shortlist complete — {created} snapshot(s) taken, {summary['resolved']} outcome(s) resolved."
+        if skipped:
+            message += " Skipped: " + ", ".join(f"{s['signal_type']}/{s['scope']} ({s['status']})" for s in skipped) + "."
+        if errors:
+            log_sched_notification("Error", f"Stable Shortlist failed for {len(errors)} list(s): {errors[0].get('message')}")
+        else:
+            log_sched_notification("Success", message)
+    except Exception as e:
+        logger.error("Stable Shortlist failed: %s", e)
+        log_sched_notification("Error", f"Stable Shortlist failed: {e}")
+    finally:
+        _mark_job_done(job_label("stable_shortlist_job"))
+        record_job_run("stable_shortlist_job")
+
+
 def run_pattern_detection_job():
     from pattern_detection_engine import PatternDetectionEngine, DETECTORS
     config = load_config()

@@ -530,6 +530,7 @@ def test_no_endpoint_returns_500(client):
         "/api/sector-relative-momentum/results",
         "/api/predicted-movers/leaderboard",
         "/api/predicted-movers/accuracy",
+        "/api/predicted-movers/shortlist",
         "/api/earnings-volatility/accuracy",
         "/api/alert-referee/status",
         "/api/alert-referee/log",
@@ -854,7 +855,7 @@ def test_predicted_movers_leaderboard_returns_200(client):
 @pytest.mark.api
 def test_predicted_movers_leaderboard_accepts_universe_scope_and_all_sorts(client):
     """GET /api/predicted-movers/leaderboard must accept scope=universe and every sort mode."""
-    for scope in ("portfolio_watchlist", "universe"):
+    for scope in ("portfolio", "watchlist", "universe"):
         for sort in ("gainers", "losers", "movers"):
             resp = client.get(f"/api/predicted-movers/leaderboard?scope={scope}&sort={sort}")
             assert resp.status_code == 200, f"scope={scope} sort={sort} → {resp.status_code}"
@@ -869,10 +870,49 @@ def test_predicted_movers_leaderboard_rejects_invalid_scope(client):
 
 
 @pytest.mark.api
+def test_predicted_movers_leaderboard_rejects_the_retired_combined_scope(client):
+    """The combined portfolio_watchlist scope was split into portfolio and watchlist."""
+    resp = client.get("/api/predicted-movers/leaderboard?scope=portfolio_watchlist")
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
 def test_predicted_movers_leaderboard_rejects_invalid_sort(client):
     """GET /api/predicted-movers/leaderboard?sort=bogus must 422, not 500."""
     resp = client.get("/api/predicted-movers/leaderboard?sort=bogus")
     assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_predicted_movers_accuracy_accepts_each_scope_and_rejects_others(client):
+    """GET /api/predicted-movers/accuracy takes scope=portfolio|watchlist only."""
+    for scope in ("portfolio", "watchlist"):
+        resp = client.get(f"/api/predicted-movers/accuracy?scope={scope}")
+        assert resp.status_code == 200, f"scope={scope} → {resp.status_code}"
+        assert _json(resp).get("status") == "success"
+    for scope in ("universe", "portfolio_watchlist", "bogus"):
+        assert client.get(f"/api/predicted-movers/accuracy?scope={scope}").status_code == 422
+
+
+@pytest.mark.api
+def test_predicted_movers_shortlist_returns_empty_payload_without_a_snapshot(client):
+    """GET /api/predicted-movers/shortlist must return the list shape even before the first snapshot."""
+    for signal in ("ml_upside", "quant_score"):
+        for scope in ("portfolio", "watchlist"):
+            resp = client.get(f"/api/predicted-movers/shortlist?signal={signal}&scope={scope}")
+            assert resp.status_code == 200, f"{signal}/{scope} → {resp.status_code}"
+            data = _json(resp)
+            assert data.get("status") == "success"
+            for key in ("snapshot", "members", "changes", "others", "evaluation", "schedule", "label"):
+                assert key in data, f"Missing '{key}': {data}"
+            assert isinstance(data["members"], list)
+
+
+@pytest.mark.api
+def test_predicted_movers_shortlist_rejects_invalid_parameters(client):
+    """GET /api/predicted-movers/shortlist with an unknown signal or scope must 422, not 500."""
+    assert client.get("/api/predicted-movers/shortlist?signal=bogus").status_code == 422
+    assert client.get("/api/predicted-movers/shortlist?scope=universe").status_code == 422
 
 
 @pytest.mark.api

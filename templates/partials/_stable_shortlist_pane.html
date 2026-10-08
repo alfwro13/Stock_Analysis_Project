@@ -1,0 +1,97 @@
+<div class="sl-pane" data-sl-id="{{ sl_id }}" data-sl-signal="{{ sl_signal }}">
+    <p class="page-subtitle mb-3">
+        {% if sl_signal == 'ml_upside' %}
+        A slow-moving list built from the <abbr title="Predicted move from the closing price to the middle of the 10-trading-day quantile price band. Only names with positive predicted upside qualify.">ML Upside</abbr>
+        of each ticker in the list. It is re-ranked once a week and only a few names are swapped at a time, so it changes much less than the live leaderboard.
+        {% else %}
+        A slow-moving list built from each ticker's nightly <abbr title="The 0-100 composite quant score computed by the Quantamental Analysis Engine.">Quant Score</abbr>.
+        It is re-ranked once a week and only a few names are swapped at a time. Names below the minimum score set in Settings never qualify.
+        {% endif %}
+        Suggestions only &mdash; nothing is traded.
+    </p>
+
+    <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <div class="btn-group" role="group" aria-label="Scope">
+            <input type="radio" class="btn-check" name="sl-{{ sl_id }}-scope" id="sl-{{ sl_id }}-scope-portfolio" value="portfolio" checked>
+            <label class="btn btn-outline-primary btn-sm" for="sl-{{ sl_id }}-scope-portfolio">Portfolio</label>
+            <input type="radio" class="btn-check" name="sl-{{ sl_id }}-scope" id="sl-{{ sl_id }}-scope-watchlist" value="watchlist">
+            <label class="btn btn-outline-primary btn-sm" for="sl-{{ sl_id }}-scope-watchlist">Watchlist</label>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="sl-{{ sl_id }}-run">&#9654; Run Now</button>
+        <span id="sl-{{ sl_id }}-run-msg" class="text-muted"></span>
+    </div>
+
+    <p id="sl-{{ sl_id }}-meta" class="text-muted mb-3"></p>
+
+    <div class="sentiment-module module-cyan mb-3">
+        <div class="p-3 pb-0">
+            <h3 class="tm-ticker-heading">
+                {{ sl_title }}
+                <span id="sl-{{ sl_id }}-count" class="tm-ticker-count"></span>
+            </h3>
+        </div>
+        <div class="overflow-auto p-3">
+            <table class="tm-table w-100">
+                <thead id="sl-{{ sl_id }}-thead"></thead>
+                <tbody id="sl-{{ sl_id }}-tbody">
+                    <tr><td class="text-center p-4 text-muted">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="sentiment-module module-cyan mb-3">
+        <div class="p-3 pb-0">
+            <h3 class="tm-ticker-heading">Changes at the Latest Snapshot</h3>
+        </div>
+        <div class="overflow-auto p-3">
+            <table class="tm-table w-100">
+                <thead>
+                    <tr>
+                        <th class="tm-th-blue tm-th-left">Ticker</th>
+                        <th class="tm-th-muted tm-th-left">Company</th>
+                        <th class="tm-th-amber tm-th-left">Change</th>
+                        <th class="tm-th-muted tm-th-left">Why</th>
+                    </tr>
+                </thead>
+                <tbody id="sl-{{ sl_id }}-changes"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <details class="mb-3">
+        <summary class="mb-2">Other candidates at the latest snapshot <span id="sl-{{ sl_id }}-others-count" class="tm-ticker-count"></span></summary>
+        <div class="overflow-auto">
+            <table class="tm-table w-100">
+                <thead id="sl-{{ sl_id }}-others-thead"></thead>
+                <tbody id="sl-{{ sl_id }}-others"></tbody>
+            </table>
+        </div>
+    </details>
+
+    <div class="sentiment-module module-cyan mb-3">
+        <div class="p-3 pb-0">
+            <h3 class="tm-ticker-heading">
+                <abbr title="Judged only on snapshots recorded from now on. Each snapshot's members are followed for 10 trading sessions from their reference close, then compared with the other names the snapshot tracked. Weekly snapshots overlap, so the results are not independent.">Forward-Only Track Record</abbr>
+            </h3>
+        </div>
+        <div class="p-3 pt-0">
+            <p id="sl-{{ sl_id }}-eval-summary" class="mb-3"></p>
+            <div class="overflow-auto">
+                <table class="tm-table w-100">
+                    <thead>
+                        <tr>
+                            <th class="tm-th-blue tm-th-left">Snapshot</th>
+                            <th class="tm-th-muted tm-th-right">Members</th>
+                            <th class="tm-th-amber tm-th-right">Members' Avg 10-Session Return</th>
+                            <th class="tm-th-muted tm-th-right">Others</th>
+                            <th class="tm-th-muted tm-th-right">Others' Avg 10-Session Return</th>
+                            <th class="tm-th-amber tm-th-right">Difference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sl-{{ sl_id }}-eval"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

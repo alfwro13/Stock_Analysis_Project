@@ -35,7 +35,8 @@ function _pmaRenderTable(rows) {
 }
 
 function _pmaLoad() {
-    fetch('/api/predicted-movers/accuracy')
+    const scope = document.querySelector('input[name="pma-scope"]:checked').value;
+    fetch(`/api/predicted-movers/accuracy?scope=${encodeURIComponent(scope)}`)
         .then(r => r.json())
         .then(data => {
             if (data.status !== 'success') throw new Error(data.message || 'Failed to load');
@@ -47,4 +48,7 @@ function _pmaLoad() {
         });
 }
 
-document.addEventListener('DOMContentLoaded', _pmaLoad);
+document.addEventListener('DOMContentLoaded', () => {
+    _pmaLoad();
+    document.querySelectorAll('input[name="pma-scope"]').forEach(el => el.addEventListener('change', _pmaLoad));
+});

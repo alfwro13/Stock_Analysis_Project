@@ -72,6 +72,8 @@ The detailed reference material that used to live in this file now lives in `age
 
    `portfolio.json` and `watchlist.json` are **Ghostfolio output files** written only by `ghostfolio_sync.py` when `GHOSTFOLIO_ENABLED = True` (disabled by default). `accounts_engine.get_combined_holdings()` already merges Ghostfolio holdings (when the file exists) with built-in Trading account holdings, so calling it is always correct whether Ghostfolio is on or off.
 
+   **Portfolio and Watchlist lists are exclusive:** when a feature needs them as separate lists, use `db_helpers.get_portfolio_tickers()` and `db_helpers.get_watchlist_only_tickers()` (Watchlist tickers you do not hold) — a ticker both held and watched belongs to Portfolio only. `get_portfolio_watchlist_tickers()` is the union.
+
    **Bypasses to flag as bugs:** any `open(PORTFOLIO_PATH)`, `_load_json(PORTFOLIO_PATH)`, `get_tickers_from_json(PORTFOLIO_PATH, ...)`, or `engine.portfolio` attribute access outside `accounts_engine.py` and `ghostfolio_sync.py` will silently return an empty portfolio when Ghostfolio is disabled.
 
 15. **Never let a fetched value die with the engine that fetched it — share it via a timestamped cache.** → **moved:** `agents/RULES_DATA_CACHING_HELPERS.md` — read it before adding any fetch of external data.

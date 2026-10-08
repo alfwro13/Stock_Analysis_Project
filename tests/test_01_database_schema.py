@@ -848,6 +848,47 @@ def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results
 
 
 @pytest.mark.db
+def test_stable_shortlist_tables_exist_with_unique_snapshot_identity():
+    conn = _conn()
+    try:
+        snapshot_cols = {r["name"] for r in conn.execute("PRAGMA table_info(stable_shortlist_snapshots)").fetchall()}
+        assert {"signal_type", "scope", "cycle_key", "decision_ts", "config_json", "signal_version",
+                "signal_as_of", "candidate_count", "member_count"} <= snapshot_cols
+        member_cols = {r["name"] for r in conn.execute("PRAGMA table_info(stable_shortlist_members)").fetchall()}
+        assert {"snapshot_id", "ticker", "sector", "signal_date", "signal_value", "reference_close", "price_q10",
+                "price_q90", "rank", "prev_rank", "eligible", "ineligible_reason", "selected", "reason",
+                "cycles_held", "target_date", "actual_price", "actual_date", "forward_return_pct",
+                "direction_correct", "within_band_correct"} <= member_cols
+        conn.execute("DELETE FROM stable_shortlist_snapshots WHERE cycle_key = 'TEST-W01'")
+        insert = """INSERT INTO stable_shortlist_snapshots
+                    (signal_type, scope, cycle_key, decision_ts, config_json, candidate_count, member_count)
+                    VALUES ('ml_upside', 'portfolio', 'TEST-W01', '2026-01-01 00:00:00', '{}', 0, 0)"""
+        conn.execute(insert)
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(insert)
+    finally:
+        conn.rollback()
+        conn.execute("DELETE FROM stable_shortlist_snapshots WHERE cycle_key = 'TEST-W01'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_migrate_db_adds_scope_column_to_predicted_movers_history():
+    conn = _conn()
+    try:
+        conn.execute("ALTER TABLE predicted_movers_history DROP COLUMN scope")
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(predicted_movers_history)").fetchall()}
+        assert "scope" in cols
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
 def test_account_transactions_has_account_date_index():
     """get_transactions() filters on account_id and orders by txn_date — must be indexed, not a table scan."""
     conn = _conn()

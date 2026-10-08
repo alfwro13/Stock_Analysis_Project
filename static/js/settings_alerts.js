@@ -421,6 +421,61 @@ async function triggerSectorRelativeMomentumRun() {
     }
 }
 
+const STABLE_SHORTLIST_PRESETS = {
+    calm: { TOPK: 10, N_DROP: 2, HOLD_THRESH: 2, SECTOR_CAP: 2 },
+    balanced: { TOPK: 10, N_DROP: 3, HOLD_THRESH: 1, SECTOR_CAP: 3 },
+    active: { TOPK: 10, N_DROP: 5, HOLD_THRESH: 1, SECTOR_CAP: 4 },
+};
+
+function _stableShortlistParams() {
+    const params = {};
+    Object.keys(STABLE_SHORTLIST_PRESETS.calm).forEach(key => {
+        params[key] = parseInt(document.getElementById(`STABLE_SHORTLIST_${key}`).value, 10);
+    });
+    return params;
+}
+
+function _stableShortlistSyncPreset() {
+    const params = _stableShortlistParams();
+    const match = Object.keys(STABLE_SHORTLIST_PRESETS).find(name =>
+        Object.keys(params).every(key => STABLE_SHORTLIST_PRESETS[name][key] === params[key]));
+    document.getElementById('STABLE_SHORTLIST_PRESET').value = match || 'custom';
+}
+
+function _stableShortlistApplyPreset() {
+    const preset = STABLE_SHORTLIST_PRESETS[document.getElementById('STABLE_SHORTLIST_PRESET').value];
+    if (!preset) return;
+    Object.entries(preset).forEach(([key, value]) => {
+        document.getElementById(`STABLE_SHORTLIST_${key}`).value = value;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const presetEl = document.getElementById('STABLE_SHORTLIST_PRESET');
+    if (!presetEl) return;
+    _stableShortlistSyncPreset();
+    presetEl.addEventListener('change', _stableShortlistApplyPreset);
+    document.querySelectorAll('.sl-param').forEach(el => el.addEventListener('input', _stableShortlistSyncPreset));
+});
+
+async function triggerStableShortlistRun() {
+    const btn = document.querySelector('button[onclick="triggerStableShortlistRun()"]');
+    const msgEl = document.getElementById('stable-shortlist-msg');
+    btn.disabled = true;
+    btn.innerText = "⏳ Running...";
+    msgEl.innerHTML = '';
+    try {
+        const resp = await fetch('/api/predicted-movers/shortlist/run', { method: 'POST' });
+        const data = await resp.json();
+        const color = data.status === 'success' ? '#4caf50' : '#f44336';
+        msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${escapeHtml(data.message)}</span>`;
+    } catch (err) {
+        msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${escapeHtml(err.message)}</span>`;
+    } finally {
+        setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Now"; }, 3000);
+    }
+}
+
 async function triggerPatternDetectionScan() {
     const btn = document.querySelector('button[onclick="triggerPatternDetectionScan()"]');
     const msgEl = document.getElementById('pattern-detection-msg');

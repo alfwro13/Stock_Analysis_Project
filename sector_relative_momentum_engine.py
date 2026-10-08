@@ -13,7 +13,7 @@ from database import get_connection
 from db_helpers import get_company_names, get_portfolio_watchlist_tickers
 from fundamentals_helpers import get_instrument_type
 from price_history_helpers import session_window_returns
-from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_currency_bucket
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, is_missing_sector, normalize_currency_bucket
 
 # GUI name: "Sector-Relative Momentum". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 
@@ -40,15 +40,9 @@ STATUS_LABELS = {
     "not_computed": "Not computed yet",
 }
 
-_MISSING_SECTORS = {"", "none", "unclassified", "unknown"}
-
 
 def _now_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _is_missing_sector(sector: Optional[str]) -> bool:
-    return (sector or "").strip().lower() in _MISSING_SECTORS
 
 
 def _classify(row: Optional[dict]) -> str:
@@ -57,7 +51,7 @@ def _classify(row: Optional[dict]) -> str:
         return "no_metadata"
     if get_instrument_type(row.get("quote_type"), "") != "Equity":
         return "not_equity"
-    if _is_missing_sector(row.get("sector")):
+    if is_missing_sector(row.get("sector")):
         return "no_sector"
     if not row.get("currency"):
         return "no_currency"

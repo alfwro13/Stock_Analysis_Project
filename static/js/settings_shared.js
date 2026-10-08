@@ -278,6 +278,17 @@ async function saveSettings(silent = false) {
                     : ['mon','tue','wed','thu','fri'],
                 "TIME": document.getElementById('SECTOR_RELATIVE_MOMENTUM_TIME').value
             },
+            "STABLE_SHORTLIST": {
+                "ENABLED": document.getElementById('STABLE_SHORTLIST_ENABLED').checked,
+                "DAYS": [document.getElementById('STABLE_SHORTLIST_DAY').value],
+                "TIME": document.getElementById('STABLE_SHORTLIST_TIME').value,
+                "TOPK": parseInt(document.getElementById('STABLE_SHORTLIST_TOPK').value, 10),
+                "N_DROP": parseInt(document.getElementById('STABLE_SHORTLIST_N_DROP').value, 10),
+                "HOLD_THRESH": parseInt(document.getElementById('STABLE_SHORTLIST_HOLD_THRESH').value, 10),
+                "SECTOR_CAP": parseInt(document.getElementById('STABLE_SHORTLIST_SECTOR_CAP').value, 10),
+                "MAX_SIGNAL_AGE_DAYS": parseInt(document.getElementById('STABLE_SHORTLIST_MAX_SIGNAL_AGE_DAYS').value, 10),
+                "MIN_QUANT_SCORE": parseInt(document.getElementById('STABLE_SHORTLIST_MIN_QUANT_SCORE').value, 10)
+            },
             "PATTERN_DETECTION": {
                 "ENABLED": document.getElementById('PATTERN_DETECTION_ENABLED').checked,
                 "MONITOR_PORTFOLIO": document.getElementById('PATTERN_DETECTION_PORTFOLIO').checked,

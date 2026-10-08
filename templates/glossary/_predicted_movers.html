@@ -17,14 +17,43 @@
 
             <div class="term-box">
                 <span class="term-title">Predicted Movers Scope: Leaderboard vs Accuracy Page</span>
-                <p>The leaderboard has the same Portfolio+Watchlist / Universe scope toggle as Pairs Spread Monitor. Unlike that monitor, though, there's nothing to scan or trigger here — both scopes are answered by a live database query over data the nightly ML Inference job already wrote, so the page has no "Run Scan Now" button.</p>
-                <p>The linked <strong>Prediction Accuracy</strong> page is Portfolio+Watchlist only, with no scope toggle — tracking daily prediction accuracy across the entire multi-thousand-ticker market universe would be a large amount of data nobody is actually holding or watching, so only tickers you actually own or follow get their predictions logged and graded.</p>
+                <p>The leaderboard has a scope toggle with <strong>Portfolio</strong>, <strong>Watchlist</strong> and <strong>Universe</strong>. A ticker you both hold and watch appears under Portfolio only. Unlike Pairs Spread Monitor, there's nothing to scan or trigger here — every scope is answered by a live database query over data the nightly ML Inference job already wrote, so the leaderboard has no "Run Scan Now" button.</p>
+                <p>The linked <strong>Prediction Accuracy</strong> page splits into Portfolio and Watchlist, with no Universe option — tracking daily prediction accuracy across the entire multi-thousand-ticker market universe would be a large amount of data nobody is actually holding or watching, so only tickers you actually own or follow get their predictions logged and graded. Each prediction keeps the list it belonged to when it was logged.</p>
             </div>
 
             <div class="term-box">
                 <span class="term-title">Prediction Accuracy: Direction Match vs Within-Band Match</span>
-                <p>Each day, the predicted price band for every Portfolio+Watchlist ticker is snapshotted. Roughly 10 trading days later, once the outcome is known, that prediction is graded two independent ways: <strong>direction match</strong> — did the actual price move the same way (up or down) as the predicted midpoint? — and <strong>within-band match</strong> — did the actual price land anywhere inside the predicted Q10–Q90 range, regardless of which way the midpoint pointed?</p>
+                <p>Each day, the predicted price band for every Portfolio and Watchlist ticker is snapshotted. Roughly 10 trading days later, once the outcome is known, that prediction is graded two independent ways: <strong>direction match</strong> — did the actual price move the same way (up or down) as the predicted midpoint? — and <strong>within-band match</strong> — did the actual price land anywhere inside the predicted Q10–Q90 range, regardless of which way the midpoint pointed?</p>
                 <p>A prediction can't be graded until its ~10-trading-day horizon has actually passed, so the accuracy page always shows a mix of "Resolved" and "Pending" rows — a newly-tracked ticker shows no accuracy percentage at all for its first couple of weeks. This is expected: the horizon is what the model was trained to predict, so there's no way to grade it sooner.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Stable Shortlist: A Slow-Moving Weekly List</span>
+                <p>A <strong>Stable Shortlist</strong> turns the nightly rankings into a list that changes slowly. Once a week the app takes a snapshot of the best-ranked names — up to the list size you set — and between snapshots the list does not move, even while the live leaderboard keeps updating. There are two lists, one built from the <strong>ML Upside</strong> signal and one from the <strong>Quant Score</strong>, each kept separately for your Portfolio and your Watchlist.</p>
+                <p>Each snapshot is saved with its date, settings and the signal data it used, so a list can always be traced back to why a name was on it. The lists are suggestions to review, not trades: the app has no order execution.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Swap Limit and Minimum Hold</span>
+                <p>To stop the list churning, each snapshot may swap out at most the <strong>Max Swaps per Snapshot</strong> worst-ranked members, and only for better-ranked names that are not already on the list. A member must also stay for the <strong>Minimum Hold</strong> number of snapshots before it can be swapped out, so a name that has just entered cannot leave straight away.</p>
+                <p>A member that stops qualifying — for example its predicted upside turns negative, its signal is too old, or it leaves your Portfolio or Watchlist — is removed regardless of these limits, and does not use up the swap allowance.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Sector Cap</span>
+                <p>The <strong>Sector Cap</strong> is the most names from one sector a shortlist may hold, so a single theme cannot fill the whole list. A better-ranked name whose sector is already full is skipped and marked as blocked by the sector cap. Names with no sector on file share one <strong>Unknown</strong> group, which has the same cap.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">ML Upside and Quant Score Signals</span>
+                <p>The <strong>ML Upside Shortlist</strong> ranks names by their predicted upside: the middle of the 10-trading-day quantile price band compared with the closing price the prediction was made on. Only names with positive predicted upside qualify, so the list can be shorter than its size. The <strong>Quant Score Shortlist</strong> ranks by the nightly 0–100 composite quant score, and names below the <strong>Min Quant Score</strong> setting never qualify.</p>
+                <p>Both lists only use a signal that is recent enough: anything older than the <strong>Signal Max Age</strong> is treated as stale and cannot qualify. The two lists are never blended into one combined score. Ties are broken alphabetically by ticker so a snapshot can always be reproduced.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Forward-Only Track Record</span>
+                <p>The Stable Shortlist is judged only on snapshots recorded from now on. For each snapshot, the app follows every tracked name for 10 trading sessions from its saved reference close, then compares the members' average return with the average return of the other names that snapshot tracked.</p>
+                <p>Weekly snapshots overlap — each follow-up window is 10 sessions long but a new snapshot starts every 5 — so the results are not independent trades. The ML list also shows how often its predicted direction was right and how often the final price landed inside the Q10–Q90 band. History is never rebuilt backwards, because that would use today's model on past dates.</p>
             </div>
 
         </div>

@@ -174,6 +174,13 @@ def is_excluded_from_yahoo_fetch(ticker: str, ignored: Optional[set] = None) -> 
     return normalize_ticker(ticker) in ignored
 
 
+_MISSING_SECTORS = {"", "none", "unclassified", "unknown"}
+
+
+def is_missing_sector(sector: Optional[str]) -> bool:
+    return (sector or "").strip().lower() in _MISSING_SECTORS
+
+
 def normalize_currency_bucket(currency: Optional[str]) -> Optional[str]:
     """Collapses LSE pence (GBp/GBX) and GBP into one "GBP" bucket for same-currency grouping — Yahoo reports either depending on the ticker. Ratio-based callers never need the 100x conversion."""
     if not currency:

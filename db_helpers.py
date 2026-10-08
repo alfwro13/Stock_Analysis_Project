@@ -125,23 +125,37 @@ def get_universe_tickers() -> List[str]:
             conn.close()
 
 
-def get_portfolio_watchlist_tickers() -> List[str]:
-    """Union of Portfolio + Watchlist tickers, uppercased/sorted, ignored-ticker-filtered — the
-    shared scope-union logic for any engine offering a Portfolio+Watchlist scope (Pairs Spread
-    Monitor, Predicted Movers). Local imports avoid a circular import: database.py imports this
-    module at module level, and accounts_engine.py imports database.py at module level."""
+def _held_and_watched_tickers() -> tuple[set, set]:
+    """(held, watched) uppercased and ignored-ticker-filtered. Local imports avoid a circular
+    import: database.py imports this module at module level, and accounts_engine.py imports
+    database.py at module level."""
     from accounts_engine import get_combined_holdings
     from database import get_watchlist_tickers
     from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 
     ignored = ignored_tickers_set(load_config())
-    tickers: set = set()
-    tickers.update(get_combined_holdings().keys())
-    tickers.update(get_watchlist_tickers())
-    return sorted(
-        t.upper() for t in tickers
-        if t and not is_excluded_from_yahoo_fetch(t, ignored)
-    )
+
+    def clean(raw) -> set:
+        return {t.upper() for t in raw if t and not is_excluded_from_yahoo_fetch(t, ignored)}
+
+    return clean(get_combined_holdings().keys()), clean(get_watchlist_tickers())
+
+
+def get_portfolio_tickers() -> List[str]:
+    """Held tickers, uppercased/sorted, ignored-ticker-filtered."""
+    return sorted(_held_and_watched_tickers()[0])
+
+
+def get_watchlist_only_tickers() -> List[str]:
+    """Watchlist tickers that are not held — a ticker in both lists belongs to the portfolio list."""
+    held, watched = _held_and_watched_tickers()
+    return sorted(watched - held)
+
+
+def get_portfolio_watchlist_tickers() -> List[str]:
+    """Union of Portfolio + Watchlist tickers, uppercased/sorted, ignored-ticker-filtered."""
+    held, watched = _held_and_watched_tickers()
+    return sorted(held | watched)
 
 
 def get_mutual_fund_tickers(tickers: List[str]) -> set:
@@ -264,6 +278,27 @@ def get_company_names(tickers: List[str]) -> dict:
         return {r["ticker"]: r["company_name"] for r in rows if r["company_name"]}
     except Exception as e:
         logger.error("Failed to fetch company names: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_sectors(tickers: List[str]) -> dict:
+    """{ticker: sector} from stock_signals for `tickers`; tickers without a sector are absent."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, sector FROM stock_signals WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+        return {r["ticker"]: r["sector"] for r in rows if r["sector"]}
+    except Exception as e:
+        logger.error("Failed to fetch sectors: %s", e)
         return {}
     finally:
         if conn:
@@ -691,8 +726,8 @@ def batch_update_predicted_movers_actuals(
             conn.close()
 
 
-def get_predicted_movers_accuracy() -> dict:
-    """Per-ticker + overall direction-match / within-band-match hit rates. `resolved` counts
+def get_predicted_movers_accuracy(scope: str) -> dict:
+    """Per-ticker + overall direction-match / within-band-match hit rates for rows logged under `scope`. `resolved` counts
     rows whose ~10-trading-day target_date has passed and been graded; `pending` are still
     within that window. Accuracy percentages are computed over resolved rows only."""
     conn = None
@@ -710,8 +745,10 @@ def get_predicted_movers_accuracy() -> dict:
                     ROUND(AVG(CASE WHEN within_band_correct IS NOT NULL
                               THEN within_band_correct END) * 100, 1) AS within_band_accuracy
                    FROM predicted_movers_history
+                   WHERE scope = ?
                    GROUP BY ticker
-                   ORDER BY ticker"""
+                   ORDER BY ticker""",
+                (scope,),
             ).fetchall()
         ]
         overall = dict(conn.execute(
@@ -723,7 +760,9 @@ def get_predicted_movers_accuracy() -> dict:
                           THEN direction_correct END) * 100, 1) AS direction_accuracy,
                 ROUND(AVG(CASE WHEN within_band_correct IS NOT NULL
                           THEN within_band_correct END) * 100, 1) AS within_band_accuracy
-               FROM predicted_movers_history"""
+               FROM predicted_movers_history
+               WHERE scope = ?""",
+            (scope,),
         ).fetchone())
         return {"by_ticker": by_ticker, "overall": overall}
     except Exception as e:
@@ -732,6 +771,16 @@ def get_predicted_movers_accuracy() -> dict:
     finally:
         if conn:
             conn.close()
+
+
+def get_first_close_on_or_after(conn, ticker: str, date: str) -> Optional[dict]:
+    """First quant_signals (date, close_price) on/after `date` — the shared 'resolve the actual outcome' lookup."""
+    row = conn.execute(
+        """SELECT date, close_price FROM quant_signals
+           WHERE ticker=? AND date>=? ORDER BY date ASC LIMIT 1""",
+        (ticker, date),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def get_latest_quantile_bands(tickers: list) -> list:
@@ -761,6 +810,34 @@ def get_latest_quantile_bands(tickers: list) -> list:
         return [dict(r) for r in rows]
     except Exception as e:
         logger.error("get_latest_quantile_bands failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_latest_composite_scores(tickers: list) -> list:
+    """Latest quant_signals row per ticker with a non-null composite_score (ticker, date, close_price, composite_score)."""
+    if not tickers:
+        return []
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"""SELECT qs.ticker, qs.date, qs.close_price, qs.composite_score
+                FROM quant_signals qs
+                WHERE qs.ticker IN ({placeholders})
+                  AND qs.composite_score IS NOT NULL
+                  AND qs.date = (
+                      SELECT MAX(qs2.date) FROM quant_signals qs2
+                      WHERE qs2.ticker = qs.ticker AND qs2.composite_score IS NOT NULL
+                  )""",
+            tickers,
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_latest_composite_scores failed: %s", e)
         return []
     finally:
         if conn:

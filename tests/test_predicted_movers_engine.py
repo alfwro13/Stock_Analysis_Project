@@ -3,12 +3,14 @@ tests/test_predicted_movers_engine.py — Predicted Movers Tests
 
 Covers:
   • utils.trading_days_forward()      — ~10-trading-day-forward business-day offset
-  • get_leaderboard()                 — sort modes, missing-price drop, empty scope
-  • log_predictions()                 — insert + same-day idempotency
+  • get_leaderboard()                 — sort modes, missing-price drop, empty scope, Portfolio/Watchlist/Universe scopes
+  • log_predictions()                 — insert + same-day idempotency + Portfolio/Watchlist scope tag
   • backfill_actual_outcomes()        — resolves direction/within-band correctness from
                                          quant_signals, leaves unresolved rows before target_date
-  • get_accuracy_summary()            — empty + aggregate cases
-  • db_helpers.get_portfolio_watchlist_tickers() — union + ignored-ticker filtering
+  • get_accuracy_summary()            — empty + aggregate cases, per-scope split
+  • db_schema._tag_predicted_movers_history_scope() — one-time tagging of pre-existing rows
+  • db_helpers.get_portfolio_tickers() / get_watchlist_only_tickers() / get_portfolio_watchlist_tickers()
+                                      — split, overlap goes to Portfolio, ignored-ticker filtering
 """
 
 import sys
@@ -23,6 +25,9 @@ import database as db
 import db_helpers
 from constants import PREDICTION_HORIZON_DAYS
 from predicted_movers_engine import (
+    SCOPE_PORTFOLIO,
+    SCOPE_UNIVERSE,
+    SCOPE_WATCHLIST,
     SORT_GAINERS,
     SORT_LOSERS,
     SORT_MOVERS,
@@ -89,19 +94,43 @@ class TestTargetDate:
 
 class TestGetLeaderboard:
     def test_empty_scope_returns_empty_list(self):
-        with patch("predicted_movers_engine.get_portfolio_watchlist_tickers", return_value=[]):
-            assert get_leaderboard(scope="portfolio_watchlist") == []
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[]):
+            assert get_leaderboard(scope=SCOPE_PORTFOLIO) == []
+
+    def test_portfolio_and_watchlist_scopes_read_their_own_lists(self):
+        _seed_quant_signal(T_A, "2024-01-02", 100.0, 90.0, 92.0)
+        _seed_quant_signal(T_B, "2024-01-02", 100.0, 108.0, 112.0)
+        prices = {T_A: (100.0, "USD"), T_B: (100.0, "USD")}
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[T_A]), \
+             patch("predicted_movers_engine.get_watchlist_only_tickers", return_value=[T_B]), \
+             patch("predicted_movers_engine.current_price_map", return_value=prices), \
+             patch("predicted_movers_engine.get_company_names", return_value={}):
+            held = get_leaderboard(scope=SCOPE_PORTFOLIO)
+            watched = get_leaderboard(scope=SCOPE_WATCHLIST)
+        assert [r["ticker"] for r in held] == [T_A]
+        assert [r["ticker"] for r in watched] == [T_B]
+
+    def test_unknown_scope_returns_empty_list(self):
+        assert get_leaderboard(scope="portfolio_watchlist") == []
+
+    def test_universe_scope_reads_the_universe(self):
+        _seed_quant_signal(T_A, "2024-01-02", 100.0, 90.0, 92.0)
+        with patch("predicted_movers_engine.get_universe_tickers", return_value=[T_A]), \
+             patch("predicted_movers_engine.current_price_map", return_value={T_A: (100.0, "USD")}), \
+             patch("predicted_movers_engine.get_company_names", return_value={}):
+            results = get_leaderboard(scope=SCOPE_UNIVERSE)
+        assert [r["ticker"] for r in results] == [T_A]
 
     def test_sort_modes_order_correctly(self):
         _seed_quant_signal(T_A, "2024-01-02", 100.0, 90.0, 92.0)   # predicted mid 91 → -9%
         _seed_quant_signal(T_B, "2024-01-02", 100.0, 108.0, 112.0)  # predicted mid 110 → +10%
-        with patch("predicted_movers_engine.get_portfolio_watchlist_tickers", return_value=[T_A, T_B]), \
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[T_A, T_B]), \
              patch("predicted_movers_engine.current_price_map",
                    return_value={T_A: (100.0, "USD"), T_B: (100.0, "USD")}), \
              patch("predicted_movers_engine.get_company_names", return_value={}):
-            gainers = get_leaderboard(scope="portfolio_watchlist", sort_mode=SORT_GAINERS)
-            losers = get_leaderboard(scope="portfolio_watchlist", sort_mode=SORT_LOSERS)
-            movers = get_leaderboard(scope="portfolio_watchlist", sort_mode=SORT_MOVERS)
+            gainers = get_leaderboard(scope=SCOPE_PORTFOLIO, sort_mode=SORT_GAINERS)
+            losers = get_leaderboard(scope=SCOPE_PORTFOLIO, sort_mode=SORT_LOSERS)
+            movers = get_leaderboard(scope=SCOPE_PORTFOLIO, sort_mode=SORT_MOVERS)
 
         assert gainers[0]["ticker"] == T_B
         assert losers[0]["ticker"] == T_A
@@ -109,17 +138,18 @@ class TestGetLeaderboard:
 
     def test_missing_current_price_drops_row(self):
         _seed_quant_signal(T_C, "2024-01-02", 100.0, 95.0, 105.0)
-        with patch("predicted_movers_engine.get_portfolio_watchlist_tickers", return_value=[T_C]), \
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[T_C]), \
              patch("predicted_movers_engine.current_price_map", return_value={}), \
              patch("predicted_movers_engine.get_company_names", return_value={}):
-            results = get_leaderboard(scope="portfolio_watchlist")
+            results = get_leaderboard(scope=SCOPE_PORTFOLIO)
         assert results == []
 
 
 class TestLogPredictions:
     def test_inserts_one_row_per_ticker(self):
         _seed_quant_signal("PM_LOG1", "2024-02-01", 50.0, 45.0, 55.0)
-        with patch("predicted_movers_engine.get_portfolio_watchlist_tickers", return_value=["PM_LOG1"]):
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=["PM_LOG1"]), \
+             patch("predicted_movers_engine.get_watchlist_only_tickers", return_value=[]):
             inserted = log_predictions()
         assert inserted == 1
         conn = db.get_connection()
@@ -135,7 +165,8 @@ class TestLogPredictions:
 
     def test_same_day_rerun_is_idempotent(self):
         _seed_quant_signal("PM_LOG2", "2024-02-05", 50.0, 45.0, 55.0)
-        with patch("predicted_movers_engine.get_portfolio_watchlist_tickers", return_value=["PM_LOG2"]):
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=["PM_LOG2"]), \
+             patch("predicted_movers_engine.get_watchlist_only_tickers", return_value=[]):
             first = log_predictions()
             second = log_predictions()
         assert first == 1
@@ -159,9 +190,25 @@ class TestLogPredictions:
             conn.commit()
         finally:
             conn.close()
-        with patch("predicted_movers_engine.get_portfolio_watchlist_tickers", return_value=["PM_LOG3"]):
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=["PM_LOG3"]), \
+             patch("predicted_movers_engine.get_watchlist_only_tickers", return_value=[]):
             inserted = log_predictions()
         assert inserted == 0
+
+    def test_tags_each_row_with_its_list(self):
+        _seed_quant_signal("PM_LOG4", "2024-02-07", 50.0, 45.0, 55.0)
+        _seed_quant_signal("PM_LOG5", "2024-02-07", 50.0, 45.0, 55.0)
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=["PM_LOG4"]), \
+             patch("predicted_movers_engine.get_watchlist_only_tickers", return_value=["PM_LOG5"]):
+            assert log_predictions() == 2
+        conn = db.get_connection()
+        try:
+            scopes = {r["ticker"]: r["scope"] for r in conn.execute(
+                "SELECT ticker, scope FROM predicted_movers_history WHERE ticker IN ('PM_LOG4', 'PM_LOG5')"
+            ).fetchall()}
+        finally:
+            conn.close()
+        assert scopes == {"PM_LOG4": SCOPE_PORTFOLIO, "PM_LOG5": SCOPE_WATCHLIST}
 
 
 class TestBackfillActualOutcomes:
@@ -227,6 +274,26 @@ class TestBackfillActualOutcomes:
 
 
 class TestGetAccuracySummary:
+    def test_splits_history_by_scope(self):
+        for ticker, scope, correct in (("PM_SC1", SCOPE_PORTFOLIO, 1), ("PM_SC2", SCOPE_WATCHLIST, 0)):
+            row_id = _seed_predicted_movers_row(ticker, "2024-04-01", 100.0, 95.0, 105.0, "2024-04-15")
+            conn = db.get_connection()
+            try:
+                conn.execute("UPDATE predicted_movers_history SET scope=?, direction_correct=?, within_band_correct=1 WHERE id=?",
+                             (scope, correct, row_id))
+                conn.commit()
+            finally:
+                conn.close()
+        with patch("predicted_movers_engine.get_company_names", return_value={}):
+            held = get_accuracy_summary(SCOPE_PORTFOLIO)
+            watched = get_accuracy_summary(SCOPE_WATCHLIST)
+        held_rows = [r for r in held["by_ticker"] if r["ticker"].startswith("PM_SC")]
+        watched_rows = [r for r in watched["by_ticker"] if r["ticker"].startswith("PM_SC")]
+        assert [r["ticker"] for r in held_rows] == ["PM_SC1"]
+        assert [r["ticker"] for r in watched_rows] == ["PM_SC2"]
+        assert held_rows[0]["direction_accuracy"] == 100.0
+        assert watched_rows[0]["direction_accuracy"] == 0.0
+
     def test_empty_table_returns_shape(self):
         with patch("predicted_movers_engine.get_predicted_movers_accuracy",
                    return_value={"by_ticker": [], "overall": {}}):
@@ -244,6 +311,58 @@ class TestGetAccuracySummary:
              patch("predicted_movers_engine.get_company_names", return_value={"PM_ACC1": "Test Co"}):
             data = get_accuracy_summary()
         assert data["by_ticker"][0]["company_name"] == "Test Co"
+
+
+class TestScopeTaggingMigration:
+    def test_tags_existing_rows_by_current_membership_and_leaves_untracked_untagged(self):
+        import db_schema
+        for ticker in ("PM_MG1", "PM_MG2", "PM_MG3"):
+            _seed_predicted_movers_row(ticker, "2024-05-01", 100.0, 95.0, 105.0, "2024-05-15")
+        with patch("db_helpers.get_portfolio_tickers", return_value=["PM_MG1"]), \
+             patch("db_helpers.get_watchlist_only_tickers", return_value=["PM_MG2"]):
+            db_schema._tag_predicted_movers_history_scope()
+        conn = db.get_connection()
+        try:
+            scopes = {r["ticker"]: r["scope"] for r in conn.execute(
+                "SELECT ticker, scope FROM predicted_movers_history WHERE ticker IN ('PM_MG1', 'PM_MG2', 'PM_MG3')"
+            ).fetchall()}
+        finally:
+            conn.close()
+        assert scopes == {"PM_MG1": "portfolio", "PM_MG2": "watchlist", "PM_MG3": None}
+
+    def test_never_retags_a_row_that_already_has_a_scope(self):
+        import db_schema
+        row_id = _seed_predicted_movers_row("PM_MG4", "2024-05-01", 100.0, 95.0, 105.0, "2024-05-15")
+        conn = db.get_connection()
+        try:
+            conn.execute("UPDATE predicted_movers_history SET scope='watchlist' WHERE id=?", (row_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("db_helpers.get_portfolio_tickers", return_value=["PM_MG4"]), \
+             patch("db_helpers.get_watchlist_only_tickers", return_value=[]):
+            db_schema._tag_predicted_movers_history_scope()
+        conn = db.get_connection()
+        try:
+            assert conn.execute("SELECT scope FROM predicted_movers_history WHERE id=?", (row_id,)).fetchone()["scope"] == "watchlist"
+        finally:
+            conn.close()
+
+
+class TestPortfolioAndWatchlistSplit:
+    def test_overlap_belongs_to_portfolio_only(self):
+        with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
+             patch("database.get_watchlist_tickers", return_value=[T_B, T_C]):
+            assert db_helpers.get_portfolio_tickers() == sorted([T_A, T_B])
+            assert db_helpers.get_watchlist_only_tickers() == [T_C]
+
+    def test_ignored_ticker_excluded_from_both(self):
+        config = {"IGNORED_TICKERS": [T_A, T_C]}
+        with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
+             patch("database.get_watchlist_tickers", return_value=[T_C, "PM_D"]), \
+             patch("db_helpers.load_config", return_value=config):
+            assert db_helpers.get_portfolio_tickers() == [T_B]
+            assert db_helpers.get_watchlist_only_tickers() == ["PM_D"]
 
 
 class TestGetPortfolioWatchlistTickers:

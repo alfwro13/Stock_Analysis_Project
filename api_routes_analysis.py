@@ -517,7 +517,7 @@ async def get_pattern_detection_chart(request: Request, ticker: str):
 @limiter.limit("20/minute")
 async def get_predicted_movers_leaderboard(
     request: Request,
-    scope: str = Query(default="portfolio_watchlist", pattern=r"^(portfolio_watchlist|universe)$"),
+    scope: str = Query(default="portfolio", pattern=r"^(portfolio|watchlist|universe)$"),
     sort: str = Query(default="movers", pattern=r"^(gainers|losers|movers)$"),
     limit: int = Query(default=200, ge=1, le=1000),
 ):
@@ -563,14 +563,47 @@ async def run_sector_relative_momentum_scan(request: Request, background_tasks: 
 
 @analysis_router.get("/predicted-movers/accuracy")
 @limiter.limit("20/minute")
-async def get_predicted_movers_accuracy_data(request: Request):
-    """Returns per-ticker + overall direction-match and within-band-match hit rates for logged Portfolio+Watchlist predictions."""
+async def get_predicted_movers_accuracy_data(
+    request: Request,
+    scope: str = Query(default="portfolio", pattern=r"^(portfolio|watchlist)$"),
+):
+    """Returns per-ticker + overall direction-match and within-band-match hit rates for the predictions logged for `scope`."""
     try:
         from predicted_movers_engine import get_accuracy_summary
-        data = get_accuracy_summary()
+        data = get_accuracy_summary(scope)
         return JSONResponse(content={"status": "success", **data})
     except Exception as e:
         logger.error("predicted-movers/accuracy failed: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.get("/predicted-movers/shortlist")
+@limiter.limit("20/minute")
+async def get_stable_shortlist(
+    request: Request,
+    signal: str = Query(default="ml_upside", pattern=r"^(ml_upside|quant_score)$"),
+    scope: str = Query(default="portfolio", pattern=r"^(portfolio|watchlist)$"),
+):
+    """Returns the latest Stable Shortlist snapshot for `signal` and `scope`: members, the changes since the previous snapshot, the other candidates with their reasons, and the forward-only evaluation."""
+    try:
+        from stable_shortlist_reads import get_shortlist
+        data = await run_in_threadpool(get_shortlist, signal, scope)
+        return JSONResponse(content={"status": "success", **data})
+    except Exception as e:
+        logger.error("predicted-movers/shortlist failed: %s", e)
+        return _error_500(e)
+
+
+@analysis_router.post("/predicted-movers/shortlist/run")
+@limiter.limit("4/minute")
+async def run_stable_shortlist_scan(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Stable Shortlist run (outcome resolution plus this week's snapshots) in the background."""
+    try:
+        from scheduler_engine import run_stable_shortlist_job
+        background_tasks.add_task(run_manual_job, "stable_shortlist_job", run_stable_shortlist_job)
+        return JSONResponse(content={"status": "success", "message": "Stable Shortlist run triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Stable Shortlist run: %s", e)
         return _error_500(e)
 
 

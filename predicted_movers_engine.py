@@ -12,13 +12,14 @@ from database import get_connection
 from db_helpers import (
     batch_update_predicted_movers_actuals,
     get_company_names,
+    get_first_close_on_or_after,
     get_latest_quantile_bands,
-    get_portfolio_watchlist_tickers,
+    get_portfolio_tickers,
     get_predicted_movers_accuracy,
     get_unresolved_predicted_movers,
     get_universe_tickers,
+    get_watchlist_only_tickers,
 )
-from pairs_spread_engine import SCOPE_PORTFOLIO_WATCHLIST, SCOPE_UNIVERSE
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, trading_days_forward
 
 logger = logging.getLogger(__name__)
@@ -29,8 +30,16 @@ SORT_GAINERS = "gainers"
 SORT_LOSERS = "losers"
 SORT_MOVERS = "movers"
 
+SCOPE_PORTFOLIO = "portfolio"
+SCOPE_WATCHLIST = "watchlist"
+SCOPE_UNIVERSE = "universe"
+
 
 def _get_scope_tickers(scope: str) -> list[str]:
+    if scope == SCOPE_PORTFOLIO:
+        return get_portfolio_tickers()
+    if scope == SCOPE_WATCHLIST:
+        return get_watchlist_only_tickers()
     if scope == SCOPE_UNIVERSE:
         tickers = set(get_universe_tickers())
         ignored = ignored_tickers_set()
@@ -38,11 +47,11 @@ def _get_scope_tickers(scope: str) -> list[str]:
             t.upper() for t in tickers
             if t and not is_excluded_from_yahoo_fetch(t, ignored)
         )
-    return get_portfolio_watchlist_tickers()
+    return []
 
 
 def get_leaderboard(
-    scope: str = SCOPE_PORTFOLIO_WATCHLIST,
+    scope: str = SCOPE_PORTFOLIO,
     sort_mode: str = SORT_MOVERS,
     limit: int = 200,
 ) -> list[dict]:
@@ -93,12 +102,15 @@ def get_leaderboard(
 
 
 def log_predictions(tickers: Optional[list[str]] = None) -> int:
-    """Logs today's quantile prediction for each Portfolio+Watchlist ticker into
-    predicted_movers_history — must run the same day score_quantile_predictions() runs, since
-    quant_signals.price_q10/price_q90 are overwritten in place with no history kept. Safe to
-    re-run same-day (INSERT OR IGNORE on UNIQUE(ticker, predicted_date))."""
+    """Logs today's quantile prediction for each Portfolio and Watchlist ticker into
+    predicted_movers_history, tagged with the list it belonged to at logging time — must run the
+    same day score_quantile_predictions() runs, since quant_signals.price_q10/price_q90 are
+    overwritten in place with no history kept. Safe to re-run same-day (INSERT OR IGNORE on
+    UNIQUE(ticker, predicted_date))."""
+    scope_by_ticker = {t: SCOPE_WATCHLIST for t in get_watchlist_only_tickers()}
+    scope_by_ticker.update({t: SCOPE_PORTFOLIO for t in get_portfolio_tickers()})
     if tickers is None:
-        tickers = get_portfolio_watchlist_tickers()
+        tickers = list(scope_by_ticker)
     if not tickers:
         return 0
 
@@ -115,10 +127,10 @@ def log_predictions(tickers: Optional[list[str]] = None) -> int:
             target_date = trading_days_forward(row["date"], PREDICTION_HORIZON_DAYS)
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO predicted_movers_history
-                   (ticker, predicted_date, predicted_ts, close_price, price_q10, price_q90, target_date)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (ticker, predicted_date, predicted_ts, close_price, price_q10, price_q90, target_date, scope)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (row["ticker"], row["date"], now_ts, row["close_price"],
-                 row["price_q10"], row["price_q90"], target_date),
+                 row["price_q10"], row["price_q90"], target_date, scope_by_ticker.get(row["ticker"])),
             )
             if cursor.rowcount:
                 inserted += 1
@@ -148,11 +160,7 @@ def backfill_actual_outcomes() -> int:
     try:
         conn = get_connection()
         for row in pending:
-            future = conn.execute(
-                """SELECT date, close_price FROM quant_signals
-                   WHERE ticker=? AND date>=? ORDER BY date ASC LIMIT 1""",
-                (row["ticker"], row["target_date"]),
-            ).fetchone()
+            future = get_first_close_on_or_after(conn, row["ticker"], row["target_date"])
             if not future or future["close_price"] is None:
                 continue
             actual_price = future["close_price"]
@@ -172,8 +180,8 @@ def backfill_actual_outcomes() -> int:
     return len(payloads)
 
 
-def get_accuracy_summary() -> dict:
-    data = get_predicted_movers_accuracy()
+def get_accuracy_summary(scope: str = SCOPE_PORTFOLIO) -> dict:
+    data = get_predicted_movers_accuracy(scope)
     tickers = [r["ticker"] for r in data.get("by_ticker", [])]
     names = get_company_names(tickers) if tickers else {}
     for row in data.get("by_ticker", []):
