@@ -685,7 +685,10 @@ async function saveSettings(silent = false) {
         if (clearBtn) clearBtn.style.display = this.value ? 'block' : 'none';
 
         cards.forEach(card => {
-            const matches = query === '' || card.innerText.toLowerCase().includes(query);
+            const keywords = Array.from(card.querySelectorAll('[data-search-keywords]'))
+                .map(el => el.dataset.searchKeywords.toLowerCase());
+            const matches = query === '' || card.innerText.toLowerCase().includes(query)
+                || keywords.some(k => k.includes(query));
             card.style.display = matches ? '' : 'none';
             if (matches) {
                 found++;
