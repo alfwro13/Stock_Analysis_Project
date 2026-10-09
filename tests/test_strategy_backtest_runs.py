@@ -2,7 +2,7 @@
 tests/test_strategy_backtest_runs.py — Strategy Backtester data layer, run lifecycle and API tests
 
 Covers:
-  • Basket rules: one currency per run, minimum tickers, benchmark currency match
+  • Basket rules: one currency per run (or conversion to the base currency with dated FX), minimum tickers, benchmark currency match
   • Price-matrix assembly: known-closure carry-forward vs unexpected gaps (run marked Incomplete)
   • Extended-history cache: preferred when current, ignored when stale, written through the canonical cleaning path
   • Run lifecycle against the real SQLite fixture: queued → completed/failed, Parquet artifacts,
@@ -109,6 +109,70 @@ def _run(account_id, tickers, **overrides):
     assert created["status"] == "success", created
     sbr.execute_run(created["run_id"])
     return created["run_id"]
+
+
+FX_PAIR = "USDGBP=X"
+
+
+@pytest.fixture
+def usd_gbp(histories):
+    index = histories[SBT_USD].index
+    histories[FX_PAIR] = pd.DataFrame({"Close": np.full(len(index), 0.8)}, index=index)
+    return histories[FX_PAIR]
+
+
+class TestCurrencyConversion:
+    def test_mixed_basket_converts_usd_closes_with_the_dated_fx_close(self, account, usd_gbp, histories):
+        run_id = _run(account, [SBT_A, SBT_USD], convert_currency=True)
+        detail = sbq.get_run(run_id)
+        assert detail["run"]["state"] == "completed"
+        basket = detail["run"]["basket"]
+        assert basket["currency"] == "GBP" and basket["converted_from"] == ["USD"]
+        assert any("USD" in w and "converted" in w for w in detail["result"]["warnings"])
+        assert FX_PAIR in detail["run"]["inputs"]["fx_pairs"]
+
+    def test_convert_inputs_multiplies_the_close_by_the_fx_level(self, usd_gbp, histories):
+        loaded = {SBT_USD: sbd.load_close_series(SBT_USD, "standard"), SBT_A: sbd.load_close_series(SBT_A, "standard")}
+        raw_usd, raw_gbp = loaded[SBT_USD]["close"].copy(), loaded[SBT_A]["close"].copy()
+        basket = {"tickers": [SBT_USD, SBT_A], "convert_currency": True}
+        pairs, notes = sbd.convert_inputs_to_base({"history": "standard"}, basket, None, loaded, None)
+        assert loaded[SBT_USD]["close"].to_numpy() == pytest.approx((raw_usd * 0.8).to_numpy())
+        assert loaded[SBT_A]["close"].equals(raw_gbp)
+        assert list(pairs) == [FX_PAIR] and notes == []
+
+    def test_missing_fx_history_fails_the_run_naming_the_pair(self, account, histories):
+        run_id = _run(account, [SBT_A, SBT_USD], convert_currency=True)
+        run = sbq.get_run(run_id)["run"]
+        assert run["state"] == "failed" and FX_PAIR in run["error"]
+
+    def test_fx_older_than_the_tolerance_is_not_carried_forward(self, histories):
+        index = histories[SBT_USD].index
+        histories[FX_PAIR] = pd.DataFrame({"Close": np.full(100, 0.8)}, index=index[:100])
+        loaded = {SBT_USD: sbd.load_close_series(SBT_USD, "standard")}
+        sbd.convert_inputs_to_base({"history": "standard"}, {"tickers": [SBT_USD], "convert_currency": True}, None, loaded, None)
+        assert loaded[SBT_USD]["close"].index[-1] <= index[99] + pd.Timedelta(days=3)
+
+    def test_benchmark_in_another_currency_is_allowed_only_when_converting(self):
+        with patch.object(sbd, "_benchmark_bucket", return_value="USD"):
+            assert sbd.resolve_benchmark("SPY", "GBP", True) == "SPY"
+            with pytest.raises(sbd.BasketError, match="basket's currency"):
+                sbd.resolve_benchmark("SPY", "GBP")
+        with patch.object(sbd, "_benchmark_bucket", return_value=None):
+            with pytest.raises(sbd.BasketError, match="unknown"):
+                sbd.resolve_benchmark("SPY", "GBP", True)
+
+    def test_unknown_currency_is_rejected_when_converting(self, histories):
+        _seed_signal("SBT_NOCUR", None)
+        with pytest.raises(sbd.BasketError, match="SBT_NOCUR"):
+            sbd._convertible([SBT_A, "SBT_NOCUR"])
+
+    def test_history_preparation_adds_the_fx_pairs_only_when_converting(self, histories):
+        with patch.object(sbd, "request_cache_refresh", return_value=object()):
+            sbd.request_history_preparation([SBT_A, SBT_USD], convert_currency=True)
+            assert FX_PAIR in sbd._prepare_state
+            sbd._prepare_state.clear()
+            sbd.request_history_preparation([SBT_A, SBT_USD])
+            assert FX_PAIR not in sbd._prepare_state
 
 
 class TestBasketRules:
@@ -354,7 +418,7 @@ class TestRunLifecycle:
     def test_benchmark_without_a_stored_currency_uses_the_basket_currency_for_its_calendar(self, histories):
         histories["SBT_SPY"] = _closes(9)
         basket = {"tickers": [SBT_USD, SBT_A], "currency": "USD"}
-        _, _, exchanges, bench_exchange = sbr._load_inputs({"history": "standard"}, basket, "SBT_SPY")
+        _, _, exchanges, bench_exchange, *_ = sbr._load_inputs({"history": "standard"}, basket, "SBT_SPY")
         assert exchanges[SBT_USD] == "NYSE"
         assert bench_exchange == "NYSE"
 

@@ -21,7 +21,9 @@ Basket sources:
 - **Account Holdings** — the same account-scope picker as the Portfolio Optimizer. Held tickers are ticked, Watchlist tickers can be ticked in.
 - **Stable Shortlist** — the members of the latest snapshot of one of the four lists (ML Upside / Quant Score x Portfolio / Watchlist). The list is frozen at that snapshot, so this tests today's members over the past. Shortlists only exist from their first snapshot onwards; nothing is back-filled.
 
-**One currency per run.** Prices are never converted. Pence and pound quotes (GBp/GBX/GBP) share one bucket (`utils.normalize_currency_bucket`); the currency of a ticker is `stock_signals.currency`. A basket spanning several currencies is rejected and the page asks for one; tickers in other currencies are named as excluded. The benchmark must be quoted in the same bucket (default `SWDA.L` for GBP, `SPY` for USD, editable, or `none`). Dated-FX conversion is not part of the first version.
+**One currency per run, or convert to the base currency.** Pence and pound quotes (GBp/GBX/GBP) share one bucket (`utils.normalize_currency_bucket`); the currency of a ticker is `stock_signals.currency`. By default a basket spanning several currencies is rejected and the page asks for one; tickers in other currencies are named as excluded, and the benchmark must be quoted in the same bucket (default `SWDA.L` for GBP, `SPY` for USD, editable, or `none`).
+
+Choosing **All currencies — converted to <base currency>** (`convert_currency`) keeps every ticker and the benchmark, whatever their currency, and converts each daily close to `BASE_CURRENCY` before the simulation. Conversion uses `fx_conversion_helpers`: the `{currency}{BASE}=X` daily close on or before each date, at most 3 calendar days old (weekends and holidays); a date with no such rate is dropped, and there is never a live-rate or 1.0 fallback. A ticker with an unknown quote currency, or a missing rate history, stops the run with a message naming it. Rate histories are ordinary daily-history symbols: *Prepare Extended History* downloads them too when converting, and the run reads the same standard or extended source as the prices. The run stores the pairs and their coverage under `inputs.fx_pairs` and the summary warnings state which currencies were converted.
 
 Between 2 and 40 tickers are allowed.
 
@@ -79,5 +81,5 @@ Rebalance Cadence quarterly; Training Lookback 252 sessions; Starting Capital 10
 
 - A fixed-current-basket test has survivorship bias.
 - Standard history is about two years; with a 252-session lookback the rolling strategies are tested on about one year. Extended History (about five years) lengthens that.
-- One quote currency per run; no FX conversion.
+- A converted run values prices at the daily FX close, so it includes the currency move but not FX trading costs or bid/ask spreads on the exchange rate.
 - Overlapping or very short test windows make differences between strategies statistically weak.

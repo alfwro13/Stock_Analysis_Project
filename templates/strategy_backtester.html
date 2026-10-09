@@ -36,7 +36,7 @@
                         <div id="sb-accounts-tiles" class="d-flex flex-wrap gap-2"></div>
                     </div>
                     <p class="text-muted small mb-2">
-                        Everything you hold is ticked. <a href="/watchlist">Watchlist</a> tickers are listed too, unticked. A run uses one quote currency, so pick the currency first.
+                        Everything you hold is ticked. <a href="/watchlist">Watchlist</a> tickers are listed too, unticked. Pick one currency, or convert everything to your base currency.
                     </p>
                 </div>
 
@@ -46,7 +46,7 @@
                     <p id="sb-shortlist-note" class="text-muted small mb-2"></p>
                 </div>
 
-                <label for="sb-currency" class="form-label small mb-1"><abbr title="Prices are never converted between currencies. Pence-quoted and pound-quoted London listings count as one currency.">Currency</abbr></label>
+                <label for="sb-currency" class="form-label small mb-1"><abbr title="Test one quote currency as is (pence-quoted and pound-quoted London listings count as one), or convert every ticker to your base currency using each day's FX close.">Currency</abbr></label>
                 <select class="form-select form-select-sm mb-2" id="sb-currency"></select>
 
                 <div id="sb-candidates-count" class="text-muted small mb-1"></div>
@@ -70,7 +70,7 @@
                         <select class="form-select form-select-sm" id="sb-cadence"></select>
                     </div>
                     <div class="col-6">
-                        <label for="sb-capital" class="form-label small mb-1"><abbr title="The amount invested on the first day, in the currency of the basket.">Starting Capital</abbr></label>
+                        <label for="sb-capital" class="form-label small mb-1"><abbr title="The amount invested on the first day, in the basket's currency (your base currency when converting).">Starting Capital</abbr></label>
                         <input type="number" class="form-control form-control-sm" id="sb-capital" min="1" step="100">
                     </div>
                     <div class="col-6">
@@ -112,7 +112,7 @@
                     </div>
                 </div>
 
-                <label for="sb-benchmark" class="form-label small mb-1"><abbr title="A single buy-and-hold of this ticker, paying the same costs, drawn alongside the strategies. Leave on auto for the default of the basket's currency, or type none for no benchmark. It must be quoted in the basket's currency.">Benchmark</abbr></label>
+                <label for="sb-benchmark" class="form-label small mb-1"><abbr title="A single buy-and-hold of this ticker, paying the same costs, drawn alongside the strategies. Leave on auto for the default of the basket's currency, or type none for no benchmark. Unless converting to your base currency, it must be quoted in the basket's currency.">Benchmark</abbr></label>
                 <input type="text" class="form-control form-control-sm mb-3" id="sb-benchmark" maxlength="20" value="auto">
 
                 <label class="form-label small mb-1"><abbr title="Standard uses the roughly two years the app already stores. Extended uses a separate, longer download made only for the tickers you choose (the nightly data is untouched).">Price History</abbr></label>
@@ -283,7 +283,7 @@
                         <div class="sentiment-module module-default mb-0">
                             <div class="p-3">
                                 <h4 class="text-primary small fw-semibold">1. Pick a Basket</h4>
-                                <p class="mb-0 small text-muted lh-base">Choose your holdings (plus any Watchlist tickers) or the latest Stable Shortlist, then one currency. The basket is today's list, so treat results as a comparison between rules, not a forecast.</p>
+                                <p class="mb-0 small text-muted lh-base">Choose your holdings (plus any Watchlist tickers) or the latest Stable Shortlist, then one currency or all converted to your base currency. The basket is today's list, so treat results as a comparison between rules, not a forecast.</p>
                             </div>
                         </div>
                     </div>

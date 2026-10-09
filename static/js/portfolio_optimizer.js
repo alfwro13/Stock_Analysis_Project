@@ -86,7 +86,7 @@ function renderResultsMeta(data) {
     if (win) {
         parts.push("Based on " + win.trading_days + " overlapping trading days (" + win.start + " to " + win.end + ").");
     }
-    parts.push("Returns are measured in each ticker's own trading currency, with no currency conversion.");
+    parts.push("Returns are converted to your base currency using each day's FX close, so they include the currency move.");
     if (data.mode === "long_only") {
         parts.push("Long-Only rules: Weight Cap " + _fmt_pct(data.max_weight) + ", Cash Reserve " + _fmt_pct(data.cash_reserve) + ".");
         if (data.cash_reserve) {

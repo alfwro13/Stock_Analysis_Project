@@ -49,6 +49,10 @@ T3 = "POE_T3"
 RM_T1 = "POE_RM_T1"
 RM_T2 = "POE_RM_T2"
 RM_T3 = "POE_RM_T3"
+FX_T1 = "POE_FX_T1"
+FX_T2 = "POE_FX_T2"
+FX_T3 = "POE_FX_T3"
+FX_T4 = "POE_FX_T4"
 
 
 def _seed_asset_profile(ticker, company_name, quote_type="EQUITY"):
@@ -82,6 +86,12 @@ def _builtin_config(extra=None):
 
 def _bdate_strings(n, start="2025-01-01"):
     return [d.strftime("%Y-%m-%d") for d in pd.bdate_range(start, periods=n)]
+
+
+@pytest.fixture(autouse=True)
+def _base_currency_quotes():
+    with patch("portfolio_optimizer_engine.native_currencies", side_effect=lambda tickers: {t: "GBP" for t in tickers}):
+        yield
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -196,6 +206,79 @@ class TestReturnsMatrixForCandidates:
         ):
             df, warnings, _ = _returns_matrix_for_candidates(["NOPE1", "NOPE2"])
         assert df is None
+
+
+class TestReturnsMatrixCurrencyConversion:
+    def _fx(self, level_for_dates, dates):
+        return pd.Series(level_for_dates, index=pd.to_datetime(dates))
+
+    def test_usd_series_is_compounded_with_the_dated_fx_move(self):
+        dates = _bdate_strings(40)
+        rng = np.random.default_rng(11)
+        gbp = rng.normal(0, 0.01, 40)
+        usd = rng.normal(0, 0.01, 40)
+        _seed_returns_cache({FX_T1: gbp.tolist(), FX_T2: usd.tolist()}, dates)
+        fx_levels = 0.8 * np.cumprod(1 + rng.normal(0, 0.004, 40))
+        fx_close = self._fx(fx_levels, dates)
+        quotes = {FX_T1: "GBP", FX_T2: "USD"}
+        with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
+             patch("portfolio_optimizer_engine._cached_fx_close", return_value=fx_close) as loader:
+            df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2])
+        loader.assert_called_once_with("USDGBP=X")
+        assert df is not None and warnings == []
+        expected = (1 + usd[1:]) * (fx_levels[1:] / fx_levels[:-1]) - 1
+        assert df[FX_T2].to_numpy() == pytest.approx(expected)
+        assert df[FX_T1].to_numpy() == pytest.approx(gbp[1:])
+
+    def test_pence_and_pound_quotes_need_no_fx(self):
+        dates = _bdate_strings(40)
+        rng = np.random.default_rng(12)
+        _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist()}, dates)
+        with patch("portfolio_optimizer_engine.native_currencies", return_value={FX_T1: "GBp", FX_T2: "GBP"}), \
+             patch("portfolio_optimizer_engine._cached_fx_close") as loader:
+            df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2])
+        loader.assert_not_called()
+        assert df is not None and len(df) == 40
+
+    def test_missing_fx_history_excludes_the_ticker_with_a_reason(self):
+        dates = _bdate_strings(40)
+        rng = np.random.default_rng(13)
+        _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist(),
+                             FX_T3: rng.normal(0, 0.01, 40).tolist()}, dates)
+        quotes = {FX_T1: "GBP", FX_T2: "GBP", FX_T3: "EUR"}
+        with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
+             patch("portfolio_optimizer_engine._cached_fx_close", return_value=None), \
+             patch("portfolio_optimizer_engine.fetch_close_returns_from_parquet", return_value=pd.DataFrame()) as fallback:
+            df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T3])
+        assert set(df.columns) == {FX_T1, FX_T2}
+        assert any(FX_T3 in w and "EURGBP=X" in w for w in warnings)
+        fallback.assert_not_called()
+
+    def test_unknown_quote_currency_is_excluded_not_assumed(self):
+        dates = _bdate_strings(40)
+        rng = np.random.default_rng(14)
+        _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist(),
+                             FX_T3: rng.normal(0, 0.01, 40).tolist()}, dates)
+        with patch("portfolio_optimizer_engine.native_currencies", return_value={FX_T1: "GBP", FX_T2: "GBP"}):
+            df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T3])
+        assert set(df.columns) == {FX_T1, FX_T2}
+        assert any(FX_T3 in w and "unknown" in w for w in warnings)
+
+    def test_parquet_fallback_converts_prices_before_returns(self):
+        dates = _bdate_strings(40)
+        rng = np.random.default_rng(15)
+        _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist()}, dates)
+        index = pd.bdate_range("2025-01-01", periods=41)
+        usd_close = pd.Series(100 * np.cumprod(1 + rng.normal(0, 0.01, 41)), index=index)
+        fx_close = pd.Series(0.8 * np.cumprod(1 + rng.normal(0, 0.004, 41)), index=index)
+        history = pd.DataFrame({"Close": usd_close})
+        quotes = {FX_T1: "GBP", FX_T2: "GBP", FX_T4: "USD"}
+        with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
+             patch("portfolio_optimizer_engine._cached_fx_close", return_value=fx_close), \
+             patch("xray_engine.load_or_fetch_daily_history", return_value=history):
+            df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T4])
+        expected = (usd_close * fx_close).pct_change().dropna()
+        assert df[FX_T4].to_numpy() == pytest.approx(expected.reindex(df.index).to_numpy())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

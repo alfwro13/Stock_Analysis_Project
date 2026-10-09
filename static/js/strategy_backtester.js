@@ -109,8 +109,18 @@ function sbSelectedTickers() {
         .map(function (cb) { return cb.value; });
 }
 
+var SB_CONVERT = "__convert__";
+
 function sbSelectedCurrency() {
     return sbEl("sb-currency").value;
+}
+
+function sbConverting() {
+    return sbSelectedCurrency() === SB_CONVERT;
+}
+
+function sbReportingCurrency() {
+    return sbConverting() ? sbState.meta.base_currency : sbSelectedCurrency();
 }
 
 function sbHistoryLabel(history) {
@@ -134,7 +144,7 @@ function sbCandidateRow(c, locked) {
 
 function sbRenderAccountCandidates() {
     var currency = sbSelectedCurrency();
-    var inBucket = sbState.candidates.filter(function (c) { return String(c.currency) === currency; });
+    var inBucket = sbState.candidates.filter(function (c) { return sbConverting() || String(c.currency) === currency; });
     var held = inBucket.filter(function (c) { return c.held; });
     var watch = inBucket.filter(function (c) { return !c.held; });
     var html = "";
@@ -142,7 +152,8 @@ function sbRenderAccountCandidates() {
     if (watch.length) html += '<div class="po-candidates-group-label">Watchlist — tick to include (' + watch.length + ")</div>" + watch.map(function (c) { return sbCandidateRow(c, false); }).join("");
     sbEl("sb-candidates-list").innerHTML = html;
     var others = sbState.candidates.length - inBucket.length;
-    sbEl("sb-candidates-count").textContent = held.length + " held, " + watch.length + " on your Watchlist in " + currency
+    sbEl("sb-candidates-count").textContent = held.length + " held, " + watch.length + " on your Watchlist"
+        + (sbConverting() ? ", all converted to " + sbReportingCurrency() : " in " + currency)
         + (others ? ". " + others + " in other currencies are hidden." : ".")
         + " The figures on the right are days of price history (standard / extended).";
 }
@@ -160,16 +171,19 @@ function sbRenderShortlistCandidates() {
         return;
     }
     var currency = sbSelectedCurrency();
-    var members = basket.members.filter(function (m) { return (m.currency || "Unknown") === currency; });
+    var members = basket.members.filter(function (m) { return sbConverting() || (m.currency || "Unknown") === currency; });
     sbEl("sb-candidates-list").innerHTML = members.map(function (m) {
         return sbCandidateRow({ symbol: m.symbol, name: m.name, held: true, history: null }, true);
     }).join("");
-    sbEl("sb-candidates-count").textContent = members.length + " of " + basket.members.length + " members are quoted in " + currency + ".";
+    sbEl("sb-candidates-count").textContent = sbConverting()
+        ? members.length + " members, all converted to " + sbReportingCurrency() + "."
+        : members.length + " of " + basket.members.length + " members are quoted in " + currency + ".";
     sbEl("sb-shortlist-note").textContent = "Members of the snapshot taken " + basket.decision_ts + " UTC. The list is fixed at that moment, so this tests today's members over the past.";
 }
 
 function sbRefreshCurrencyOptions(options) {
     var select = sbEl("sb-currency");
+    options = options.concat([{ value: SB_CONVERT, label: "All currencies — converted to " + sbState.meta.base_currency }]);
     var previous = select.value;
     select.innerHTML = options.map(function (o) {
         return '<option value="' + escapeHtml(String(o.value)) + '">' + escapeHtml(o.label) + "</option>";
@@ -258,7 +272,7 @@ function sbLoadAccounts() {
 function sbHistoryTickers() {
     var tickers = sbSelectedTickers();
     var benchmark = sbEl("sb-benchmark").value.trim();
-    if (benchmark.toLowerCase() === "auto") benchmark = sbState.meta.default_benchmarks[sbSelectedCurrency()] || "";
+    if (benchmark.toLowerCase() === "auto") benchmark = sbState.meta.default_benchmarks[sbReportingCurrency()] || "";
     if (benchmark && benchmark.toLowerCase() !== "none" && tickers.indexOf(benchmark) === -1) tickers.push(benchmark);
     return tickers;
 }
@@ -295,7 +309,7 @@ function sbPrepareHistory() {
     sbShowError("");
     if (!tickers.length) { sbShowError("Select tickers first."); return; }
     sbFetchJson("/api/strategy-backtester/prepare-history", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers: tickers }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers: tickers, convert_currency: sbConverting() }),
     }).then(function (data) {
         if (data.status !== "success") { sbShowError(data.message || "Could not start the download."); return; }
         sbRefreshHistoryStatus();
@@ -323,7 +337,8 @@ function sbBuildPayload() {
     if (tickers.length > sbState.meta.limits.max_tickers) throw new Error("Select at most " + sbState.meta.limits.max_tickers + " tickers.");
     var payload = {
         basket_type: sbBasketType(), account_id: sbState.accountId, include_tickers: tickers,
-        currency: ["null", "Unknown"].indexOf(sbSelectedCurrency()) >= 0 ? null : sbSelectedCurrency(), strategies: strategies,
+        currency: sbConverting() || ["null", "Unknown"].indexOf(sbSelectedCurrency()) >= 0 ? null : sbSelectedCurrency(),
+        convert_currency: sbConverting(), strategies: strategies,
         cadence: sbEl("sb-cadence").value,
         lookback: Math.round(sbReadNumber("sb-lookback", 20, 756, "Training Lookback must be between 20 and 756 sessions.")),
         initial_capital: sbReadNumber("sb-capital", 1, 1e9, "Starting Capital must be at least 1."),

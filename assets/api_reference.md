@@ -3194,7 +3194,7 @@ Returns the candidate-ticker checklist for an account scope: every held ticker (
 
 ### `POST /api/portfolio-optimizer/run`
 
-Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns suggested Min-Variance, Max-Sharpe and Equal Weight weights plus an efficient-frontier curve. Two allocation modes: `unconstrained` (the API default; closed-form, weights may be negative) and `long_only` (`scipy.optimize.minimize(method="SLSQP")` with `0 ≤ w ≤ max_weight` and `Σw = 1 − cash_reserve`; the page selects this mode by default). Pure computation via `portfolio_optimizer_engine.optimize_portfolio()` — no `cvxpy` dependency, no DB writes, no scheduled job. Returns are each ticker's native-currency daily returns; no FX conversion is applied. Held tickers use `xray_returns_cache`; any candidate never held (e.g. a Watchlist-only ticker) falls back to a direct parquet read (`xray_engine.fetch_close_returns_from_parquet`).
+Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns suggested Min-Variance, Max-Sharpe and Equal Weight weights plus an efficient-frontier curve. Two allocation modes: `unconstrained` (the API default; closed-form, weights may be negative) and `long_only` (`scipy.optimize.minimize(method="SLSQP")` with `0 ≤ w ≤ max_weight` and `Σw = 1 − cash_reserve`; the page selects this mode by default). Pure computation via `portfolio_optimizer_engine.optimize_portfolio()` — no `cvxpy` dependency, no DB writes, no scheduled job. Each ticker's daily returns are converted to `BASE_CURRENCY` by compounding them with the dated FX move (`{currency}{BASE}=X` daily close on or before each date, at most 3 days old; never a live or 1.0 fallback). A ticker whose quote currency is unknown or whose FX history is not cached yet is left out with a named `data_warnings` entry (the missing rate history is fetched in the background; try again shortly). Held tickers use `xray_returns_cache`; any candidate never held (e.g. a Watchlist-only ticker) falls back to a direct parquet read (`xray_engine.fetch_close_returns_from_parquet`).
 
 **Auth:** Required (session cookie).
 
@@ -4676,7 +4676,7 @@ HTML page (Tools menu).
 
 ### `GET /api/strategy-backtester/meta`
 
-Rate limit 30/minute. Returns the page's static options: `strategies` (`id`, `label`, `description`, `schedule`, `needs_current_weights`), `cadences`, `defaults` (cadence, lookback, initial capital, cost preset, cash rate, band, Weight Cap, Cash Reserve, history), `cost_presets` (`none` / `low` / `typical`, each with `commission_bps`, `spread_bps`, `slippage_bps`), `default_benchmarks` (`GBP` -> `SWDA.L`, `USD` -> `SPY`) and `limits` (`max_tickers` 40, `min_tickers` 2, `max_saved_runs` 20, `min_test_sessions` 30, `extended_period` `5y`).
+Rate limit 30/minute. Returns the page's static options: `strategies` (`id`, `label`, `description`, `schedule`, `needs_current_weights`), `cadences`, `defaults` (cadence, lookback, initial capital, cost preset, cash rate, band, Weight Cap, Cash Reserve, history), `cost_presets` (`none` / `low` / `typical`, each with `commission_bps`, `spread_bps`, `slippage_bps`), `default_benchmarks` (`GBP` -> `SWDA.L`, `USD` -> `SPY`), `base_currency` (config `BASE_CURRENCY`, the target of a converted run) and `limits` (`max_tickers` 40, `min_tickers` 2, `max_saved_runs` 20, `min_test_sessions` 30, `extended_period` `5y`).
 
 ### `GET /api/strategy-backtester/accounts`
 
@@ -4696,7 +4696,7 @@ Query param `tickers` (comma-separated, at most 40 are read). Rate limit 30/minu
 
 ### `POST /api/strategy-backtester/prepare-history`
 
-Rate limit 6/minute. Body `{"tickers": ["VWRL.L", "SWDA.L"]}` (1 to 41 symbols). Starts a background download of about 5 years of daily data into the separate extended cache (`data/backtest_history/`) through the shared cache-refresh coordinator. Returns `{"status": "success", "message": ..., "tickers": [...]}` immediately, or `{"status": "error", "message": ...}` when no fetchable ticker was given, too many were given, a recent attempt failed (retry back-off) or the background queue is full. Progress is visible through `history-status`.
+Rate limit 6/minute. Body `{"tickers": ["VWRL.L", "SWDA.L"], "convert_currency": false}` (1 to 41 symbols; `convert_currency` defaults to false and, when true, also downloads the `{currency}{BASE}=X` rate history for every non-base currency among the tickers). Starts a background download of about 5 years of daily data into the separate extended cache (`data/backtest_history/`) through the shared cache-refresh coordinator. Returns `{"status": "success", "message": ..., "tickers": [...]}` immediately, or `{"status": "error", "message": ...}` when no fetchable ticker was given, too many were given, a recent attempt failed (retry back-off) or the background queue is full. Progress is visible through `history-status`.
 
 ### `POST /api/strategy-backtester/run`
 
@@ -4709,6 +4709,7 @@ Rate limit 10/minute. Validates and queues a run; the computation continues in t
 | `include_tickers` | array of strings | `[]` | Checked candidates (account baskets); at most 40 |
 | `shortlist_signal`, `shortlist_scope` | `"ml_upside"` \| `"quant_score"`, `"portfolio"` \| `"watchlist"` | null | Both required when `basket_type` is `shortlist`; the latest snapshot's members are used |
 | `currency` | string | null | Currency bucket to keep when the tickers span several |
+| `convert_currency` | bool | false | Convert every ticker (and the benchmark) to `BASE_CURRENCY` with each day's FX close instead of requiring one currency; `currency` is ignored |
 | `strategies` | array of ids | required (1-7) | `buy_hold_ew`, `rebalanced_ew`, `current_weights`, `inverse_vol`, `tolerance_band`, `min_variance`, `max_sharpe` |
 | `cadence` | `"monthly"` \| `"quarterly"` \| `"annual"` | `"quarterly"` | |
 | `lookback` | int 20-756 | 252 | Training Lookback in sessions |
@@ -4719,7 +4720,7 @@ Rate limit 10/minute. Validates and queues a run; the computation continues in t
 | `band_pp` | float (0, 50] | 5 | Tolerance Band in percentage points |
 | `max_weight` | float (0, 1] | 0.20 | Weight Cap for the two rolling optimizer strategies |
 | `cash_reserve` | float [0, 1) | 0 | Cash Reserve for the two rolling optimizer strategies |
-| `benchmark` | string | `"auto"` | Symbol, `auto` (default by currency) or `none`; must be in the basket's currency |
+| `benchmark` | string | `"auto"` | Symbol, `auto` (default by currency) or `none`; must be in the basket's currency unless `convert_currency` is true |
 | `history` | `"standard"` \| `"extended"` | `"standard"` | `extended` uses the prepared long history where it is current |
 
 Out-of-range values return 422. A request that fails the basket rules (fewer than 2 tickers, mixed or unknown currency, benchmark in another currency, no snapshot, every strategy skipped) returns `{"status": "error", "message": ...}` with HTTP 200 and creates no run. Success returns `{"status": "success", "run_id": "<12 hex chars>"}`.
