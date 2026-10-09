@@ -186,7 +186,7 @@ def _signal_version(signal_type: str, signal_as_of: Optional[str]) -> str:
     if signal_type == SIGNAL_QUANT:
         return f"composite_score as of {signal_as_of}"
     try:
-        from ai_prediction_engine import QUANTILE_Q10_PATH, QUANTILE_Q90_PATH
+        from ml_features import QUANTILE_Q10_PATH, QUANTILE_Q90_PATH
         trained = max(QUANTILE_Q10_PATH.stat().st_mtime, QUANTILE_Q90_PATH.stat().st_mtime)
         return "quantile models saved " + datetime.fromtimestamp(trained, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     except OSError:

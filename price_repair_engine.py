@@ -164,7 +164,7 @@ def _refresh_portfolio_caches():
 
 
 def refresh_downstream(ticker, from_date, history):
-    from ai_prediction_engine import rebuild_quant_history
+    from ml_backfill_engine import rebuild_quant_history
     from db_helpers import get_portfolio_watchlist_tickers
 
     try:

@@ -388,7 +388,7 @@ class TestScreenerAndBackfillAgree:
         return spy
 
     def test_latest_row_matches_between_screener_and_rebuild(self):
-        from ai_prediction_engine import rebuild_quant_history
+        from ml_backfill_engine import rebuild_quant_history
         from quant_engine import run_daily_quant_scan
 
         df, spy = self._noisy_ohlcv(), self._spy(self._noisy_ohlcv())
@@ -396,7 +396,7 @@ class TestScreenerAndBackfillAgree:
              patch("quant_engine.download_spy_benchmark", return_value=spy), \
              patch("quant_engine.time"):
             run_daily_quant_scan(["ZZAGREESCAN"], scan_type="agree_test")
-        with patch("ai_prediction_engine.download_spy_benchmark", return_value=spy):
+        with patch("ml_backfill_engine.download_spy_benchmark", return_value=spy):
             rebuild_quant_history("ZZAGREEBACK", df, "2024-01-01")
 
         conn = database.get_connection()

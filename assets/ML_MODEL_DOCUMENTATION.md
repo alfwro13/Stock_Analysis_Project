@@ -2,7 +2,7 @@
 
 **Project:** Stock Analysis Quantitative Trading Terminal  
 **Model File:** `models/ml_ensemble.joblib`  
-**Engine:** `ai_prediction_engine.py`  
+**Engines:** `ml_features.py`, `ml_backfill_engine.py`, `ml_training_engine.py`, `ml_inference_engine.py`  
 **Last Updated:** 2026-05-24  
 **Final PR-AUC:** 0.4217 (random baseline: 0.3348)
 
@@ -163,6 +163,17 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 
 ## 5. Architecture
 
+### 5.0 Module layout
+
+| Module | Scheduled job | Contents |
+|---|---|---|
+| `ml_features.py` | — (shared) | Model/feature-stats/quantile file paths, `FEATURE_COLS`, `SECTOR_MAP`, fundamental bounds, `cross_sectional_zscore`, fundamental winsorize/impute |
+| `ml_backfill_engine.py` | Historical Data Backfill & Sync | SPY benchmark, target-ticker selection, ticker metadata sync, `run_historical_backfill`, `rebuild_quant_history` |
+| `ml_training_engine.py` | Global Model Training (Walk-Forward) | `train_global_ml_model` (classifier), `train_quantile_models` (Q10/Q90) |
+| `ml_inference_engine.py` | Daily ML Inference | `update_daily_ml_predictions`, `score_quantile_predictions` |
+
+Training and inference apply the same feature engineering and per-date cross-sectional z-scoring; the constants and helpers they share live in `ml_features.py`.
+
 ### 5.1 Base Estimators
 
 **Random Forest Classifier**
@@ -254,7 +265,7 @@ The following bugs were identified in an audit of the original codebase and corr
 ### BUG-01: Missing `sqlite3` import — `macro_data_engine.py`
 The except block caught `sqlite3.Error` but the module never imported `sqlite3`. Any database failure caused a secondary `NameError` inside the handler, masking the original error. **Fix:** Added `import sqlite3` at the top of the file.
 
-### BUG-02: `auto_adjust` inconsistency — `ai_prediction_engine.py`
+### BUG-02: `auto_adjust` inconsistency — `ml_backfill_engine.py`
 `run_historical_backfill()` used `auto_adjust=False` while `run_daily_quant_scan()` used `auto_adjust=True`. After any stock split, ML features computed from unadjusted backfill prices were on a completely different scale from adjusted inference prices. **Fix:** Changed backfill to `auto_adjust=True`. Required a full database truncation of `quant_signals` and complete retraining.
 
 **Verification (NVDA split 10-for-1 June 2024):**
@@ -278,7 +289,7 @@ count=184, mean=34.03, std=11.62, min=3.90, max=70.17
 
 **Fix:** `update_daily_ml_predictions()` now fetches ALL tickers at the latest date with complete features for z-scoring, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
 
-### BUG-04: Calibration data leakage — `ai_prediction_engine.py`
+### BUG-04: Calibration data leakage — `ml_training_engine.py`
 `CalibratedClassifierCV` calibrates probability outputs using the same data the base model was already fitted on. This inflates confidence score calibration quality. **Status:** Documented and deferred. Confidence scores are used as ranking signals only. Full fix requires a three-way temporal split and is scheduled for a future refactor.
 
 ### Class imbalance correction
@@ -365,7 +376,7 @@ Std:              11.56
 
 **Change:** Added 2 relative strength features: `rel_strength_5d`, `rel_strength_20d`  
 **Scientific basis:** Cross-sectional momentum — stocks outperforming the market index tend to continue outperforming (Jegadeesh & Titman, 1993; Carhart, 1997 *"On Persistence in Mutual Fund Performance"*, Journal of Finance 52(1), pp. 57–82). Relative strength strips out the market beta component, isolating idiosyncratic price leadership from stocks simply rising with the tide.  
-**Implementation note:** SPY downloaded once via `download_spy_benchmark()` (`ai_prediction_engine.py`, shared with `quant_engine.py`'s daily scan since 2026-07-10) before the main ticker loop. UK stock caveat documented — SPY used as universal benchmark; FTSE-relative strength would be marginally more accurate for `.L` tickers.
+**Implementation note:** SPY downloaded once via `download_spy_benchmark()` (`ml_backfill_engine.py`, shared with `quant_engine.py`'s daily scan since 2026-07-10) before the main ticker loop. UK stock caveat documented — SPY used as universal benchmark; FTSE-relative strength would be marginally more accurate for `.L` tickers.
 
 **Result:**
 ```
@@ -556,7 +567,7 @@ The shared `model_compatibility_engine.py` loader checks the sidecar before unpi
 |---|---|---|
 | `quant_signals` | `ml_confidence_score` | Score 0–100. Updated daily by inference |
 | `quant_signals` | `mom_1m` through `mom_12m_skip1m`, `atr_pct` | Momentum/volatility features, written by the daily quant scan (`quant_engine.py`) and re-derived over the full 2-year window by the weekly backfill |
-| `quant_signals` | `hist_vol_20`, `rel_strength_5d`, `rel_strength_20d` | As of 2026-07-10, also written by the daily quant scan (`quant_engine.py`), not just the weekly backfill — previously these three were backfill-only, so `score_quantile_predictions()`'s same-date "all features non-null" query would only succeed on the day the weekly backfill last ran (and even then only if `download_spy_benchmark()`'s cached SPY history happened to be date-aligned with the ticker; see `ai_prediction_engine.download_spy_benchmark()`'s `method='ffill'` reindex fix for the alignment half of this bug). `rel_strength_5d`/`20d` still require SPY data (`None` on failure — `ai_prediction_engine.download_spy_benchmark()`, shared by both the daily scan and the weekly backfill); `hist_vol_20` has no SPY dependency and always populates |
+| `quant_signals` | `hist_vol_20`, `rel_strength_5d`, `rel_strength_20d` | As of 2026-07-10, also written by the daily quant scan (`quant_engine.py`), not just the weekly backfill — previously these three were backfill-only, so `score_quantile_predictions()`'s same-date "all features non-null" query would only succeed on the day the weekly backfill last ran (and even then only if `download_spy_benchmark()`'s cached SPY history happened to be date-aligned with the ticker; see `ml_backfill_engine.download_spy_benchmark()`'s `method='ffill'` reindex fix for the alignment half of this bug). `rel_strength_5d`/`20d` still require SPY data (`None` on failure — `ml_backfill_engine.download_spy_benchmark()`, shared by both the daily scan and the weekly backfill); `hist_vol_20` has no SPY dependency and always populates |
 
 ### UI Colour Thresholds
 
@@ -589,12 +600,9 @@ os.remove("models/ml_ensemble.joblib")
 os.remove("models/feature_stats.joblib")
 
 # 3. Run full pipeline
-from ai_prediction_engine import (
-    run_historical_backfill,
-    train_global_ml_model,
-    update_daily_ml_predictions,
-    get_target_tickers
-)
+from ml_backfill_engine import run_historical_backfill, get_target_tickers
+from ml_training_engine import train_global_ml_model
+from ml_inference_engine import update_daily_ml_predictions
 run_historical_backfill()
 train_global_ml_model()
 update_daily_ml_predictions(get_target_tickers())
@@ -605,7 +613,7 @@ update_daily_ml_predictions(get_target_tickers())
 ### Training memory (September 2026)
 
 Both the classifier and Q10/Q90 training read the full eligible history through
-`ai_prediction_engine._load_training_history()`. SQLite results are fetched in
+`ml_training_engine._load_training_history()`. SQLite results are fetched in
 10,000-row batches and concatenated before feature engineering. This bounds the
 transient Python row objects from SQL ingestion; it does **not** sample tickers,
 truncate history, normalize individual batches, or alter the temporal splits.

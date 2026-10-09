@@ -401,7 +401,7 @@ Repairs the checked daily bar. Body: `ticker`, `date`, `fingerprint`, `source` (
 
 Removes a checked historical bar when no verified correction is available, provided at least one other bar remains. Body: `ticker`, `date`, `fingerprint`. It removes the date from daily Parquet, `quant_signals`, and `score_history`, and records the date in the saved price overlay so later Yahoo downloads do not restore it. This leaves a visible gap in history. The response's `repair.downstream` reports the follow-up refresh.
 
-**Downstream refresh (repair and remove).** After the bar is written, the technical columns of `quant_signals` (`rsi_14`, `macd*`, `sma_50/200`, `mom_*`, `atr_pct`, `hist_vol_20`, `rel_strength_*`, `volume_surge`, `bullish_cross`) are recomputed for every stored date from the repaired date forward, using the same code as the ML Historical Backfill (`ai_prediction_engine.rebuild_quant_history`). `repair.downstream.history_rows_rebuilt` is the row count, or `null` if the rebuild failed (the repair itself is not rolled back). If the ticker is held or on the Watchlist, the Portfolio X-ray risk cache, Risk Orchestrator scan and account performance cache are then refreshed in the background (`repair.downstream.portfolio_caches` is `queued`, `not_in_scope`, or `unavailable` when a recent refresh failed or the queue is full). `score_history`, `quant_signals.composite_score`/`overall_signal`, `account_value_history*`, ML models and alerts already sent are never rewritten.
+**Downstream refresh (repair and remove).** After the bar is written, the technical columns of `quant_signals` (`rsi_14`, `macd*`, `sma_50/200`, `mom_*`, `atr_pct`, `hist_vol_20`, `rel_strength_*`, `volume_surge`, `bullish_cross`) are recomputed for every stored date from the repaired date forward, using the same code as the ML Historical Backfill (`ml_backfill_engine.rebuild_quant_history`). `repair.downstream.history_rows_rebuilt` is the row count, or `null` if the rebuild failed (the repair itself is not rolled back). If the ticker is held or on the Watchlist, the Portfolio X-ray risk cache, Risk Orchestrator scan and account performance cache are then refreshed in the background (`repair.downstream.portfolio_caches` is `queued`, `not_in_scope`, or `unavailable` when a recent refresh failed or the queue is full). `score_history`, `quant_signals.composite_score`/`overall_signal`, `account_value_history*`, ML models and alerts already sent are never rewritten.
 
 ### `POST /api/data/refresh-single`
 
@@ -1532,7 +1532,7 @@ Returns the scheduled-job dependency graph and detected scheduling conflicts for
       "id": "ml_inference_job",
       "label": "Daily ML Inference",
       "category": "ml",
-      "engine": "ai_prediction_engine.py",
+      "engine": "ml_inference_engine.py",
       "produces": ["ml_predictions"],
       "consumes": ["quant_signals", "ml_model"],
       "enabled": true,

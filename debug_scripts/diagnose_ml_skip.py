@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(levelname)s [%(name)s] %(mess
 logger = logging.getLogger(__name__)
 
 from database import get_connection
-from ai_prediction_engine import update_daily_ml_predictions
+from ml_inference_engine import update_daily_ml_predictions
 
 # Pick one universe-only ticker (UNIVERSE_FUNDAMENTALS) and one overlap (HARDCODED)
 conn = get_connection(); conn.row_factory = sqlite3.Row

@@ -177,7 +177,7 @@ def section_table_coverage(cursor: sqlite3.Cursor, universe_total: int) -> None:
         tm_count: int = cursor.fetchone()['c']
         emit(f"  In ticker_metadata       : {tm_count:>5,} / {universe_total:>5,}  ({pct(tm_count, universe_total)})")
     except sqlite3.OperationalError:
-        emit(f"  {Color.RED}ticker_metadata table missing — run ai_prediction_engine.run_historical_backfill() first.{Color.END}")
+        emit(f"  {Color.RED}ticker_metadata table missing — run ml_backfill_engine.run_historical_backfill() first.{Color.END}")
 
     cursor.execute("""
         SELECT COUNT(*) AS c
@@ -579,7 +579,7 @@ def section_recommendations() -> None:
     emit("          Inspect scheduler_engine.py for the active caller.")
     emit("")
     emit("    • If market_cap coverage in section 5 is low:")
-    emit("        → Run ai_prediction_engine.sync_ticker_metadata(get_universe_tickers()).")
+    emit("        → Run ml_backfill_engine.sync_ticker_metadata(get_universe_tickers()).")
     emit("")
     emit("  Once gaps are closed (or at least quantified), we can implement the GARP report")
     emit("  with confidence that the universe is fairly represented.")
