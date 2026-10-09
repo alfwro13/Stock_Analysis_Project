@@ -690,6 +690,19 @@ class TestImportServerSecurity:
 @pytest.mark.api
 class TestIntradayDipRadar:
 
+    @pytest.fixture(autouse=True)
+    def _clean_monitors(self):
+        yield
+        from database import get_connection
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute("DELETE FROM intraday_monitors")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
     def test_add_monitor_returns_ok(self, client):
         """POST /api/intraday-monitor/add must return 200 with status='ok' and the ticker."""
         resp = client.post("/api/intraday-monitor/add", json={"ticker": "AAPL"})

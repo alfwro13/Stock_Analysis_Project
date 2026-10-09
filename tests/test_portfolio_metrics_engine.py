@@ -99,10 +99,10 @@ def _seed_market_pulse_cache(ticker: str, price: float, change_pts: float, chang
         conn.execute(
             """INSERT OR REPLACE INTO market_pulse_cache
                (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
-                extended_change_pct, extended_session)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                extended_price, extended_change_pct, extended_session)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ticker, ticker, price, change_pts, change_pct, int(change_pts >= 0), 0,
-             extended_change_pct, extended_session),
+             price if extended_session else None, extended_change_pct, extended_session),
         )
         conn.commit()
     finally:
