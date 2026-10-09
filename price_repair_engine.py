@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -10,12 +11,15 @@ from datetime import date
 
 import pandas as pd
 
+from cache_refresh_helpers import request_cache_refresh
 from config import DATA_DIR, HISTORICAL_DIR
 from database import get_connection
 from quant_signals import QuantEngine
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
+
+logger = logging.getLogger(__name__)
 
 BAR_FIELDS = ("Open", "High", "Low", "Close", "Volume")
 REPAIRS_PATH = DATA_DIR / "price_repairs.json"
@@ -148,6 +152,35 @@ def _restore_repairs(previous):
         _write_repairs(previous)
 
 
+def _refresh_portfolio_caches():
+    from accounts_engine import refresh_all_trading_performance_caches
+    from risk_orchestrator_engine import run_scan
+    from xray_engine import run_xray_precompute
+
+    refreshed = run_xray_precompute()
+    run_scan()
+    refresh_all_trading_performance_caches()
+    return refreshed
+
+
+def refresh_downstream(ticker, from_date, history):
+    from ai_prediction_engine import rebuild_quant_history
+    from db_helpers import get_portfolio_watchlist_tickers
+
+    try:
+        history_rows = rebuild_quant_history(ticker, history, from_date)
+    except Exception:
+        logger.exception("Indicator history rebuild failed for %s from %s", ticker, from_date)
+        history_rows = None
+    if ticker not in get_portfolio_watchlist_tickers():
+        caches = "not_in_scope"
+    elif request_cache_refresh(f"price-repair:{ticker}", _refresh_portfolio_caches) is None:
+        caches = "unavailable"
+    else:
+        caches = "queued"
+    return {"history_rows_rebuilt": history_rows, "portfolio_caches": caches}
+
+
 def remove_daily_bar(ticker, bar_date, fingerprint):
     date.fromisoformat(bar_date)
     path, df = _read_history(ticker)
@@ -220,7 +253,8 @@ def remove_daily_bar(ticker, bar_date, fingerprint):
     finally:
         if conn:
             conn.close()
-    return {"ticker": ticker, "date": bar_date, "removed": True}
+    return {"ticker": ticker, "date": bar_date, "removed": True,
+            "downstream": refresh_downstream(ticker, bar_date, updated_df)}
 
 
 def check_daily_bar(ticker, bar_date):
@@ -334,4 +368,5 @@ def repair_daily_bar(ticker, bar_date, fingerprint, replacement):
                 _restore_repairs(prior_repairs)
             raise
     QuantEngine().analyze_ticker(ticker)
-    return {"ticker": ticker, "date": bar_date, "replacement": replacement, "is_latest": pos == len(df) - 1}
+    return {"ticker": ticker, "date": bar_date, "replacement": replacement, "is_latest": pos == len(df) - 1,
+            "downstream": refresh_downstream(ticker, bar_date, df)}

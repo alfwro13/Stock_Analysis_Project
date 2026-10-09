@@ -396,6 +396,84 @@ class TestRelStrengthSurvivesSpyLag:
         assert row["rel_strength_20d"] is not None
 
 
+class TestRebuildQuantHistory:
+    """A repaired bar shifts every rolling indicator after it; rebuild_quant_history re-derives
+    the stored technical columns from the repair date forward and leaves earlier rows alone."""
+
+    @staticmethod
+    def _spy(df):
+        spy = df[["Close"]].copy()
+        spy["spy_ret_5d"] = spy["Close"].pct_change(5)
+        spy["spy_ret_20d"] = spy["Close"].pct_change(20)
+        return spy
+
+    @staticmethod
+    def _rows(ticker):
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            return {
+                r["date"]: r for r in conn.execute(
+                    "SELECT date, close_price, sma_50, rsi_14, composite_score FROM quant_signals WHERE ticker = ?",
+                    (ticker,),
+                ).fetchall()
+            }
+        finally:
+            if conn:
+                conn.close()
+
+    def test_rebuilds_only_rows_from_repair_date_and_keeps_stamped_composites(self):
+        from ai_prediction_engine import rebuild_quant_history
+
+        ticker = "ZZREBUILDQH"
+        df = _fake_ohlcv(n=320)
+        df["Close"] = df["Close"] + np.sin(np.arange(320)) * 2.0
+        df["High"] = df["Close"] * 1.01
+        df["Low"] = df["Close"] * 0.98
+        dates = [d.strftime("%Y-%m-%d") for d in df.index]
+        with patch("ai_prediction_engine.download_spy_benchmark", return_value=self._spy(df)):
+            assert rebuild_quant_history(ticker, df, dates[0]) == 320 - 252
+            conn = _db_module.get_connection()
+            try:
+                conn.execute("UPDATE quant_signals SET composite_score = 77 WHERE ticker = ? AND date = ?",
+                             (ticker, dates[-1]))
+                conn.commit()
+            finally:
+                conn.close()
+            before = self._rows(ticker)
+
+            repaired = df.copy()
+            repaired.iloc[300, repaired.columns.get_loc("Close")] *= 1.4
+            repaired.iloc[300, repaired.columns.get_loc("High")] = repaired.iloc[300]["Close"] * 1.01
+            written = rebuild_quant_history(ticker, repaired, dates[300])
+        after = self._rows(ticker)
+
+        assert written == 320 - 300
+        assert after[dates[299]]["sma_50"] == before[dates[299]]["sma_50"]
+        assert after[dates[299]]["rsi_14"] == before[dates[299]]["rsi_14"]
+        assert after[dates[300]]["close_price"] == pytest.approx(float(repaired.iloc[300]["Close"]))
+        assert after[dates[-1]]["sma_50"] != before[dates[-1]]["sma_50"]
+        assert after[dates[-1]]["composite_score"] == 77
+
+    def test_returns_zero_when_history_is_too_short(self):
+        from ai_prediction_engine import rebuild_quant_history
+
+        df = _fake_ohlcv(n=100)
+        with patch("ai_prediction_engine.download_spy_benchmark", return_value=self._spy(df)):
+            assert rebuild_quant_history("ZZREBUILDSHORT", df, "2024-01-01") == 0
+        assert self._rows("ZZREBUILDSHORT") == {}
+
+    def test_does_not_mutate_the_callers_frame(self):
+        from ai_prediction_engine import rebuild_quant_history
+
+        df = _fake_ohlcv(n=320)
+        columns = list(df.columns)
+        with patch("ai_prediction_engine.download_spy_benchmark", return_value=self._spy(df)):
+            rebuild_quant_history("ZZREBUILDCOPY", df, "2024-01-01")
+        assert list(df.columns) == columns
+        assert len(df) == 320
+
+
 class TestUpdateDailyMlPredictionsSyncsStockSignals:
     """stock_signals.ml_confidence mirrors quant_signals.ml_confidence_score so consumers that
     join off stock_signals (the Regime-Weighted Conviction Score) don't need a second
