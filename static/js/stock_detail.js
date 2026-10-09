@@ -385,7 +385,7 @@
                 result.appendChild(match);
             }
             const note = document.createElement('p');
-            note.textContent = `Related records: quant close ${check.quant_close ?? 'none'}, score history close ${check.score_close ?? 'none'}, current stock price ${check.current_price ?? 'none'}. Repair updates the selected daily bar and direct price records, then recalculates the current verdict.`;
+            note.textContent = `Related records: quant close ${check.quant_close ?? 'none'}, score history close ${check.score_close ?? 'none'}, current stock price ${check.current_price ?? 'none'}. Repair updates the selected daily bar and direct price records, recomputes stored indicator history from that date forward, recalculates the current verdict, and refreshes the Portfolio X-ray risk cache, Portfolio Heat Index and account performance figures when the ticker is held or watched. Score history, account value snapshots and alerts already sent are not rewritten.`;
             result.appendChild(note);
             if (check.saved_repair) {
                 const saved = document.createElement('p');

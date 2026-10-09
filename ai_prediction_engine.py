@@ -338,6 +338,122 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
             conn.close()
 
 
+_QUANT_HISTORY_UPSERT = """
+    INSERT INTO quant_signals
+    (ticker, date, close_price, volume, rsi_14, macd, macd_signal,
+     macd_hist, sma_50, sma_200, volume_surge, bullish_cross,
+     mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
+     atr_pct, hist_vol_20, rel_strength_5d, rel_strength_20d)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(ticker, date) DO UPDATE SET
+        close_price      = excluded.close_price,
+        volume           = excluded.volume,
+        rsi_14           = excluded.rsi_14,
+        macd             = excluded.macd,
+        macd_signal      = excluded.macd_signal,
+        macd_hist        = excluded.macd_hist,
+        sma_50           = excluded.sma_50,
+        sma_200          = excluded.sma_200,
+        volume_surge     = excluded.volume_surge,
+        bullish_cross    = excluded.bullish_cross,
+        mom_1m           = excluded.mom_1m,
+        mom_3m           = excluded.mom_3m,
+        mom_6m           = excluded.mom_6m,
+        mom_12m_skip1m   = excluded.mom_12m_skip1m,
+        atr_pct          = excluded.atr_pct,
+        hist_vol_20      = excluded.hist_vol_20,
+        rel_strength_5d  = excluded.rel_strength_5d,
+        rel_strength_20d = excluded.rel_strength_20d
+"""
+
+
+def quant_history_records(ticker: str, df: pd.DataFrame, spy_df: Optional[pd.DataFrame]) -> List[Tuple]:
+    df.dropna(subset=['Close', 'Volume', 'High', 'Low'], inplace=True)
+
+    if len(df) < 252:
+        logger.warning("Skipping %s: insufficient data (%d rows < 252).", ticker, len(df))
+        return []
+
+    df['rsi_14'] = compute_rsi(df['Close'])
+    df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
+    _smas = compute_smas(df['Close'], [50, 200])
+    df['sma_50']  = _smas[50]
+    df['sma_200'] = _smas[200]
+    df['vol_sma_20']    = compute_volume_sma(df['Volume'])
+    df['volume_surge']  = compute_volume_surge(df['Volume'], df['vol_sma_20'])
+    df['bullish_cross'] = compute_bullish_cross(df['macd'], df['macd_signal'])
+
+    df['mom_1m']  = df['Close'].pct_change(21)
+    df['mom_3m']  = df['Close'].pct_change(63)
+    df['mom_6m']  = df['Close'].pct_change(126)
+    df['mom_12m'] = df['Close'].pct_change(252)
+    df['mom_12m_skip1m'] = df['mom_12m'] - df['mom_1m']
+    df.drop(columns=['mom_12m'], inplace=True)
+
+    df['atr_raw'] = compute_atr(df['High'], df['Low'], df['Close'])
+    df['atr_pct'] = df['atr_raw'] / df['Close']
+    df.drop(columns=['atr_raw'], inplace=True)
+    log_returns       = np.log(df['Close'] / df['Close'].shift(1))
+    df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
+
+    if spy_df is not None:
+        ticker_ret_5d  = df['Close'].pct_change(5)
+        ticker_ret_20d = df['Close'].pct_change(20)
+        # ffill: SPY's own cached history can lag a ticker's freshly-fetched history
+        # by a day, so an exact-date reindex spuriously NaNs the newest row (and the
+        # blanket dropna() below then drops that whole row, including unrelated columns).
+        spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index, method='ffill')
+        spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index, method='ffill')
+        df['rel_strength_5d']  = ticker_ret_5d  - spy_ret_5d_aligned
+        df['rel_strength_20d'] = ticker_ret_20d - spy_ret_20d_aligned
+    else:
+        df['rel_strength_5d']  = np.nan
+        df['rel_strength_20d'] = np.nan
+
+    df.dropna(inplace=True)
+
+    records: List[Tuple] = []
+    for index, row in df.iterrows():
+        records.append((
+            ticker,
+            index.strftime('%Y-%m-%d'),
+            float(row['Close']),
+            int(row['Volume']),
+            float(row['rsi_14']),
+            float(row['macd']),
+            float(row['macd_signal']),
+            float(row['macd_hist']),
+            float(row['sma_50']),
+            float(row['sma_200']),
+            int(row['volume_surge']),
+            int(row['bullish_cross']),
+            float(row['mom_1m']),
+            float(row['mom_3m']),
+            float(row['mom_6m']),
+            float(row['mom_12m_skip1m']),
+            float(row['atr_pct']),
+            float(row['hist_vol_20']),
+            float(row['rel_strength_5d']),
+            float(row['rel_strength_20d']),
+        ))
+    return records
+
+
+def rebuild_quant_history(ticker: str, df: pd.DataFrame, from_date: str) -> int:
+    records = [r for r in quant_history_records(ticker, df.copy(), download_spy_benchmark()) if r[1] >= from_date]
+    if not records:
+        return 0
+    conn = None
+    try:
+        conn = get_connection()
+        conn.executemany(_QUANT_HISTORY_UPSERT, records)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    return len(records)
+
+
 def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
     """Fundamental features are NOT stored in quant_signals — joined from stock_signals at training/inference time."""
     if tickers is None:
@@ -395,105 +511,11 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 if df.empty:
                     continue
 
-                df.dropna(subset=['Close', 'Volume', 'High', 'Low'], inplace=True)
-
-                if len(df) < 252:
-                    logger.warning("Skipping %s: insufficient data (%d rows < 252).", ticker, len(df))
+                records = quant_history_records(ticker, df, spy_df)
+                if not records:
                     continue
 
-                df['rsi_14'] = compute_rsi(df['Close'])
-                df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
-                _smas = compute_smas(df['Close'], [50, 200])
-                df['sma_50']  = _smas[50]
-                df['sma_200'] = _smas[200]
-                df['vol_sma_20']    = compute_volume_sma(df['Volume'])
-                df['volume_surge']  = compute_volume_surge(df['Volume'], df['vol_sma_20'])
-                df['bullish_cross'] = compute_bullish_cross(df['macd'], df['macd_signal'])
-
-                df['mom_1m']  = df['Close'].pct_change(21)
-                df['mom_3m']  = df['Close'].pct_change(63)
-                df['mom_6m']  = df['Close'].pct_change(126)
-                df['mom_12m'] = df['Close'].pct_change(252)
-                df['mom_12m_skip1m'] = df['mom_12m'] - df['mom_1m']
-                df.drop(columns=['mom_12m'], inplace=True)
-
-                df['atr_raw'] = compute_atr(df['High'], df['Low'], df['Close'])
-                df['atr_pct'] = df['atr_raw'] / df['Close']
-                df.drop(columns=['atr_raw'], inplace=True)
-                log_returns       = np.log(df['Close'] / df['Close'].shift(1))
-                df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
-
-                if spy_df is not None:
-                    ticker_ret_5d  = df['Close'].pct_change(5)
-                    ticker_ret_20d = df['Close'].pct_change(20)
-                    # ffill: SPY's own cached history can lag a ticker's freshly-fetched history
-                    # by a day, so an exact-date reindex spuriously NaNs the newest row (and the
-                    # blanket dropna() below then drops that whole row, including unrelated columns).
-                    spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index, method='ffill')
-                    spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index, method='ffill')
-                    df['rel_strength_5d']  = ticker_ret_5d  - spy_ret_5d_aligned
-                    df['rel_strength_20d'] = ticker_ret_20d - spy_ret_20d_aligned
-                else:
-                    df['rel_strength_5d']  = np.nan
-                    df['rel_strength_20d'] = np.nan
-
-                df.dropna(inplace=True)
-                if df.empty:
-                    continue
-
-                records: List[Tuple] = []
-                for index, row in df.iterrows():
-                    records.append((
-                        ticker,
-                        index.strftime('%Y-%m-%d'),
-                        float(row['Close']),
-                        int(row['Volume']),
-                        float(row['rsi_14']),
-                        float(row['macd']),
-                        float(row['macd_signal']),
-                        float(row['macd_hist']),
-                        float(row['sma_50']),
-                        float(row['sma_200']),
-                        int(row['volume_surge']),
-                        int(row['bullish_cross']),
-                        float(row['mom_1m']),
-                        float(row['mom_3m']),
-                        float(row['mom_6m']),
-                        float(row['mom_12m_skip1m']),
-                        float(row['atr_pct']),
-                        float(row['hist_vol_20']),
-                        float(row['rel_strength_5d']),
-                        float(row['rel_strength_20d']),
-                    ))
-
-                upsert_query = """
-                    INSERT INTO quant_signals
-                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal,
-                     macd_hist, sma_50, sma_200, volume_surge, bullish_cross,
-                     mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
-                     atr_pct, hist_vol_20, rel_strength_5d, rel_strength_20d)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(ticker, date) DO UPDATE SET
-                        close_price      = excluded.close_price,
-                        volume           = excluded.volume,
-                        rsi_14           = excluded.rsi_14,
-                        macd             = excluded.macd,
-                        macd_signal      = excluded.macd_signal,
-                        macd_hist        = excluded.macd_hist,
-                        sma_50           = excluded.sma_50,
-                        sma_200          = excluded.sma_200,
-                        volume_surge     = excluded.volume_surge,
-                        bullish_cross    = excluded.bullish_cross,
-                        mom_1m           = excluded.mom_1m,
-                        mom_3m           = excluded.mom_3m,
-                        mom_6m           = excluded.mom_6m,
-                        mom_12m_skip1m   = excluded.mom_12m_skip1m,
-                        atr_pct          = excluded.atr_pct,
-                        hist_vol_20      = excluded.hist_vol_20,
-                        rel_strength_5d  = excluded.rel_strength_5d,
-                        rel_strength_20d = excluded.rel_strength_20d
-                """
-                cursor.executemany(upsert_query, records)
+                cursor.executemany(_QUANT_HISTORY_UPSERT, records)
                 conn.commit()
                 total_inserted += cursor.rowcount
 

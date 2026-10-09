@@ -1,11 +1,18 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import sqlite3
 import json
 
 import pandas as pd
+import pytest
 
 from database import get_connection
-from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, repair_daily_bar, remove_daily_bar, _fingerprint, _history_path
+from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, refresh_downstream, repair_daily_bar, remove_daily_bar, _fingerprint, _history_path
+
+
+@pytest.fixture(autouse=True)
+def stub_downstream_refresh(monkeypatch):
+    monkeypatch.setattr("price_repair_engine.refresh_downstream",
+                        lambda *args, **kwargs: {"history_rows_rebuilt": 0, "portfolio_caches": "not_in_scope"})
 
 
 def _history(path):
@@ -251,3 +258,88 @@ def test_repair_rolls_back_file_and_saved_override_on_database_failure(tmp_path)
             conn.commit()
         finally:
             conn.close()
+
+
+def test_repair_passes_repaired_frame_and_date_to_downstream_refresh(tmp_path, monkeypatch):
+    path = tmp_path / "LCJP.L.parquet"
+    _history(path)
+    calls = []
+
+    def record(ticker, from_date, history):
+        calls.append((ticker, from_date, float(history.iloc[-1]["Close"])))
+        return {"history_rows_rebuilt": 3, "portfolio_caches": "queued"}
+
+    monkeypatch.setattr("price_repair_engine.refresh_downstream", record)
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), \
+         patch("price_repair_engine.REPAIRS_PATH", tmp_path / "price_repairs.json"), \
+         patch("price_repair_engine.QuantEngine.analyze_ticker"):
+        result = repair_daily_bar("LCJP.L", "2026-10-05", _fingerprint(str(path)),
+                                  {"Open": 20.7, "High": 20.9, "Low": 20.6, "Close": 20.78, "Volume": 34950})
+    assert calls == [("LCJP.L", "2026-10-05", 20.78)]
+    assert result["downstream"] == {"history_rows_rebuilt": 3, "portfolio_caches": "queued"}
+
+
+def test_remove_passes_remaining_frame_to_downstream_refresh(tmp_path, monkeypatch):
+    path = tmp_path / "LCJP.L.parquet"
+    pd.DataFrame(
+        {"Open": [20, 21, 22], "High": [20.5, 21.5, 22.5], "Low": [19.5, 20.5, 21.5],
+         "Close": [20, 21, 22], "Volume": [100, 0, 100]},
+        index=pd.to_datetime(["2026-10-02", "2026-10-05", "2026-10-06"]),
+    ).to_parquet(path)
+    calls = []
+    monkeypatch.setattr("price_repair_engine.refresh_downstream",
+                        lambda ticker, from_date, history: calls.append((ticker, from_date, len(history))) or {})
+    with patch("price_repair_engine.HISTORICAL_DIR", tmp_path), \
+         patch("price_repair_engine.REPAIRS_PATH", tmp_path / "price_repairs.json"), \
+         patch("price_repair_engine.QuantEngine.analyze_ticker"):
+        remove_daily_bar("LCJP.L", "2026-10-05", _fingerprint(str(path)))
+    assert calls == [("LCJP.L", "2026-10-05", 2)]
+
+
+class TestRefreshDownstream:
+
+    @staticmethod
+    def _history_frame():
+        return pd.DataFrame({"Close": [1.0]}, index=pd.to_datetime(["2026-10-05"]))
+
+    def test_in_scope_ticker_rebuilds_history_and_queues_portfolio_caches(self):
+        with patch("ai_prediction_engine.rebuild_quant_history", return_value=42) as rebuild, \
+             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
+             patch("price_repair_engine.request_cache_refresh", return_value=MagicMock()) as queue:
+            result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
+        assert result == {"history_rows_rebuilt": 42, "portfolio_caches": "queued"}
+        assert rebuild.call_args.args[0] == "LCJP.L"
+        assert rebuild.call_args.args[2] == "2026-10-05"
+        assert queue.call_args.args[0] == "price-repair:LCJP.L"
+
+    def test_ticker_outside_portfolio_and_watchlist_queues_nothing(self):
+        with patch("ai_prediction_engine.rebuild_quant_history", return_value=5), \
+             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["AAPL"]), \
+             patch("price_repair_engine.request_cache_refresh") as queue:
+            result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
+        assert result == {"history_rows_rebuilt": 5, "portfolio_caches": "not_in_scope"}
+        queue.assert_not_called()
+
+    def test_refused_refresh_request_is_reported_as_unavailable(self):
+        with patch("ai_prediction_engine.rebuild_quant_history", return_value=5), \
+             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
+             patch("price_repair_engine.request_cache_refresh", return_value=None):
+            result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
+        assert result["portfolio_caches"] == "unavailable"
+
+    def test_history_rebuild_failure_is_reported_and_does_not_block_cache_refresh(self):
+        with patch("ai_prediction_engine.rebuild_quant_history", side_effect=RuntimeError("boom")), \
+             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
+             patch("price_repair_engine.request_cache_refresh", return_value=MagicMock()):
+            result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
+        assert result == {"history_rows_rebuilt": None, "portfolio_caches": "queued"}
+
+    def test_queued_refresh_runs_xray_then_risk_scan_then_account_performance(self):
+        from price_repair_engine import _refresh_portfolio_caches
+
+        order = []
+        with patch("xray_engine.run_xray_precompute", side_effect=lambda: order.append("xray") or True), \
+             patch("risk_orchestrator_engine.run_scan", side_effect=lambda: order.append("risk")), \
+             patch("accounts_engine.refresh_all_trading_performance_caches", side_effect=lambda: order.append("accounts")):
+            assert _refresh_portfolio_caches() is True
+        assert order == ["xray", "risk", "accounts"]

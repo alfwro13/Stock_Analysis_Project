@@ -5,7 +5,7 @@ import re
 # Jobs that share one Settings panel use that panel's name plus a parenthetical.
 JOB_GRAPH: dict[str, dict] = {
     "cached_navigation_source": {"label": "Cached Navigation", "category": "manual", "engine": "page_routes.py", "produces": ["market_pulse_cache", "historical_parquet", "intraday_parquet"], "consumes": ["portfolio", "watchlist_items", "stock_signals", "market_pulse_cache", "historical_parquet", "intraday_parquet", "yahoo_price_data", "price_repairs"], "non_job": True, "settings_anchor": None},
-    "price_repair_source": {"label": "Repair Data", "category": "manual", "engine": "price_repair_engine.py", "produces": ["price_repairs", "historical_parquet", "quant_signals", "stock_signals", "score_history"], "consumes": ["historical_parquet", "yahoo_price_data"], "non_job": True, "settings_anchor": None},
+    "price_repair_source": {"label": "Repair Data", "category": "manual", "engine": "price_repair_engine.py", "produces": ["price_repairs", "historical_parquet", "quant_signals", "stock_signals", "score_history", "xray_caches", "portfolio_heat_index", "ticker_risk_contribution", "account_performance_cache"], "consumes": ["historical_parquet", "yahoo_price_data", "portfolio"], "non_job": True, "settings_anchor": None},
     # External data sources — not scheduled jobs; rendered with distinct styling in the graph.
     "yahoo_finance_source":           {"label": "Yahoo Finance",                                  "category": "external",    "engine": "yahoo_engine.py",               "produces": ["yahoo_price_data"],                                           "consumes": [],                                                                   "settings_anchor": None},
 
