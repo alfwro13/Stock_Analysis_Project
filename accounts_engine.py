@@ -711,6 +711,10 @@ def native_currencies(tickers: list) -> dict:
             conn.close()
 
 
+def in_scope_currencies(tickers: list) -> set:
+    return set(load_config()["ACCOUNT_CURRENCIES"]) | set(native_currencies(list(tickers)).values())
+
+
 def held_tickers_lightweight() -> list:
     """Cheap approximation of get_combined_holdings().keys() for callers that only need the
     ticker universe (e.g. deciding what to keep warm in market_pulse_cache) — a single query

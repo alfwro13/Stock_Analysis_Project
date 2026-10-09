@@ -15,7 +15,7 @@ from database import (
 )
 from db_helpers import add_ticker_note, get_ticker_notes
 from ghostfolio_sync import purge_ghostfolio_files
-from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, native_currencies
+from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, in_scope_currencies
 from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
@@ -183,9 +183,7 @@ class MaintenanceEngine:
             if conn:
                 conn.close()
 
-        currencies = set(load_config()["ACCOUNT_CURRENCIES"])
-        currencies.update(native_currencies(list(active_tickers)).values())
-        for currency in currencies:
+        for currency in in_scope_currencies(active_tickers):
             for from_base in (False, True):
                 pair = fx_pair(currency, from_base=from_base)
                 if pair:

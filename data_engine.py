@@ -92,6 +92,14 @@ class DataEngine:
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return sorted(valid_tickers)
 
+    @staticmethod
+    def in_scope_fx_pairs(tickers: List[str]) -> List[str]:
+        from accounts_engine import in_scope_currencies
+        from portfolio_service import fx_pair
+
+        pairs = {fx_pair(currency) for currency in in_scope_currencies(tickers)}
+        return sorted(pairs - {None} - set(tickers))
+
     def fetch_market_baseline(self) -> None:
         logger.info("Fetching Market and Intermarket Baselines (US & UK)...")
         try:
@@ -293,7 +301,7 @@ class DataEngine:
         if not tickers:
             return
 
-        self.bulk_download_historical(tickers)
+        self.bulk_download_historical([*tickers, *self.in_scope_fx_pairs(tickers)])
         self.bulk_download_intraday(tickers)
         self.drip_feed_fundamentals(tickers)
 

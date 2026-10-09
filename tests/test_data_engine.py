@@ -18,6 +18,41 @@ def _combined(*tickers):
     return {t: {"ticker": t} for t in tickers}
 
 
+# ── nightly FX pair histories ─────────────────────────────────────────────────
+
+def test_in_scope_fx_pairs_cover_account_and_native_currencies_but_not_the_base_or_universe_members():
+    from data_engine import DataEngine
+
+    with patch("accounts_engine.load_config", return_value={"ACCOUNT_CURRENCIES": ["GBP", "USD"]}), \
+         patch("accounts_engine.native_currencies", return_value={"SAP.DE": "EUR", "VOD.L": "GBp"}):
+        pairs = DataEngine.in_scope_fx_pairs(["SAP.DE", "VOD.L"])
+    assert pairs == ["EURGBP=X", "USDGBP=X"]
+
+
+def test_in_scope_fx_pairs_skips_a_pair_already_in_the_universe():
+    from data_engine import DataEngine
+
+    with patch("accounts_engine.load_config", return_value={"ACCOUNT_CURRENCIES": ["GBP", "USD"]}), \
+         patch("accounts_engine.native_currencies", return_value={}):
+        assert DataEngine.in_scope_fx_pairs(["USDGBP=X", "AAPL"]) == []
+
+
+def test_update_all_data_downloads_fx_pair_histories_but_keeps_them_out_of_the_other_steps():
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    with patch.object(engine, "fetch_market_baseline"), \
+         patch.object(engine, "get_all_tickers", return_value=["AAPL"]), \
+         patch.object(DataEngine, "in_scope_fx_pairs", return_value=["USDGBP=X"]), \
+         patch.object(engine, "bulk_download_historical") as daily, \
+         patch.object(engine, "bulk_download_intraday") as intraday, \
+         patch.object(engine, "drip_feed_fundamentals") as fundamentals:
+        engine.update_all_data()
+    daily.assert_called_once_with(["AAPL", "USDGBP=X"])
+    intraday.assert_called_once_with(["AAPL"])
+    fundamentals.assert_called_once_with(["AAPL"])
+
+
 # ── get_all_tickers ───────────────────────────────────────────────────────────
 
 def test_get_all_tickers_deduplicates_portfolio_and_watchlist():
