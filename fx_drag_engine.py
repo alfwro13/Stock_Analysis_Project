@@ -1,5 +1,6 @@
 # GUI name: "FX Drag Analyzer". No scheduled job — on-demand only.
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 
 import pandas as pd
@@ -24,12 +25,20 @@ def _ytd_days() -> int:
     return (today - today.replace(month=1, day=1)).days or 1
 
 
-def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:
+def _history_parquet_path(ticker: str) -> str | None:
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
         return None
-    parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
-    if not parquet_path.exists():
+    history_root = os.path.realpath(HISTORICAL_DIR)
+    parquet_path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+    if not parquet_path.startswith(history_root + os.sep):
+        return None
+    return parquet_path
+
+
+def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:
+    parquet_path = _history_parquet_path(ticker)
+    if not parquet_path or not os.path.exists(parquet_path):
         return None
 
     usdgbp = _load_usdgbp_series()
@@ -124,10 +133,9 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
         gbp_exposure = None
         if shares and buy_price_usd:
             try:
-                safe_ticker = safe_ticker_filename(ticker)
-                if not safe_ticker:
+                parquet_path = _history_parquet_path(ticker)
+                if not parquet_path:
                     raise ValueError(f"Unsafe ticker: {ticker!r}")
-                parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
                 df = pd.read_parquet(parquet_path)
                 current_price_usd = float(df["Close"].iloc[-1])
                 gbp_exposure = round((shares * current_price_usd) / breakdown["gbpusd_now"], 2)
@@ -211,10 +219,9 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
             continue
         vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy = stats
 
-        safe_ticker = safe_ticker_filename(ticker)
-        if not safe_ticker:
+        parquet_path = _history_parquet_path(ticker)
+        if not parquet_path:
             continue
-        parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         try:
             df = pd.read_parquet(parquet_path)
             current_price_usd = float(df["Close"].iloc[-1])
