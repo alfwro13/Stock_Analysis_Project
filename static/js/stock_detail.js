@@ -586,7 +586,7 @@
             stopMultiple:  stopMultiple,
         });
 
-        const fmt = window.PositionSizing.formatCurrency;
+        const fmt = formatCurrency;
 
         document.getElementById("ps-current-price").textContent =
             entryPrice ? fmt(entryPrice, nativeCurrency) : "—";
@@ -664,7 +664,7 @@
         var parts = [];
         if (check.breached_constraint) parts.push(check.breached_constraint + " constraint");
         if (check.suggested_reduced_value != null) {
-            parts.push("try up to " + window.PositionSizing.formatCurrency(check.suggested_reduced_value, window.BASE_CURRENCY));
+            parts.push("try up to " + formatCurrency(check.suggested_reduced_value, window.BASE_CURRENCY));
         }
         detailEl.textContent = parts.length ? parts.join(" — ") : "Elevated portfolio risk tier.";
         detailRow.classList.remove("d-none");
@@ -740,7 +740,7 @@ function renderCurrentTargetsDisplay(limitsByAccount) {
     var container = document.getElementById('currentTargetsDisplay');
     if (!container) return;
     var currency = window.STOCK_CURRENCY;
-    var fmt = window.PositionSizing.formatCurrency;
+    var fmt = formatCurrency;
     var rows = (window.TARGET_ACCOUNTS || [])
         .map(function (acc) {
             var limits = limitsByAccount[acc.account_id] || {};

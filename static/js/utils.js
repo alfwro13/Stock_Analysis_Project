@@ -11,22 +11,25 @@ function exactTagSearchPattern(val) {
 }
 
 function formatCurrency(value, currencyCode) {
-    if (value === null || value === undefined) return 'N/A';
-    let num = parseFloat(value);
-    if (isNaN(num)) return 'N/A';
+    let num = value === null || value === undefined ? NaN : parseFloat(value);
+    if (isNaN(num)) return '—';
 
-    let symbol = '$';
     if (currencyCode === 'GBp') {
         num = num / 100.0;
-        symbol = '£';
-    } else if (currencyCode === 'GBP') {
-        symbol = '£';
-    } else if (currencyCode === 'EUR') {
-        symbol = '€';
-    } else if (currencyCode && currencyCode !== 'USD') {
-        return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
+        currencyCode = 'GBP';
     }
-    return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (!currencyCode) {
+        return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    try {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currencyCode,
+            maximumFractionDigits: 2,
+        }).format(num);
+    } catch (e) {
+        return currencyCode + ' ' + num.toFixed(2);
+    }
 }
 
 function showTableError(tableSelector, colSpan) {

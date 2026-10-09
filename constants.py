@@ -68,7 +68,7 @@ PENSION_BENCHMARK_WATCHLIST_NOTE = (
 )
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.150"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.151"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

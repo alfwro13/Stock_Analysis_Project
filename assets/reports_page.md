@@ -25,7 +25,7 @@ Each page route in `page_routes.py` renders its template with the same `unread_c
 
 ## 2. Shared JS helpers
 
-`formatCurrency()` and `showTableError()` (GBX-aware price formatting, DataTables AJAX error fallback) were promoted from the old monolithic `market_reports.js` into `static/js/utils.js`, since all 7 new per-report JS files need them. Every new report template loads `utils.js` before its own page script. `setButtonLoading()` — used only by Mean Reversion and Dividend Harvest's "Run Query" buttons — stays duplicated in `mean_reversion.js`/`dividend_harvest.js` rather than being promoted, since it's specific to those two pages' filter-and-refetch pattern.
+`formatCurrency()` and `showTableError()` (GBp-aware price formatting, DataTables AJAX error fallback) were promoted from the old monolithic `market_reports.js` into `static/js/utils.js`, since all 7 new per-report JS files need them. Every new report template loads `utils.js` before its own page script. `formatCurrency()` is the single front-end currency formatter, also used by the Portfolio, Watchlist and Stock Detail position-sizing cells: fixed `en-US` `Intl.NumberFormat` (`$1,234.50`, `£1,234.50`, `CHF 1,234.50`), `GBp` pence divided by 100 and shown as GBP, `—` for a missing/non-numeric value, and a plain `1,234.50` when no currency code is given. `setButtonLoading()` — used only by Mean Reversion and Dividend Harvest's "Run Query" buttons — stays duplicated in `mean_reversion.js`/`dividend_harvest.js` rather than being promoted, since it's specific to those two pages' filter-and-refetch pattern.
 
 ## 3. Retired
 
