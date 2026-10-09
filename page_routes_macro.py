@@ -338,7 +338,7 @@ async def market_sentiment_page(request: Request):
 
 
 @page_router_macro.get("/index/{ticker}", response_class=HTMLResponse)
-async def index_detail(request: Request, ticker: str):
+def index_detail(request: Request, ticker: str):
     ticker = normalize_ticker(ticker)
     registry_row = get_ticker_registry_row(ticker)
     is_future_page = False
@@ -399,7 +399,7 @@ async def index_detail(request: Request, ticker: str):
         if conn:
             conn.close()
 
-    intraday_revision = await run_in_threadpool(intraday_chart_revision, ticker, currency)
+    intraday_revision = intraday_chart_revision(ticker, currency)
     price_action = None
     # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
     # — but a future's own page must never fall back to its spot row's baseline (a different
