@@ -17,8 +17,8 @@ Key functions:
 
 | Function | Purpose |
 |----------|---------|
-| `_load_gbpusd_series()` | Loads GBPUSD daily close prices from `data/historical/GBPUSD_BASELINE.parquet`; falls back to a live yfinance fetch if the file is missing |
-| `compute_fx_breakdown(ticker, period_days)` | Returns equity%, fx%, total_gbp%, ref_date, gbpusd_ref, gbpusd_now for a single ticker |
+| `_load_usdgbp_series()` | Loads the cached `USDGBP=X` daily closes (`fx_conversion_helpers.cached_fx_close(..., cache_only=True)`); never fetches inline — a missing file requests a coordinated background refresh and the breakdown is unavailable until it lands |
+| `compute_fx_breakdown(ticker, period_days)` | Returns equity%, fx%, total_gbp%, ref_date, gbpusd_ref, gbpusd_now for a single ticker; the two FX rates are read with `fx_conversion_helpers.fx_level_on()` on the first and last price-bar dates |
 | `portfolio_fx_breakdown(period_days)` | Loops over all USD positions in `portfolio.json`, calls `compute_fx_breakdown` for each, appends GBP exposure |
 | `_lifetime_buy_stats(ticker)` | Scans every Buy transaction for `ticker` across all built-in accounts and returns `(vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy)` |
 | `portfolio_lifetime_fx_breakdown()` | Lifetime mode: aggregates Buy transactions from `account_transactions` (all accounts), derives per-ticker purchase GBPUSD, computes full decomposition |
@@ -47,7 +47,7 @@ For YTD / 1Y / 2Y periods, a shared reference date is used rather than the indiv
 | 1Y | 365 calendar days before today |
 | 2Y | 730 calendar days before today |
 
-The reference price is the first `Close` row in the ticker's Parquet file on or after the reference date. The reference GBPUSD rate is the corresponding row in `GBPUSD_BASELINE.parquet`.
+The reference price is the first `Close` row in the ticker's Parquet file on or after the reference date. The reference and current FX rates are the latest `USDGBP=X` close on or before the first and last of those price-bar dates, at most 3 days old (`fx_conversion_helpers.fx_level_on`, the same strict rule the Portfolio Optimizer and Strategy Backtester use); `gbpusd_ref`/`gbpusd_now` are shown as `1 / USDGBP`. When no rate falls inside that window the ticker is omitted rather than shown with a stale or substituted rate.
 
 If no data exists within the period range, `compute_fx_breakdown` returns `None` and the ticker is omitted from the output.
 
@@ -78,7 +78,7 @@ fx_pct        = (weighted_avg_gbpusd_buy / gbpusd_now - 1) × 100
 total_gbp_pct = ((1 + equity_pct/100) × (1 + fx_pct/100) - 1) × 100
 ```
 
-`gbpusd_now` is read from the last row of `GBPUSD_BASELINE.parquet`.
+`gbpusd_now` is `1 / USDGBP` on the ticker's last price-bar date (same 3-day limit). The buy-side rate comes from the transactions' stored `exchange_rate`, which `accounts_engine.fx_rate_on_date()` fills from the same `USDGBP=X` history, so both sides of the comparison share a source.
 
 ### Transaction filters
 
@@ -96,7 +96,7 @@ Uses all historical Buy rows. For positions with partial sells, the ledger-deriv
 | Data | Source |
 |------|--------|
 | Stock price history | `data/historical/{ticker}.parquet` (2-year daily OHLCV) |
-| GBPUSD history | `data/historical/GBPUSD_BASELINE.parquet` (fetched by `data_engine.py`) |
+| USD→GBP history | Cached `USDGBP=X` daily history (`data/historical/USDGBP=X.parquet`, via `data_engine.load_or_fetch_daily_history`) |
 | USD position list | `accounts_engine.get_combined_holdings()` + `stock_signals.currency` column in SQLite |
 | Lifetime buy history | `account_transactions` table (all accounts), via `db_accounts.get_accounts()` / `get_transactions()` |
 
@@ -119,10 +119,11 @@ A compact inline "FX Breakdown (YTD)" row appended to the "Your Position" box fo
 ## Limitations
 
 - **Reference periods are approximations.** YTD / 1Y / 2Y show how the stock and the currency have moved since the reference date, not since the position was opened. Use Lifetime mode for the real purchase-date decomposition.
-- **2-year Parquet cap.** The `GBPUSD_BASELINE.parquet` covers ~2 years of daily data. The 2Y period may have sparse or missing data near its boundary, in which case `compute_fx_breakdown` returns `None`.
+- **2-year Parquet cap.** The cached `USDGBP=X` history covers ~2 years of daily data. The 2Y period may have sparse or missing data near its boundary, in which case `compute_fx_breakdown` returns `None`.
+- **No stale-rate fallback.** A price bar with no `USDGBP=X` close within 3 days before it is omitted (period mode) or skipped (Lifetime mode).
 - **USD positions only.** Positions where `stock_signals.currency != 'USD'` are excluded. EUR, GBX, GBP positions have different FX dynamics not covered by this tool.
 - **BASE_CURRENCY guard.** If `BASE_CURRENCY` in `config.json` is not `"GBP"`, `portfolio_fx_breakdown` returns an empty list — the analysis is only meaningful for GBP-base investors.
 
-### Cached Stock Detail fallback
+### Cached history only
 
-Stock Detail calls `compute_fx_breakdown(..., cache_only=True)`. When `GBPUSD_BASELINE.parquet` cannot be read, the fallback uses the canonical cached `GBPUSD=X` daily-history Parquet and requests a coordinated background refresh if necessary. It never waits for Yahoo during page assembly. Missing usable history returns `None`, leaving the page usable without an FX decomposition. The standalone analyzer's default on-demand fetch behaviour is preserved. FX conversion cache policy and explicit Refresh behaviour are documented in `system_architecture.md` under Cached Navigation.
+The analyzer and Stock Detail both read the cached `USDGBP=X` daily history and never wait for Yahoo: a missing or stale file requests a coordinated background refresh and the next load picks it up. Missing usable history returns `None`, leaving the page usable without an FX decomposition. FX conversion cache policy and explicit Refresh behaviour are documented in `system_architecture.md` under Cached Navigation.

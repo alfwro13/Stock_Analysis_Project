@@ -3463,7 +3463,7 @@ Deletes a transaction. If it is one leg of a `Transfer`, the linked sibling leg 
 
 ### `GET /api/fx-rate?currency=&date=`
 
-Returns the historical exchange rate from `currency` to `BASE_CURRENCY` on `date` (`accounts_engine.fx_rate_on_date`) — used by the Add/Edit Transaction modal to auto-fill the Exchange Rate field whenever the transaction's currency or date changes (e.g. correcting `GBp` to `GBP` updates the suggested rate from `0.01` to `1.0` automatically). Rate limit: 30/minute.
+Returns the historical exchange rate from `currency` to `BASE_CURRENCY` on `date` (`accounts_engine.fx_rate_on_date`) — the latest cached daily close on or before `date`, at most 3 days old (older dates than the 2-year cache fall back to a 5-year fetch); `null`/error when none exists, never a live or 1.0 stand-in — used by the Add/Edit Transaction modal to auto-fill the Exchange Rate field whenever the transaction's currency or date changes (e.g. correcting `GBp` to `GBP` updates the suggested rate from `0.01` to `1.0` automatically). Rate limit: 30/minute.
 
 **Response:**
 ```json

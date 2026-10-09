@@ -1,39 +1,22 @@
 # GUI name: "FX Drag Analyzer". No scheduled job — on-demand only.
 import logging
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
 import pandas as pd
 
 from config import HISTORICAL_DIR, BASE_CURRENCY
 from database import get_connection
 from db_accounts import get_accounts, get_transactions
+from fx_conversion_helpers import cached_fx_close, fx_level_on
+from portfolio_service import fx_pair
 from utils import safe_ticker_filename
-from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-_GBPUSD_PARQUET = HISTORICAL_DIR / "GBPUSD_BASELINE.parquet"
 
-
-def _load_gbpusd_series(*, cache_only: bool = False) -> pd.Series:
-    try:
-        df = pd.read_parquet(_GBPUSD_PARQUET)
-        return df["Close"].sort_index()
-    except Exception:
-        pass
-    try:
-        if cache_only:
-            from data_engine import load_or_fetch_daily_history
-            df = load_or_fetch_daily_history("GBPUSD=X", cache_only=True)
-        else:
-            raw = yahoo_engine.get_price_history(["GBPUSD=X"], period="2y")
-            df = raw.get("GBPUSD=X")
-        if df is not None and not df.empty:
-            return df["Close"].sort_index()
-    except Exception as e:
-        logger.error("Failed to fetch GBPUSD=X fallback: %s", e)
-    return pd.Series(dtype=float)
+def _load_usdgbp_series() -> pd.Series:
+    close = cached_fx_close(fx_pair("USD"), cache_only=True)
+    return close.sort_index() if close is not None else pd.Series(dtype=float)
 
 
 def _ytd_days() -> int:
@@ -41,7 +24,7 @@ def _ytd_days() -> int:
     return (today - today.replace(month=1, day=1)).days or 1
 
 
-def compute_fx_breakdown(ticker: str, period_days: int, *, cache_only: bool = False) -> dict | None:
+def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
         return None
@@ -49,8 +32,8 @@ def compute_fx_breakdown(ticker: str, period_days: int, *, cache_only: bool = Fa
     if not parquet_path.exists():
         return None
 
-    gbpusd = _load_gbpusd_series(cache_only=True) if cache_only else _load_gbpusd_series()
-    if gbpusd.empty:
+    usdgbp = _load_usdgbp_series()
+    if usdgbp.empty:
         return None
 
     try:
@@ -64,19 +47,19 @@ def compute_fx_breakdown(ticker: str, period_days: int, *, cache_only: bool = Fa
     cutoff_ts = pd.Timestamp(cutoff)
 
     prices_in_range = prices[prices.index >= cutoff_ts]
-    gbpusd_in_range = gbpusd[gbpusd.index >= cutoff_ts]
-
-    if prices_in_range.empty or gbpusd_in_range.empty:
+    if prices_in_range.empty:
         return None
 
     price_ref = float(prices_in_range.iloc[0])
     price_now = float(prices_in_range.iloc[-1])
-    gbpusd_ref = float(gbpusd_in_range.iloc[0])
-    gbpusd_now = float(gbpusd_in_range.iloc[-1])
+    usdgbp_ref = fx_level_on(prices_in_range.index[0], usdgbp)
+    usdgbp_now = fx_level_on(prices_in_range.index[-1], usdgbp)
 
-    if price_ref == 0 or gbpusd_now == 0:
+    if price_ref == 0 or usdgbp_ref is None or usdgbp_now is None:
         return None
 
+    gbpusd_ref = 1 / usdgbp_ref
+    gbpusd_now = 1 / usdgbp_now
     equity_pct = (price_now / price_ref - 1) * 100
     # Positive = USD strengthened vs GBP (tailwind for UK investor)
     fx_pct = (gbpusd_ref / gbpusd_now - 1) * 100
@@ -126,9 +109,6 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
     all_tickers = [v["ticker"] for v in portfolio.values() if v.get("ticker")]
     usd_tickers = _get_usd_tickers_from_db(all_tickers)
 
-    gbpusd_now_rate = _load_gbpusd_series()
-    gbpusd_now = float(gbpusd_now_rate.iloc[-1]) if not gbpusd_now_rate.empty else None
-
     results = []
     for entry in portfolio.values():
         ticker = entry.get("ticker")
@@ -142,7 +122,7 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
         shares = entry.get("global_shares", 0)
         buy_price_usd = entry.get("global_buy_price", 0)
         gbp_exposure = None
-        if gbpusd_now and gbpusd_now > 0 and shares and buy_price_usd:
+        if shares and buy_price_usd:
             try:
                 safe_ticker = safe_ticker_filename(ticker)
                 if not safe_ticker:
@@ -150,7 +130,7 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
                 parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
                 df = pd.read_parquet(parquet_path)
                 current_price_usd = float(df["Close"].iloc[-1])
-                gbp_exposure = round((shares * current_price_usd) / gbpusd_now, 2)
+                gbp_exposure = round((shares * current_price_usd) / breakdown["gbpusd_now"], 2)
             except Exception:
                 gbp_exposure = None
 
@@ -169,7 +149,7 @@ def _lifetime_buy_stats(ticker: str) -> tuple[float, float, int, str] | None:
     """Returns (vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy) from every Buy
     transaction for `ticker` across all built-in accounts. `exchange_rate` on each row already
     converts the trade's USD cost to BASE_CURRENCY (GBP), so the implied GBPUSD rate at buy time
-    is recovered as total_usd / total_gbp — consistent with `_load_gbpusd_series()`'s USD-per-GBP quoting."""
+    is recovered as total_usd / total_gbp — consistent with GBPUSD's USD-per-GBP quoting."""
     total_usd = 0.0
     total_gbp = 0.0
     total_qty = 0.0
@@ -216,10 +196,9 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
     all_tickers = [v["ticker"] for v in portfolio.values() if v.get("ticker")]
     usd_tickers = _get_usd_tickers_from_db(all_tickers)
 
-    gbpusd_series = _load_gbpusd_series()
-    if gbpusd_series.empty:
+    usdgbp = _load_usdgbp_series()
+    if usdgbp.empty:
         return []
-    gbpusd_now = float(gbpusd_series.iloc[-1])
 
     results = []
     for entry in portfolio.values():
@@ -239,11 +218,13 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
         try:
             df = pd.read_parquet(parquet_path)
             current_price_usd = float(df["Close"].iloc[-1])
+            usdgbp_now = fx_level_on(df.index[-1], usdgbp)
         except Exception:
             continue
 
-        if vwap_buy_usd == 0 or gbpusd_now == 0:
+        if vwap_buy_usd == 0 or usdgbp_now is None:
             continue
+        gbpusd_now = 1 / usdgbp_now
 
         equity_pct = (current_price_usd / vwap_buy_usd - 1) * 100
         fx_pct = (weighted_avg_gbpusd_buy / gbpusd_now - 1) * 100

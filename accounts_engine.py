@@ -22,7 +22,7 @@ from db_accounts import (
     upsert_value_snapshot_currency,
 )
 from database import get_connection
-from fx_conversion_helpers import FX_MAX_FILL_DAYS
+from fx_conversion_helpers import cached_fx_close, fx_level_on
 from portfolio_service import get_rate_to_base
 from utils import normalize_ticker, ignored_tickers_set
 from yahoo_engine import yahoo_engine
@@ -1085,10 +1085,13 @@ def watchlist_summary(account_id: int) -> dict:
     return {"count": len(items), "by_type": by_type}
 
 
+def _deep_fx_close(pair: str) -> Optional[pd.Series]:
+    df = yahoo_engine.get_price_history([pair], period="5y", interval="1d").get(pair)
+    return df["Close"] if df is not None and not df.empty and "Close" in df else None
+
+
 def fx_rate_on_date(currency: str, date_str: Optional[str]) -> Optional[float]:
-    """Historical FX rate from `currency` to BASE_CURRENCY on `date_str`; used to backfill the
-    exchange rate when a transaction is entered without one. With no date it uses the bounded cached
-    quote; None when neither is available — never a live-rate or 1.0 stand-in for a missing past date."""
+    """Historical FX rate to BASE_CURRENCY for backfilling a transaction's missing exchange rate; None when unavailable — never a live-rate or 1.0 stand-in for a missing past date."""
     if not currency or currency == BASE_CURRENCY:
         return 1.0
     if currency == "GBp":
@@ -1098,16 +1101,15 @@ def fx_rate_on_date(currency: str, date_str: Optional[str]) -> Optional[float]:
         return None if gbp_rate is None else 0.01 * gbp_rate
     if date_str and date_str < datetime.now(timezone.utc).date().isoformat():
         pair = f"{currency}{BASE_CURRENCY}=X"
-        try:
-            df = yahoo_engine.get_price_history([pair], period="5y", interval="1d").get(pair)
-            if df is not None and not df.empty and "Close" in df:
-                window = df.loc[:date_str]
-                if not window.empty and (pd.Timestamp(date_str) - window.index[-1].tz_localize(None).normalize()).days <= FX_MAX_FILL_DAYS:
-                    value = float(window["Close"].iloc[-1])
-                    if value > 0:
-                        return value
-        except Exception as e:
-            logger.warning("Historical FX lookup failed for %s on %s: %s", pair, date_str, e)
+        for load in (cached_fx_close, _deep_fx_close):
+            try:
+                close = load(pair)
+            except Exception as e:
+                logger.warning("Historical FX lookup failed for %s on %s: %s", pair, date_str, e)
+                continue
+            rate = None if close is None else fx_level_on(date_str, close)
+            if rate is not None:
+                return rate
         return None
     return get_rate_to_base(currency)
 

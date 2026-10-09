@@ -248,12 +248,56 @@ def test_fx_rate_on_date_base_and_pence_shortcuts():
 @pytest.mark.db
 def test_fx_rate_on_date_historical_lookup(monkeypatch):
     idx = pd.to_datetime(["2026-01-02", "2026-01-05", "2026-01-09"])
-    df = pd.DataFrame({"Close": [1.10, 1.12, 1.15]}, index=idx)
+    close = pd.Series([1.10, 1.12, 1.15], index=idx)
+    requested = []
+    monkeypatch.setattr(accounts_engine, "cached_fx_close", lambda pair: requested.append(pair) or close)
+    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda *a, **k: pytest.fail("the cached history covers the date"))
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") == 1.12   # last close on/before date
+    assert requested == ["EURGBP=X"]
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_falls_back_to_five_year_history_for_dates_before_the_cache(monkeypatch):
+    cached = pd.Series([1.20], index=pd.to_datetime(["2025-06-02"]))
+    deep = pd.DataFrame({"Close": [1.05, 1.07]}, index=pd.to_datetime(["2023-03-01", "2023-03-02"]))
+    calls = []
+    monkeypatch.setattr(accounts_engine, "cached_fx_close", lambda pair: cached)
     monkeypatch.setattr(
         accounts_engine.yahoo_engine, "get_price_history",
-        lambda tickers, period="5y", interval="1d": {"EURGBP=X": df},
+        lambda tickers, period="5y", interval="1d": calls.append(period) or {"EURGBP=X": deep},
     )
-    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") == 1.12   # last close on/before date
+    assert accounts_engine.fx_rate_on_date("EUR", "2023-03-02") == 1.07
+    assert calls == ["5y"]
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_past_date_without_history_is_unavailable_not_live_or_1_0(monkeypatch):
+    monkeypatch.setattr(accounts_engine, "cached_fx_close", lambda pair: None)
+    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda tickers, period="5y", interval="1d": {})
+    monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency: 0.9)
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") is None
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_history_ending_long_before_the_date_is_unavailable(monkeypatch):
+    series = pd.Series([1.10], index=pd.to_datetime(["2025-06-02"]))
+    monkeypatch.setattr(accounts_engine, "cached_fx_close", lambda pair: series)
+    monkeypatch.setattr(
+        accounts_engine.yahoo_engine, "get_price_history",
+        lambda tickers, period="5y", interval="1d": {"EURGBP=X": series.to_frame("Close")},
+    )
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") is None
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_a_failing_cache_read_still_tries_the_deep_history(monkeypatch):
+    def broken(pair):
+        raise RuntimeError("parquet unreadable")
+
+    deep = pd.DataFrame({"Close": [1.30]}, index=pd.to_datetime(["2026-01-05"]))
+    monkeypatch.setattr(accounts_engine, "cached_fx_close", broken)
+    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda tickers, period="5y", interval="1d": {"EURGBP=X": deep})
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") == 1.30
 
 
 @pytest.mark.db
@@ -1981,20 +2025,6 @@ def test_has_stock_signals_row_true_when_row_exists():
 @pytest.mark.db
 def test_has_stock_signals_row_false_when_missing():
     assert accounts_engine._has_stock_signals_row('ZZNOSIGROW') is False
-
-
-@pytest.mark.db
-def test_fx_rate_on_date_past_date_without_history_is_unavailable_not_live_or_1_0(monkeypatch):
-    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda tickers, period="5y", interval="1d": {})
-    monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency: 0.9)
-    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") is None
-
-
-@pytest.mark.db
-def test_fx_rate_on_date_history_ending_long_before_the_date_is_unavailable(monkeypatch):
-    df = pd.DataFrame({"Close": [1.10]}, index=pd.to_datetime(["2025-06-02"]))
-    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda tickers, period="5y", interval="1d": {"EURGBP=X": df})
-    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") is None
 
 
 @pytest.mark.db

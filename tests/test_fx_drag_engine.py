@@ -41,7 +41,7 @@ class TestComputeFxBreakdown:
 
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("AAPL", period_days=20)
 
@@ -57,7 +57,7 @@ class TestComputeFxBreakdown:
 
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("MSFT", period_days=20)
 
@@ -73,7 +73,7 @@ class TestComputeFxBreakdown:
 
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("GOOG", period_days=20)
 
@@ -87,7 +87,7 @@ class TestComputeFxBreakdown:
         gbpusd = _make_price_series(1.27, 1.27)
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("NONEXISTENT", period_days=20)
 
@@ -103,17 +103,17 @@ class TestComputeFxBreakdown:
         gbpusd = _make_price_series(1.27, 1.27, 10)
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("NVDA", period_days=30)
 
         assert result is None
 
-    def test_returns_none_when_gbpusd_empty(self, tmp_path):
+    def test_returns_none_when_usdgbp_empty(self, tmp_path):
         _make_parquet(tmp_path, "TSLA", start_price=100.0, end_price=110.0)
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=pd.Series(dtype=float)),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=pd.Series(dtype=float)),
         ):
             result = fx_drag_engine.compute_fx_breakdown("TSLA", period_days=20)
 
@@ -125,7 +125,7 @@ class TestComputeFxBreakdown:
 
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("AMD", period_days=20)
 
@@ -139,7 +139,7 @@ class TestComputeFxBreakdown:
 
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("fx_drag_engine._load_gbpusd_series", return_value=gbpusd),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=1 / gbpusd),
         ):
             result = fx_drag_engine.compute_fx_breakdown("META", period_days=20)
 
@@ -276,12 +276,66 @@ class TestLifetimeBuyStats:
         assert abs(total_pct - 20.0) < 0.1
 
 
-def test_detail_cache_only_missing_baseline_never_fetches_inline(tmp_path):
-    from data_engine import load_or_fetch_daily_history
-
+def test_missing_fx_cache_never_fetches_inline(tmp_path):
     _make_parquet(tmp_path, "ZZFXCACHED", 100, 110)
-    with patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path), patch.object(fx_drag_engine, "_GBPUSD_PARQUET", tmp_path / "missing.parquet"), patch("data_engine.HISTORICAL_DIR", tmp_path), patch("fx_drag_engine.yahoo_engine.get_price_history") as fetch, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
-        assert fx_drag_engine.compute_fx_breakdown("ZZFXCACHED", 20, cache_only=True) is None
+    with patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path), patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history") as fetch, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        assert fx_drag_engine.compute_fx_breakdown("ZZFXCACHED", 20) is None
     fetch.assert_not_called()
-    refresh.assert_called_once()
-    assert refresh.call_args.args[0] == "daily:GBPUSD=X"
+    assert {call.args[0] for call in refresh.call_args_list} == {"daily:USDGBP=X"}
+
+
+def test_fx_older_than_three_days_before_the_price_bar_is_unavailable(tmp_path):
+    _make_parquet(tmp_path, "STALE", start_price=100.0, end_price=110.0)
+    prices = _make_price_series(100.0, 110.0)
+    usdgbp = pd.Series(0.8, index=prices.index[prices.index <= prices.index[-1] - pd.Timedelta(days=6)])
+    with (
+        patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
+        patch("fx_drag_engine._load_usdgbp_series", return_value=usdgbp),
+    ):
+        assert fx_drag_engine.compute_fx_breakdown("STALE", period_days=20) is None
+
+
+def test_fx_rates_are_taken_on_the_price_bar_dates_and_shown_as_gbpusd(tmp_path):
+    _make_parquet(tmp_path, "DATED", start_price=100.0, end_price=100.0)
+    prices = _make_price_series(100.0, 100.0)
+    usdgbp = pd.Series([0.80] * (len(prices) - 1) + [0.76], index=prices.index)
+    with (
+        patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
+        patch("fx_drag_engine._load_usdgbp_series", return_value=usdgbp),
+    ):
+        result = fx_drag_engine.compute_fx_breakdown("DATED", period_days=60)
+    assert result["gbpusd_ref"] == pytest.approx(1.25)
+    assert result["gbpusd_now"] == pytest.approx(1 / 0.76, abs=1e-4)
+    assert result["fx_pct"] == pytest.approx((0.76 / 0.80 - 1) * 100, abs=0.01)
+
+
+class TestPortfolioBreakdowns:
+    def _run(self, tmp_path, fn, *args, usdgbp):
+        holdings = {"AAPL": {"ticker": "AAPL", "global_shares": 10.0, "global_buy_price": 90.0}}
+        with (
+            patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
+            patch("accounts_engine.get_combined_holdings", return_value=holdings),
+            patch.object(fx_drag_engine, "_get_usd_tickers_from_db", return_value={"AAPL"}),
+            patch("fx_drag_engine._load_usdgbp_series", return_value=usdgbp),
+            patch.object(fx_drag_engine, "_lifetime_buy_stats", return_value=(100.0, 1.25, 1, "2024-01-02")),
+        ):
+            return fn(*args)
+
+    def test_period_exposure_uses_the_price_bar_rate(self, tmp_path):
+        _make_parquet(tmp_path, "AAPL", start_price=100.0, end_price=100.0)
+        prices = _make_price_series(100.0, 100.0)
+        rows = self._run(tmp_path, fx_drag_engine.portfolio_fx_breakdown, 20, usdgbp=pd.Series(0.8, index=prices.index))
+        assert rows[0]["gbp_exposure"] == pytest.approx(10 * 100 * 0.8)
+
+    def test_lifetime_fx_effect_compares_the_buy_rate_with_the_price_bar_rate(self, tmp_path):
+        _make_parquet(tmp_path, "AAPL", start_price=100.0, end_price=110.0)
+        prices = _make_price_series(100.0, 110.0)
+        rows = self._run(tmp_path, fx_drag_engine.portfolio_lifetime_fx_breakdown, usdgbp=pd.Series(0.76, index=prices.index))
+        assert rows[0]["fx_pct"] == pytest.approx((1.25 * 0.76 - 1) * 100, abs=0.01)
+        assert rows[0]["gbp_exposure"] == pytest.approx(10 * 110 * 0.76, abs=0.01)
+
+    def test_lifetime_skips_a_position_whose_fx_is_stale(self, tmp_path):
+        _make_parquet(tmp_path, "AAPL", start_price=100.0, end_price=110.0)
+        prices = _make_price_series(100.0, 110.0)
+        stale = pd.Series(0.8, index=prices.index[:-10])
+        assert self._run(tmp_path, fx_drag_engine.portfolio_lifetime_fx_breakdown, usdgbp=stale) == []

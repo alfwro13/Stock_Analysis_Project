@@ -6,12 +6,11 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-import data_engine
 from accounts_engine import native_currencies
 from config import load_config
 from database import get_connection
 from db_accounts import get_watchlist_tickers
-from fx_conversion_helpers import BaseCurrencyConverter
+from fx_conversion_helpers import BaseCurrencyConverter, cached_fx_close
 from utils import normalize_currency_bucket
 from xray_engine import (
     fetch_close_returns_from_parquet,
@@ -104,8 +103,7 @@ def _drop_short_history(returns: pd.DataFrame) -> Tuple[pd.DataFrame, List[Tuple
 
 
 def _cached_fx_close(pair: str) -> Optional[pd.Series]:
-    history = data_engine.load_or_fetch_daily_history(pair, cache_only=True)
-    return history["Close"] if history is not None and "Close" in history.columns else None
+    return cached_fx_close(pair, cache_only=True)
 
 
 def _returns_matrix_for_candidates(
