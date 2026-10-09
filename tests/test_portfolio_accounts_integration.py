@@ -198,7 +198,7 @@ def test_ignored_ticker_excluded_from_period_anchor_fetch(client, monkeypatch):
     _seed_stock_signal("ZZKEEP", 100.0, "GBP")
 
     merged_config = {**_real_load_config(), "IGNORED_TICKERS": ["ZZDROP"]}
-    monkeypatch.setattr("page_routes.load_config", lambda: merged_config)
+    monkeypatch.setattr("page_routes_portfolio.load_config", lambda: merged_config)
 
     captured = {}
     def _fake_anchor_closes(tickers, **kwargs):
@@ -257,7 +257,7 @@ def test_stock_detail_position_value_matches_portfolio_page_live_price(client):
 
 
 def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
-    from page_routes import _fetch_portfolio_signal_rows
+    from page_routes_portfolio import _fetch_portfolio_signal_rows
 
     held = "ZZSTEP2HELD"
     unrelated = [f"ZZSTEP2UNRELATED{i:04d}" for i in range(1200)]
@@ -309,7 +309,7 @@ def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
 @pytest.mark.pages
 def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_path, monkeypatch):
     import accounts_engine
-    import page_routes
+    import page_routes_portfolio
     from config import load_config
 
     first = create_account("Step2 First", "GBP")
@@ -347,14 +347,14 @@ def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_pat
     config = {**load_config(), "GHOSTFOLIO_ENABLED": True, "IGNORED_TICKERS": ["ZZS2IGNORED"]}
     monkeypatch.setattr(accounts_engine, "PORTFOLIO_PATH", portfolio_path)
     monkeypatch.setattr(accounts_engine, "load_config", lambda: config)
-    monkeypatch.setattr(page_routes, "load_config", lambda: config)
+    monkeypatch.setattr(page_routes_portfolio, "load_config", lambda: config)
     monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", lambda tickers, **kwargs: {})
 
     rates = {"GBP": 1.0, "GBp": 0.01, "USD": 0.8, "EUR": 0.9}
-    original_fetch = page_routes._fetch_portfolio_signal_rows
-    with patch("page_routes._fetch_portfolio_signal_rows", wraps=original_fetch) as fetch, \
+    original_fetch = page_routes_portfolio._fetch_portfolio_signal_rows
+    with patch("page_routes_portfolio._fetch_portfolio_signal_rows", wraps=original_fetch) as fetch, \
          patch("page_helpers.get_rate_to_base", side_effect=lambda currency, **kwargs: rates.get(currency, 1.0)) as fx, \
-         patch("page_routes.get_rate_to_base", return_value=1.0) as valuation_fx:
+         patch("page_routes_portfolio.get_rate_to_base", return_value=1.0) as valuation_fx:
         all_response = client.get("/portfolio")
         assert all_response.status_code == 200
         assert {"ZZS2USD", "ZZS2GBPENCE", "ZZS2EUR", "ZZS2GHOST", "ZZS2MISSING"} <= set(fetch.call_args.args[1])
