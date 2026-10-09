@@ -193,8 +193,8 @@ def test_market_sentiment_page_loads(client):
 
 
 _GDP_ROWS = (("2026-06-01", 4.0, 3.9), ("2026-07-15", 5.1, 4.0))
-_US_BELOW_LINE = 'class="positive-val">10Y 4.30% vs nominal GDP growth 5.10% &rarr; yield is 0.8 pp below growth'
-_UK_ABOVE_LINE = 'class="warning-text">10Y 4.60% vs nominal GDP growth 4.00% &rarr; yield is 0.6 pp above growth'
+_US_BELOW_LINE = 'class="positive-val">10Y 4.30% vs nominal GDP growth 5.10% &rarr; yield is 0.8 pp below growth which is accommodative: a tailwind for growth and equity valuations.'
+_UK_ABOVE_LINE = 'class="warning-text">10Y 4.60% vs nominal GDP growth 4.00% &rarr; yield is 0.6 pp above growth which is restrictive: a headwind for growth and equity valuations.'
 
 
 def _fake_yield_parquet(parquet_name, start_date):
