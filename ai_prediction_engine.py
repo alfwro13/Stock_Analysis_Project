@@ -11,15 +11,7 @@ import numpy as np
 import joblib
 from data_engine import load_or_fetch_daily_history
 from yahoo_engine import yahoo_engine
-from indicators import (
-    compute_rsi,
-    compute_macd,
-    compute_smas,
-    compute_atr,
-    compute_volume_sma,
-    compute_volume_surge,
-    compute_bullish_cross,
-)
+from indicators import QUANT_HISTORY_COLUMNS, compute_quant_indicator_frame
 
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
@@ -367,80 +359,26 @@ _QUANT_HISTORY_UPSERT = """
 """
 
 
+_QUANT_FLAG_COLUMNS = frozenset({'volume_surge', 'bullish_cross'})
+
+
 def quant_history_records(ticker: str, df: pd.DataFrame, spy_df: Optional[pd.DataFrame]) -> List[Tuple]:
-    df.dropna(subset=['Close', 'Volume', 'High', 'Low'], inplace=True)
+    df = df.dropna(subset=['Close', 'Volume', 'High', 'Low'])
 
     if len(df) < 252:
         logger.warning("Skipping %s: insufficient data (%d rows < 252).", ticker, len(df))
         return []
 
-    df['rsi_14'] = compute_rsi(df['Close'])
-    df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
-    _smas = compute_smas(df['Close'], [50, 200])
-    df['sma_50']  = _smas[50]
-    df['sma_200'] = _smas[200]
-    df['vol_sma_20']    = compute_volume_sma(df['Volume'])
-    df['volume_surge']  = compute_volume_surge(df['Volume'], df['vol_sma_20'])
-    df['bullish_cross'] = compute_bullish_cross(df['macd'], df['macd_signal'])
-
-    df['mom_1m']  = df['Close'].pct_change(21)
-    df['mom_3m']  = df['Close'].pct_change(63)
-    df['mom_6m']  = df['Close'].pct_change(126)
-    df['mom_12m'] = df['Close'].pct_change(252)
-    df['mom_12m_skip1m'] = df['mom_12m'] - df['mom_1m']
-    df.drop(columns=['mom_12m'], inplace=True)
-
-    df['atr_raw'] = compute_atr(df['High'], df['Low'], df['Close'])
-    df['atr_pct'] = df['atr_raw'] / df['Close']
-    df.drop(columns=['atr_raw'], inplace=True)
-    log_returns       = np.log(df['Close'] / df['Close'].shift(1))
-    df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
-
-    if spy_df is not None:
-        ticker_ret_5d  = df['Close'].pct_change(5)
-        ticker_ret_20d = df['Close'].pct_change(20)
-        # ffill: SPY's own cached history can lag a ticker's freshly-fetched history
-        # by a day, so an exact-date reindex spuriously NaNs the newest row (and the
-        # blanket dropna() below then drops that whole row, including unrelated columns).
-        spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index, method='ffill')
-        spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index, method='ffill')
-        df['rel_strength_5d']  = ticker_ret_5d  - spy_ret_5d_aligned
-        df['rel_strength_20d'] = ticker_ret_20d - spy_ret_20d_aligned
-    else:
-        df['rel_strength_5d']  = np.nan
-        df['rel_strength_20d'] = np.nan
-
-    df.dropna(inplace=True)
-
-    records: List[Tuple] = []
-    for index, row in df.iterrows():
-        records.append((
-            ticker,
-            index.strftime('%Y-%m-%d'),
-            float(row['Close']),
-            int(row['Volume']),
-            float(row['rsi_14']),
-            float(row['macd']),
-            float(row['macd_signal']),
-            float(row['macd_hist']),
-            float(row['sma_50']),
-            float(row['sma_200']),
-            int(row['volume_surge']),
-            int(row['bullish_cross']),
-            float(row['mom_1m']),
-            float(row['mom_3m']),
-            float(row['mom_6m']),
-            float(row['mom_12m_skip1m']),
-            float(row['atr_pct']),
-            float(row['hist_vol_20']),
-            float(row['rel_strength_5d']),
-            float(row['rel_strength_20d']),
-        ))
-    return records
+    indicators = compute_quant_indicator_frame(df, spy_df)[list(QUANT_HISTORY_COLUMNS)].dropna()
+    return [
+        (ticker, index.strftime('%Y-%m-%d'), float(df.at[index, 'Close']), int(df.at[index, 'Volume']),
+         *(int(row[column]) if column in _QUANT_FLAG_COLUMNS else float(row[column]) for column in QUANT_HISTORY_COLUMNS))
+        for index, row in indicators.iterrows()
+    ]
 
 
 def rebuild_quant_history(ticker: str, df: pd.DataFrame, from_date: str) -> int:
-    records = [r for r in quant_history_records(ticker, df.copy(), download_spy_benchmark()) if r[1] >= from_date]
+    records = [r for r in quant_history_records(ticker, df, download_spy_benchmark()) if r[1] >= from_date]
     if not records:
         return 0
     conn = None

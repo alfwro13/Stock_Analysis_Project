@@ -113,7 +113,7 @@ Based on Jegadeesh & Titman (1993) *"Returns to Buying Winners and Selling Loser
 | `mom_6m` | `pct_change(126)` | Medium-term momentum |
 | `mom_12m_skip1m` | `pct_change(252) - pct_change(21)` | Skip-1-month momentum. The most recent month is subtracted to remove the short-term mean-reversal effect documented by Jegadeesh & Titman. Raw 12-month momentum is contaminated by the last month's return which tends to reverse at short horizons |
 
-**Computation strategy:** All momentum features are computed during `run_historical_backfill()` from the full 504-day yfinance download *before* the `dropna()` call. This ensures the 252-day lookback has sufficient history. Values are stored in the `quant_signals` table and read directly at training and inference — no historical lookback is required at inference time.
+**Computation strategy:** All momentum features are computed during `run_historical_backfill()` from the full 504-day yfinance download *before* the `dropna()` call. This ensures the 252-day lookback has sufficient history. Values are stored in the `quant_signals` table and read directly at training and inference — no historical lookback is required at inference time. The weekly backfill, the Daily Quant Screener (latest row only) and Repair Data (from a repaired bar forward) all derive these `quant_signals` indicator columns from the single shared builder `indicators.compute_quant_indicator_frame()`, so the formulas cannot drift between writers.
 
 ### 4.3 Volatility Regime Features (2)
 
