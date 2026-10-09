@@ -1,3 +1,5 @@
+from collections import OrderedDict
+from threading import Lock
 from typing import Callable, Dict, Optional
 
 import pandas as pd
@@ -7,8 +9,15 @@ from utils import normalize_currency_bucket
 
 FX_MAX_FILL_DAYS = 3
 
+_FX_CLOSE_CACHE_LIMIT = 16
+_fx_close_cache = OrderedDict()
+_fx_close_cache_lock = Lock()
+
 
 def _naive_daily(series: pd.Series) -> pd.Series:
+    index = series.index
+    if isinstance(index, pd.DatetimeIndex) and index.tz is None and index.is_normalized and index.is_monotonic_increasing and index.is_unique and not series.isna().any():
+        return series
     out = series.dropna().copy()
     out.index = pd.DatetimeIndex(out.index).tz_localize(None).normalize()
     return out[~out.index.duplicated(keep="last")].sort_index()
@@ -27,6 +36,36 @@ def fx_levels_on(dates: pd.DatetimeIndex, fx_close: pd.Series) -> pd.Series:
         tolerance=pd.Timedelta(days=FX_MAX_FILL_DAYS), direction="backward",
     ).sort_values("slot")
     return pd.Series(merged["fx"].to_numpy(), index=dates)
+
+
+def fx_level_on(date, fx_close: pd.Series) -> Optional[float]:
+    fx = _naive_daily(fx_close)
+    stamp = pd.Timestamp(date).tz_localize(None).normalize()
+    position = fx.index.searchsorted(stamp, side="right") - 1
+    if position < 0 or (stamp - fx.index[position]).days > FX_MAX_FILL_DAYS:
+        return None
+    level = float(fx.iloc[position])
+    return level if level > 0 else None
+
+
+def cached_fx_close(pair: str, *, cache_only: bool = False) -> Optional[pd.Series]:
+    """The pair's cached daily closes, kept in memory per file revision so a per-day loop (value-history backfill) does not re-read the Parquet on every call."""
+    import data_engine
+
+    revision = data_engine.daily_history_cache_revision(pair, refresh_stale=cache_only)
+    with _fx_close_cache_lock:
+        cached = _fx_close_cache.pop(pair, None)
+        if revision is not None and cached is not None and cached[0] == revision:
+            _fx_close_cache[pair] = cached
+            return cached[1]
+    history = data_engine.load_or_fetch_daily_history(pair, cache_only=cache_only)
+    close = _naive_daily(history["Close"]) if history is not None and "Close" in history.columns else None
+    if close is not None and revision is not None and data_engine.daily_history_cache_revision(pair) == revision:
+        with _fx_close_cache_lock:
+            _fx_close_cache[pair] = (revision, close)
+            while len(_fx_close_cache) > _FX_CLOSE_CACHE_LIMIT:
+                _fx_close_cache.popitem(last=False)
+    return close
 
 
 def close_in_base(close: pd.Series, fx_close: pd.Series) -> pd.Series:

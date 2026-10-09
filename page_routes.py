@@ -2021,7 +2021,7 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
     if portfolio_math and stock_data and stock_data.get("currency") == "USD":
         now = datetime.now(timezone.utc)
         ytd_days = (now.date() - now.date().replace(month=1, day=1)).days or 1
-        fx_breakdown = compute_fx_breakdown(ticker, ytd_days, cache_only=True)
+        fx_breakdown = compute_fx_breakdown(ticker, ytd_days)
 
     currency = stock_data.get("currency", "USD") if stock_data else "USD"
     intraday_revision = intraday_chart_revision(ticker, currency)

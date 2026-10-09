@@ -421,7 +421,6 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
     holdings = {ticker: {"ticker": ticker, "global_shares": 2.0, "global_buy_price": 50.0, "accounts": []}}
     monkeypatch.setattr("accounts_engine.get_combined_holdings", lambda: holdings)
     monkeypatch.setattr(data_engine, "HISTORICAL_DIR", tmp_path)
-    monkeypatch.setattr("fx_drag_engine._GBPUSD_PARQUET", tmp_path / "missing-baseline.parquet")
     monkeypatch.setattr(refresh_helpers, "request_cache_refresh", refresh_helpers.submit_cache_refresh)
     started, release = threading.Event(), threading.Event()
     def stalled(*args, **kwargs):
