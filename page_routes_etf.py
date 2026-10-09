@@ -1,7 +1,5 @@
 import logging
 
-import pandas as pd
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -56,7 +54,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
     from database import get_etf_predictor_config
     from etf_predictor_engine import (
         detect_etf_info, run_prediction, fetch_shared_prediction_data,
-        get_etf_correlation_data, get_etf_intraday_overlay_data,
+        get_etf_correlation_data, get_etf_intraday_overlay_data, get_etf_recent_closes,
     )
     cfg = get_etf_predictor_config(config_id)
     if cfg is None:
@@ -98,10 +96,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
         logger.warning("etf_predictor_detail corr chart failed: %s", exc)
 
     try:
-        raw_df = corr_data.get("raw_df", pd.DataFrame())
-        etf_hist = None
-        if not raw_df.empty and cfg["etf_ticker"] in raw_df.columns:
-            etf_hist = raw_df[cfg["etf_ticker"]].dropna().tail(25)
+        etf_hist = await run_in_threadpool(get_etf_recent_closes, cfg["etf_ticker"], daily_df)
         prediction_chart_html = create_etf_prediction_chart(
             cfg["etf_ticker"], etf_info["currency"], etf_hist, prediction
         )
@@ -154,8 +149,8 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
                     "predicted_pnl_open": round(predicted_value - current_value, 2),
                     "total_unrealised_pnl": round(predicted_value - cost_basis, 2),
                 }
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("etf_predictor_detail pnl failed: %s", exc)
 
     return templates.TemplateResponse(
         request=request,

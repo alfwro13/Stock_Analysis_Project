@@ -1649,6 +1649,61 @@ def test_etf_predictor_detail_renders_bias_and_blend_tiles(client, monkeypatch):
         _db.soft_delete_etf_predictor_config(config_id)
 
 
+@pytest.mark.pages
+def test_etf_predictor_detail_prediction_chart_survives_correlation_failure(client, monkeypatch):
+    """A raising get_etf_correlation_data must not blank the prediction chart or the page."""
+    import database as _db
+    import pandas as pd
+    import etf_predictor_engine
+
+    config_id = _db.create_etf_predictor_config(
+        name="Corr Fail ETF", etf_ticker="CFAIL.L",
+        constituents=[{"ticker": "A", "weight": 1.0}],
+    )
+    daily = pd.DataFrame(
+        {"CFAIL.L": [100.0 + i for i in range(10)]}, index=pd.date_range("2026-07-01", periods=10)
+    )
+    fake_prediction = {
+        "status": "success", "config_id": config_id, "predicted_price": 110.0,
+        "last_etf_close": 109.0, "predicted_change_pct": 0.9, "data_source": "holdings",
+        "signal_source": "daily_close", "prediction_type": "next_open",
+        "session_relationship": "behind", "constituent_exchanges": ["NYSE"], "fx_rate": 1.0,
+        "fx_pair": None, "as_of_utc": "2026-07-06 12:00 UTC", "as_of_local": "2026-07-06 12:00",
+        "next_open_date": "2026-07-07", "n_holdings_used": 1, "holdings_engine": None,
+        "regression_engine": None, "bias_corrected_price": None, "bias_corrected_change_pct": None,
+        "blended_price": None, "blended_change_pct": None, "constituent_snapshot": "[]",
+        "etf_info": {"exchange": "LSE", "currency": "GBP", "name": "CFAIL.L"}, "error": None,
+    }
+    captured = {}
+
+    def fake_chart(ticker, currency, etf_hist, prediction):
+        captured["etf_hist"] = etf_hist
+        return "<div id='fake-prediction-chart'></div>"
+
+    def boom(cfg, days=60, daily_df=None):
+        raise RuntimeError("corr exploded")
+
+    try:
+        monkeypatch.setattr(etf_predictor_engine, "fetch_shared_prediction_data", lambda cfg: (daily, {}))
+        monkeypatch.setattr(
+            etf_predictor_engine, "run_prediction",
+            lambda cid, daily_df=None, intraday_data=None: fake_prediction,
+        )
+        monkeypatch.setattr(etf_predictor_engine, "get_etf_correlation_data", boom)
+        monkeypatch.setattr(
+            etf_predictor_engine, "get_etf_intraday_overlay_data",
+            lambda cfg, prediction=None, intraday_data=None, daily_df=None: (_ for _ in ()).throw(RuntimeError("skip")),
+        )
+        import page_routes_etf
+        monkeypatch.setattr(page_routes_etf, "create_etf_prediction_chart", fake_chart)
+        resp = client.get(f"/etf-predictor/{config_id}")
+        assert resp.status_code == 200
+        assert "fake-prediction-chart" in resp.text
+        assert list(captured["etf_hist"].values)[-1] == 109.0
+    finally:
+        _db.soft_delete_etf_predictor_config(config_id)
+
+
 # ── Account Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
