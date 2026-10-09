@@ -120,7 +120,7 @@ def prepare_history_blocking(tickers: List[str]) -> Optional[Dict]:
             df = df.copy()
             if df.index.tz is not None:
                 df.index = df.index.tz_convert(None)
-            df = data_engine._prepare_daily_history(ticker, df, None)
+            df = data_engine.prepare_daily_history(ticker, df, None)
             if df.empty:
                 failed.append(ticker)
                 continue

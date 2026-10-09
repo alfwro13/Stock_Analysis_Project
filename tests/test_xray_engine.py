@@ -1071,7 +1071,7 @@ class TestRecommendationsInReport:
 # 12. _psd_fix_corr — direct unit tests
 # ─────────────────────────────────────────────────────────────────────────────
 
-from xray_engine import _psd_fix_corr, _sanitize_floats
+from xray_engine import _psd_fix_corr
 import numpy as np
 
 
@@ -1119,46 +1119,6 @@ class TestPsdFixCorr:
         arr = np.array(result)
         assert np.isfinite(arr).all()
         assert arr[0, 1] == pytest.approx(0.0)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 13. _sanitize_floats — direct unit tests
-# ─────────────────────────────────────────────────────────────────────────────
-
-class TestSanitizeFloats:
-
-    def test_nan_replaced_with_none(self):
-        assert _sanitize_floats(float("nan")) is None
-
-    def test_inf_replaced_with_none(self):
-        assert _sanitize_floats(float("inf")) is None
-
-    def test_negative_inf_replaced_with_none(self):
-        assert _sanitize_floats(float("-inf")) is None
-
-    def test_finite_float_unchanged(self):
-        assert _sanitize_floats(3.14) == pytest.approx(3.14)
-
-    def test_dict_values_sanitized(self):
-        result = _sanitize_floats({"a": float("nan"), "b": 1.5})
-        assert result["a"] is None
-        assert result["b"] == pytest.approx(1.5)
-
-    def test_list_values_sanitized(self):
-        result = _sanitize_floats([float("nan"), 2.0, float("inf")])
-        assert result[0] is None
-        assert result[1] == pytest.approx(2.0)
-        assert result[2] is None
-
-    def test_nested_structure_sanitized(self):
-        result = _sanitize_floats({"a": [float("nan"), {"b": float("inf")}]})
-        assert result["a"][0] is None
-        assert result["a"][1]["b"] is None
-
-    def test_non_float_passthrough(self):
-        assert _sanitize_floats("string") == "string"
-        assert _sanitize_floats(42) == 42
-        assert _sanitize_floats(None) is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

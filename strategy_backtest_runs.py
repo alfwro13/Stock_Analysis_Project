@@ -15,7 +15,7 @@ import time_engine
 from accounts_engine import native_currencies
 from config import BACKTEST_RUNS_DIR, load_config
 from database import get_connection
-from portfolio_optimizer_engine import _cap_infeasible_warning, cap_is_infeasible
+from portfolio_optimizer_engine import cap_infeasible_warning, cap_is_infeasible
 from strategy_backtest_data import (
     COST_PRESETS,
     BasketError,
@@ -28,7 +28,7 @@ from strategy_backtest_data import (
 )
 from strategy_backtest_engine import CADENCES, InsufficientHistory, run_backtest
 from strategy_backtest_strategies import STRATEGIES
-from xray_engine import _sanitize_floats
+from utils import sanitize_floats
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def _native(value):
 
 
 def _dumps(payload) -> str:
-    return json.dumps(_sanitize_floats(payload), default=_native)
+    return json.dumps(sanitize_floats(payload), default=_native)
 
 
 def run_dir(run_id: str) -> Path:
@@ -69,7 +69,7 @@ def run_dir(run_id: str) -> Path:
 def _optimizer_unavailable(config: dict, n: int) -> Optional[str]:
     budget = 1.0 - config["cash_reserve"]
     if cap_is_infeasible(n, config["max_weight"], budget):
-        return _cap_infeasible_warning(n, config["max_weight"], config["cash_reserve"])
+        return cap_infeasible_warning(n, config["max_weight"], config["cash_reserve"])
     return None
 
 

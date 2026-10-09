@@ -16,7 +16,7 @@ from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
 from treasury_bill_engine import parse_tbill_buy_txn_id
-from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_ticker
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_ticker, sanitize_floats
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -992,17 +992,6 @@ def _psd_fix_corr(raw: List) -> List[List[float]]:
     return arr.tolist()
 
 
-def _sanitize_floats(obj):
-    # Recursively replace nan/inf with None so the report is always JSON-safe.
-    if isinstance(obj, float):
-        return None if not np.isfinite(obj) else obj
-    if isinstance(obj, dict):
-        return {k: _sanitize_floats(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_sanitize_floats(v) for v in obj]
-    return obj
-
-
 def _asset_profile_map(tickers: List[str]) -> Dict[str, Dict]:
     if not tickers:
         return {}
@@ -1626,4 +1615,4 @@ def assemble_xray_report(account_id: str) -> Dict:
         "data_warnings": data_warnings,
         "recommendations": recommendations,
     }
-    return _sanitize_floats(report)
+    return sanitize_floats(report)

@@ -27,7 +27,7 @@ from portfolio_optimizer_engine import (
     MIN_TICKERS_WARNING,
     MODE_LONG_ONLY,
     NOT_ENOUGH_DATA_WARNING,
-    _cap_infeasible_warning,
+    cap_infeasible_warning,
     _drop_short_history,
     _history_days,
     _closed_form_weights,
@@ -452,12 +452,12 @@ class TestLongOnlyHelpers:
         points = _long_only_frontier(mu, cov, w_mv, 1.0, 0.9, cash_return=0.1 * 0.05)
         assert points[0]["return"] == pytest.approx(float(w_mv @ mu) + 0.005, abs=1e-4)
 
-    def test_cap_infeasible_warning_names_minimum_cap(self):
-        msg = _cap_infeasible_warning(3, 0.2, 0.1)
+    def testcap_infeasible_warning_names_minimum_cap(self):
+        msg = cap_infeasible_warning(3, 0.2, 0.1)
         assert "3 × 20% = 60%" in msg
         assert "90% to be invested after the 10% Cash Reserve" in msg
         assert "at least 30%" in msg
-        assert "at least 33.4%" in _cap_infeasible_warning(3, 0.2, 0.0)
+        assert "at least 33.4%" in cap_infeasible_warning(3, 0.2, 0.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

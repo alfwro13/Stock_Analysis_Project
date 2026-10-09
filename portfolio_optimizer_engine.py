@@ -329,7 +329,7 @@ def _pct(fraction: float) -> str:
     return f"{fraction * 100:g}%"
 
 
-def _cap_infeasible_warning(n: int, cap: float, cash_reserve: float) -> str:
+def cap_infeasible_warning(n: int, cap: float, cash_reserve: float) -> str:
     budget = 1.0 - cash_reserve
     min_cap = math.ceil(round(budget / n * 1000, 9)) / 1000
     return (
@@ -420,7 +420,7 @@ def optimize_portfolio(
         )
 
     if long_only and cap_is_infeasible(n, max_weight, budget):
-        data_warnings.append(_cap_infeasible_warning(n, max_weight, cash_reserve))
+        data_warnings.append(cap_infeasible_warning(n, max_weight, cash_reserve))
         return _no_result(data_warnings, estimation_window)
 
     mu = returns_df.mean(axis=0).to_numpy() * TRADING_DAYS
