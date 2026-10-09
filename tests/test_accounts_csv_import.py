@@ -344,3 +344,12 @@ def test_import_counts_internal_transfer_as_ignored():
     )
     result = account_csv_import_engine.import_csv_activities(aid, csv_text)
     assert result == {"imported": 0, "skipped": 0, "ignored": 1, "skipped_rows": []}
+
+
+@pytest.mark.db
+def test_map_cash_row_without_an_exchange_rate_is_skipped(monkeypatch):
+    monkeypatch.setattr(account_csv_import_engine, "fx_rate_on_date", lambda currency, date: None)
+    top_up = _row({"Title": "Top up", "Type": "TOP_UP", "Timestamp": "01/02/2021",
+                    "Account Currency": "USD", "Total Amount in Account Currency": "50.00"})
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(top_up)
+    assert mapped is None and reason == "no_fx_rate"

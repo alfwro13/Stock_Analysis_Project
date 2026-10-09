@@ -2554,3 +2554,28 @@ assert.match(fields['txn-fx-calc-status'].textContent, /total cost must exceed t
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.api
+def test_create_transaction_without_an_available_exchange_rate_is_rejected(client):
+    account_id = _create_account(client)
+    with (
+        patch("api_routes_accounts.update_single_profile"),
+        patch("api_routes_accounts.fx_rate_on_date", return_value=None),
+    ):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL",
+            "currency": "USD", "quantity": 1, "unit_price": 100.0,
+        })
+    assert resp.status_code == 422
+    assert "exchange rate" in _json(resp)["message"]
+    import database as _db
+    assert _db.get_transactions(account_id) == []
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_fx_rate_endpoint_reports_unavailable_rate(client):
+    with patch("api_routes_accounts.fx_rate_on_date", return_value=None):
+        resp = client.get("/api/fx-rate", params={"currency": "USD", "date": "2026-01-15"})
+    assert _json(resp)["status"] == "error"

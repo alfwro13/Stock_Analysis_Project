@@ -117,7 +117,9 @@ def holdings_with_metrics_all_accounts() -> dict:
             native_price, native_currency = priced if has_price else (None, h["currency"])
             market_price_in_base = None
             if native_price is not None:
-                market_price_in_base = round(native_price * get_rate_to_base(native_currency or h["currency"]), 4)
+                price_rate = get_rate_to_base(native_currency or h["currency"])
+                if price_rate is not None:
+                    market_price_in_base = round(native_price * price_rate, 4)
             signals = signals_map.get(ticker, {})
             pulse = pulse_map.get(ticker, {})
             limits = limits_map.get((account_id, ticker), {})
@@ -341,9 +343,12 @@ def portfolio_gain_fx_decomposition(account_ids: list) -> tuple:
             price, currency = priced
             currency = currency or h["currency"]
             shares = h["global_shares"]
-            market_value = shares * price * get_rate_to_base(currency)
+            rate = get_rate_to_base(currency)
+            if rate is None:
+                continue
+            market_value = shares * price * rate
             gain_actual += market_value - total_investment
-            purchase_fx = avg_fx.get(ticker, get_rate_to_base(currency))
+            purchase_fx = avg_fx.get(ticker, rate)
             market_value_ex_fx = shares * price * purchase_fx
             gain_ex_fx += market_value_ex_fx - total_investment
     return gain_ex_fx, gain_actual

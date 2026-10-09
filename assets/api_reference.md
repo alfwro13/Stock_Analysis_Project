@@ -3420,7 +3420,7 @@ Books a `Cash` adjustment transaction for the difference between `accounts_engin
 
 ### `POST /api/accounts/{id}/transactions`
 
-Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash` (use `POST /api/accounts/{id}/transfer` for `Transfer` — it is rejected here with 422 since a transfer needs two linked rows across two accounts). If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). `fee` is billed in `fee_currency` — independent of the trade's own `currency` (e.g. a broker's FX spread fee already quoted in base currency on a foreign-currency trade). If `fee_currency` is omitted, it defaults to the trade `currency` (matches the ledger's pre-existing behaviour). If `fee_exchange_rate` is omitted, it is auto-filled the same way as `exchange_rate` when `fee_currency` differs from the trade currency, or reuses the trade's own `exchange_rate` when they match. If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. `isin` is optional, free-text, and purely informational — the instrument's ISIN, which stays stable across a ticker symbol change/delisting, unlike `ticker`; not validated or looked up against any external source. Rate limit: 30/minute.
+Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash` (use `POST /api/accounts/{id}/transfer` for `Transfer` — it is rejected here with 422 since a transfer needs two linked rows across two accounts). If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (dated daily close at most 3 days old; today or an unspecified date uses the bounded cached quote). When no rate is available the request is rejected with 422 and a message asking for a manual exchange rate — never a live-rate or `1.0` stand-in. `fee` is billed in `fee_currency` — independent of the trade's own `currency` (e.g. a broker's FX spread fee already quoted in base currency on a foreign-currency trade). If `fee_currency` is omitted, it defaults to the trade `currency` (matches the ledger's pre-existing behaviour). If `fee_exchange_rate` is omitted, it is auto-filled the same way as `exchange_rate` when `fee_currency` differs from the trade currency, or reuses the trade's own `exchange_rate` when they match. If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. `isin` is optional, free-text, and purely informational — the instrument's ISIN, which stays stable across a ticker symbol change/delisting, unlike `ticker`; not validated or looked up against any external source. Rate limit: 30/minute.
 
 **Request body:**
 ```json
@@ -3469,6 +3469,8 @@ Returns the historical exchange rate from `currency` to `BASE_CURRENCY` on `date
 ```json
 { "status": "success", "rate": 0.79 }
 ```
+
+When no rate is available for that date the response is `{ "status": "error", "message": ... }` and the modal leaves the Exchange Rate field for manual entry.
 
 ---
 

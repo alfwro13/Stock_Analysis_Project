@@ -581,3 +581,13 @@ def test_portfolio_twr_ex_fx_falls_back_to_actual_equity_when_currency_row_missi
     assert twr_ex_fx is not None
     assert twr_ex_fx > -50.0  # must not collapse toward -100% just because one date lacks coverage
     assert twr_ex_fx == 21.0  # falls back to the real equity_value series, matching the fully-covered case
+
+
+@pytest.mark.db
+def test_portfolio_gain_fx_decomposition_skips_a_holding_with_no_fx_rate(monkeypatch):
+    _seed_stock_signal("ZZFXNONE", 100.0, "USD")
+    aid = create_account("FxDecompNoneAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZFXNONE", currency="USD",
+                     quantity=10, unit_price=100, exchange_rate=0.80)
+    monkeypatch.setattr(portfolio_metrics_engine, "get_rate_to_base", lambda currency: None)
+    assert portfolio_metrics_engine.portfolio_gain_fx_decomposition([aid]) == (0.0, 0.0)

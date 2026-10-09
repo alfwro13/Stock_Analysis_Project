@@ -22,6 +22,7 @@ from db_accounts import (
     upsert_value_snapshot_currency,
 )
 from database import get_connection
+from fx_conversion_helpers import FX_MAX_FILL_DAYS
 from portfolio_service import get_rate_to_base
 from utils import normalize_ticker, ignored_tickers_set
 from yahoo_engine import yahoo_engine
@@ -327,10 +328,11 @@ def holdings_with_market_value(account_id: int) -> list:
     for ticker, h in holdings.items():
         total_investment = h["accounts"][0]["total_investment"]
         priced = prices.get(ticker)
-        has_price = bool(priced and priced[0])
+        rate = get_rate_to_base(priced[1] or h["currency"]) if priced and priced[0] else None
+        has_price = rate is not None
         if has_price:
             price, currency = priced
-            market_value = h["global_shares"] * price * get_rate_to_base(currency or h["currency"])
+            market_value = h["global_shares"] * price * rate
         else:
             market_value = total_investment
         rows.append({
@@ -362,10 +364,11 @@ def market_values_for_xray(account_id: Optional[int] = None) -> list:
     for ticker, h in holdings.items():
         total_investment = sum(a["total_investment"] for a in h["accounts"])
         priced = prices.get(ticker)
-        has_price = bool(priced and priced[0])
+        rate = get_rate_to_base(priced[1] or h["currency"]) if priced and priced[0] else None
+        has_price = rate is not None
         if has_price:
             price, currency = priced
-            market_value = h["global_shares"] * price * get_rate_to_base(currency or h["currency"])
+            market_value = h["global_shares"] * price * rate
         else:
             price = None
             market_value = total_investment
@@ -850,7 +853,8 @@ def _equity_value_with_breakdown(open_holdings: dict) -> tuple:
             return None
         price, currency = priced
         currency = currency or holding["currency"]
-        return price, currency, get_rate_to_base(currency)
+        rate = get_rate_to_base(currency)
+        return None if rate is None else (price, currency, rate)
 
     return _bucket_equity_by_currency(open_holdings, _lookup)
 
@@ -865,7 +869,8 @@ def _equity_value_for_account(acc: dict, open_holdings: dict) -> float:
     if not priced or not priced[0]:
         return 0.0
     price, currency = priced
-    return price * get_rate_to_base(currency or acc["currency"])
+    rate = get_rate_to_base(currency or acc["currency"])
+    return 0.0 if rate is None else price * rate
 
 
 def _equity_value_for_account_with_breakdown(acc: dict, open_holdings: dict) -> tuple:
@@ -881,6 +886,8 @@ def _equity_value_for_account_with_breakdown(acc: dict, open_holdings: dict) -> 
     price, currency = priced
     currency = currency or acc["currency"]
     fx_rate = get_rate_to_base(currency)
+    if fx_rate is None:
+        return 0.0, {}
     native = price
     base = native * fx_rate
     return base, {currency: {"native": native, "base": base, "fx_rate": fx_rate}}
@@ -1078,28 +1085,31 @@ def watchlist_summary(account_id: int) -> dict:
     return {"count": len(items), "by_type": by_type}
 
 
-def fx_rate_on_date(currency: str, date_str: Optional[str]) -> float:
+def fx_rate_on_date(currency: str, date_str: Optional[str]) -> Optional[float]:
     """Historical FX rate from `currency` to BASE_CURRENCY on `date_str`; used to backfill the
-    exchange rate when a transaction is entered without one. Falls back to the live rate, then 1.0."""
+    exchange rate when a transaction is entered without one. With no date it uses the bounded cached
+    quote; None when neither is available — never a live-rate or 1.0 stand-in for a missing past date."""
     if not currency or currency == BASE_CURRENCY:
         return 1.0
     if currency == "GBp":
-        return 0.01 if BASE_CURRENCY == "GBP" else 0.01 * fx_rate_on_date("GBP", date_str)
-    pair = f"{currency}{BASE_CURRENCY}=X"
-    if date_str:
+        if BASE_CURRENCY == "GBP":
+            return 0.01
+        gbp_rate = fx_rate_on_date("GBP", date_str)
+        return None if gbp_rate is None else 0.01 * gbp_rate
+    if date_str and date_str < datetime.now(timezone.utc).date().isoformat():
+        pair = f"{currency}{BASE_CURRENCY}=X"
         try:
-            history = yahoo_engine.get_price_history([pair], period="5y", interval="1d")
-            df = history.get(pair)
+            df = yahoo_engine.get_price_history([pair], period="5y", interval="1d").get(pair)
             if df is not None and not df.empty and "Close" in df:
                 window = df.loc[:date_str]
-                if not window.empty:
+                if not window.empty and (pd.Timestamp(date_str) - window.index[-1].tz_localize(None).normalize()).days <= FX_MAX_FILL_DAYS:
                     value = float(window["Close"].iloc[-1])
                     if value > 0:
                         return value
         except Exception as e:
             logger.warning("Historical FX lookup failed for %s on %s: %s", pair, date_str, e)
-    rate = get_rate_to_base(currency)
-    return rate if rate else 1.0
+        return None
+    return get_rate_to_base(currency)
 
 
 VALUE_CHART_PERIODS = ("1m", "ytd", "1y", "max")
@@ -1198,7 +1208,8 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
             bill = get_treasury_bill_by_ticker(ticker)
             if not bill:
                 return None
-            return accreted_price(bill, date_str), holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+            rate = fx_rate_on_date(holding["currency"], date_str)
+            return None if rate is None else (accreted_price(bill, date_str), holding["currency"], rate)
         parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
         if not parquet_path.exists():
             return None
@@ -1210,7 +1221,8 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
         if window.empty:
             return None
         currency = ticker_currency.get(ticker) or holding["currency"]
-        return float(window.iloc[-1]), currency, fx_rate_on_date(currency, date_str)
+        rate = fx_rate_on_date(currency, date_str)
+        return None if rate is None else (float(window.iloc[-1]), currency, rate)
 
     equity, _breakdown = _bucket_equity_by_currency(open_holdings, _lookup)
     contributions = _net_contributions_as_of(acc, transactions, date_str)
@@ -1298,7 +1310,8 @@ def backfill_value_history(account_id: int) -> int:
         def _lookup(ticker, holding, date_str=date_str):
             bill = tbill_rows.get(ticker)
             if bill is not None:
-                return accreted_price(bill, date_str), holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+                rate = fx_rate_on_date(holding["currency"], date_str)
+                return None if rate is None else (accreted_price(bill, date_str), holding["currency"], rate)
             series = price_series.get(ticker)
             if series is None:
                 return None
@@ -1311,7 +1324,8 @@ def backfill_value_history(account_id: int) -> int:
             # Currency is the ticker's own native quote currency (stock_signals), not the ledger's
             # holding["currency"] — see native_currencies() docstring for why the two can disagree.
             currency = ticker_currency.get(ticker) or holding["currency"]
-            return price, currency, fx_rate_on_date(currency, date_str)
+            rate = fx_rate_on_date(currency, date_str)
+            return None if rate is None else (price, currency, rate)
 
         equity, breakdown = _bucket_equity_by_currency(open_holdings, _lookup)
         contributions = _net_contributions_as_of(acc, transactions, date_str)
@@ -1342,6 +1356,8 @@ def _backfill_house_value_history(account_id: int, acc: dict) -> int:
             continue
         native = float(window.iloc[-1])
         fx_rate = get_rate_to_base(acc["currency"])
+        if fx_rate is None:
+            continue
         equity = native * fx_rate
         # House has no real cash sub-ledger — its value is the scraped equity price alone.
         cash = 0.0
@@ -1591,6 +1607,8 @@ def confirm_autotopup(account_id: int, pending_id: int, amount: float, txn_date:
     if not acc:
         return {"error": "Account not found."}
     exchange_rate = fx_rate_on_date(acc["currency"], txn_date)
+    if exchange_rate is None:
+        return {"error": f"No {acc['currency']} exchange rate is available for {txn_date} yet — try again shortly."}
     txn_id = add_transaction(
         acc["id"], "Cash", txn_date, currency=acc["currency"], quantity=1, unit_price=amount,
         exchange_rate=exchange_rate, update_cash=True, notes=acc.get("autotopup_notes") or "Auto Top-up",
