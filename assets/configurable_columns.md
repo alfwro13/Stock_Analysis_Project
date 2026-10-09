@@ -51,11 +51,13 @@ Single source of truth for every column on both pages:
 
 **Adding a new optional column:** add one entry to `OPTIONAL_COLUMNS`. If the
 source field isn't already in the row dict, add it to the relevant `SELECT` in
-`page_data_signal_rows.fetch_portfolio_signal_rows()`/`fetch_watchlist_signal_rows()` (both already `SELECT s.*` from
+`page_data_signal_rows._SIGNAL_COLUMNS` (and `_SIGNAL_JOINS` if it needs a new JOIN) — the one column list and join
+block shared by `fetch_portfolio_signal_rows()` and `fetch_watchlist_signal_rows()`, which both `SELECT s.*` from
 `stock_signals` and LEFT JOIN `quant_signals q`/`asset_profiles ap`/
-`market_universe m`/`ticker_metadata tmeta`/`xray_risk_cache xrisk`/
+`market_universe mu`/`ticker_metadata tmeta`/`xray_risk_cache xrisk`/
 `earnings_volatility ev` — most new fields are a one-line addition to an existing
-JOIN's SELECT list, not a new JOIN). No template change needed — the
+JOIN's SELECT list, not a new JOIN. A page-only field (Portfolio's `heat_index_tier`, Watchlist's `is_freetrade`) is added
+to that function's own `SELECT`/JOIN instead. No template change needed — the
 optional-column `<th>`/`<td>` loop is generic. See AGENTS.md's Documentation
 Maintenance section — this is a mandatory step whenever new displayable data is
 added anywhere in the app, not an optional nice-to-have.

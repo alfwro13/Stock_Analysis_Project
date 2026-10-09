@@ -306,6 +306,42 @@ def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
         conn.close()
 
 
+def test_portfolio_and_watchlist_signal_rows_share_columns_and_keep_page_specific_extras():
+    from page_data_signal_rows import fetch_portfolio_signal_rows, fetch_watchlist_signal_rows
+
+    ticker = "ZZPARITY1"
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO stock_signals (ticker, last_updated, company_name, currency, current_price) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (ticker, "2026-10-01 10:00:00", "Parity Name", "USD", 10.0),
+        )
+        conn.execute(
+            "INSERT INTO quant_signals (ticker, date, ml_confidence_score, atr_pct) VALUES (?, ?, ?, ?)",
+            (ticker, "2026-09-30", 0.5, 1.5),
+        )
+        conn.commit()
+
+        portfolio_row = dict(fetch_portfolio_signal_rows("SPY", [ticker])[0][0])
+        watchlist_row = next(
+            dict(row) for row in fetch_watchlist_signal_rows("SPY")[0] if row["ticker"] == ticker
+        )
+
+        assert "heat_index_tier" in portfolio_row and "is_freetrade" not in portfolio_row
+        assert "is_freetrade" in watchlist_row and "heat_index_tier" not in watchlist_row
+        shared_portfolio = {k: v for k, v in portfolio_row.items() if k != "heat_index_tier"}
+        shared_watchlist = {k: v for k, v in watchlist_row.items() if k != "is_freetrade"}
+        assert shared_portfolio == shared_watchlist
+        assert watchlist_row["resolved_company_name"] == "Parity Name"
+        assert watchlist_row["ml_confidence_score"] == pytest.approx(0.5)
+    finally:
+        conn.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+        conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+        conn.commit()
+        conn.close()
+
+
 @pytest.mark.pages
 def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_path, monkeypatch):
     import accounts_engine
