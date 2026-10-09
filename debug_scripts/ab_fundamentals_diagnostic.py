@@ -45,15 +45,13 @@ _ROOT = _HERE.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-# Import helpers and constants from production modules so we share exactly
-# the same winsorization, z-scoring, and sector-mapping logic.
+# Import the feature builder and query from the production module so we share exactly
+# the same feature engineering, winsorization and z-scoring.
 from ml_features import (  # noqa: E402
-    CONTINUOUS_FEATURES,
     FEATURE_COLS,
     FUNDAMENTAL_FEATURES,
-    SECTOR_MAP,
-    _winsorize_and_impute_fundamentals,
-    cross_sectional_zscore,
+    TRAINING_HISTORY_QUERY,
+    build_model_features,
 )
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD  # noqa: E402
 from database import get_connection  # noqa: E402
@@ -103,30 +101,7 @@ def _load_training_dataframe() -> Optional[pd.DataFrame]:
     logger.info("Loading training data from database...")
     conn = get_connection()
 
-    # Identical query to train_global_ml_model — LEFT JOINs ensure we get
-    # NULL fundamentals for ETFs/futures rather than dropping them.
-    query = """
-        SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
-               qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
-               qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
-               qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
-               qs.atr_pct, qs.hist_vol_20,
-               qs.rel_strength_5d, qs.rel_strength_20d,
-               ss.trailing_pe, ss.price_to_book, ss.profit_margin,
-               ss.roe, ss.revenue_growth, ss.debt_to_equity,
-               tm.sector
-        FROM quant_signals qs
-        LEFT JOIN stock_signals  ss ON qs.ticker = ss.ticker
-        LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-        WHERE qs.mom_1m           IS NOT NULL
-          AND qs.mom_12m_skip1m   IS NOT NULL
-          AND qs.atr_pct          IS NOT NULL
-          AND qs.hist_vol_20      IS NOT NULL
-          AND qs.rel_strength_5d  IS NOT NULL
-          AND qs.rel_strength_20d IS NOT NULL
-        ORDER BY qs.date ASC
-    """
-    df = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query(TRAINING_HISTORY_QUERY, conn)
     conn.close()
 
     if df.empty:
@@ -135,23 +110,7 @@ def _load_training_dataframe() -> Optional[pd.DataFrame]:
 
     logger.info(f"Loaded {len(df):,} rows from DB.")
 
-    # ── Feature engineering (identical to production) ─────────────────────
-    df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
-    df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
-
-    df['macd_pct']        = df['macd']        / df['close_price']
-    df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
-    df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
-
-    df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
-    df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
-
-    df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
-    df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
-
-    # ── Fundamental winsorization + cross-sectional median imputation ──────
-    logger.info("Winsorizing and imputing fundamental features...")
-    df = _winsorize_and_impute_fundamentals(df)
+    df = build_model_features(df)
 
     for col in FUNDAMENTAL_FEATURES:
         n_null = int(df[col].isna().sum())
@@ -160,13 +119,6 @@ def _load_training_dataframe() -> Optional[pd.DataFrame]:
                 f"  {col}: {n_null} NULLs remain after imputation "
                 "(dates with zero equity coverage — dropped by dropna below)."
             )
-
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-    # ── Cross-sectional Z-scoring (per date, same as production) ─────────
-    logger.info("Applying cross-sectional Z-scoring...")
-    for col in CONTINUOUS_FEATURES:
-        df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
 
     # Drop on the full 24-feature set so BOTH arms operate on the same rows.
     # Using a smaller dropna here would change the population for Arm B.

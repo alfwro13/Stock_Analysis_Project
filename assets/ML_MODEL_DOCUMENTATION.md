@@ -167,12 +167,12 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 
 | Module | Scheduled job | Contents |
 |---|---|---|
-| `ml_features.py` | — (shared) | Model/feature-stats/quantile file paths, `FEATURE_COLS`, `SECTOR_MAP`, fundamental bounds, `cross_sectional_zscore`, fundamental winsorize/impute |
+| `ml_features.py` | — (shared) | Model/feature-stats/quantile file paths, `FEATURE_COLS`, `SECTOR_MAP`, fundamental bounds, `cross_sectional_zscore`, fundamental winsorize/impute, `build_model_features`, and the `TRAINING_HISTORY_QUERY` / `LATEST_FEATURES_QUERY` SQL |
 | `ml_backfill_engine.py` | Historical Data Backfill & Sync | SPY benchmark, target-ticker selection, ticker metadata sync, `run_historical_backfill`, `rebuild_quant_history` |
 | `ml_training_engine.py` | Global Model Training (Walk-Forward) | `train_global_ml_model` (classifier), `train_quantile_models` (Q10/Q90) |
 | `ml_inference_engine.py` | Daily ML Inference | `update_daily_ml_predictions`, `score_quantile_predictions` |
 
-Training and inference apply the same feature engineering and per-date cross-sectional z-scoring; the constants and helpers they share live in `ml_features.py`.
+Classifier training, quantile training, classifier inference and quantile scoring all call `ml_features.build_model_features()` (derived columns, fundamental winsorize/impute, inf-to-NaN, per-date cross-sectional z-scores) and read their rows through the two shared queries, so train and serve cannot drift apart. Training computes its feature statistics from the raw columns the builder leaves in place.
 
 ### 5.1 Base Estimators
 
