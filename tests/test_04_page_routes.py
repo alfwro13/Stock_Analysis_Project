@@ -408,7 +408,7 @@ def test_stock_detail_embed_mode_still_shows_back_button(client):
 def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkeypatch):
     """A ticker that has a quant_signals row but no stock_signals row yet (e.g. freshly
     fetched, before the full nightly pipeline has run) hits the 'UNIVERSE SCAN ONLY'
-    fallback in page_routes_stock.py — that dict must carry every key stock_detail.html reads
+    fallback in page_data_stock.py — that dict must carry every key stock_detail.html reads
     (fifty_two_week_low/high, ma_50_day, ma_200_day, country), or the template 500s.
     The page_action block that reads those keys only renders when a daily Parquet file
     exists for the ticker, so one must be written here to actually exercise that path."""
@@ -422,7 +422,7 @@ def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkey
         "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
     }, index=pd.date_range("2026-01-01", periods=2))
     df.to_parquet(historical_dir / "ZZQUANTONLY.parquet")
-    monkeypatch.setattr("page_routes_stock.HISTORICAL_DIR", historical_dir)
+    monkeypatch.setattr("page_data_stock_panels.HISTORICAL_DIR", historical_dir)
 
     conn = _db.get_connection()
     try:
