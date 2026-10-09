@@ -1,4 +1,4 @@
-"""Per-ticker calendar-period price returns (5D/1M/6M/YTD/1Y) and trailing N-session window returns, derived from the parquet history every ticker already has cached; no DB, no Yahoo Finance calls of its own."""
+"""Per-ticker calendar-period price returns (5D/1M/6M/YTD/1Y), trailing N-session window returns and the canonical daily-close loader, derived from the parquet history every ticker already has cached; no DB, no Yahoo Finance calls of its own."""
 import calendar
 import logging
 from collections import OrderedDict
@@ -108,3 +108,21 @@ def session_window_returns(
     kept = window.loc[:, keep]
     returns = kept.iloc[-1] / kept.iloc[0] - 1
     return window.index[0], window.index[-1], returns
+
+
+def normalized_close(close: pd.Series, tail: Optional[int] = None) -> Optional[pd.Series]:
+    """Daily closes with NaNs dropped, a tz-naive midnight index, last-wins de-duplication and ascending order, then trimmed to the last `tail` rows; None when nothing remains."""
+    close = close.dropna()
+    if close.empty:
+        return None
+    close.index = pd.DatetimeIndex(close.index).tz_localize(None).normalize()
+    close = close[~close.index.duplicated(keep="last")].sort_index()
+    return close.tail(tail) if tail else close
+
+
+def load_daily_close(ticker: str, *, cache_only: bool = False, tail: Optional[int] = None) -> Optional[pd.Series]:
+    """The one daily-close loader over data/historical (a missing parquet is fetched unless cache_only)."""
+    df = load_or_fetch_daily_history(ticker, cache_only=cache_only)
+    if df is None or "Close" not in df.columns:
+        return None
+    return normalized_close(df["Close"], tail)

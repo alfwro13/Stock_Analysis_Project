@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, load_config
-from data_engine import load_or_fetch_daily_history
+from price_history_helpers import load_daily_close
 from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
@@ -310,9 +310,8 @@ def fetch_close_returns_from_parquet(symbols: List[str], cache_only: bool = Fals
         return pd.DataFrame()
     closes: Dict[str, pd.Series] = {}
     for t in symbols:
-        df = load_or_fetch_daily_history(t, cache_only=cache_only)
-        if df is not None and "Close" in df.columns:
-            close = df["Close"].tail(252)
+        close = load_daily_close(t, cache_only=cache_only, tail=252)
+        if close is not None:
             if close_transform is not None:
                 close = close_transform(t, close)
             if close is not None:

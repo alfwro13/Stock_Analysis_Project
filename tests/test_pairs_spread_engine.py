@@ -98,8 +98,8 @@ class TestNormalizeCurrency:
 class TestComputeSpreadZscore:
     def test_known_divergence_produces_positive_zscore_and_direction(self):
         close_a, close_b = _correlated_pair()
-        with patch("pairs_spread_engine.load_or_fetch_daily_history",
-                   side_effect=lambda t: _make_df(close_a) if t == T_A else _make_df(close_b)):
+        with patch("price_history_helpers.load_or_fetch_daily_history",
+                   side_effect=lambda t, **_kwargs: _make_df(close_a) if t == T_A else _make_df(close_b)):
             result = compute_spread_zscore(T_A, T_B)
 
         assert result is not None
@@ -110,8 +110,8 @@ class TestComputeSpreadZscore:
 
     def test_negative_divergence_flips_direction(self):
         close_a, close_b = _correlated_pair(jump=-0.5)
-        with patch("pairs_spread_engine.load_or_fetch_daily_history",
-                   side_effect=lambda t: _make_df(close_a) if t == T_A else _make_df(close_b)):
+        with patch("price_history_helpers.load_or_fetch_daily_history",
+                   side_effect=lambda t, **_kwargs: _make_df(close_a) if t == T_A else _make_df(close_b)):
             result = compute_spread_zscore(T_A, T_B)
 
         assert result is not None
@@ -121,19 +121,19 @@ class TestComputeSpreadZscore:
         assert result["cheap_ticker"] == T_A
 
     def test_none_when_history_missing(self):
-        with patch("pairs_spread_engine.load_or_fetch_daily_history", return_value=None):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):
             assert compute_spread_zscore(T_A, T_B) is None
 
     def test_none_when_insufficient_overlap(self):
         short_a = _make_df([100.0] * 10)
         short_b = _make_df([100.0] * 10)
-        with patch("pairs_spread_engine.load_or_fetch_daily_history",
-                   side_effect=lambda t: short_a if t == T_A else short_b):
+        with patch("price_history_helpers.load_or_fetch_daily_history",
+                   side_effect=lambda t, **_kwargs: short_a if t == T_A else short_b):
             assert compute_spread_zscore(T_A, T_B) is None
 
     def test_accepts_preloaded_closes_without_fetching(self):
         close_a, close_b = _correlated_pair()
-        with patch("pairs_spread_engine.load_or_fetch_daily_history") as mock_load:
+        with patch("price_history_helpers.load_or_fetch_daily_history") as mock_load:
             result = compute_spread_zscore(T_A, T_B, _make_df(close_a)["Close"], _make_df(close_b)["Close"])
         mock_load.assert_not_called()
         assert result is not None
@@ -142,8 +142,8 @@ class TestComputeSpreadZscore:
 class TestBuildChartSeries:
     def test_chart_payload_shape(self):
         close_a, close_b = _correlated_pair()
-        with patch("pairs_spread_engine.load_or_fetch_daily_history",
-                   side_effect=lambda t: _make_df(close_a) if t == T_A else _make_df(close_b)):
+        with patch("price_history_helpers.load_or_fetch_daily_history",
+                   side_effect=lambda t, **_kwargs: _make_df(close_a) if t == T_A else _make_df(close_b)):
             chart = build_chart_series(T_B, T_A)  # order-independent — sorted internally
 
         assert chart is not None
@@ -158,7 +158,7 @@ class TestBuildChartSeries:
         assert chart["zscore"] is not None
 
     def test_none_when_history_missing(self):
-        with patch("pairs_spread_engine.load_or_fetch_daily_history", return_value=None):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):
             assert build_chart_series(T_A, T_B) is None
 
 
@@ -202,8 +202,7 @@ class TestRunScan:
     def _run(self, engine, loader, scope=SCOPE_PORTFOLIO_WATCHLIST):
         with patch("pairs_spread_engine.get_portfolio_watchlist_tickers",
                    return_value=sorted([T_A, T_B, T_C, T_D])), \
-             patch("pairs_spread_engine.load_or_fetch_daily_history", side_effect=loader), \
-             patch("xray_engine.load_or_fetch_daily_history", side_effect=loader):
+             patch("price_history_helpers.load_or_fetch_daily_history", side_effect=loader):
             return engine.run_scan(scope=scope)
 
     def test_correlated_same_currency_pair_saved(self):

@@ -7,9 +7,9 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from data_engine import load_or_fetch_daily_history
 from database import get_connection
 from db_helpers import get_portfolio_watchlist_tickers, get_ticker_currency_map, get_universe_tickers
+from price_history_helpers import load_daily_close
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_currency_bucket
 from xray_engine import fetch_close_returns_from_parquet
 
@@ -24,13 +24,6 @@ SCOPE_PORTFOLIO_WATCHLIST = "portfolio_watchlist"
 SCOPE_UNIVERSE = "universe"
 
 
-def _load_close(ticker: str) -> Optional[pd.Series]:
-    df = load_or_fetch_daily_history(ticker)
-    if df is None or "Close" not in df.columns:
-        return None
-    return df["Close"].tail(LOOKBACK_DAYS)
-
-
 def _aligned_closes(
     ticker_a: str, ticker_b: str,
     close_a: Optional[pd.Series] = None, close_b: Optional[pd.Series] = None,
@@ -39,9 +32,9 @@ def _aligned_closes(
     the on-demand chart, and the spread z-score. Pass pre-loaded closes (e.g. from a scan's
     own price cache) to avoid re-reading the same ticker's parquet for every pair it appears in."""
     if close_a is None:
-        close_a = _load_close(ticker_a)
+        close_a = load_daily_close(ticker_a, tail=LOOKBACK_DAYS)
     if close_b is None:
-        close_b = _load_close(ticker_b)
+        close_b = load_daily_close(ticker_b, tail=LOOKBACK_DAYS)
     if close_a is None or close_b is None:
         return None
 
@@ -188,7 +181,7 @@ class PairsSpreadEngine:
 
         def _cached_close(ticker: str) -> Optional[pd.Series]:
             if ticker not in price_cache:
-                price_cache[ticker] = _load_close(ticker)
+                price_cache[ticker] = load_daily_close(ticker, tail=LOOKBACK_DAYS)
             return price_cache[ticker]
 
         pairs: list[dict] = []

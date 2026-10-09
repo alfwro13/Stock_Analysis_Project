@@ -18,6 +18,7 @@ from config import BACKTEST_HISTORY_DIR, BASE_CURRENCY
 from fx_conversion_helpers import BaseCurrencyConverter
 from portfolio_optimizer_engine import list_candidates
 from portfolio_service import fx_pair
+from price_history_helpers import normalized_close
 from stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
 from stable_shortlist_reads import get_shortlist
 from strategy_backtest_engine import InsufficientHistory
@@ -307,11 +308,9 @@ def load_close_series(ticker: str, history: str) -> Dict:
             note = f"{ticker}: extended history is not prepared — the standard cache was used."
         else:
             note = f"{ticker}: prepared history ends before the standard cache — it was ignored; prepare it again."
-    if frame is None or frame.empty or "Close" not in frame.columns:
+    close = normalized_close(frame["Close"]) if frame is not None and "Close" in frame.columns else None
+    if close is None:
         raise BasketError(f"No price history is available for {ticker}.")
-    close = frame["Close"].dropna()
-    close.index = pd.DatetimeIndex(close.index).tz_localize(None).normalize()
-    close = close[~close.index.duplicated(keep="last")].sort_index()
     return {"close": close, "source": source, "note": note, **_coverage(close.to_frame())}
 
 

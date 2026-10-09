@@ -268,20 +268,20 @@ class TestFetchReturns:
     def test_multi_ticker_returns_dataframe(self):
         symbols = [T1, T2]
         flat = self._make_flat_df([T1])
-        with patch("xray_engine.load_or_fetch_daily_history", return_value=flat):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=flat):
             result = XRayRiskComputer()._fetch_returns(symbols)
         assert isinstance(result, pd.DataFrame)
         assert set(result.columns) == {T1, T2}
 
     def test_single_ticker_returns_dataframe(self):
         flat = self._make_flat_df([T1])
-        with patch("xray_engine.load_or_fetch_daily_history", return_value=flat):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=flat):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert isinstance(result, pd.DataFrame), "Must return DataFrame, not Series"
         assert T1 in result.columns
 
     def test_empty_when_history_missing_for_all_symbols(self):
-        with patch("xray_engine.load_or_fetch_daily_history", return_value=None):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert result.empty
 
