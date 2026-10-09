@@ -424,6 +424,13 @@ def create_yield_vs_gdp_chart(df_yield: pd.DataFrame, df_gdp: pd.DataFrame, regi
         x=upper.index, y=upper, name="Yield above growth", mode='lines', line=dict(width=0),
         fill='tonexty', fillcolor='rgba(255, 90, 60, 0.30)', hoverinfo='skip'
     ))
+    releases = gdp[gdp.ne(gdp.shift())]
+    releases = releases[releases.index >= yld.index.min()]
+    fig.add_trace(go.Scatter(
+        x=releases.index, y=releases, name="GDP release", mode='markers',
+        marker=dict(color="#b366ff", size=9, line=dict(color="#ffffff", width=1)),
+        hovertemplate="%{y:.2f}% (new quarterly release)"
+    ))
 
     fig.update_layout(
         title=dict(text=f"{region} Yield vs Nominal GDP: {yield_name} vs GDP Growth", x=0.5, xanchor='center'),
