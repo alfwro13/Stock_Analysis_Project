@@ -257,7 +257,7 @@ class TestQuoteSettlementGating:
             patch("time_engine._load_config", return_value={"USER_TIMEZONE": "UTC"}),
             patch.object(IntradayOrchestrator, "get_portfolio_tickers", return_value=[ticker]),
             patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value=fake_dfs),
-            patch("intraday_orchestrator.market_pulse.is_quote_settled", return_value=is_settled) as mock_settled,
+            patch("intraday_orchestrator.market_session_helpers.is_quote_settled", return_value=is_settled) as mock_settled,
             patch("intraday_orchestrator.upsert_live_price") as mock_upsert,
             # The fake OHLCV data can trip real Crash/Moonshot evaluation when is_settled=True —
             # without this, a settled-quote test fires a real Nextcloud Talk alert (see conftest.py's

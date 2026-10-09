@@ -14,7 +14,7 @@ from db_helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import backfill_earnings_drift_outcomes, log_near_earnings_predictions, run_earnings_vol_scan
-from market_pulse import is_quote_settled
+from market_session_helpers import is_quote_settled
 from freetrade_engine import sync_freetrade_universe
 from ghostfolio_sync import GhostfolioSyncEngine
 from huggingface_engine import update_all_sentiment, run_central_bank_nlp_alert

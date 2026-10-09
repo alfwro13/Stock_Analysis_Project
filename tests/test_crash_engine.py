@@ -193,7 +193,7 @@ class TestSpyMarketContext:
         eng = _engine()
         eng.spy_change_pct = None
         df = self._context_df()
-        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False), \
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=False), \
              patch("crash_engine.market_pulse.get_cached_change_pct", return_value=None) as mock_cached:
             report = eng._generate_context_report("LCJP.L", -4.0, df, {"company_name": "Test"})
         mock_cached.assert_called_once_with("^GSPC")
@@ -206,7 +206,7 @@ class TestSpyMarketContext:
         eng = _engine()
         eng.spy_change_pct = None
         df = self._context_df()
-        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False), \
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=False), \
              patch("crash_engine.market_pulse.get_cached_change_pct", return_value=-9.0):
             report = eng._generate_context_report("LCJP.L", -4.0, df, {"company_name": "Test"})
         assert "US S&P 500, last session: -9.00%" in report
@@ -314,7 +314,7 @@ class TestSpyMarketContext:
 
     def test_fetch_market_context_skips_when_nyse_closed(self):
         eng = _engine()
-        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False), \
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=False), \
              patch("crash_engine.yahoo_engine.get_intraday") as mock_intraday:
             result = eng._fetch_market_context()
         assert result is None
@@ -323,7 +323,7 @@ class TestSpyMarketContext:
     def test_fetch_market_context_fetches_when_nyse_open(self):
         eng = _engine()
         spy_df = pd.DataFrame({"Close": [400.0, 398.0, 396.0, 394.0, 392.0]})
-        with patch("crash_engine.market_pulse.is_exchange_open", return_value=True), \
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=True), \
              patch("crash_engine.yahoo_engine.get_intraday", return_value={"SPY": spy_df}):
             result = eng._fetch_market_context()
         assert result is not None

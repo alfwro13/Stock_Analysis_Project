@@ -428,8 +428,8 @@ def test_fetch_and_save_data_skips_intraday_for_mutual_fund(tmp_path):
 # ── _drop_in_progress_last_bar / poisoned-history regression ───────────────────
 # A manual or scheduled historical refresh triggered while a ticker's market is still open can
 # have Yahoo return today's still-forming daily bar as the last row; intraday_orchestrator.py and
-# intraday_bottom_engine.py then read that row as "previous close" via market_pulse.upsert_live_price,
-# producing a wildly wrong 24h % change that fights with market_pulse.fetch_and_save_pulse's correct
+# intraday_bottom_engine.py then read that row as "previous close" via market_pulse_write.upsert_live_price,
+# producing a wildly wrong 24h % change that fights with market_pulse_write.fetch_and_save_pulse's correct
 # value. These tests cover the fix at its root: the daily history file must never be written with
 # an in-progress bar as its last row.
 

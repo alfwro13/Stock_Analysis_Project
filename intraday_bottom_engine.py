@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 from config import HISTORICAL_DIR
 from database import get_mutual_fund_tickers
-from market_pulse import is_exchange_open, is_quote_settled, upsert_live_price
+from market_pulse_write import upsert_live_price
+from market_session_helpers import is_exchange_open, is_quote_settled
 from yahoo_engine import yahoo_engine
 from utils import is_daily_bar_still_forming
 

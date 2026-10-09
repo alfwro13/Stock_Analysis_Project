@@ -71,7 +71,7 @@ def test_portfolio_page_triggers_background_refresh_for_stale_held_ticker(client
                      currency="GBP", quantity=2, unit_price=50, exchange_rate=1.0)
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_pulse.is_exchange_open", return_value=True):
+         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/portfolio")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()

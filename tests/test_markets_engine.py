@@ -24,19 +24,19 @@ import markets_engine
 
 class TestGetExchangeState:
     def test_open_when_regular_session_is_open(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", return_value="open"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="open"):
             assert markets_engine.get_exchange_state("NYSE") == "open"
 
     def test_pre_when_only_premarket_flag_is_open(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", return_value="pre"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="pre"):
             assert markets_engine.get_exchange_state("NYSE") == "pre"
 
     def test_post_when_after_hours(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", return_value="post"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="post"):
             assert markets_engine.get_exchange_state("NYSE") == "post"
 
     def test_closed_when_neither_flag_is_open(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", return_value="closed"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
             assert markets_engine.get_exchange_state("NYSE") == "closed"
 
 
@@ -60,13 +60,13 @@ class TestGetRegionExchanges:
 
 class TestGetRegionState:
     def test_open_when_all_constituent_exchanges_open(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", return_value="open"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="open"):
             state = markets_engine.get_region_state("Europe")
         assert state["state"] == "open"
         assert state["recency_seconds"] >= 0
 
     def test_partial_when_only_some_constituent_exchanges_open(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", side_effect=lambda ex: "open" if ex == "LSE" else "closed"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", side_effect=lambda ex: "open" if ex == "LSE" else "closed"):
             state = markets_engine.get_region_state("Europe")
         assert state["state"] == "partial"
         assert state["recency_seconds"] >= 0
@@ -74,19 +74,19 @@ class TestGetRegionState:
     def test_pre_when_no_exchange_open_but_one_is_premarket(self):
         def fake(exchange):
             return "pre" if exchange == "LSE" else "closed"
-        with patch("markets_engine.market_pulse.get_exchange_session_state", side_effect=fake):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", side_effect=fake):
             state = markets_engine.get_region_state("Europe")
         assert state["state"] == "pre"
 
     def test_post_when_no_exchange_open_or_pre_but_one_is_post(self):
         def fake(exchange):
             return "post" if exchange == "LSE" else "closed"
-        with patch("markets_engine.market_pulse.get_exchange_session_state", side_effect=fake):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", side_effect=fake):
             state = markets_engine.get_region_state("Europe")
         assert state["state"] == "post"
 
     def test_closed_when_no_exchange_open_or_premarket(self):
-        with patch("markets_engine.market_pulse.get_exchange_session_state", return_value="closed"):
+        with patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
             state = markets_engine.get_region_state("Europe")
         assert state["state"] == "closed"
         assert state["recency_seconds"] > 0
@@ -182,13 +182,13 @@ class TestResolveTile:
     def test_no_future_ticker_always_returns_spot(self):
         row = {"ticker": "^FTSE", "display_name": "UK FTSE 100", "future_ticker": None,
                "future_display_name": None, "exchange": "LSE"}
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):
             assert markets_engine.resolve_tile(row) == ("^FTSE", "UK FTSE 100", False)
 
     def test_shows_spot_when_exchange_open(self):
         row = {"ticker": "^GSPC", "display_name": "US S&P 500", "future_ticker": "ES=F",
                "future_display_name": "S&P 500 Futures", "exchange": "NYSE"}
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=True) as mock_open:
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=True) as mock_open:
             result = markets_engine.resolve_tile(row)
         assert result == ("^GSPC", "US S&P 500", False)
         mock_open.assert_called_once_with("NYSE", include_premarket=False)
@@ -196,14 +196,14 @@ class TestResolveTile:
     def test_shows_future_when_exchange_closed(self):
         row = {"ticker": "^GSPC", "display_name": "US S&P 500", "future_ticker": "ES=F",
                "future_display_name": "S&P 500 Futures", "exchange": "NYSE"}
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):
             result = markets_engine.resolve_tile(row)
         assert result == ("ES=F", "S&P 500 Futures", True)
 
     def test_falls_back_to_display_name_when_future_name_missing(self):
         row = {"ticker": "^N225", "display_name": "Nikkei 225", "future_ticker": "NIY=F",
                "future_display_name": None, "exchange": "TSE"}
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):
             result = markets_engine.resolve_tile(row)
         assert result == ("NIY=F", "Nikkei 225", True)
 
@@ -214,7 +214,7 @@ class TestResolveTile:
         from database import get_ticker_registry_row
         row = get_ticker_registry_row(spot)
         assert row is not None
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):
             ticker, _, is_future = markets_engine.resolve_tile(row)
         assert ticker == future
         assert is_future is True
@@ -276,8 +276,8 @@ class TestAssembleMarketsPayload:
         assert any(t["dual_instrument"] is None for t in commodities["tiles"])
 
     def test_stale_data_only_flagged_when_tile_market_is_open(self):
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False), \
-             patch("markets_engine.market_pulse.get_exchange_session_state", return_value="closed"):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False), \
+             patch("markets_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
             payload = markets_engine.assemble_markets_payload("static")
         us_region = next(r for r in payload["regions"] if r["region"] == "US")
         tile = us_region["tiles"][0]
@@ -300,7 +300,7 @@ class TestSelectPulseTickers:
         # Ticker SELECTION (is_pulse_tile membership) is under test here, not the spot/future
         # swap — force NYSE "open" so ^GSPC/^NDX resolve to spot, matching the legacy dict,
         # regardless of real wall-clock market hours when this test happens to run.
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=True):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=True):
             result = markets_engine.select_pulse_tickers(dynamic=False)
         assert set(result["desktop"]) == self.LEGACY_TEN
 
@@ -393,12 +393,12 @@ class TestResolveBenchmarkForHoldings:
 
 class TestRegistryLookupTickers:
     def test_includes_the_resolved_ticker_for_every_active_registry_row(self):
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=True):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=True):
             tickers = markets_engine.registry_lookup_tickers()
         assert "^GSPC" in tickers  # spot, since NYSE forced open above
 
     def test_swaps_to_future_ticker_when_exchange_closed(self):
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):
             tickers = markets_engine.registry_lookup_tickers()
         assert "ES=F" in tickers
 
@@ -406,9 +406,9 @@ class TestRegistryLookupTickers:
         """Both instruments of a dual-instrument pair are warmed regardless of which one is
         currently resolved/displayed, so a consumer needing both simultaneously (independent
         spot + futures sensors) always has live data for the one not on display."""
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=True):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=True):
             tickers_open = markets_engine.registry_lookup_tickers()
-        with patch("markets_engine.market_pulse.is_exchange_open", return_value=False):
+        with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):
             tickers_closed = markets_engine.registry_lookup_tickers()
         for tickers in (tickers_open, tickers_closed):
             assert "^GSPC" in tickers

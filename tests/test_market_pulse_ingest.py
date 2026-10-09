@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
 import market_pulse as _mp
+import market_pulse_write as _mw
 
 
 MUTUAL_FUND = "0P00018XAR.L"
@@ -72,7 +73,7 @@ def _flat_daily_df(prices: list) -> pd.DataFrame:
 def _flat_live_df(price: float) -> pd.DataFrame:
     """Non-MultiIndex 2m live DataFrame (single-ticker download path)."""
     # Anchor to the same day as _flat_daily_df so the last_daily_date >= live_date comparison
-    # in market_pulse.py is always True, matching the intraday path the tests exercise.
+    # in market_pulse_write.py is always True, matching the intraday path the tests exercise.
     ref = _today_ts() + pd.Timedelta(hours=12)
     return pd.DataFrame(
         {"Close": [price], "High": [price * 1.005], "Low": [price * 0.995],
@@ -86,7 +87,7 @@ def _default_quote_snapshot():
     """get_quote_snapshot defaults to unavailable for every test in this file, so pre-existing
     tests keep exercising the same daily/live diffing fallback path they always have — tests
     of the new Yahoo-quote-snapshot primary path override this with their own inner patch."""
-    with patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=None):
+    with patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=None):
         yield
 
 
@@ -95,8 +96,8 @@ def _pulse_patches(ticker, daily_df, live_df):
     daily_rv = {ticker: daily_df} if not daily_df.empty else {}
     live_rv  = {ticker: live_df}  if not live_df.empty  else {}
     return (
-        patch("market_pulse.yahoo_engine.get_price_history", return_value=daily_rv),
-        patch("market_pulse.yahoo_engine.get_intraday",      return_value=live_rv),
+        patch("market_pulse_write.yahoo_engine.get_price_history", return_value=daily_rv),
+        patch("market_pulse_write.yahoo_engine.get_intraday",      return_value=live_rv),
     )
 
 
@@ -130,7 +131,7 @@ class TestDailyOnlyInstrument:
         daily = _flat_daily_df([100.0, 102.5])
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
         with p1, p2:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row is not None, "No cache row written for daily-only ticker"
@@ -141,7 +142,7 @@ class TestDailyOnlyInstrument:
         daily = _flat_daily_df([100.0, 103.0])   # +3.0 pts, +3.0%
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
         with p1, p2:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
@@ -152,7 +153,7 @@ class TestDailyOnlyInstrument:
         daily = _flat_daily_df([105.0, 102.0])   # -3.0 pts
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
         with p1, p2:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row["change_pts"] == pytest.approx(-3.0, abs=0.01)
@@ -163,7 +164,7 @@ class TestDailyOnlyInstrument:
         daily = _flat_daily_df([100.0])
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
         with p1, p2:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row is not None
@@ -177,7 +178,7 @@ class TestDailyOnlyInstrument:
         before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
         with p1, p2:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row["last_updated"] > before, (
@@ -189,8 +190,8 @@ class TestDailyOnlyInstrument:
         """A mutual fund with no 2m ticks must not log an error — it is expected."""
         daily = _flat_daily_df([100.0, 102.0])
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
-        with p1, p2, patch("market_pulse.logger.error") as mock_err:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+        with p1, p2, patch("market_pulse_write.logger.error") as mock_err:
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         mock_err.assert_not_called()
 
@@ -199,10 +200,10 @@ class TestDailyOnlyInstrument:
         get_intraday(), which fires before our code ever sees an exception — the only
         fix is to never make the doomed call for a ticker that never has 5m bars."""
         daily = _flat_daily_df([100.0, 102.0])
-        with patch("market_pulse.yahoo_engine.get_price_history", return_value={MUTUAL_FUND: daily}), \
-             patch("market_pulse.get_mutual_fund_tickers", return_value={MUTUAL_FUND}), \
-             patch("market_pulse.yahoo_engine.get_intraday") as mock_intraday:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+        with patch("market_pulse_write.yahoo_engine.get_price_history", return_value={MUTUAL_FUND: daily}), \
+             patch("market_pulse_write.get_mutual_fund_tickers", return_value={MUTUAL_FUND}), \
+             patch("market_pulse_write.yahoo_engine.get_intraday") as mock_intraday:
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         mock_intraday.assert_not_called()
 
@@ -210,11 +211,11 @@ class TestDailyOnlyInstrument:
         """A portfolio poll mixing a mutual fund with a normal ticker must still fetch
         intraday for the normal ticker, just with the mutual fund filtered out."""
         daily = _flat_daily_df([100.0, 102.0])
-        with patch("market_pulse.yahoo_engine.get_price_history",
+        with patch("market_pulse_write.yahoo_engine.get_price_history",
                     return_value={MUTUAL_FUND: daily, NORMAL_TICKER: daily}), \
-             patch("market_pulse.get_mutual_fund_tickers", return_value={MUTUAL_FUND}), \
-             patch("market_pulse.yahoo_engine.get_intraday", return_value={}) as mock_intraday:
-            _mp.fetch_and_save_pulse([MUTUAL_FUND, NORMAL_TICKER])
+             patch("market_pulse_write.get_mutual_fund_tickers", return_value={MUTUAL_FUND}), \
+             patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}) as mock_intraday:
+            _mw.fetch_and_save_pulse([MUTUAL_FUND, NORMAL_TICKER])
 
         mock_intraday.assert_called_once_with([NORMAL_TICKER], period="2d", interval="2m", prepost=True)
         _clear_cache(NORMAL_TICKER)
@@ -232,8 +233,8 @@ class TestEmptyDailyPath:
 
     def test_new_ticker_seeds_stale_placeholder(self):
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
-        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row is not None
@@ -246,8 +247,8 @@ class TestEmptyDailyPath:
 
         before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
-        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] > before, "Established ticker was not marked fresh on transient outage"
@@ -257,8 +258,8 @@ class TestEmptyDailyPath:
         """Zero-price placeholder with no incoming data must stay stale so the next poll retries."""
         _seed_cache(NORMAL_TICKER, price=0.0, last_updated=0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
-        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] == 0
@@ -272,11 +273,11 @@ class TestEmptyDailyPath:
 
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
         with p1, p2, \
-             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
-             patch("market_pulse.ticker_exchange", return_value="LSE"), \
-             patch("market_pulse.is_trading_session", return_value=True), \
-             patch("market_pulse.notification_engine.notify") as mock_notify:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+             patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse_write.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse_write.is_trading_session", return_value=True), \
+             patch("market_pulse_write.notification_engine.notify") as mock_notify:
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         mock_notify.assert_called_once()
         assert mock_notify.call_args[0][0] == "stale_price_alert"
@@ -288,15 +289,15 @@ class TestEmptyDailyPath:
 
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
         with p1, p2, \
-             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
-             patch("market_pulse.ticker_exchange", return_value="LSE"), \
-             patch("market_pulse.is_trading_session", return_value=True), \
-             patch("market_pulse.notification_engine.notify") as mock_notify:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+             patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse_write.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse_write.is_trading_session", return_value=True), \
+             patch("market_pulse_write.notification_engine.notify") as mock_notify:
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
             # The first call bumped last_updated to "now" (transient-outage leniency), so
             # re-seed an old timestamp to simulate a second failed attempt later the same day.
             _seed_cache(NORMAL_TICKER, price=150.0, last_updated=_time.time() - 3600)
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         mock_notify.assert_called_once()
 
@@ -306,11 +307,11 @@ class TestEmptyDailyPath:
 
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
         with p1, p2, \
-             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
-             patch("market_pulse.ticker_exchange", return_value="LSE"), \
-             patch("market_pulse.is_trading_session", return_value=False), \
-             patch("market_pulse.notification_engine.notify") as mock_notify:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+             patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse_write.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse_write.is_trading_session", return_value=False), \
+             patch("market_pulse_write.notification_engine.notify") as mock_notify:
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         mock_notify.assert_not_called()
 
@@ -320,11 +321,11 @@ class TestEmptyDailyPath:
 
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
         with p1, p2, \
-             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
-             patch("market_pulse.ticker_exchange", return_value="LSE"), \
-             patch("market_pulse.is_trading_session", return_value=True), \
-             patch("market_pulse.notification_engine.notify") as mock_notify:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+             patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse_write.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse_write.is_trading_session", return_value=True), \
+             patch("market_pulse_write.notification_engine.notify") as mock_notify:
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         mock_notify.assert_not_called()
 
@@ -339,8 +340,8 @@ class TestNormalIntradayPath:
         daily = _flat_daily_df([100.0, 100.5])
         live = _flat_live_df(101.75)
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=True):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row is not None
@@ -353,8 +354,8 @@ class TestNormalIntradayPath:
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)   # change = 101 - 98 = +3.0 vs daily[-2]
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=True):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         # daily[-1] date >= live date → prev_close = daily[-2] = 98.0
@@ -366,8 +367,8 @@ class TestNormalIntradayPath:
 
         before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=True):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] > before
@@ -393,8 +394,8 @@ class TestExchangeClosedStillFormingGate:
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=False):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=False):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row is None
@@ -403,8 +404,8 @@ class TestExchangeClosedStillFormingGate:
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=True):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
@@ -424,8 +425,8 @@ class TestFallbackFreezesOutsideRegularSession:
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(115.0)  # a plausible pre/post-market tick, well away from 100.0
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=False):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=False):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["price"] == pytest.approx(100.0), "Pre/post-market tick overwrote the settled price"
@@ -438,8 +439,8 @@ class TestFallbackFreezesOutsideRegularSession:
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.is_exchange_open", return_value=True):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.is_exchange_open", return_value=True):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["price"] == pytest.approx(101.0)
@@ -460,8 +461,8 @@ class TestQuoteSnapshotSessionTagging:
         live = _flat_live_df(101.0)
         snap = _snapshot(101.0, regular_change=0.5, regular_change_pct=0.5, market_state="REGULAR")
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["price"] == pytest.approx(101.0)
@@ -478,8 +479,8 @@ class TestQuoteSnapshotSessionTagging:
             pre_price=101.5, pre_change=1.0, pre_change_pct=1.0,
         )
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["price"] == pytest.approx(100.5), "Pre-market tick leaked into the regular price column"
@@ -496,8 +497,8 @@ class TestQuoteSnapshotSessionTagging:
             post_price=101.0, post_change=-1.0, post_change_pct=-0.98,
         )
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["price"] == pytest.approx(102.0), "After-hours tick leaked into the regular price column"
@@ -514,8 +515,8 @@ class TestQuoteSnapshotSessionTagging:
             post_price=99.0, post_change=-1.5, post_change_pct=-1.5,
         )
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["extended_price"] is None
@@ -526,8 +527,8 @@ class TestQuoteSnapshotSessionTagging:
         live = _flat_live_df(101.0)
         snap = _snapshot(101.0, regular_change=1.0, regular_change_pct=1.0, market_state="REGULAR")
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["market_state"] == "REGULAR"
@@ -539,8 +540,8 @@ class TestQuoteSnapshotSessionTagging:
         live = _flat_live_df(101.0)
         snap = _snapshot(101.0, regular_change=1.0, regular_change_pct=1.0, market_state="REGULAR")
         p1, p2 = _pulse_patches("^GSPC", daily, live)
-        with p1, p2, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=snap):
-            _mp.fetch_and_save_pulse(["^GSPC"])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse(["^GSPC"])
 
         # Second refresh: the quote snapshot itself is unavailable this time. The fallback path
         # re-checks is_exchange_open(), which vetoes on a real exchange holiday/weekend first —
@@ -549,9 +550,9 @@ class TestQuoteSnapshotSessionTagging:
         daily2 = _flat_daily_df([100.5, 102.0])
         live2 = _flat_live_df(102.5)
         p3, p4 = _pulse_patches("^GSPC", daily2, live2)
-        with p3, p4, patch("market_pulse.yahoo_engine.get_quote_snapshot", return_value=None), \
-             patch("market_pulse.is_exchange_holiday", return_value=False):
-            _mp.fetch_and_save_pulse(["^GSPC"])
+        with p3, p4, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=None), \
+             patch("market_session_helpers.is_exchange_holiday", return_value=False):
+            _mw.fetch_and_save_pulse(["^GSPC"])
 
         row = _read_cache("^GSPC")
         assert row["price"] == pytest.approx(102.5)
@@ -568,11 +569,11 @@ class TestFallbackSingleHistory:
         """get_price_history empty + get_single_ticker_history returns data → change computed."""
         fallback_df = _flat_daily_df([100.0, 103.0])
         with (
-            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
-            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
-            patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
+            patch("market_pulse_write.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
         ):
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row is not None
@@ -586,11 +587,11 @@ class TestFallbackSingleHistory:
         fallback_df = _flat_daily_df([100.0, 102.0])
         before = datetime.now(timezone.utc).timestamp() - 5
         with (
-            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
-            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
-            patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
+            patch("market_pulse_write.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
         ):
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row["last_updated"] > before
@@ -598,11 +599,11 @@ class TestFallbackSingleHistory:
     def test_fallback_negative_change(self):
         fallback_df = _flat_daily_df([105.0, 102.0])
         with (
-            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
-            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
-            patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
+            patch("market_pulse_write.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
         ):
-            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+            _mw.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
         assert row["change_pts"] == pytest.approx(-3.0, abs=0.01)
@@ -613,11 +614,11 @@ class TestFallbackSingleHistory:
         index_ticker = "^FTSE"
         _clear_cache(index_ticker)
         with (
-            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
-            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
-            patch("market_pulse.yahoo_engine.get_single_ticker_history") as mock_single,
+            patch("market_pulse_write.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse_write.yahoo_engine.get_single_ticker_history") as mock_single,
         ):
-            _mp.fetch_and_save_pulse([index_ticker])
+            _mw.fetch_and_save_pulse([index_ticker])
 
         mock_single.assert_not_called()
         _clear_cache(index_ticker)
@@ -650,9 +651,9 @@ class TestStaleDailyHistoryFallback:
         stale_daily, live = self._stale_daily_and_live()
         p1, p2 = _pulse_patches(self.TICKER, stale_daily, live)
         with p1, p2, \
-             patch("market_pulse.is_exchange_open", return_value=True), \
-             patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1225.57}):
-            _mp.fetch_and_save_pulse([self.TICKER])
+             patch("market_pulse_write.is_exchange_open", return_value=True), \
+             patch("market_pulse_write.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1225.57}):
+            _mw.fetch_and_save_pulse([self.TICKER])
 
         row = _read_cache(self.TICKER)
         assert row["price"] == pytest.approx(1158.37)
@@ -664,9 +665,9 @@ class TestStaleDailyHistoryFallback:
         live = _flat_live_df(101.0)
         p1, p2 = _pulse_patches(self.TICKER, daily, live)
         with p1, p2, \
-             patch("market_pulse.is_exchange_open", return_value=True), \
-             patch("market_pulse.yahoo_engine.get_ticker_info") as mock_info:
-            _mp.fetch_and_save_pulse([self.TICKER])
+             patch("market_pulse_write.is_exchange_open", return_value=True), \
+             patch("market_pulse_write.yahoo_engine.get_ticker_info") as mock_info:
+            _mw.fetch_and_save_pulse([self.TICKER])
         mock_info.assert_not_called()
 
     def test_missing_info_previous_close_does_not_crash(self):
@@ -674,9 +675,9 @@ class TestStaleDailyHistoryFallback:
         stale_daily, live = self._stale_daily_and_live()
         p1, p2 = _pulse_patches(self.TICKER, stale_daily, live)
         with p1, p2, \
-             patch("market_pulse.is_exchange_open", return_value=True), \
-             patch("market_pulse.yahoo_engine.get_ticker_info", return_value=None):
-            _mp.fetch_and_save_pulse([self.TICKER])
+             patch("market_pulse_write.is_exchange_open", return_value=True), \
+             patch("market_pulse_write.yahoo_engine.get_ticker_info", return_value=None):
+            _mw.fetch_and_save_pulse([self.TICKER])
 
         row = _read_cache(self.TICKER)
         assert row["price"] == pytest.approx(1158.37)
@@ -700,9 +701,9 @@ class TestStaleDailyHistoryFallback:
         )
         p1, p2 = _pulse_patches(self.TICKER, daily, live)
         with p1, p2, \
-             patch("market_pulse.is_exchange_open", return_value=True), \
-             patch("market_pulse.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1158.37}):
-            _mp.fetch_and_save_pulse([self.TICKER])
+             patch("market_pulse_write.is_exchange_open", return_value=True), \
+             patch("market_pulse_write.yahoo_engine.get_ticker_info", return_value={"regularMarketPreviousClose": 1158.37}):
+            _mw.fetch_and_save_pulse([self.TICKER])
 
         row = _read_cache(self.TICKER)
         assert row["price"] == pytest.approx(1171.43)
@@ -721,7 +722,7 @@ class TestUpsertLivePrice:
         _clear_cache(self.TICKER)
 
     def test_writes_correct_row_for_a_gain(self):
-        _mp.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0)
+        _mw.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0)
         row = _read_cache(self.TICKER)
         assert row["price"] == 110.0
         assert row["change_pts"] == pytest.approx(10.0)
@@ -730,35 +731,35 @@ class TestUpsertLivePrice:
         assert row["name"] == "Test Co"
 
     def test_writes_correct_row_for_a_loss(self):
-        _mp.upsert_live_price(self.TICKER, "Test Co", 90.0, 100.0)
+        _mw.upsert_live_price(self.TICKER, "Test Co", 90.0, 100.0)
         row = _read_cache(self.TICKER)
         assert row["change_pts"] == pytest.approx(-10.0)
         assert row["change_pct"] == pytest.approx(-10.0)
         assert row["is_positive"] == 0
 
     def test_none_price_is_a_noop(self):
-        _mp.upsert_live_price(self.TICKER, "Test Co", None, 100.0)
+        _mw.upsert_live_price(self.TICKER, "Test Co", None, 100.0)
         assert _read_cache(self.TICKER) is None
 
     def test_zero_prev_close_is_a_noop(self):
-        _mp.upsert_live_price(self.TICKER, "Test Co", 100.0, 0.0)
+        _mw.upsert_live_price(self.TICKER, "Test Co", 100.0, 0.0)
         assert _read_cache(self.TICKER) is None
 
     def test_none_prev_close_is_a_noop(self):
-        _mp.upsert_live_price(self.TICKER, "Test Co", 100.0, None)
+        _mw.upsert_live_price(self.TICKER, "Test Co", 100.0, None)
         assert _read_cache(self.TICKER) is None
 
     def test_second_call_updates_price_but_preserves_original_name(self):
-        _mp.upsert_live_price(self.TICKER, "Original Name", 100.0, 90.0)
-        _mp.upsert_live_price(self.TICKER, self.TICKER, 105.0, 90.0)
+        _mw.upsert_live_price(self.TICKER, "Original Name", 100.0, 90.0)
+        _mw.upsert_live_price(self.TICKER, self.TICKER, 105.0, 90.0)
         row = _read_cache(self.TICKER)
         assert row["name"] == "Original Name"
         assert row["price"] == 105.0
 
     def test_accepts_an_existing_open_connection_without_closing_it(self):
         conn = _conn()
-        _mp.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0, conn=conn)
-        _mp.upsert_live_price(self.TICKER, "Test Co", 120.0, 100.0, conn=conn)
+        _mw.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0, conn=conn)
+        _mw.upsert_live_price(self.TICKER, "Test Co", 120.0, 100.0, conn=conn)
         row = conn.execute(
             "SELECT * FROM market_pulse_cache WHERE ticker = ?", (self.TICKER,)
         ).fetchone()
@@ -806,7 +807,7 @@ class TestSparklineWrite:
         live = _multi_point_live_df([100.5, 100.7, 100.9])
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
         with p1, p2:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         points = _read_sparkline(NORMAL_TICKER)
         assert len(points) == 3
@@ -817,13 +818,13 @@ class TestSparklineWrite:
         live1 = _multi_point_live_df([100.5, 100.7])
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live1)
         with p1, p2:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
         assert len(_read_sparkline(NORMAL_TICKER)) == 2
 
         live2 = _multi_point_live_df([101.0, 101.2, 101.4])
         p3, p4 = _pulse_patches(NORMAL_TICKER, daily, live2)
         with p3, p4:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         points = _read_sparkline(NORMAL_TICKER)
         assert len(points) == 3
@@ -835,12 +836,12 @@ class TestSparklineWrite:
         live = _multi_point_live_df([100.5, 100.7])
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
         with p1, p2:
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
         assert len(_read_sparkline(NORMAL_TICKER)) == 2
 
-        with patch("market_pulse.yahoo_engine.get_price_history", return_value={NORMAL_TICKER: daily}), \
-             patch("market_pulse.yahoo_engine.get_intraday", return_value={}):
-            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        with patch("market_pulse_write.yahoo_engine.get_price_history", return_value={NORMAL_TICKER: daily}), \
+             patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
 
         points = _read_sparkline(NORMAL_TICKER)
         assert len(points) == 2
@@ -920,7 +921,7 @@ def test_live_fx_writer_preserves_successful_snapshot(price):
     _clear_cache(ticker, "GBPUSD=X")
     try:
         upsert_fx_quote(ticker, 0.8, 100.0)
-        _mp.upsert_live_price(ticker, ticker, price, 0.8)
+        _mw.upsert_live_price(ticker, ticker, price, 0.8)
         quote = get_cached_fx_quote(ticker)
         if price == 0.81:
             assert quote["rate"] == price
@@ -939,7 +940,7 @@ def test_pulse_fx_success_then_failed_heartbeat_keeps_success_time():
     try:
         p1, p2 = _pulse_patches(ticker, _flat_daily_df([0.8, 0.81]), pd.DataFrame())
         with p1, p2:
-            _mp.fetch_and_save_pulse([ticker])
+            _mw.fetch_and_save_pulse([ticker])
         quote = get_cached_fx_quote(ticker)
         assert quote["rate"] == pytest.approx(0.81)
         conn = None
@@ -951,11 +952,11 @@ def test_pulse_fx_success_then_failed_heartbeat_keeps_success_time():
             if conn:
                 conn.close()
         p1, p2 = _pulse_patches(ticker, pd.DataFrame(), pd.DataFrame())
-        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
-            _mp.fetch_and_save_pulse([ticker])
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_single_ticker_history", return_value=None):
+            _mw.fetch_and_save_pulse([ticker])
         assert _read_cache(ticker)["last_updated"] > 100
         assert get_cached_fx_quote(ticker)["updated_at"] == 100
-        assert not _mp.yahoo_engine.get_cached_fx_rate(ticker, refresh=False)["available"]
+        assert not _mw.yahoo_engine.get_cached_fx_rate(ticker, refresh=False)["available"]
     finally:
         _clear_cache(ticker)
 

@@ -12,6 +12,7 @@ from utils import clamp_beta
 from yahoo_engine import yahoo_engine
 from database import get_ticker_registry_row_by_exchange
 import market_pulse
+import market_session_helpers
 import markets_engine
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class CrashEngine:
         self.ai_threshold_cap: float | None = None
 
     def _fetch_live_change_pct(self, ticker: str, exchange: str | None) -> float | None:
-        if exchange and not market_pulse.is_exchange_open(exchange):
+        if exchange and not market_session_helpers.is_exchange_open(exchange):
             return None
         try:
             _result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
