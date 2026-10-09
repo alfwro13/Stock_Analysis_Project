@@ -86,7 +86,7 @@ FEATURE_COLS = [
     'rel_strength_5d_z', 'rel_strength_20d_z',
     #
     # FUNDAMENTAL FACTORS REMOVED — 2026-05-29 (audit item 2a)
-    # A/B diagnostic (debug_scripts/ab_fundamentals_diagnostic.py) ran 5 seeds
+    # A one-off A/B diagnostic script (since removed) ran 5 seeds
     # comparing 24-feature vs 18-feature model on 250k rows / 1,060 tickers:
     #
     #   WITH    fundamentals (24 feats): mean PR-AUC 0.4015  lift +0.0746
