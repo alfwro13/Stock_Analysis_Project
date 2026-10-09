@@ -47,33 +47,6 @@ window.PositionSizing = (function () {
         };
     }
 
-function formatCurrency(amount, currencyCode, locale) {
-        if (amount == null || isNaN(amount)) return "—";
-        
-        if (currencyCode === "GBp") {
-            amount = amount / 100.0;
-            currencyCode = "GBP";
-        }
-        
-        if (!locale) {
-            locale = ({
-                "GBP": "en-GB",
-                "USD": "en-US",
-                "EUR": "de-DE",
-                "JPY": "ja-JP",
-            })[currencyCode] || "en-GB";
-        }
-        try {
-            return new Intl.NumberFormat(locale, {
-                style: "currency",
-                currency: currencyCode,
-                maximumFractionDigits: 2,
-            }).format(amount);
-        } catch (e) {
-            return currencyCode + " " + amount.toFixed(2);
-        }
-    }
-
     function calculateForRow(entryPriceNative, atrPct, currencyNative) {
         const cfg = window.POSITION_SIZING_CONFIG || {};
         const fxRates = window.FX_RATES || {};
@@ -92,6 +65,5 @@ function formatCurrency(amount, currencyCode, locale) {
     return {
         calculate: calculate,
         calculateForRow: calculateForRow,
-        formatCurrency: formatCurrency,
     };
 })();

@@ -13,7 +13,7 @@ function renderPositionSizing() {
         var riskCell   = row ? row.querySelector('[data-col-key="risk_amount"]') : null;
 
         if (result.positionValue != null && result.shares != null && result.shares > 0) {
-            cell.textContent = window.PositionSizing.formatCurrency(result.positionValue, window.BASE_CURRENCY);
+            cell.textContent = formatCurrency(result.positionValue, window.BASE_CURRENCY);
             cell.setAttribute('data-sort', result.positionValue);
 
             if (sharesCell) {
@@ -21,11 +21,11 @@ function renderPositionSizing() {
                 sharesCell.setAttribute('data-sort', result.shares);
             }
             if (stopCell) {
-                stopCell.textContent = window.PositionSizing.formatCurrency(result.stopPrice, currency);
+                stopCell.textContent = formatCurrency(result.stopPrice, currency);
                 stopCell.setAttribute('data-sort', result.stopPrice);
             }
             if (riskCell) {
-                riskCell.textContent = window.PositionSizing.formatCurrency(result.riskAmount, window.BASE_CURRENCY);
+                riskCell.textContent = formatCurrency(result.riskAmount, window.BASE_CURRENCY);
                 riskCell.setAttribute('data-sort', result.riskAmount);
             }
         } else {
