@@ -1,5 +1,6 @@
 # Lightweight helpers with no heavy dependencies — safe to import from any module.
 import logging
+import math
 import os
 import re
 from contextlib import contextmanager
@@ -196,6 +197,17 @@ def trading_days_forward(date_str: str, n_days: int) -> str:
     import numpy as np
     d = np.datetime64(date_str, "D")
     return str(np.busday_offset(d, n_days, roll="forward"))
+
+
+def sanitize_floats(obj):
+    """Recursively replaces nan/inf with None so a payload is always JSON-safe."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_floats(v) for v in obj]
+    return obj
 
 
 def clamp_beta(raw: Any, lo: float = 0.5, hi: float = 2.0, default: float = 1.0) -> float:

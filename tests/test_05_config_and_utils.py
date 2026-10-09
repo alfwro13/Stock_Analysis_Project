@@ -799,3 +799,60 @@ def test_invalid_performance_settings_reset_only_performance_section(tmp_path, m
     assert loaded["PERFORMANCE"] == config.DEFAULT_CONFIG["PERFORMANCE"]
     assert loaded["BASE_CURRENCY"] == "USD"
     assert loaded["USER_TIMEZONE"] == "America/New_York"
+
+
+@pytest.mark.config
+def test_sanitize_floats_nan_replaced_with_none():
+    from utils import sanitize_floats
+    assert sanitize_floats(float("nan")) is None
+
+
+@pytest.mark.config
+def test_sanitize_floats_inf_replaced_with_none():
+    from utils import sanitize_floats
+    assert sanitize_floats(float("inf")) is None
+
+
+@pytest.mark.config
+def test_sanitize_floats_negative_inf_replaced_with_none():
+    from utils import sanitize_floats
+    assert sanitize_floats(float("-inf")) is None
+
+
+@pytest.mark.config
+def test_sanitize_floats_finite_float_unchanged():
+    from utils import sanitize_floats
+    assert sanitize_floats(3.14) == pytest.approx(3.14)
+
+
+@pytest.mark.config
+def test_sanitize_floats_dict_values_sanitized():
+    from utils import sanitize_floats
+    result = sanitize_floats({"a": float("nan"), "b": 1.5})
+    assert result["a"] is None
+    assert result["b"] == pytest.approx(1.5)
+
+
+@pytest.mark.config
+def test_sanitize_floats_list_values_sanitized():
+    from utils import sanitize_floats
+    result = sanitize_floats([float("nan"), 2.0, float("inf")])
+    assert result[0] is None
+    assert result[1] == pytest.approx(2.0)
+    assert result[2] is None
+
+
+@pytest.mark.config
+def test_sanitize_floats_nested_structure_sanitized():
+    from utils import sanitize_floats
+    result = sanitize_floats({"a": [float("nan"), {"b": float("inf")}]})
+    assert result["a"][0] is None
+    assert result["a"][1]["b"] is None
+
+
+@pytest.mark.config
+def test_sanitize_floats_non_float_passthrough():
+    from utils import sanitize_floats
+    assert sanitize_floats("string") == "string"
+    assert sanitize_floats(42) == 42
+    assert sanitize_floats(None) is None

@@ -29,7 +29,7 @@ def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.Data
     return df_daily
 
 
-def _prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame], *, drop_missing_volume: bool = False) -> pd.DataFrame:
+def prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame], *, drop_missing_volume: bool = False) -> pd.DataFrame:
     """Single cleaning path for every daily-history writer so saved repairs survive any refresh; df_live=None means no live feed was fetched, so the exchange state and the bar's own date decide whether the last bar is still forming."""
     df = df.dropna(subset=["Close", "Volume"] if drop_missing_volume else ["Close"])
     for col in ("Open", "High", "Low"):
@@ -157,7 +157,7 @@ class DataEngine:
                 if not path.startswith(history_root + os.sep):
                     logger.warning("Skipping historical path outside cache root for ticker %r.", ticker)
                     continue
-                df = _prepare_daily_history(ticker, df, live_dfs.get(ticker, pd.DataFrame()), drop_missing_volume=True)
+                df = prepare_daily_history(ticker, df, live_dfs.get(ticker, pd.DataFrame()), drop_missing_volume=True)
                 if not df.empty:
                     df.to_parquet(path, engine='pyarrow')
         except Exception as e:
@@ -265,7 +265,7 @@ class DataEngine:
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
                 self._strip_tz(df_daily)
-                df_daily = _prepare_daily_history(ticker, df_daily, df_live)
+                df_daily = prepare_daily_history(ticker, df_daily, df_live)
                 if not df_daily.empty:
                     df_daily.to_parquet(history_path, engine='pyarrow')
                     persisted = True
@@ -327,7 +327,7 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     df = df.copy()
     if df.index.tz is not None:
         df.index = df.index.tz_convert(None)
-    df = _prepare_daily_history(ticker, df, None)
+    df = prepare_daily_history(ticker, df, None)
     if df.empty:
         return None
     HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
