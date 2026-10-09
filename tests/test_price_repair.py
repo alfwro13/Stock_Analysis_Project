@@ -303,7 +303,7 @@ class TestRefreshDownstream:
         return pd.DataFrame({"Close": [1.0]}, index=pd.to_datetime(["2026-10-05"]))
 
     def test_in_scope_ticker_rebuilds_history_and_queues_portfolio_caches(self):
-        with patch("ai_prediction_engine.rebuild_quant_history", return_value=42) as rebuild, \
+        with patch("ml_backfill_engine.rebuild_quant_history", return_value=42) as rebuild, \
              patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
              patch("price_repair_engine.request_cache_refresh", return_value=MagicMock()) as queue:
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
@@ -313,7 +313,7 @@ class TestRefreshDownstream:
         assert queue.call_args.args[0] == "price-repair:LCJP.L"
 
     def test_ticker_outside_portfolio_and_watchlist_queues_nothing(self):
-        with patch("ai_prediction_engine.rebuild_quant_history", return_value=5), \
+        with patch("ml_backfill_engine.rebuild_quant_history", return_value=5), \
              patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["AAPL"]), \
              patch("price_repair_engine.request_cache_refresh") as queue:
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
@@ -321,14 +321,14 @@ class TestRefreshDownstream:
         queue.assert_not_called()
 
     def test_refused_refresh_request_is_reported_as_unavailable(self):
-        with patch("ai_prediction_engine.rebuild_quant_history", return_value=5), \
+        with patch("ml_backfill_engine.rebuild_quant_history", return_value=5), \
              patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
              patch("price_repair_engine.request_cache_refresh", return_value=None):
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
         assert result["portfolio_caches"] == "unavailable"
 
     def test_history_rebuild_failure_is_reported_and_does_not_block_cache_refresh(self):
-        with patch("ai_prediction_engine.rebuild_quant_history", side_effect=RuntimeError("boom")), \
+        with patch("ml_backfill_engine.rebuild_quant_history", side_effect=RuntimeError("boom")), \
              patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
              patch("price_repair_engine.request_cache_refresh", return_value=MagicMock()):
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())

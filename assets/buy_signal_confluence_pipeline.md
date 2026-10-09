@@ -106,7 +106,7 @@ a range-bound (Chop) market, trend-following scores matter more in a trending (B
 **Inputs**, each normalized to 0-100 before weighting:
 - `stock_signals.composite_score` (already 0-100).
 - `stock_signals.ml_confidence` — **previously a dead schema column with no write site
-  anywhere in the codebase.** `ai_prediction_engine.update_daily_ml_predictions()` now mirrors
+  anywhere in the codebase.** `ml_inference_engine.update_daily_ml_predictions()` now mirrors
   `quant_signals.ml_confidence_score` onto it in the same `UPDATE` pass, every time the daily
   ML Inference job (`ml_inference_job`) runs — needed as a one-row-per-ticker join target this
   score can read without a second `quant_signals` subselect.

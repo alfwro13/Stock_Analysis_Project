@@ -47,7 +47,7 @@ if str(_ROOT) not in sys.path:
 
 # Import helpers and constants from production modules so we share exactly
 # the same winsorization, z-scoring, and sector-mapping logic.
-from ai_prediction_engine import (  # noqa: E402
+from ml_features import (  # noqa: E402
     CONTINUOUS_FEATURES,
     FEATURE_COLS,
     FUNDAMENTAL_FEATURES,

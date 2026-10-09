@@ -786,7 +786,7 @@ def get_first_close_on_or_after(conn, ticker: str, date: str) -> Optional[dict]:
 def get_latest_quantile_bands(tickers: list) -> list:
     """Latest quant_signals row per ticker with non-null price_q10/price_q90 — the same
     inline correlated-subquery idiom used elsewhere in the codebase for 'latest row per
-    ticker' (ai_prediction_engine.py, page_routes.py, market_pulse.py). Shared by
+    ticker' (ml_inference_engine.py, page_routes.py, market_pulse.py). Shared by
     predicted_movers_engine.py and the /earnings-volatility page, both of which need the
     general-purpose ML Quantile Price Band for a ticker."""
     if not tickers:

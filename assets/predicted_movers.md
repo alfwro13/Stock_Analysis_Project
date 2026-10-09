@@ -19,7 +19,7 @@ DB tables: `predicted_movers_history` (`stable_shortlist_snapshots` / `stable_sh
 
 Unlike Pairs Spread Monitor, the leaderboard is a pure **on-demand live SELECT** — it reads
 already-computed `quant_signals.price_q10`/`price_q90` (written nightly by
-`ai_prediction_engine.score_quantile_predictions()`, called from `run_ml_inference()` /
+`ml_inference_engine.score_quantile_predictions()`, called from `run_ml_inference()` /
 `ml_inference_job`), so there's no scan to trigger and no "Run Scan Now" button. All three scopes
 (Portfolio, Watchlist and Universe) are computed identically on every page load. The only scheduled
 work tied to this page is the weekly Stable Shortlist job (`assets/stable_shortlist.md`).
@@ -76,7 +76,7 @@ do not appear on the accuracy page.
 1. Resolve scope tickers.
 2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` (the
    same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
-   `ai_prediction_engine.py`, `page_routes.py`, `market_pulse.py`).
+   `ml_inference_engine.py`, `page_routes.py`, `market_pulse.py`).
 3. Resolve current price via `accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
    re-derive current price from `quant_signals.close_price`, which is the price *at prediction
    time*, not now). Rows with no resolvable current price are dropped.

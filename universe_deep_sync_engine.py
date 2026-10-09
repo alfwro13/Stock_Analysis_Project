@@ -126,7 +126,7 @@ def run_universe_deep_sync() -> None:
         logger.info("[Stage 2/5] Metadata sync skipped (already completed today).")
     else:
         try:
-            from ai_prediction_engine import sync_ticker_metadata
+            from ml_backfill_engine import sync_ticker_metadata
             sync_ticker_metadata(target_tickers)
             _mark_stage_done(today_str, 'deep_sync_s2')
             stage_status["metadata"] = "OK"
@@ -164,7 +164,7 @@ def run_universe_deep_sync() -> None:
         logger.info("[Stage 4/5] Momentum backfill skipped (already completed today).")
     else:
         try:
-            from ai_prediction_engine import run_historical_backfill
+            from ml_backfill_engine import run_historical_backfill
             # Without this stage, Stage 5 silently skips every universe ticker because the 18-feature ML input set is incomplete.
             run_historical_backfill(tickers=target_tickers)
             _mark_stage_done(today_str, 'deep_sync_s4')
@@ -184,7 +184,7 @@ def run_universe_deep_sync() -> None:
         logger.info("[Stage 5/5] ML inference skipped (already completed today).")
     else:
         try:
-            from ai_prediction_engine import update_daily_ml_predictions
+            from ml_inference_engine import update_daily_ml_predictions
             update_daily_ml_predictions(target_tickers)
             _mark_stage_done(today_str, 'deep_sync_s5')
             stage_status["ml_inference"] = "OK"

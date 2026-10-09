@@ -28,12 +28,12 @@
 
 ## 1. Overview
 
-The anomaly detection engine is an **unsupervised early-warning layer** that sits alongside the crash detection engine (`crash_engine.py`) and the ML ensemble (`ai_prediction_engine.py`). Its role is distinct from both:
+The anomaly detection engine is an **unsupervised early-warning layer** that sits alongside the crash detection engine (`crash_engine.py`) and the ML ensemble (`ml_training_engine.py` / `ml_inference_engine.py`). Its role is distinct from both:
 
 | Engine | Question it answers |
 |--------|---------------------|
 | `crash_engine.py` | *Has a threshold already been breached?* (reactive, rule-based) |
-| `ai_prediction_engine.py` | *Is a >3% return likely over the next 10 days?* (predictive, supervised) |
+| `ml_training_engine.py` / `ml_inference_engine.py` | *Is a >3% return likely over the next 10 days?* (predictive, supervised) |
 | `anomaly_engine.py` | *Is the stock behaving in a statistically unusual way right now?* (early warning, unsupervised) |
 
 The key design principle is multi-dimensional detection. Traditional risk engines fire on a single threshold — for example, "volume > 1.5× rolling mean". The anomaly engine detects compound states that are individually unremarkable but statistically unusual in combination: a volume spike alongside an RSI divergence alongside an SMA break, for instance. These compound signals frequently precede significant price moves before any single-dimension threshold is reached.

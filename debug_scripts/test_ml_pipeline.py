@@ -48,12 +48,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import BASE_DIR, DB_PATH
-from ai_prediction_engine import (
-    run_historical_backfill,
-    train_global_ml_model,
-    update_daily_ml_predictions,
-    get_target_tickers,
-)
+from ml_backfill_engine import get_target_tickers, run_historical_backfill
+from ml_inference_engine import update_daily_ml_predictions
+from ml_training_engine import train_global_ml_model
 
 RESULTS_PATH = Path(__file__).parent / "ml_pipeline_results.json"
 BACKFILL_STALE_HOURS = 20  # offer to skip if backfill ran within this window

@@ -110,13 +110,13 @@ def _run_with_mocked_stages(tickers, stage_exceptions=None):
     with (
         patch("universe_fundamentals_engine.run_universe_fundamentals_sync",
               side_effect=lambda *a, **kw: _maybe_raise(fund_exc)),
-        patch("ai_prediction_engine.sync_ticker_metadata",
+        patch("ml_backfill_engine.sync_ticker_metadata",
               side_effect=lambda *a, **kw: _maybe_raise(meta_exc)),
         patch("quant_engine.run_daily_quant_scan",
               side_effect=lambda *a, **kw: _maybe_raise(tech_exc)),
-        patch("ai_prediction_engine.run_historical_backfill",
+        patch("ml_backfill_engine.run_historical_backfill",
               side_effect=lambda *a, **kw: _maybe_raise(mom_exc)),
-        patch("ai_prediction_engine.update_daily_ml_predictions",
+        patch("ml_inference_engine.update_daily_ml_predictions",
               side_effect=lambda *a, **kw: _maybe_raise(ml_exc)),
     ):
         run_universe_deep_sync()
@@ -238,10 +238,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync") as mock_s1,
-            patch("ai_prediction_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
-            patch("ai_prediction_engine.run_historical_backfill"),
-            patch("ai_prediction_engine.update_daily_ml_predictions"),
+            patch("ml_backfill_engine.run_historical_backfill"),
+            patch("ml_inference_engine.update_daily_ml_predictions"),
         ):
             run_universe_deep_sync()
             mock_s1.assert_not_called()
@@ -253,10 +253,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ai_prediction_engine.sync_ticker_metadata") as mock_s2,
+            patch("ml_backfill_engine.sync_ticker_metadata") as mock_s2,
             patch("quant_engine.run_daily_quant_scan"),
-            patch("ai_prediction_engine.run_historical_backfill"),
-            patch("ai_prediction_engine.update_daily_ml_predictions"),
+            patch("ml_backfill_engine.run_historical_backfill"),
+            patch("ml_inference_engine.update_daily_ml_predictions"),
         ):
             run_universe_deep_sync()
             mock_s2.assert_not_called()
@@ -268,10 +268,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ai_prediction_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan") as mock_s3,
-            patch("ai_prediction_engine.run_historical_backfill"),
-            patch("ai_prediction_engine.update_daily_ml_predictions"),
+            patch("ml_backfill_engine.run_historical_backfill"),
+            patch("ml_inference_engine.update_daily_ml_predictions"),
         ):
             run_universe_deep_sync()
             mock_s3.assert_not_called()
@@ -283,10 +283,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ai_prediction_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
-            patch("ai_prediction_engine.run_historical_backfill") as mock_s4,
-            patch("ai_prediction_engine.update_daily_ml_predictions"),
+            patch("ml_backfill_engine.run_historical_backfill") as mock_s4,
+            patch("ml_inference_engine.update_daily_ml_predictions"),
         ):
             run_universe_deep_sync()
             mock_s4.assert_not_called()
@@ -298,10 +298,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ai_prediction_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
-            patch("ai_prediction_engine.run_historical_backfill"),
-            patch("ai_prediction_engine.update_daily_ml_predictions") as mock_s5,
+            patch("ml_backfill_engine.run_historical_backfill"),
+            patch("ml_inference_engine.update_daily_ml_predictions") as mock_s5,
         ):
             run_universe_deep_sync()
             mock_s5.assert_not_called()
@@ -312,10 +312,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ai_prediction_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
-            patch("ai_prediction_engine.run_historical_backfill"),
-            patch("ai_prediction_engine.update_daily_ml_predictions"),
+            patch("ml_backfill_engine.run_historical_backfill"),
+            patch("ml_inference_engine.update_daily_ml_predictions"),
         ):
             run_universe_deep_sync()
 
@@ -347,10 +347,10 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync") as mock_s1,
-            patch("ai_prediction_engine.sync_ticker_metadata") as mock_s2,
+            patch("ml_backfill_engine.sync_ticker_metadata") as mock_s2,
             patch("quant_engine.run_daily_quant_scan") as mock_s3,
-            patch("ai_prediction_engine.run_historical_backfill") as mock_s4,
-            patch("ai_prediction_engine.update_daily_ml_predictions") as mock_s5,
+            patch("ml_backfill_engine.run_historical_backfill") as mock_s4,
+            patch("ml_inference_engine.update_daily_ml_predictions") as mock_s5,
         ):
             run_universe_deep_sync()
             mock_s1.assert_not_called()

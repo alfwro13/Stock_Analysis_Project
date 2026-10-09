@@ -66,14 +66,14 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `apscheduler` | The only sanctioned scheduler per AGENTS.md rule 12 (`scheduler_engine.py`) | `CronTrigger`/job-store API changes — test that scheduled jobs still register (`tests/test_scheduler_engine.py`'s manifest-completeness check) |
-| `psutil` | System diagnostics (CPU/memory/disk) surfaced in Settings → System Diagnostics (`ai_prediction_engine.py`, `system_check_engine.py`) | Platform-specific metric availability |
+| `psutil` | System diagnostics (CPU/memory/disk) surfaced in Settings → System Diagnostics (`ml_training_engine.py`, `system_check_engine.py`) | Platform-specific metric availability |
 
 ## ML / AI
 
 | Package | Used for | What could break |
 |---|---|---|
-| `scikit-learn` | RF models, cross-sectional scaling (`ai_prediction_engine.py`, `regime_engine.py`, `macro_ai_engine.py`) | Persisted estimators are not supported across versions. `model_compatibility_engine.py` records a version sidecar, rejects mismatches before unpickling, and queues the affected APScheduler training jobs sequentially after restart. Legacy artifacts without a sidecar fall back to `InconsistentVersionWarning` detection and gain a sidecar after a compatible load. |
-| `xgboost` | Gradient-boosted models in the ML ensemble (`ai_prediction_engine.py`) | Same as scikit-learn — silent accuracy drift risk, not a crash risk |
+| `scikit-learn` | RF models, cross-sectional scaling (`ml_training_engine.py`, `regime_engine.py`, `macro_ai_engine.py`) | Persisted estimators are not supported across versions. `model_compatibility_engine.py` records a version sidecar, rejects mismatches before unpickling, and queues the affected APScheduler training jobs sequentially after restart. Legacy artifacts without a sidecar fall back to `InconsistentVersionWarning` detection and gain a sidecar after a compatible load. |
+| `xgboost` | Gradient-boosted models in the ML ensemble (`ml_training_engine.py`) | Same as scikit-learn — silent accuracy drift risk, not a crash risk |
 | `hmmlearn` | GaussianHMM regime classification (`regime_engine.py`, `macro_ai_engine.py`) | Model API stability — this package has historically had breaking API changes across majors; pin conservatively |
 | `scipy` | Statistical/optimization routines underpinning `scikit-learn`/`hmmlearn` and used directly in risk calculations; `scipy.optimize.minimize(method="SLSQP")` solves the Portfolio Optimizer's Long-Only mode and, through `portfolio_optimizer_engine.long_only_allocations()`, the Strategy Backtester's rolling Steadiest/Best Reward-for-Risk strategies | Rarely breaking on its own; mostly a transitive-compatibility concern with scikit-learn/hmmlearn pins. After an upgrade, run `tests/test_portfolio_optimizer_engine.py` and `tests/test_strategy_backtest_engine.py` — their hand-computed Long-Only answers and look-ahead checks catch SLSQP behaviour changes |
 | `joblib` | Serializes/deserializes every `models/*.joblib` artifact | **Pickle-compatibility risk**: a joblib major upgrade can fail to deserialize models trained under an older version — always retrain (Settings → Machine Learning & AI Engine) after a joblib major-version bump, don't assume old `.joblib` files still load |

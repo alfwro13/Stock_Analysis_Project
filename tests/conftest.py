@@ -189,3 +189,32 @@ def _block_explicit_fx_refresh():
     from portfolio_service import refresh_fx_rates
     with patch("portfolio_service.refresh_fx_rates"):
         yield refresh_fx_rates
+
+
+@pytest.fixture
+def fake_inference_df():
+    """Factory for a quant_signals + fundamentals + sector frame in the shape the ML engines read from SQL."""
+    import numpy as np
+    import pandas as pd
+
+    def build(tickers, date_str="2026-01-01"):
+        rng = np.random.default_rng(7)
+        n = len(tickers)
+        return pd.DataFrame({
+            "ticker": tickers, "date": [date_str] * n,
+            "close_price": 100.0 + rng.normal(0, 5, n), "volume": 1_000_000 + rng.normal(0, 1000, n),
+            "rsi_14": 50.0 + rng.normal(0, 5, n), "macd": rng.normal(0, 1, n),
+            "macd_signal": rng.normal(0, 1, n), "macd_hist": rng.normal(0, 1, n),
+            "sma_50": 95.0 + rng.normal(0, 5, n), "sma_200": 90.0 + rng.normal(0, 5, n),
+            "volume_surge": [0] * n, "bullish_cross": [0] * n,
+            "mom_1m": rng.normal(0, 0.05, n), "mom_3m": rng.normal(0, 0.1, n),
+            "mom_6m": rng.normal(0, 0.15, n), "mom_12m_skip1m": rng.normal(0, 0.2, n),
+            "atr_pct": 0.02 + abs(rng.normal(0, 0.005, n)), "hist_vol_20": 0.2 + abs(rng.normal(0, 0.05, n)),
+            "rel_strength_5d": rng.normal(0, 0.02, n), "rel_strength_20d": rng.normal(0, 0.03, n),
+            "trailing_pe": 15.0 + rng.normal(0, 3, n), "price_to_book": 2.0 + rng.normal(0, 0.5, n),
+            "profit_margin": 0.1 + rng.normal(0, 0.02, n), "roe": 0.15 + rng.normal(0, 0.03, n),
+            "revenue_growth": 0.08 + rng.normal(0, 0.02, n), "debt_to_equity": 30.0 + rng.normal(0, 10, n),
+            "sector": ["Technology"] * n,
+        })
+
+    return build
