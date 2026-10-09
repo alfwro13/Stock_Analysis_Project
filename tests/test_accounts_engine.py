@@ -1981,3 +1981,39 @@ def test_has_stock_signals_row_true_when_row_exists():
 @pytest.mark.db
 def test_has_stock_signals_row_false_when_missing():
     assert accounts_engine._has_stock_signals_row('ZZNOSIGROW') is False
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_past_date_without_history_is_unavailable_not_live_or_1_0(monkeypatch):
+    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda tickers, period="5y", interval="1d": {})
+    monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency: 0.9)
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") is None
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_history_ending_long_before_the_date_is_unavailable(monkeypatch):
+    df = pd.DataFrame({"Close": [1.10]}, index=pd.to_datetime(["2025-06-02"]))
+    monkeypatch.setattr(accounts_engine.yahoo_engine, "get_price_history", lambda tickers, period="5y", interval="1d": {"EURGBP=X": df})
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") is None
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_without_a_date_uses_the_bounded_quote_and_may_be_unavailable(monkeypatch):
+    monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency: 0.9)
+    assert accounts_engine.fx_rate_on_date("EUR", None) == 0.9
+    monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency: None)
+    assert accounts_engine.fx_rate_on_date("EUR", None) is None
+    assert accounts_engine.fx_rate_on_date("GBp", None) == 0.01
+
+
+@pytest.mark.db
+def test_holdings_without_an_fx_rate_are_valued_at_cost_like_unpriced_holdings(monkeypatch):
+    _seed_stock_signal("ZZNOFX", 150.0, "USD")
+    aid = create_account("NoFxHoldingsAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZNOFX", currency="USD", quantity=10,
+                    unit_price=100, exchange_rate=0.8)
+    monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency, **kwargs: None)
+    row = next(r for r in accounts_engine.holdings_with_market_value(aid) if r["ticker"] == "ZZNOFX")
+    assert row["market_value"] == pytest.approx(800.0)
+    total, breakdown = accounts_engine._equity_value_with_breakdown(accounts_engine._ledger_for_account(aid)[0])
+    assert total == pytest.approx(800.0) and breakdown == {}

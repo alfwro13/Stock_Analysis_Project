@@ -108,7 +108,7 @@ Yahoo Finance lookup. If neither resolves it — typically a delisted or mistype
 Every skipped row (other than `INTERNAL_TRANSFER`/blank rows, which are expected and not
 worth reporting) is returned individually in the response's `skipped_rows` list, each entry
 giving the row's `date`, `ticker`, and a human-readable `reason` (unresolved ticker, no
-ticker in file, unparseable date, unrecognized row type, already imported, or a database
+ticker in file, unparseable date, no exchange rate available for a foreign-currency cash row's date, unrecognized row type, already imported, or a database
 error) — enough detail to find the exact row in the source file. If any rows were skipped,
 the same detail is also dispatched through `notification_engine.notify()` so it remains
 visible in the in-app Notifications panel after the import modal is closed, rather than only

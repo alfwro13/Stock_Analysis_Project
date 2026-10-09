@@ -1,13 +1,9 @@
 import logging
-from typing import Dict
 from config import BASE_CURRENCY
 from utils import normalize_currency_bucket
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
-
-# Last successfully fetched rates kept as stale fallback when yahoo_engine returns None.
-_last_known_rates: Dict[str, float] = {}
 
 
 def _fx_rate(pair: str, *, cache_only: bool = False):
@@ -15,17 +11,13 @@ def _fx_rate(pair: str, *, cache_only: bool = False):
         return yahoo_engine.get_cached_fx_rate(pair)["rate"]
     rate = yahoo_engine.get_fx_rate(pair)
     if rate is not None:
-        _last_known_rates[pair] = rate
         return rate
     persisted = yahoo_engine.get_cached_fx_rate(pair, refresh=False)["rate"]
     if persisted is not None:
         logger.warning("Using last persisted FX rate for %s.", pair)
         return persisted
-    if pair in _last_known_rates:
-        logger.warning("Using stale FX rate for %s.", pair)
-        return _last_known_rates[pair]
-    logger.warning("No FX data for %s. Returning 1.0 fallback.", pair)
-    return 1.0
+    logger.warning("No usable FX rate for %s; the value is unavailable.", pair)
+    return None
 
 
 def get_rate_to_base(stock_currency: str, *, cache_only: bool = False):

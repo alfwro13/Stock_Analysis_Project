@@ -68,8 +68,8 @@
     </div>
     <div class="xray-metric-card">
         <div class="xray-metric-label"><abbr title="FX spot rate used for currency adjustment between ETF and constituent prices.">{{ prediction.fx_pair if prediction.fx_pair else 'FX Rate' }}</abbr></div>
-        <div class="xray-metric-value">{{ prediction.fx_rate if (prediction.fx_rate and prediction.fx_rate != 1.0) else '—' }}</div>
-        {% if prediction.fx_pair and prediction.fx_rate == 1.0 %}
+        <div class="xray-metric-value">{{ prediction.fx_rate if prediction.fx_rate else '—' }}</div>
+        {% if prediction.fx_pair and not prediction.fx_rate %}
         <span class="badge-warn">FX rate unavailable &mdash; adjustment skipped</span>
         {% elif not prediction.fx_pair %}
         <span class="xray-metric-sublabel xray-metric-label">No FX adjustment (same currency)</span>
@@ -130,7 +130,7 @@
 <p class="risk-summary-text">
     <strong>How this works:</strong>
     Tracks {{ cfg.constituents | length }} configured constituents for <strong>{{ cfg.etf_ticker }}</strong>.
-    The <strong>Holdings model</strong> computes a weighted sum of each constituent&rsquo;s return using the configured weights{% if prediction.fx_pair and prediction.fx_rate and prediction.fx_rate != 1.0 %}, then applies a <abbr title="{{ prediction.fx_pair }} exchange rate adjustment for the currency difference between ETF and constituent prices.">{{ prediction.fx_pair }} FX adjustment</abbr>{% endif %}.
+    The <strong>Holdings model</strong> computes a weighted sum of each constituent&rsquo;s return using the configured weights{% if prediction.fx_pair and prediction.fx_rate %}, then applies a <abbr title="{{ prediction.fx_pair }} exchange rate adjustment for the currency difference between ETF and constituent prices.">{{ prediction.fx_pair }} FX adjustment</abbr>{% endif %}.
     In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression</strong> provides a 95% confidence interval.
     All prices in {{ etf_info.currency }}.
 </p>

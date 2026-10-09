@@ -62,20 +62,7 @@ class TestGetRateToBase:
                 result = get_rate_to_base("USD")
         assert result == pytest.approx(0.79)
 
-    def test_yahoo_returns_none_falls_back_to_stale(self):
-        import portfolio_service
-        portfolio_service._last_known_rates["EURGBP=X"] = 0.86
-        with patch("portfolio_service.BASE_CURRENCY", "GBP"):
-            with patch("portfolio_service.yahoo_engine") as mock_yf:
-                mock_yf.get_fx_rate.return_value = None
-                mock_yf.get_cached_fx_rate.return_value = {"rate": None}
-                from portfolio_service import get_rate_to_base
-                result = get_rate_to_base("EUR")
-        assert result == pytest.approx(0.86)
-
     def test_yahoo_returns_none_prefers_persisted_quote(self):
-        import portfolio_service
-        portfolio_service._last_known_rates["CHFGBP=X"] = 0.5
         with patch("portfolio_service.BASE_CURRENCY", "GBP"):
             with patch("portfolio_service.yahoo_engine") as mock_yf:
                 mock_yf.get_fx_rate.return_value = None
@@ -85,17 +72,32 @@ class TestGetRateToBase:
         assert result == pytest.approx(0.91)
         mock_yf.get_cached_fx_rate.assert_called_once_with("CHFGBP=X", refresh=False)
 
-    def test_yahoo_none_no_stale_returns_1_0_fallback(self):
-        import portfolio_service
-        portfolio_service._last_known_rates.pop("SEKCURRENCY=X", None)
-        portfolio_service._last_known_rates.pop("SEKGBP=X", None)
+    def test_no_live_or_usable_persisted_quote_is_unavailable_not_1_0(self):
         with patch("portfolio_service.BASE_CURRENCY", "GBP"):
             with patch("portfolio_service.yahoo_engine") as mock_yf:
                 mock_yf.get_fx_rate.return_value = None
                 mock_yf.get_cached_fx_rate.return_value = {"rate": None}
                 from portfolio_service import get_rate_to_base
                 result = get_rate_to_base("SEK")
-        assert result == 1.0
+        assert result is None
+
+    def test_a_previously_seen_rate_is_not_remembered_in_process(self):
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"):
+            with patch("portfolio_service.yahoo_engine") as mock_yf:
+                from portfolio_service import get_rate_to_base
+                mock_yf.get_fx_rate.return_value = 0.86
+                assert get_rate_to_base("EUR") == pytest.approx(0.86)
+                mock_yf.get_fx_rate.return_value = None
+                mock_yf.get_cached_fx_rate.return_value = {"rate": None}
+                assert get_rate_to_base("EUR") is None
+
+    def test_pence_with_non_gbp_base_is_unavailable_when_gbp_rate_is(self):
+        with patch("portfolio_service.BASE_CURRENCY", "USD"):
+            with patch("portfolio_service.yahoo_engine") as mock_yf:
+                mock_yf.get_fx_rate.return_value = None
+                mock_yf.get_cached_fx_rate.return_value = {"rate": None}
+                from portfolio_service import get_rate_to_base
+                assert get_rate_to_base("GBp") is None
 
 
 class TestGetRateFromBase:

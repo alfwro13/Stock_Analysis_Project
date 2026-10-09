@@ -269,7 +269,7 @@ def _compute_intraday_returns(
 def _compute_holdings_prediction(
     df: pd.DataFrame,
     constituents: list,
-    fx_rate: float,
+    fx_rate: float | None,
     last_etf_close: float,
     intraday_returns: dict[str, float] | None,
     fx_pair: str | None,
@@ -317,7 +317,7 @@ def _compute_holdings_prediction(
         return None
 
     fx_change = 0.0
-    if fx_pair and fx_prev and fx_prev > 0:
+    if fx_pair and fx_rate is not None and fx_prev and fx_prev > 0:
         fx_change = (fx_rate / fx_prev) - 1.0
 
     fx_adjustment = -fx_change
@@ -518,13 +518,11 @@ def run_prediction(
     etf_series = df[etf_ticker].dropna()
     last_etf_close = float(etf_series.iloc[-1])
 
-    fx_rate = 1.0
+    fx_rate = None
     if fx_pair:
-        fetched = yahoo_engine.get_fx_rate(fx_pair)
-        if fetched is not None:
-            fx_rate = fetched
-        else:
-            logger.warning("FX rate unavailable for %s, using 1.0", fx_pair)
+        fx_rate = yahoo_engine.get_fx_rate(fx_pair)
+        if fx_rate is None:
+            logger.warning("FX rate unavailable for %s; predicting without an FX adjustment", fx_pair)
 
     signal_source = "daily_close"
     intraday_returns: dict[str, float] | None = None
@@ -604,7 +602,7 @@ def run_prediction(
         "prediction_type": prediction_type,
         "session_relationship": session_rel,
         "constituent_exchanges": constituent_exchanges,
-        "fx_rate": round(fx_rate, 4),
+        "fx_rate": round(fx_rate, 4) if fx_rate is not None else None,
         "fx_pair": fx_pair,
         "as_of_utc": as_of_utc,
         "as_of_local": time_engine.fmt_datetime(datetime.now(timezone.utc)),

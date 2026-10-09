@@ -74,6 +74,8 @@ def _map_csv_row(row: dict) -> tuple:
 
     if row_type in _CSV_CASH_TYPE_MAP:
         exchange_rate = 1.0 if account_currency == BASE_CURRENCY else fx_rate_on_date(account_currency, txn_date)
+        if exchange_rate is None:
+            return None, "no_fx_rate", None
         return {
             "txn_type": _CSV_CASH_TYPE_MAP[row_type],
             "txn_date": txn_date,
@@ -177,6 +179,7 @@ _CSV_SKIP_REASON_LABELS = {
     "no_ticker": "no ticker in file",
     "unknown_type": "unrecognized row type",
     "bad_date": "unparseable date",
+    "no_fx_rate": "no exchange rate available for that date",
     "unresolved_ticker": "ticker not found (possibly delisted or mistyped)",
     "duplicate": "already imported",
     "db_error": "database error",

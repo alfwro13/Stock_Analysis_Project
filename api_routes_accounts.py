@@ -214,7 +214,14 @@ def _ensure_ticker_data(ticker: str, background_tasks: BackgroundTasks) -> None:
         background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
 
 
-def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
+def _missing_fx_response(*currencies: Optional[str], txn_date: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"status": "error", "message": f"No exchange rate is available for {' / '.join(c for c in currencies if c)} on {txn_date} — enter the exchange rate manually."},
+    )
+
+
+def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> Optional[float]:
     if exchange_rate is not None:
         return exchange_rate
     return fx_rate_on_date(currency, txn_date)
@@ -222,7 +229,7 @@ def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[floa
 
 def _resolve_fee_currency_and_rate(
     fee_currency: Optional[str], fee_exchange_rate: Optional[float],
-    trade_currency: str, trade_exchange_rate: float, txn_date: str,
+    trade_currency: str, trade_exchange_rate: Optional[float], txn_date: str,
 ) -> tuple:
     """A fee can be billed in a different currency than the trade itself (e.g. a broker's FX spread
     fee already quoted in base currency on a foreign-currency trade) — resolved independently of
@@ -423,9 +430,13 @@ async def api_create_transaction(
             _ensure_ticker_data(ticker, background_tasks)
         currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
+        if exchange_rate is None:
+            return _missing_fx_response(currency, txn_date=body.txn_date)
         fee_currency, fee_exchange_rate = _resolve_fee_currency_and_rate(
             body.fee_currency, body.fee_exchange_rate, currency, exchange_rate, body.txn_date
         )
+        if fee_exchange_rate is None:
+            return _missing_fx_response(fee_currency, txn_date=body.txn_date)
         txn_id = add_transaction(
             account_id=account_id,
             txn_type=body.txn_type,
@@ -483,9 +494,13 @@ async def api_update_transaction(
         ticker = normalize_ticker(body.ticker) if body.ticker else None
         currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
+        if exchange_rate is None:
+            return _missing_fx_response(currency, txn_date=body.txn_date)
         fee_currency, fee_exchange_rate = _resolve_fee_currency_and_rate(
             body.fee_currency, body.fee_exchange_rate, currency, exchange_rate, body.txn_date
         )
+        if fee_exchange_rate is None:
+            return _missing_fx_response(fee_currency, txn_date=body.txn_date)
         ok = update_transaction(
             txn_id,
             txn_type=body.txn_type,
@@ -586,6 +601,8 @@ async def api_export_transactions(request: Request, account_id: int):
 async def api_fx_rate(request: Request, currency: str, date: str):
     try:
         rate = fx_rate_on_date(currency, date)
+        if rate is None:
+            return JSONResponse(content={"status": "error", "message": f"No {currency} exchange rate is available for {date}."})
         return JSONResponse(content={"status": "success", "rate": rate})
     except Exception as e:
         logger.error("api_fx_rate failed for %r/%r: %s", currency, date, e)

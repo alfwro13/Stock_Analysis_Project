@@ -130,6 +130,18 @@ class TestComputeHoldingsPrediction:
         assert result is not None
         assert abs(result["predicted_change_pct"] - 10.0) < 0.01
 
+    def test_missing_fx_rate_skips_the_fx_adjustment(self):
+        tickers = ["A", "B", "C"]
+        df = _make_daily_df({t: [100.0, 110.0] for t in tickers}, days=2)
+        df["EURUSD=X"] = [0.5, 0.5]
+        result = _compute_holdings_prediction(
+            df, _equal_weight_holdings(tickers),
+            fx_rate=None, last_etf_close=100.0,
+            intraday_returns=None, fx_pair="EURUSD=X",
+        )
+        assert result["fx_adjustment_pct"] == 0.0
+        assert abs(result["predicted_change_pct"] - 10.0) < 0.01
+
     def test_uses_intraday_returns_when_provided(self):
         tickers = ["A", "B", "C"]
         df = _make_daily_df({t: [100.0, 100.0] for t in tickers}, days=2)

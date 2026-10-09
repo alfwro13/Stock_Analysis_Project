@@ -604,16 +604,21 @@ class AIPromptEngine:
         try:
             exchange_rate = get_rate_to_base(stock_currency)
         except Exception as e:
-            logger.warning(f"[AI ENGINE] FX lookup failed for {stock_currency}; defaulting to 1.0: {e}")
-            exchange_rate = 1.0
+            logger.warning("[AI ENGINE] FX lookup failed for %s: %s", stock_currency, e)
+            exchange_rate = None
 
         # get_rate_to_base returns NATIVE->BASE; the portfolio math below needs
         # BASE->NATIVE to express VWAP back in the stock's own currency.
-        base_to_native = (1.0 / exchange_rate) if exchange_rate and exchange_rate > 0 else 1.0
+        base_to_native = (1.0 / exchange_rate) if exchange_rate and exchange_rate > 0 else None
 
         # 4. Format Portfolio String
         portfolio_str = "No active holdings in the current portfolio."
-        if portfolio_data and portfolio_data.get('global_shares', 0) > 0:
+        if portfolio_data and portfolio_data.get('global_shares', 0) > 0 and base_to_native is None:
+            portfolio_str = (
+                f"User currently holds {portfolio_data.get('global_shares', 0)} shares. Cost basis and P&L in "
+                f"{stock_currency} are unavailable because no exchange rate to the base currency is available right now.\n"
+            )
+        elif portfolio_data and portfolio_data.get('global_shares', 0) > 0:
             global_shares = portfolio_data.get('global_shares', 0)
 
             # Apply FX Conversion to VWAP (Base -> Native)
