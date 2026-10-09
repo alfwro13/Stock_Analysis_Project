@@ -192,3 +192,25 @@ def test_fx_status_includes_fresh_quotes_only_when_requested(monkeypatch):
     statuses = portfolio_service.get_fx_cache_status(["USD", "GBP"], include_fresh=True)
     assert statuses[0]["updated_display"] == time_engine.fmt_datetime(datetime.fromtimestamp(quote["updated_at"], timezone.utc))
     assert calls == [("USDGBP=X", False), ("USDGBP=X", False)]
+
+
+@pytest.mark.parametrize("currency,from_base,expected", [
+    ("USD", False, "USDGBP=X"),
+    ("USD", True, "GBPUSD=X"),
+    ("GBp", False, None),
+    ("GBX", False, None),
+    ("GBP", True, None),
+    ("", False, None),
+    (None, True, None),
+])
+def test_fx_pair_buckets_pence_with_pounds(currency, from_base, expected):
+    import portfolio_service
+    with patch("portfolio_service.BASE_CURRENCY", "GBP"):
+        assert portfolio_service.fx_pair(currency, from_base=from_base) == expected
+
+
+def test_fx_pair_pence_against_non_gbp_base_uses_gbp_pair():
+    import portfolio_service
+    with patch("portfolio_service.BASE_CURRENCY", "USD"):
+        assert portfolio_service.fx_pair("GBX") == "GBPUSD=X"
+        assert portfolio_service.fx_pair("GBp", from_base=True) == "USDGBP=X"

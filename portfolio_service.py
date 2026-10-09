@@ -1,6 +1,7 @@
 import logging
 from typing import Dict
 from config import BASE_CURRENCY
+from utils import normalize_currency_bucket
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def get_rate_from_base(stock_currency: str, *, cache_only: bool = False):
 
 
 def fx_pair(currency, *, from_base=False):
-    native = "GBP" if currency == "GBp" else currency
+    native = normalize_currency_bucket(currency)
     if not native or native == BASE_CURRENCY:
         return None
     return f"{BASE_CURRENCY}{native}=X" if from_base else f"{native}{BASE_CURRENCY}=X"
