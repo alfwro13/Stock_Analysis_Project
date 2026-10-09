@@ -49,7 +49,7 @@ from database import (
     get_benchmark_tickers,
     replace_benchmark_tickers,
 )
-from market_pulse import fetch_and_save_pulse
+from market_pulse_write import fetch_and_save_pulse
 from markets_engine import registry_lookup_tickers
 from notification_engine import notify
 from profile_engine import update_single_profile

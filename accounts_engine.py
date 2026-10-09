@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 import time_engine
-import market_pulse
+import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_helpers import resolve_live_price
 from db_accounts import (
@@ -752,7 +752,7 @@ def held_tickers_lightweight() -> list:
 def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     """Held tickers whose market_pulse_cache row is older than refresh_rate seconds, while
     either of the two markets this app tracks (`GET /api/system/market-status`'s own scope —
-    UK/US) is open, in pre-market, or in after-hours (market_pulse.get_exchange_session_state() !=
+    UK/US) is open, in pre-market, or in after-hours (market_session_helpers.get_exchange_session_state() !=
     "closed") — plus any ticker with NO cached row at all, regardless of market hours. The
     fully-closed gate exists to avoid needlessly re-fetching a ticker whose price can't have moved
     since the market shut, but that reasoning doesn't apply to a genuinely missing row (a restart
@@ -761,7 +761,7 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     would never trigger a fetch to create the first row.
 
     An already-cached (non-missing) ticker is additionally gated on
-    market_pulse.is_ticker_quote_settled() — the shared per-ticker exchange resolution +
+    market_session_helpers.is_ticker_quote_settled() — the shared per-ticker exchange resolution +
     is_quote_settled() check, also used by market_pulse.get_cached_pulse_from_db() and
     registry_tickers_needing_refresh() — not just is_exchange_open(). Yahoo's free LSE feed runs
     ~15-20 minutes behind, so the instant LSE opens this would otherwise trigger a live fetch of a
@@ -797,19 +797,19 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
             conn.close()
 
     missing = [t for t in tickers if t not in cache_map]
-    lse_state = market_pulse.get_exchange_session_state("LSE")
-    nyse_state = market_pulse.get_exchange_session_state("NYSE")
+    lse_state = market_session_helpers.get_exchange_session_state("LSE")
+    nyse_state = market_session_helpers.get_exchange_session_state("NYSE")
     if lse_state == "closed" and nyse_state == "closed":
         return missing
 
     now = time.time()
-    registry_exchange_map = market_pulse.build_registry_exchange_map()
-    registry_future_tickers = market_pulse.build_registry_future_tickers()
+    registry_exchange_map = market_session_helpers.build_registry_exchange_map()
+    registry_future_tickers = market_session_helpers.build_registry_future_tickers()
     stale = []
     for t in tickers:
         if t in cache_map and now - cache_map[t] <= refresh_rate:
             continue
-        if t in cache_map and not market_pulse.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map, registry_future_tickers):
+        if t in cache_map and not market_session_helpers.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map, registry_future_tickers):
             logger.debug("Refresh skipped for %s — quote not yet settled since open.", t)
             continue
         stale.append(t)

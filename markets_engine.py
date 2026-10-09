@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import market_pulse
+import market_session_helpers
 import time_engine
 from config import load_config
 from database import get_ticker_registry, get_ticker_registry_row_by_exchange, get_registry_spot_future_tickers
@@ -40,9 +41,9 @@ def resolve_benchmark_for_holdings(top_holdings: List[Dict[str, Any]]) -> Option
 
 def get_exchange_state(exchange: str) -> str:
     """4-state open/pre/post/closed for one exchange — see
-    market_pulse.get_exchange_session_state() (holiday-aware where a proxy ticker exists,
+    market_session_helpers.get_exchange_session_state() (holiday-aware where a proxy ticker exists,
     weekday+hours heuristic otherwise; 'post' only available for proxy-mapped exchanges)."""
-    return market_pulse.get_exchange_session_state(exchange)
+    return market_session_helpers.get_exchange_session_state(exchange)
 
 
 def get_region_exchanges(region: str) -> List[str]:
@@ -132,7 +133,7 @@ def resolve_tile(row: Dict[str, Any]) -> Tuple[str, str, bool]:
     per-ticker even when a region straddles an open/closed tier boundary."""
     if not row.get("future_ticker"):
         return row["ticker"], row["display_name"], False
-    if row.get("exchange") and market_pulse.is_exchange_open(row["exchange"], include_premarket=False):
+    if row.get("exchange") and market_session_helpers.is_exchange_open(row["exchange"], include_premarket=False):
         return row["ticker"], row["display_name"], False
     return row["future_ticker"], row["future_display_name"] or row["display_name"], True
 

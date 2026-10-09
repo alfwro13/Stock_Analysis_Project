@@ -11,6 +11,7 @@ Covers get_cached_pulse_from_db() and get_all_cached_pulse():
   - closed-market: is_stale=False, needs_refresh=False even for old data
 """
 
+import contextlib
 import sys
 import time
 from pathlib import Path
@@ -22,6 +23,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
 import market_pulse as _mp
+import market_pulse_write as _mw
+import market_session_helpers as _ms
+
+
+@contextlib.contextmanager
+def _patch_trading_session(value):
+    with patch("market_pulse.is_trading_session", return_value=value), \
+         patch("market_session_helpers.is_trading_session", return_value=value):
+        yield
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -155,14 +165,14 @@ class TestGetCachedPulseFromDb:
 
     def test_is_stale_true_when_old(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 301)  # beyond the 5-minute floor
-        with patch("market_pulse.is_trading_session", return_value=True):
+        with _patch_trading_session(True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is True
 
     def test_missing_cache_entry_produces_stale_sentinel(self):
         _clear(ASSET_TICKER)
-        with patch("market_pulse.is_trading_session", return_value=True):
+        with _patch_trading_session(True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next((r for r in result["assets"] if r["ticker"] == ASSET_TICKER), None)
         assert asset is not None
@@ -201,7 +211,7 @@ class TestGetCachedPulseFromDb:
         now = time.time()
         _seed_pulse(ASSET_TICKER, price=297.11, change_pct=35.0, last_updated=now - 7 * 86400)
         _seed_stock_signal(ASSET_TICKER, price=219.05, last_updated=time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)))
-        with patch("market_pulse.is_trading_session", return_value=False):
+        with _patch_trading_session(False):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["price"] == 219.05
@@ -303,21 +313,21 @@ class TestClosedMarketStaleness:
 
     def test_old_data_not_stale_when_market_closed(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
-        with patch("market_pulse.is_trading_session", return_value=False):
+        with _patch_trading_session(False):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is False
 
     def test_needs_refresh_false_when_market_closed(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
-        with patch("market_pulse.is_trading_session", return_value=False):
+        with _patch_trading_session(False):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["needs_refresh"] is False
 
     def test_within_refresh_rate_not_stale_and_no_refresh(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 30)
-        with patch("market_pulse.is_trading_session", return_value=True):
+        with _patch_trading_session(True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is False
@@ -328,8 +338,8 @@ class TestClosedMarketStaleness:
         # needs_refresh is gated by is_quote_settled() (per-ticker exchange), not
         # is_trading_session() — see TestNeedsRefreshPerTickerExchange. Both must be mocked so
         # this test is deterministic regardless of the real exchange's wall-clock open state.
-        with patch("market_pulse.is_trading_session", return_value=True), \
-             patch("market_pulse.is_quote_settled", return_value=True):
+        with _patch_trading_session(True), \
+             patch("market_session_helpers.is_quote_settled", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is False
@@ -337,8 +347,8 @@ class TestClosedMarketStaleness:
 
     def test_beyond_display_floor_is_stale(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 301)  # beyond the 5-minute floor
-        with patch("market_pulse.is_trading_session", return_value=True), \
-             patch("market_pulse.is_quote_settled", return_value=True):
+        with _patch_trading_session(True), \
+             patch("market_session_helpers.is_quote_settled", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is True
@@ -348,7 +358,7 @@ class TestClosedMarketStaleness:
         """A ticker with no cache row must always be fetched; daily NAV data is available
         outside trading hours (e.g. mutual funds), so the missing check must be session-agnostic."""
         _clear(ASSET_TICKER)
-        with patch("market_pulse.is_trading_session", return_value=False):
+        with _patch_trading_session(False):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next((r for r in result["assets"] if r["ticker"] == ASSET_TICKER), None)
         assert asset is not None
@@ -359,7 +369,7 @@ class TestClosedMarketStaleness:
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
         config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}
         with patch("market_pulse.load_config", return_value=config_patch), \
-             patch("market_pulse.is_trading_session", return_value=False):
+             _patch_trading_session(False):
             result = _mp.get_all_cached_pulse()
         assert result[ASSET_TICKER]["is_stale"] is False
 
@@ -384,7 +394,7 @@ class TestNeedsRefreshPerTickerExchange:
 
         # Static mode forced (see test_known_index_ticker_lands_in_indexes) so both index rows
         # are guaranteed present regardless of the real config's MARKET_PULSE_DYNAMIC setting.
-        with patch("market_pulse.is_quote_settled", side_effect=fake_settled), \
+        with patch("market_session_helpers.is_quote_settled", side_effect=fake_settled), \
              patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {}}):
             result = _mp.get_cached_pulse_from_db([], refresh_rate=60)
         by_ticker = {r["ticker"]: r for r in result["indexes"]}
@@ -406,7 +416,7 @@ class TestNeedsRefreshPerTickerExchange:
             return exchange == "LSE"
 
         try:
-            with patch("market_pulse.is_quote_settled", side_effect=fake_settled):
+            with patch("market_session_helpers.is_quote_settled", side_effect=fake_settled):
                 result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
             asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
             assert asset["needs_refresh"] is True
@@ -422,43 +432,43 @@ class TestNeedsRefreshPerTickerExchange:
 
 class TestResolveTickerExchange:
     def test_registry_ticker_uses_registry_exchange_not_currency_fallback(self):
-        assert _mp.resolve_ticker_exchange("^FTSE", currency="USD") == "LSE"
+        assert _ms.resolve_ticker_exchange("^FTSE", currency="USD") == "LSE"
 
     def test_future_ticker_shares_its_spot_rows_exchange(self):
-        assert _mp.resolve_ticker_exchange("ES=F") == "NYSE"
+        assert _ms.resolve_ticker_exchange("ES=F") == "NYSE"
 
     def test_unknown_ticker_falls_back_to_currency_resolution(self):
-        assert _mp.resolve_ticker_exchange("_NOT_A_REGISTRY_TICKER", currency="EUR") == "XETRA"
+        assert _ms.resolve_ticker_exchange("_NOT_A_REGISTRY_TICKER", currency="EUR") == "XETRA"
 
     def test_precomputed_map_is_used_when_given(self):
         prebuilt = {"^FTSE": "XETRA"}
-        assert _mp.resolve_ticker_exchange("^FTSE", registry_exchange_map=prebuilt) == "XETRA"
+        assert _ms.resolve_ticker_exchange("^FTSE", registry_exchange_map=prebuilt) == "XETRA"
 
 
 class TestIsTickerQuoteSettled:
     def test_delegates_to_is_quote_settled_for_resolved_exchange(self):
-        with patch("market_pulse.is_quote_settled", return_value=False) as mock_settled, \
-             patch("market_pulse.get_exchange_session_state", return_value="open"):
-            assert _mp.is_ticker_quote_settled("^FTSE") is False
+        with patch("market_session_helpers.is_quote_settled", return_value=False) as mock_settled, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="open"):
+            assert _ms.is_ticker_quote_settled("^FTSE") is False
         mock_settled.assert_called_once_with("LSE", include_premarket=False)
 
     def test_active_premarket_session_counts_as_settled_for_ordinary_ticker(self):
         """Regression (2026-07-17): an ordinary (non-future) ticker whose exchange is genuinely
         in pre-market or after-hours must also count as settled, so the extended-hours display
         actually refreshes rather than staying frozen on the last regular-session cache row."""
-        with patch("market_pulse.is_quote_settled", return_value=False), \
-             patch("market_pulse.get_exchange_session_state", return_value="pre"):
-            assert _mp.is_ticker_quote_settled("AAPL") is True
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="pre"):
+            assert _ms.is_ticker_quote_settled("AAPL") is True
 
     def test_active_afterhours_session_counts_as_settled_for_ordinary_ticker(self):
-        with patch("market_pulse.is_quote_settled", return_value=False), \
-             patch("market_pulse.get_exchange_session_state", return_value="post"):
-            assert _mp.is_ticker_quote_settled("AAPL") is True
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="post"):
+            assert _ms.is_ticker_quote_settled("AAPL") is True
 
     def test_closed_session_does_not_count_as_settled(self):
-        with patch("market_pulse.is_quote_settled", return_value=False), \
-             patch("market_pulse.get_exchange_session_state", return_value="closed"):
-            assert _mp.is_ticker_quote_settled("AAPL") is False
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled("AAPL") is False
 
     def test_future_ticker_honors_premarket_unlike_its_spot_row(self):
         # ES=F shares ^GSPC's NYSE exchange (see TestResolveTickerExchange above), but must
@@ -466,15 +476,15 @@ class TestIsTickerQuoteSettled:
         # specifically during the spot exchange's pre-market window, so gating the future's
         # refresh on the spot's *regular* session settling would mean it can never refresh
         # while it's actually the tile being displayed (found 2026-07-13).
-        with patch("market_pulse.is_quote_settled", return_value=True) as mock_settled:
-            assert _mp.is_ticker_quote_settled("ES=F") is True
+        with patch("market_session_helpers.is_quote_settled", return_value=True) as mock_settled:
+            assert _ms.is_ticker_quote_settled("ES=F") is True
         mock_settled.assert_called_once_with("NYSE", include_premarket=True)
 
     def test_registry_future_tickers_can_be_precomputed(self):
         prebuilt_exchanges = {"ES=F": "NYSE"}
         prebuilt_futures = set()
-        with patch("market_pulse.is_quote_settled", return_value=True) as mock_settled:
-            _mp.is_ticker_quote_settled(
+        with patch("market_session_helpers.is_quote_settled", return_value=True) as mock_settled:
+            _ms.is_ticker_quote_settled(
                 "ES=F", registry_exchange_map=prebuilt_exchanges, registry_future_tickers=prebuilt_futures,
             )
         mock_settled.assert_called_once_with("NYSE", include_premarket=False)
@@ -482,11 +492,11 @@ class TestIsTickerQuoteSettled:
 
 class TestBuildRegistryFutureTickers:
     def test_returns_every_future_ticker_in_registry(self):
-        future_tickers = _mp.build_registry_future_tickers()
+        future_tickers = _ms.build_registry_future_tickers()
         assert "ES=F" in future_tickers
 
     def test_spot_ticker_itself_is_not_included(self):
-        assert "^GSPC" not in _mp.build_registry_future_tickers()
+        assert "^GSPC" not in _ms.build_registry_future_tickers()
 
 
 # ── registry_tickers_needing_refresh ──────────────────────────────────────────
@@ -503,22 +513,22 @@ class TestRegistryTickersNeedingRefresh:
         assert _mp.registry_tickers_needing_refresh([]) == []
 
     def test_missing_row_always_included_regardless_of_settlement(self):
-        with patch("market_pulse.is_quote_settled", return_value=False):
+        with patch("market_session_helpers.is_quote_settled", return_value=False):
             assert _mp.registry_tickers_needing_refresh(["^KS200"]) == ["^KS200"]
 
     def test_fresh_row_not_flagged_even_when_settled(self):
         _seed_pulse("^FTSE", last_updated=time.time())
-        with patch("market_pulse.is_quote_settled", return_value=True):
+        with patch("market_session_helpers.is_quote_settled", return_value=True):
             assert _mp.registry_tickers_needing_refresh(["^FTSE"]) == []
 
     def test_stale_row_excluded_when_its_exchange_not_settled(self):
         _seed_pulse("^FTSE", last_updated=time.time() - 3600)
-        with patch("market_pulse.is_quote_settled", return_value=False):
+        with patch("market_session_helpers.is_quote_settled", return_value=False):
             assert _mp.registry_tickers_needing_refresh(["^FTSE"]) == []
 
     def test_stale_row_included_when_its_exchange_settled(self):
         _seed_pulse("^FTSE", last_updated=time.time() - 3600)
-        with patch("market_pulse.is_quote_settled", return_value=True):
+        with patch("market_session_helpers.is_quote_settled", return_value=True):
             assert _mp.registry_tickers_needing_refresh(["^FTSE"]) == ["^FTSE"]
 
     def test_two_rows_gated_independently_by_own_exchange(self):
@@ -528,7 +538,7 @@ class TestRegistryTickersNeedingRefresh:
         def fake_settled(exchange, include_premarket=False):
             return exchange == "NYSE"
 
-        with patch("market_pulse.is_quote_settled", side_effect=fake_settled):
+        with patch("market_session_helpers.is_quote_settled", side_effect=fake_settled):
             assert _mp.registry_tickers_needing_refresh(["^FTSE", "^GSPC"]) == ["^GSPC"]
 
 
@@ -587,7 +597,7 @@ class TestIsExchangeOpen:
         # itself (that's covered by the dedicated exchange-calendar tests below, which patch
         # this explicitly) — without this default, every test here would only pass when the
         # suite happens to run on a genuine NYSE/LSE trading day.
-        with patch("market_pulse.is_exchange_holiday", return_value=False):
+        with patch("market_session_helpers.is_exchange_holiday", return_value=False):
             yield
 
     def teardown_method(self):
@@ -595,82 +605,82 @@ class TestIsExchangeOpen:
 
     def test_regular_state_is_open(self):
         _set_market_state("^GSPC", "REGULAR")
-        assert _mp.is_exchange_open("NYSE") is True
+        assert _ms.is_exchange_open("NYSE") is True
 
     def test_closed_state_is_not_open(self):
         _set_market_state("^GSPC", "CLOSED")
-        assert _mp.is_exchange_open("NYSE") is False
+        assert _ms.is_exchange_open("NYSE") is False
 
     def test_holiday_regression_ignores_naive_weekday_hours_heuristic(self):
         """The exact bug this feature fixes: a normal Friday during NYSE hours (the naive
         heuristic would say open) but Yahoo's live marketState says the exchange is actually
         closed for a holiday — is_exchange_open must trust the live state, not the calendar."""
         _set_market_state("^GSPC", "CLOSED")
-        with patch("market_pulse.is_trading_session", return_value=True):
-            assert _mp.is_exchange_open("NYSE") is False
+        with patch("market_session_helpers.is_trading_session", return_value=True):
+            assert _ms.is_exchange_open("NYSE") is False
 
     def test_exchange_calendar_veto_overrides_live_regular_state(self):
         """New canonical-holiday-source behaviour: even if Yahoo's cached marketState is stale
         or wrong and still says REGULAR, a real exchange_calendars holiday must still veto it."""
         _set_market_state("^GSPC", "REGULAR")
-        with patch("market_pulse.is_exchange_holiday", return_value=True):
-            assert _mp.is_exchange_open("NYSE") is False
+        with patch("market_session_helpers.is_exchange_holiday", return_value=True):
+            assert _ms.is_exchange_open("NYSE") is False
 
     def test_no_veto_on_ordinary_day_still_reads_live_state(self):
         _set_market_state("^GSPC", "REGULAR")
-        with patch("market_pulse.is_exchange_holiday", return_value=False):
-            assert _mp.is_exchange_open("NYSE") is True
+        with patch("market_session_helpers.is_exchange_holiday", return_value=False):
+            assert _ms.is_exchange_open("NYSE") is True
 
     def test_postpost_state_is_not_open(self):
         _set_market_state("^FTSE", "POSTPOST")
-        assert _mp.is_exchange_open("LSE") is False
+        assert _ms.is_exchange_open("LSE") is False
 
     def test_falls_back_to_heuristic_when_no_cached_row(self):
-        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
-            assert _mp.is_exchange_open("NYSE") is True
+        with patch("market_session_helpers.is_trading_session", return_value=True) as mock_ts:
+            assert _ms.is_exchange_open("NYSE") is True
             mock_ts.assert_called_once_with("NYSE", include_premarket=False)
 
     def test_falls_back_to_heuristic_when_cached_market_state_is_null(self):
         _set_market_state("^GSPC", None)
-        with patch("market_pulse.is_trading_session", return_value=False) as mock_ts:
-            assert _mp.is_exchange_open("NYSE") is False
+        with patch("market_session_helpers.is_trading_session", return_value=False) as mock_ts:
+            assert _ms.is_exchange_open("NYSE") is False
             mock_ts.assert_called_once_with("NYSE", include_premarket=False)
 
     def test_untracked_exchange_uses_heuristic_directly(self):
-        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
-            assert _mp.is_exchange_open("XETRA") is True
+        with patch("market_session_helpers.is_trading_session", return_value=True) as mock_ts:
+            assert _ms.is_exchange_open("XETRA") is True
             mock_ts.assert_called_once_with("XETRA", include_premarket=False)
 
     def test_pre_state_not_open_by_default(self):
         _set_market_state("^GSPC", "PRE")
-        assert _mp.is_exchange_open("NYSE") is False
+        assert _ms.is_exchange_open("NYSE") is False
 
     def test_pre_state_is_open_with_include_premarket(self):
         _set_market_state("^GSPC", "PRE")
-        assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+        assert _ms.is_exchange_open("NYSE", include_premarket=True) is True
 
     def test_prepre_state_is_open_with_include_premarket(self):
         _set_market_state("^GSPC", "PREPRE")
-        assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+        assert _ms.is_exchange_open("NYSE", include_premarket=True) is True
 
     def test_regular_state_still_open_with_include_premarket(self):
         _set_market_state("^GSPC", "REGULAR")
-        assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+        assert _ms.is_exchange_open("NYSE", include_premarket=True) is True
 
     def test_closed_state_still_closed_with_include_premarket(self):
         _set_market_state("^GSPC", "CLOSED")
-        assert _mp.is_exchange_open("NYSE", include_premarket=True) is False
+        assert _ms.is_exchange_open("NYSE", include_premarket=True) is False
 
     def test_include_premarket_does_not_propagate_for_exchange_without_premarket_window(self):
         # XETRA has no "premarket_open" in exchange_hours.json (only NYSE does), so even the
         # no-cached-row heuristic fallback must not be asked to honor premarket.
-        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
-            assert _mp.is_exchange_open("XETRA", include_premarket=True) is True
+        with patch("market_session_helpers.is_trading_session", return_value=True) as mock_ts:
+            assert _ms.is_exchange_open("XETRA", include_premarket=True) is True
             mock_ts.assert_called_once_with("XETRA", include_premarket=False)
 
     def test_include_premarket_propagates_to_heuristic_fallback_for_nyse(self):
-        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
-            assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+        with patch("market_session_helpers.is_trading_session", return_value=True) as mock_ts:
+            assert _ms.is_exchange_open("NYSE", include_premarket=True) is True
             mock_ts.assert_called_once_with("NYSE", include_premarket=True)
 
     def test_pre_state_not_honored_for_exchange_without_premarket_window(self):
@@ -678,7 +688,7 @@ class TestIsExchangeOpen:
         # gap since the previous close (no genuine extended-hours session modeled for them), so
         # a stale/lingering "PRE" state must not read as open even with include_premarket=True.
         _set_market_state("^HSI", "PRE")
-        assert _mp.is_exchange_open("HKEX", include_premarket=True) is False
+        assert _ms.is_exchange_open("HKEX", include_premarket=True) is False
         _clear("^HSI")
 
 
@@ -690,7 +700,7 @@ class TestGetExchangeSessionState:
         # Same reasoning as TestIsExchangeOpen — isolate these tests from whatever real
         # calendar day the suite happens to run on; the holiday veto itself is covered by
         # test_exchange_calendar_veto_overrides_live_regular_state below.
-        with patch("market_pulse.is_exchange_holiday", return_value=False):
+        with patch("market_session_helpers.is_exchange_holiday", return_value=False):
             yield
 
     def teardown_method(self):
@@ -698,52 +708,52 @@ class TestGetExchangeSessionState:
 
     def test_regular_state_is_open(self):
         _set_market_state("^GSPC", "REGULAR")
-        assert _mp.get_exchange_session_state("NYSE") == "open"
+        assert _ms.get_exchange_session_state("NYSE") == "open"
 
     def test_pre_state_is_pre_for_nyse(self):
         _set_market_state("^GSPC", "PRE")
-        assert _mp.get_exchange_session_state("NYSE") == "pre"
+        assert _ms.get_exchange_session_state("NYSE") == "pre"
 
     def test_prepre_state_is_pre_for_nyse(self):
         _set_market_state("^GSPC", "PREPRE")
-        assert _mp.get_exchange_session_state("NYSE") == "pre"
+        assert _ms.get_exchange_session_state("NYSE") == "pre"
 
     def test_pre_state_is_closed_for_exchange_without_premarket_window(self):
         # Same reasoning as is_exchange_open(): Yahoo's "PRE" spans the whole gap since
         # previous close for exchanges with no genuine extended-hours session (only NYSE
         # has one modeled), so it must not read as "pre" there.
         _set_market_state("^HSI", "PRE")
-        assert _mp.get_exchange_session_state("HKEX") == "closed"
+        assert _ms.get_exchange_session_state("HKEX") == "closed"
 
     def test_post_state_is_post(self):
         _set_market_state("^GSPC", "POST")
-        assert _mp.get_exchange_session_state("NYSE") == "post"
+        assert _ms.get_exchange_session_state("NYSE") == "post"
 
     def test_postpost_state_is_post(self):
         _set_market_state("^FTSE", "POSTPOST")
-        assert _mp.get_exchange_session_state("LSE") == "post"
+        assert _ms.get_exchange_session_state("LSE") == "post"
 
     def test_closed_state_is_closed(self):
         _set_market_state("^GSPC", "CLOSED")
-        assert _mp.get_exchange_session_state("NYSE") == "closed"
+        assert _ms.get_exchange_session_state("NYSE") == "closed"
 
     def test_falls_back_to_heuristic_when_no_cached_row(self):
-        with patch("market_pulse.is_trading_session", return_value=True):
-            assert _mp.get_exchange_session_state("NYSE") == "open"
+        with patch("market_session_helpers.is_trading_session", return_value=True):
+            assert _ms.get_exchange_session_state("NYSE") == "open"
 
     def test_falls_back_to_pre_heuristic_when_cached_market_state_is_null(self):
         _set_market_state("^GSPC", None)
-        with patch("market_pulse.is_trading_session", side_effect=lambda ex, include_premarket=False: include_premarket):
-            assert _mp.get_exchange_session_state("NYSE") == "pre"
+        with patch("market_session_helpers.is_trading_session", side_effect=lambda ex, include_premarket=False: include_premarket):
+            assert _ms.get_exchange_session_state("NYSE") == "pre"
 
     def test_untracked_exchange_uses_heuristic_directly(self):
-        with patch("market_pulse.is_trading_session", return_value=True):
-            assert _mp.get_exchange_session_state("XETRA") == "open"
+        with patch("market_session_helpers.is_trading_session", return_value=True):
+            assert _ms.get_exchange_session_state("XETRA") == "open"
 
     def test_exchange_calendar_veto_overrides_live_regular_state(self):
         _set_market_state("^GSPC", "REGULAR")
-        with patch("market_pulse.is_exchange_holiday", return_value=True):
-            assert _mp.get_exchange_session_state("NYSE") == "closed"
+        with patch("market_session_helpers.is_exchange_holiday", return_value=True):
+            assert _ms.get_exchange_session_state("NYSE") == "closed"
 
 
 # ── is_quote_settled ───────────────────────────────────────────────────────────
@@ -754,28 +764,28 @@ class TestIsQuoteSettled:
     alone as 'safe to act on this quote' pulls a not-yet-representative price."""
 
     def test_closed_exchange_is_not_settled(self):
-        with patch("market_pulse.is_exchange_open", return_value=False):
-            assert _mp.is_quote_settled("LSE") is False
+        with patch("market_session_helpers.is_exchange_open", return_value=False):
+            assert _ms.is_quote_settled("LSE") is False
 
     def test_exchange_with_no_configured_delay_is_settled_as_soon_as_open(self):
-        with patch("market_pulse.is_exchange_open", return_value=True):
-            assert _mp.is_quote_settled("NYSE") is True
+        with patch("market_session_helpers.is_exchange_open", return_value=True):
+            assert _ms.is_quote_settled("NYSE") is True
 
     def test_lse_not_settled_within_delay_window_of_open(self):
         from datetime import time as dtime
-        with patch("market_pulse.is_exchange_open", return_value=True), \
-             patch("market_pulse.market_window_utc", return_value=(dtime(8, 0), dtime(16, 30))), \
-             patch("market_pulse.datetime") as mock_dt:
+        with patch("market_session_helpers.is_exchange_open", return_value=True), \
+             patch("market_session_helpers.market_window_utc", return_value=(dtime(8, 0), dtime(16, 30))), \
+             patch("market_session_helpers.datetime") as mock_dt:
             mock_dt.now.return_value.time.return_value = dtime(8, 5)
-            assert _mp.is_quote_settled("LSE") is False
+            assert _ms.is_quote_settled("LSE") is False
 
     def test_lse_settled_once_delay_window_has_passed(self):
         from datetime import time as dtime
-        with patch("market_pulse.is_exchange_open", return_value=True), \
-             patch("market_pulse.market_window_utc", return_value=(dtime(8, 0), dtime(16, 30))), \
-             patch("market_pulse.datetime") as mock_dt:
+        with patch("market_session_helpers.is_exchange_open", return_value=True), \
+             patch("market_session_helpers.market_window_utc", return_value=(dtime(8, 0), dtime(16, 30))), \
+             patch("market_session_helpers.datetime") as mock_dt:
             mock_dt.now.return_value.time.return_value = dtime(8, 16)
-            assert _mp.is_quote_settled("LSE") is True
+            assert _ms.is_quote_settled("LSE") is True
 
 
 # ── proxy_tickers_needing_refresh ─────────────────────────────────────────────

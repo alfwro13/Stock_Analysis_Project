@@ -45,7 +45,7 @@ from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
 from performance_analytics_engine import assemble_performance_report
 from fx_drag_engine import portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
-from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
+from market_pulse_write import fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
 from huggingface_engine import update_all_sentiment
 from earnings_engine import run_earnings_alert

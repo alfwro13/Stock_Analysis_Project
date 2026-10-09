@@ -438,7 +438,7 @@ def init_db() -> None:
         ''')
 
         # Today's-session intraday points per ticker, feeding the Markets page mini sparkline.
-        # Full replace on each fetch cycle (see market_pulse.fetch_and_save_pulse) — rows are
+        # Full replace on each fetch cycle (see market_pulse_write.fetch_and_save_pulse) — rows are
         # left untouched when the market is closed so the last session's line persists.
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_sparkline (

@@ -235,7 +235,7 @@ def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any, exchan
     22:30 nightly Update Pipeline) produces the exact same date signature as a genuine mid-session
     fetch — both have daily/live/today all equal — so the date-only check alone cannot tell them
     apart. exchange_currently_open, when supplied (time_engine.is_market_open(exchange) /
-    market_pulse.is_exchange_open(exchange) for the ticker in question), is the authoritative
+    market_session_helpers.is_exchange_open(exchange) for the ticker in question), is the authoritative
     answer: False means the session has genuinely ended, so the bar can never be "still forming"
     regardless of date collision. A caller may omit it only if every path that reaches this
     function is provably gated on the exchange already being confirmed open earlier in the same
@@ -245,7 +245,7 @@ def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any, exchan
     data_engine.py's nightly bulk/single-ticker fetchers passed no exchange signal at all, so
     every night's Update Pipeline run trimmed that day's just-completed, fully-final close off the
     daily parquet, permanently rolling stock_signals.current_price and quant_signals one trading
-    day stale. Found 2026-07-15: market_pulse.fetch_and_save_pulse() had the same gap — it's
+    day stale. Found 2026-07-15: market_pulse_write.fetch_and_save_pulse() had the same gap — it's
     reachable from age-based staleness refreshes and on-demand single-ticker fetches with no
     exchange-open precondition at all, so it now resolves and passes the ticker's own exchange
     state too."""

@@ -8,7 +8,8 @@ from typing import Optional
 import pandas as pd
 
 from config import HISTORICAL_DIR
-from market_pulse import is_quote_settled, upsert_live_price
+from market_pulse_write import upsert_live_price
+from market_session_helpers import is_quote_settled
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,7 @@ class AIContagionEngine:
             # caught, but that means this frame's last bar can be a premarket/postmarket tick —
             # only share it into market_pulse_cache's settled price/change_pts/change_pct columns
             # while NYSE is genuinely in regular session, never during premarket, per the
-            # "never mix session data" rule (market_pulse.fetch_and_save_pulse already tracks the
+            # "never mix session data" rule (market_pulse_write.fetch_and_save_pulse already tracks the
             # real premarket move separately via extended_price/extended_change_pct).
             if is_quote_settled("NYSE"):
                 upsert_live_price(ticker, ticker, current_price, prev_close)

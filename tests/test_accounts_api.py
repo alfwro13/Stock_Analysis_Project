@@ -2203,7 +2203,7 @@ def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client)
         })
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_pulse.is_exchange_open", return_value=True):
+         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2236,7 +2236,7 @@ def test_holdings_list_does_not_trigger_refresh_for_cached_ticker_when_market_cl
     conn.close()
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_pulse.get_exchange_session_state", return_value="closed"):
+         patch("accounts_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_not_called()
@@ -2259,7 +2259,7 @@ def test_holdings_list_bootstraps_missing_ticker_even_when_market_closed(client)
         })
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_pulse.get_exchange_session_state", return_value="closed"):
+         patch("accounts_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2281,7 +2281,7 @@ def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(clie
         })
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_pulse.is_exchange_open", return_value=True):
+         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/portfolio-totals")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2303,7 +2303,7 @@ def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(cli
         })
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_pulse.is_exchange_open", return_value=True):
+         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/list-with-metrics")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()

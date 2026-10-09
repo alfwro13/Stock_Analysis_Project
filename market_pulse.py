@@ -1,23 +1,21 @@
 import time
-import math
 import logging
-import threading
-from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-import pandas as pd
 
-import notification_engine
-from config import load_config, HISTORICAL_DIR
-from database import get_connection, get_mutual_fund_tickers, get_ticker_registry
-from db_helpers import resolve_live_price, upsert_fx_quote
-from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set
-from gilt_engine import GiltDataService
-from yahoo_engine import yahoo_engine
-from time_engine import EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, ticker_exchange
+from config import load_config
+from database import get_connection, get_ticker_registry
+from db_helpers import resolve_live_price
+from market_session_helpers import (
+    MARKET_STATUS_PROXY,
+    build_registry_exchange_map,
+    build_registry_future_tickers,
+    is_ticker_quote_settled,
+)
+from utils import normalize_ticker, ignored_tickers_set
+from time_engine import is_trading_session
 
 logger = logging.getLogger(__name__)
 
-_STALE_ALERT_THRESHOLD_SECONDS = 1800
 
 # Sourced from market_ticker_registry (single source of truth — see AGENTS.md central-engine
 # rule) rather than a hardcoded dict, so the Markets page/Settings UI can add tickers with no
@@ -65,20 +63,7 @@ def reload_ticker_registry() -> None:
     _pulse_index_tickers_cache = None
 
 
-# Non-blocking lock prevents duplicate concurrent fetches without a check-then-set race.
-_FETCH_LOCK = threading.Lock()
-
-# Live Yahoo marketState on these tracked index tickers stands in for exchange-holiday-aware
-# open/closed status, since time_engine's weekday+hours heuristic has no holiday calendar.
-_MARKET_STATUS_PROXY: Dict[str, str] = {
-    "NYSE": "^GSPC", "LSE": "^FTSE",
-    "XETRA": "^GDAXI", "TSE": "^N225", "HKEX": "^HSI",
-    "SSE": "000001.SS", "ASX": "^AXJO", "Euronext": "^FCHI",
-}
-_OPEN_MARKET_STATES = {"REGULAR"}
-_PRE_MARKET_STATES = {"PRE", "PREPRE"}
-_POST_MARKET_STATES = {"POST", "POSTPOST"}
-_SPARKLINE_MAX_POINTS = 60
+SPARKLINE_MAX_POINTS = 60
 
 
 _DISPLAY_STALE_FLOOR_SECONDS = 300
@@ -98,199 +83,6 @@ def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool
     if not is_trading_session():
         return True
     return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
-
-
-def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
-    """Market-open check, holiday-vetoed first via time_engine.is_exchange_holiday()
-    (exchange_calendars — the one canonical holiday source, checked even for the 8 exchanges
-    below with a live proxy). Beyond that veto, NYSE/LSE/XETRA/TSE/HKEX/SSE/ASX/Euronext are
-    backed by the live Yahoo marketState cached from that exchange's proxy index ticker (see
-    _MARKET_STATUS_PROXY) — falls back to time_engine's weekday+hours heuristic for any other
-    exchange, or if no market_state has been cached yet (e.g. right after a fresh install).
-    With include_premarket=True, Yahoo's 'PRE'/'PREPRE' states also count as open — but only for
-    exchanges that have a genuine extended-hours session modeled (i.e. a "premarket_open" entry
-    in exchange_hours.json, currently NYSE only). Yahoo returns "PRE" for the entire gap since
-    the previous close on exchanges with no real extended-hours session of their own (most
-    non-US markets), so trusting it there misclassifies a market that has simply closed as
-    "about to open" — this is what made the Markets page show Asia as "Pre-Market" long after
-    HKEX/SSE/TSE had already finished their session for the day (found 2026-07-09)."""
-    if is_exchange_holiday(exchange):
-        return False
-
-    proxy = _MARKET_STATUS_PROXY.get(exchange)
-    if proxy is None:
-        return is_trading_session(exchange, include_premarket=include_premarket)
-
-    honor_premarket = include_premarket and "premarket_open" in EXCHANGE_HOURS.get(exchange, {})
-
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT market_state FROM market_pulse_cache WHERE ticker = ?", (proxy,))
-        row = cursor.fetchone()
-    except Exception as e:
-        logger.error("[MARKET PULSE] Failed to read market_state for %s: %s", proxy, e)
-        return is_trading_session(exchange, include_premarket=honor_premarket)
-    finally:
-        if conn:
-            conn.close()
-
-    if row is None or row["market_state"] is None:
-        return is_trading_session(exchange, include_premarket=honor_premarket)
-    allowed_states = _OPEN_MARKET_STATES | _PRE_MARKET_STATES if honor_premarket else _OPEN_MARKET_STATES
-    return row["market_state"] in allowed_states
-
-
-def get_exchange_session_state(exchange: str) -> str:
-    """4-state 'open'/'pre'/'post'/'closed' session status for one exchange. Holiday-vetoed
-    first via time_engine.is_exchange_holiday() — same canonical check is_exchange_open() uses —
-    so this sibling function can't disagree with it on a holiday. Beyond that veto, built on the
-    same cached Yahoo marketState as is_exchange_open() (see _MARKET_STATUS_PROXY) rather than a
-    second lookup — Yahoo already reports 'POST'/'POSTPOST' for after-hours trading on these 8
-    proxy-mapped exchanges, it just wasn't being surfaced past the open/pre/closed collapse
-    is_exchange_open() does for its boolean callers. Exchanges with no proxy ticker (most
-    non-US/UK/EU/Asia-majors) have no post-market concept in exchange_hours.json either, so they
-    fall back to the existing open/closed-only time_engine heuristic — same limitation
-    is_exchange_open() already has for those exchanges."""
-    if is_exchange_holiday(exchange):
-        return "closed"
-
-    proxy = _MARKET_STATUS_PROXY.get(exchange)
-    if proxy is None:
-        if is_trading_session(exchange):
-            return "open"
-        return "pre" if is_trading_session(exchange, include_premarket=True) else "closed"
-
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT market_state FROM market_pulse_cache WHERE ticker = ?", (proxy,))
-        row = cursor.fetchone()
-    except Exception as e:
-        logger.error("[MARKET PULSE] Failed to read market_state for %s: %s", proxy, e)
-        row = None
-    finally:
-        if conn:
-            conn.close()
-
-    state = row["market_state"] if row and row["market_state"] is not None else None
-    if state is None:
-        if is_trading_session(exchange):
-            return "open"
-        return "pre" if is_trading_session(exchange, include_premarket=True) else "closed"
-
-    if state in _OPEN_MARKET_STATES:
-        return "open"
-    if state in _PRE_MARKET_STATES:
-        honor_premarket = "premarket_open" in EXCHANGE_HOURS.get(exchange, {})
-        return "pre" if honor_premarket else "closed"
-    if state in _POST_MARKET_STATES:
-        return "post"
-    return "closed"
-
-
-def is_quote_settled(exchange: str, include_premarket: bool = False) -> bool:
-    """True once `exchange` is open (is_exchange_open()) AND enough time has passed since its
-    session open for Yahoo's free quote feed to be trustworthy — 0 minutes for most exchanges,
-    but LSE's feed runs ~15-20 minutes behind in practice (see 'quote_delay_minutes' in
-    exchange_hours.json). Any engine that reacts to a live quote the instant a market opens
-    (not just on a slower fixed-interval scan well after open) must gate on this, not just
-    is_exchange_open() — see accounts_engine.tickers_needing_refresh() and
-    intraday_bottom_engine.run_scan(). `include_premarket` is forwarded to is_exchange_open()
-    so a premarket-armed NYSE check isn't wrongly blocked by this gate (NYSE's own delay is 0
-    anyway, but the open-time math below still needs a consistent 'is this session live' input)."""
-    if not is_exchange_open(exchange, include_premarket=include_premarket):
-        return False
-    delay_minutes = EXCHANGE_HOURS.get(exchange, {}).get("quote_delay_minutes", 0)
-    if delay_minutes <= 0:
-        return True
-    open_time, _close_time = market_window_utc(exchange, include_premarket=include_premarket)
-    now = datetime.now(timezone.utc).time()
-    open_minutes = open_time.hour * 60 + open_time.minute
-    now_minutes = now.hour * 60 + now.minute
-    return (now_minutes - open_minutes) >= delay_minutes
-
-
-def build_registry_exchange_map(registry_rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, str]:
-    """ticker/future_ticker -> exchange for every enabled registry row, sharing the exchange
-    between a dual-instrument row's spot and future ticker exactly as markets_engine.resolve_tile()
-    already does for the spot/future swap itself — a future contract's settlement gate should
-    track the same underlying exchange, not a separate (and unmodeled) futures-exchange concept.
-    A caller that already fetched get_ticker_registry() for its own use (e.g.
-    get_cached_pulse_from_db()'s registry_by_ticker) should pass registry_rows to avoid a repeat
-    query."""
-    if registry_rows is None:
-        registry_rows = get_ticker_registry(enabled_only=True)
-    exchange_map: Dict[str, str] = {}
-    for row in registry_rows:
-        exchange = row.get("exchange")
-        if not exchange:
-            continue
-        exchange_map[row["ticker"]] = exchange
-        if row.get("future_ticker"):
-            exchange_map[row["future_ticker"]] = exchange
-    return exchange_map
-
-
-def build_registry_future_tickers(registry_rows: Optional[List[Dict[str, Any]]] = None) -> set:
-    """Every enabled registry row's future_ticker. Tracked separately from
-    build_registry_exchange_map()'s ticker->exchange map because a future contract's settlement
-    gate must honor pre-market (it trades near-continuously and exists specifically to represent
-    pre-market price movement) while its underlying spot instrument's gate must not — see
-    is_ticker_quote_settled(). A caller that already fetched get_ticker_registry() for its own use
-    should pass registry_rows to avoid a repeat query."""
-    if registry_rows is None:
-        registry_rows = get_ticker_registry(enabled_only=True)
-    return {row["future_ticker"] for row in registry_rows if row.get("future_ticker")}
-
-
-def resolve_ticker_exchange(ticker: str, currency: str = "", registry_exchange_map: Optional[Dict[str, str]] = None) -> str:
-    """The exchange to gate `ticker`'s quote freshness on. Prefers market_ticker_registry's own
-    `exchange` column (indexes/commodities/FX tracked by the Markets page/Market Pulse — the
-    authoritative source per AGENTS.md's central-engine rule), falling back to
-    time_engine.ticker_exchange(ticker, currency) for ordinary equities that have no registry
-    row. Callers refreshing many tickers at once should build registry_exchange_map() themselves
-    and pass it in to avoid a repeat query per ticker."""
-    if registry_exchange_map is None:
-        registry_exchange_map = build_registry_exchange_map()
-    exchange = registry_exchange_map.get(ticker)
-    if exchange:
-        return exchange
-    return ticker_exchange(ticker, currency)
-
-
-def is_ticker_quote_settled(
-    ticker: str,
-    currency: str = "",
-    registry_exchange_map: Optional[Dict[str, str]] = None,
-    registry_future_tickers: Optional[set] = None,
-) -> bool:
-    """is_quote_settled() resolved against `ticker`'s own exchange rather than a caller-supplied
-    one — the single canonical per-ticker settlement check, shared by every needs_refresh path
-    (accounts_engine.tickers_needing_refresh(), get_cached_pulse_from_db(),
-    registry_tickers_needing_refresh()) instead of each reimplementing its own exchange
-    resolution. See AGENTS.md rule 16/17. A registry row's future_ticker honors pre-market (see
-    build_registry_future_tickers()) so a futures tile isn't stuck requiring its underlying spot
-    exchange's regular session — the exact session during which resolve_tile() shows the spot
-    ticker instead, which left futures tickers refreshing only once a session, then frozen for the
-    rest of the day including the pre-market window they're meant to represent (found 2026-07-13).
-    A genuinely active pre/post-market session (Yahoo's own marketState, via
-    get_exchange_session_state()) also counts as settled for an ordinary ticker even when it isn't
-    a registry future — this is what keeps the Pre-Market/After Hours display (see
-    yahoo_engine.get_quote_snapshot()) actually live rather than frozen on last session's cache row
-    until the next regular open (found 2026-07-17). This is deliberately narrower than changing
-    is_quote_settled() itself, which alert-firing engines (Crash & Moonshot, AI Contagion) also
-    call and must keep its existing regular/premarket-only semantics for."""
-    if registry_future_tickers is None:
-        registry_future_tickers = build_registry_future_tickers()
-    honor_premarket = ticker in registry_future_tickers
-    exchange = resolve_ticker_exchange(ticker, currency, registry_exchange_map)
-    if is_quote_settled(exchange, include_premarket=honor_premarket):
-        return True
-    return get_exchange_session_state(exchange) in ("pre", "post")
-
 
 def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
     """Which of the given tickers have a missing or stale market_pulse_cache row. Shared by
@@ -325,13 +117,13 @@ def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> L
 
 
 def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:
-    """Which of the NYSE/LSE proxy tickers (see _MARKET_STATUS_PROXY) have a missing or stale
+    """Which of the NYSE/LSE proxy tickers (see MARKET_STATUS_PROXY) have a missing or stale
     market_state row — lets GET /api/system/market-status self-trigger a background refresh.
     Without this, is_exchange_open() would only ever see fresh data when something else (the
     market-sentiment page's JS polling) happens to be fetching these tickers too — a caller that
     only ever polls market-status (e.g. Home Assistant) would keep falling back to the naive
     weekday/hours heuristic forever."""
-    return tickers_needing_refresh(list(_MARKET_STATUS_PROXY.values()), max_age_seconds)
+    return tickers_needing_refresh(list(MARKET_STATUS_PROXY.values()), max_age_seconds)
 
 
 def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
@@ -376,7 +168,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
     return stale
 
 
-def get_intraday_points(ticker: str, max_points: int = _SPARKLINE_MAX_POINTS) -> List[List[float]]:
+def get_intraday_points(ticker: str, max_points: int = SPARKLINE_MAX_POINTS) -> List[List[float]]:
     """Today's-session sparkline points for the Markets page, written by fetch_and_save_pulse.
     Returns [[ts, price], ...] ordered oldest-first; empty when the ticker has never been fetched."""
     conn = None
@@ -468,7 +260,7 @@ def _select_active_pulse_tickers(config_data: dict) -> Dict[str, str]:
     region-ordering logic, so Market Pulse can mirror what the Markets page currently shows.
     Both modes are capped by MARKET_PULSE_DESKTOP_COUNT (parameterizing the historically
     hardcoded 10-tile default). Deferred import of markets_engine avoids a circular import —
-    markets_engine imports market_pulse for is_exchange_open/get_cached_pulse_from_db."""
+    markets_engine imports market_pulse for get_cached_pulse_from_db/get_intraday_points."""
     ui_prefs = config_data.get("UI_PREFERENCES", {})
     desktop_count = int(ui_prefs.get("MARKET_PULSE_DESKTOP_COUNT", 10))
     if not ui_prefs.get("MARKET_PULSE_DYNAMIC", False):
@@ -625,346 +417,3 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             results["assets"].append(data_obj)
 
     return results
-
-
-def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn: Any = None) -> None:
-    """Shares a price another engine already fetched for its own use instead of it being discarded; keeps an existing name if one is already on record."""
-    if price is None or not prev_close:
-        return
-    if ticker.endswith("=X") and (not math.isfinite(float(price)) or price <= 0):
-        return
-    change_pts = price - prev_close
-    change_pct = (change_pts / prev_close) * 100.0
-    owns_conn = conn is None
-    try:
-        if owns_conn:
-            conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(ticker) DO UPDATE SET
-                name = COALESCE(market_pulse_cache.name, excluded.name),
-                price = excluded.price,
-                change_pts = excluded.change_pts,
-                change_pct = excluded.change_pct,
-                is_positive = excluded.is_positive,
-                last_updated = excluded.last_updated
-        ''', (ticker, name, price, change_pts, change_pct, int(change_pts >= 0), time.time()))
-        if ticker.endswith("=X"):
-            upsert_fx_quote(ticker, float(price), time.time(), conn=conn)
-        conn.commit()
-    except Exception as e:
-        logger.error("[MARKET PULSE] Failed to upsert live price for %s: %s", ticker, e)
-    finally:
-        if owns_conn and conn:
-            conn.close()
-
-
-def _maybe_alert_stale_ticker(ticker: str, prior_last_updated: float, now: float, conn: Any) -> None:
-    """Fires a once-per-day notification when a held ticker's fetch has been failing for a
-    while during its own market hours — otherwise a persistently-failing ticker (e.g. a genuine
-    Yahoo Finance data gap) just sits silently stale forever with only a log line no one sees.
-    Checked against the cache row's age *before* this call's own fetch attempt, so a ticker that
-    has simply never been fetched yet (age 0) doesn't false-positive on its very first try."""
-    if ticker in get_index_tickers():
-        return
-    if prior_last_updated <= 0 or (now - prior_last_updated) <= _STALE_ALERT_THRESHOLD_SECONDS:
-        return
-    exchange = ticker_exchange(ticker)
-    if not is_trading_session(exchange):
-        return
-
-    today = datetime.now(timezone.utc).date().isoformat()
-    cursor = conn.cursor()
-    cursor.execute("SELECT state_date FROM alert_state WHERE engine = 'stale_price' AND ticker = ?", (ticker,))
-    row = cursor.fetchone()
-    if row and row["state_date"] == today:
-        return
-
-    cursor.execute(
-        """INSERT INTO alert_state (engine, ticker, last_fired_utc, state_date)
-           VALUES ('stale_price', ?, ?, ?)
-           ON CONFLICT(engine, ticker) DO UPDATE SET last_fired_utc = excluded.last_fired_utc, state_date = excluded.state_date""",
-        (ticker, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), today),
-    )
-    age_minutes = round((now - prior_last_updated) / 60)
-    notification_engine.notify(
-        "stale_price_alert", "Warning",
-        f"{ticker}'s live price hasn't updated in {age_minutes} minutes despite {exchange} being open — the data fetch may be failing for this ticker.",
-        level="warning", conn=conn,
-    )
-
-
-def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
-    """Fetches live ticks from Yahoo Finance and saves to DB; UK10YG is sourced exclusively from FT.com."""
-    if not _FETCH_LOCK.acquire(blocking=False):
-        return
-
-    conn = None
-    try:
-        index_tickers = get_index_tickers()
-        handle_gilt: bool = False
-        if "UK10YG" in tickers_to_fetch:
-            handle_gilt = True
-            tickers_to_fetch = [t for t in tickers_to_fetch if t != "UK10YG"]
-
-        registry_exchange_map = build_registry_exchange_map()
-        daily_dfs: dict = {}
-        live_dfs: dict = {}
-
-        if tickers_to_fetch:
-            daily_dfs = yahoo_engine.get_price_history(tickers_to_fetch, period="5d", interval="1d")
-            mutual_funds = get_mutual_fund_tickers(tickers_to_fetch)
-            intraday_targets = [t for t in tickers_to_fetch if t not in mutual_funds]
-            if intraday_targets:
-                live_dfs = yahoo_engine.get_intraday(intraday_targets, period="2d", interval="2m", prepost=True)
-                
-        conn = get_connection()
-        cursor = conn.cursor()
-        current_time: float = time.time()
-
-        # Pre-fetch existing cache rows for all tickers in one query to avoid N+1 lookups
-        existing_cache: dict = {}
-        existing_last_updated: dict = {}
-        if tickers_to_fetch:
-            placeholders = ','.join('?' for _ in tickers_to_fetch)
-            cursor.execute(
-                f"SELECT ticker, price, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
-                tickers_to_fetch,
-            )
-            for row in cursor.fetchall():
-                existing_cache[row['ticker']] = row['price']
-                existing_last_updated[row['ticker']] = row['last_updated']
-
-        for ticker in tickers_to_fetch:
-            try:
-                t_daily: pd.DataFrame = daily_dfs.get(ticker, pd.DataFrame())
-                t_live: pd.DataFrame = live_dfs.get(ticker, pd.DataFrame())
-
-                if not t_daily.empty:
-                    t_daily = t_daily.dropna(subset=['Close'])
-                if not t_live.empty:
-                    t_live = t_live.dropna(subset=['Close'])
-
-                if t_daily.empty and ticker not in index_tickers:
-                    fb = yahoo_engine.get_single_ticker_history(ticker, period="5d")
-                    if fb is not None and not fb.empty:
-                        fb = fb.dropna(subset=['Close'])
-                        if not fb.empty:
-                            t_daily = fb
-
-                if t_daily.empty:
-                    # No daily data at all — transient outage or genuinely invalid ticker.
-                    _maybe_alert_stale_ticker(ticker, existing_last_updated.get(ticker, 0), current_time, conn)
-                    price_in_cache = existing_cache.get(ticker)
-                    in_cache = ticker in existing_cache
-                    if in_cache and price_in_cache:
-                        cursor.execute(
-                            "UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?",
-                            (current_time, ticker)
-                        )
-                    elif in_cache:
-                        cursor.execute(
-                            "UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = ?",
-                            (ticker,)
-                        )
-                    else:
-                        name = index_tickers.get(ticker, ticker)
-                        cursor.execute(
-                            "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (ticker, name, 0.0, 0.0, 0.0, 1, 0)
-                        )
-                    continue
-
-                # Session (regular/pre/post) always comes from Yahoo's own marketState, never guessed from the clock.
-                snapshot = yahoo_engine.get_quote_snapshot(ticker)
-                market_state: Optional[str] = None
-                extended_price: Optional[float] = None
-                extended_change_pts: Optional[float] = None
-                extended_change_pct: Optional[float] = None
-                extended_session: Optional[str] = None
-                skip_price_update = False
-
-                if snapshot and snapshot.get('regular_price') is not None:
-                    current_price = float(snapshot['regular_price'])
-                    market_state = snapshot.get('market_state')
-
-                    if snapshot.get('regular_change') is not None and snapshot.get('regular_change_pct') is not None:
-                        change_pts = float(snapshot['regular_change'])
-                        change_pct = float(snapshot['regular_change_pct'])
-                    else:
-                        prev_close = snapshot.get('regular_previous_close')
-                        prev_close = float(prev_close) if prev_close is not None else float(t_daily['Close'].iloc[-1])
-                        change_pts = current_price - prev_close
-                        change_pct = (change_pts / prev_close) * 100.0 if prev_close else 0.0
-
-                    if market_state in _PRE_MARKET_STATES and snapshot.get('pre_market_price') is not None:
-                        extended_price = float(snapshot['pre_market_price'])
-                        extended_change_pts = float(snapshot['pre_market_change']) if snapshot.get('pre_market_change') is not None else None
-                        extended_change_pct = float(snapshot['pre_market_change_pct']) if snapshot.get('pre_market_change_pct') is not None else None
-                        extended_session = 'pre'
-                    elif market_state in _POST_MARKET_STATES and snapshot.get('post_market_price') is not None:
-                        extended_price = float(snapshot['post_market_price'])
-                        extended_change_pts = float(snapshot['post_market_change']) if snapshot.get('post_market_change') is not None else None
-                        extended_change_pct = float(snapshot['post_market_change_pct']) if snapshot.get('post_market_change_pct') is not None else None
-                        extended_session = 'post'
-                elif t_live.empty:
-                    # Daily-priced instrument (e.g. mutual fund) — use most recent daily close.
-                    # No live intraday feed exists for these, so there's no prepost tick to leak.
-                    current_price = float(t_daily['Close'].iloc[-1])
-                    prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
-                    change_pts = current_price - prev_close
-                    change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
-                else:
-                    # Quote snapshot failed but a live intraday feed exists — its last bar was fetched
-                    # with prepost=True, so it's only safe to treat as "the price" while the exchange
-                    # is confirmed in regular session right now. Outside regular hours that same feed
-                    # can only be a pre/post-market tick, which must never land in the settled
-                    # price/change_pts/change_pct columns (see AGENTS.md "never mix session data").
-                    exchange = resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map)
-                    if not is_exchange_open(exchange):
-                        logger.warning(
-                            "Skipping price/change update for %s: quote snapshot unavailable and %s "
-                            "isn't in regular session — the only available tick could be pre/post-market.",
-                            ticker, exchange,
-                        )
-                        skip_price_update = True
-                    else:
-                        current_price = float(t_live['Close'].iloc[-1])
-                        if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), True) and len(t_daily) >= 2:
-                            prev_close = float(t_daily['Close'].iloc[-2])
-                            prev_close_date = t_daily.index[-2].date()
-                        else:
-                            prev_close = float(t_daily['Close'].iloc[-1])
-                            prev_close_date = t_daily.index[-1].date()
-
-                        # Yahoo's daily chart-history endpoint can silently drop rows out of the
-                        # middle of the requested window for some symbols (seen on ^KS200: period="5d"
-                        # returned only 2 rows with a 6-day gap between them, even once the endpoint
-                        # "caught up" and its last row again matched today) — checking only the
-                        # feed's last date isn't enough once it re-includes today, since the row
-                        # actually used as prev_close can still be several sessions further back.
-                        # When that row is implausibly old next to the live feed, prefer the
-                        # quoteSummary endpoint's own previousClose (a separate Yahoo endpoint, not
-                        # similarly affected) instead.
-                        if (t_live.index[-1].date() - prev_close_date).days > 3:
-                            info = yahoo_engine.get_ticker_info(ticker)
-                            info_prev_close = info.get("regularMarketPreviousClose") if info else None
-                            if info_prev_close:
-                                prev_close = float(info_prev_close)
-
-                        change_pts = current_price - prev_close
-                        change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
-
-                if not skip_price_update:
-                    if ticker.endswith("=X") and (not math.isfinite(float(current_price)) or current_price <= 0):
-                        continue
-                    if abs(change_pct) > 50.0:
-                        logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
-                        continue
-
-                    name: str = index_tickers.get(ticker, ticker)
-                    is_positive: int = int(change_pts >= 0)
-
-                    cursor.execute('''
-                        INSERT INTO market_pulse_cache
-                        (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
-                         market_state, extended_price, extended_change_pts, extended_change_pct, extended_session)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(ticker) DO UPDATE SET
-                            name = excluded.name,
-                            price = excluded.price,
-                            change_pts = excluded.change_pts,
-                            change_pct = excluded.change_pct,
-                            is_positive = excluded.is_positive,
-                            last_updated = excluded.last_updated,
-                            market_state = COALESCE(excluded.market_state, market_pulse_cache.market_state),
-                            extended_price = excluded.extended_price,
-                            extended_change_pts = excluded.extended_change_pts,
-                            extended_change_pct = excluded.extended_change_pct,
-                            extended_session = excluded.extended_session
-                    ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time,
-                          market_state, extended_price, extended_change_pts, extended_change_pct, extended_session))
-                    if ticker.endswith("=X"):
-                        upsert_fx_quote(ticker, float(current_price), time.time(), conn=conn)
-
-                # Full replace, not append — the mini sparkline is inherently "today's session".
-                # Skipped when t_live is empty (market closed) so the last session's line persists
-                # instead of being wiped, per the Markets page's "flat/last-known when closed" spec.
-                if not t_live.empty:
-                    try:
-                        cursor.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (ticker,))
-                        sparkline_series = t_live['Close'].dropna()
-                        if len(sparkline_series) > _SPARKLINE_MAX_POINTS:
-                            step = len(sparkline_series) / _SPARKLINE_MAX_POINTS
-                            sparkline_series = sparkline_series.iloc[[int(i * step) for i in range(_SPARKLINE_MAX_POINTS)]]
-                        cursor.executemany(
-                            "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
-                            [(ticker, idx.timestamp(), float(val)) for idx, val in sparkline_series.items()],
-                        )
-                    except Exception as e:
-                        logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
-
-            except Exception as e:
-                logger.error("[MARKET PULSE BACKGROUND] Error processing %s: %s", ticker, e)
-                
-        if handle_gilt:
-            try:
-                gilt_service = GiltDataService()
-                live_gilt_yield = gilt_service.fetch_live_ft_yield()
-                parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
-                
-                if live_gilt_yield is None and parquet_path.exists():
-                    try:
-                        df_gilt_hist = pd.read_parquet(parquet_path)
-                        if not df_gilt_hist.empty:
-                            live_gilt_yield = float(df_gilt_hist['Close'].iloc[-1])
-                            logger.info("Live FT scrape returned None. Falling back to Parquet value: %s", live_gilt_yield)
-                    except Exception as ex:
-                        logger.error("Failed to read Parquet fallback for market pulse: %s", ex)
-                
-                if live_gilt_yield is not None:
-                    gilt_prev_close: float = live_gilt_yield
-                    
-                    if parquet_path.exists():
-                        try:
-                            df_gilt_hist = pd.read_parquet(parquet_path)
-                            if len(df_gilt_hist) >= 2:
-                                gilt_prev_close = float(df_gilt_hist['Close'].iloc[-2])
-                            elif len(df_gilt_hist) == 1:
-                                gilt_prev_close = float(df_gilt_hist['Close'].iloc[-1])
-                        except Exception:
-                            logger.debug("Could not parse gilt history close price, using default prev_close")
-
-                    gilt_change_pts: float = live_gilt_yield - gilt_prev_close
-                    gilt_change_pct: float = (gilt_change_pts / gilt_prev_close) * 100.0 if gilt_prev_close != 0.0 else 0.0
-                    
-                    gilt_name: str = index_tickers.get("UK10YG", "UK 10Y Gilt")
-                    gilt_is_positive: int = int(gilt_change_pts >= 0)
-                    
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO market_pulse_cache 
-                        (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', ("UK10YG", gilt_name, live_gilt_yield, gilt_change_pts, gilt_change_pct, gilt_is_positive, current_time))
-                else:
-                    cursor.execute("SELECT price FROM market_pulse_cache WHERE ticker = 'UK10YG'")
-                    existing_gilt = cursor.fetchone()
-                    if existing_gilt is not None and existing_gilt['price']:
-                        cursor.execute(
-                            "UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = 'UK10YG'",
-                            (current_time,)
-                        )
-                    else:
-                        cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = 'UK10YG'")
-            except Exception as ex:
-                logger.error("[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: %s", ex)
-                
-        conn.commit()
-    except Exception as e:
-        logger.error("[MARKET PULSE BACKGROUND] Batch download failed: %s", e)
-    finally:
-        if conn:
-            conn.close()
-        _FETCH_LOCK.release()

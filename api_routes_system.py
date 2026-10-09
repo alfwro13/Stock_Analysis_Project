@@ -27,7 +27,9 @@ from config import (
 from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
-from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open, proxy_tickers_needing_refresh, registry_tickers_needing_refresh, reload_ticker_registry
+from market_pulse import get_cached_pulse_from_db, proxy_tickers_needing_refresh, registry_tickers_needing_refresh, reload_ticker_registry
+from market_pulse_write import fetch_and_save_pulse
+from market_session_helpers import is_exchange_open
 import markets_engine
 from notification_engine import notify
 from scheduler_engine import (

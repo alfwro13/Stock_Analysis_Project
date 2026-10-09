@@ -21,8 +21,8 @@ from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine
 from notification_engine import notify
-import market_pulse
-from market_pulse import upsert_live_price
+import market_session_helpers
+from market_pulse_write import upsert_live_price
 from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
@@ -785,7 +785,7 @@ class IntradayOrchestrator:
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
                 ticker_exchange = time_engine.ticker_exchange(ticker, currency)
-                if not market_pulse.is_quote_settled(ticker_exchange, include_premarket=(ticker_exchange == "NYSE")):
+                if not market_session_helpers.is_quote_settled(ticker_exchange, include_premarket=(ticker_exchange == "NYSE")):
                     logger.debug("%s — %s quote not yet settled, skipping this cycle.", ticker, ticker_exchange)
                     continue
 
@@ -953,7 +953,7 @@ class IntradayOrchestrator:
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
                 ticker_exchange = time_engine.ticker_exchange(ticker, currency)
-                if not market_pulse.is_quote_settled(ticker_exchange, include_premarket=(ticker_exchange == "NYSE")):
+                if not market_session_helpers.is_quote_settled(ticker_exchange, include_premarket=(ticker_exchange == "NYSE")):
                     logger.debug("%s — %s quote not yet settled, skipping this cycle.", ticker, ticker_exchange)
                     continue
 
