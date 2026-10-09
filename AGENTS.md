@@ -118,6 +118,8 @@ If you do run the full suite, once per task is sufficient — do not re-run it a
 
 Tests live in `tests/`. Fixtures and the test client are in `tests/conftest.py`. Do not mock the database in tests — the suite uses a real in-memory SQLite instance spun up per session.
 
+That database is shared by every test in the session, so rows a test inserts stay visible to tests that run later. Delete what a test adds (a fixture or `finally`), and seed rows that respect the writer's invariants (e.g. a `market_pulse_cache` row with `extended_session` must also carry `extended_price`). The default alphabetical order hides leaks, so check a suspected one by running the polluting file ahead of the victim file.
+
 A new `run_*` job-runner function in `scheduler_jobs.py` must have at least one test that calls the runner itself (e.g. `scheduler_jobs.run_foo_job()`), not only the engine function it delegates to. A test that only exercises `some_engine.do_thing()` will not catch a missing import or wiring bug in the runner that wraps it — exactly the kind of gap that let a `NameError` slip into `run_account_value_snapshot()` undetected until a direct runner-level test was added (June 2026).
 
 ---
