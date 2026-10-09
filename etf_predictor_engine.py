@@ -15,6 +15,7 @@ from database import (
     log_etf_prediction,
 )
 from notification_engine import notify
+from price_history_helpers import load_daily_close
 from utils import normalize_currency_bucket
 from yahoo_engine import yahoo_engine
 
@@ -669,6 +670,14 @@ def get_etf_correlation_data(config: dict, days: int = 60, daily_df: pd.DataFram
         )
 
     return {"normalized_df": normalized, "raw_df": df, "rolling_corr": rolling_corr, "error": None}
+
+
+def get_etf_recent_closes(etf_ticker: str, daily_df: pd.DataFrame | None = None, n: int = 25) -> pd.Series | None:
+    if daily_df is not None and etf_ticker in daily_df.columns:
+        closes = daily_df[etf_ticker].dropna().tail(n)
+        if not closes.empty:
+            return closes
+    return load_daily_close(etf_ticker, cache_only=True, tail=n)
 
 
 def get_etf_intraday_overlay_data(

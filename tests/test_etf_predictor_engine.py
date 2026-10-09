@@ -17,6 +17,7 @@ from etf_predictor_engine import (
     find_unknown_exchange_tickers,
     get_etf_correlation_data,
     get_etf_intraday_overlay_data,
+    get_etf_recent_closes,
     get_next_open_date,
     run_prediction,
     _compute_bias_corrected_prediction,
@@ -639,3 +640,31 @@ class TestSharedPrefetchAvoidsDuplicateFetch:
         mock_intraday.assert_not_called()
         mock_daily.assert_not_called()
         assert result["etf_last_close"] == pytest.approx(daily["FBAK.L"].iloc[-1])
+
+
+class TestGetEtfRecentCloses:
+    def _daily(self):
+        idx = pd.date_range("2026-01-01", periods=30)
+        return pd.DataFrame({"FBAK.L": [100.0 + i for i in range(30)], "A": [50.0] * 30}, index=idx)
+
+    def test_uses_daily_df_without_touching_parquet(self):
+        with patch("etf_predictor_engine.load_daily_close") as mock_load:
+            closes = get_etf_recent_closes("FBAK.L", self._daily(), n=25)
+
+        mock_load.assert_not_called()
+        assert len(closes) == 25
+        assert closes.iloc[-1] == 129.0
+
+    def test_falls_back_to_cached_parquet_when_daily_df_missing(self):
+        fallback = pd.Series([1.0, 2.0])
+        with patch("etf_predictor_engine.load_daily_close", return_value=fallback) as mock_load:
+            closes = get_etf_recent_closes("FBAK.L", None, n=25)
+
+        mock_load.assert_called_once_with("FBAK.L", cache_only=True, tail=25)
+        assert closes is fallback
+
+    def test_falls_back_when_etf_column_absent_or_empty(self):
+        daily = self._daily().drop(columns="FBAK.L")
+        with patch("etf_predictor_engine.load_daily_close", return_value=None) as mock_load:
+            assert get_etf_recent_closes("FBAK.L", daily) is None
+        mock_load.assert_called_once()
