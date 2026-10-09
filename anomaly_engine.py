@@ -93,13 +93,27 @@ class AnomalyEngine:
     # Training
     # ------------------------------------------------------------------
 
+    def _discard_model(self, ticker: str) -> None:
+        """Delete a ticker's saved model so an untrainable ticker never leaves an outdated artifact behind."""
+        self._model_cache.pop(ticker, None)
+        path = self.models_dir / f"{ticker}.joblib"
+        path.unlink(missing_ok=True)
+        path.with_name(f"{path.name}.sklearn-version").unlink(missing_ok=True)
+
     def train_all(self, tickers: list[str], parquet_dir: Path) -> None:
         """Train one IsolationForest per ticker and persist to disk."""
+        if tickers:
+            in_scope = set(tickers)
+            for model_path in self.models_dir.glob("*.joblib"):
+                if model_path.stem not in in_scope:
+                    self._discard_model(model_path.stem)
+                    logger.info("Removed anomaly model for out-of-scope ticker %s", model_path.stem)
         trained, skipped = 0, 0
         for ticker in tickers:
             path = parquet_dir / f"{ticker}.parquet"
             if not path.exists():
                 logger.warning("Skipping anomaly training for %s: no Parquet at %s", ticker, path)
+                self._discard_model(ticker)
                 skipped += 1
                 continue
             try:
@@ -121,6 +135,7 @@ class AnomalyEngine:
         required = {'Open', 'High', 'Low', 'Close', 'Volume'}
         if not required.issubset(df.columns):
             logger.warning("Skipping %s: missing required OHLCV columns.", ticker)
+            self._discard_model(ticker)
             return
 
         feature_df = self._build_features(df, clamp_beta(beta) if beta is not None else 1.0).dropna()
@@ -130,6 +145,7 @@ class AnomalyEngine:
                 "Skipping %s: only %d clean rows after NaN-drop (need %d).",
                 ticker, len(feature_df), _MIN_ROWS,
             )
+            self._discard_model(ticker)
             return
 
         X = feature_df.values
@@ -147,6 +163,7 @@ class AnomalyEngine:
 
         if score_max == score_min:
             logger.warning("Degenerate score range for %s — skipping save.", ticker)
+            self._discard_model(ticker)
             return
 
         out_path = self.models_dir / f"{ticker}.joblib"

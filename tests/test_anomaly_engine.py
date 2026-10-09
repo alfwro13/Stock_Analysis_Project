@@ -162,6 +162,36 @@ class TestTrainAll:
         assert (tmp_path / "AAPL.joblib").exists()
         assert not (tmp_path / "MISSING.joblib").exists()
 
+    def test_removes_model_and_sidecar_for_out_of_scope_ticker(self, tmp_path):
+        engine = _engine(tmp_path)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        _make_ohlcv().to_parquet(parquet_dir / "AAPL.parquet")
+        engine.train_one("OLD", _make_ohlcv(), beta=1.0)
+        assert (tmp_path / "OLD.joblib.sklearn-version").exists()
+        engine.train_all(["AAPL"], parquet_dir)
+        assert (tmp_path / "AAPL.joblib").exists()
+        assert not (tmp_path / "OLD.joblib").exists()
+        assert not (tmp_path / "OLD.joblib.sklearn-version").exists()
+
+    def test_removes_stale_model_when_ticker_no_longer_trainable(self, tmp_path):
+        engine = _engine(tmp_path)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        engine.train_one("THIN", _make_ohlcv(), beta=1.0)
+        _make_ohlcv(n=1).to_parquet(parquet_dir / "THIN.parquet")
+        engine.train_all(["THIN"], parquet_dir)
+        assert not (tmp_path / "THIN.joblib").exists()
+        assert engine.score("THIN", [1.0] * 6) is None
+
+    def test_removes_stale_model_when_parquet_missing(self, tmp_path):
+        engine = _engine(tmp_path)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        engine.train_one("GONE", _make_ohlcv(), beta=1.0)
+        engine.train_all(["GONE"], parquet_dir)
+        assert not (tmp_path / "GONE.joblib").exists()
+
     def test_empty_ticker_list_is_a_noop(self, tmp_path):
         engine = _engine(tmp_path)
         parquet_dir = tmp_path / "parquet"

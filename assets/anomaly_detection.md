@@ -158,6 +158,8 @@ Normalising against a single live point has no statistical meaning. The training
 **Entry point:** `AnomalyEngine.train_all(tickers, parquet_dir)`  
 **Triggered by:** `run_anomaly_training_job()` in `scheduler_jobs.py` (nightly 18:30, registered in `scheduler_engine.reload_scheduler()`) or the "Train Models Now" button in Settings → Machine Learning & AI Engine. It is also queued within seconds of startup when `model_compatibility_engine.py` detects that the saved Isolation Forest family was trained by a different scikit-learn version.
 
+**Stale-model cleanup:** `train_all` deletes the saved model (and its `.sklearn-version` sidecar) for any ticker outside the training list, and `train_all`/`train_one` delete it for a ticker that can no longer be trained (missing Parquet, missing columns, too few clean rows, degenerate score range). This stops an outdated artifact from being rejected on every scoring pass after a scikit-learn upgrade. An empty ticker list prunes nothing.
+
 ```
 For each ticker:
   1. Load OHLCV from data/historical/{ticker}.parquet
