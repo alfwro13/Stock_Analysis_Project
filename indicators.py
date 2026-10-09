@@ -250,3 +250,40 @@ def compute_keltner_channel(
         "lower_3": e - 3.0 * a,
         "z_score": (float(last_close) - e) / a,
     }
+
+
+QUANT_HISTORY_COLUMNS: Tuple[str, ...] = (
+    "rsi_14", "macd", "macd_signal", "macd_hist", "sma_50", "sma_200", "volume_surge", "bullish_cross",
+    "mom_1m", "mom_3m", "mom_6m", "mom_12m_skip1m", "atr_pct", "hist_vol_20", "rel_strength_5d", "rel_strength_20d",
+)
+
+
+def compute_quant_indicator_frame(df: pd.DataFrame, spy_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """Per-date quant_signals indicator columns (QUANT_HISTORY_COLUMNS plus week52_pct) for a cleaned OHLCV frame; NaN where history is too short. spy_df carries spy_ret_5d/20d."""
+    close = df["Close"]
+    macd, macd_signal, macd_hist = compute_macd(close)
+    smas = compute_smas(close, [50, 200])
+    mom_1m = close.pct_change(21)
+    log_returns = np.log(close / close.shift(1))
+    close_safe = close.replace(0, np.nan)
+    low_52w = close_safe.rolling(252, min_periods=200).min()
+    range_52w = (close_safe.rolling(252, min_periods=200).max() - low_52w).replace(0, np.nan)
+    if spy_df is not None:
+        # ffill: SPY's cached history can lag a ticker's freshly-fetched history by a day, and an exact-date reindex would NaN the newest row.
+        rel_strength_5d = close.pct_change(5) - spy_df["spy_ret_5d"].reindex(df.index, method="ffill")
+        rel_strength_20d = close.pct_change(20) - spy_df["spy_ret_20d"].reindex(df.index, method="ffill")
+    else:
+        rel_strength_5d = rel_strength_20d = np.nan
+    return pd.DataFrame({
+        "rsi_14": compute_rsi(close),
+        "macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist,
+        "sma_50": smas[50], "sma_200": smas[200],
+        "volume_surge": compute_volume_surge(df["Volume"], compute_volume_sma(df["Volume"])),
+        "bullish_cross": compute_bullish_cross(macd, macd_signal),
+        "mom_1m": mom_1m, "mom_3m": close.pct_change(63), "mom_6m": close.pct_change(126),
+        "mom_12m_skip1m": close.pct_change(252) - mom_1m,
+        "atr_pct": compute_atr(df["High"], df["Low"], close) / close_safe,
+        "hist_vol_20": log_returns.rolling(window=20).std() * np.sqrt(252),
+        "rel_strength_5d": rel_strength_5d, "rel_strength_20d": rel_strength_20d,
+        "week52_pct": (close_safe - low_52w) / range_52w,
+    }, index=df.index)

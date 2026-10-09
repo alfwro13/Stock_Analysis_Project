@@ -356,3 +356,56 @@ class TestRelStrengthAndHistVol:
         assert row is not None
         assert row["rel_strength_5d"] is not None
         assert row["rel_strength_20d"] is not None
+
+
+class TestScreenerAndBackfillAgree:
+    """The Daily Quant Screener and the ML backfill (and Repair Data's rebuild) write the same
+    quant_signals indicator columns; for one price history they must produce identical values."""
+
+    SHARED = (
+        "close_price", "volume", "rsi_14", "macd", "macd_signal", "macd_hist", "sma_50", "sma_200",
+        "volume_surge", "bullish_cross", "mom_1m", "mom_3m", "mom_6m", "mom_12m_skip1m",
+        "atr_pct", "hist_vol_20", "rel_strength_5d", "rel_strength_20d",
+    )
+
+    @staticmethod
+    def _noisy_ohlcv(n=320):
+        rng = np.random.default_rng(11)
+        idx = pd.date_range("2024-01-01", periods=n, freq="B")
+        close = 100.0 * np.exp(np.cumsum(rng.normal(0.0004, 0.015, n)))
+        return pd.DataFrame(
+            {"Open": close * 0.995, "High": close * 1.012, "Low": close * 0.985, "Close": close,
+             "Volume": rng.integers(500_000, 2_000_000, n).astype(float)},
+            index=idx,
+        )
+
+    @staticmethod
+    def _spy(df):
+        spy = df[["Close"]].copy()
+        spy["Close"] = spy["Close"] * 0.9 + np.sin(np.arange(len(spy)))
+        spy["spy_ret_5d"] = spy["Close"].pct_change(5)
+        spy["spy_ret_20d"] = spy["Close"].pct_change(20)
+        return spy
+
+    def test_latest_row_matches_between_screener_and_rebuild(self):
+        from ai_prediction_engine import rebuild_quant_history
+        from quant_engine import run_daily_quant_scan
+
+        df, spy = self._noisy_ohlcv(), self._spy(self._noisy_ohlcv())
+        with patch("quant_engine.load_or_fetch_daily_history", return_value=df.copy()), \
+             patch("quant_engine.download_spy_benchmark", return_value=spy), \
+             patch("quant_engine.time"):
+            run_daily_quant_scan(["ZZAGREESCAN"], scan_type="agree_test")
+        with patch("ai_prediction_engine.download_spy_benchmark", return_value=spy):
+            rebuild_quant_history("ZZAGREEBACK", df, "2024-01-01")
+
+        conn = database.get_connection()
+        try:
+            query = f"SELECT {', '.join(self.SHARED)} FROM quant_signals WHERE ticker = ? ORDER BY date DESC LIMIT 1"
+            scan_row = conn.execute(query, ("ZZAGREESCAN",)).fetchone()
+            back_row = conn.execute(query, ("ZZAGREEBACK",)).fetchone()
+        finally:
+            conn.close()
+        assert scan_row is not None and back_row is not None
+        for column in self.SHARED:
+            assert scan_row[column] == pytest.approx(back_row[column]), column

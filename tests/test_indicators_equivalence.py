@@ -221,3 +221,59 @@ def test_squeeze_on_series_is_noop(df):
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+class TestQuantIndicatorFrame:
+    """compute_quant_indicator_frame — the shared per-date builder behind the Daily Quant Screener, the ML backfill and Repair Data."""
+
+    @staticmethod
+    def _frame(n=300):
+        rng = np.random.default_rng(5)
+        close = 100 * np.exp(np.cumsum(rng.normal(0.0003, 0.012, n)))
+        return pd.DataFrame(
+            {"Open": close, "High": close * 1.01, "Low": close * 0.99, "Close": close,
+             "Volume": rng.integers(100_000, 900_000, n).astype(float)},
+            index=pd.date_range("2024-01-01", periods=n, freq="B"),
+        )
+
+    def test_matches_the_canonical_single_indicator_functions(self):
+        from indicators import compute_quant_indicator_frame
+
+        df = self._frame()
+        out = compute_quant_indicator_frame(df)
+        macd, signal, hist = compute_macd(df["Close"])
+        pd.testing.assert_series_equal(out["rsi_14"], compute_rsi(df["Close"]), check_names=False)
+        pd.testing.assert_series_equal(out["macd_hist"], hist, check_names=False)
+        pd.testing.assert_series_equal(out["sma_200"], compute_smas(df["Close"], [200])[200], check_names=False)
+        pd.testing.assert_series_equal(out["bullish_cross"], compute_bullish_cross(macd, signal), check_names=False)
+        pd.testing.assert_series_equal(out["mom_3m"], df["Close"].pct_change(63), check_names=False)
+        pd.testing.assert_series_equal(
+            out["atr_pct"], compute_atr(df["High"], df["Low"], df["Close"]) / df["Close"], check_names=False)
+
+    def test_short_history_is_nan_not_an_error(self):
+        from indicators import compute_quant_indicator_frame
+
+        out = compute_quant_indicator_frame(self._frame(n=60))
+        assert out["sma_200"].isna().all()
+        assert out["week52_pct"].isna().all()
+        assert out["mom_12m_skip1m"].isna().all()
+        assert out["rsi_14"].notna().iloc[-1]
+
+    def test_relative_strength_needs_spy_and_tolerates_one_day_lag(self):
+        from indicators import compute_quant_indicator_frame
+
+        df = self._frame()
+        assert compute_quant_indicator_frame(df)["rel_strength_5d"].isna().all()
+        spy = df[["Close"]].copy()
+        spy["spy_ret_5d"] = spy["Close"].pct_change(5)
+        spy["spy_ret_20d"] = spy["Close"].pct_change(20)
+        out = compute_quant_indicator_frame(df, spy.iloc[:-1])
+        assert pd.notna(out["rel_strength_5d"].iloc[-1])
+        assert pd.notna(out["rel_strength_20d"].iloc[-1])
+
+    def test_flat_price_leaves_week52_position_undefined(self):
+        from indicators import compute_quant_indicator_frame
+
+        df = self._frame()
+        df[["Open", "High", "Low", "Close"]] = 50.0
+        assert compute_quant_indicator_frame(df)["week52_pct"].isna().all()

@@ -4,25 +4,19 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-import numpy as np
 import pandas as pd
 from data_engine import load_or_fetch_daily_history
-from indicators import (
-    compute_rsi,
-    compute_macd,
-    compute_smas,
-    compute_atr,
-    compute_volume_sma,
-    compute_volume_surge,
-    compute_bullish_cross,
-    compute_volume_profile,
-    compute_keltner_channel,
-)
+from indicators import compute_keltner_channel, compute_quant_indicator_frame, compute_volume_profile
 from ai_prediction_engine import download_spy_benchmark
 
 from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
+
+
+def _latest(row, column):
+    return None if pd.isna(row[column]) else float(row[column])
+
 
 # GUI name: "Daily Quant Screener (Portfolio & Watchlist)". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 
@@ -93,41 +87,29 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     logger.warning("Insufficient historical data for %s (requires >= 200 days for SMA-200). Skipping.", ticker)
                     continue
 
-                close_s = df['Close'].squeeze()
-                volume_s = df['Volume'].squeeze()
-
-                rsi_series                  = compute_rsi(close_s)
-                macd_series, signal_series, hist_series = compute_macd(close_s)
-                smas                        = compute_smas(close_s, [50, 200])
-                sma_50                      = smas[50]
-                sma_200                     = smas[200]
-                vol_sma_20                  = compute_volume_sma(volume_s)
-                atr_series                  = compute_atr(df['High'], df['Low'], df['Close'])
-                atr_pct_series              = atr_series / df['Close'].replace(0, float('nan'))
-
-                # 52-week range position: where current price sits between its 52W low and high
-                close_safe = df['Close'].replace(0, float('nan'))
-                high_52w = close_safe.rolling(252, min_periods=200).max()
-                low_52w  = close_safe.rolling(252, min_periods=200).min()
-                range_52w = (high_52w - low_52w).replace(0, float('nan'))
-                week52_pct_series = (close_safe - low_52w) / range_52w
+                latest = compute_quant_indicator_frame(df, spy_df).iloc[-1]
 
                 last_date = df.index[-1].strftime('%Y-%m-%d')
-                c_price = float(close_s.iloc[-1])
-                c_vol = int(volume_s.iloc[-1])
+                c_price = float(df['Close'].iloc[-1])
+                c_vol = int(df['Volume'].iloc[-1])
 
-                c_rsi    = float(rsi_series.iloc[-1])    if not pd.isna(rsi_series.iloc[-1])    else None
-                c_macd   = float(macd_series.iloc[-1])   if not pd.isna(macd_series.iloc[-1])   else None
-                c_signal = float(signal_series.iloc[-1]) if not pd.isna(signal_series.iloc[-1]) else None
-                c_hist   = float(hist_series.iloc[-1])   if not pd.isna(hist_series.iloc[-1])   else None
-                c_sma50  = float(sma_50.iloc[-1])        if not pd.isna(sma_50.iloc[-1])        else None
-                c_sma200 = float(sma_200.iloc[-1])       if not pd.isna(sma_200.iloc[-1])       else None
-                c_atr_pct    = float(atr_pct_series.iloc[-1])    if not pd.isna(atr_pct_series.iloc[-1])    else None
-                c_week52_pct = float(week52_pct_series.iloc[-1]) if not pd.isna(week52_pct_series.iloc[-1]) else None
-
-                # bool() cast: NaN from compute_volume_surge/compute_bullish_cross safely yields False
-                vol_surge     = bool(compute_volume_surge(volume_s, vol_sma_20).iloc[-1])
-                bullish_cross = bool(compute_bullish_cross(macd_series, signal_series).iloc[-1])
+                c_rsi            = _latest(latest, 'rsi_14')
+                c_macd           = _latest(latest, 'macd')
+                c_signal         = _latest(latest, 'macd_signal')
+                c_hist           = _latest(latest, 'macd_hist')
+                c_sma50          = _latest(latest, 'sma_50')
+                c_sma200         = _latest(latest, 'sma_200')
+                c_atr_pct        = _latest(latest, 'atr_pct')
+                c_week52_pct     = _latest(latest, 'week52_pct')
+                c_mom_1m         = _latest(latest, 'mom_1m')
+                c_mom_3m         = _latest(latest, 'mom_3m')
+                c_mom_6m         = _latest(latest, 'mom_6m')
+                c_mom_12m_skip1m = _latest(latest, 'mom_12m_skip1m')
+                c_hist_vol_20    = _latest(latest, 'hist_vol_20')
+                c_rel_strength_5d  = _latest(latest, 'rel_strength_5d')
+                c_rel_strength_20d = _latest(latest, 'rel_strength_20d')
+                vol_surge     = bool(latest['volume_surge'])
+                bullish_cross = bool(latest['bullish_cross'])
 
                 vp = compute_volume_profile(df)
                 c_vp_poc        = vp["poc"]
@@ -147,35 +129,6 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     c_kc_z_score is not None and c_kc_z_score > 3.0
                     and c_rsi is not None and c_rsi > 75
                 )
-
-                _v1m = close_s.pct_change(21).iloc[-1]
-                _v3m = close_s.pct_change(63).iloc[-1]
-                _v6m = close_s.pct_change(126).iloc[-1]
-                _v12 = close_s.pct_change(252).iloc[-1]
-                c_mom_1m = float(_v1m) if not pd.isna(_v1m) else None
-                c_mom_3m = float(_v3m) if not pd.isna(_v3m) else None
-                c_mom_6m = float(_v6m) if not pd.isna(_v6m) else None
-                _m12     = float(_v12) if not pd.isna(_v12) else None
-                c_mom_12m_skip1m = (_m12 - c_mom_1m) if (_m12 is not None and c_mom_1m is not None) else None
-
-                log_returns = np.log(close_s / close_s.shift(1))
-                hist_vol_20_series = log_returns.rolling(window=20).std() * np.sqrt(252)
-                c_hist_vol_20 = float(hist_vol_20_series.iloc[-1]) if not pd.isna(hist_vol_20_series.iloc[-1]) else None
-
-                if spy_df is not None:
-                    ticker_ret_5d  = close_s.pct_change(5)
-                    ticker_ret_20d = close_s.pct_change(20)
-                    # ffill: SPY's cached history can lag a freshly-fetched ticker's history by a
-                    # day, so an exact-date reindex would spuriously NaN the newest row.
-                    spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index, method='ffill')
-                    spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index, method='ffill')
-                    _rs5  = (ticker_ret_5d  - spy_ret_5d_aligned).iloc[-1]
-                    _rs20 = (ticker_ret_20d - spy_ret_20d_aligned).iloc[-1]
-                    c_rel_strength_5d  = float(_rs5)  if not pd.isna(_rs5)  else None
-                    c_rel_strength_20d = float(_rs20) if not pd.isna(_rs20) else None
-                else:
-                    c_rel_strength_5d  = None
-                    c_rel_strength_20d = None
 
                 cursor.execute('''
                     INSERT INTO quant_signals
