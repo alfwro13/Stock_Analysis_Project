@@ -18,9 +18,8 @@ from model_compatibility_engine import dump_sklearn_artifact
 from database import get_connection, log_notification
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 from ml_features import (
-    MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS, SECTOR_MAP,
-    CONTINUOUS_FEATURES, FUNDAMENTAL_FEATURES, cross_sectional_zscore,
-    _winsorize_and_impute_fundamentals,
+    MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
+    CONTINUOUS_FEATURES, FUNDAMENTAL_FEATURES, TRAINING_HISTORY_QUERY, build_model_features,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,28 +32,7 @@ def _load_training_history() -> pd.DataFrame:
     conn = None
     try:
         conn = get_connection()
-        query = """
-            SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
-                   qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
-                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
-                   qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
-                   qs.atr_pct, qs.hist_vol_20,
-                   qs.rel_strength_5d, qs.rel_strength_20d,
-                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
-                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
-                   tm.sector
-            FROM quant_signals qs
-            LEFT JOIN stock_signals  ss ON qs.ticker = ss.ticker
-            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.mom_1m           IS NOT NULL
-              AND qs.mom_12m_skip1m   IS NOT NULL
-              AND qs.atr_pct          IS NOT NULL
-              AND qs.hist_vol_20      IS NOT NULL
-              AND qs.rel_strength_5d  IS NOT NULL
-              AND qs.rel_strength_20d IS NOT NULL
-            ORDER BY qs.date ASC
-        """
-        chunks = list(pd.read_sql_query(query, conn, chunksize=10_000))
+        chunks = list(pd.read_sql_query(TRAINING_HISTORY_QUERY, conn, chunksize=10_000))
         df = pd.concat(chunks, ignore_index=True)
         del chunks
     finally:
@@ -119,25 +97,7 @@ def train_global_ml_model() -> None:
 
         logger.info('Extracting features from %s historical records...', len(df))
 
-        # ── Feature Engineering ───────────────────────────────────────────────
-        df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
-        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
-
-        df['macd_pct']        = df['macd']        / df['close_price']
-        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
-        df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
-
-        df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
-        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
-
-        df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
-        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
-
-        # ── Fundamental preprocessing ─────────────────────────────────────────
-        # Winsorize then impute NULLs with cross-sectional median per date.
-        # Must happen BEFORE z-scoring so outliers don't compress valid signals.
-        logger.info("Winsorizing and imputing fundamental features...")
-        df = _winsorize_and_impute_fundamentals(df)
+        df = build_model_features(df)
 
         # Log null counts after imputation for diagnostics
         for col in FUNDAMENTAL_FEATURES:
@@ -148,8 +108,6 @@ def train_global_ml_model() -> None:
                     col,
                     remaining_nulls,
                 )
-
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
         # ── Save training population statistics ───────────────────────────────
         # Consumed by the inference coverage guard (Change A) and the
@@ -176,11 +134,6 @@ def train_global_ml_model() -> None:
         logger.info('  Training universe size (median tickers/date): %s', format(train_universe_size, ','))
         joblib.dump(feature_stats, FEATURE_STATS_PATH)
         logger.info('✅ Feature statistics saved to %s', FEATURE_STATS_PATH)
-
-        # ── Cross-sectional Z-scoring ─────────────────────────────────────────
-        logger.info("Applying cross-sectional Z-scoring to normalize features...")
-        for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
 
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
@@ -454,23 +407,7 @@ def train_quantile_models() -> None:
             logger.warning("No data found for quantile training. Aborting.")
             return
 
-        # Feature engineering — identical to train_global_ml_model()
-        df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
-        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
-        df['macd_pct']        = df['macd']        / df['close_price']
-        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
-        df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
-        df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
-        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
-        df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
-        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
-
-        df = _winsorize_and_impute_fundamentals(df)
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-        for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
-
+        df = build_model_features(df)
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
         # Continuous return target (not binary)

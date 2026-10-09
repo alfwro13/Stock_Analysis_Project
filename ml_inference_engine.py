@@ -2,14 +2,13 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
-import numpy as np
 import pandas as pd
 
 from model_compatibility_engine import load_sklearn_artifact
 from database import get_connection, log_notification
 from ml_features import (
-    MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS, SECTOR_MAP,
-    CONTINUOUS_FEATURES, cross_sectional_zscore, _winsorize_and_impute_fundamentals,
+    MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
+    CONTINUOUS_FEATURES, LATEST_FEATURES_QUERY, build_model_features,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,34 +62,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
     try:
         model = load_sklearn_artifact(MODEL_PATH, "ml_training_job")
         conn  = get_connection()
-
-        query = """
-            SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
-                   qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
-                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
-                   qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
-                   qs.atr_pct, qs.hist_vol_20,
-                   qs.rel_strength_5d, qs.rel_strength_20d,
-                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
-                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
-                   tm.sector
-            FROM quant_signals qs
-            LEFT JOIN stock_signals   ss ON qs.ticker = ss.ticker
-            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.mom_1m           IS NOT NULL
-              AND qs.atr_pct          IS NOT NULL
-              AND qs.rel_strength_5d  IS NOT NULL
-              AND qs.rel_strength_20d IS NOT NULL
-              AND qs.date = (
-                  SELECT MAX(qs2.date) FROM quant_signals qs2
-                  WHERE qs2.ticker          = qs.ticker
-                    AND qs2.mom_1m          IS NOT NULL
-                    AND qs2.atr_pct         IS NOT NULL
-                    AND qs2.rel_strength_5d  IS NOT NULL
-                    AND qs2.rel_strength_20d IS NOT NULL
-              )
-        """
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(LATEST_FEATURES_QUERY, conn)
 
         if df.empty:
             logger.warning("No data with complete feature set found. Re-run backfill first.")
@@ -137,31 +109,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             df['date'].iloc[0],
         )
 
-        # ── Feature Engineering ───────────────────────────────────────────────
-        df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
-        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
-
-        df['macd_pct']        = df['macd']        / df['close_price']
-        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
-        df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
-
-        df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
-        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
-
-        df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
-        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
-
-        # Fundamental preprocessing — identical to training pipeline
-        df = _winsorize_and_impute_fundamentals(df)
-
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-        # ── Cross-sectional Z-scoring ─────────────────────────────────────────
-        logger.info(
-            'Applying cross-sectional Z-scoring across %s tickers...', len(df)
-        )
-        for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+        df = build_model_features(df)
 
         # ── Change B: Train-vs-serve feature drift diagnostic ─────────────────
         # Compares today's raw (pre-z-score) feature means against the pooled
@@ -267,55 +215,13 @@ def score_quantile_predictions(tickers: List[str]) -> None:
         q10_model = load_sklearn_artifact(QUANTILE_Q10_PATH, "ml_training_job")
         q90_model = load_sklearn_artifact(QUANTILE_Q90_PATH, "ml_training_job")
         conn = get_connection()
-
-        query = """
-            SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
-                   qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
-                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
-                   qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
-                   qs.atr_pct, qs.hist_vol_20,
-                   qs.rel_strength_5d, qs.rel_strength_20d,
-                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
-                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
-                   tm.sector
-            FROM quant_signals qs
-            LEFT JOIN stock_signals   ss ON qs.ticker = ss.ticker
-            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.mom_1m           IS NOT NULL
-              AND qs.atr_pct          IS NOT NULL
-              AND qs.rel_strength_5d  IS NOT NULL
-              AND qs.rel_strength_20d IS NOT NULL
-              AND qs.date = (
-                  SELECT MAX(qs2.date) FROM quant_signals qs2
-                  WHERE qs2.ticker          = qs.ticker
-                    AND qs2.mom_1m          IS NOT NULL
-                    AND qs2.atr_pct         IS NOT NULL
-                    AND qs2.rel_strength_5d  IS NOT NULL
-                    AND qs2.rel_strength_20d IS NOT NULL
-              )
-        """
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(LATEST_FEATURES_QUERY, conn)
 
         if df.empty:
             logger.warning("No data for quantile scoring. Re-run quant scan first.")
             return
 
-        # Feature engineering — identical to training and binary inference
-        df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
-        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
-        df['macd_pct']        = df['macd']        / df['close_price']
-        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
-        df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
-        df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
-        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
-        df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
-        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
-
-        df = _winsorize_and_impute_fundamentals(df)
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-        for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+        df = build_model_features(df)
 
         target_set = set(tickers)
         payloads: List[Tuple[float, float, str, str]] = []

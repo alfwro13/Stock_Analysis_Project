@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db_module
+from ml_features import LATEST_FEATURES_QUERY
 
 
 @pytest.fixture(autouse=True)
@@ -100,3 +101,17 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
                 assert ss_row["ml_confidence"] == 80.0
         finally:
             conn.close()
+
+
+def test_latest_features_query_returns_only_each_tickers_newest_complete_row():
+    seed = TestUpdateDailyMlPredictionsSyncsStockSignals._seed_universe
+    seed(2, "2026-01-01")
+    seed(2, "2026-01-05")
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        rows = [r for r in conn.execute(LATEST_FEATURES_QUERY).fetchall() if r["ticker"].startswith("MLU")]
+    finally:
+        if conn:
+            conn.close()
+    assert sorted((r["ticker"], r["date"]) for r in rows) == [("MLU00", "2026-01-05"), ("MLU01", "2026-01-05")]

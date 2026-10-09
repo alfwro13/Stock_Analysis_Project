@@ -8,19 +8,24 @@ Covers pure business logic:
       - negative trailing_pe → NaN (loss-making company signal)
       - cross-sectional median imputation per date
       - columns absent from FUNDAMENTAL_FEATURES are left untouched
+  • build_model_features: derived columns, inf cleaning, sector fallback, per-date z-scores
 """
 
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ml_features import (
+    CONTINUOUS_FEATURES,
+    FEATURE_COLS,
     cross_sectional_zscore,
     _winsorize_and_impute_fundamentals,
     FUNDAMENTAL_BOUNDS,
+    build_model_features,
 )
 
 
@@ -205,3 +210,48 @@ class TestWinsorizeAndImputeFundamentals:
         result = _winsorize_and_impute_fundamentals(df)
         # date2 has only one non-null value (100.0) → median = 100.0
         assert result['trailing_pe'].iloc[3] == 100.0
+
+
+class TestBuildModelFeatures:
+    TICKERS = [f"BMF{i:02d}" for i in range(12)]
+
+    def test_adds_every_model_feature_column(self, fake_inference_df):
+        result = build_model_features(fake_inference_df(self.TICKERS))
+        assert set(FEATURE_COLS) <= set(result.columns)
+
+    def test_derived_columns_follow_their_formulas(self, fake_inference_df):
+        raw = fake_inference_df(self.TICKERS)
+        row = raw.iloc[0]
+        result = build_model_features(raw.copy()).iloc[0]
+        assert result["dist_sma_50"] == (row["close_price"] - row["sma_50"]) / row["sma_50"]
+        assert result["macd_pct"] == row["macd"] / row["close_price"]
+        assert result["dollar_vol_log"] == np.log1p(row["close_price"] * row["volume"])
+
+    def test_z_scores_are_zero_mean_per_date(self, fake_inference_df):
+        result = build_model_features(fake_inference_df(self.TICKERS))
+        for col in CONTINUOUS_FEATURES:
+            assert abs(result[f"{col}_z"].mean()) < 1e-9, col
+
+    def test_keeps_raw_columns_and_mutates_in_place(self, fake_inference_df):
+        raw = fake_inference_df(self.TICKERS)
+        raw_rsi = raw["rsi_14"].copy()
+        result = build_model_features(raw)
+        assert result is raw
+        pd.testing.assert_series_equal(result["rsi_14"], raw_rsi)
+
+    def test_zero_divisor_becomes_nan_not_inf(self, fake_inference_df):
+        raw = fake_inference_df(self.TICKERS)
+        raw.loc[0, "sma_50"] = 0.0
+        result = build_model_features(raw)
+        assert pd.isna(result.loc[0, "dist_sma_50"])
+        assert not np.isinf(result[CONTINUOUS_FEATURES].to_numpy(dtype=float)).any()
+
+    def test_unknown_sector_and_missing_flags_use_defaults(self, fake_inference_df):
+        raw = fake_inference_df(self.TICKERS)
+        raw.loc[0, "sector"] = "Not A Sector"
+        raw.loc[1, "sector"] = None
+        raw["volume_surge"] = raw["volume_surge"].astype(float)
+        raw.loc[0, "volume_surge"] = np.nan
+        result = build_model_features(raw)
+        assert list(result.loc[[0, 1], "sector_code"]) == [99, 99]
+        assert result.loc[0, "volume_surge"] == 0
