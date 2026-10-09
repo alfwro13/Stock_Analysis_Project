@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 
 from config import load_config, BASE_CURRENCY, ACCOUNT_CURRENCIES
 from database import get_watchlist_tickers
+from macro_data_engine import yield_gdp_link
 from market_pulse import get_all_cached_pulse
 from utils import ignored_tickers_set, measure_request_stage, time_request_call
 from portfolio_service import get_fx_cache_status
@@ -100,6 +101,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
             "config": config_data,
             "cached_pulse": live_pulse,
             "macro_regime": macro_regime,
+            "gdp_link": yield_gdp_link(macro_regime),
             "position_sizing": position_sizing_context,
             "change_period": change_period,
             "show_extended": show_extended,

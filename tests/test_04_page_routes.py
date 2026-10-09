@@ -192,6 +192,98 @@ def test_market_sentiment_page_loads(client):
     _assert_page_ok(client, "/market-sentiment", label="Market Sentiment")
 
 
+_GDP_ROWS = (("2026-06-01", 4.0, 3.9), ("2026-07-15", 5.1, 4.0))
+_US_BELOW_LINE = 'class="positive-val">10Y 4.30% vs nominal GDP growth 5.10% &rarr; yield is 0.8 pp below growth'
+_UK_ABOVE_LINE = 'class="warning-text">10Y 4.60% vs nominal GDP growth 4.00% &rarr; yield is 0.6 pp above growth'
+
+
+def _fake_yield_parquet(parquet_name, start_date):
+    import numpy as np
+    import pandas as pd
+    index = [d.date() for d in pd.date_range("2026-06-01", periods=60, freq="D")]
+    return pd.DataFrame({f"{parquet_name.split('_')[0]}_Close": np.linspace(4.0, 5.5, 60)}, index=index)
+
+
+@pytest.fixture
+def seeded_macro_regime():
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO macro_regimes
+               (date, us_threat_level, uk_threat_level, us_yield_velocity, uk_yield_velocity, tnx_close, uk_gilt_close)
+               VALUES ('2999-12-31', 'GREEN', 'GREEN', 0.5, 0.5, 4.30, 4.60)"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    yield
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM macro_regimes WHERE date = '2999-12-31'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def seeded_nominal_gdp():
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO macro_indicators (date, us_nominal_gdp_yoy, uk_nominal_gdp_yoy) VALUES (?, ?, ?)",
+            _GDP_ROWS,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    yield
+    conn = _db.get_connection()
+    try:
+        conn.executemany("DELETE FROM macro_indicators WHERE date = ?", [(row[0],) for row in _GDP_ROWS])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.pages
+def test_market_sentiment_shows_yield_vs_nominal_gdp_line_and_charts(client, seeded_macro_regime, seeded_nominal_gdp):
+    with patch("page_routes_macro.fetch_parquet_data", side_effect=_fake_yield_parquet):
+        resp = client.get("/market-sentiment")
+    assert resp.status_code == 200
+    assert _US_BELOW_LINE in resp.text
+    assert _UK_ABOVE_LINE in resp.text
+    for wrapper in ("us-yield-gdp-wrapper", "uk-yield-gdp-wrapper"):
+        block = resp.text.split(f'id="{wrapper}"')[1].split("sentiment-footer")[0]
+        assert "Yield below growth" in block and "Yield above growth" in block
+
+
+@pytest.mark.pages
+def test_market_sentiment_without_gdp_data_omits_the_line_and_charts(client, seeded_macro_regime):
+    resp = client.get("/market-sentiment")
+    assert resp.status_code == 200
+    assert "vs nominal GDP growth" not in resp.text
+    assert "Yield below growth" not in resp.text
+    assert "Data unavailable." in resp.text.split('id="us-yield-gdp-wrapper"')[1].split("sentiment-footer")[0]
+
+
+@pytest.mark.pages
+def test_portfolio_shows_yield_vs_nominal_gdp_line_in_both_warning_boxes(client, seeded_macro_regime, seeded_nominal_gdp):
+    resp = client.get("/portfolio")
+    assert resp.status_code == 200
+    assert _US_BELOW_LINE in resp.text
+    assert _UK_ABOVE_LINE in resp.text
+
+
+@pytest.mark.pages
+def test_portfolio_without_gdp_data_omits_the_line(client, seeded_macro_regime):
+    resp = client.get("/portfolio")
+    assert resp.status_code == 200
+    assert "3-Day Velocity" in resp.text
+    assert "vs nominal GDP growth" not in resp.text
+
+
 @pytest.mark.pages
 def test_earnings_volatility_page_loads(client):
     """GET /earnings-volatility must load the earnings volatility scanner."""

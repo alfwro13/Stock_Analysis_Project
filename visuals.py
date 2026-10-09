@@ -380,6 +380,61 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
+_YIELD_GDP_LABELS = {
+    "US": ("10Y Treasury Yield", "US Nominal GDP YoY"),
+    "UK": ("10Y Gilt Yield", "UK Nominal GDP YoY"),
+}
+
+
+def create_yield_vs_gdp_chart(df_yield: pd.DataFrame, df_gdp: pd.DataFrame, region: str) -> str:
+    if df_yield.empty or df_gdp.empty:
+        return "<p>Data unavailable.</p>"
+    yield_name, gdp_name = _YIELD_GDP_LABELS[region]
+
+    gdp = df_gdp['value'].sort_index()
+    yld = df_yield['value'].sort_index()
+    yld = yld[yld.index >= gdp.index.min()]
+    if yld.empty:
+        return "<p>Data unavailable.</p>"
+    gdp_on_yield_dates = gdp.reindex(gdp.index.union(yld.index)).ffill().reindex(yld.index)
+    gap = yld - gdp_on_yield_dates
+    upper = pd.concat([yld, gdp_on_yield_dates], axis=1).max(axis=1)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=yld.index, y=yld, name=yield_name, line=dict(color="#4da6ff", width=2), connectgaps=True,
+        customdata=gap, hovertemplate="%{y:.2f}% (gap vs GDP %{customdata:+.2f} pp)"
+    ))
+    fig.add_trace(go.Scatter(
+        x=gdp_on_yield_dates.index, y=gdp_on_yield_dates, name=gdp_name,
+        line=dict(color="#b366ff", width=2, dash='dot'), connectgaps=True, hovertemplate="%{y:.2f}%"
+    ))
+    fig.add_trace(go.Scatter(
+        x=yld.index, y=yld, mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'
+    ))
+    fig.add_trace(go.Scatter(
+        x=upper.index, y=upper, name="Yield below growth", mode='lines', line=dict(width=0),
+        fill='tonexty', fillcolor='rgba(0, 200, 120, 0.25)', hoverinfo='skip'
+    ))
+    fig.add_trace(go.Scatter(
+        x=gdp_on_yield_dates.index, y=gdp_on_yield_dates, mode='lines', line=dict(width=0),
+        showlegend=False, hoverinfo='skip'
+    ))
+    fig.add_trace(go.Scatter(
+        x=upper.index, y=upper, name="Yield above growth", mode='lines', line=dict(width=0),
+        fill='tonexty', fillcolor='rgba(255, 90, 60, 0.30)', hoverinfo='skip'
+    ))
+
+    fig.update_layout(
+        title=dict(text=f"{region} Yield vs Nominal GDP: {yield_name} vs GDP Growth", x=0.5, xanchor='center'),
+        template="plotly_dark", height=420,
+        margin=dict(l=20, r=20, t=50, b=70), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
+    )
+    fig.update_yaxes(title_text="% per year", automargin=True, showgrid=True, gridcolor="#333333")
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
+
+
 def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float = 0.7) -> str:
     # df must have ['anomaly_score', 'close_price'] with DatetimeIndex; uses one continuous line with per-point marker colours so the series is never visually split.
     fig = make_subplots(

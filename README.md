@@ -59,6 +59,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Crash & Moonshot Alerts** — 5-minute intraday scan for crash/parabolic-spike conditions during market hours.
 * **Markets Page** — global indexes/commodities/FX overview with session-aware dynamic ordering and spot/futures swaps.
 * **Market Sentiment & Insider Tracking** — CNN Fear & Greed vs. S&P 500, plus SEC Form 4 insider-buying scans.
+* **Yield vs Nominal GDP** — the 10-year US Treasury and UK Gilt yield charted against nominal GDP growth on the Market Sentiment page, with a one-line summary in the Treasury and Gilt warning boxes; context for whether rising yields are growth-driven, not a signal.
 * **Market Reports** — seven cross-universe screeners (Quality Compounders, GARP Tenbaggers, Quality on Sale, Sector Trends, Relative Strength Leaders, Mean Reversion, Dividend Harvest).
 * **ETF Price Predictor** — configurable holdings-weighted + OLS next-session open predictor with tracked accuracy.
 * **Nextcloud Talk Integration** & **Unified Notification Settings** — rich push alerts routed per job/alert across log/in-app/Nextcloud channels.

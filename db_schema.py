@@ -2039,7 +2039,9 @@ def migrate_db(conn, cursor) -> None:
         'us_cpi_inflation': 'REAL',
         'us_fed_funds_rate': 'REAL',
         'us_real_yield_10y': 'REAL',
-        'uk_base_rate': 'REAL'
+        'uk_base_rate': 'REAL',
+        'us_nominal_gdp_yoy': 'REAL',
+        'uk_nominal_gdp_yoy': 'REAL'
     }
 
     for col_name, data_type in required_indicator_columns.items():

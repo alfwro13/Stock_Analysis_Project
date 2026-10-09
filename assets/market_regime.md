@@ -87,7 +87,7 @@ Yield acceleration maps into strict danger vectors, indicating valuation multipl
 
 - 🟢 **GREEN THREAT:** Gilt and Treasury parameters are stable or falling. Favorable macro conditions for standard stock selection and asset price expansion.
 
-See `assets/systematic_risk.md` for the full threshold table and the exact formulas.
+See `assets/systematic_risk.md` for the full threshold table and the exact formulas, and for the display-only **Yield vs Nominal GDP** context line and chart that sit beside these threat levels (they never change a level).
     
 
 * * *
