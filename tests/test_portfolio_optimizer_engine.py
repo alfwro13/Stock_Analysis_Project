@@ -275,7 +275,7 @@ class TestReturnsMatrixCurrencyConversion:
         quotes = {FX_T1: "GBP", FX_T2: "GBP", FX_T4: "USD"}
         with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
              patch("portfolio_optimizer_engine._cached_fx_close", return_value=fx_close), \
-             patch("xray_engine.load_or_fetch_daily_history", return_value=history):
+             patch("price_history_helpers.load_or_fetch_daily_history", return_value=history):
             df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T4])
         expected = (usd_close * fx_close).pct_change().dropna()
         assert df[FX_T4].to_numpy() == pytest.approx(expected.reindex(df.index).to_numpy())

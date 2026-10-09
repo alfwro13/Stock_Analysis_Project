@@ -20,6 +20,8 @@ from price_history_helpers import (
     _anchor_closes_for_ticker,
     _calendar_offset,
     get_period_anchor_closes,
+    load_daily_close,
+    normalized_close,
     pct_from_anchor,
 )
 
@@ -325,3 +327,41 @@ class TestSessionWindowReturns:
         closes = self._closes(A=[100, 110, 121], B=[100, 0, 121])
         _, _, returns = session_window_returns(closes, 2, min_coverage=1.0)
         assert list(returns.index) == ["A"]
+
+
+class TestNormalizedClose:
+    def test_drops_nans_dedupes_sorts_and_strips_timezone(self):
+        index = pd.DatetimeIndex(
+            ["2025-01-03 14:30", "2025-01-02 00:00", "2025-01-03 21:00", "2025-01-06 00:00"], tz="UTC",
+        )
+        close = normalized_close(pd.Series([3.0, 2.0, 4.0, np.nan], index=index))
+        assert list(close.index) == [pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03")]
+        assert close.index.tz is None
+        assert list(close) == [2.0, 4.0]
+
+    def test_tail_counts_rows_after_nans_are_dropped(self):
+        index = pd.date_range("2025-01-01", periods=6, freq="D")
+        close = normalized_close(pd.Series([1.0, np.nan, 3.0, np.nan, 5.0, 6.0], index=index), tail=3)
+        assert list(close) == [3.0, 5.0, 6.0]
+
+    def test_empty_after_dropna_returns_none(self):
+        index = pd.date_range("2025-01-01", periods=2, freq="D")
+        assert normalized_close(pd.Series([np.nan, np.nan], index=index)) is None
+
+
+class TestLoadDailyClose:
+    def _frame(self):
+        index = pd.date_range("2025-01-01", periods=5, freq="D")
+        return pd.DataFrame({"Close": [1.0, 2.0, 3.0, 4.0, 5.0]}, index=index)
+
+    def test_passes_cache_only_and_trims_tail(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame()) as load:
+            close = load_daily_close("AAA", cache_only=True, tail=2)
+        load.assert_called_once_with("AAA", cache_only=True)
+        assert list(close) == [4.0, 5.0]
+
+    def test_missing_history_or_close_column_returns_none(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):
+            assert load_daily_close("AAA") is None
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame().rename(columns={"Close": "Open"})):
+            assert load_daily_close("AAA") is None

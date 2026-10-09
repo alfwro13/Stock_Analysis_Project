@@ -29,7 +29,7 @@ For each cohort and window (63 or 126 sessions):
 5. **Relative return** `relative_return_pp = 100 x (R_i - R_peers)` — percentage points.
 6. **Rank and percentile.** Rank 1 is the strongest, ties broken by ticker. Percentile is `(average ascending rank - 1) / (n - 1) x 100`, so ties share a percentile and 100 is strongest.
 
-No price data is fetched by the job. `_load_close()` reads the cached parquet (`data_engine.load_or_fetch_daily_history(cache_only=True)`) and skips a ticker with no parquet; the existing cache-refresh coordinator handles stale files. A ticker with no cached history is `no_history`.
+No price data is fetched by the job. `_load_close()` skips a ticker with no parquet, then reads the cached closes through the shared `price_history_helpers.load_daily_close(cache_only=True)`; the existing cache-refresh coordinator handles stale files. A ticker with no cached history is `no_history`.
 
 ## 3. Storage and freshness
 

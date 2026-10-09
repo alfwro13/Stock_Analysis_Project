@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 
 from config import load_config
-from data_engine import daily_history_cache_revision, load_or_fetch_daily_history
+from data_engine import daily_history_cache_revision
 from database import get_connection
 from db_helpers import get_company_names, get_portfolio_watchlist_tickers
 from fundamentals_helpers import get_instrument_type
-from price_history_helpers import session_window_returns
+from price_history_helpers import load_daily_close, session_window_returns
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, is_missing_sector, normalize_currency_bucket
 
 # GUI name: "Sector-Relative Momentum". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
@@ -74,14 +74,7 @@ def _load_signal_rows(conn, tickers: Optional[list[str]] = None) -> dict[str, di
 def _load_close(ticker: str) -> Optional[pd.Series]:
     if daily_history_cache_revision(ticker) is None:
         return None
-    df = load_or_fetch_daily_history(ticker, cache_only=True)
-    if df is None or "Close" not in df.columns:
-        return None
-    close = df["Close"].dropna().tail(HISTORY_TAIL_ROWS)
-    if close.empty:
-        return None
-    close.index = pd.DatetimeIndex(close.index).tz_localize(None).normalize()
-    return close[~close.index.duplicated(keep="last")]
+    return load_daily_close(ticker, cache_only=True, tail=HISTORY_TAIL_ROWS)
 
 
 def _leave_one_out_median(returns: pd.Series) -> pd.Series:
