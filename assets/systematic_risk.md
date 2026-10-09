@@ -150,7 +150,7 @@ See Section 2B. This is the only real-time (5-minute) reaction to sovereign yiel
 
 ### B. The Stock Detail Warning Badge (`templates/stock_detail.html`)
 
-When you open an individual stock's page, `page_routes.py` queries the database for the stock's `yield_correlation`, `trailing_pe`, and `debt_to_equity`. If the stock is both leveraged/expensive and has a strong negative yield correlation, it displays a warning badge:
+When you open an individual stock's page, `page_routes_stock.py` queries the database for the stock's `yield_correlation`, `trailing_pe`, and `debt_to_equity`. If the stock is both leveraged/expensive and has a strong negative yield correlation, it displays a warning badge:
 
 ```jinja
 {% if stock.yield_correlation is not none and stock.yield_correlation <= -0.3 %}

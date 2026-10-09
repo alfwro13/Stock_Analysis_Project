@@ -196,7 +196,7 @@ The maximum theoretical contribution from candlestick patterns alone in one sess
 | **Portfolio / Watchlist tables** | Each pattern's `name` and `tooltip` are stored as JSON in `stock_signals.setup_tags` and rendered as `<span class="setup-tag">` chips with `<abbr title="">` hover text |
 | **Watchlist filter dropdown** | All 11 patterns are listed in `#candleFilter`; the JS filter checks column 18 (Setups & Tags) for a substring match on the pattern name |
 | **Details page — macro chart** | `visuals.py` loops over the last 16 daily bars and annotates each pattern with ▲ (bullish, green), ▼ (bearish, red), or ◆ (neutral, orange) markers with Plotly hover tooltips |
-| **Details page — intraday chart** | `page_routes.py` constructs a synthetic "today" candle from intraday data and runs it through the engine; the first matching pattern is passed to `create_intraday_chart()` as a single annotation |
+| **Details page — intraday chart** | `page_routes_stock.py` constructs a synthetic "today" candle from intraday data and runs it through the engine; the first matching pattern is passed to `create_intraday_chart()` as a single annotation |
 | **Score breakdown panel** | Each pattern's `breakdown` HTML string is appended to the ticker's `educational_notes` and shown in the score explanation section |
 | **Glossary** | All patterns have entries under the Candlestick Patterns `<details>` section in `templates/glossary.html` |
 

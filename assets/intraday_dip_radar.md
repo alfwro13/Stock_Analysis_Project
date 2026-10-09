@@ -365,7 +365,7 @@ A collapsible "🎯 Dip Radar" panel is inserted between the **Intraday Pulse** 
 - Score 40–64 (watch zone): `#ffaa00` (amber)
 - Score 0–39 (no signal): `#ff4d4d` (red)
 
-**Server-side state:** The `is_dip_monitored` template variable is set by `page_routes.py` at render time. When `True`, the panel is rendered open and the 2-minute polling `setInterval` is injected into the page immediately.
+**Server-side state:** The `is_dip_monitored` template variable is set by `page_routes_stock.py` at render time. When `True`, the panel is rendered open and the 2-minute polling `setInterval` is injected into the page immediately.
 
 ### Settings Page (`settings.html`)
 

@@ -173,8 +173,9 @@ async def market_sentiment_page(request: Request):
             "uk_turbulence": 0.0,
         }
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
         macro_row = cursor.fetchone()
@@ -298,7 +299,8 @@ async def market_sentiment_page(request: Request):
         ai_contagion_status = []
         auction_rows = []
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     yield_equity_html = await run_in_threadpool(get_yield_equity_html)
     uk_yield_equity_html = await run_in_threadpool(get_uk_yield_equity_html)
@@ -363,8 +365,9 @@ async def index_detail(request: Request, ticker: str):
     if registry_row:
         display_name = (registry_row.get("future_display_name") or registry_row["display_name"]) if is_future_page else registry_row["display_name"]
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -393,7 +396,8 @@ async def index_detail(request: Request, ticker: str):
         ap = cursor.fetchone()
         currency = ap["currency"] if ap else "USD"
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     intraday_revision = await run_in_threadpool(intraday_chart_revision, ticker, currency)
     price_action = None

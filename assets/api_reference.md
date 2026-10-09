@@ -345,7 +345,7 @@ Persists the Portfolio/Watchlist "Columns" picker's selection — which of that 
 }
 ```
 
-`scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_HIDDEN_CORE_COLUMNS` / `UI_PREFERENCES.{SCOPE}_SHOWN_OPTIONAL_COLUMNS` in `config.json`, read back by `page_routes.portfolio_page()`/`watchlist_page()` on next load to compute each column's initial visibility.
+`scope` is `"portfolio"` or `"watchlist"` — `400` for any other value. Writes `UI_PREFERENCES.{SCOPE}_HIDDEN_CORE_COLUMNS` / `UI_PREFERENCES.{SCOPE}_SHOWN_OPTIONAL_COLUMNS` in `config.json`, read back by `page_routes_portfolio.portfolio_page()`/`watchlist_page()` on next load to compute each column's initial visibility.
 
 `column_order` is an optional list of stable column keys, stored in `UI_PREFERENCES.{SCOPE}_COLUMN_ORDER`. Ticker is forced first, duplicates and unknown keys are removed, and omitted/new columns are appended in registry order. Omitting this field leaves the saved order unchanged; an empty list resets to registry order. Invalid field types return `422`. Order is independent for each page and includes hidden columns.
 

@@ -143,7 +143,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 ### Portfolio/Watchlist column registry (`table_columns_helpers.py`)
 - Whenever a code change adds a new engine, table, or computed field that produces a per-ticker value that could sensibly be shown as a column on the Portfolio or Watchlist page, add it to `OPTIONAL_COLUMNS` in the same task — do not leave newly-available data undiscoverable through the column picker. This mirrors the Glossary rule above: new displayable data gets wired into the relevant user-facing surface as part of the same change, not as a follow-up.
 - Pick the correct `fmt` type by checking the actual unit/scale the writer produces (see the central-engine "Fundamentals unit conventions" rule above) — never assume a percentage-looking field is a fraction or vice versa.
-- If the new field needs a JOIN the existing Portfolio/Watchlist queries don't already have, add it to both `page_routes.portfolio_page()` and `watchlist_page()` (both pages must offer the same optional-column catalog unless there's a genuine parity-gap reason not to, per the existing `pages=("portfolio",)`/`("watchlist",)` single-page exceptions in `table_columns_helpers.py`).
+- If the new field needs a JOIN the existing Portfolio/Watchlist queries don't already have, add it to both `page_routes_portfolio.portfolio_page()` and `watchlist_page()` (both pages must offer the same optional-column catalog unless there's a genuine parity-gap reason not to, per the existing `pages=("portfolio",)`/`("watchlist",)` single-page exceptions in `table_columns_helpers.py`).
 - See `assets/configurable_columns.md` for the full registry design and the exact steps to add a column.
 
 ### Asset documentation (`assets/`)
