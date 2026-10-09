@@ -435,7 +435,7 @@ def portfolio_twr_ex_fx(account_ids: list) -> Optional[float]:
         nc = cash_and_contrib_by_date[d]["net_contributions"]
         equity_actual = cash_and_contrib_by_date[d]["equity_value"]
         covered_ex_fx = sum(
-            native * baseline_fx.get(currency, 1.0)
+            native * baseline_fx[currency]
             for currency, native in by_date_currency.get(d, {}).items()
         )
         uncovered_actual = equity_actual - covered_base_by_date.get(d, 0.0)
