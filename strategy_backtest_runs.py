@@ -20,6 +20,7 @@ from strategy_backtest_data import (
     COST_PRESETS,
     BasketError,
     build_price_matrix,
+    convert_inputs_to_base,
     input_digest,
     load_close_series,
     resolve_basket,
@@ -96,7 +97,7 @@ def create_run(req: Dict) -> Dict:
         return {"status": "error", "message": "Unknown rebalance cadence."}
     try:
         basket = resolve_basket(req)
-        benchmark = resolve_benchmark(req["benchmark"], basket["currency"])
+        benchmark = resolve_benchmark(req["benchmark"], basket["currency"], basket["convert_currency"])
     except BasketError as e:
         return {"status": "error", "message": str(e)}
     config = build_config({**req, "benchmark": benchmark}, basket)
@@ -210,12 +211,13 @@ def _load_inputs(config: dict, basket: dict, benchmark: Optional[str]):
     native = native_currencies(tickers + ([benchmark] if benchmark else []))
     exchanges = {t: time_engine.ticker_exchange(t, native.get(t) or basket["currency"]) for t in tickers}
     bench_exchange = time_engine.ticker_exchange(benchmark, native.get(benchmark) or basket["currency"]) if benchmark else None
-    return loaded, bench_loaded, exchanges, bench_exchange
+    fx_pairs, fx_notes = convert_inputs_to_base(config, basket, benchmark, loaded, bench_loaded)
+    return loaded, bench_loaded, exchanges, bench_exchange, fx_pairs, fx_notes
 
 
 def _compute(config: dict, basket: dict) -> Dict:
     benchmark = config["benchmark"]
-    loaded, bench_loaded, exchanges, bench_exchange = _load_inputs(config, basket, benchmark)
+    loaded, bench_loaded, exchanges, bench_exchange, fx_pairs, fx_notes = _load_inputs(config, basket, benchmark)
     matrix = build_price_matrix(
         {t: v["close"] for t, v in loaded.items()}, exchanges,
         bench_loaded["close"] if bench_loaded else None, bench_exchange,
@@ -226,12 +228,12 @@ def _compute(config: dict, basket: dict) -> Dict:
     result = run_backtest(
         matrix["prices"], matrix["real"], matrix["bench_prices"], matrix["bench_real"], runnable, config, close_utc,
     )
-    notes = [v["note"] for v in loaded.values() if v["note"]] + ([bench_loaded["note"]] if bench_loaded and bench_loaded["note"] else [])
+    notes = [v["note"] for v in loaded.values() if v["note"]] + ([bench_loaded["note"]] if bench_loaded and bench_loaded["note"] else []) + fx_notes
     return {
         "result": result, "matrix": matrix, "skipped": skipped, "notes": notes,
         "sources": {t: {k: v[k] for k in ("source", "start", "end", "sessions")} for t, v in loaded.items()},
         "benchmark_source": ({k: bench_loaded[k] for k in ("source", "start", "end", "sessions")} if bench_loaded else None),
-        "exchanges": exchanges,
+        "exchanges": exchanges, "fx_pairs": fx_pairs,
     }
 
 
@@ -285,7 +287,7 @@ def _store(run_id: str, config: dict, basket: dict, outcome: Dict) -> None:
     inputs = {
         "digest": input_digest(matrix["prices"], matrix["bench_prices"]), "sources": outcome["sources"],
         "benchmark": config["benchmark"], "benchmark_source": outcome["benchmark_source"],
-        "exchanges": outcome["exchanges"],
+        "exchanges": outcome["exchanges"], "fx_pairs": outcome["fx_pairs"],
     }
     _update(
         run_id, state=STATE_COMPLETED, finished_at=_now(), summary_json=_dumps(summary),

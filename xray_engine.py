@@ -304,15 +304,19 @@ class GhostfolioXRayClient:
             return {"dividend_yield_pct": 0.0, "dividend_in_base_currency": 0.0}
 
 
-def fetch_close_returns_from_parquet(symbols: List[str], cache_only: bool = False) -> pd.DataFrame:
-    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet, unless cache_only)."""
+def fetch_close_returns_from_parquet(symbols: List[str], cache_only: bool = False, close_transform=None) -> pd.DataFrame:
+    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet, unless cache_only). `close_transform(symbol, close)` may rescale a close series first (None drops the symbol)."""
     if not symbols:
         return pd.DataFrame()
     closes: Dict[str, pd.Series] = {}
     for t in symbols:
         df = load_or_fetch_daily_history(t, cache_only=cache_only)
         if df is not None and "Close" in df.columns:
-            closes[t] = df["Close"].tail(252)
+            close = df["Close"].tail(252)
+            if close_transform is not None:
+                close = close_transform(t, close)
+            if close is not None:
+                closes[t] = close
     if not closes:
         return pd.DataFrame()
     prices = pd.DataFrame(closes)
@@ -511,13 +515,14 @@ def run_xray_precompute() -> bool:
 
 
 def get_scope_returns_matrix(
-    tickers: List[str], include_benchmark: bool = True
+    tickers: List[str], include_benchmark: bool = True, series_transform=None
 ) -> Tuple[Optional[pd.DataFrame], List[str]]:
     """Per-ticker daily-return DataFrame (dates x tickers) read from xray_returns_cache and
     date-aligned via dropna, before any weighting/blending — the shared read path behind
     get_scope_return_series() (portfolio-level blend) and portfolio_optimizer_engine.py (needs
     the raw per-ticker matrix). None if fewer than 2 tickers resolve or fewer than 30 overlapping
-    cached days."""
+    cached days. `series_transform(ticker, returns)` may rewrite each ticker's own series before
+    alignment (None drops the ticker); the benchmark series is never transformed."""
     data_warnings: List[str] = []
     tickers = list({t for t in tickers if t})
     if not tickers:
@@ -552,7 +557,11 @@ def get_scope_returns_matrix(
     for sym in tickers:
         if sym in returns_cache:
             dates, rets = returns_cache[sym]
-            series_map[sym] = pd.Series(rets, index=pd.to_datetime(dates))
+            series = pd.Series(rets, index=pd.to_datetime(dates))
+            if series_transform is not None:
+                series = series_transform(sym, series)
+            if series is not None:
+                series_map[sym] = series
     if include_benchmark and BENCHMARK_SYMBOL in returns_cache:
         bench_dates, bench_rets_raw = returns_cache[BENCHMARK_SYMBOL]
         series_map[BENCHMARK_SYMBOL] = pd.Series(bench_rets_raw, index=pd.to_datetime(bench_dates))

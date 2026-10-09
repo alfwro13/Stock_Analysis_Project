@@ -14,8 +14,10 @@ import data_engine
 import time_engine
 from accounts_engine import native_currencies
 from cache_refresh_helpers import request_cache_refresh
-from config import BACKTEST_HISTORY_DIR
+from config import BACKTEST_HISTORY_DIR, BASE_CURRENCY
+from fx_conversion_helpers import BaseCurrencyConverter
 from portfolio_optimizer_engine import list_candidates
+from portfolio_service import fx_pair
 from stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
 from stable_shortlist_reads import get_shortlist
 from strategy_backtest_engine import InsufficientHistory
@@ -141,12 +143,20 @@ def prepare_history_blocking(tickers: List[str]) -> Optional[Dict]:
     return {"prepared": prepared, "failed": failed} if prepared else None
 
 
-def request_history_preparation(tickers: List[str]) -> Dict:
+def _fx_pairs(tickers: List[str]) -> List[str]:
+    base = normalize_currency_bucket(BASE_CURRENCY)
+    pairs = {fx_pair(b) for b in currency_buckets(tickers).values() if b and b != base}
+    return sorted(p for p in pairs if p)
+
+
+def request_history_preparation(tickers: List[str], convert_currency: bool = False) -> Dict:
     tickers = _clean_tickers(tickers)
     if not tickers:
         return {"status": "error", "message": "No fetchable tickers selected."}
     if len(tickers) > MAX_TICKERS:
         return {"status": "error", "message": f"Select at most {MAX_TICKERS} tickers."}
+    if convert_currency:
+        tickers = tickers + _fx_pairs(tickers)
     key = "backtest-history:" + hashlib.sha1(",".join(sorted(tickers)).encode()).hexdigest()[:16]
     with _prepare_lock:
         for ticker in tickers:
@@ -210,8 +220,20 @@ def _single_currency(tickers: List[str], chosen: Optional[str]) -> Dict:
         raise BasketError("The quote currency is unknown for " + ", ".join(unknown) + " — remove them or wait for the next data refresh.")
     present = sorted(set(buckets.values()))
     if len(present) > 1:
-        raise BasketError("The selected tickers span " + " and ".join(present) + ". Each backtest uses one currency (no currency conversion), so pick one currency.")
+        raise BasketError("The selected tickers span " + " and ".join(present) + ". Each backtest uses one currency unless you convert everything to your base currency, so pick one currency or convert.")
     return {"tickers": tickers, "currency": present[0], "excluded": []}
+
+
+def _convertible(tickers: List[str]) -> Dict:
+    buckets = currency_buckets(tickers)
+    unknown = [t for t, b in buckets.items() if not b]
+    if unknown:
+        raise BasketError("The quote currency is unknown for " + ", ".join(unknown) + " — remove them or wait for the next data refresh.")
+    base = normalize_currency_bucket(BASE_CURRENCY)
+    return {
+        "tickers": tickers, "currency": base, "excluded": [],
+        "converted_from": sorted({b for b in buckets.values() if b != base}),
+    }
 
 
 def resolve_basket(req: Dict) -> Dict:
@@ -233,7 +255,7 @@ def resolve_basket(req: Dict) -> Dict:
         raise BasketError(f"Select at least {MIN_TICKERS} tickers.")
     if len(tickers) > MAX_TICKERS:
         raise BasketError(f"Select at most {MAX_TICKERS} tickers.")
-    resolved = _single_currency(tickers, req.get("currency"))
+    resolved = _convertible(tickers) if req.get("convert_currency") else _single_currency(tickers, req.get("currency"))
     if resolved["excluded"]:
         warnings.append("Excluded (other currency): " + ", ".join(resolved["excluded"]) + ".")
     tickers = resolved["tickers"]
@@ -247,23 +269,29 @@ def resolve_basket(req: Dict) -> Dict:
             raise BasketError(str(e))
         weights = {h["symbol"]: h["weight"] for h in holdings if h.get("weight", 0) > 0 and h["symbol"] in tickers}
         current_weights = weights or None
+    converted_from = resolved.get("converted_from", [])
+    if converted_from:
+        warnings.append(f"Prices quoted in {', '.join(converted_from)} are converted to {resolved['currency']} at each day's FX close.")
     return {
-        "tickers": tickers, "currency": resolved["currency"], "current_weights": current_weights,
-        "shortlist": shortlist, "account_id": req.get("account_id"), "warnings": warnings,
+        "tickers": tickers, "currency": resolved["currency"], "convert_currency": bool(req.get("convert_currency")), "converted_from": converted_from,
+        "current_weights": current_weights, "shortlist": shortlist, "account_id": req.get("account_id"), "warnings": warnings,
     }
 
 
-def resolve_benchmark(requested: str, currency: str) -> Optional[str]:
+def resolve_benchmark(requested: str, currency: str, convert_currency: bool = False) -> Optional[str]:
     symbol = DEFAULT_BENCHMARKS.get(currency) if requested == "auto" else (requested.strip() or None)
     if not symbol or symbol.lower() == "none":
         return None
     if safe_ticker_filename(symbol) is None:
         raise BasketError(f"{symbol} is not a valid benchmark symbol.")
     bucket = _benchmark_bucket(symbol)
-    if bucket != currency:
+    if convert_currency:
+        if not bucket:
+            raise BasketError(f"The quote currency of benchmark {symbol} is unknown, so it cannot be converted to {currency}.")
+    elif bucket != currency:
         raise BasketError(
             f"Benchmark {symbol} is quoted in {bucket or 'an unknown currency'}, but the basket is in {currency}. "
-            "Pick a benchmark in the basket's currency (there is no currency conversion)."
+            "Pick a benchmark in the basket's currency, or convert the basket to your base currency."
         )
     return symbol
 
@@ -335,3 +363,29 @@ def session_close_resolver(tickers: List[str], exchanges: Dict[str, str]):
         return max(time_engine.session_close_utc(zone, ts.date()) for zone in zones)
 
     return close_utc
+
+
+def convert_inputs_to_base(config: dict, basket: dict, benchmark: Optional[str], loaded: Dict, bench_loaded: Optional[Dict]):
+    """Rewrites each loaded close series into the base currency with dated FX; returns the FX pair coverage and notes, or ({}, []) for a single-currency basket."""
+    if not basket.get("convert_currency"):
+        return {}, []
+    buckets = currency_buckets(basket["tickers"])
+    if benchmark:
+        buckets[benchmark] = _benchmark_bucket(benchmark)
+    notes: List[str] = []
+
+    def load_fx(pair: str) -> Optional[pd.Series]:
+        try:
+            fx = load_close_series(pair, config["history"])
+        except BasketError:
+            return None
+        if fx["note"]:
+            notes.append(fx["note"])
+        return fx["close"]
+
+    converter = BaseCurrencyConverter(buckets, load_fx)
+    for ticker, item in [*loaded.items(), *([(benchmark, bench_loaded)] if bench_loaded else [])]:
+        item["close"] = converter.prices(ticker, item["close"])
+    if converter.issues:
+        raise BasketError(" ".join(converter.issues.values()))
+    return converter.pairs, list(dict.fromkeys(notes))

@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import list_scope_accounts_with_values
 from api_deps import _error_500, limiter
+from config import BASE_CURRENCY
 from strategy_backtest_data import (
     COST_PRESETS,
     DEFAULT_BENCHMARKS,
@@ -38,6 +39,7 @@ class StrategyBacktestRunRequest(BaseModel):
     shortlist_signal: Optional[Literal["ml_upside", "quant_score"]] = None
     shortlist_scope: Optional[Literal["portfolio", "watchlist"]] = None
     currency: Optional[str] = Field(None, max_length=8)
+    convert_currency: bool = False
     strategies: List[str] = Field(min_length=1, max_length=len(STRATEGIES))
     cadence: Literal["monthly", "quarterly", "annual"] = DEFAULTS["cadence"]
     lookback: int = Field(DEFAULTS["lookback"], ge=20, le=756)
@@ -62,6 +64,7 @@ class StrategyBacktestRunRequest(BaseModel):
 
 class PrepareHistoryRequest(BaseModel):
     tickers: List[str] = Field(min_length=1, max_length=MAX_TICKERS + 1)
+    convert_currency: bool = False
 
 
 @backtester_router.get("/strategy-backtester/meta")
@@ -75,7 +78,7 @@ async def api_backtester_meta(request: Request):
             for s in STRATEGIES.values()
         ],
         "cadences": list(CADENCES), "defaults": DEFAULTS, "cost_presets": COST_PRESETS,
-        "default_benchmarks": DEFAULT_BENCHMARKS,
+        "default_benchmarks": DEFAULT_BENCHMARKS, "base_currency": BASE_CURRENCY,
         "limits": {
             "max_tickers": MAX_TICKERS, "min_tickers": MIN_TICKERS, "max_saved_runs": MAX_SAVED_RUNS,
             "min_test_sessions": MIN_TEST_SESSIONS, "extended_period": EXTENDED_PERIOD,
@@ -130,7 +133,7 @@ async def api_backtester_history_status(request: Request, tickers: str = Query(.
 async def api_backtester_prepare_history(request: Request, req: PrepareHistoryRequest):
     """Starts the background download of extended daily history (separate cache) for the given tickers."""
     try:
-        return JSONResponse(content=await run_in_threadpool(request_history_preparation, req.tickers))
+        return JSONResponse(content=await run_in_threadpool(request_history_preparation, req.tickers, req.convert_currency))
     except Exception as e:
         return _error_500(e)
 

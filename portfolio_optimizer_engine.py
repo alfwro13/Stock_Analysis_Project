@@ -6,9 +6,13 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+import data_engine
+from accounts_engine import native_currencies
 from config import load_config
 from database import get_connection
 from db_accounts import get_watchlist_tickers
+from fx_conversion_helpers import BaseCurrencyConverter
+from utils import normalize_currency_bucket
 from xray_engine import (
     fetch_close_returns_from_parquet,
     get_scope_returns_matrix,
@@ -99,20 +103,31 @@ def _drop_short_history(returns: pd.DataFrame) -> Tuple[pd.DataFrame, List[Tuple
     return returns, removed
 
 
+def _cached_fx_close(pair: str) -> Optional[pd.Series]:
+    history = data_engine.load_or_fetch_daily_history(pair, cache_only=True)
+    return history["Close"] if history is not None and "Close" in history.columns else None
+
+
 def _returns_matrix_for_candidates(
     tickers: List[str],
 ) -> Tuple[Optional[pd.DataFrame], List[str], List[Tuple[str, int]]]:
-    """Parquet fallback because the nightly X-ray precompute never caches a never-held (Watchlist-only) ticker."""
-    cached_df, warnings = get_scope_returns_matrix(tickers, include_benchmark=False)
+    """Parquet fallback because the nightly X-ray precompute never caches a never-held (Watchlist-only) ticker. Every series is converted to the base currency with dated FX first."""
+    native = native_currencies(list(tickers))
+    converter = BaseCurrencyConverter({t: normalize_currency_bucket(native.get(t)) for t in tickers}, _cached_fx_close)
+    cached_df, warnings = get_scope_returns_matrix(tickers, include_benchmark=False, series_transform=converter.returns)
     cached_symbols = set(cached_df.columns) if cached_df is not None else set()
-    missing = [t for t in tickers if t not in cached_symbols]
+    missing = [t for t in tickers if t not in cached_symbols and t not in converter.issues]
+    warnings = list(warnings)
+
+    def _with_conversion_issues():
+        return warnings + [converter.issues[t] for t in tickers if t in converter.issues]
 
     if not missing:
-        return cached_df, warnings, []
+        return cached_df, _with_conversion_issues(), []
 
-    fallback_prices = fetch_close_returns_from_parquet(missing)
+    fallback_prices = fetch_close_returns_from_parquet(missing, close_transform=converter.prices)
     if cached_df is None and fallback_prices.empty:
-        return None, warnings, []
+        return None, _with_conversion_issues(), []
     if cached_df is None:
         combined = fallback_prices
     elif fallback_prices.empty:
@@ -123,8 +138,8 @@ def _returns_matrix_for_candidates(
     combined, removed = _drop_short_history(combined)
     combined = combined.dropna(how="any")
     if len(combined) < MIN_OVERLAP_DAYS or combined.shape[1] < 2:
-        return None, warnings, removed
-    return combined, warnings, removed
+        return None, _with_conversion_issues(), removed
+    return combined, _with_conversion_issues(), removed
 
 
 def _short_history_warning(removed: List[Tuple[str, int]]) -> str:
