@@ -15,6 +15,7 @@ from database import (
     log_etf_prediction,
 )
 from notification_engine import notify
+from utils import normalize_currency_bucket
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def detect_etf_info(etf_ticker: str) -> dict:
         if info:
             raw_ccy = info.get("currency") or info.get("financialCurrency") or ""
             if raw_ccy:
-                currency = "GBP" if raw_ccy in ("GBp", "GBX") else raw_ccy
+                currency = normalize_currency_bucket(raw_ccy)
             long_name = info.get("longName") or info.get("shortName") or ""
             if long_name:
                 name = long_name
@@ -49,10 +50,8 @@ def detect_etf_info(etf_ticker: str) -> dict:
 
 def detect_fx_pair(etf_currency: str, constituent_currencies: list) -> str | None:
     """Returns Yahoo FX pair or None; pair as {etf_ccy}{constituent_ccy}=X so fx_adjustment sign is positive when ETF currency is stronger."""
-    normalised_etf = "GBP" if etf_currency in ("GBp", "GBX") else etf_currency
-    normalised_constituents = [
-        "GBP" if c in ("GBp", "GBX") else c for c in constituent_currencies
-    ]
+    normalised_etf = normalize_currency_bucket(etf_currency)
+    normalised_constituents = [normalize_currency_bucket(c) for c in constituent_currencies]
     if not normalised_constituents:
         return None
     counts: dict[str, int] = {}
