@@ -47,8 +47,9 @@ templates.env.globals["css_version"] = CSS_VERSION
 @page_router_stock.get("/stock/{ticker}", response_class=HTMLResponse)
 def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token: str = ""):
     ticker = normalize_ticker(ticker)
-    if ticker in get_index_tickers():
-        return RedirectResponse(f"/index/{ticker}", status_code=302)
+    registry_ticker = next((t for t in get_index_tickers() if t == ticker), None)
+    if registry_ticker:
+        return RedirectResponse(f"/index/{registry_ticker}", status_code=302)
     is_in_watchlist = ticker in get_watchlist_tickers()
 
     conn = None

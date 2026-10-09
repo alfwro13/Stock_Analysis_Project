@@ -395,10 +395,10 @@ def account_detail_page(request: Request, account_id: int):
         return RedirectResponse("/accounts", status_code=302)
 
     if acc["account_type"] == "Pension":
-        return RedirectResponse(f"/accounts/{account_id}/pension", status_code=302)
+        return RedirectResponse(f"/accounts/{acc['id']}/pension", status_code=302)
 
     if acc["account_type"] == "House":
-        return RedirectResponse(f"/accounts/{account_id}/house", status_code=302)
+        return RedirectResponse(f"/accounts/{acc['id']}/house", status_code=302)
 
     if acc["account_type"] == "Watchlist":
         return templates.TemplateResponse(
