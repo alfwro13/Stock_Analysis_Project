@@ -306,20 +306,13 @@ class TestCreateYieldVsGdpChart:
         assert (red_base, red_top) == ([5.0, 5.0], [5.0, 6.0])
         assert fig.data[3].fill == "tonexty" and fig.data[5].fill == "tonexty"
 
-    def test_each_quarterly_release_gets_one_marker_even_though_the_db_stores_it_daily(self):
-        """The database forward-fills GDP onto daily rows; only the days the value changed are releases."""
-        gdp = self._frame([5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 6.0, 7.0, 7.0, 7.0])
+    def test_gdp_line_joins_release_points_directly_instead_of_stepping(self):
+        """DB rows are daily forward-filled; only the days the value changed are releases, and the line runs straight between them."""
+        gdp = self._frame([6.0, 6.0, 6.0, 5.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0])
         fig = self._figure(self._frame([4.0] * 10), gdp)
-        markers = fig.data[6]
-        assert markers.mode == "markers" and markers.name == "GDP release"
-        assert [pd.Timestamp(x) for x in markers.x] == [pd.Timestamp("2026-06-01"), pd.Timestamp("2026-06-04"), pd.Timestamp("2026-06-08")]
-        assert list(markers.y) == [5.0, 6.0, 7.0]
-
-    def test_gdp_is_carried_forward_between_releases_and_gap_is_in_hover_data(self):
-        gdp = pd.DataFrame({"value": [5.0, 6.0]}, index=pd.to_datetime(["2026-06-01", "2026-06-03"]))
-        fig = self._figure(self._frame([4.0, 4.0, 4.0, 4.0]), gdp)
-        assert list(fig.data[1].y) == [5.0, 5.0, 6.0, 6.0]
-        assert list(fig.data[0].customdata) == [-1.0, -1.0, -2.0, -2.0]
+        assert len(fig.data) == 6
+        assert list(fig.data[1].y) == pytest.approx([6.0, 5.667, 5.333, 5.0, 4.75, 4.5, 4.25, 4.0, 4.0, 4.0], abs=0.001)
+        assert list(fig.data[0].customdata) == pytest.approx([4.0 - g for g in fig.data[1].y])
 
     def test_yield_history_before_first_gdp_point_is_trimmed(self):
         yld = self._frame([4.0, 4.1, 4.2, 4.3], "2026-05-30")
