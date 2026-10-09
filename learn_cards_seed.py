@@ -84,6 +84,21 @@ CARDS = [
 <p>Government bonds (UK Gilts, US Treasuries) are considered nearly risk-free because governments can raise taxes to repay debt. Corporate bonds carry more risk because companies can go bankrupt, so they must offer higher interest rates to attract buyers.</p>""",
     },
     {
+        "term_key": "yield-vs-nominal-gdp",
+        "section_id": "market-fundamentals",
+        "term_title": "Yield vs Nominal GDP",
+        "question": "According to the Yield vs Nominal GDP rule of thumb, when are rising bond yields considered less of a warning sign?",
+        "answer": "While the 10-year yield stays below nominal GDP growth (real growth plus inflation)",
+        "distractors": [
+            "Only once the 10-year yield has climbed above nominal GDP growth",
+            "Whenever real GDP growth is negative for two quarters in a row",
+            "As long as the 2-year yield is higher than the 10-year yield",
+        ],
+        "explanation": """<p><strong>Yield vs Nominal GDP</strong> compares the 10-year government bond yield with <strong>nominal GDP growth</strong> — the year-on-year growth of the economy's total output in current prices, which is real growth plus inflation. Some market strategists use it as a rule of thumb: rising bond yields are not a warning sign while the 10-year yield stays <em>below</em> nominal GDP growth, because the economy is expanding faster than the cost of borrowing. When the yield climbs <em>above</em> nominal growth, debt becomes harder to carry and higher yields are more likely to weigh on stocks.</p>
+<p>The Market Sentiment page charts it for the US (10-year Treasury yield vs US nominal GDP growth) and the UK (10-year Gilt yield vs UK nominal GDP growth), shading the gap green while the yield is below growth and red once it is above. The US Treasury and UK Gilt warning boxes on the Portfolio and Market Sentiment pages carry the same comparison as one line. GDP is published quarterly, so the growth line only steps when a new estimate is released — roughly 30 days after quarter end for the US and 6 weeks for the UK.</p>
+<p>It is context, not a signal: it never changes a threat level or fires an alert, and it says nothing about timing. A yield below growth can still be rising too fast for markets to digest, and a yield above growth can persist for a long time.</p>""",
+    },
+    {
         "term_key": "etfs-exchange-traded-funds",
         "section_id": "market-fundamentals",
         "term_title": "ETFs — Exchange-Traded Funds",

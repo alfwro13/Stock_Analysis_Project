@@ -7,6 +7,8 @@ Covers:
  - fetch_ons_taxonomy : unknown series_id guard, lookahead-bias date shifting
  - update_macro_indicators : missing FRED key path, all-empty early exit,
                              INSERT OR IGNORE DB write
+ - Yield vs Nominal GDP    : quarterly release-date shift (FRED GDP, ONS YBHA), YoY + window
+                             seeding, the two macro_indicators GDP columns, yield_gdp_link()
 """
 
 import io
@@ -31,6 +33,9 @@ from macro_data_engine import (
     fetch_ons_taxonomy_data,
     update_macro_indicators,
     get_uk_cpi_yoy_series,
+    get_nominal_gdp_yoy_series,
+    nominal_gdp_yoy_by_release,
+    yield_gdp_link,
     ONS_TAXONOMY,
 )
 
@@ -98,6 +103,20 @@ class TestFetchFredApi:
         assert not df.empty
         expected_date = pd.to_datetime("2024-02-01") + pd.DateOffset(days=30)
         assert df.index[0] == expected_date
+
+    def test_gdp_publishes_quarter_end_plus_30_days(self):
+        """FRED dates a quarter by its first day; the advance estimate lands ~30 days after the
+        quarter ENDS, so a flat 30-day lag from the first day would show Q2 in May."""
+        payload = _fred_payload("GDP", [("2024-01-01", 28000.0), ("2024-04-01", 28300.0)])
+        session = _mock_session(json_body=payload)
+
+        df = fetch_fred_api(session, "GDP", START, END, "dummy-key")
+
+        assert list(df.index) == [
+            pd.Timestamp("2024-03-31") + pd.DateOffset(days=30),
+            pd.Timestamp("2024-06-30") + pd.DateOffset(days=30),
+        ]
+        assert df["GDP"].tolist() == [28000.0, 28300.0]
 
     def test_missing_observations_key_returns_empty(self):
         session = _mock_session(json_body={"error": "not found"})
@@ -204,6 +223,13 @@ _ONS_PAYLOAD = {
     ]
 }
 
+_ONS_GDP_PAYLOAD = {
+    "quarters": [
+        {"date": "2024 Q1", "value": "700000"},
+        {"date": "2024 Q2", "value": "710000"},
+    ]
+}
+
 
 class TestFetchOnsTaxonomyData:
 
@@ -254,6 +280,31 @@ class TestFetchOnsTaxonomyData:
         session.get.side_effect = requests.exceptions.ConnectionError()
         df = fetch_ons_taxonomy_data(session, "D7G7", START)
         assert df.empty
+
+    def test_quarterly_series_reads_quarters_and_lags_45_days_after_quarter_end(self):
+        """ONS dates GDP as '2024 Q1'; the first estimate (PN2) lands ~6 weeks after the quarter ends."""
+        session = _mock_session(json_body=_ONS_GDP_PAYLOAD)
+
+        df = fetch_ons_taxonomy_data(session, "YBHA", START)
+
+        assert "/ybha/pn2/" in session.get.call_args[0][0]
+        assert list(df.index) == [
+            pd.Timestamp("2024-03-31") + pd.DateOffset(days=45),
+            pd.Timestamp("2024-06-30") + pd.DateOffset(days=45),
+        ]
+        assert df["YBHA"].tolist() == [700000.0, 710000.0]
+
+    def test_quarterly_series_ignores_a_months_only_payload(self):
+        session = _mock_session(json_body=_ONS_PAYLOAD)
+        assert fetch_ons_taxonomy_data(session, "YBHA", START).empty
+
+    def test_quarterly_series_skips_unparseable_period_labels(self):
+        payload = {"quarters": [{"date": "garbage", "value": "1"}, {"date": "2024 Q1", "value": "700000"}]}
+        session = _mock_session(json_body=payload)
+
+        df = fetch_ons_taxonomy_data(session, "YBHA", START)
+
+        assert df["YBHA"].tolist() == [700000.0]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -522,6 +573,95 @@ class TestUpdateMacroIndicators:
             cleanup.commit()
             cleanup.close()
 
+    @staticmethod
+    def _gdp_fetchers():
+        """Eight quarters (2023 Q1 - 2024 Q4) dated the way the fetchers date them: FRED at
+        quarter end + 30 days growing 1%/quarter, ONS at quarter end + 45 days growing 1.5%/quarter."""
+        quarter_ends = pd.date_range("2023-03-31", periods=8, freq="QE")
+        us_df = pd.DataFrame(
+            {"GDP": [28000.0 * 1.01 ** i for i in range(8)]}, index=quarter_ends + pd.DateOffset(days=30)
+        )
+        uk_df = pd.DataFrame(
+            {"YBHA": [700000.0 * 1.015 ** i for i in range(8)]}, index=quarter_ends + pd.DateOffset(days=45)
+        )
+
+        def fred_side_effect(session, series_id, *args, **kwargs):
+            return us_df if series_id == "GDP" else pd.DataFrame()
+
+        def ons_side_effect(session, series_id, *args, **kwargs):
+            return uk_df if series_id == "YBHA" else pd.DataFrame()
+
+        return fred_side_effect, ons_side_effect
+
+    @staticmethod
+    def _cleanup_gdp_rows():
+        cleanup = _db_module.get_connection()
+        cleanup.execute("DELETE FROM macro_indicators WHERE date BETWEEN '2024-04-01' AND '2025-03-01'")
+        cleanup.commit()
+        cleanup.close()
+
+    def test_nominal_gdp_yoy_written_to_both_columns_and_patches_existing_rows(self):
+        """Quarterly GDP levels must be stored as YoY % (1.01**4 and 1.015**4), dated by release,
+        and an already-inserted row from an earlier run must be patched rather than ignored."""
+        fred_side_effect, ons_side_effect = self._gdp_fetchers()
+        seed_conn = _db_module.get_connection()
+        seed_conn.execute("INSERT OR IGNORE INTO macro_indicators (date, us_m2) VALUES ('2025-02-14', 1.0)")
+        seed_conn.commit()
+        seed_conn.close()
+
+        try:
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
+                 patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", side_effect=ons_side_effect), \
+                 patch("macro_data_engine.time_engine") as mock_te:
+                mock_te.now_local.return_value = datetime(2025, 12, 31)
+                update_macro_indicators()
+
+            conn = _db_module.get_connection()
+            patched = conn.execute(
+                "SELECT us_nominal_gdp_yoy, uk_nominal_gdp_yoy FROM macro_indicators WHERE date='2025-02-14'"
+            ).fetchone()
+            first_us = conn.execute(
+                "SELECT us_nominal_gdp_yoy, uk_nominal_gdp_yoy FROM macro_indicators WHERE date='2024-04-30'"
+            ).fetchone()
+            first_uk = conn.execute(
+                "SELECT us_nominal_gdp_yoy, uk_nominal_gdp_yoy FROM macro_indicators WHERE date='2024-05-15'"
+            ).fetchone()
+            conn.close()
+
+            assert patched["us_nominal_gdp_yoy"] == pytest.approx((1.01 ** 4 - 1) * 100, abs=0.01)
+            assert patched["uk_nominal_gdp_yoy"] == pytest.approx((1.015 ** 4 - 1) * 100, abs=0.01)
+            assert first_us["us_nominal_gdp_yoy"] == pytest.approx((1.01 ** 4 - 1) * 100, abs=0.01)
+            assert first_us["uk_nominal_gdp_yoy"] is None, "UK GDP must not appear before ONS published it"
+            assert first_uk["uk_nominal_gdp_yoy"] == pytest.approx((1.015 ** 4 - 1) * 100, abs=0.01)
+        finally:
+            self._cleanup_gdp_rows()
+
+    def test_uk_nominal_gdp_still_stored_when_fred_key_is_missing(self):
+        _, ons_side_effect = self._gdp_fetchers()
+
+        try:
+            with patch.dict(os.environ, {"FRED_API_KEY": ""}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", side_effect=ons_side_effect), \
+                 patch("macro_data_engine.time_engine") as mock_te:
+                mock_te.now_local.return_value = datetime(2025, 12, 31)
+                update_macro_indicators()
+
+            conn = _db_module.get_connection()
+            row = conn.execute(
+                "SELECT us_nominal_gdp_yoy, uk_nominal_gdp_yoy FROM macro_indicators WHERE date='2025-02-14'"
+            ).fetchone()
+            conn.close()
+
+            assert row["uk_nominal_gdp_yoy"] == pytest.approx((1.015 ** 4 - 1) * 100, abs=0.01)
+            assert row["us_nominal_gdp_yoy"] is None
+        finally:
+            self._cleanup_gdp_rows()
+
 
 class TestGetUkCpiYoySeries:
     """The single reusable source for UK CPI YoY%, shared by the Market Sentiment page and the
@@ -559,3 +699,126 @@ class TestGetUkCpiYoySeries:
             cleanup.execute("DELETE FROM macro_indicators WHERE date='2026-03-31'")
             cleanup.commit()
             cleanup.close()
+
+
+class TestNominalGdpYoyByRelease:
+    """Quarterly levels are already dated by release, so YoY is a 4-observation change, not a calendar resample."""
+
+    @staticmethod
+    def _levels(values):
+        releases = pd.date_range("2023-04-30", periods=len(values), freq="QE") + pd.DateOffset(days=30)
+        return pd.Series(values, index=releases)
+
+    def test_yoy_is_percent_change_over_four_quarters(self):
+        levels = self._levels([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
+
+        yoy = nominal_gdp_yoy_by_release(levels, datetime(2023, 1, 1))
+
+        assert yoy.tolist() == pytest.approx([4.0, (105.0 / 101.0 - 1) * 100])
+        assert yoy.index[0] == levels.index[4]
+
+    def test_last_release_before_window_start_is_seeded_at_the_start(self):
+        """Without the seed the chart's GDP line would start up to a quarter after the window does."""
+        levels = self._levels([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
+        window_start = levels.index[4] + pd.DateOffset(days=10)
+
+        yoy = nominal_gdp_yoy_by_release(levels, window_start.to_pydatetime())
+
+        assert yoy.index[0] == pd.Timestamp(window_start.date())
+        assert yoy.iloc[0] == pytest.approx(4.0)
+        assert yoy.iloc[1] == pytest.approx((105.0 / 101.0 - 1) * 100)
+        assert yoy.index[1] == levels.index[5]
+
+    def test_fewer_than_five_quarters_yields_nothing(self):
+        assert nominal_gdp_yoy_by_release(self._levels([100.0, 101.0, 102.0, 103.0]), datetime(2023, 1, 1)).empty
+
+
+def _seed_gdp_rows(rows):
+    conn = _db_module.get_connection()
+    for date, us_gdp, uk_gdp in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO macro_indicators (date, us_nominal_gdp_yoy, uk_nominal_gdp_yoy) VALUES (?, ?, ?)",
+            (date, us_gdp, uk_gdp),
+        )
+    conn.commit()
+    conn.close()
+
+
+def _delete_gdp_rows(dates):
+    conn = _db_module.get_connection()
+    conn.executemany("DELETE FROM macro_indicators WHERE date=?", [(d,) for d in dates])
+    conn.commit()
+    conn.close()
+
+
+class TestGetNominalGdpYoySeries:
+
+    def test_returns_each_region_from_its_own_column_and_drops_nulls(self):
+        _seed_gdp_rows([("2999-01-01", 5.0, None), ("2999-02-01", 5.2, 4.1)])
+        try:
+            us = get_nominal_gdp_yoy_series("US")
+            uk = get_nominal_gdp_yoy_series("UK")
+            assert us[pd.Timestamp("2999-02-01")] == pytest.approx(5.2)
+            assert pd.Timestamp("2999-01-01") in us.index
+            assert pd.Timestamp("2999-01-01") not in uk.index
+            assert uk[pd.Timestamp("2999-02-01")] == pytest.approx(4.1)
+            assert us.index.is_monotonic_increasing
+        finally:
+            _delete_gdp_rows(["2999-01-01", "2999-02-01"])
+
+    def test_unknown_region_is_rejected(self):
+        with pytest.raises(KeyError):
+            get_nominal_gdp_yoy_series("EU")
+
+
+class TestYieldGdpLink:
+    """The one calculation behind the warning-box line on the Portfolio and Market Sentiment pages."""
+
+    def test_yield_below_growth_is_below(self):
+        _seed_gdp_rows([("2999-01-01", 5.1, 4.0)])
+        try:
+            link = yield_gdp_link({"tnx_close": 4.30, "uk_gilt_close": 4.60})
+            assert link["US"]["status"] == "BELOW"
+            assert link["US"]["yield_pct"] == pytest.approx(4.30)
+            assert link["US"]["gdp_yoy"] == pytest.approx(5.1)
+            assert link["US"]["gap_pp"] == pytest.approx(-0.8)
+        finally:
+            _delete_gdp_rows(["2999-01-01"])
+
+    def test_yield_above_growth_is_above(self):
+        _seed_gdp_rows([("2999-01-01", 5.1, 4.0)])
+        try:
+            link = yield_gdp_link({"tnx_close": 4.30, "uk_gilt_close": 4.60})
+            assert link["UK"]["status"] == "ABOVE"
+            assert link["UK"]["gap_pp"] == pytest.approx(0.6)
+        finally:
+            _delete_gdp_rows(["2999-01-01"])
+
+    def test_latest_gdp_value_is_used(self):
+        _seed_gdp_rows([("2999-01-01", 3.0, 3.0), ("2999-02-01", 5.1, 4.0)])
+        try:
+            link = yield_gdp_link({"tnx_close": 4.30, "uk_gilt_close": 4.60})
+            assert link["US"]["gdp_yoy"] == pytest.approx(5.1)
+        finally:
+            _delete_gdp_rows(["2999-01-01", "2999-02-01"])
+
+    def test_region_without_gdp_is_none_so_the_line_is_omitted(self):
+        _seed_gdp_rows([("2999-01-01", 5.1, None)])
+        try:
+            link = yield_gdp_link({"tnx_close": 4.30, "uk_gilt_close": 4.60})
+            assert link["US"] is not None
+            assert link["UK"] is None
+        finally:
+            _delete_gdp_rows(["2999-01-01"])
+
+    def test_region_without_a_yield_is_none(self):
+        _seed_gdp_rows([("2999-01-01", 5.1, 4.0)])
+        try:
+            link = yield_gdp_link({"tnx_close": None, "uk_gilt_close": 4.60})
+            assert link["US"] is None
+            assert link["UK"] is not None
+        finally:
+            _delete_gdp_rows(["2999-01-01"])
+
+    def test_no_macro_regime_yields_none_for_both_regions(self):
+        assert yield_gdp_link(None) == {"US": None, "UK": None}

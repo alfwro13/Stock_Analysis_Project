@@ -24,9 +24,9 @@ $(document).ready(function() {
 // config.responsive never actually reacts to container size changes (rotation,
 // fullscreen) — width/height must be relayout'd explicitly, per AGENTS.md rule 18.
 const _SENTIMENT_CHART_IDS = [
-    'us-fg-wrapper', 'us-vix-wrapper', 'us-yield-wrapper', 'us-yield-curve-wrapper',
+    'us-fg-wrapper', 'us-vix-wrapper', 'us-yield-wrapper', 'us-yield-gdp-wrapper', 'us-yield-curve-wrapper',
     'us-liquidity-wrapper', 'us-inflation-wrapper', 'us-credit-wrapper',
-    'uk-gbp-wrapper', 'uk-yield-wrapper', 'uk-liquidity-wrapper', 'uk-inflation-wrapper', 'uk-credit-wrapper',
+    'uk-gbp-wrapper', 'uk-yield-wrapper', 'uk-yield-gdp-wrapper', 'uk-liquidity-wrapper', 'uk-inflation-wrapper', 'uk-credit-wrapper',
 ];
 const _sentimentChartDefaultHeights = {};
 

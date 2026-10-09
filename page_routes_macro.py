@@ -12,9 +12,10 @@ from fastapi.templating import Jinja2Templates
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
 from database import get_connection, get_auction_summary, get_ticker_registry_row, get_ticker_registry_row_by_future
-from macro_data_engine import get_uk_cpi_yoy_series
+from macro_data_engine import get_uk_cpi_yoy_series, get_nominal_gdp_yoy_series, yield_gdp_link
 from regime_engine import get_latest_regime
 from sentiment_engine import (
+    fetch_parquet_data,
     get_sentiment_html,
     get_vix_spy_html,
     get_yield_equity_html,
@@ -35,6 +36,7 @@ from visuals import (
     create_yield_curve_chart,
     create_us_inflation_chart,
     create_uk_inflation_chart,
+    create_yield_vs_gdp_chart,
 )
 from constants import CSS_VERSION
 from page_helpers import get_unread_count, _utc_str_to_local, intraday_chart_revision
@@ -159,6 +161,19 @@ def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
         return result
     except Exception:
         return None
+
+
+_YIELD_PARQUETS = {"US": ("TNX_BASELINE.parquet", "TNX_Close"), "UK": ("UK_GILT_BASELINE.parquet", "UK_Close")}
+
+
+def _yield_vs_gdp_html(region: str) -> str:
+    df_gdp = get_nominal_gdp_yoy_series(region).rename('value').to_frame()
+    if df_gdp.empty:
+        return "<p>Data unavailable.</p>"
+    parquet_name, close_col = _YIELD_PARQUETS[region]
+    df_yield = fetch_parquet_data(parquet_name, df_gdp.index.min().strftime('%Y-%m-%d')).rename(columns={close_col: 'value'})
+    df_yield.index = pd.to_datetime(df_yield.index)
+    return create_yield_vs_gdp_chart(df_yield, df_gdp, region)
 
 
 @page_router_macro.get("/market-sentiment", response_class=HTMLResponse)
@@ -304,6 +319,8 @@ def market_sentiment_page(request: Request):
     yield_equity_html = get_yield_equity_html()
     uk_yield_equity_html = get_uk_yield_equity_html()
     ftse_gbp_html = get_ftse_gbp_html()
+    us_yield_gdp_html = _yield_vs_gdp_html("US")
+    uk_yield_gdp_html = _yield_vs_gdp_html("UK")
 
     return templates.TemplateResponse(
         request=request,
@@ -314,6 +331,9 @@ def market_sentiment_page(request: Request):
             "yield_equity_html":   yield_equity_html,
             "uk_yield_equity_html": uk_yield_equity_html,
             "ftse_gbp_html":       ftse_gbp_html,
+            "us_yield_gdp_html":   us_yield_gdp_html,
+            "uk_yield_gdp_html":   uk_yield_gdp_html,
+            "gdp_link":            yield_gdp_link(macro_regime),
             "us_liquidity_html":   us_liquidity_html,
             "us_credit_html":      us_credit_html,
             "uk_liquidity_html":   uk_liquidity_html,

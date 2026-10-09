@@ -7,6 +7,11 @@
     </h3>
     <p class="risk-summary-text">
         <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.us_threat_level == 'RED' %}negative-val{% elif macro_regime.us_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.us_yield_velocity or 0.0) }} bps</span>
+        {% if gdp_link and gdp_link.US %}
+        <br>
+        <strong><abbr title="Rule of thumb: rising yields are less worrying while the 10Y yield stays below nominal GDP growth. Context only; it does not change the threat level.">Yield vs Nominal GDP:</abbr></strong>
+        <span class="{{ 'positive-val' if gdp_link.US.status == 'BELOW' else 'warning-text' }}">10Y {{ "{:.2f}".format(gdp_link.US.yield_pct) }}% vs nominal GDP growth {{ "{:.2f}".format(gdp_link.US.gdp_yoy) }}% &rarr; yield is {{ "{:.1f}".format(gdp_link.US.gap_pp|abs) }} pp {{ 'below' if gdp_link.US.status == 'BELOW' else 'above' }} growth</span>
+        {% endif %}
         <br>
         {% if macro_regime.us_threat_level == 'RED' %}
         US yields are surging vertically. High-multiple growth stocks and highly indebted US assets are at extreme risk of immediate valuation compression.
@@ -27,6 +32,11 @@
     </h3>
     <p class="risk-summary-text">
         <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.uk_threat_level == 'RED' %}negative-val{% elif macro_regime.uk_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.uk_yield_velocity or 0.0) }} bps</span>
+        {% if gdp_link and gdp_link.UK %}
+        <br>
+        <strong><abbr title="Rule of thumb: rising yields are less worrying while the 10Y yield stays below nominal GDP growth. Context only; it does not change the threat level.">Yield vs Nominal GDP:</abbr></strong>
+        <span class="{{ 'positive-val' if gdp_link.UK.status == 'BELOW' else 'warning-text' }}">10Y {{ "{:.2f}".format(gdp_link.UK.yield_pct) }}% vs nominal GDP growth {{ "{:.2f}".format(gdp_link.UK.gdp_yoy) }}% &rarr; yield is {{ "{:.1f}".format(gdp_link.UK.gap_pp|abs) }} pp {{ 'below' if gdp_link.UK.status == 'BELOW' else 'above' }} growth</span>
+        {% endif %}
         <br>
         {% if macro_regime.uk_threat_level == 'RED' %}
         UK yields are surging vertically. Domestic equities and highly indebted UK assets are at extreme risk of immediate valuation compression.

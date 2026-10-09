@@ -213,6 +213,19 @@
         </div>
 
         <div class="sentiment-module module-default">
+            <div id="us-yield-gdp-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-gdp-wrapper')">⛶ Fullscreen</button>
+                {{ us_yield_gdp_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US Yield vs Nominal GDP Explained:</span>
+                <div class="sentiment-footer-text">
+                    A rule of thumb used by some market strategists: rising bond yields are not a warning sign while the 10-Year yield stays below nominal GDP growth (real growth plus inflation), because the economy is growing faster than its borrowing costs. Green shading means the yield is below growth; red means it has climbed above it, when higher yields start to hurt. It is context, not a trading signal, and GDP only updates quarterly.
+                </div>
+            </div>
+        </div>
+
+        <div class="sentiment-module module-default">
             <div id="us-yield-curve-wrapper" class="chart-wrapper">
                 <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-curve-wrapper')">⛶ Fullscreen</button>
                 {{ yield_curve_html | safe }}
@@ -351,6 +364,19 @@
                 <span class="sentiment-footer-title">UK Cost of Capital Explained:</span>
                 <div class="sentiment-footer-text">
                     Just like the US, rising borrowing costs (the 10-Year Gilt Yield) act as gravity on the UK stock market. High yields mean expensive mortgages for consumers and expensive loans for businesses, which drags down the FTSE 100.
+                </div>
+            </div>
+        </div>
+
+        <div class="sentiment-module module-purple">
+            <div id="uk-yield-gdp-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-yield-gdp-wrapper')">⛶ Fullscreen</button>
+                {{ uk_yield_gdp_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK Yield vs Nominal GDP Explained:</span>
+                <div class="sentiment-footer-text">
+                    The same rule of thumb applied to the UK: rising gilt yields are less worrying while the 10-Year Gilt yield stays below nominal GDP growth (real growth plus inflation). Green shading means the yield is below growth; red means it has climbed above it. It is context, not a trading signal, and UK GDP only updates quarterly.
                 </div>
             </div>
         </div>

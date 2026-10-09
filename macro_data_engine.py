@@ -7,7 +7,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from typing import Dict
+from typing import Dict, Optional
 
 from database import get_connection, init_db
 import time_engine
@@ -27,13 +27,25 @@ ONS_TAXONOMY: Dict[str, str] = {
     "BCJD": "/employmentandlabourmarket/peoplenotinwork/outofworkbenefits/timeseries/bcjd/unem/data"
 }
 
-def get_uk_cpi_yoy_series() -> pd.Series:
-    """Single source of truth for UK CPI YoY% — reused by the Market Sentiment page's chart
-    (uk_cpi_inflation vs FTSE 100) and the Pension account's CPI+target benchmark overlay."""
+# PN2 is the GDP first-estimate dataset: it publishes ~6 weeks after quarter end, unlike QNA/UKEA (~13 weeks).
+ONS_QUARTERLY_TAXONOMY: Dict[str, str] = {
+    "YBHA": "/economy/grossdomesticproductgdp/timeseries/ybha/pn2/data"
+}
+
+FRED_QUARTERLY_SERIES = {'GDP'}
+US_GDP_RELEASE_LAG_DAYS = 30
+UK_GDP_RELEASE_LAG_DAYS = 45
+GDP_HISTORY_DAYS = 600
+
+_GDP_YOY_COLUMNS = {"US": "us_nominal_gdp_yoy", "UK": "uk_nominal_gdp_yoy"}
+_YIELD_CLOSE_KEYS = {"US": "tnx_close", "UK": "uk_gilt_close"}
+
+
+def _read_macro_indicator_series(column: str) -> pd.Series:
     conn = None
     try:
         conn = get_connection()
-        df = pd.read_sql_query("SELECT date, uk_cpi_inflation FROM macro_indicators", conn)
+        df = pd.read_sql_query(f"SELECT date, {column} FROM macro_indicators", conn)
     finally:
         if conn:
             conn.close()
@@ -41,7 +53,50 @@ def get_uk_cpi_yoy_series() -> pd.Series:
         return pd.Series(dtype=float)
     df['date'] = pd.to_datetime(df['date'])
     df.set_index('date', inplace=True)
-    return df['uk_cpi_inflation'].dropna().sort_index()
+    return df[column].dropna().sort_index()
+
+
+def get_uk_cpi_yoy_series() -> pd.Series:
+    """Single source of truth for UK CPI YoY% — reused by the Market Sentiment chart and the Pension account's CPI+target overlay."""
+    return _read_macro_indicator_series('uk_cpi_inflation')
+
+
+def get_nominal_gdp_yoy_series(region: str) -> pd.Series:
+    """Single source of truth for nominal GDP YoY% ('US' or 'UK') — feeds the Yield vs Nominal GDP chart and warning-box line."""
+    return _read_macro_indicator_series(_GDP_YOY_COLUMNS[region])
+
+
+def yield_gdp_link(macro_regime: Optional[dict]) -> Dict[str, Optional[dict]]:
+    """Per-region 10Y yield vs latest nominal GDP YoY; a region without both values maps to None."""
+    link: Dict[str, Optional[dict]] = {region: None for region in _YIELD_CLOSE_KEYS}
+    for region, close_key in _YIELD_CLOSE_KEYS.items():
+        yield_pct = (macro_regime or {}).get(close_key)
+        if yield_pct is None or pd.isna(yield_pct):
+            continue
+        gdp = get_nominal_gdp_yoy_series(region)
+        if gdp.empty:
+            continue
+        gdp_yoy = float(gdp.iloc[-1])
+        gap_pp = float(yield_pct) - gdp_yoy
+        link[region] = {
+            "yield_pct": float(yield_pct),
+            "gdp_yoy": gdp_yoy,
+            "gap_pp": gap_pp,
+            "status": "ABOVE" if gap_pp > 0 else "BELOW",
+        }
+    return link
+
+
+def nominal_gdp_yoy_by_release(levels: pd.Series, window_start: datetime) -> pd.Series:
+    """YoY % of a release-dated quarterly level series, seeded at window_start with the prior release so the line has no leading gap."""
+    yoy = (levels.sort_index().pct_change(periods=4) * 100).dropna()
+    start = pd.Timestamp(window_start.date())
+    prior = yoy[yoy.index < start].tail(1)
+    window = yoy[yoy.index >= start]
+    if prior.empty:
+        return window
+    prior.index = pd.DatetimeIndex([start])
+    return pd.concat([prior, window])
 
 
 def get_retry_session() -> requests.Session:
@@ -83,11 +138,15 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         df['value'] = pd.to_numeric(df['value'].replace('.', pd.NA), errors='coerce')
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         
-        # Daily market metrics (Credit Spreads/Yield Curves) are instant. 
-        # Structural economic data (M2/Claims) lags by ~30 days.
-        lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10'] else 30
-        df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
-        
+        if series_id in FRED_QUARTERLY_SERIES:
+            # FRED dates a quarter by its first day; the advance estimate lands ~30 days after the quarter ENDS.
+            df['publication_date'] = df['date'] + pd.offsets.QuarterEnd(0) + pd.DateOffset(days=US_GDP_RELEASE_LAG_DAYS)
+        else:
+            # Daily market metrics (Credit Spreads/Yield Curves) are instant.
+            # Structural economic data (M2/Claims) lags by ~30 days.
+            lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10'] else 30
+            df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
+
         df.dropna(subset=['publication_date'], inplace=True)
         df.set_index('publication_date', inplace=True)
         df.rename(columns={'value': series_id}, inplace=True)
@@ -95,7 +154,7 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         return df[[series_id]]
         
     except Exception as e:
-        logger.error(f"Failed to fetch FRED {series_id}: {e}")
+        logger.error("Failed to fetch FRED %s: %s", series_id, e)
         return pd.DataFrame()
 
 def fetch_boe_data(session: requests.Session, series_code: str, start_date: datetime, end_date: datetime, lag_days: int = 30) -> pd.DataFrame:
@@ -113,7 +172,7 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
         response.raise_for_status()
 
         if "<html" in response.text.lower():
-            logger.error(f"BoE returned HTML instead of CSV for {series_code}.")
+            logger.error("BoE returned HTML instead of CSV for %s.", series_code)
             return pd.DataFrame()
 
         df = pd.read_csv(io.StringIO(response.text))
@@ -137,34 +196,39 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
             return df[[series_code]]
         
     except Exception as e:
-        logger.error(f"Failed to fetch BoE {series_code}: {e}")
+        logger.error("Failed to fetch BoE %s: %s", series_code, e)
         return pd.DataFrame()
 
 def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_date: datetime) -> pd.DataFrame:
-    taxonomy_path = ONS_TAXONOMY.get(series_id)
+    quarterly = series_id in ONS_QUARTERLY_TAXONOMY
+    taxonomy_path = ONS_QUARTERLY_TAXONOMY[series_id] if quarterly else ONS_TAXONOMY.get(series_id)
     if not taxonomy_path:
         return pd.DataFrame()
 
     url = f"https://www.ons.gov.uk{taxonomy_path}"
-    
+    period_key = 'quarters' if quarterly else 'months'
+
     try:
         response = session.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
-        
-        if 'months' not in data or not data['months']:
+
+        if period_key not in data or not data[period_key]:
             return pd.DataFrame()
-            
-        observations = data['months']
+
+        observations = data[period_key]
         records = []
-        
+
         for obs in observations:
             raw_date = obs.get('date')
             val = obs.get('value')
             if raw_date and val:
                 try:
-                    # End-of-month + 30-day publication lag avoids using data before it was publicly available.
-                    dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1) + pd.DateOffset(days=30)
+                    if quarterly:
+                        dt = pd.Period(raw_date.replace(' ', ''), freq='Q').end_time.normalize() + pd.DateOffset(days=UK_GDP_RELEASE_LAG_DAYS)
+                    else:
+                        # End-of-month + 30-day publication lag avoids using data before it was publicly available.
+                        dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1) + pd.DateOffset(days=30)
                     if dt >= start_date:
                         records.append({'DATE': dt, series_id: float(val)})
                 except ValueError:
@@ -179,7 +243,7 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
         return df[[series_id]]
         
     except Exception as e:
-        logger.error(f"Failed to fetch ONS {series_id}: {e}")
+        logger.error("Failed to fetch ONS %s: %s", series_id, e)
         return pd.DataFrame()
 
 def update_macro_indicators() -> None:
@@ -188,7 +252,8 @@ def update_macro_indicators() -> None:
         logger.error("FRED_API_KEY is not configured in settings. Aborting FRED API fetch.")
 
     end_dt = time_engine.now_local().replace(tzinfo=None)
-    start_dt = end_dt - timedelta(days=730) 
+    start_dt = end_dt - timedelta(days=730)
+    gdp_start = start_dt - timedelta(days=GDP_HISTORY_DAYS)
     session = get_retry_session()
     
     dfs = []
@@ -224,6 +289,12 @@ def update_macro_indicators() -> None:
             if not cpi_yoy_window.empty:
                 dfs.append(cpi_yoy_window.rename('CPIAUCSL').to_frame())
 
+        df_gdp_raw = fetch_fred_api(session, 'GDP', gdp_start, end_dt, fred_api_key)
+        if not df_gdp_raw.empty and 'GDP' in df_gdp_raw.columns:
+            us_gdp_yoy = nominal_gdp_yoy_by_release(df_gdp_raw['GDP'], start_dt)
+            if not us_gdp_yoy.empty:
+                dfs.append(us_gdp_yoy.rename('US_GDP_YOY').to_frame())
+
     logger.info("Fetching Bank of England IADB Data (2-Year History)...")
     df_boe = fetch_boe_data(session, 'LPMAUYN', start_dt, end_dt)
     if not df_boe.empty:
@@ -238,6 +309,12 @@ def update_macro_indicators() -> None:
         df = fetch_ons_taxonomy_data(session, ticker, start_dt)
         if not df.empty:
             dfs.append(df)
+
+    df_uk_gdp_raw = fetch_ons_taxonomy_data(session, 'YBHA', gdp_start)
+    if not df_uk_gdp_raw.empty and 'YBHA' in df_uk_gdp_raw.columns:
+        uk_gdp_yoy = nominal_gdp_yoy_by_release(df_uk_gdp_raw['YBHA'], start_dt)
+        if not uk_gdp_yoy.empty:
+            dfs.append(uk_gdp_yoy.rename('UK_GDP_YOY').to_frame())
 
     if not dfs:
         logger.error("All data sources returned empty. Engine execution halted.")
@@ -266,6 +343,8 @@ def update_macro_indicators() -> None:
             float(row['FEDFUNDS']) if 'FEDFUNDS' in row and pd.notna(row['FEDFUNDS']) else None,
             float(row['DFII10']) if 'DFII10' in row and pd.notna(row['DFII10']) else None,
             float(row['IUDBEDR']) if 'IUDBEDR' in row and pd.notna(row['IUDBEDR']) else None,
+            float(row['US_GDP_YOY']) if 'US_GDP_YOY' in row and pd.notna(row['US_GDP_YOY']) else None,
+            float(row['UK_GDP_YOY']) if 'UK_GDP_YOY' in row and pd.notna(row['UK_GDP_YOY']) else None,
         ))
 
     conn = None
@@ -277,11 +356,12 @@ def update_macro_indicators() -> None:
             INSERT OR IGNORE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
                 uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count,
-                us_cpi_inflation, us_fed_funds_rate, us_real_yield_10y, uk_base_rate
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                us_cpi_inflation, us_fed_funds_rate, us_real_yield_10y, uk_base_rate,
+                us_nominal_gdp_yoy, uk_nominal_gdp_yoy
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
         conn.commit()
-        logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
+        logger.info("Successfully bulk-inserted up to %s new Macro Regime historical days (ignoring existing to preserve PIT).", cursor.rowcount)
 
         # CPI YoY never exceeds 20% in modern history; values > 20 are legacy raw-index artefacts, nullify them.
         cursor.execute("UPDATE macro_indicators SET us_cpi_inflation=NULL WHERE us_cpi_inflation > 20")
@@ -311,9 +391,17 @@ def update_macro_indicators() -> None:
                 "UPDATE macro_indicators SET uk_m4=? WHERE date=?",
                 [(v, d) for v, d in m4_patch if v is not None],
             )
+
+        # Rows inserted by earlier runs predate these columns, and a revised release must replace the older figure.
+        for gdp_key, gdp_column in (('US_GDP_YOY', 'us_nominal_gdp_yoy'), ('UK_GDP_YOY', 'uk_nominal_gdp_yoy')):
+            if gdp_key in merged_df.columns:
+                cursor.executemany(
+                    f"UPDATE macro_indicators SET {gdp_column}=? WHERE date=?",
+                    [(float(v), dt.strftime("%Y-%m-%d")) for dt, v in merged_df[gdp_key].items() if pd.notna(v)],
+                )
         conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Database bulk insertion failed: {e}")
+        logger.error("Database bulk insertion failed: %s", e)
         if conn:
             conn.rollback()
     finally:

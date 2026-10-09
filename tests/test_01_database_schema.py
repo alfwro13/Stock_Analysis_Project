@@ -253,6 +253,15 @@ def test_macro_indicators_has_new_rate_columns():
 
 
 @pytest.mark.db
+def test_macro_indicators_has_nominal_gdp_yoy_columns():
+    """macro_indicators must hold US and UK nominal GDP YoY% for the Yield vs Nominal GDP comparison."""
+    cols = _columns("macro_indicators")
+    required = {"us_nominal_gdp_yoy", "uk_nominal_gdp_yoy"}
+    missing = required - cols
+    assert not missing, f"macro_indicators missing columns: {missing}"
+
+
+@pytest.mark.db
 def test_scheduler_run_log_has_required_columns():
     """scheduler_run_log must have job_id (PK) and last_run columns."""
     cols = _columns("scheduler_run_log")

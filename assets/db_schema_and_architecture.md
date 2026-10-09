@@ -78,8 +78,8 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Key Columns:** `event_id` (PK), `event_date`, `event_name`, `forecast_val`, `previous_val`, `actual_val`, `post_event_spy_gap`, `ai_volatility_warning`, `ai_consensus_miss_prob`.
 
 #### `macro_indicators`
-* **Purpose:** A structural economic datastore integrating FRED, BoE, and ONS metrics (M2 Supply, Jobless Claims, Yield Curve, CPI, Fed Funds Rate, real yield).
-* **Key Columns:** `date` (PK), `us_m2`, `us_jobless_claims`, `us_high_yield_spread`, `us_yield_curve`, `uk_m4`, `uk_corporate_spread`, `us_cpi_inflation`, `us_fed_funds_rate` (FEDFUNDS), `us_real_yield_10y` (DFII10 TIPS), `uk_base_rate` (IUDBEDR).
+* **Purpose:** A structural economic datastore integrating FRED, BoE, and ONS metrics (M2 Supply, Jobless Claims, Yield Curve, CPI, Fed Funds Rate, real yield, nominal GDP growth).
+* **Key Columns:** `date` (PK), `us_m2`, `us_jobless_claims`, `us_high_yield_spread`, `us_yield_curve`, `uk_m4`, `uk_corporate_spread`, `us_cpi_inflation`, `us_fed_funds_rate` (FEDFUNDS), `us_real_yield_10y` (DFII10 TIPS), `uk_base_rate` (IUDBEDR), `us_nominal_gdp_yoy` (FRED `GDP`) and `uk_nominal_gdp_yoy` (ONS `YBHA`) — nominal GDP year-on-year %, quarterly data forward-filled onto the daily rows from each quarter's release date (US: quarter end + 30 days, UK: quarter end + 45 days). Read through `macro_data_engine.get_nominal_gdp_yoy_series(region)` for the Yield vs Nominal GDP chart and warning-box line (see `assets/systematic_risk.md`); display-only, no ML consumer.
 
 #### `treasury_auction_results`
 * **Purpose:** US Treasury auction demand metrics fetched from the free fiscaldata.treasury.gov API. One row per CUSIP × auction date. Powers the Sovereign Debt Auction Monitor, which fires an alert when bid-to-cover or yield tail is significantly below/above the 6-auction rolling baseline for that maturity.

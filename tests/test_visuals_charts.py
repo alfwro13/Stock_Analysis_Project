@@ -7,12 +7,14 @@ Covers:
  - create_ai_contagion_performance_chart (empty guard, normalisation) [visuals_ai]
  - create_ai_contagion_correlation_heatmap (<2 tickers guard, correlation) [visuals_ai]
  - Smoke tests for macro economic charts (return HTML, empty-data guard)
+ - create_yield_vs_gdp_chart (gap shading split, GDP step alignment, rule-18 layout)
 """
 
 import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from visuals import (
     create_anomaly_score_chart,
@@ -26,6 +28,7 @@ from visuals import (
     create_uk_liquidity_chart,
     create_uk_credit_chart,
     create_yield_curve_chart,
+    create_yield_vs_gdp_chart,
     create_pension_value_chart,
 )
 from visuals_ai import (
@@ -256,6 +259,71 @@ class TestMacroChartSmoke:
     def test_uk_credit_returns_html(self):
         result = create_uk_credit_chart(self._series(val=2.5))
         assert isinstance(result, str) and "<div" in result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# create_yield_vs_gdp_chart
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCreateYieldVsGdpChart:
+
+    @staticmethod
+    def _frame(values, start="2026-06-01"):
+        idx = pd.date_range(start, periods=len(values), freq="D")
+        return pd.DataFrame({"value": values}, index=idx)
+
+    @staticmethod
+    def _figure(df_yield, df_gdp, region="US"):
+        captured = []
+        with patch("plotly.graph_objects.Figure.to_html", autospec=True,
+                   side_effect=lambda fig, **kw: captured.append(fig) or "<div></div>"):
+            create_yield_vs_gdp_chart(df_yield, df_gdp, region)
+        return captured[0]
+
+    def test_returns_html_with_both_series_and_both_shading_bands(self):
+        result = create_yield_vs_gdp_chart(self._frame([4.0, 4.5, 5.5]), self._frame([5.0]), "US")
+        assert "<div" in result
+        for label in ("10Y Treasury Yield", "US Nominal GDP YoY", "Yield below growth", "Yield above growth"):
+            assert label in result
+
+    def test_uk_labels_the_gilt(self):
+        result = create_yield_vs_gdp_chart(self._frame([4.0, 4.5]), self._frame([4.2]), "UK")
+        assert "10Y Gilt Yield" in result and "UK Nominal GDP YoY" in result
+
+    def test_empty_inputs_return_unavailable_message(self):
+        assert create_yield_vs_gdp_chart(pd.DataFrame(), self._frame([5.0]), "US") == "<p>Data unavailable.</p>"
+        assert create_yield_vs_gdp_chart(self._frame([4.0]), pd.DataFrame(), "US") == "<p>Data unavailable.</p>"
+
+    def test_yield_entirely_before_first_gdp_point_is_unavailable(self):
+        result = create_yield_vs_gdp_chart(self._frame([4.0, 4.1], "2026-01-01"), self._frame([5.0], "2026-06-01"), "US")
+        assert result == "<p>Data unavailable.</p>"
+
+    def test_shading_splits_at_the_gdp_level(self):
+        """Yield 4 then 6 against GDP 5: green covers [4, 5] on day one, red covers [5, 6] on day two."""
+        fig = self._figure(self._frame([4.0, 6.0]), self._frame([5.0]))
+        green_base, green_top, red_base, red_top = (list(fig.data[i].y) for i in (2, 3, 4, 5))
+        assert (green_base, green_top) == ([4.0, 6.0], [5.0, 6.0])
+        assert (red_base, red_top) == ([5.0, 5.0], [5.0, 6.0])
+        assert fig.data[3].fill == "tonexty" and fig.data[5].fill == "tonexty"
+
+    def test_gdp_is_carried_forward_between_releases_and_gap_is_in_hover_data(self):
+        gdp = pd.DataFrame({"value": [5.0, 6.0]}, index=pd.to_datetime(["2026-06-01", "2026-06-03"]))
+        fig = self._figure(self._frame([4.0, 4.0, 4.0, 4.0]), gdp)
+        assert list(fig.data[1].y) == [5.0, 5.0, 6.0, 6.0]
+        assert list(fig.data[0].customdata) == [-1.0, -1.0, -2.0, -2.0]
+
+    def test_yield_history_before_first_gdp_point_is_trimmed(self):
+        yld = self._frame([4.0, 4.1, 4.2, 4.3], "2026-05-30")
+        fig = self._figure(yld, self._frame([5.0], "2026-06-01"))
+        assert list(fig.data[0].x)[0] == pd.Timestamp("2026-06-01")
+
+    def test_follows_plotly_chart_conventions(self):
+        layout = self._figure(self._frame([4.0, 4.5]), self._frame([5.0])).layout
+        assert layout.title.x == 0.5 and layout.title.xanchor == "center"
+        assert layout.legend.orientation == "h" and layout.legend.y < 0
+        assert layout.yaxis.automargin is True
+        assert layout.margin.b >= 60
+        assert layout.height >= 400
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -165,3 +165,18 @@ This warning keeps you informed of underlying macro vulnerabilities whenever you
 ### C. US/UK Threat Summary Cards (Portfolio page)
 
 `templates/partials/risk_summary.html` renders two independent floating widget cards — "🇺🇸 US 10Y Treasury" and "🇬🇧 UK 10Y Gilt" — each colored per its own `us_threat_level`/`uk_threat_level` and showing its own 3-day velocity in bps, sourced directly from `macro_regimes`. See AGENTS.md rule 18 for the shared floating-widgets card convention this partial follows.
+
+Each card also carries a **Yield vs Nominal GDP** line under the velocity line — the 10Y yield from `macro_regimes` (`tnx_close` / `uk_gilt_close`) against the latest nominal GDP YoY% (`macro_indicators.us_nominal_gdp_yoy` / `uk_nominal_gdp_yoy`), e.g. `10Y 4.30% vs nominal GDP growth 5.10% → yield is 0.8 pp below growth`. Both the Portfolio and Market Sentiment routes call the one `macro_data_engine.yield_gdp_link(macro_regime)`, which returns `{yield_pct, gdp_yoy, gap_pp, status}` per region (`BELOW`/`ABOVE`), or `None` — so the line is simply omitted — when either number is missing. It is display-only context for a rule of thumb (rising yields matter less while the 10Y yield stays below nominal GDP growth): it never feeds `us_threat_level`/`uk_threat_level` or any alert.
+
+### D. Yield vs Nominal GDP chart (Market Sentiment page)
+
+The US and UK sections of `/market-sentiment` each carry a "Yield vs Nominal GDP" chart (`visuals.create_yield_vs_gdp_chart(df_yield, df_gdp, region)`): the 10Y yield (`TNX_BASELINE.parquet` for the US, `UK_GILT_BASELINE.parquet` for the UK, read through `sentiment_engine.fetch_parquet_data()`) and nominal GDP YoY% (`macro_data_engine.get_nominal_gdp_yoy_series(region)`) on one % axis, with the gap shaded green while the yield is below growth and red once it is above; hovering the yield line shows the gap in percentage points. The history is the `macro_indicators` window (about 2 years, so roughly 8 quarterly GDP points). No correlation statistic is shown — the rule of thumb compares levels, and ~8 quarterly points cannot support a meaningful correlation.
+
+**GDP data.** Fetched by the existing Macroeconomic Data job (`macro_data_engine.update_macro_indicators()`):
+
+| Region | Source | Release-lag assumption |
+|---|---|---|
+| US | FRED `GDP` (quarterly level, SAAR); `pct_change(4) * 100` | quarter end + 30 days (advance estimate) |
+| UK | ONS `YBHA` (GDP at market prices, current prices, seasonally adjusted £m) from the `pn2` first-estimate dataset, `quarters` key; `pct_change(4) * 100` | quarter end + 45 days |
+
+Each YoY value is dated by its release, not by the quarter it describes, so a chart never shows a quarter before it was public. The release before the window start is seeded at the window start so the GDP line has no leading gap. The `UPDATE` patch overwrites history when a quarter is revised — acceptable because nothing in the ML stack reads these two columns. A missing `FRED_API_KEY` skips only the US series.
