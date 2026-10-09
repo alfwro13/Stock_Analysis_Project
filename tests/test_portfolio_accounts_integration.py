@@ -257,7 +257,7 @@ def test_stock_detail_position_value_matches_portfolio_page_live_price(client):
 
 
 def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
-    from page_routes_portfolio import _fetch_portfolio_signal_rows
+    from page_data_signal_rows import fetch_portfolio_signal_rows
 
     held = "ZZSTEP2HELD"
     unrelated = [f"ZZSTEP2UNRELATED{i:04d}" for i in range(1200)]
@@ -286,7 +286,7 @@ def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
         )
         conn.commit()
 
-        rows, macro, updated = _fetch_portfolio_signal_rows("SPY", [*(f"ZZSTEP2MISSING{i:04d}" for i in range(900)), held])
+        rows, macro, updated = fetch_portfolio_signal_rows("SPY", [*(f"ZZSTEP2MISSING{i:04d}" for i in range(900)), held])
         assert [row["ticker"] for row in rows] == [held]
         assert rows[0]["resolved_company_name"] == "Preferred Name"
         assert rows[0]["ml_confidence_score"] == pytest.approx(0.62)
@@ -295,7 +295,7 @@ def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
         assert updated == "9999-01-01 00:00:00"
         assert macro is None or isinstance(macro, dict)
 
-        empty_rows, _, empty_updated = _fetch_portfolio_signal_rows("SPY", [])
+        empty_rows, _, empty_updated = fetch_portfolio_signal_rows("SPY", [])
         assert empty_rows == []
         assert empty_updated == updated
     finally:
@@ -351,10 +351,10 @@ def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_pat
     monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", lambda tickers, **kwargs: {})
 
     rates = {"GBP": 1.0, "GBp": 0.01, "USD": 0.8, "EUR": 0.9}
-    original_fetch = page_routes_portfolio._fetch_portfolio_signal_rows
-    with patch("page_routes_portfolio._fetch_portfolio_signal_rows", wraps=original_fetch) as fetch, \
+    original_fetch = page_routes_portfolio.fetch_portfolio_signal_rows
+    with patch("page_routes_portfolio.fetch_portfolio_signal_rows", wraps=original_fetch) as fetch, \
          patch("page_helpers.get_rate_to_base", side_effect=lambda currency, **kwargs: rates.get(currency, 1.0)) as fx, \
-         patch("page_routes_portfolio.get_rate_to_base", return_value=1.0) as valuation_fx:
+         patch("page_data_portfolio.get_rate_to_base", return_value=1.0) as valuation_fx:
         all_response = client.get("/portfolio")
         assert all_response.status_code == 200
         assert {"ZZS2USD", "ZZS2GBPENCE", "ZZS2EUR", "ZZS2GHOST", "ZZS2MISSING"} <= set(fetch.call_args.args[1])
