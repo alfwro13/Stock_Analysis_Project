@@ -174,6 +174,8 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 
 Classifier training, quantile training, classifier inference and quantile scoring all call `ml_features.build_model_features()` (derived columns, fundamental winsorize/impute, inf-to-NaN, per-date cross-sectional z-scores) and read their rows through the two shared queries, so train and serve cannot drift apart. Training computes its feature statistics from the raw columns the builder leaves in place.
 
+`train_global_ml_model()` is a thin orchestrator over private stage helpers in `ml_training_engine.py`: `_search_iterations` (RAM gate), `_save_feature_stats`, `_add_classifier_target`, `_temporal_split` (returns a `_Split` of Train/Calib/Test), `_walk_forward_splits`, `_search_hyperparameters`, `_holdout_pr_auc` and `_refit_production_ensemble`. Helpers return only what the next stage needs, and the orchestrator deletes the wide frame, the CV folds and the search estimators at the same points as before, so the memory profile described under "Training memory" is preserved.
+
 ### 5.1 Base Estimators
 
 **Random Forest Classifier**
