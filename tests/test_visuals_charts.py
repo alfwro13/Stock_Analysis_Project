@@ -306,6 +306,15 @@ class TestCreateYieldVsGdpChart:
         assert (red_base, red_top) == ([5.0, 5.0], [5.0, 6.0])
         assert fig.data[3].fill == "tonexty" and fig.data[5].fill == "tonexty"
 
+    def test_each_quarterly_release_gets_one_marker_even_though_the_db_stores_it_daily(self):
+        """The database forward-fills GDP onto daily rows; only the days the value changed are releases."""
+        gdp = self._frame([5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 6.0, 7.0, 7.0, 7.0])
+        fig = self._figure(self._frame([4.0] * 10), gdp)
+        markers = fig.data[6]
+        assert markers.mode == "markers" and markers.name == "GDP release"
+        assert [pd.Timestamp(x) for x in markers.x] == [pd.Timestamp("2026-06-01"), pd.Timestamp("2026-06-04"), pd.Timestamp("2026-06-08")]
+        assert list(markers.y) == [5.0, 6.0, 7.0]
+
     def test_gdp_is_carried_forward_between_releases_and_gap_is_in_hover_data(self):
         gdp = pd.DataFrame({"value": [5.0, 6.0]}, index=pd.to_datetime(["2026-06-01", "2026-06-03"]))
         fig = self._figure(self._frame([4.0, 4.0, 4.0, 4.0]), gdp)
