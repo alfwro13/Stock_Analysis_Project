@@ -890,6 +890,25 @@ def test_intraday_history_reuses_only_fresh_file(tmp_path, age):
     assert fetch.call_count == (0 if age == 0 else 1)
 
 
+def test_bulk_intraday_download_replaces_files_atomically(tmp_path):
+    import pandas as pd
+    from data_engine import DataEngine
+
+    frame = pd.DataFrame({"Close": [10.0, float("nan"), 11.0]},
+                         index=pd.to_datetime(["2026-10-02 14:00", "2026-10-02 14:05", "2026-10-02 14:10"]))
+    engine = DataEngine.__new__(DataEngine)
+    with patch("data_engine.INTRADAY_DIR", tmp_path), \
+         patch("data_engine.get_mutual_fund_tickers", return_value=set()), \
+         patch("data_engine.yahoo_engine.get_intraday", return_value={"AAA": frame}):
+        engine.bulk_download_intraday(["AAA"])
+        assert pd.read_parquet(tmp_path / "AAA_intraday.parquet")["Close"].tolist() == [10.0, 11.0]
+        with patch.object(pd.DataFrame, "to_parquet", side_effect=OSError("disk full")):
+            engine.bulk_download_intraday(["AAA"])
+
+    assert pd.read_parquet(tmp_path / "AAA_intraday.parquet")["Close"].tolist() == [10.0, 11.0]
+    assert [p.name for p in tmp_path.iterdir()] == ["AAA_intraday.parquet"]
+
+
 def test_intraday_history_uses_fetch_timestamp_not_rewrite_time(tmp_path):
     import time
     import pandas as pd

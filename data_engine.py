@@ -295,7 +295,7 @@ class DataEngine:
                     continue
                 df = df.dropna(subset=['Close'])
                 if not df.empty:
-                    df.to_parquet(path, engine='pyarrow')
+                    write_parquet_atomic(df, path)
         except Exception as e:
             logger.error('Fatal error during bulk intraday download: %s', e)
 
@@ -360,7 +360,7 @@ class DataEngine:
                 df_intraday = _intraday.get(ticker, pd.DataFrame())
                 if not df_intraday.empty:
                     self._strip_tz(df_intraday)
-                    df_intraday.to_parquet(intraday_path, engine='pyarrow')
+                    write_parquet_atomic(df_intraday, intraday_path)
                     persisted = True
                     df_live = df_intraday
 
