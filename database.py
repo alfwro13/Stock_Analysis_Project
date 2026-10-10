@@ -160,6 +160,8 @@ from db_helpers import (  # noqa: E402
     get_ticker_registry_row_by_exchange,
     upsert_ticker_registry_row,
     soft_delete_ticker_registry_row,
+    get_instrument_sessions,
+    upsert_instrument_session,
 )
 from db_accounts import (  # noqa: E402
     get_accounts,

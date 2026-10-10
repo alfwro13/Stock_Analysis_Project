@@ -381,6 +381,13 @@ def test_is_excluded_from_yahoo_fetch_true_for_synthetic_ticker_regardless_of_ig
 
 
 @pytest.mark.config
+def test_is_excluded_from_yahoo_fetch_true_for_registry_series_sourced_outside_yahoo():
+    """UK10YG is scraped from FT/BoE; Yahoo lists no such ticker."""
+    from utils import is_excluded_from_yahoo_fetch
+    assert is_excluded_from_yahoo_fetch("UK10YG", ignored=set()) is True
+
+
+@pytest.mark.config
 def test_is_excluded_from_yahoo_fetch_true_for_ignored_ticker():
     from utils import is_excluded_from_yahoo_fetch
     assert is_excluded_from_yahoo_fetch("gme", ignored={"GME"}) is True

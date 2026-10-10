@@ -14,6 +14,9 @@ from time_engine import (
     is_market_open,
     is_trading_session,
     last_settled_session_close_utc,
+    last_reported_session_end_utc,
+    local_hm_from_epoch,
+    reported_bar_still_forming,
     is_exchange_holiday,
     reset_cron_trigger_params,
     exchange_tz,
@@ -621,3 +624,37 @@ class TestLastSettledSessionClose:
         with patch("time_engine.datetime", _fake_datetime(datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc))), \
              patch("time_engine._get_exchange_calendar", return_value=None):
             assert last_settled_session_close_utc("LSE") == datetime(2026, 7, 17, 15, 45, tzinfo=timezone.utc)
+
+
+class TestReportedSession:
+    """Windows Yahoo reports for instruments no exchange calendar models: FX (London day), futures (New York day), CBOE rates (Chicago 07:20-14:00)."""
+
+    @pytest.mark.parametrize("now,bar_date,tz,end,expected", [
+        (datetime(2026, 10, 9, 21, 33, tzinfo=timezone.utc), "2026-10-09", "Europe/London", "23:59", True),
+        (datetime(2026, 10, 9, 21, 33, tzinfo=timezone.utc), "2026-10-08", "Europe/London", "23:59", False),
+        (datetime(2026, 10, 9, 23, 30, tzinfo=timezone.utc), "2026-10-09", "Europe/London", "23:59", False),
+        (datetime(2026, 10, 9, 23, 30, tzinfo=timezone.utc), "2026-10-10", "Europe/London", "23:59", True),
+        (datetime(2026, 10, 10, 2, 0, tzinfo=timezone.utc), "2026-10-09", "America/New_York", "23:59", True),
+        (datetime(2026, 10, 10, 5, 0, tzinfo=timezone.utc), "2026-10-09", "America/New_York", "23:59", False),
+        (datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc), "2026-10-09", "America/Chicago", "14:00", True),
+        (datetime(2026, 10, 9, 19, 30, tzinfo=timezone.utc), "2026-10-09", "America/Chicago", "14:00", False),
+    ], ids=["fx-after-nyse-close", "fx-prior-day", "fx-after-london-midnight", "fx-new-day-bar",
+            "futures-new-york-evening", "futures-after-new-york-midnight", "rates-in-session", "rates-after-close"])
+    def test_bar_still_forming(self, now, bar_date, tz, end, expected):
+        from datetime import date
+        with patch("time_engine.datetime", _fake_datetime(now)):
+            assert reported_bar_still_forming(date.fromisoformat(bar_date), tz, end) is expected
+
+    @pytest.mark.parametrize("now,tz,end,expected", [
+        (datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", datetime(2026, 10, 8, 19, 0, tzinfo=timezone.utc)),
+        (datetime(2026, 10, 9, 19, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", datetime(2026, 10, 9, 19, 0, tzinfo=timezone.utc)),
+        (datetime(2026, 10, 9, 21, 33, tzinfo=timezone.utc), "Europe/London", "23:59", datetime(2026, 10, 8, 22, 59, tzinfo=timezone.utc)),
+        (datetime(2026, 10, 10, 14, 0, tzinfo=timezone.utc), "Europe/London", "23:59", datetime(2026, 10, 9, 22, 59, tzinfo=timezone.utc)),
+    ], ids=["rates-before-end", "rates-after-end", "fx-before-end", "fx-weekend"])
+    def test_last_session_end(self, now, tz, end, expected):
+        with patch("time_engine.datetime", _fake_datetime(now)):
+            assert last_reported_session_end_utc(tz, end) == expected
+
+    def test_local_hm_from_epoch_reads_the_window_end_in_the_exchange_timezone(self):
+        assert local_hm_from_epoch(1791572400, "America/Chicago") == "14:00"
+        assert local_hm_from_epoch(1791586740, "Europe/London") == "23:59"

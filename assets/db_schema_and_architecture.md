@@ -168,6 +168,12 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `ticker`, `ts` (unix timestamp of the intraday bar), `price` — composite PK `(ticker, ts)`.
 * **Read by:** `market_pulse.get_intraday_points(ticker, max_points=60)`, called from `markets_engine.assemble_markets_payload()` per tile.
 
+#### `instrument_sessions`
+* **Purpose:** The exchange timezone and regular-window end Yahoo reports for instruments that no `exchange_calendars` calendar models — FX pairs, futures (including the registry's `future_ticker` rows), `^`-prefixed rates/indexes without a registry exchange, and registry rows with `exchange = NULL`. Yahoo buckets their daily bars on that window (FX: the London calendar day; futures and DXY: the New York day; `^TNX`/`^TYX`: the CBOE window 07:20-14:00 Chicago), so `data_engine.prepare_daily_history()` trims a bar dated today in that timezone until the window has ended, and `daily_history_cache_revision()` treats a file written before the latest window end as stale. A ticker with no stored row is judged by the exchange session exactly as before (plain tickers as NYSE).
+* **Key Columns:** `ticker` (PK), `exchange_tz` (IANA name from Yahoo's `exchangeTimezoneName`), `regular_end` (`HH:MM` local time of the end of Yahoo's `currentTradingPeriod.regular` window), `updated_at` (UTC).
+* **Written by:** `data_engine._learn_reported_session()`, called from `prepare_daily_history()` on the refresh that first needs a ticker's session and again after 30 days; the lookup is `yahoo_engine.get_session_shape()` (chart metadata, one request per candidate ticker, retried at most hourly after a failure). A failed refresh keeps the last stored row. `UK10YG` (an FT/BoE series) is excluded from Yahoo fetches by `utils.is_excluded_from_yahoo_fetch()` and never gets a row.
+* **Read by:** `data_engine._reported_session()` (process-wide in-memory copy of this table, loaded on first use).
+
 #### `alert_state`
 * **Purpose:** Dedup ledger for intraday alert engines. Decoupled from `system_notifications` so display and dedup logic never interfere.
 * **Key Columns:** `engine`, `ticker` (composite PK), `fingerprint`, `last_price`, `last_fired_utc`, `armed`, `fire_count`, `state_date`.

@@ -163,12 +163,15 @@ def is_synthetic_ticker(ticker: str) -> bool:
     return parse_tbill_buy_txn_id(ticker) is not None or parse_pension_account_id(ticker) is not None
 
 
+NON_YAHOO_REGISTRY_TICKERS = frozenset({"UK10YG"})
+
+
 def is_excluded_from_yahoo_fetch(ticker: str, ignored: Optional[set] = None) -> bool:
-    """True when `ticker` must never reach a Yahoo Finance-touching call: is_synthetic_ticker()
-    or on the Settings-page Ignored Tickers list. Pass a pre-computed `ignored` (from
-    ignored_tickers_set()) when filtering many tickers in a loop, to avoid reloading config
-    on every call."""
-    if is_synthetic_ticker(ticker):
+    """True when `ticker` must never reach a Yahoo Finance-touching call: is_synthetic_ticker(),
+    a registry series sourced elsewhere (UK10YG comes from FT/BoE), or on the Settings-page
+    Ignored Tickers list. Pass a pre-computed `ignored` (from ignored_tickers_set()) when
+    filtering many tickers in a loop, to avoid reloading config on every call."""
+    if ticker in NON_YAHOO_REGISTRY_TICKERS or is_synthetic_ticker(ticker):
         return True
     if ignored is None:
         ignored = ignored_tickers_set()

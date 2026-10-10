@@ -171,6 +171,12 @@ def test_password():
 
 
 @pytest.fixture(autouse=True)
+def _block_yahoo_session_lookup():
+    with patch("yahoo_engine.YahooEngine.get_session_shape", return_value=None):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _block_navigation_cache_refresh():
     import cache_refresh_helpers
 
