@@ -153,9 +153,10 @@ def _save(rows: list[dict]) -> None:
             )} for r in rows],
         )
         if rows:
-            newest = datetime.strptime(max(r["as_of_date"] for r in rows), "%Y-%m-%d")
-            cutoff = (newest - timedelta(days=RETENTION_DAYS)).strftime("%Y-%m-%d")
-            conn.execute("DELETE FROM sector_relative_momentum_results WHERE as_of_date < ?", (cutoff,))
+            # Keyed to computed_at, not as_of_date: a cohort with stale parquet can trail the newest as-of by months, and an as_of cutoff deleted the scored rows just written.
+            ran_at = datetime.strptime(max(r["computed_at"] for r in rows), "%Y-%m-%d %H:%M:%S")
+            cutoff = (ran_at - timedelta(days=RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute("DELETE FROM sector_relative_momentum_results WHERE computed_at < ?", (cutoff,))
         conn.commit()
     finally:
         if conn:
