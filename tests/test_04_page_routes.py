@@ -2130,7 +2130,11 @@ def test_blocked_request_does_not_stall_unrelated_request(
 
 @pytest.mark.parametrize(
     "module_file",
-    ["api_routes.py", "api_routes_analysis.py", "api_routes_system.py", "api_routes_triggers.py", "page_routes.py"],
+    [
+        "api_routes.py", "api_routes_accounts.py", "api_routes_analysis.py", "api_routes_auth.py",
+        "api_routes_backtester.py", "api_routes_system.py", "api_routes_triggers.py", "page_routes.py",
+        "page_routes_etf.py",
+    ],
 )
 def test_async_route_handlers_always_await(module_file):
     """An `async def` handler with no await of its own runs all its blocking DB/file work on the event loop; it must be a plain `def`, or await run_in_threadpool/asyncio.to_thread."""

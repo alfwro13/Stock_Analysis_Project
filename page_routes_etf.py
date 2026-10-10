@@ -23,7 +23,7 @@ templates.env.globals["css_version"] = CSS_VERSION
 
 
 @page_router_etf.get("/etf-predictor", response_class=HTMLResponse)
-async def etf_predictor_index_page(request: Request):
+def etf_predictor_index_page(request: Request):
     from database import get_etf_predictor_configs, get_etf_accuracy
     configs = get_etf_predictor_configs()
     tiles = []

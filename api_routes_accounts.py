@@ -244,7 +244,7 @@ def _resolve_fee_currency_and_rate(
 
 
 @accounts_router.get("/accounts")
-async def api_list_accounts():
+def api_list_accounts():
     accounts = get_accounts()
     job_runs = get_all_job_last_runs()
     for acc in accounts:
@@ -270,7 +270,7 @@ async def api_list_accounts():
 
 @accounts_router.post("/accounts")
 @limiter.limit("120/minute")
-async def api_create_account(request: Request, body: AccountBody, background_tasks: BackgroundTasks):
+def api_create_account(request: Request, body: AccountBody, background_tasks: BackgroundTasks):
     try:
         if body.account_type not in _ACCOUNT_TYPES:
             return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
@@ -302,7 +302,7 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
 
 @accounts_router.put("/accounts/{account_id}")
 @limiter.limit("30/minute")
-async def api_update_account(request: Request, account_id: int, body: AccountBody, background_tasks: BackgroundTasks):
+def api_update_account(request: Request, account_id: int, body: AccountBody, background_tasks: BackgroundTasks):
     try:
         existing = get_account(account_id)
         if existing is None:
@@ -339,7 +339,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
 
 @accounts_router.delete("/accounts/{account_id}")
 @limiter.limit("30/minute")
-async def api_delete_account(request: Request, account_id: int):
+def api_delete_account(request: Request, account_id: int):
     try:
         existing = get_account(account_id)
         if existing is None:
@@ -354,14 +354,14 @@ async def api_delete_account(request: Request, account_id: int):
 
 
 @accounts_router.get("/accounts/{account_id}/transactions")
-async def api_list_transactions(account_id: int):
+def api_list_transactions(account_id: int):
     if get_account(account_id) is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
     return JSONResponse(content={"status": "success", "transactions": get_transactions(account_id)})
 
 
 @accounts_router.get("/accounts/{account_id}/value-history")
-async def api_account_value_history(
+def api_account_value_history(
     account_id: int,
     period: str = Query(default="max", pattern=r"^(1m|ytd|1y|max)$"),
 ):
@@ -372,7 +372,7 @@ async def api_account_value_history(
 
 
 @accounts_router.get("/accounts/{account_id}/live-performance")
-async def api_account_live_performance(account_id: int):
+def api_account_live_performance(account_id: int):
     acc = get_account(account_id)
     if acc is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
@@ -387,7 +387,7 @@ async def api_account_live_performance(account_id: int):
 
 @accounts_router.post("/accounts/{account_id}/reconcile-cash")
 @limiter.limit("30/minute")
-async def api_reconcile_cash(
+def api_reconcile_cash(
     request: Request, account_id: int, body: ReconcileCashBody, background_tasks: BackgroundTasks
 ):
     if get_account(account_id) is None:
@@ -409,7 +409,7 @@ async def api_reconcile_cash(
 
 @accounts_router.post("/accounts/{account_id}/transactions")
 @limiter.limit("30/minute")
-async def api_create_transaction(
+def api_create_transaction(
     request: Request, account_id: int, body: TransactionBody, background_tasks: BackgroundTasks
 ):
     try:
@@ -467,7 +467,7 @@ async def api_create_transaction(
 
 @accounts_router.put("/accounts/{account_id}/transactions/{txn_id}")
 @limiter.limit("30/minute")
-async def api_update_transaction(
+def api_update_transaction(
     request: Request, account_id: int, txn_id: int, body: TransactionBody, background_tasks: BackgroundTasks
 ):
     try:
@@ -531,7 +531,7 @@ async def api_update_transaction(
 
 @accounts_router.delete("/accounts/{account_id}/transactions/{txn_id}")
 @limiter.limit("30/minute")
-async def api_delete_transaction(request: Request, account_id: int, txn_id: int, background_tasks: BackgroundTasks):
+def api_delete_transaction(request: Request, account_id: int, txn_id: int, background_tasks: BackgroundTasks):
     try:
         existing = get_transaction(txn_id)
         if existing is None or existing["account_id"] != account_id:
@@ -559,7 +559,7 @@ class TransferBody(BaseModel):
 
 @accounts_router.post("/accounts/{account_id}/transfer")
 @limiter.limit("30/minute")
-async def api_create_transfer(request: Request, account_id: int, body: TransferBody, background_tasks: BackgroundTasks):
+def api_create_transfer(request: Request, account_id: int, body: TransferBody, background_tasks: BackgroundTasks):
     try:
         if get_account(account_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
@@ -580,7 +580,7 @@ async def api_create_transfer(request: Request, account_id: int, body: TransferB
 
 @accounts_router.get("/accounts/{account_id}/export")
 @limiter.limit("20/minute")
-async def api_export_transactions(request: Request, account_id: int):
+def api_export_transactions(request: Request, account_id: int):
     try:
         acc = get_account(account_id)
         if acc is None:
@@ -599,7 +599,7 @@ async def api_export_transactions(request: Request, account_id: int):
 
 @accounts_router.get("/fx-rate")
 @limiter.limit("30/minute")
-async def api_fx_rate(request: Request, currency: str, date: str):
+def api_fx_rate(request: Request, currency: str, date: str):
     try:
         rate = fx_rate_on_date(currency, date)
         if rate is None:
@@ -612,7 +612,7 @@ async def api_fx_rate(request: Request, currency: str, date: str):
 
 @accounts_router.get("/ticker-lookup")
 @limiter.limit("20/minute")
-async def api_ticker_lookup(request: Request, q: str):
+def api_ticker_lookup(request: Request, q: str):
     try:
         ticker = normalize_ticker(q)
         if not ticker:
@@ -635,7 +635,7 @@ async def api_ticker_lookup(request: Request, q: str):
 
 @accounts_router.get("/ticker-search")
 @limiter.limit("30/minute")
-async def api_ticker_search(request: Request, q: str):
+def api_ticker_search(request: Request, q: str):
     try:
         if not q or not q.strip():
             return JSONResponse(status_code=422, content={"status": "error", "message": "q is required."})
@@ -656,7 +656,7 @@ def _require_watchlist_account(account_id: int):
 
 
 @accounts_router.get("/accounts/{account_id}/watchlist-items")
-async def api_list_watchlist_items(account_id: int):
+def api_list_watchlist_items(account_id: int):
     acc, error = _require_watchlist_account(account_id)
     if error:
         return error
@@ -665,7 +665,7 @@ async def api_list_watchlist_items(account_id: int):
 
 @accounts_router.post("/accounts/{account_id}/watchlist-items")
 @limiter.limit("30/minute")
-async def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistItemBody, background_tasks: BackgroundTasks):
+def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistItemBody, background_tasks: BackgroundTasks):
     try:
         acc, error = _require_watchlist_account(account_id)
         if error:
@@ -688,7 +688,7 @@ async def api_add_watchlist_item(request: Request, account_id: int, body: Watchl
 
 @accounts_router.post("/accounts/{account_id}/watchlist-items/bulk-delete")
 @limiter.limit("30/minute")
-async def api_bulk_delete_watchlist_items(request: Request, account_id: int, body: WatchlistBulkDeleteBody):
+def api_bulk_delete_watchlist_items(request: Request, account_id: int, body: WatchlistBulkDeleteBody):
     try:
         acc, error = _require_watchlist_account(account_id)
         if error:
@@ -748,7 +748,7 @@ async def api_import_csv(request: Request, account_id: int, background_tasks: Ba
 
 
 @accounts_router.post("/accounts/value-snapshot/trigger")
-async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
+def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_manual_job, "account_value_snapshot_job", run_account_value_snapshot, False)
     return JSONResponse(content={
         "status": "queued",
@@ -757,7 +757,7 @@ async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
 
 
 @accounts_router.post("/accounts/treasury-bills/maturity-sweep/trigger")
-async def api_trigger_treasury_bill_maturity_sweep(background_tasks: BackgroundTasks):
+def api_trigger_treasury_bill_maturity_sweep(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_manual_job, "treasury_bill_maturity_sweep_job", run_treasury_bill_maturity_sweep)
     return JSONResponse(content={
         "status": "queued",
@@ -917,7 +917,7 @@ _AUTOTOPUP_FREQUENCIES = frozenset({"monthly", "weekly"})
 
 @accounts_router.put("/accounts/{account_id}/autotopup-config")
 @limiter.limit("30/minute")
-async def api_update_autotopup_config(request: Request, account_id: int, body: AutoTopupConfigBody):
+def api_update_autotopup_config(request: Request, account_id: int, body: AutoTopupConfigBody):
     try:
         acc, error = _require_trading_account(account_id)
         if error:
@@ -953,7 +953,7 @@ async def api_update_autotopup_config(request: Request, account_id: int, body: A
 
 @accounts_router.post("/accounts/{account_id}/autotopup/confirm")
 @limiter.limit("30/minute")
-async def api_confirm_autotopup(request: Request, account_id: int, body: AutoTopupConfirmBody):
+def api_confirm_autotopup(request: Request, account_id: int, body: AutoTopupConfirmBody):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
@@ -969,7 +969,7 @@ async def api_confirm_autotopup(request: Request, account_id: int, body: AutoTop
 
 @accounts_router.post("/accounts/{account_id}/autotopup/dismiss")
 @limiter.limit("30/minute")
-async def api_dismiss_autotopup(request: Request, account_id: int, body: AutoTopupDismissBody):
+def api_dismiss_autotopup(request: Request, account_id: int, body: AutoTopupDismissBody):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
@@ -985,7 +985,7 @@ async def api_dismiss_autotopup(request: Request, account_id: int, body: AutoTop
 
 @accounts_router.put("/accounts/{account_id}/scraper-config")
 @limiter.limit("30/minute")
-async def api_update_scraper_config(request: Request, account_id: int, body: ScraperConfigBody):
+def api_update_scraper_config(request: Request, account_id: int, body: ScraperConfigBody):
     try:
         acc, error = _require_scraper_account(account_id)
         if error:
@@ -1011,7 +1011,7 @@ async def api_update_scraper_config(request: Request, account_id: int, body: Scr
 
 @accounts_router.post("/accounts/{account_id}/scraper/test")
 @limiter.limit("20/minute")
-async def api_test_scraper(request: Request, account_id: int, body: ScraperTestBody):
+def api_test_scraper(request: Request, account_id: int, body: ScraperTestBody):
     try:
         _acc, error = _require_scraper_account(account_id)
         if error:
@@ -1027,7 +1027,7 @@ async def api_test_scraper(request: Request, account_id: int, body: ScraperTestB
 
 @accounts_router.post("/accounts/{account_id}/scraper/run-now")
 @limiter.limit("20/minute")
-async def api_run_scraper_now(request: Request, account_id: int, background_tasks: BackgroundTasks):
+def api_run_scraper_now(request: Request, account_id: int, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_scraper_account(account_id)
         if error:
@@ -1044,7 +1044,7 @@ async def api_run_scraper_now(request: Request, account_id: int, background_task
 
 @accounts_router.post("/accounts/{account_id}/price-history/import-csv")
 @limiter.limit("10/minute")
-async def api_import_price_csv(request: Request, account_id: int, body: PriceCsvImportBody, background_tasks: BackgroundTasks):
+def api_import_price_csv(request: Request, account_id: int, body: PriceCsvImportBody, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_scraper_account(account_id)
         if error:
@@ -1064,7 +1064,7 @@ async def api_import_price_csv(request: Request, account_id: int, body: PriceCsv
 
 @accounts_router.get("/accounts/{account_id}/price-history/at-date")
 @limiter.limit("60/minute")
-async def api_price_at_date(request: Request, account_id: int, date: str):
+def api_price_at_date(request: Request, account_id: int, date: str):
     try:
         _acc, error = _require_scraper_account(account_id)
         if error:
@@ -1077,7 +1077,7 @@ async def api_price_at_date(request: Request, account_id: int, date: str):
 
 @accounts_router.get("/accounts/{account_id}/pension/units-as-of")
 @limiter.limit("60/minute")
-async def api_pension_units_as_of(request: Request, account_id: int, date: str):
+def api_pension_units_as_of(request: Request, account_id: int, date: str):
     try:
         _acc, error = _require_pension_account(account_id)
         if error:
@@ -1090,7 +1090,7 @@ async def api_pension_units_as_of(request: Request, account_id: int, date: str):
 
 @accounts_router.post("/accounts/{account_id}/pension/contribution")
 @limiter.limit("30/minute")
-async def api_record_pension_contribution(request: Request, account_id: int, body: PensionContributionBody, background_tasks: BackgroundTasks):
+def api_record_pension_contribution(request: Request, account_id: int, body: PensionContributionBody, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_pension_account(account_id)
         if error:
@@ -1107,7 +1107,7 @@ async def api_record_pension_contribution(request: Request, account_id: int, bod
 
 @accounts_router.post("/accounts/{account_id}/pension/fee")
 @limiter.limit("30/minute")
-async def api_record_pension_fee(request: Request, account_id: int, body: PensionFeeBody, background_tasks: BackgroundTasks):
+def api_record_pension_fee(request: Request, account_id: int, body: PensionFeeBody, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_pension_account(account_id)
         if error:
@@ -1124,7 +1124,7 @@ async def api_record_pension_fee(request: Request, account_id: int, body: Pensio
 
 @accounts_router.get("/accounts/{account_id}/benchmark-config")
 @limiter.limit("60/minute")
-async def api_get_benchmark_config(request: Request, account_id: int):
+def api_get_benchmark_config(request: Request, account_id: int):
     try:
         acc, error = _require_pension_account(account_id)
         if error:
@@ -1141,7 +1141,7 @@ async def api_get_benchmark_config(request: Request, account_id: int):
 
 @accounts_router.put("/accounts/{account_id}/benchmark-config")
 @limiter.limit("30/minute")
-async def api_update_benchmark_config(request: Request, account_id: int, body: BenchmarkConfigBody):
+def api_update_benchmark_config(request: Request, account_id: int, body: BenchmarkConfigBody):
     try:
         _acc, error = _require_pension_account(account_id)
         if error:
@@ -1162,7 +1162,7 @@ async def api_update_benchmark_config(request: Request, account_id: int, body: B
 
 @accounts_router.post("/accounts/{account_id}/treasury-bills")
 @limiter.limit("30/minute")
-async def api_buy_treasury_bill(request: Request, account_id: int, body: TreasuryBillBuyBody, background_tasks: BackgroundTasks):
+def api_buy_treasury_bill(request: Request, account_id: int, body: TreasuryBillBuyBody, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
@@ -1182,7 +1182,7 @@ async def api_buy_treasury_bill(request: Request, account_id: int, body: Treasur
 
 @accounts_router.get("/accounts/{account_id}/treasury-bills")
 @limiter.limit("60/minute")
-async def api_list_treasury_bills(request: Request, account_id: int):
+def api_list_treasury_bills(request: Request, account_id: int):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
@@ -1195,7 +1195,7 @@ async def api_list_treasury_bills(request: Request, account_id: int):
 
 @accounts_router.put("/accounts/{account_id}/treasury-bills/{bill_id}")
 @limiter.limit("30/minute")
-async def api_update_treasury_bill(request: Request, account_id: int, bill_id: int, body: TreasuryBillAutoReinvestBody):
+def api_update_treasury_bill(request: Request, account_id: int, bill_id: int, body: TreasuryBillAutoReinvestBody):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
@@ -1213,7 +1213,7 @@ async def api_update_treasury_bill(request: Request, account_id: int, bill_id: i
 
 @accounts_router.post("/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm")
 @limiter.limit("30/minute")
-async def api_confirm_treasury_bill_ytm(request: Request, account_id: int, bill_id: int, body: TreasuryBillConfirmYtmBody, background_tasks: BackgroundTasks):
+def api_confirm_treasury_bill_ytm(request: Request, account_id: int, bill_id: int, body: TreasuryBillConfirmYtmBody, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
@@ -1233,7 +1233,7 @@ async def api_confirm_treasury_bill_ytm(request: Request, account_id: int, bill_
 
 @accounts_router.delete("/accounts/{account_id}/treasury-bills/{bill_id}")
 @limiter.limit("20/minute")
-async def api_delete_treasury_bill(request: Request, account_id: int, bill_id: int, background_tasks: BackgroundTasks):
+def api_delete_treasury_bill(request: Request, account_id: int, bill_id: int, background_tasks: BackgroundTasks):
     try:
         _acc, error = _require_trading_account(account_id)
         if error:
