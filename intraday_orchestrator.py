@@ -13,7 +13,7 @@ from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 import markets_engine
-from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set
+from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, write_parquet_atomic
 from database import get_connection, get_mutual_fund_tickers
 import accounts_engine
 from db_accounts import get_all_holding_price_limits, get_accounts
@@ -773,7 +773,7 @@ class IntradayOrchestrator:
 
                 if self._seconds_since(df_intraday.index[-1]) > _STALE_SECONDS:
                     df_intraday.index = df_intraday.index.tz_localize(None)
-                    df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                    write_parquet_atomic(df_intraday, INTRADAY_DIR / f"{ticker}_intraday.parquet")
                     continue
 
                 # Strip TZ before index arithmetic; parquet write deferred until after history validation.
@@ -799,7 +799,7 @@ class IntradayOrchestrator:
                 if df_hist.empty or len(df_hist) < 20:
                     continue
 
-                df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                write_parquet_atomic(df_intraday, INTRADAY_DIR / f"{ticker}_intraday.parquet")
 
                 last_hist_close = df_hist['Close'].iloc[-1]
                 # A mid-session refresh can leave today's own still-forming bar as the parquet's last row.
