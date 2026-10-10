@@ -53,6 +53,78 @@ def test_update_all_data_downloads_fx_pair_histories_but_keeps_them_out_of_the_o
     fundamentals.assert_called_once_with(["AAPL"])
 
 
+# ── market baseline files ─────────────────────────────────────────────────────
+
+def _baseline_frame():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {"Open": [0.0, 101.0, 102.0], "High": [0.0, 102.0, 103.0], "Low": [0.0, 100.0, 101.0],
+         "Close": [100.0, float("nan"), 104.0], "Volume": [0, 0, 0]},
+        index=pd.to_datetime(["2026-01-05", "2026-01-06", "2026-01-07"]),
+    )
+
+
+def _run_baseline_fetch(tmp_path, frames):
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_price_history", return_value=frames), \
+         patch("data_engine.GiltDataService"), \
+         patch("time_engine.is_market_open", return_value=False):
+        engine.fetch_market_baseline()
+
+
+def test_market_baseline_is_cleaned_and_written_atomically(tmp_path):
+    import pandas as pd
+
+    import data_engine
+
+    with patch("data_engine._write_history_parquet", wraps=data_engine._write_history_parquet) as writer:
+        _run_baseline_fetch(tmp_path, {"^FTSE": _baseline_frame()})
+    assert writer.call_args.args[1] == tmp_path / "FTSE_BASELINE.parquet"
+    saved = pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet")
+    assert saved["Close"].tolist() == [100.0, 104.0]
+    assert saved["Open"].iloc[0] == 100.0
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not (tmp_path / "^FTSE.parquet").exists()
+
+
+def test_market_baseline_applies_repairs_saved_under_the_real_ticker(tmp_path):
+    import pandas as pd
+
+    seen = []
+
+    def repair(ticker, df):
+        seen.append(ticker)
+        return df.assign(Close=df["Close"] * 2) if ticker == "^GSPC" else df
+
+    with patch("data_engine.apply_saved_repairs", side_effect=repair):
+        _run_baseline_fetch(tmp_path, {"^GSPC": _baseline_frame(), "^FTSE": _baseline_frame()})
+    assert sorted(seen) == ["^FTSE", "^GSPC"]
+    assert pd.read_parquet(tmp_path / "SP500_BASELINE.parquet")["Close"].tolist() == [200.0, 208.0]
+    assert pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet")["Close"].tolist() == [100.0, 104.0]
+
+
+def test_market_baseline_failed_write_keeps_the_previous_file(tmp_path):
+    import pandas as pd
+
+    previous = pd.DataFrame({"Close": [1.0, 2.0]}, index=pd.to_datetime(["2026-01-01", "2026-01-02"]))
+    previous.to_parquet(tmp_path / "FTSE_BASELINE.parquet")
+    with patch.object(pd.DataFrame, "to_parquet", side_effect=OSError("disk full")):
+        _run_baseline_fetch(tmp_path, {"^FTSE": _baseline_frame()})
+    pd.testing.assert_frame_equal(pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet"), previous)
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_market_baseline_skips_missing_and_empty_downloads(tmp_path):
+    import pandas as pd
+
+    _run_baseline_fetch(tmp_path, {"^FTSE": pd.DataFrame(), "^GSPC": None})
+    assert list(tmp_path.iterdir()) == []
+
+
 # ── get_all_tickers ───────────────────────────────────────────────────────────
 
 def test_get_all_tickers_deduplicates_portfolio_and_watchlist():
