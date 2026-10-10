@@ -830,23 +830,38 @@ The market universe is a catalogue of 4,000+ tickers (S&P 500, FTSE 100, Freetra
 
 ### `GET /api/universe/profiler-status`
 
-Returns the Fundamentals Profiler queue breakdown — how many tickers are eligible for profiling, already profiled, or stale.
-The database read runs in a request worker, so a slow status query does not hold up unrelated requests. The endpoint waits for the counts before responding.
+Returns the Fundamentals Data Profiler queue breakdown plus the last scheduler run.
+The queue counts only tickers the profiler can actually fetch: blacklisted (`data/freetrade_blacklist.json`), synthetic (`TBILL-*`, `PENSION-*`), non-Yahoo registry series and Settings-page Ignored Tickers are excluded and reported as `excluded_count`. `pending_count` is therefore exactly what the next batch draws from. A batch takes Portfolio/Watchlist tickers first, then never-profiled tickers, then the oldest `last_verified_date`.
+The database reads run in request workers, so a slow status query does not hold up unrelated requests. The endpoint waits for the counts before responding.
 
 **Response**
 
 ```json
 {
   "status": "success",
-  "pending_count": 47,
+  "pending_count": 5285,
   "breakdown": {
-    "pending_count": 47,
-    "eligible": 650,
-    "already_profiled": 603,
-    "stale": 47
+    "eligible_count": 9098,
+    "profiled_count": 8849,
+    "stale_count": 5036,
+    "pending_count": 5285,
+    "total_profiles": 8898,
+    "excluded_count": 43,
+    "refreshed_24h_count": 221,
+    "batch_size": 250,
+    "runs_to_clear": 22,
+    "days_to_clear": 22,
+    "firewall_active": 0
+  },
+  "last_run": {
+    "display": "2026-10-10 05:04 BST",
+    "status": "success",
+    "duration_sec": 282.7
   }
 }
 ```
+
+`stale_count` is profiles older than 90 days; `refreshed_24h_count` counts `asset_profiles` rows verified in the last 24 hours; `runs_to_clear` is `ceil(pending_count / batch_size)`; `days_to_clear` is that many runs spread over the scheduled weekdays and is `null` when the profiler schedule is disabled. `last_run.display` is `null` before the first run.
 
 ---
 
@@ -870,7 +885,7 @@ Scrapes the current S&P 500 and FTSE 100 constituent lists and updates the `mark
 
 ### `POST /api/universe/sync-profiler`
 
-Runs the Fundamentals Profiler for stale/unprocessed tickers: fetches `.info` payloads from Yahoo Finance and stores them in `asset_profiles`. Processes tickers in configurable batch sizes.
+Runs the Fundamentals Data Profiler for stale/unprocessed tickers: fetches `.info` payloads from Yahoo Finance and stores them in `asset_profiles`. Processes up to `SCHEDULING.PROFILER_ENGINE.BATCH_SIZE` tickers per run, Portfolio/Watchlist first, then never-profiled, then oldest verification; blacklisted, synthetic and ignored tickers are never picked.
 
 **Request body:** none  
 **Response:** standard background task response

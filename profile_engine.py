@@ -1,5 +1,6 @@
 import logging
 import json
+import math
 import time
 import random
 from pathlib import Path
@@ -7,11 +8,15 @@ from datetime import datetime, timezone
 from config import load_config
 from database import get_connection
 from yahoo_engine import yahoo_engine
+from db_helpers import get_portfolio_watchlist_tickers
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
 BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
+PROFILE_TTL_DAYS = 90
+DEFAULT_BATCH_SIZE = 250
 
 def load_blacklist() -> set:
     if BLACKLIST_PATH.exists():
@@ -88,63 +93,72 @@ def update_single_profile(ticker: str) -> bool:
         if conn:
             conn.close()
 
-def run_profile_audit(limit: int = 250):
-    logger.info("Initiating Asset Profile Audit (limit: %d)...", limit)
+def profiler_schedule() -> dict:
+    cfg = load_config().get("SCHEDULING", {}).get("PROFILER_ENGINE", {})
+    return {
+        "enabled": bool(cfg.get("ENABLED", False)),
+        "days": list(cfg.get("DAYS") or []),
+        "batch_size": int(cfg.get("BATCH_SIZE", DEFAULT_BATCH_SIZE)),
+    }
+
+
+def _profile_queue() -> tuple:
+    """(rows, excluded_count, freetrade_only); rows are (ticker, last_verified_date|None, is_stale) for fetchable tickers only, so tiles and batch picker share one definition of pending."""
+    config_data = load_config()
+    freetrade_only: bool = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+    # Freetrade Firewall: only index constituents tradable on Freetrade plus anything already scored
+    universe_filter = "WHERE is_index = 1 AND is_freetrade = 1" if freetrade_only else ""
+    blacklist = load_blacklist()
+    ignored = ignored_tickers_set(config_data)
+
     conn = None
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-
-        config_data = load_config()
-        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-
-        if freetrade_only:
-            # Freetrade Firewall: only audit index constituents and portfolio/watchlist assets
-            cursor.execute("""
-                WITH AllTickers AS (
-                    SELECT ticker FROM market_universe WHERE is_index = 1 AND is_freetrade = 1
-                    UNION
-                    SELECT ticker FROM stock_signals
-                    UNION
-                    SELECT ticker FROM quant_signals
-                )
-                SELECT a.ticker
-                FROM AllTickers a
-                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
-                WHERE p.ticker IS NULL
-                   OR p.last_verified_date < date('now', '-90 days')
-                LIMIT ?
-            """, (limit,))
-        else:
-            cursor.execute("""
-                WITH AllTickers AS (
-                    SELECT ticker FROM market_universe
-                    UNION
-                    SELECT ticker FROM stock_signals
-                    UNION
-                    SELECT ticker FROM quant_signals
-                )
-                SELECT a.ticker
-                FROM AllTickers a
-                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
-                WHERE p.ticker IS NULL
-                   OR p.last_verified_date < date('now', '-90 days')
-                LIMIT ?
-            """, (limit,))
-
-        rows = cursor.fetchall()
-        tickers_to_update = [row['ticker'] for row in rows]
-
-    except Exception as e:
-        logger.error("Fatal error fetching target tickers during Asset Profile Audit: %s", e)
-        return
+        fetched = conn.execute(f"""
+            WITH AllTickers AS (
+                SELECT ticker FROM market_universe {universe_filter}
+                UNION
+                SELECT ticker FROM stock_signals
+                UNION
+                SELECT ticker FROM quant_signals
+            )
+            SELECT a.ticker AS ticker,
+                   p.last_verified_date AS last_verified_date,
+                   COALESCE(p.last_verified_date < date('now', '-{PROFILE_TTL_DAYS} days'), 0) AS is_stale
+            FROM AllTickers a
+            LEFT JOIN asset_profiles p ON a.ticker = p.ticker
+        """).fetchall()
     finally:
-        # Close before the per-ticker fetch loop to prevent long-held DB locks
         if conn:
             conn.close()
 
+    rows = []
+    excluded = 0
+    for row in fetched:
+        ticker = row["ticker"]
+        if ticker in blacklist or is_excluded_from_yahoo_fetch(ticker, ignored):
+            excluded += 1
+            continue
+        rows.append((ticker, row["last_verified_date"], bool(row["is_stale"])))
+    return rows, excluded, freetrade_only
+
+
+def run_profile_audit(limit: int = DEFAULT_BATCH_SIZE):
+    logger.info("Initiating Asset Profile Audit (limit: %d)...", limit)
+    try:
+        rows, _, _ = _profile_queue()
+        priority = set(get_portfolio_watchlist_tickers())
+    except Exception as e:
+        logger.error("Fatal error fetching target tickers during Asset Profile Audit: %s", e)
+        return
+
+    pending = [r for r in rows if r[1] is None or r[2]]
+    # Portfolio/Watchlist first (rule 3), then never-profiled ('' sorts first), then oldest verification
+    pending.sort(key=lambda r: (r[0].upper() not in priority, r[1] or "", r[0]))
+    tickers_to_update = [r[0] for r in pending[:limit]]
+
     if not tickers_to_update:
-        logger.info("All asset profiles are up-to-date within the last 90 days. No action needed.")
+        logger.info("All asset profiles are up-to-date within the last %d days. No action needed.", PROFILE_TTL_DAYS)
         return
 
     logger.info("Found %d profiles requiring initialization or refresh.", len(tickers_to_update))
@@ -162,87 +176,46 @@ def run_profile_audit(limit: int = 250):
 
     logger.info("Asset Profile Audit complete. Updated %d static metadata records.", updated_count)
 
-def get_profiler_queue_breakdown() -> Dict[str, int]:
-    """Returns profiler queue dict: eligible_count, profiled_count, stale_count, pending_count, total_profiles, firewall_active."""
-    config_data = load_config()
-    freetrade_only: bool = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-
-    if freetrade_only:
-        eligibility_cte = """
-            WITH AllTickers AS (
-                SELECT ticker FROM market_universe WHERE is_index = 1 AND is_freetrade = 1
-                UNION
-                SELECT ticker FROM stock_signals
-                UNION
-                SELECT ticker FROM quant_signals
-            )
-        """
-    else:
-        eligibility_cte = """
-            WITH AllTickers AS (
-                SELECT ticker FROM market_universe
-                UNION
-                SELECT ticker FROM stock_signals
-                UNION
-                SELECT ticker FROM quant_signals
-            )
-        """
-
-    breakdown: Dict[str, int] = {
+def get_profiler_queue_breakdown() -> Dict[str, Optional[int]]:
+    """Settings queue tiles over fetchable tickers, plus excluded/24h-refreshed counts and runs/days to clear (None when unscheduled)."""
+    schedule = profiler_schedule()
+    breakdown: Dict[str, Optional[int]] = {
         "eligible_count": 0,
         "profiled_count": 0,
         "stale_count": 0,
         "pending_count": 0,
         "total_profiles": 0,
-        "firewall_active": 1 if freetrade_only else 0,
+        "excluded_count": 0,
+        "refreshed_24h_count": 0,
+        "batch_size": schedule["batch_size"],
+        "runs_to_clear": 0,
+        "days_to_clear": None,
+        "firewall_active": 0,
     }
 
     conn = None
     try:
+        rows, excluded, freetrade_only = _profile_queue()
+        breakdown["firewall_active"] = 1 if freetrade_only else 0
+        breakdown["excluded_count"] = excluded
+        breakdown["eligible_count"] = len(rows)
+        breakdown["profiled_count"] = sum(1 for r in rows if r[1] is not None)
+        breakdown["stale_count"] = sum(1 for r in rows if r[1] is not None and r[2])
+        breakdown["pending_count"] = sum(1 for r in rows if r[1] is None or r[2])
+
         conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(eligibility_cte + " SELECT COUNT(*) AS c FROM AllTickers")
-        row = cursor.fetchone()
-        breakdown["eligible_count"] = int(row["c"]) if row else 0
-
-        cursor.execute(
-            eligibility_cte + """
-                SELECT COUNT(*) AS c
-                FROM AllTickers a
-                INNER JOIN asset_profiles p ON a.ticker = p.ticker
-            """
-        )
-        row = cursor.fetchone()
-        breakdown["profiled_count"] = int(row["c"]) if row else 0
-
-        cursor.execute(
-            eligibility_cte + """
-                SELECT COUNT(*) AS c
-                FROM AllTickers a
-                INNER JOIN asset_profiles p ON a.ticker = p.ticker
-                WHERE p.last_verified_date < date('now', '-90 days')
-            """
-        )
-        row = cursor.fetchone()
-        breakdown["stale_count"] = int(row["c"]) if row else 0
-
-        cursor.execute(
-            eligibility_cte + """
-                SELECT COUNT(*) AS c
-                FROM AllTickers a
-                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
-                WHERE p.ticker IS NULL
-                   OR p.last_verified_date < date('now', '-90 days')
-            """
-        )
-        row = cursor.fetchone()
-        breakdown["pending_count"] = int(row["c"]) if row else 0
-
-        cursor.execute("SELECT COUNT(*) AS c FROM asset_profiles")
-        row = cursor.fetchone()
+        row = conn.execute("SELECT COUNT(*) AS c FROM asset_profiles").fetchone()
         breakdown["total_profiles"] = int(row["c"]) if row else 0
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM asset_profiles WHERE last_verified_date >= datetime('now', '-1 day')"
+        ).fetchone()
+        breakdown["refreshed_24h_count"] = int(row["c"]) if row else 0
 
+        if schedule["batch_size"] > 0:
+            runs = math.ceil(breakdown["pending_count"] / schedule["batch_size"])
+            breakdown["runs_to_clear"] = runs
+            if schedule["enabled"] and schedule["days"]:
+                breakdown["days_to_clear"] = math.ceil(runs * 7 / len(schedule["days"]))
         return breakdown
     except Exception as e:
         logger.error("Error computing profiler queue breakdown: %s", e)

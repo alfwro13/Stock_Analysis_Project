@@ -13,6 +13,10 @@ Covers:
   • update_single_profile: valid Yahoo payload → upserts to asset_profiles, True
   • count_pending_profiles: empty DB → 0
   • get_profiler_queue_breakdown: empty DB → all counts 0
+  • queue: blacklisted/synthetic/ignored tickers are neither counted nor picked
+  • batch: Portfolio/Watchlist first, then never-profiled, then oldest verification
+  • breakdown: runs/days to clear from batch size and schedule
+  • scheduler_jobs.run_fundamentals_profiler() — runner-level wiring
 """
 
 import inspect
@@ -110,12 +114,16 @@ class TestProfilingQueueCounts:
         assert set(result.keys()) == {
             "eligible_count", "pending_count", "profiled_count",
             "stale_count", "total_profiles", "firewall_active",
+            "excluded_count", "refreshed_24h_count", "batch_size",
+            "runs_to_clear", "days_to_clear",
         }
 
     def test_queue_breakdown_all_values_non_negative(self):
         from profile_engine import get_profiler_queue_breakdown
         result = get_profiler_queue_breakdown()
         for key, val in result.items():
+            if key == "days_to_clear" and val is None:
+                continue
             assert isinstance(val, int) and val >= 0, f"{key}={val} is not a non-negative int"
 
     def test_queue_breakdown_firewall_active_is_bool_like(self):
@@ -217,3 +225,186 @@ class TestUpdateSingleProfile:
         assert row is not None
         assert row["company_name"] == "Persist Corp"
         assert row["sector"] == "Finance"
+
+
+# ── queue definition, batch order, ETA, runner ───────────────────────────────
+
+_QUEUE_PREFIX = "PQTEST_"
+
+
+def _seed_queue(profiles):
+    """profiles: {ticker: last_verified_date or None}; every ticker gets a stock_signals row."""
+    import database
+    conn = database.get_connection()
+    try:
+        for ticker, verified in profiles.items():
+            conn.execute("INSERT OR REPLACE INTO stock_signals (ticker) VALUES (?)", (ticker,))
+            if verified is not None:
+                conn.execute(
+                    "INSERT OR REPLACE INTO asset_profiles (ticker, company_name, last_verified_date) VALUES (?, ?, ?)",
+                    (ticker, ticker, verified),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _clear_queue(tickers):
+    import database
+    conn = database.get_connection()
+    try:
+        for ticker in tickers:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+            conn.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def empty_blacklist(tmp_path):
+    bl = tmp_path / "freetrade_blacklist.json"
+    bl.write_text("[]")
+    with patch("profile_engine.BLACKLIST_PATH", bl):
+        yield bl
+
+
+class TestProfilerQueueDefinition:
+
+    def test_blacklisted_synthetic_and_ignored_tickers_are_not_pending(self, empty_blacklist):
+        """The worker never fetches these, so counting them as pending leaves the tile stuck above zero forever."""
+        import profile_engine
+        tickers = {
+            f"{_QUEUE_PREFIX}OK": None,
+            f"{_QUEUE_PREFIX}BLACKLISTED": None,
+            f"{_QUEUE_PREFIX}IGNORED": None,
+            "TBILL-987654": None,
+        }
+        empty_blacklist.write_text(json.dumps([f"{_QUEUE_PREFIX}BLACKLISTED"]))
+        real_config = profile_engine.load_config()
+        config = {**real_config, "IGNORED_TICKERS": [f"{_QUEUE_PREFIX}IGNORED"]}
+        _seed_queue(tickers)
+        try:
+            with patch("profile_engine.load_config", return_value=config):
+                rows, excluded, _ = profile_engine._profile_queue()
+                breakdown = profile_engine.get_profiler_queue_breakdown()
+        finally:
+            _clear_queue(tickers)
+
+        queued = {r[0] for r in rows}
+        assert f"{_QUEUE_PREFIX}OK" in queued
+        assert not queued & {f"{_QUEUE_PREFIX}BLACKLISTED", f"{_QUEUE_PREFIX}IGNORED", "TBILL-987654"}
+        assert excluded >= 3
+        assert breakdown["excluded_count"] >= 3
+
+    def test_pending_is_missing_plus_stale(self, empty_blacklist):
+        import profile_engine
+        before = profile_engine.get_profiler_queue_breakdown()
+        tickers = {
+            f"{_QUEUE_PREFIX}NEVER": None,
+            f"{_QUEUE_PREFIX}STALE": "2000-01-01 00:00:00",
+            f"{_QUEUE_PREFIX}FRESH": "2999-01-01 00:00:00",
+        }
+        _seed_queue(tickers)
+        try:
+            after = profile_engine.get_profiler_queue_breakdown()
+        finally:
+            _clear_queue(tickers)
+
+        assert after["eligible_count"] - before["eligible_count"] == 3
+        assert after["profiled_count"] - before["profiled_count"] == 2
+        assert after["stale_count"] - before["stale_count"] == 1
+        assert after["pending_count"] - before["pending_count"] == 2
+
+
+class TestProfilerBatchOrder:
+
+    def test_priority_then_never_profiled_then_oldest(self, empty_blacklist):
+        import profile_engine
+        held_old = f"{_QUEUE_PREFIX}ZHELD_OLD"
+        held_never = f"{_QUEUE_PREFIX}ZHELD_NEVER"
+        other_never = f"{_QUEUE_PREFIX}AOTHER_NEVER"
+        other_oldest = f"{_QUEUE_PREFIX}BOTHER_OLDEST"
+        other_older = f"{_QUEUE_PREFIX}COTHER_OLDER"
+        tickers = {
+            held_old: "2001-01-01 00:00:00",
+            held_never: None,
+            other_never: None,
+            other_oldest: "2000-01-01 00:00:00",
+            other_older: "2002-01-01 00:00:00",
+        }
+        _seed_queue(tickers)
+        fetched = []
+        try:
+            with patch("profile_engine.get_portfolio_watchlist_tickers", return_value=[held_old, held_never]), \
+                 patch("profile_engine.update_single_profile", side_effect=lambda t: fetched.append(t) or True), \
+                 patch("profile_engine.time.sleep"):
+                profile_engine.run_profile_audit(limit=1_000_000)
+        finally:
+            _clear_queue(tickers)
+
+        ours = [t for t in fetched if t.startswith(_QUEUE_PREFIX)]
+        assert ours == [held_never, held_old, other_never, other_oldest, other_older]
+
+    def test_limit_caps_the_batch(self, empty_blacklist):
+        import profile_engine
+        fetched = []
+        with patch("profile_engine.get_portfolio_watchlist_tickers", return_value=[]), \
+             patch("profile_engine.update_single_profile", side_effect=lambda t: fetched.append(t) or True), \
+             patch("profile_engine.time.sleep"):
+            profile_engine.run_profile_audit(limit=2)
+        assert len(fetched) <= 2
+
+    def test_blacklisted_ticker_does_not_use_a_batch_slot(self, empty_blacklist):
+        import profile_engine
+        tickers = {f"{_QUEUE_PREFIX}BL": None}
+        empty_blacklist.write_text(json.dumps([f"{_QUEUE_PREFIX}BL"]))
+        _seed_queue(tickers)
+        fetched = []
+        try:
+            with patch("profile_engine.get_portfolio_watchlist_tickers", return_value=[]), \
+                 patch("profile_engine.update_single_profile", side_effect=lambda t: fetched.append(t) or True), \
+                 patch("profile_engine.time.sleep"):
+                profile_engine.run_profile_audit(limit=1_000_000)
+        finally:
+            _clear_queue(tickers)
+        assert f"{_QUEUE_PREFIX}BL" not in fetched
+
+
+class TestProfilerEta:
+
+    def test_runs_and_days_to_clear_follow_batch_and_schedule(self, empty_blacklist):
+        import profile_engine
+        schedule = {"enabled": True, "days": ["mon", "wed"], "batch_size": 1}
+        with patch("profile_engine.profiler_schedule", return_value=schedule):
+            result = profile_engine.get_profiler_queue_breakdown()
+        pending = result["pending_count"]
+        assert result["batch_size"] == 1
+        assert result["runs_to_clear"] == pending
+        assert result["days_to_clear"] == -(-pending * 7 // 2)
+
+    def test_days_to_clear_is_none_when_schedule_disabled(self, empty_blacklist):
+        import profile_engine
+        schedule = {"enabled": False, "days": ["mon"], "batch_size": 250}
+        with patch("profile_engine.profiler_schedule", return_value=schedule):
+            result = profile_engine.get_profiler_queue_breakdown()
+        assert result["days_to_clear"] is None
+
+
+class TestFundamentalsProfilerRunner:
+
+    def test_runner_passes_configured_batch_size_to_audit(self):
+        import scheduler_jobs
+        schedule = {"enabled": True, "days": ["mon"], "batch_size": 37}
+        with patch("profile_engine.profiler_schedule", return_value=schedule), \
+             patch("profile_engine.run_profile_audit") as audit:
+            scheduler_jobs.run_fundamentals_profiler()
+        audit.assert_called_once_with(limit=37)
+
+    def test_status_endpoint_reports_last_run_and_eta_fields(self, client):
+        response = client.get("/api/universe/profiler-status")
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body["last_run"]) == {"display", "status", "duration_sec"}
+        for key in ("excluded_count", "refreshed_24h_count", "batch_size", "runs_to_clear", "days_to_clear"):
+            assert key in body["breakdown"]

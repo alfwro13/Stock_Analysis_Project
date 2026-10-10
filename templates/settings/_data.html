@@ -104,7 +104,7 @@
 
                 <div class="settings-panel border-left-green">
                     <h4 class="settings-panel-header text-green">📊 Fundamentals Data Profiler</h4>
-                    <p class="settings-desc-sm">Downloads heavy fundamental data (PE, EPS, Sector) for the active universe via Yahoo Finance.</p>
+                    <p class="settings-desc-sm">Refreshes each ticker's static asset profile (sector, industry, country, exchange, currency, business summary) from Yahoo Finance every 90 days. Portfolio and Watchlist tickers are refreshed first.</p>
                     <div class="profiler-breakdown mb-15">
                         <div class="profiler-tile">
                             <span class="profiler-tile-label">Eligible</span>
@@ -124,6 +124,7 @@
                         </div>
                     </div>
                     <p class="settings-desc-sm" id="profiler-status-hint">Calculating queue state…</p>
+                    <p class="settings-desc-sm" id="profiler-run-hint"></p>
                     <div class="checkbox-group mb-10">
                         <input type="checkbox" id="PROFILER_ENGINE_ENABLED" {% if profiler.ENABLED %}checked{% endif %}>
                         <label for="PROFILER_ENGINE_ENABLED">Auto-download Fundamental Profiles</label>
