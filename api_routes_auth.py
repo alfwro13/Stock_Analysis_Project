@@ -45,7 +45,7 @@ class LoginRequest(BaseModel):
 
 @auth_router.post("/login")
 @limiter.limit("10/minute")
-async def login(request: Request, body: LoginRequest, response: Response):
+def login(request: Request, body: LoginRequest, response: Response):
     import secrets as _secrets
     from auth import create_session_token, cookie_kwargs, verify_password
     valid_user = _secrets.compare_digest(
@@ -66,7 +66,7 @@ async def login(request: Request, body: LoginRequest, response: Response):
 
 
 @auth_router.post("/generate-api-key", dependencies=[Depends(require_confirm_token)])
-async def generate_api_key():
+def generate_api_key():
     import secrets as _secrets
     from dotenv import set_key
     new_key = _secrets.token_hex(32)
@@ -76,7 +76,7 @@ async def generate_api_key():
 
 
 @auth_router.post("/generate-embed-token", dependencies=[Depends(require_confirm_token)])
-async def generate_embed_token():
+def generate_embed_token():
     import secrets as _secrets
     from dotenv import set_key
     new_token = _secrets.token_hex(32)
@@ -92,7 +92,7 @@ class ChangePasswordRequest(BaseModel):
 
 
 @auth_router.post("/change-password", dependencies=[Depends(require_confirm_token)])
-async def change_password(body: ChangePasswordRequest):
+def change_password(body: ChangePasswordRequest):
     import secrets as _secrets
     from dotenv import set_key
     from auth import hash_password, verify_password
@@ -173,7 +173,7 @@ def _send_reset_notification(reset_url: str) -> bool:
 
 
 @auth_router.post("/request-password-reset")
-async def request_password_reset(body: PasswordResetRequestBody):
+def request_password_reset(body: PasswordResetRequestBody):
     import secrets
     import hashlib as _hl
     from datetime import datetime, timezone, timedelta
@@ -214,7 +214,7 @@ async def request_password_reset(body: PasswordResetRequestBody):
 
 
 @auth_router.post("/reset-password")
-async def reset_password(body: PasswordResetBody):
+def reset_password(body: PasswordResetBody):
     import hashlib as _hl
     from datetime import datetime, timezone
     from auth import hash_password as _hash
@@ -262,7 +262,7 @@ class SaveAccountEmailRequest(BaseModel):
 
 
 @auth_router.post("/save-account-email", dependencies=[Depends(require_confirm_token)])
-async def save_account_email(body: SaveAccountEmailRequest):
+def save_account_email(body: SaveAccountEmailRequest):
     from dotenv import set_key
     set_key(str(BASE_DIR / ".env"), "ACCOUNT_EMAIL", body.email.strip())
     os.environ["ACCOUNT_EMAIL"] = body.email.strip()
@@ -275,7 +275,7 @@ class AdminResetPasswordBody(BaseModel):
 
 
 @auth_router.post("/admin-reset-password")
-async def admin_reset_password(body: AdminResetPasswordBody):
+def admin_reset_password(body: AdminResetPasswordBody):
     from dotenv import set_key
     from auth import hash_password as _hash
 
@@ -309,7 +309,7 @@ class SaveNextcloudSettingsRequest(BaseModel):
 
 
 @auth_router.post("/save-nextcloud-settings", dependencies=[Depends(require_confirm_token)])
-async def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
+def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
     mapping = {
@@ -346,7 +346,7 @@ class SaveGhostfolioSettingsRequest(BaseModel):
 
 
 @auth_router.post("/save-ghostfolio-settings", dependencies=[Depends(require_confirm_token)])
-async def save_ghostfolio_settings(body: SaveGhostfolioSettingsRequest):
+def save_ghostfolio_settings(body: SaveGhostfolioSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
     set_key(env_path, "GHOSTFOLIO_URL", body.GHOSTFOLIO_URL)
@@ -361,7 +361,7 @@ class SaveFredApiKeyRequest(BaseModel):
 
 
 @auth_router.post("/save-fred-api-key", dependencies=[Depends(require_confirm_token)])
-async def save_fred_api_key(body: SaveFredApiKeyRequest):
+def save_fred_api_key(body: SaveFredApiKeyRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
     set_key(env_path, "FRED_API_KEY", body.FRED_API_KEY)
@@ -374,7 +374,7 @@ class SaveHFTokenRequest(BaseModel):
 
 
 @auth_router.post("/save-hf-token", dependencies=[Depends(require_confirm_token)])
-async def save_hf_token(body: SaveHFTokenRequest):
+def save_hf_token(body: SaveHFTokenRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
     set_key(env_path, "HF_TOKEN", body.HF_TOKEN)
@@ -405,7 +405,7 @@ class ChangeUsernameRequest(BaseModel):
 
 
 @auth_router.post("/change-username", dependencies=[Depends(require_confirm_token)])
-async def change_username(body: ChangeUsernameRequest):
+def change_username(body: ChangeUsernameRequest):
     from dotenv import set_key
     username = body.new_username.strip()
     if not username:
@@ -417,7 +417,7 @@ async def change_username(body: ChangeUsernameRequest):
 
 
 @auth_router.post("/rotate-app-secret", dependencies=[Depends(require_confirm_token)])
-async def rotate_app_secret():
+def rotate_app_secret():
     import secrets as _secrets
     from dotenv import set_key
     new_secret = _secrets.token_hex(32)
@@ -428,7 +428,7 @@ async def rotate_app_secret():
 
 
 @auth_router.post("/rotate-confirm-token", dependencies=[Depends(require_confirm_token)])
-async def rotate_confirm_token():
+def rotate_confirm_token():
     import secrets as _secrets
     from dotenv import set_key
     new_token = _secrets.token_hex(16)
@@ -447,7 +447,7 @@ class SaveSmtpSettingsRequest(BaseModel):
 
 
 @auth_router.post("/save-smtp-settings", dependencies=[Depends(require_confirm_token)])
-async def save_smtp_settings(body: SaveSmtpSettingsRequest):
+def save_smtp_settings(body: SaveSmtpSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
     fields = {
@@ -464,7 +464,7 @@ async def save_smtp_settings(body: SaveSmtpSettingsRequest):
 
 
 @auth_router.post("/send-test-email", dependencies=[Depends(require_confirm_token)])
-async def send_test_email():
+def send_test_email():
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 

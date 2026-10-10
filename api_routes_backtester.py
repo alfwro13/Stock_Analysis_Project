@@ -69,7 +69,7 @@ class PrepareHistoryRequest(BaseModel):
 
 @backtester_router.get("/strategy-backtester/meta")
 @limiter.limit("30/minute")
-async def api_backtester_meta(request: Request):
+def api_backtester_meta(request: Request):
     return JSONResponse(content={
         "status": "success",
         "strategies": [
