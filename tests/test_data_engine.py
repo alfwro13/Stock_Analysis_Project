@@ -1161,3 +1161,61 @@ def test_read_only_history_returns_stale_file_without_queueing_a_refresh(tmp_pat
         assert load_or_fetch_daily_history("ZZMISSING", read_only=True) is None
     background.assert_not_called()
     awaited.assert_not_called()
+
+
+# ── history exchange resolution ───────────────────────────────────────────────
+
+def _history_ending_today(rows=3):
+    import pandas as pd
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).date()
+    return pd.DataFrame({"Close": [10.0 + i for i in range(rows)]}, index=pd.date_range(end=today, periods=rows))
+
+
+@pytest.mark.parametrize("ticker,session_open,expected_rows", [
+    ("^FTSE", "LSE", 2),
+    ("^FTSE", "NYSE", 3),
+    ("^N225", "TSE", 2),
+    ("^N225", "NYSE", 3),
+    ("AAPL", "NYSE", 2),
+    ("VOD.L", "LSE", 2),
+])
+def test_in_progress_trim_follows_the_tickers_own_exchange(ticker, session_open, expected_rows):
+    from data_engine import prepare_daily_history
+
+    with patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == session_open), \
+         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+        assert len(prepare_daily_history(ticker, _history_ending_today(), None)) == expected_rows
+
+
+def test_in_progress_trim_with_live_feed_follows_the_tickers_own_exchange():
+    import pandas as pd
+    from data_engine import prepare_daily_history
+
+    daily = _history_ending_today()
+    live = pd.DataFrame({"Close": [1.0]}, index=pd.DatetimeIndex([daily.index[-1]]))
+    with patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == "TSE"), \
+         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+        assert len(prepare_daily_history("^N225", daily, live)) == 2
+        assert len(prepare_daily_history("^FTSE", daily, live)) == 3
+
+
+def test_plain_ticker_is_not_judged_against_the_home_exchange():
+    from data_engine import prepare_daily_history
+
+    with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "LSE"}), \
+         patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == "LSE"), \
+         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+        assert len(prepare_daily_history("AAPL", _history_ending_today(), None)) == 3
+
+
+def test_history_staleness_check_uses_the_registry_exchange(tmp_path):
+    from data_engine import daily_history_cache_revision
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)) as settled, \
+         patch("cache_refresh_helpers.request_cache_refresh"):
+        daily_history_cache_revision("^N225", refresh_stale=True)
+        daily_history_cache_revision("AAPL", refresh_stale=True)
+    assert [call.args[0] for call in settled.call_args_list] == ["TSE", "NYSE"]

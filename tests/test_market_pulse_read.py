@@ -444,6 +444,47 @@ class TestResolveTickerExchange:
         prebuilt = {"^FTSE": "XETRA"}
         assert _ms.resolve_ticker_exchange("^FTSE", registry_exchange_map=prebuilt) == "XETRA"
 
+    def test_suffix_only_still_prefers_the_registry_exchange(self):
+        assert _ms.resolve_ticker_exchange("^N225", suffix_only=True) == "TSE"
+
+    def test_suffix_only_fallback_never_uses_the_home_exchange(self):
+        with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "LSE"}):
+            assert _ms.resolve_ticker_exchange("_PLAIN_TICKER", suffix_only=True) == "NYSE"
+            assert _ms.resolve_ticker_exchange("_PLAIN_TICKER") == "LSE"
+        assert _ms.resolve_ticker_exchange("_X.L", suffix_only=True) == "LSE"
+
+
+class TestCachedRegistryExchangeMap:
+    def setup_method(self):
+        _ms.reset_registry_exchange_cache()
+
+    def teardown_method(self):
+        _ms.reset_registry_exchange_cache()
+
+    def test_built_once_until_reset(self):
+        with patch("market_session_helpers.build_registry_exchange_map", return_value={"^FTSE": "LSE"}) as build:
+            assert _ms.cached_registry_exchange_map() == {"^FTSE": "LSE"}
+            assert _ms.cached_registry_exchange_map() == {"^FTSE": "LSE"}
+            assert build.call_count == 1
+            _ms.reset_registry_exchange_cache()
+            _ms.cached_registry_exchange_map()
+            assert build.call_count == 2
+
+    def test_empty_map_is_not_cached(self):
+        with patch("market_session_helpers.build_registry_exchange_map", side_effect=[{}, {"^FTSE": "LSE"}]) as build:
+            assert _ms.cached_registry_exchange_map() == {}
+            assert _ms.cached_registry_exchange_map() == {"^FTSE": "LSE"}
+            assert build.call_count == 2
+
+    def test_reload_ticker_registry_resets_the_cache(self):
+        import market_pulse
+
+        with patch("market_session_helpers.build_registry_exchange_map", return_value={"^FTSE": "LSE"}) as build:
+            _ms.cached_registry_exchange_map()
+            market_pulse.reload_ticker_registry()
+            _ms.cached_registry_exchange_map()
+        assert build.call_count == 2
+
 
 class TestIsTickerQuoteSettled:
     def test_delegates_to_is_quote_settled_for_resolved_exchange(self):
