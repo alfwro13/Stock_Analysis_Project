@@ -52,33 +52,46 @@ _SIGNAL_JOINS = """
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker"""
 
 
+def _select_signal_rows(cursor, benchmark_symbol: str, tickers: list[str], extra_columns: str, extra_joins: str = ""):
+    rows = []
+    # Leave room for the benchmark parameter under SQLite's older 999-variable limit.
+    for start in range(0, len(tickers), 900):
+        batch = tickers[start:start + 900]
+        placeholders = ",".join("?" for _ in batch)
+        cursor.execute(f"""
+            SELECT s.*, {_SIGNAL_COLUMNS},
+                   {extra_columns}
+            {_SIGNAL_JOINS}
+            {extra_joins}
+            WHERE s.ticker IN ({placeholders})
+        """, (benchmark_symbol, *batch))
+        rows.extend(cursor.fetchall())
+    return rows
+
+
+def _global_updated(cursor):
+    cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
+    value = cursor.fetchone()['global_updated']
+    return value if value else "Awaiting initial update..."
+
+
 def fetch_portfolio_signal_rows(benchmark_symbol: str, tickers: list[str]):
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        db_rows = []
-        # Leave room for the benchmark parameter under SQLite's older 999-variable limit.
-        for start in range(0, len(tickers), 900):
-            batch = tickers[start:start + 900]
-            placeholders = ",".join("?" for _ in batch)
-            cursor.execute(f"""
-            SELECT s.*, {_SIGNAL_COLUMNS},
-                   rc.risk_tier AS heat_index_tier
-            {_SIGNAL_JOINS}
-            LEFT JOIN ticker_risk_contribution rc ON s.ticker = rc.ticker
-            WHERE s.ticker IN ({placeholders})
-        """, (benchmark_symbol, *batch))
-            db_rows.extend(cursor.fetchall())
+        db_rows = _select_signal_rows(
+            cursor, benchmark_symbol, tickers,
+            "rc.risk_tier AS heat_index_tier",
+            "LEFT JOIN ticker_risk_contribution rc ON s.ticker = rc.ticker",
+        )
 
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
         macro_row = cursor.fetchone()
         macro_regime = dict(macro_row) if macro_row else None
 
-        cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
-        global_update_val = cursor.fetchone()['global_updated']
-        global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+        global_updated = _global_updated(cursor)
     finally:
         if conn:
             conn.close()
@@ -86,22 +99,15 @@ def fetch_portfolio_signal_rows(benchmark_symbol: str, tickers: list[str]):
     return db_rows, macro_regime, global_updated
 
 
-def fetch_watchlist_signal_rows(benchmark_symbol: str):
+def fetch_watchlist_signal_rows(benchmark_symbol: str, tickers: list[str]):
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(f"""
-            SELECT s.*, {_SIGNAL_COLUMNS},
-                   mu.is_freetrade
-            {_SIGNAL_JOINS}
-        """, (benchmark_symbol,))
-        db_rows = cursor.fetchall()
+        db_rows = _select_signal_rows(cursor, benchmark_symbol, tickers, "mu.is_freetrade")
 
-        cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
-        global_update_val = cursor.fetchone()['global_updated']
-        global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+        global_updated = _global_updated(cursor)
     finally:
         if conn:
             conn.close()

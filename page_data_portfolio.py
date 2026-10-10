@@ -41,18 +41,19 @@ def load_signal_enrichments(tickers):
     from sector_relative_momentum_engine import get_column_values as get_sector_momentum_values
     from stable_shortlist_reads import get_column_values as get_shortlist_values
 
-    confluence = evaluate_pillar_confluence_batch(tickers)
-    regime_score = compute_regime_weighted_score_batch(tickers)
-    return {
-        "pattern_tags": get_pattern_tags_by_ticker(tickers),
-        "confluence": confluence,
-        "regime_score": regime_score,
-        "buy_recommendation": evaluate_buy_recommendation_batch(
-            tickers, confluence_by_ticker=confluence, regime_score_by_ticker=regime_score,
-        ),
-        "sector_momentum": get_sector_momentum_values(sorted(tickers)),
-        "shortlist": get_shortlist_values(sorted(tickers)),
-    }
+    with measure_request_stage("enrichment"):
+        confluence = evaluate_pillar_confluence_batch(tickers)
+        regime_score = compute_regime_weighted_score_batch(tickers)
+        return {
+            "pattern_tags": get_pattern_tags_by_ticker(tickers),
+            "confluence": confluence,
+            "regime_score": regime_score,
+            "buy_recommendation": evaluate_buy_recommendation_batch(
+                tickers, confluence_by_ticker=confluence, regime_score_by_ticker=regime_score,
+            ),
+            "sector_momentum": get_sector_momentum_values(sorted(tickers)),
+            "shortlist": get_shortlist_values(sorted(tickers)),
+        }
 
 
 def enrich_signal_row(row_dict, enrichments):
@@ -93,13 +94,14 @@ def build_portfolio_rows(db_rows, portfolio_tickers):
     enrichments = load_signal_enrichments(portfolio_tickers)
     ticker_set = set(portfolio_tickers)
     rows = []
-    for row in db_rows:
-        row_dict = dict(row)
-        if row_dict['ticker'] in ticker_set:
-            enrich_signal_row(row_dict, enrichments)
-            row_dict['heat_index'] = (row_dict.get('heat_index_tier') or '').capitalize() or None
-            rows.append(row_dict)
-    rows.sort(key=lambda x: x['ticker'])
+    with measure_request_stage("row_build"):
+        for row in db_rows:
+            row_dict = dict(row)
+            if row_dict['ticker'] in ticker_set:
+                enrich_signal_row(row_dict, enrichments)
+                row_dict['heat_index'] = (row_dict.get('heat_index_tier') or '').capitalize() or None
+                rows.append(row_dict)
+        rows.sort(key=lambda x: x['ticker'])
     return rows
 
 

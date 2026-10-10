@@ -53,7 +53,7 @@ Single source of truth for every column on both pages:
 source field isn't already in the row dict, add it to the relevant `SELECT` in
 `page_data_signal_rows._SIGNAL_COLUMNS` (and `_SIGNAL_JOINS` if it needs a new JOIN) — the one column list and join
 block shared by `fetch_portfolio_signal_rows()` and `fetch_watchlist_signal_rows()`, which both `SELECT s.*` from
-`stock_signals` and LEFT JOIN `quant_signals q`/`asset_profiles ap`/
+`stock_signals` restricted to the page's own tickers (one shared batched `WHERE s.ticker IN (...)` helper) and LEFT JOIN `quant_signals q`/`asset_profiles ap`/
 `market_universe mu`/`ticker_metadata tmeta`/`xray_risk_cache xrisk`/
 `earnings_volatility ev` — most new fields are a one-line addition to an existing
 JOIN's SELECT list, not a new JOIN. A page-only field (Portfolio's `heat_index_tier`, Watchlist's `is_freetrade`) is added

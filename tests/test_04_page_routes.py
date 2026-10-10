@@ -1999,6 +1999,16 @@ def test_request_timing_reports_stages_without_query_values(client, caplog):
     assert "embed_token" not in caplog.text
 
 
+def test_portfolio_and_watchlist_timing_cover_row_building_stages(client):
+    portfolio = client.get("/portfolio").headers["Server-Timing"]
+    for stage in ("holdings", "sql", "fx_context", "enrichment", "row_build", "pulse",
+                  "price_refresh", "current_price_map", "history_anchors", "row_finalize", "template"):
+        assert f"{stage};dur=" in portfolio
+    watchlist = client.get("/watchlist").headers["Server-Timing"]
+    for stage in ("sql", "enrichment", "history_anchors", "fx_context", "template"):
+        assert f"{stage};dur=" in watchlist
+
+
 def test_account_request_timing_keeps_response_contract(client):
     response = client.get("/api/accounts/other-accounts-list")
     assert response.status_code == 200
