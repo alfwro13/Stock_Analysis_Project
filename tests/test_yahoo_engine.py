@@ -1321,6 +1321,20 @@ def test_persisted_fx_age_policy(age, available, stale, monkeypatch):
     assert quote["updated_at"] == now - age
 
 
+def test_cached_fx_max_age_tightens_usable_window_but_never_widens_it():
+    import time
+    from db_helpers import upsert_fx_quote
+
+    upsert_fx_quote("SEKNOK=X", 1.1, time.time() - 7200)
+    engine = YahooEngine()
+    with patch.object(engine, "_fetch_fx_rate", side_effect=AssertionError("interactive network")):
+        assert engine.get_cached_fx_rate("SEKNOK=X", refresh=False)["rate"] == pytest.approx(1.1)
+        tight = engine.get_cached_fx_rate("SEKNOK=X", refresh=False, max_age=3600)
+        assert tight["rate"] is None
+        assert tight["stale"] is True
+        assert engine.get_cached_fx_rate("SEKNOK=X", refresh=False, max_age=10 ** 9)["rate"] == pytest.approx(1.1)
+
+
 def test_fx_cache_survives_engine_restart_and_reuses_inverse():
     import time
     from db_helpers import upsert_fx_quote

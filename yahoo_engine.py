@@ -600,7 +600,7 @@ class YahooEngine:
             logger.error("get_annual_financials failed for %s", ticker, exc_info=True)
         return (None, None, None)
 
-    def get_cached_fx_rate(self, pair: str, *, refresh=True) -> dict:
+    def get_cached_fx_rate(self, pair: str, *, refresh=True, max_age=None) -> dict:
         from config import load_config
         from db_helpers import get_cached_fx_quote
         from cache_refresh_helpers import request_cache_refresh
@@ -609,7 +609,8 @@ class YahooEngine:
         quote = get_cached_fx_quote(pair)
         age = max(0, time.time() - quote["updated_at"]) if quote else None
         stale = age is None or age > policy["FX_FRESH_SECONDS"]
-        usable = age is not None and age <= policy["FX_MAX_USABLE_SECONDS"]
+        limit = policy["FX_MAX_USABLE_SECONDS"] if max_age is None else min(max_age, policy["FX_MAX_USABLE_SECONDS"])
+        usable = age is not None and age <= limit
         if stale and refresh:
             request_cache_refresh("fx:" + pair, lambda: self._fetch_fx_rate(pair))
         return {

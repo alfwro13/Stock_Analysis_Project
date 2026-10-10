@@ -216,3 +216,33 @@ def test_fx_pair_pence_against_non_gbp_base_uses_gbp_pair():
     with patch("portfolio_service.BASE_CURRENCY", "USD"):
         assert portfolio_service.fx_pair("GBX") == "GBPUSD=X"
         assert portfolio_service.fx_pair("GBp", from_base=True) == "USDGBP=X"
+
+
+class TestPersistedFxReads:
+    def _rate(self, quote, live=1.5):
+        from portfolio_service import get_rate_to_base, persisted_fx_reads
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_cached_fx_rate.return_value = quote
+            mock_yf.get_fx_rate.return_value = live
+            with persisted_fx_reads():
+                result = get_rate_to_base("USD")
+        return result, mock_yf
+
+    def test_usable_persisted_quote_is_served_without_awaiting_yahoo(self):
+        result, mock_yf = self._rate({"rate": 1.1, "updated_at": 1.0})
+        assert result == pytest.approx(1.1)
+        mock_yf.get_fx_rate.assert_not_called()
+        assert mock_yf.get_cached_fx_rate.call_args.kwargs["max_age"] == 3600
+
+    def test_no_quote_within_bound_awaits_live_fetch(self):
+        result, mock_yf = self._rate({"rate": None, "updated_at": None})
+        assert result == pytest.approx(1.5)
+        mock_yf.get_fx_rate.assert_called_once_with("USDGBP=X")
+
+    def test_context_is_restored_afterwards(self):
+        from portfolio_service import get_rate_to_base
+        self._rate({"rate": 1.1, "updated_at": 1.0})
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_fx_rate.return_value = 1.5
+            assert get_rate_to_base("USD") == pytest.approx(1.5)
+            mock_yf.get_cached_fx_rate.assert_not_called()
