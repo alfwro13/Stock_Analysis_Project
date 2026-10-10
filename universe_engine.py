@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from ftplib import FTP
 from pathlib import Path
@@ -9,6 +10,16 @@ from database import get_connection, log_notification
 logger = logging.getLogger(__name__)
 
 # GUI name: "Legacy File Sideloading & Nasdaq Sync". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
+# Warrants, units and rights descriptions still say "Common Stock" ("Warrants to purchase one share of Common Stock").
+_NON_COMMON_SECURITY = re.compile(r"\b(warrants?|units?|rights?)\b", re.IGNORECASE)
+
+
+def _is_tradable_common_stock(symbol: str, description: str, test_issue: str) -> bool:
+    if not symbol or not description or test_issue == "Y" or "$" in symbol:
+        return False
+    return "Common Stock" in description and not _NON_COMMON_SECURITY.search(description)
+
 
 def _download_ftp_files(filenames: dict) -> bool:
     logger.info("Connecting to ftp.nasdaqtrader.com...")
@@ -52,25 +63,21 @@ def update_market_universe() -> None:
     try:
         for filename, filepath in filenames.items():
             with open(filepath, "r", encoding="utf-8") as file_reader:
+                test_issue_index = None
                 for i, line in enumerate(file_reader):
-                    if i == 0:
-                        continue
-                    
                     line_data = line.strip().split("|")
-                    if len(line_data) < 2:
+                    if i == 0:
+                        # Test Issue sits at a different position in each file, so locate it from the header.
+                        test_issue_index = line_data.index("Test Issue")
+                        continue
+
+                    if len(line_data) <= test_issue_index:
                         continue
 
                     symbol = line_data[0]
                     description = line_data[1]
 
-                    # Nasdaq format: column 6 (nasdaqlisted) or 4 (otherlisted) is a test-issue flag.
-                    is_test_nasdaq = (filename == "nasdaqlisted" and len(line_data) > 6 and line_data[6] == "Y")
-                    is_test_other = (filename == "otherlisted" and len(line_data) > 4 and line_data[4] == "Y")
-
-                    if symbol == "" or description == "" or is_test_nasdaq or is_test_other or "$" in symbol:
-                        continue
-
-                    if "Common Stock" not in description:
+                    if not _is_tradable_common_stock(symbol, description, line_data[test_issue_index]):
                         continue
 
                     clean_symbol = symbol.replace(".", "-")  # BRK.B → BRK-B for Yahoo Finance

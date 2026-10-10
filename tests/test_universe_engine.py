@@ -25,12 +25,12 @@ def clean_tables():
 def _make_nasdaqlisted(rows):
     """
     Build a nasdaqlisted.txt content string.
-    Columns (pipe-separated): Symbol|SecurityName|MarketCategory|TestIssue|FinancialStatus|RoundLotSize|ETF|NextShares
-    Column index 6 is the test-issue flag.
+    Columns (pipe-separated): Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
+    Column index 3 is the test-issue flag; index 6 is the ETF flag.
     """
-    header = "Symbol|SecurityName|MarketCategory|TestIssue|FinancialStatus|RoundLotSize|ETF|NextShares\n"
+    header = "Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\n"
     return header + "".join(
-        f"{sym}|{name}|||||{test_flag}|\n"
+        f"{sym}|{name}|G|{test_flag}|N|100|N|N\n"
         for sym, name, test_flag in rows
     )
 
@@ -39,11 +39,11 @@ def _make_otherlisted(rows):
     """
     Build an otherlisted.txt content string.
     Columns: ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol
-    Column index 4 is the test-issue flag.
+    Column index 6 is the test-issue flag; index 4 is the ETF flag.
     """
     header = "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\n"
     return header + "".join(
-        f"{sym}|{name}|||{test_flag}|||\n"
+        f"{sym}|{name}|N|{sym}|N|100|{test_flag}|{sym}\n"
         for sym, name, test_flag in rows
     )
 
@@ -98,7 +98,7 @@ class TestCommonStockFilter:
 
 class TestTestIssueFilter:
     def test_nasdaq_test_issue_excluded(self):
-        # Column 6 == " Y" marks a test issue in nasdaqlisted
+        # Column 3 == "Y" marks a test issue in nasdaqlisted
         nasdaq = _make_nasdaqlisted([("ZTEST", "Test Corp - Common Stock", "Y")])
         other = _make_otherlisted([])
         with _patch_ftp_with_content(nasdaq, other):
@@ -117,6 +117,63 @@ class TestTestIssueFilter:
         row = conn.execute("SELECT * FROM market_universe WHERE ticker = 'OTEST'").fetchone()
         conn.close()
         assert row is None
+
+
+class TestNonCommonSecurityFilter:
+    @pytest.mark.parametrize("symbol,description", [
+        ("AMPX.W", "Amprius Technologies, Inc. Warrants to purchase one share of Common Stock at an exercise price of $11.50 per share"),
+        ("NWAX.U", "New America Acquisition I Corp. Units, each consisting of one share of Class A Common Stock and one-half of one redeemable warrant"),
+        ("XYZZ.R", "Example Acquisition Corp. Rights, each to receive one-tenth of one share of Common Stock"),
+        ("SQFTW", "Presidio Property Trust, Inc. - Series A Common Stock Purchase Warrants"),
+    ])
+    def test_warrants_units_and_rights_excluded(self, symbol, description):
+        nasdaq = _make_nasdaqlisted([(symbol, description, "N")])
+        with _patch_ftp_with_content(nasdaq, _make_otherlisted([])):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        row = conn.execute("SELECT * FROM market_universe WHERE ticker = ?", (symbol.replace(".", "-"),)).fetchone()
+        conn.close()
+        assert row is None
+
+    def test_company_name_containing_united_is_kept(self):
+        other = _make_otherlisted([("UAL", "United Airlines Holdings, Inc. Common Stock", "N")])
+        with _patch_ftp_with_content(_make_nasdaqlisted([]), other):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        row = conn.execute("SELECT * FROM market_universe WHERE ticker = 'UAL'").fetchone()
+        conn.close()
+        assert row is not None
+
+
+class TestTestIssueFlagPosition:
+    def test_nasdaq_etf_flag_does_not_mark_a_test_issue(self):
+        nasdaq = "Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\n" \
+                 "ETFCS|Fund Holding Co Common Stock|G|N|N|100|Y|N\n"
+        with _patch_ftp_with_content(nasdaq, _make_otherlisted([])):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        row = conn.execute("SELECT * FROM market_universe WHERE ticker = 'ETFCS'").fetchone()
+        conn.close()
+        assert row is not None
+
+    def test_other_etf_flag_does_not_mark_a_test_issue(self):
+        other = "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\n" \
+                "ETFCO|Fund Holding Co Common Stock|N|ETFCO|Y|100|N|ETFCO\n"
+        with _patch_ftp_with_content(_make_nasdaqlisted([]), other):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        row = conn.execute("SELECT * FROM market_universe WHERE ticker = 'ETFCO'").fetchone()
+        conn.close()
+        assert row is not None
+
+    def test_missing_test_issue_header_inserts_nothing(self):
+        nasdaq = "Symbol|Security Name\nAAPL|Apple Inc Common Stock\n"
+        with _patch_ftp_with_content(nasdaq, _make_otherlisted([])):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        count = conn.execute("SELECT COUNT(*) FROM market_universe WHERE country='US'").fetchone()[0]
+        conn.close()
+        assert count == 0
 
 
 class TestSymbolNormalisation:
