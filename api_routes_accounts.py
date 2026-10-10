@@ -712,12 +712,12 @@ def _notify_csv_import_skips(account_id: int, account_name: str, skipped_rows: l
 
 @accounts_router.post("/accounts/{account_id}/import-csv")
 @limiter.limit("10/minute")
-async def api_import_csv(request: Request, account_id: int, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+def api_import_csv(request: Request, account_id: int, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         acc = get_account(account_id)
         if acc is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
-        raw = await file.read()
+        raw = file.file.read()
         csv_text = raw.decode("utf-8-sig")
         result = import_csv_activities(account_id, csv_text)
         if result.get("error"):
@@ -876,7 +876,7 @@ async def api_refresh_now(background_tasks: BackgroundTasks):
     # fired-and-forgotten: the Home Assistant "Refresh Data" button re-polls its coordinator
     # immediately after this call returns, so the fetch must actually be finished by then or the
     # re-poll just sees the still-stale data it was trying to fix.
-    tickers = held_tickers_lightweight()
+    tickers = await run_in_threadpool(held_tickers_lightweight)
     try:
         await run_in_threadpool(_run_refresh_now, tickers)
     except Exception as e:

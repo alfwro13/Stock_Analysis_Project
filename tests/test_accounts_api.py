@@ -2187,6 +2187,41 @@ def test_refresh_now_completes_before_responding(client):
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("method, path, patch_target, stub_result, kwargs", [
+    ("post", "/api/accounts/refresh-now", "api_routes_accounts.held_tickers_lightweight", [], {}),
+    ("post", "/api/accounts/1/import-csv", "api_routes_accounts.get_account", None,
+     {"files": {"file": ("activity.csv", b"Title,Type,Timestamp\n", "text/csv")}}),
+], ids=["refresh-now-holdings-read", "import-csv-account-lookup"])
+def test_accounts_blocking_call_does_not_stall_unrelated_request(
+    client, method, path, patch_target, stub_result, kwargs,
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered = Event()
+    release = Event()
+
+    def stalled_call(*args, **kw):
+        entered.set()
+        assert release.wait(10)
+        return stub_result
+
+    with patch(patch_target, side_effect=stalled_call), \
+         patch("api_routes_accounts._run_refresh_now"), \
+         patch("api_routes_accounts._refresh_markets_registry"):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            slow = pool.submit(lambda: client.request(method, path, **kwargs))
+            try:
+                assert entered.wait(10)
+                unrelated = pool.submit(client.get, "/static/css/styles.css")
+                assert unrelated.result(timeout=3).status_code == 200
+                assert not slow.done()
+            finally:
+                release.set()
+            assert slow.result(timeout=20).status_code in (200, 404)
+
+
+@pytest.mark.api
 def test_refresh_now_invokes_background_task_functions(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="RefreshNowAcc")
