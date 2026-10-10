@@ -278,7 +278,7 @@ class TestLifetimeBuyStats:
 
 def test_missing_fx_cache_never_fetches_inline(tmp_path):
     _make_parquet(tmp_path, "ZZFXCACHED", 100, 110)
-    with patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path), patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history") as fetch, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path), patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history") as fetch, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert fx_drag_engine.compute_fx_breakdown("ZZFXCACHED", 20) is None
     fetch.assert_not_called()
     assert {call.args[0] for call in refresh.call_args_list} == {"daily:USDGBP=X"}

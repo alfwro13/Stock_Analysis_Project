@@ -311,7 +311,7 @@ class TestExtendedHistory:
     def test_prepare_writes_through_the_canonical_cleaning_path(self):
         frame = self._long(300)
         with patch("strategy_backtest_data.yahoo_engine.get_price_history", return_value={SBT_A: frame}) as fetch, \
-             patch("strategy_backtest_data.data_engine.prepare_daily_history", side_effect=lambda t, df, live: df) as clean:
+             patch("strategy_backtest_data.daily_history_writer.prepare_daily_history", side_effect=lambda t, df, live: df) as clean:
             result = sbd.prepare_history_blocking([SBT_A, SBT_B])
         assert fetch.call_args.kwargs["period"] == "5y"
         assert clean.call_count == 1

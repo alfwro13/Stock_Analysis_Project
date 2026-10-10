@@ -527,6 +527,7 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
     import threading
     from concurrent.futures import ThreadPoolExecutor
     import cache_refresh_helpers as refresh_helpers
+    import daily_history_writer
     import data_engine
     from db_helpers import upsert_fx_quote
     from yahoo_engine import yahoo_engine
@@ -545,6 +546,7 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
     holdings = {ticker: {"ticker": ticker, "global_shares": 2.0, "global_buy_price": 50.0, "accounts": []}}
     monkeypatch.setattr("accounts_engine.get_combined_holdings", lambda: holdings)
     monkeypatch.setattr(data_engine, "HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr(daily_history_writer, "HISTORICAL_DIR", tmp_path)
     monkeypatch.setattr(refresh_helpers, "request_cache_refresh", refresh_helpers.submit_cache_refresh)
     started, release = threading.Event(), threading.Event()
     def stalled(*args, **kwargs):
@@ -552,7 +554,7 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
         release.wait(10)
         return None
     monkeypatch.setattr(yahoo_engine, "_fetch_fx_rate", stalled)
-    monkeypatch.setattr(data_engine, "_fetch_daily_history", stalled)
+    monkeypatch.setattr(data_engine, "fetch_daily_history", stalled)
     try:
         started_at = time.perf_counter()
         with ThreadPoolExecutor(max_workers=1) as requests:

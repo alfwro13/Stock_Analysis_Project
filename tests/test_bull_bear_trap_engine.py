@@ -533,7 +533,7 @@ class TestLoadHistoryAutoFetch:
         df = _make_fetch_df()
         pq = tmp_path / "EXIST.parquet"
         df.to_parquet(pq, engine="pyarrow")
-        with patch("data_engine.HISTORICAL_DIR", tmp_path):
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path):
             result = self.engine._load_history("EXIST")
         assert result is not None
         assert len(result) == 60
@@ -542,7 +542,7 @@ class TestLoadHistoryAutoFetch:
     def test_auto_fetches_and_writes_parquet_when_missing(self, tmp_path):
         fetch_df = _make_fetch_df()
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history",
                   return_value={"NEWT": fetch_df}),
             patch("time_engine.is_market_open", return_value=False),
@@ -557,9 +557,9 @@ class TestLoadHistoryAutoFetch:
         repaired = fetch_df.copy()
         repaired["Close"] = repaired["Close"] * 2
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history", return_value={"TRAPREPAIR": fetch_df}),
-            patch("data_engine.apply_saved_repairs", return_value=repaired.tz_localize(None)) as repair,
+            patch("daily_history_writer.apply_saved_repairs", return_value=repaired.tz_localize(None)) as repair,
             patch("time_engine.is_market_open", return_value=False),
         ):
             result = self.engine._load_history("TRAPREPAIR")
@@ -579,7 +579,7 @@ class TestLoadHistoryAutoFetch:
             "Close": prices, "Volume": np.full(n, 1_000_000.0),
         }, index=idx)
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history", return_value={"TRAPFORMING": fetch_df}),
             patch("time_engine.is_market_open", return_value=True),
         ):
@@ -589,7 +589,7 @@ class TestLoadHistoryAutoFetch:
 
     def test_returns_none_when_fetch_returns_empty(self, tmp_path):
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history",
                   return_value={}),
         ):
@@ -599,7 +599,7 @@ class TestLoadHistoryAutoFetch:
 
     def test_returns_none_when_fetch_raises(self, tmp_path):
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history",
                   side_effect=Exception("network error")),
         ):
@@ -609,7 +609,7 @@ class TestLoadHistoryAutoFetch:
     def test_returns_none_when_parquet_lacks_ohlcv_columns(self, tmp_path):
         pd.DataFrame({"Close": [1.0] * 30}, index=pd.date_range("2026-01-01", periods=30, freq="B")).to_parquet(
             tmp_path / "NOVOL.parquet", engine="pyarrow")
-        with patch("data_engine.HISTORICAL_DIR", tmp_path):
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path):
             assert self.engine._load_history("NOVOL") is None
 
 
