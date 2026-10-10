@@ -325,7 +325,7 @@ def test_portfolio_and_watchlist_signal_rows_share_columns_and_keep_page_specifi
 
         portfolio_row = dict(fetch_portfolio_signal_rows("SPY", [ticker])[0][0])
         watchlist_row = next(
-            dict(row) for row in fetch_watchlist_signal_rows("SPY")[0] if row["ticker"] == ticker
+            dict(row) for row in fetch_watchlist_signal_rows("SPY", [ticker])[0] if row["ticker"] == ticker
         )
 
         assert "heat_index_tier" in portfolio_row and "is_freetrade" not in portfolio_row
@@ -340,6 +340,94 @@ def test_portfolio_and_watchlist_signal_rows_share_columns_and_keep_page_specifi
         conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
         conn.commit()
         conn.close()
+
+
+def test_watchlist_signal_query_scopes_rows_and_keeps_global_freshness():
+    from page_data_signal_rows import fetch_watchlist_signal_rows
+
+    watched = "ZZPERF3WATCHED"
+    unrelated = [f"ZZPERF3UNRELATED{i:04d}" for i in range(1200)]
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO stock_signals (ticker, last_updated, company_name, currency, current_price) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (watched, "2026-10-01 10:00:00", "Signal Name", "USD", 100.0),
+        )
+        conn.executemany(
+            "INSERT INTO stock_signals (ticker, last_updated, currency) VALUES (?, ?, ?)",
+            [(ticker, "9999-01-01 00:00:00", "JPY") for ticker in unrelated],
+        )
+        conn.execute(
+            "INSERT INTO company_name_overrides (ticker, display_name) VALUES (?, ?)",
+            (watched, "Preferred Name"),
+        )
+        conn.commit()
+
+        padding = [f"ZZPERF3MISSING{i:04d}" for i in range(900)]
+        rows, updated = fetch_watchlist_signal_rows("SPY", [*padding, watched])
+        assert [row["ticker"] for row in rows] == [watched]
+        assert rows[0]["resolved_company_name"] == "Preferred Name"
+        assert "is_freetrade" in rows[0].keys()
+        assert updated == "9999-01-01 00:00:00"
+
+        empty_rows, empty_updated = fetch_watchlist_signal_rows("SPY", [])
+        assert empty_rows == []
+        assert empty_updated == updated
+    finally:
+        conn.execute("DELETE FROM company_name_overrides WHERE ticker = ?", (watched,))
+        conn.execute("DELETE FROM stock_signals WHERE ticker = ? OR ticker LIKE 'ZZPERF3UNRELATED%'", (watched,))
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.pages
+def test_watchlist_scope_limits_sql_and_fx_to_watchlist_tickers(client, monkeypatch):
+    import page_routes_portfolio
+    from db_accounts import add_watchlist_item, get_watchlist_account
+
+    watched = {"ZZPERF3USD": "USD", "ZZPERF3EUR": "EUR"}
+    for ticker, currency in watched.items():
+        _seed_stock_signal(ticker, 50.0, currency)
+    _seed_stock_signal("ZZPERF3UNIVERSE", 10.0, "JPY")
+    wl = get_watchlist_account()
+    for ticker, currency in watched.items():
+        add_watchlist_item(wl["id"], ticker, currency=currency, quote_type="EQUITY")
+    add_watchlist_item(wl["id"], "ZZPERF3NOSIGNAL", currency="CNY", quote_type="EQUITY")
+
+    monkeypatch.setattr("price_history_helpers.get_period_anchor_closes", lambda tickers, **kwargs: {})
+    rates = {"GBP": 1.0, "USD": 0.8, "EUR": 0.9}
+    original_fetch = page_routes_portfolio.fetch_watchlist_signal_rows
+    original_status = page_routes_portfolio.get_fx_cache_status
+    try:
+        with patch("page_routes_portfolio.fetch_watchlist_signal_rows", wraps=original_fetch) as fetch, \
+             patch("page_routes_portfolio.get_fx_cache_status", wraps=original_status) as status, \
+             patch("page_helpers.get_rate_to_base", side_effect=lambda currency, **kwargs: rates.get(currency)) as fx:
+            response = client.get("/watchlist")
+        assert response.status_code == 200
+        requested = fetch.call_args.args[1]
+        assert set(watched) | {"ZZPERF3NOSIGNAL"} <= set(requested)
+        assert "ZZPERF3UNIVERSE" not in requested
+        assert len(requested) == len(set(requested))
+        for ticker in watched:
+            assert f'data-ticker="{ticker}"' in response.text
+        assert 'data-ticker="ZZPERF3UNIVERSE"' not in response.text
+        assert 'data-ticker="ZZPERF3NOSIGNAL"' not in response.text
+        assert {"USD", "EUR"} <= {call.args[0] for call in fx.call_args_list}
+        assert not {"JPY", "CNY"} & {call.args[0] for call in fx.call_args_list}
+        assert "JPY" not in status.call_args.args[0]
+        assert "CNY" not in status.call_args.args[0]
+        modal_currencies = json.loads(re.search(r"window\.WATCHLIST_FX_CURRENCIES = (\[.*?\]);", response.text).group(1))
+        assert {"USD", "EUR"} <= set(modal_currencies)
+        assert not {"JPY", "CNY"} & set(modal_currencies)
+    finally:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker LIKE 'ZZPERF3%'", (wl["id"],))
+            conn.execute("DELETE FROM stock_signals WHERE ticker LIKE 'ZZPERF3%'")
+            conn.commit()
+        finally:
+            conn.close()
 
 
 @pytest.mark.pages

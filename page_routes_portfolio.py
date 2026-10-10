@@ -44,8 +44,9 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 
     config_data = load_config()
-    portfolio_json = get_combined_holdings()
-    portfolio_tickers = portfolio_scope_tickers(portfolio_json, account_id, ignored_tickers_set(config_data))
+    with measure_request_stage("holdings"):
+        portfolio_json = get_combined_holdings()
+        portfolio_tickers = portfolio_scope_tickers(portfolio_json, account_id, ignored_tickers_set(config_data))
 
     with measure_request_stage("sql"):
         db_rows, macro_regime, global_updated = fetch_portfolio_signal_rows(BENCHMARK_SYMBOL, portfolio_tickers)
@@ -56,10 +57,13 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
     portfolio_data = build_portfolio_rows(db_rows, portfolio_tickers)
     present_tags, present_pattern_tags = portfolio_present_tags(portfolio_data)
 
-    live_pulse = get_all_cached_pulse()
+    with measure_request_stage("pulse"):
+        live_pulse = get_all_cached_pulse()
 
-    maybe_trigger_price_refresh(background_tasks)
-    price_map = current_price_map(list(set(portfolio_tickers)))
+    with measure_request_stage("price_refresh"):
+        maybe_trigger_price_refresh(background_tasks)
+    with measure_request_stage("current_price_map"):
+        price_map = current_price_map(list(set(portfolio_tickers)))
 
     with measure_request_stage("history_anchors"):
         anchor_closes = get_period_anchor_closes(list(set(portfolio_tickers)), cache_only=True)
@@ -69,17 +73,18 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
         change_period = "1d"
     show_extended = request.cookies.get("portfolio_show_extended", "false") == "true"
 
-    totals = finalize_portfolio_rows(
-        portfolio_data,
-        portfolio_json=portfolio_json,
-        account_id=account_id,
-        price_map=price_map,
-        live_pulse=live_pulse,
-        anchor_closes=anchor_closes,
-        change_period=change_period,
-        position_sizing_context=position_sizing_context,
-        all_holding_limits=get_all_holding_price_limits(),
-    )
+    with measure_request_stage("row_finalize"):
+        totals = finalize_portfolio_rows(
+            portfolio_data,
+            portfolio_json=portfolio_json,
+            account_id=account_id,
+            price_map=price_map,
+            live_pulse=live_pulse,
+            anchor_closes=anchor_closes,
+            change_period=change_period,
+            position_sizing_context=position_sizing_context,
+            all_holding_limits=get_all_holding_price_limits(),
+        )
 
     optional_columns = table_columns_helpers.columns_for_page("portfolio")
     column_prefs = table_columns_helpers.resolve_column_prefs(config_data, "portfolio")
@@ -191,13 +196,13 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
     from db_accounts import get_all_holding_price_limits, get_watchlist_account
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 
-    with measure_request_stage("sql"):
-        db_rows, global_updated = fetch_watchlist_signal_rows(BENCHMARK_SYMBOL)
+    watchlist_tickers = list(dict.fromkeys(get_watchlist_tickers()))
 
-    watchlist_tickers = get_watchlist_tickers()
+    with measure_request_stage("sql"):
+        db_rows, global_updated = fetch_watchlist_signal_rows(BENCHMARK_SYMBOL, watchlist_tickers)
 
     with measure_request_stage("history_anchors"):
-        anchor_closes = get_period_anchor_closes(list(set(watchlist_tickers)), cache_only=True)
+        anchor_closes = get_period_anchor_closes(watchlist_tickers, cache_only=True)
 
     change_period = request.cookies.get("watchlist_change_period", "1d")
     if change_period not in CHANGE_PERIODS:
