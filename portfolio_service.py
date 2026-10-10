@@ -1,14 +1,32 @@
 import logging
-from config import BASE_CURRENCY
+from contextlib import contextmanager
+from contextvars import ContextVar
+from config import BASE_CURRENCY, load_config
 from utils import normalize_currency_bucket
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
+_persisted_fx_reads = ContextVar("persisted_fx_reads", default=False)
+
+
+@contextmanager
+def persisted_fx_reads():
+    """Read-only request paths use the persisted FX quote (background refresh) instead of awaiting Yahoo."""
+    token = _persisted_fx_reads.set(True)
+    try:
+        yield
+    finally:
+        _persisted_fx_reads.reset(token)
+
 
 def _fx_rate(pair: str, *, cache_only: bool = False):
     if cache_only:
         return yahoo_engine.get_cached_fx_rate(pair)["rate"]
+    if _persisted_fx_reads.get():
+        quote = yahoo_engine.get_cached_fx_rate(pair, max_age=load_config()["PERFORMANCE"]["HA_FX_MAX_AGE_SECONDS"])
+        if quote["rate"] is not None:
+            return quote["rate"]
     rate = yahoo_engine.get_fx_rate(pair)
     if rate is not None:
         return rate

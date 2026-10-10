@@ -52,6 +52,7 @@ from database import (
 from market_pulse_write import fetch_and_save_pulse
 from markets_engine import registry_lookup_tickers
 from notification_engine import notify
+from portfolio_service import persisted_fx_reads
 from profile_engine import update_single_profile
 from scheduler_engine import (
     get_all_job_last_runs, register_account_scraper_job, register_account_topup_job,
@@ -782,7 +783,7 @@ def maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
 def api_portfolio_totals(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
-        with measure_request_stage("metrics"):
+        with persisted_fx_reads(), measure_request_stage("metrics"):
             result = portfolio_totals()
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:
@@ -806,7 +807,7 @@ def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
 def api_holdings_list(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
-        with measure_request_stage("metrics"):
+        with persisted_fx_reads(), measure_request_stage("metrics"):
             result = holdings_with_metrics_all_accounts()
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:
@@ -817,7 +818,7 @@ def api_holdings_list(background_tasks: BackgroundTasks):
 @accounts_router.get("/accounts/other-accounts-list")
 def api_other_accounts_list():
     try:
-        with measure_request_stage("metrics"):
+        with persisted_fx_reads(), measure_request_stage("metrics"):
             result = other_accounts_list()
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:

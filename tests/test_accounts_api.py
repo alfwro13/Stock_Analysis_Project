@@ -2120,6 +2120,39 @@ def test_portfolio_totals_happy_path_with_trading_account(client):
 
 
 @pytest.mark.api
+def test_ha_reads_use_persisted_fx_quote_instead_of_awaiting_yahoo(client):
+    import time
+    import database as _db
+    from db_helpers import upsert_fx_quote
+    from yahoo_engine import yahoo_engine
+
+    conn = None
+    try:
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('USDGBP=X', 'GBPUSD=X')")
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES ('ZZHAFX', 100.0, 'USD')"
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    upsert_fx_quote("USDGBP=X", 0.8, time.time() - 1800)
+    account_id = _db.create_account("HaFxAcc", "GBP")
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="ZZHAFX", currency="USD",
+                        quantity=1, unit_price=90, exchange_rate=0.8)
+    try:
+        with patch.object(yahoo_engine, "get_fx_rate", side_effect=AssertionError("awaited live FX")):
+            holdings = _json(client.get("/api/accounts/holdings-list"))["holdings"]
+            assert client.get("/api/accounts/portfolio-totals").status_code == 200
+            assert client.get("/api/accounts/other-accounts-list").status_code == 200
+        row = next(r for r in holdings if r["ticker"] == "ZZHAFX")
+        assert row["market_price_in_base_currency"] == pytest.approx(80.0)
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_portfolio_totals_zero_trading_accounts_returns_all_zero_shape(client):
     import database as _db
     for acc in _db.get_accounts():

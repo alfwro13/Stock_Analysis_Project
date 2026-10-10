@@ -74,6 +74,7 @@ DEFAULT_CONFIG = {
     "PERFORMANCE": {
         "FX_FRESH_SECONDS": 600,
         "FX_MAX_USABLE_SECONDS": 604800,
+        "HA_FX_MAX_AGE_SECONDS": 3600,
         "CACHE_REFRESH_RETRY_SECONDS": 60,
     },
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting

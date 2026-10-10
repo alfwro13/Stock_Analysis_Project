@@ -788,7 +788,7 @@ def test_performance_settings_merge_and_reload(tmp_path, monkeypatch):
     assert config.load_config()["PERFORMANCE"]["FX_MAX_USABLE_SECONDS"] == 3600
 
 
-@pytest.mark.parametrize("settings", [{"FX_FRESH_SECONDS": -1}, {"FX_FRESH_SECONDS": "600"}, {"FX_FRESH_SECONDS": 100, "FX_MAX_USABLE_SECONDS": 50}])
+@pytest.mark.parametrize("settings", [{"FX_FRESH_SECONDS": -1}, {"HA_FX_MAX_AGE_SECONDS": "3600"}, {"FX_FRESH_SECONDS": "600"}, {"FX_FRESH_SECONDS": 100, "FX_MAX_USABLE_SECONDS": 50}])
 def test_invalid_performance_settings_reset_only_performance_section(tmp_path, monkeypatch, settings):
     import config
 
