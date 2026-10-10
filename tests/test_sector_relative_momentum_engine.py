@@ -251,6 +251,39 @@ class TestRun:
         conn.close()
         assert old == 0
 
+    def test_cohort_lagging_more_than_retention_behind_the_newest_still_persists(self, seeded):
+        lag = pd.Timedelta(days=srm.RETENTION_DAYS + 15)
+
+        def fake_close(ticker):
+            if ticker in GBP:
+                return pd.Series(_series(seeded[ticker]).to_numpy(), index=_dates() - lag)
+            return _series(seeded[ticker]) if ticker in seeded else None
+
+        with patch.object(srm, "_load_close", side_effect=fake_close), \
+             patch.object(srm, "get_portfolio_watchlist_tickers", return_value=[]):
+            summary = srm.run_sector_relative_momentum()
+        gbp = srm.get_latest_results(GBP, 63)
+        usd = srm.get_latest_results(USD, 63)
+        assert len(gbp) == 6 and {r["status"] for r in gbp.values()} == {"ok"}
+        assert gbp[GBP[0]]["as_of_date"] < usd[USD[0]]["as_of_date"]
+        assert summary["scored"] >= len(gbp) + len(usd)
+
+    def test_rows_not_recomputed_within_retention_are_pruned_even_when_as_of_is_recent(self, seeded):
+        conn = db.get_connection()
+        conn.execute(
+            "INSERT INTO sector_relative_momentum_results (ticker, window_sessions, as_of_date, status, computed_at) "
+            "VALUES (?, 63, '2026-10-01', 'ok', '2000-01-03 00:00:00')", (USD[0],),
+        )
+        conn.commit()
+        conn.close()
+        _run(seeded, display=[])
+        conn = db.get_connection()
+        left = conn.execute(
+            "SELECT COUNT(*) FROM sector_relative_momentum_results WHERE ticker = ? AND as_of_date = '2026-10-01'", (USD[0],)
+        ).fetchone()[0]
+        conn.close()
+        assert left == 0
+
     def test_stale_ticker_falls_out_of_cohort_as_insufficient_history(self, seeded):
         def fake_close(ticker):
             if ticker == USD[0]:

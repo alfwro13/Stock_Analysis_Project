@@ -33,7 +33,7 @@ No price data is fetched by the job. `_load_close()` skips a ticker with no parq
 
 ## 3. Storage and freshness
 
-`sector_relative_momentum_results`, primary key `(ticker, window_sessions, as_of_date)`. Scored rows are stored for the whole pool; unavailable-reason rows (`no_metadata`, `not_equity`, `no_sector`, `no_currency`, `no_history`, `insufficient_history`, `small_cohort`) only for Portfolio/Watchlist tickers. A same-day rerun replaces rows. After each run rows more than 30 days older than the newest as-of date are deleted. Each run stamps a short `input_revision` digest of the window's scored inputs.
+`sector_relative_momentum_results`, primary key `(ticker, window_sessions, as_of_date)`. Scored rows are stored for the whole pool; unavailable-reason rows (`no_metadata`, `not_equity`, `no_sector`, `no_currency`, `no_history`, `insufficient_history`, `small_cohort`) only for Portfolio/Watchlist tickers. A rerun with the same as-of date replaces the row and refreshes its `computed_at`. After each run rows whose `computed_at` is more than 30 days old are deleted, so a cohort's current row survives however old its as-of date is, while superseded as-of dates and tickers that left the pool age out. Pruning by as-of date relative to the newest as-of in the run is wrong: a cohort with stale parquet trails by weeks, and that rule deleted every scored row it had just written (production, Oct 2026). Each run stamps a short `input_revision` digest of the window's scored inputs.
 
 Readers always take the latest `as_of_date` per ticker and window and show it, so a value from an earlier session is never presented as today's. A ticker the job has not stored a row for shows `not_computed`, never a neutral zero.
 
