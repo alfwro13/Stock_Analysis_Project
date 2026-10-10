@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+import daily_history_writer
 import data_engine
 import time_engine
 from accounts_engine import native_currencies
@@ -122,7 +123,7 @@ def prepare_history_blocking(tickers: List[str]) -> Optional[Dict]:
             df = df.copy()
             if df.index.tz is not None:
                 df.index = df.index.tz_convert(None)
-            df = data_engine.prepare_daily_history(ticker, df, None)
+            df = daily_history_writer.prepare_daily_history(ticker, df, None)
             if df.empty:
                 failed.append(ticker)
                 continue

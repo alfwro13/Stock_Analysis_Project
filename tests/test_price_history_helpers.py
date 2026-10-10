@@ -127,10 +127,12 @@ def test_pct_from_anchor_ratio_and_none_passthrough():
 
 @pytest.fixture
 def anchor_files(tmp_path, monkeypatch):
+    import daily_history_writer
     import data_engine
     import price_history_helpers
 
     monkeypatch.setattr(data_engine, "HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr(daily_history_writer, "HISTORICAL_DIR", tmp_path)
     monkeypatch.setattr(data_engine, "is_excluded_from_yahoo_fetch", lambda ticker: False)
     with price_history_helpers._anchor_cache_lock:
         price_history_helpers._anchor_cache.clear()
@@ -200,7 +202,7 @@ def test_stale_anchor_cache_hit_still_requests_coordinated_refresh(anchor_files)
         assert read.call_count == 1
         assert refresh.call_count == 1
         assert refresh.call_args.args[0] == "daily:TEST"
-        with patch.object(data_engine, "_fetch_daily_history") as fetch:
+        with patch.object(data_engine, "fetch_daily_history") as fetch:
             refresh.call_args.args[1]()
         fetch.assert_called_once_with("TEST", force_refresh=True)
 
@@ -249,6 +251,7 @@ def test_anchor_cache_does_not_publish_during_source_change(anchor_files):
 
 
 def test_anchor_cache_changes_with_cache_root(anchor_files, monkeypatch):
+    import daily_history_writer
     import data_engine
 
     df = _fake_ohlcv("2022-06-01", "2024-07-05")
@@ -258,6 +261,7 @@ def test_anchor_cache_changes_with_cache_root(anchor_files, monkeypatch):
     other_root.mkdir()
     (df * 2).to_parquet(other_root / "TEST.parquet")
     monkeypatch.setattr(data_engine, "HISTORICAL_DIR", other_root)
+    monkeypatch.setattr(daily_history_writer, "HISTORICAL_DIR", other_root)
     assert _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)["5d"] == first["5d"] * 2
 
 

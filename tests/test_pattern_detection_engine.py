@@ -319,7 +319,7 @@ class TestLoadHistory:
 
     def test_existing_parquet_is_read_without_fetching(self, tmp_path):
         self._ohlcv().to_parquet(tmp_path / "PDLOADEXIST.parquet", engine="pyarrow")
-        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
              patch("data_engine.yahoo_engine.get_price_history") as fetch:
             result = self.engine._load_history("PDLOADEXIST")
         fetch.assert_not_called()
@@ -328,7 +328,7 @@ class TestLoadHistory:
 
     def test_missing_ticker_is_fetched_and_written_atomically(self, tmp_path):
         fetched = self._ohlcv(tz="UTC")
-        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
              patch("data_engine.yahoo_engine.get_price_history", return_value={"PDLOADNEW": fetched}), \
              patch("time_engine.is_market_open", return_value=False):
             result = self.engine._load_history("PDLOADNEW")
@@ -340,9 +340,9 @@ class TestLoadHistory:
         fetched = self._ohlcv(tz="UTC")
         repaired = fetched.tz_localize(None)
         repaired["Close"] = repaired["Close"] * 2
-        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
              patch("data_engine.yahoo_engine.get_price_history", return_value={"PDLOADREPAIR": fetched}), \
-             patch("data_engine.apply_saved_repairs", return_value=repaired) as repair, \
+             patch("daily_history_writer.apply_saved_repairs", return_value=repaired) as repair, \
              patch("time_engine.is_market_open", return_value=False):
             result = self.engine._load_history("PDLOADREPAIR")
         repair.assert_called_once()
@@ -354,7 +354,7 @@ class TestLoadHistory:
         today = datetime.now(timezone.utc).date()
         fetched = self._ohlcv(n=80, end=pd.Timestamp(today))
         assert fetched.index[-1].date() == today
-        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
              patch("data_engine.yahoo_engine.get_price_history", return_value={"PDLOADFORMING": fetched}), \
              patch("time_engine.is_market_open", return_value=True):
             result = self.engine._load_history("PDLOADFORMING")
@@ -362,7 +362,7 @@ class TestLoadHistory:
         assert len(pd.read_parquet(tmp_path / "PDLOADFORMING.parquet")) == len(fetched) - 1
 
     def test_returns_none_when_fetch_returns_nothing(self, tmp_path):
-        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
              patch("data_engine.yahoo_engine.get_price_history", return_value={}):
             assert self.engine._load_history("PDLOADNONE") is None
         assert not (tmp_path / "PDLOADNONE.parquet").exists()
@@ -371,7 +371,7 @@ class TestLoadHistory:
         df = self._ohlcv(n=520)
         df.iloc[-1, df.columns.get_loc("Volume")] = 0.0
         df.to_parquet(tmp_path / "PDLOADCAP.parquet", engine="pyarrow")
-        with patch("data_engine.HISTORICAL_DIR", tmp_path):
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path):
             result = self.engine._load_history("PDLOADCAP")
         assert len(result) == 500
         assert result.index[-1] == df.index[-2]

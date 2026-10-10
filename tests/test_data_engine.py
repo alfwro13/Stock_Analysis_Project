@@ -69,7 +69,7 @@ def _run_baseline_fetch(tmp_path, frames):
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("data_engine.yahoo_engine.get_price_history", return_value=frames), \
          patch("data_engine.GiltDataService"), \
          patch("time_engine.is_market_open", return_value=False):
@@ -100,7 +100,7 @@ def test_market_baseline_applies_repairs_saved_under_the_real_ticker(tmp_path):
         seen.append(ticker)
         return df.assign(Close=df["Close"] * 2) if ticker == "^GSPC" else df
 
-    with patch("data_engine.apply_saved_repairs", side_effect=repair):
+    with patch("daily_history_writer.apply_saved_repairs", side_effect=repair):
         _run_baseline_fetch(tmp_path, {"^GSPC": _baseline_frame(), "^FTSE": _baseline_frame()})
     assert sorted(seen) == ["^FTSE", "^GSPC"]
     assert pd.read_parquet(tmp_path / "SP500_BASELINE.parquet")["Close"].tolist() == [200.0, 208.0]
@@ -400,7 +400,7 @@ class TestLoadOrFetchDailyHistory:
         df.to_parquet(tmp_path / "AAPL.parquet", engine="pyarrow")
 
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history") as mock_fetch,
         ):
             result = load_or_fetch_daily_history("AAPL")
@@ -419,7 +419,7 @@ class TestLoadOrFetchDailyHistory:
         )
 
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history", return_value={"NEWTICK": fetched_df}) as mock_fetch,
         ):
             result = load_or_fetch_daily_history("NEWTICK")
@@ -433,7 +433,7 @@ class TestLoadOrFetchDailyHistory:
         from data_engine import load_or_fetch_daily_history
 
         with (
-            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
             patch("data_engine.yahoo_engine.get_price_history", return_value={}),
         ):
             result = load_or_fetch_daily_history("MISSING")
@@ -457,7 +457,7 @@ def test_fetch_and_save_data_writes_fundamentals_json(tmp_path):
     )
 
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.INTRADAY_DIR", tmp_path),
         patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
         patch("data_engine.yahoo_engine.get_price_history", return_value={"KO": price_df}),
@@ -483,7 +483,7 @@ def test_fetch_and_save_data_skips_intraday_for_mutual_fund(tmp_path):
     )
 
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.INTRADAY_DIR", tmp_path),
         patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
         patch("data_engine.yahoo_engine.get_price_history", return_value={"0P00018XAR.L": price_df}),
@@ -519,7 +519,7 @@ class TestDropInProgressLastBar:
         to be trimmed -- a hardcoded past date here would test a scenario that's no longer "still
         forming" as real time moves on (see is_daily_bar_still_forming's 2026-07-08 fix)."""
         from datetime import datetime, timedelta, timezone
-        from data_engine import _drop_in_progress_last_bar
+        from daily_history_writer import _drop_in_progress_last_bar
 
         today = datetime.now(timezone.utc).date().isoformat()
         yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
@@ -532,7 +532,7 @@ class TestDropInProgressLastBar:
         assert result["Close"].iloc[-1] == 100.0
 
     def test_keeps_last_row_when_daily_predates_live_feed(self):
-        from data_engine import _drop_in_progress_last_bar
+        from daily_history_writer import _drop_in_progress_last_bar
 
         daily = _ohlcv(["2026-07-01", "2026-07-02"], [98.0, 100.0])  # genuinely completed close
         live = _ohlcv(["2026-07-06 09:30"], [105.0])
@@ -544,7 +544,7 @@ class TestDropInProgressLastBar:
 
     def test_noop_when_no_live_data_available(self):
         import pandas as pd
-        from data_engine import _drop_in_progress_last_bar
+        from daily_history_writer import _drop_in_progress_last_bar
 
         daily = _ohlcv(["2026-07-02", "2026-07-06"], [100.0, 105.0])
 
@@ -552,7 +552,7 @@ class TestDropInProgressLastBar:
         assert len(_drop_in_progress_last_bar(daily, pd.DataFrame())) == 2
 
     def test_noop_when_daily_has_fewer_than_two_rows(self):
-        from data_engine import _drop_in_progress_last_bar
+        from daily_history_writer import _drop_in_progress_last_bar
 
         daily = _ohlcv(["2026-07-06"], [105.0])
         live = _ohlcv(["2026-07-06 09:30"], [105.0])
@@ -565,7 +565,7 @@ class TestDropInProgressLastBar:
         though its date matches both the live feed's date and today's real calendar date."""
         from datetime import datetime, timezone
         from unittest.mock import patch as _patch
-        from data_engine import _drop_in_progress_last_bar
+        from daily_history_writer import _drop_in_progress_last_bar
 
         today = datetime.now(timezone.utc).date().isoformat()
         daily = _ohlcv(["2026-07-01", today], [100.0, 105.0])
@@ -583,7 +583,7 @@ class TestDropInProgressLastBar:
         genuinely is still forming and must be trimmed."""
         from datetime import datetime, timezone
         from unittest.mock import patch as _patch
-        from data_engine import _drop_in_progress_last_bar
+        from daily_history_writer import _drop_in_progress_last_bar
 
         today = datetime.now(timezone.utc).date().isoformat()
         daily = _ohlcv(["2026-07-01", today], [100.0, 105.0])
@@ -611,7 +611,7 @@ def test_bulk_download_historical_trims_in_progress_last_bar(tmp_path):
     live_df = _ohlcv([f"{today} 09:30", f"{today} 15:45"], [560.86, 566.0])
 
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
         patch("data_engine.get_mutual_fund_tickers", return_value=set()),
         patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
@@ -642,7 +642,7 @@ def test_bulk_download_historical_keeps_todays_close_when_exchange_already_close
     live_df = _ohlcv([f"{today} 09:30", f"{today} 15:45"], [560.86, 566.0])
 
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
         patch("data_engine.get_mutual_fund_tickers", return_value=set()),
         patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
@@ -664,7 +664,7 @@ def test_bulk_download_historical_keeps_completed_close_unchanged(tmp_path):
     daily_df = _ohlcv(["2026-07-01", "2026-07-02"], [538.16, 517.82])
 
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.get_mutual_fund_tickers", return_value=set()),
         patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
         patch("data_engine.yahoo_engine.get_intraday", return_value={}),
@@ -690,7 +690,7 @@ def test_fetch_and_save_data_trims_in_progress_last_bar(tmp_path):
     live_df = _ohlcv([f"{today} 09:30", f"{today} 15:45"], [560.86, 566.0])
 
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.INTRADAY_DIR", tmp_path),
         patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
         patch("data_engine.get_mutual_fund_tickers", return_value=set()),
@@ -718,7 +718,7 @@ def test_fetch_and_save_data_drops_rows_without_close(tmp_path):
         index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
     )
     with (
-        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
         patch("data_engine.INTRADAY_DIR", tmp_path),
         patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
         patch("data_engine.get_mutual_fund_tickers", return_value=set()),
@@ -741,7 +741,7 @@ def _settled_close_hours_ago(hours):
 def test_cache_only_missing_history_schedules_without_fetch(tmp_path):
     from data_engine import load_or_fetch_daily_history
 
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history") as network, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history") as network, patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert load_or_fetch_daily_history("ZZCOLD", cache_only=True) is None
     network.assert_not_called()
     refresh.assert_called_once()
@@ -759,7 +759,7 @@ def test_cache_only_stale_history_returns_last_good_after_failed_refresh(tmp_pat
     df = pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2026-01-01"]))
     df.to_parquet(path)
     os.utime(path, (time.time() - 86400, time.time() - 86400))
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={}), patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={}), patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
          patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
         result = load_or_fetch_daily_history("ZZSTALE", cache_only=True)
         assert result["Close"].iloc[-1] == 100.0
@@ -771,7 +771,7 @@ def test_cache_only_stale_history_returns_last_good_after_failed_refresh(tmp_pat
 def test_cache_only_history_never_refreshes_excluded_tickers(tmp_path, ticker):
     from data_engine import load_or_fetch_daily_history
 
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert load_or_fetch_daily_history(ticker, cache_only=True) is None
     refresh.assert_not_called()
 
@@ -780,28 +780,28 @@ def test_cache_only_history_never_refreshes_excluded_tickers(tmp_path, ticker):
 def test_history_refresh_preserves_completed_bar_rules(tmp_path, market_open, expected_rows):
     from datetime import datetime, timezone
     import pandas as pd
-    from data_engine import _fetch_daily_history
+    from daily_history_writer import fetch_daily_history
 
     today = datetime.now(timezone.utc).date()
     df = pd.DataFrame({"Close": [10.0, 11.0, 12.0]}, index=pd.date_range(end=today, periods=3))
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZBAR": df}), patch("time_engine.is_market_open", return_value=market_open):
-        fetched = _fetch_daily_history("ZZBAR")
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZBAR": df}), patch("time_engine.is_market_open", return_value=market_open):
+        fetched = fetch_daily_history("ZZBAR")
     assert len(fetched) == expected_rows
     assert len(pd.read_parquet(tmp_path / "ZZBAR.parquet")) == expected_rows
 
 
 def test_history_refresh_drops_rows_without_close(tmp_path):
     import pandas as pd
-    from data_engine import _fetch_daily_history
+    from daily_history_writer import fetch_daily_history
 
     df = pd.DataFrame(
         {"Close": [10.0, float("nan")], "Volume": [100, 100]},
         index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
     )
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZNAN": df}), \
          patch("time_engine.is_market_open", return_value=False):
-        fetched = _fetch_daily_history("ZZNAN")
+        fetched = fetch_daily_history("ZZNAN")
 
     saved = pd.read_parquet(tmp_path / "ZZNAN.parquet")
     assert fetched["Close"].tolist() == [10.0]
@@ -813,7 +813,7 @@ def test_cache_only_fresh_history_does_not_schedule_refresh(tmp_path):
     from data_engine import load_or_fetch_daily_history
 
     pd.DataFrame({"Close": [10.0]}, index=pd.to_datetime(["2026-01-01"])).to_parquet(tmp_path / "ZZFRESH.parquet")
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert load_or_fetch_daily_history("ZZFRESH", cache_only=True)["Close"].iloc[-1] == 10.0
     refresh.assert_not_called()
 
@@ -835,7 +835,7 @@ def test_stale_daily_refresh_bypasses_partial_yahoo_memory_cache(tmp_path):
     settled.iloc[-1, 0] = 12.0
     def history(tickers, **kwargs):
         return {ticker: settled if kwargs.get("force_refresh") else old}
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", side_effect=history) as fetch, patch("time_engine.is_market_open", return_value=False), patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.yahoo_engine.get_price_history", side_effect=history) as fetch, patch("time_engine.is_market_open", return_value=False), patch("cache_refresh_helpers.request_cache_refresh") as refresh, \
          patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
         assert load_or_fetch_daily_history(ticker, cache_only=True)["Close"].iloc[-1] == 11.0
         assert refresh.call_args.args[1]()["Close"].iloc[-1] == 12.0
@@ -852,21 +852,21 @@ def test_cache_only_history_rejects_symlink_outside_cache_root(tmp_path):
     outside = tmp_path / "outside.parquet"
     pd.DataFrame({"Close": [99.0]}).to_parquet(outside)
     (cache_root / "ZZLINK.parquet").symlink_to(outside)
-    with patch("data_engine.HISTORICAL_DIR", cache_root), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", cache_root), patch("daily_history_writer.HISTORICAL_DIR", cache_root), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert load_or_fetch_daily_history("ZZLINK", cache_only=True) is None
     refresh.assert_not_called()
 
 
 def test_history_refresh_rejects_symlink_outside_cache_root(tmp_path):
-    from data_engine import _fetch_daily_history
+    from daily_history_writer import fetch_daily_history
 
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
     outside = tmp_path / "outside.parquet"
     outside.write_bytes(b"unchanged")
     (cache_root / "ZZLINK.parquet").symlink_to(outside)
-    with patch("data_engine.HISTORICAL_DIR", cache_root), patch("data_engine.yahoo_engine.get_price_history") as fetch:
-        assert _fetch_daily_history("ZZLINK") is None
+    with patch("data_engine.HISTORICAL_DIR", cache_root), patch("daily_history_writer.HISTORICAL_DIR", cache_root), patch("data_engine.yahoo_engine.get_price_history") as fetch:
+        assert fetch_daily_history("ZZLINK") is None
     fetch.assert_not_called()
     assert outside.read_bytes() == b"unchanged"
 
@@ -993,7 +993,7 @@ def test_cache_only_history_refreshes_only_when_latest_session_missing(tmp_path,
     settled = _settled_close_hours_ago(30)
     mtime = settled.timestamp() + (60 if written_after_close else -60)
     os.utime(path, (mtime, mtime))
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("time_engine.last_settled_session_close_utc", return_value=settled), \
          patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert load_or_fetch_daily_history("ZZSESSION", cache_only=True)["Close"].iloc[-1] == 10.0
@@ -1002,7 +1002,7 @@ def test_cache_only_history_refreshes_only_when_latest_session_missing(tmp_path,
 
 def test_navigation_history_refresh_applies_saved_repairs_and_bar_cleaning(tmp_path):
     import pandas as pd
-    from data_engine import _fetch_daily_history
+    from daily_history_writer import fetch_daily_history
 
     index = pd.to_datetime(["2026-01-05", "2026-01-06", "2026-01-07"])
     downloaded = pd.DataFrame({
@@ -1013,11 +1013,11 @@ def test_navigation_history_refresh_applies_saved_repairs_and_bar_cleaning(tmp_p
         "2026-01-07": {"Open": 12.0, "High": 13.0, "Low": 11.0, "Close": 12.5, "Volume": 90},
         "_removed_dates": ["2026-01-05"],
     }}
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZREPAIR": downloaded}), \
          patch("time_engine.is_market_open", return_value=False), \
          patch("price_repair_engine._saved_repairs", return_value=repairs):
-        fetched = _fetch_daily_history("ZZREPAIR", force_refresh=True)
+        fetched = fetch_daily_history("ZZREPAIR", force_refresh=True)
 
     saved = pd.read_parquet(tmp_path / "ZZREPAIR.parquet")
     pd.testing.assert_frame_equal(saved, fetched)
@@ -1100,7 +1100,7 @@ def test_universe_history_is_downloaded_in_batches_without_live_bars(tmp_path):
         assert kwargs["force_refresh"] is True
         return {t: frame.copy() for t in batch if t != "GONE"}
 
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 2), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 2), \
          patch("data_engine.time_engine.is_market_open", return_value=False), \
          patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history) as history, \
          patch("data_engine.yahoo_engine.get_intraday") as intraday:
@@ -1121,7 +1121,7 @@ def test_universe_history_runs_the_shared_cleaning_path(tmp_path):
     frame = _ohlcv([(today - timedelta(days=1)).isoformat(), today.isoformat()], [10.0, 11.0])
 
     for market_open, expected in ((True, [10.0]), (False, [10.0, 11.0])):
-        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
              patch("data_engine.time_engine.is_market_open", return_value=market_open), \
              patch("data_engine.yahoo_engine.get_price_history", return_value={"AAA": frame.copy()}):
             engine.bulk_download_historical([], universe=["AAA"])
@@ -1139,7 +1139,7 @@ def test_universe_history_failed_batch_does_not_stop_later_batches(tmp_path):
             raise RuntimeError("429")
         return {t: frame.copy() for t in batch}
 
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 1), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 1), \
          patch("data_engine.time_engine.is_market_open", return_value=False), \
          patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history):
         engine.bulk_download_historical([], universe=["AAA", "BBB"])
@@ -1156,7 +1156,7 @@ def test_read_only_history_returns_stale_file_without_queueing_a_refresh(tmp_pat
     path = tmp_path / "ZZSTALE.parquet"
     pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2026-01-01"])).to_parquet(path)
     os.utime(path, (time.time() - 86400, time.time() - 86400))
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("cache_refresh_helpers.request_cache_refresh") as background, \
          patch("cache_refresh_helpers.submit_cache_refresh") as awaited, \
          patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
@@ -1185,38 +1185,38 @@ def _history_ending_today(rows=3):
     ("VOD.L", "LSE", 2),
 ])
 def test_in_progress_trim_follows_the_tickers_own_exchange(ticker, session_open, expected_rows):
-    from data_engine import prepare_daily_history
+    from daily_history_writer import prepare_daily_history
 
     with patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == session_open), \
-         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+         patch("daily_history_writer.apply_saved_repairs", side_effect=lambda t, df: df):
         assert len(prepare_daily_history(ticker, _history_ending_today(), None)) == expected_rows
 
 
 def test_in_progress_trim_with_live_feed_follows_the_tickers_own_exchange():
     import pandas as pd
-    from data_engine import prepare_daily_history
+    from daily_history_writer import prepare_daily_history
 
     daily = _history_ending_today()
     live = pd.DataFrame({"Close": [1.0]}, index=pd.DatetimeIndex([daily.index[-1]]))
     with patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == "TSE"), \
-         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+         patch("daily_history_writer.apply_saved_repairs", side_effect=lambda t, df: df):
         assert len(prepare_daily_history("^N225", daily, live)) == 2
         assert len(prepare_daily_history("^FTSE", daily, live)) == 3
 
 
 def test_plain_ticker_is_not_judged_against_the_home_exchange():
-    from data_engine import prepare_daily_history
+    from daily_history_writer import prepare_daily_history
 
     with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "LSE"}), \
          patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == "LSE"), \
-         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+         patch("daily_history_writer.apply_saved_repairs", side_effect=lambda t, df: df):
         assert len(prepare_daily_history("AAPL", _history_ending_today(), None)) == 3
 
 
 def test_history_staleness_check_uses_the_registry_exchange(tmp_path):
     from data_engine import daily_history_cache_revision
 
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)) as settled, \
          patch("cache_refresh_helpers.request_cache_refresh"):
         daily_history_cache_revision("^N225", refresh_stale=True)
@@ -1228,15 +1228,15 @@ def test_history_staleness_check_uses_the_registry_exchange(tmp_path):
 
 @pytest.fixture
 def reported_sessions():
-    import data_engine
+    import daily_history_writer
     import market_session_helpers
     from database import get_connection
 
     market_session_helpers._instrument_sessions.clear()
-    data_engine._session_lookup_failed.clear()
+    daily_history_writer._session_lookup_failed.clear()
     yield market_session_helpers._instrument_sessions
     market_session_helpers._instrument_sessions.clear()
-    data_engine._session_lookup_failed.clear()
+    daily_history_writer._session_lookup_failed.clear()
     conn = get_connection()
     try:
         conn.execute("DELETE FROM instrument_sessions")
@@ -1258,11 +1258,11 @@ def _frame_with_last_bar(last_bar):
 
 
 def _prepare_at(now, ticker, frame, *, exchange_open=False):
-    from data_engine import prepare_daily_history
+    from daily_history_writer import prepare_daily_history
 
     with patch("time_engine.datetime", _fake_datetime_for_data_engine(now)), \
          patch("time_engine.is_market_open", return_value=exchange_open), \
-         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+         patch("daily_history_writer.apply_saved_repairs", side_effect=lambda t, df: df):
         return prepare_daily_history(ticker, frame, None)
 
 
@@ -1316,10 +1316,10 @@ def test_unregistered_fx_pair_uses_its_reported_session(reported_sessions):
 
 @pytest.mark.parametrize("exchange_open,expected_rows", [(False, 3), (True, 2)])
 def test_unknown_session_falls_back_to_the_exchange_judgement(reported_sessions, exchange_open, expected_rows):
-    from data_engine import prepare_daily_history
+    from daily_history_writer import prepare_daily_history
 
     with patch("time_engine.is_market_open", return_value=exchange_open), \
-         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+         patch("daily_history_writer.apply_saved_repairs", side_effect=lambda t, df: df):
         assert len(prepare_daily_history("GC=F", _history_ending_today(), None)) == expected_rows
 
 
@@ -1330,8 +1330,8 @@ def test_registry_exchange_wins_over_a_stored_session(reported_sessions):
     now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
     with patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == "LSE"), \
          patch("time_engine.datetime", _fake_datetime_for_data_engine(now)), \
-         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
-        from data_engine import prepare_daily_history
+         patch("daily_history_writer.apply_saved_repairs", side_effect=lambda t, df: df):
+        from daily_history_writer import prepare_daily_history
 
         assert len(prepare_daily_history("^FTSE", _frame_with_last_bar("2026-10-09"), None)) == 3
 
@@ -1347,7 +1347,7 @@ def test_history_staleness_uses_the_reported_window_end(tmp_path, reported_sessi
     path = tmp_path / "GBPUSD=X.parquet"
     pd.DataFrame({"Close": [1.3]}, index=pd.to_datetime(["2026-10-08"])).to_parquet(path)
     os.utime(path, (time.time() - 7200, time.time() - 7200))
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
          patch("time_engine.last_reported_session_end_utc", return_value=_settled_close_hours_ago(1)) as window, \
          patch("time_engine.last_settled_session_close_utc") as exchange_close, \
          patch("cache_refresh_helpers.request_cache_refresh") as refresh:
@@ -1358,14 +1358,14 @@ def test_history_staleness_uses_the_reported_window_end(tmp_path, reported_sessi
 
 
 def test_session_is_learned_once_from_yahoo_and_persisted(reported_sessions):
-    import data_engine
+    import daily_history_writer
     import market_session_helpers
     from database import get_instrument_sessions
 
     shape = {"tz": "America/Chicago", "regular_end": 1791572400}
-    with patch("data_engine.yahoo_engine.get_session_shape", return_value=shape) as lookup:
-        data_engine._learn_reported_session("^TNX")
-        data_engine._learn_reported_session("^TNX")
+    with patch("daily_history_writer.yahoo_engine.get_session_shape", return_value=shape) as lookup:
+        daily_history_writer._learn_reported_session("^TNX")
+        daily_history_writer._learn_reported_session("^TNX")
     lookup.assert_called_once_with("^TNX")
     assert market_session_helpers.reported_session("^TNX") == ("America/Chicago", "14:00")
     assert get_instrument_sessions()["^TNX"]["regular_end"] == "14:00"
@@ -1374,34 +1374,34 @@ def test_session_is_learned_once_from_yahoo_and_persisted(reported_sessions):
 
 
 def test_failed_session_lookup_is_not_retried_within_the_retry_window(reported_sessions):
-    import data_engine
+    import daily_history_writer
     import market_session_helpers
 
-    with patch("data_engine.yahoo_engine.get_session_shape", return_value=None) as lookup:
-        data_engine._learn_reported_session("GC=F")
-        data_engine._learn_reported_session("GC=F")
+    with patch("daily_history_writer.yahoo_engine.get_session_shape", return_value=None) as lookup:
+        daily_history_writer._learn_reported_session("GC=F")
+        daily_history_writer._learn_reported_session("GC=F")
     lookup.assert_called_once_with("GC=F")
     assert market_session_helpers.reported_session("GC=F") is None
 
 
 def test_stored_session_survives_a_failed_refresh(reported_sessions):
-    import data_engine
+    import daily_history_writer
     import market_session_helpers
 
     old = _stored_session("America/Chicago", "14:00", updated_at=0.0)
     reported_sessions["^TNX"] = old
-    with patch("data_engine.yahoo_engine.get_session_shape", return_value=None) as lookup:
-        data_engine._learn_reported_session("^TNX")
+    with patch("daily_history_writer.yahoo_engine.get_session_shape", return_value=None) as lookup:
+        daily_history_writer._learn_reported_session("^TNX")
     lookup.assert_called_once()
     assert market_session_helpers.reported_session("^TNX") == ("America/Chicago", "14:00")
 
 
 @pytest.mark.parametrize("ticker", ["AAPL", "VOD.L", "^FTSE", "^GSPC", "UK10YG", "TBILL-606"])
 def test_session_lookup_is_skipped_for_exchange_listed_and_unfetchable_tickers(reported_sessions, ticker):
-    import data_engine
+    import daily_history_writer
 
-    with patch("data_engine.yahoo_engine.get_session_shape") as lookup:
-        data_engine._learn_reported_session(ticker)
+    with patch("daily_history_writer.yahoo_engine.get_session_shape") as lookup:
+        daily_history_writer._learn_reported_session(ticker)
     lookup.assert_not_called()
 
 

@@ -378,7 +378,7 @@ class TestExchangeClosedStillFormingGate:
     """Regression (2026-07-15): fetch_and_save_pulse() is reachable at arbitrary times of day
     (age-based staleness refreshes, on-demand single-ticker fetch, HA refresh-now) rather than
     only while its ticker's exchange is confirmed open, so it must thread a real exchange-open
-    signal into is_daily_bar_still_forming() the same way data_engine._drop_in_progress_last_bar()
+    signal into is_daily_bar_still_forming() the same way daily_history_writer._drop_in_progress_last_bar()
     already does — otherwise a same-UTC-day post-close refresh looks identical to a genuine
     mid-session one and prev_close is wrongly taken from daily[-2] instead of the already-final
     daily[-1]."""
