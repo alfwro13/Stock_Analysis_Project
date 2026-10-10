@@ -376,3 +376,20 @@ class TestRunner:
             scheduler_jobs.run_sector_relative_momentum_job()
         record.assert_called_once_with("sector_relative_momentum_job")
         assert log.call_args.args[0] == "Error"
+
+
+class TestHistoryLoaderIsReadOnly:
+    def test_stale_parquet_is_read_and_no_refresh_is_queued(self, tmp_path):
+        import os
+        import time
+        pd.DataFrame({"Close": [10.0, 11.0]}, index=pd.to_datetime(["2026-01-01", "2026-01-02"])).to_parquet(tmp_path / "SRMSTALE.parquet")
+        os.utime(tmp_path / "SRMSTALE.parquet", (time.time() - 86400 * 30, time.time() - 86400 * 30))
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("cache_refresh_helpers.request_cache_refresh") as background, \
+             patch("cache_refresh_helpers.submit_cache_refresh") as awaited:
+            close = srm._load_close("SRMSTALE")
+            missing = srm._load_close("SRMMISSING")
+        assert close.tolist() == [10.0, 11.0]
+        assert missing is None
+        background.assert_not_called()
+        awaited.assert_not_called()

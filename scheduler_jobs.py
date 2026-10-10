@@ -260,6 +260,8 @@ def run_update_pipeline():
                 if conn_alert:
                     conn_alert.close()
 
+        data_engine.bulk_download_historical([], universe=data_engine.get_universe_history_pool())
+
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:

@@ -980,3 +980,112 @@ def test_awaited_refresh_promotes_queued_background_job():
         release.set()
         for future in blockers:
             future.result(timeout=10)
+
+
+# ── universe history refresh ──────────────────────────────────────────────────
+
+def _universe_engine():
+    from data_engine import DataEngine
+
+    return DataEngine.__new__(DataEngine)
+
+
+def test_universe_history_pool_is_scored_tickers_outside_nightly_ignored_and_synthetic():
+    engine = _universe_engine()
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["DEAD"]}), \
+         patch.object(engine, "get_all_tickers", return_value=["AAPL", "MSFT"]), \
+         patch("data_engine.get_stock_signal_tickers",
+               return_value=["aapl", "NVDA", "dead", "TBILL-7", "PENSION-2", "NVDA", "VOD.L"]):
+        assert engine.get_universe_history_pool() == ["NVDA", "VOD.L"]
+
+
+def test_universe_history_is_downloaded_in_batches_without_live_bars(tmp_path):
+    import pandas as pd
+
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+
+    def fake_history(batch, **kwargs):
+        assert kwargs["force_refresh"] is True
+        return {t: frame.copy() for t in batch if t != "GONE"}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 2), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history) as history, \
+         patch("data_engine.yahoo_engine.get_intraday") as intraday:
+        engine.bulk_download_historical([], universe=["AAA", "BBB", "GONE", "CCC", "DDD"])
+
+    assert [c.args[0] for c in history.call_args_list] == [["AAA", "BBB"], ["GONE", "CCC"], ["DDD"]]
+    intraday.assert_not_called()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["AAA.parquet", "BBB.parquet", "CCC.parquet", "DDD.parquet"]
+    assert pd.read_parquet(tmp_path / "AAA.parquet")["Close"].tolist() == [10.0, 11.0]
+
+
+def test_universe_history_runs_the_shared_cleaning_path(tmp_path):
+    import pandas as pd
+    from datetime import datetime, timedelta, timezone
+
+    engine = _universe_engine()
+    today = datetime.now(timezone.utc).date()
+    frame = _ohlcv([(today - timedelta(days=1)).isoformat(), today.isoformat()], [10.0, 11.0])
+
+    for market_open, expected in ((True, [10.0]), (False, [10.0, 11.0])):
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.time_engine.is_market_open", return_value=market_open), \
+             patch("data_engine.yahoo_engine.get_price_history", return_value={"AAA": frame.copy()}):
+            engine.bulk_download_historical([], universe=["AAA"])
+        assert pd.read_parquet(tmp_path / "AAA.parquet")["Close"].tolist() == expected
+
+
+def test_universe_history_failed_batch_does_not_stop_later_batches(tmp_path):
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    calls = []
+
+    def fake_history(batch, **kwargs):
+        calls.append(batch)
+        if len(calls) == 1:
+            raise RuntimeError("429")
+        return {t: frame.copy() for t in batch}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 1), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history):
+        engine.bulk_download_historical([], universe=["AAA", "BBB"])
+
+    assert [p.name for p in tmp_path.iterdir()] == ["BBB.parquet"]
+
+
+def test_history_write_replaces_atomically_and_keeps_last_good_file_on_failure(tmp_path):
+    import pandas as pd
+    from data_engine import _write_history_parquet
+
+    path = tmp_path / "AAA.parquet"
+    good = _ohlcv(["2026-07-01"], [10.0])
+    with patch("data_engine.HISTORICAL_DIR", tmp_path):
+        _write_history_parquet(good, str(path))
+        with patch.object(pd.DataFrame, "to_parquet", side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                _write_history_parquet(_ohlcv(["2026-07-02"], [11.0]), str(path))
+
+    assert pd.read_parquet(path)["Close"].tolist() == [10.0]
+    assert [p.name for p in tmp_path.iterdir()] == ["AAA.parquet"]
+
+
+def test_read_only_history_returns_stale_file_without_queueing_a_refresh(tmp_path):
+    import os
+    import time
+    import pandas as pd
+    from data_engine import load_or_fetch_daily_history
+
+    path = tmp_path / "ZZSTALE.parquet"
+    pd.DataFrame({"Close": [100.0]}, index=pd.to_datetime(["2026-01-01"])).to_parquet(path)
+    os.utime(path, (time.time() - 86400, time.time() - 86400))
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("cache_refresh_helpers.request_cache_refresh") as background, \
+         patch("cache_refresh_helpers.submit_cache_refresh") as awaited, \
+         patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
+        assert load_or_fetch_daily_history("ZZSTALE", cache_only=True, read_only=True)["Close"].iloc[-1] == 100.0
+        assert load_or_fetch_daily_history("ZZMISSING", read_only=True) is None
+    background.assert_not_called()
+    awaited.assert_not_called()

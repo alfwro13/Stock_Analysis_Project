@@ -122,3 +122,28 @@ class TestRunEarningsVolRetryJob:
              patch("scheduler_jobs.log_sched_notification") as mock_notify:
             scheduler_jobs._run_earnings_vol_retry_job(tickers=["GOOGL", "INTC"])
         assert any(call.args[0] == "Warning" for call in mock_notify.call_args_list)
+
+
+class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
+    def test_universe_step_runs_after_every_other_pipeline_step_and_the_run_is_recorded(self):
+        order = []
+        engine = MagicMock()
+        engine.get_all_tickers.return_value = ["AAPL"]
+        engine.get_universe_history_pool.return_value = ["NVDA", "VOD.L"]
+        engine.update_all_data.side_effect = lambda: order.append("update_all_data")
+        engine.bulk_download_historical.side_effect = lambda *a, **k: order.append("universe")
+        quant = MagicMock()
+        quant.run_all.side_effect = lambda: order.append("quant")
+        with patch("scheduler_jobs.DataEngine", return_value=engine), \
+             patch("scheduler_jobs.QuantEngine", return_value=quant), \
+             patch("regime_engine.calculate_systemic_macro_threat"), \
+             patch("regime_engine.calculate_market_regime", return_value={}), \
+             patch("universe_fundamentals_engine.sync_etf_holdings_cache",
+                   side_effect=lambda t: order.append("etf_holdings")), \
+             patch("scheduler_jobs.record_job_run") as record, \
+             patch("scheduler_jobs.log_sched_notification"):
+            scheduler_jobs.run_update_pipeline()
+
+        assert order == ["update_all_data", "quant", "etf_holdings", "universe"]
+        engine.bulk_download_historical.assert_called_once_with([], universe=["NVDA", "VOD.L"])
+        record.assert_called_once_with("quant_analysis_job")

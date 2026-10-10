@@ -357,8 +357,13 @@ class TestLoadDailyClose:
     def test_passes_cache_only_and_trims_tail(self):
         with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame()) as load:
             close = load_daily_close("AAA", cache_only=True, tail=2)
-        load.assert_called_once_with("AAA", cache_only=True)
+        load.assert_called_once_with("AAA", cache_only=True, read_only=False)
         assert list(close) == [4.0, 5.0]
+
+    def test_passes_read_only(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame()) as load:
+            load_daily_close("AAA", read_only=True)
+        load.assert_called_once_with("AAA", cache_only=False, read_only=True)
 
     def test_missing_history_or_close_column_returns_none(self):
         with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):

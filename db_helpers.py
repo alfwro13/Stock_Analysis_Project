@@ -125,6 +125,17 @@ def get_universe_tickers() -> List[str]:
             conn.close()
 
 
+def get_stock_signal_tickers() -> List[str]:
+    """Every ticker with a stock_signals row, i.e. the scored universe."""
+    conn = None
+    try:
+        conn = get_connection()
+        return [row['ticker'] for row in conn.execute("SELECT ticker FROM stock_signals").fetchall()]
+    finally:
+        if conn:
+            conn.close()
+
+
 def _held_and_watched_tickers() -> tuple[set, set]:
     """(held, watched) uppercased and ignored-ticker-filtered. Local imports avoid a circular
     import: database.py imports this module at module level, and accounts_engine.py imports
