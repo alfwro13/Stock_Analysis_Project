@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 import plotly.graph_objects as go
 from yahoo_engine import yahoo_engine
 from plotly.subplots import make_subplots
+from visuals import apply_sentiment_chart_layout
 
 # Critical for headless Linux servers: Use 'Agg' backend so matplotlib doesn't crash
 import matplotlib
@@ -134,14 +135,7 @@ def generate_sentiment_figure(merged_df: Optional[pd.DataFrame] = None) -> Optio
     min_spy = merged_df['SPY_Close'].min() * 0.98
     max_spy = merged_df['SPY_Close'].max() * 1.02
 
-    fig.update_layout(
-        title=dict(text="Fear & Greed vs S&P 500 (1 Year)", x=0.5, xanchor='center'),
-        template="plotly_dark",
-        height=450,
-        margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "Fear & Greed vs S&P 500 (1 Year)")
     fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
     fig.update_yaxes(title_text="Fear & Greed Index (0-100)", range=[0, 100], secondary_y=True)
     return fig
@@ -199,18 +193,56 @@ def generate_vix_spy_figure() -> Optional[go.Figure]:
     min_spy = merged_df['SPY_Close'].min() * 0.98
     max_spy = merged_df['SPY_Close'].max() * 1.02
 
-    fig.update_layout(
-        title=dict(text="S&P 500 vs VIX (1 Year)", x=0.5, xanchor='center'),
-        template="plotly_dark",
-        height=450,
-        margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "S&P 500 vs VIX (1 Year)")
 
     fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
     max_vix = max(50, merged_df['VIX_Close'].max() * 1.1)
     fig.update_yaxes(title_text="VIX Level", range=[0, max_vix], secondary_y=True)
+    return fig
+
+
+def generate_yield_equity_figure(merged_df: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield",
+        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+
+    apply_sentiment_chart_layout(fig, "US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)")
+    fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
+    fig.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
+    return fig
+
+
+def generate_uk_yield_equity_figure(merged_df: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['UK_Close'], name="10Y Gilt Yield",
+        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+
+    apply_sentiment_chart_layout(fig, "UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)")
+    fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
+    fig.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
+    return fig
+
+
+def generate_ftse_gbp_figure(merged_df: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['GBPUSD_Close'], name="GBP/USD",
+        line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
+
+    apply_sentiment_chart_layout(fig, "Currency Impact: GBP/USD vs FTSE 100 (1 Year)")
+    fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
+    fig.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
     return fig
 
 
@@ -227,23 +259,8 @@ def get_yield_equity_html() -> str:
     if spy_data.empty or tyx_data.empty:
         return "<p>Error loading US Cost of Capital data.</p>"
     merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(
-        x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500",
-        line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(
-        x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield",
-        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
-
-    fig.update_layout(
-        title=dict(text="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)", x=0.5, xanchor='center'),
-        template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
-    fig.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
+    return generate_yield_equity_figure(merged_df).to_html(
+        full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_uk_yield_equity_html() -> str:
@@ -260,23 +277,8 @@ def get_uk_yield_equity_html() -> str:
         return "<p>Error loading UK Cost of Capital data. Ensure Gilt Data Service has run.</p>"
 
     merged_df = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(
-        x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100",
-        line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(
-        x=merged_df.index, y=merged_df['UK_Close'], name="10Y Gilt Yield",
-        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
-
-    fig.update_layout(
-        title=dict(text="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
-        template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
-    fig.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
+    return generate_uk_yield_equity_figure(merged_df).to_html(
+        full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_ftse_gbp_html() -> str:
@@ -293,23 +295,8 @@ def get_ftse_gbp_html() -> str:
         return "<p>Error loading GBP/USD Data.</p>"
 
     merged_df = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(
-        x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100",
-        line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(
-        x=merged_df.index, y=merged_df['GBPUSD_Close'], name="GBP/USD",
-        line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
-
-    fig.update_layout(
-        title=dict(text="Currency Impact: GBP/USD vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
-        template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
-    fig.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
+    return generate_ftse_gbp_figure(merged_df).to_html(
+        full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_sentiment_html() -> str:
@@ -404,21 +391,7 @@ def _async_chart_cruncher_worker() -> None:
         html_yield_equity = ""
         if not spy_df.empty and not tyx_df.empty:
             m_df = spy_df.merge(tyx_df, left_index=True, right_index=True, how='inner')
-            fig_yield_equity = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_yield_equity.add_trace(go.Scatter(
-                x=m_df.index, y=m_df['SPY_Close'], name="S&P 500",
-                line=dict(color='#4da6ff', width=2)), secondary_y=False)
-            fig_yield_equity.add_trace(go.Scatter(
-                x=m_df.index, y=m_df['^TYX_Close'], name="30Y Treasury Yield",
-                line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
-            fig_yield_equity.update_layout(
-                title=dict(text="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)", x=0.5, xanchor='center'),
-                template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
-                hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            fig_yield_equity.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
-            fig_yield_equity.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
-            html_yield_equity = fig_yield_equity.to_html(
+            html_yield_equity = generate_yield_equity_figure(m_df).to_html(
                 full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
             )
 
@@ -428,21 +401,7 @@ def _async_chart_cruncher_worker() -> None:
         html_uk_yield_equity = ""
         if not ftse_data.empty and not gilt_data.empty:
             m_df_uk = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
-            fig_uk_yield = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_uk_yield.add_trace(go.Scatter(
-                x=m_df_uk.index, y=m_df_uk['FTSE_Close'], name="FTSE 100",
-                line=dict(color='#4da6ff', width=2)), secondary_y=False)
-            fig_uk_yield.add_trace(go.Scatter(
-                x=m_df_uk.index, y=m_df_uk['UK_Close'], name="10Y Gilt Yield",
-                line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
-            fig_uk_yield.update_layout(
-                title=dict(text="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
-                template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
-                hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            fig_uk_yield.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
-            fig_uk_yield.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
-            html_uk_yield_equity = fig_uk_yield.to_html(
+            html_uk_yield_equity = generate_uk_yield_equity_figure(m_df_uk).to_html(
                 full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
             )
 
@@ -450,21 +409,7 @@ def _async_chart_cruncher_worker() -> None:
         html_ftse_gbp = ""
         if not ftse_data.empty and not gbp_data.empty:
             m_df_gbp = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
-            fig_gbp = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_gbp.add_trace(go.Scatter(
-                x=m_df_gbp.index, y=m_df_gbp['FTSE_Close'], name="FTSE 100",
-                line=dict(color='#4da6ff', width=2)), secondary_y=False)
-            fig_gbp.add_trace(go.Scatter(
-                x=m_df_gbp.index, y=m_df_gbp['GBPUSD_Close'], name="GBP/USD",
-                line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
-            fig_gbp.update_layout(
-                title=dict(text="Currency Impact: GBP/USD vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
-                template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
-                hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            fig_gbp.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
-            fig_gbp.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
-            html_ftse_gbp = fig_gbp.to_html(
+            html_ftse_gbp = generate_ftse_gbp_figure(m_df_gbp).to_html(
                 full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
             )
 

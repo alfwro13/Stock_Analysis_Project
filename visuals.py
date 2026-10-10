@@ -13,6 +13,18 @@ EXCHANGE_DELAYS = {
     'EUR': 15,              # Euronext and other European exchanges
 }
 
+SENTIMENT_CHART_HEIGHT = 420
+
+
+def apply_sentiment_chart_layout(fig: go.Figure, title: str) -> None:
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor='center'),
+        template="plotly_dark", height=SENTIMENT_CHART_HEIGHT,
+        margin=dict(l=20, r=20, t=50, b=70), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
+    )
+    fig.update_yaxes(automargin=True)
+
 
 def intraday_market_tz(ticker: str, currency: str) -> str:
     return time_engine.get_user_tz().key
@@ -212,12 +224,7 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
         font=dict(color="#ff4d4d"), xanchor="right", yanchor="bottom"
     )
 
-    fig.update_layout(
-        title=dict(text="US Price Stability: CPI YoY vs S&P 500", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "US Price Stability: CPI YoY vs S&P 500")
     fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
@@ -265,12 +272,7 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
         font=dict(color="#ff4d4d"), xanchor="right", yanchor="bottom"
     )
 
-    fig.update_layout(
-        title=dict(text="UK Price Stability: CPI YoY vs FTSE 100", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "UK Price Stability: CPI YoY vs FTSE 100")
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
@@ -283,11 +285,7 @@ def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
     if not df_m2.empty and 'value' in df_m2.columns:
         fig.add_trace(go.Scatter(x=df_m2.index, y=df_m2['value'], name="US M2 Supply", line=dict(color="#ffaa00", width=2, dash='dot'), connectgaps=True), secondary_y=True)
 
-    fig.update_layout(
-        title=dict(text="US Liquidity: S&P 500 vs M2 Money Supply", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "US Liquidity: S&P 500 vs M2 Money Supply")
     fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="M2 Supply (Trillions)", secondary_y=True, showgrid=False)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
@@ -299,11 +297,7 @@ def create_us_credit_chart(df_spread: pd.DataFrame) -> str:
 
     fig.add_hline(y=5.0, line_dash="dash", line_color="#ff4d4d", annotation_text="Danger Zone (> 5.0%)", annotation_position="top left", annotation_font_color="#ff4d4d")
 
-    fig.update_layout(
-        title=dict(text="US Credit Stress: ICE BofA High Yield Spread", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified"
-    )
+    apply_sentiment_chart_layout(fig, "US Credit Stress: ICE BofA High Yield Spread")
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
@@ -314,11 +308,7 @@ def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str
     if not df_m4.empty and 'value' in df_m4.columns:
         fig.add_trace(go.Scatter(x=df_m4.index, y=df_m4['value'], name="UK M4 Supply", line=dict(color="#bb86fc", width=2, dash='dot'), connectgaps=True), secondary_y=True)
 
-    fig.update_layout(
-        title=dict(text="UK Liquidity: FTSE 100 vs M4 Money Supply", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "UK Liquidity: FTSE 100 vs M4 Money Supply")
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="M4 Supply (Billions)", secondary_y=True, showgrid=False)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
@@ -330,11 +320,7 @@ def create_uk_credit_chart(df_spread: pd.DataFrame) -> str:
 
     fig.add_hline(y=3.0, line_dash="dash", line_color="#ff4d4d", annotation_text="Danger Zone (> 3.0%)", annotation_position="top left", annotation_font_color="#ff4d4d")
 
-    fig.update_layout(
-        title=dict(text="UK Credit Stress: Sterling Corporate Spread", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified"
-    )
+    apply_sentiment_chart_layout(fig, "UK Credit Stress: Sterling Corporate Spread")
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
@@ -367,14 +353,7 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
                   annotation_position="top left",
                   annotation_font_color="#ff4d4d")
 
-    fig.update_layout(
-        title=dict(text="Yield Curve Radar: US 10-Year vs 2-Year Treasury Spread", x=0.5, xanchor='center'),
-        template="plotly_dark",
-        height=350,
-        margin=dict(l=20, r=20, t=50, b=20),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    apply_sentiment_chart_layout(fig, "Yield Curve Radar: US 10-Year vs 2-Year Treasury Spread")
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
 
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
@@ -426,13 +405,8 @@ def create_yield_vs_gdp_chart(df_yield: pd.DataFrame, df_gdp: pd.DataFrame, regi
         fill='tonexty', fillcolor='rgba(255, 90, 60, 0.30)', hoverinfo='skip'
     ))
 
-    fig.update_layout(
-        title=dict(text=f"{region} Yield vs Nominal GDP: {yield_name} vs GDP Growth", x=0.5, xanchor='center'),
-        template="plotly_dark", height=420,
-        margin=dict(l=20, r=20, t=50, b=70), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
-    )
-    fig.update_yaxes(title_text="% per year", automargin=True, showgrid=True, gridcolor="#333333")
+    apply_sentiment_chart_layout(fig, f"{region} Yield vs Nominal GDP: {yield_name} vs GDP Growth")
+    fig.update_yaxes(title_text="% per year", showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 

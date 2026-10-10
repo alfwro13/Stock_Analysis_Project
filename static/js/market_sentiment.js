@@ -38,18 +38,29 @@ function _captureSentimentChartDefaultHeights() {
     });
 }
 
+// Mobile can't go below 400 — styles.css floors .js-plotly-plot at 400px under 768px, so a
+// shorter request leaves the chart pinned short inside a taller container.
+function _sentimentChartHeight(wrapperId) {
+    return window.innerWidth < 768 ? 400 : _sentimentChartDefaultHeights[wrapperId];
+}
+
 function _sentimentChartOpts(wrapperId) {
-    return { forceWidth: true, getHeight: function () { return _sentimentChartDefaultHeights[wrapperId]; } };
+    return { forceWidth: true, getHeight: function () { return _sentimentChartHeight(wrapperId); } };
+}
+
+function _relayoutSentimentCharts() {
+    _SENTIMENT_CHART_IDS.forEach(function (id) {
+        ChartFullscreen.relayoutForCurrentState(id, _sentimentChartOpts(id));
+    });
 }
 
 function toggleFullscreen(wrapperId) {
     ChartFullscreen.toggle(wrapperId, _sentimentChartOpts(wrapperId));
 }
 
-document.addEventListener('DOMContentLoaded', _captureSentimentChartDefaultHeights);
-
-window.addEventListener('resize', function () {
-    _SENTIMENT_CHART_IDS.forEach(function (id) {
-        ChartFullscreen.relayoutForCurrentState(id, _sentimentChartOpts(id));
-    });
+document.addEventListener('DOMContentLoaded', function () {
+    _captureSentimentChartDefaultHeights();
+    _relayoutSentimentCharts();
 });
+
+window.addEventListener('resize', _relayoutSentimentCharts);
