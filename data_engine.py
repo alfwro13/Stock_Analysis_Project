@@ -1,14 +1,15 @@
 import json
 import os
+import tempfile
 import time
 import random
 import logging
 from pathlib import Path
 import pandas as pd
-from typing import Set, List, Dict, Any, Optional
+from typing import Set, List, Dict, Any, Optional, Sequence
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
-from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers
+from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers, get_stock_signal_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 from price_repair_engine import apply_saved_repairs
@@ -17,6 +18,8 @@ import time_engine
 from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
+
+UNIVERSE_HISTORY_BATCH = 250
 
 
 def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.DataFrame], ticker: Optional[str] = None) -> pd.DataFrame:
@@ -44,6 +47,37 @@ def prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.Da
         if is_daily_bar_still_forming(last_date, last_date, exchange_open):
             df = df.iloc[:-1]
     return apply_saved_repairs(ticker, df)
+
+
+def _write_history_parquet(df: pd.DataFrame, path: str) -> None:
+    """Atomic replace, so a reader never meets a half-written file while a long refresh rewrites thousands of them; the temp name never ends in .parquet, so a crash cannot leave a file that looks like a ticker."""
+    HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=HISTORICAL_DIR, suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+        df.to_parquet(temporary, engine="pyarrow")
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _persist_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame]) -> bool:
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        logger.warning("Skipping historical write for unsafe ticker %r.", ticker)
+        return False
+    history_root = os.path.realpath(HISTORICAL_DIR)
+    path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
+    if not path.startswith(history_root + os.sep):
+        logger.warning("Skipping historical path outside cache root for ticker %r.", ticker)
+        return False
+    df = prepare_daily_history(ticker, df, df_live, drop_missing_volume=True)
+    if df.empty:
+        return False
+    _write_history_parquet(df, path)
+    return True
 
 
 class DataEngine:
@@ -92,6 +126,15 @@ class DataEngine:
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return sorted(valid_tickers)
 
+    def get_universe_history_pool(self) -> List[str]:
+        """Scored tickers outside the nightly set; only the Update Pipeline's universe step keeps their daily history fresh."""
+        ignored_tickers = ignored_tickers_set(load_config())
+        nightly = set(self.get_all_tickers())
+        return sorted({
+            t for t in map(normalize_ticker, get_stock_signal_tickers())
+            if t not in nightly and not is_excluded_from_yahoo_fetch(t, ignored_tickers)
+        })
+
     @staticmethod
     def in_scope_fx_pairs(tickers: List[str]) -> List[str]:
         from accounts_engine import in_scope_currencies
@@ -139,11 +182,14 @@ class DataEngine:
         except Exception as e:
             logger.error('Gilt data sync failed (independent of Yahoo baselines): %s', e)
 
-    def bulk_download_historical(self, tickers: List[str]) -> None:
-        """Vectorized bulk download of 2-year daily prices to bypass rate limits."""
-        if not tickers:
-            return
+    def bulk_download_historical(self, tickers: List[str], universe: Sequence[str] = ()) -> None:
+        """Vectorized bulk download of 2-year daily prices to bypass rate limits; `universe` tickers go in separate batches without live bars so the Yahoo lock is never held for the whole pool."""
+        if tickers:
+            self._bulk_download_with_live_bars(tickers)
+        if universe:
+            self._bulk_download_universe(list(universe))
 
+    def _bulk_download_with_live_bars(self, tickers: List[str]) -> None:
         logger.info('Bulk downloading 2Y Macro Historical data for %s assets...', len(tickers))
         try:
             ticker_dfs = yahoo_engine.get_price_history(tickers, period="2y", interval="1d", force_refresh=True)
@@ -153,23 +199,25 @@ class DataEngine:
             mutual_funds = get_mutual_fund_tickers(tickers)
             intraday_targets = [t for t in ticker_dfs if t not in mutual_funds]
             live_dfs = yahoo_engine.get_intraday(intraday_targets, period="1d", interval="5m") if intraday_targets else {}
-            history_root = os.path.realpath(HISTORICAL_DIR)
             for ticker, df in ticker_dfs.items():
                 if df is None or df.empty:
                     continue
-                safe_ticker = safe_ticker_filename(ticker)
-                if not safe_ticker:
-                    logger.warning("Skipping historical write for unsafe ticker %r.", ticker)
-                    continue
-                path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
-                if not path.startswith(history_root + os.sep):
-                    logger.warning("Skipping historical path outside cache root for ticker %r.", ticker)
-                    continue
-                df = prepare_daily_history(ticker, df, live_dfs.get(ticker, pd.DataFrame()), drop_missing_volume=True)
-                if not df.empty:
-                    df.to_parquet(path, engine='pyarrow')
+                _persist_daily_history(ticker, df, live_dfs.get(ticker, pd.DataFrame()))
         except Exception as e:
             logger.error('Fatal error during bulk historical download: %s', e)
+
+    def _bulk_download_universe(self, tickers: List[str]) -> None:
+        batches = [tickers[i:i + UNIVERSE_HISTORY_BATCH] for i in range(0, len(tickers), UNIVERSE_HISTORY_BATCH)]
+        logger.info('Bulk downloading 2Y Universe history for %s assets in %s batches...', len(tickers), len(batches))
+        written = 0
+        for batch in batches:
+            try:
+                for ticker, df in yahoo_engine.get_price_history(batch, period="2y", interval="1d", force_refresh=True).items():
+                    if df is not None and not df.empty and _persist_daily_history(ticker, df, None):
+                        written += 1
+            except Exception as e:
+                logger.error('Universe history batch failed: %s', e)
+        logger.info('Universe history refreshed: %s of %s assets written.', written, len(tickers))
 
     def bulk_download_intraday(self, tickers: List[str]) -> None:
         if not tickers:
@@ -275,7 +323,7 @@ class DataEngine:
                 self._strip_tz(df_daily)
                 df_daily = prepare_daily_history(ticker, df_daily, df_live)
                 if not df_daily.empty:
-                    df_daily.to_parquet(history_path, engine='pyarrow')
+                    _write_history_parquet(df_daily, history_path)
                     persisted = True
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
@@ -315,8 +363,6 @@ def fetch_and_save_single_ticker(ticker: str) -> bool:
 
 
 def _fetch_daily_history(ticker: str, *, force_refresh=False):
-    import tempfile
-
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
         return None
@@ -338,16 +384,7 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     df = prepare_daily_history(ticker, df, None)
     if df.empty:
         return None
-    HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=HISTORICAL_DIR, suffix=".parquet", delete=False) as handle:
-            temporary = Path(handle.name)
-        df.to_parquet(temporary, engine="pyarrow")
-        temporary.replace(path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    _write_history_parquet(df, path)
     return df
 
 
@@ -374,7 +411,8 @@ def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
     return (path, state.st_dev, state.st_ino, state.st_size, state.st_mtime_ns, state.st_ctime_ns)
 
 
-def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Optional[pd.DataFrame]:
+def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_only: bool = False) -> Optional[pd.DataFrame]:
+    """read_only returns what is on disk and never fetches or queues a refresh: for batch readers over a universe-wide ticker set, whose inputs a scheduled step refreshes."""
     from cache_refresh_helpers import submit_cache_refresh
 
     safe_ticker = safe_ticker_filename(ticker)
@@ -392,6 +430,8 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False) -> Opt
             df = pd.read_parquet(path)
         except Exception as e:
             logger.error("Failed to read historical parquet for %s: %s", ticker, e)
+    if read_only:
+        return df
     if cache_only:
         if df is None:
             from cache_refresh_helpers import request_cache_refresh

@@ -120,9 +120,9 @@ def normalized_close(close: pd.Series, tail: Optional[int] = None) -> Optional[p
     return close.tail(tail) if tail else close
 
 
-def load_daily_close(ticker: str, *, cache_only: bool = False, tail: Optional[int] = None) -> Optional[pd.Series]:
-    """The one daily-close loader over data/historical (a missing parquet is fetched unless cache_only)."""
-    df = load_or_fetch_daily_history(ticker, cache_only=cache_only)
+def load_daily_close(ticker: str, *, cache_only: bool = False, read_only: bool = False, tail: Optional[int] = None) -> Optional[pd.Series]:
+    """The one daily-close loader over data/historical (a missing parquet is fetched unless cache_only; read_only never fetches or queues a refresh)."""
+    df = load_or_fetch_daily_history(ticker, cache_only=cache_only, read_only=read_only)
     if df is None or "Close" not in df.columns:
         return None
     return normalized_close(df["Close"], tail)

@@ -29,7 +29,7 @@ For each cohort and window (63 or 126 sessions):
 5. **Relative return** `relative_return_pp = 100 x (R_i - R_peers)` — percentage points.
 6. **Rank and percentile.** Rank 1 is the strongest, ties broken by ticker. Percentile is `(average ascending rank - 1) / (n - 1) x 100`, so ties share a percentile and 100 is strongest.
 
-No price data is fetched by the job. `_load_close()` skips a ticker with no parquet, then reads the cached closes through the shared `price_history_helpers.load_daily_close(cache_only=True)`; the existing cache-refresh coordinator handles stale files. A ticker with no cached history is `no_history`.
+The job fetches no price data and queues no refresh. `_load_close()` reads the stored closes through the shared `price_history_helpers.load_daily_close(read_only=True)`; a ticker with no parquet is `no_history`. The files come from the Quantamental Analysis Engine (the nightly Update Pipeline): its last step refreshes the daily history of every `stock_signals` ticker outside the Portfolio/Watchlist/Accounts/Markets set in one run (see section 5), so every cohort is read from the same night's download. Queued single-ticker refreshes are not relied on: they are throttled to a fraction of the pool per day and a partial refresh would leave stale tickers out of their cohorts.
 
 ## 3. Storage and freshness
 
@@ -47,7 +47,7 @@ The Reports card "Relative Strength Leaders" is unrelated: it is an RSI / MACD s
 
 ## 5. Scheduling and the Workflow Monitor
 
-`JOB_GRAPH["sector_relative_momentum_job"]` consumes `historical_parquet` and `stock_signals` (written by the Quantamental Analysis Engine, default 18:00) and produces `sector_relative_momentum_results`. The default 19:20 run time sits after that job; the Workflow Monitor flags a backwards order or an overlap with a still-running upstream. The Settings card (`#sector-relative-momentum-card`) sets enable, days and time, and has a Run Now button. Notifications use the standard scheduled-job status row; the job fires no alerts.
+`JOB_GRAPH["sector_relative_momentum_job"]` consumes `historical_parquet` and `stock_signals` (written by the Quantamental Analysis Engine, default 18:00) and produces `sector_relative_momentum_results`. The Update Pipeline's universe step (about 4,300 tickers in 250-ticker batches, no live bars) runs after the engine's own work and can add roughly 10-40 minutes depending on Yahoo's response time; on the default 18:00 start it finishes before the 19:20 run, and a later start means the run reads the previous night's refresh, which its as-of date shows. The default 19:20 run time sits after that job; the Workflow Monitor flags a backwards order or an overlap with a still-running upstream. The Settings card (`#sector-relative-momentum-card`) sets enable, days and time, and has a Run Now button. Notifications use the standard scheduled-job status row; the job fires no alerts.
 
 ## 6. Limits
 
