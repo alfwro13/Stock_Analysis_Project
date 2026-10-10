@@ -166,12 +166,9 @@ class DataEngine:
                     df = ticker_dfs.get(ticker)
                     if df is None or df.empty:
                         continue
-                    df = df.dropna(subset=['Close'])
-                    for col in ('Open', 'High', 'Low'):
-                        mask = (df[col] == 0) & (df['Close'] > 0)
-                        df.loc[mask, col] = df.loc[mask, 'Close']
+                    df = prepare_daily_history(ticker, df, None)
                     if not df.empty:
-                        df.to_parquet(HISTORICAL_DIR / f"{name}.parquet", engine='pyarrow')
+                        _write_history_parquet(df, HISTORICAL_DIR / f"{name}.parquet")
                 logger.info("All Market and Intermarket Baselines secured successfully.")
 
         except Exception as e:
