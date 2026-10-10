@@ -388,6 +388,12 @@ def test_is_excluded_from_yahoo_fetch_true_for_registry_series_sourced_outside_y
 
 
 @pytest.mark.config
+def test_is_excluded_from_yahoo_fetch_matches_registry_series_and_synthetic_tickers_case_insensitively():
+    from utils import is_excluded_from_yahoo_fetch
+    assert is_excluded_from_yahoo_fetch("uk10yg", ignored=set()) is True
+    assert is_excluded_from_yahoo_fetch(" tbill-606 ", ignored=set()) is True
+
+
 def test_is_excluded_from_yahoo_fetch_true_for_ignored_ticker():
     from utils import is_excluded_from_yahoo_fetch
     assert is_excluded_from_yahoo_fetch("gme", ignored={"GME"}) is True
