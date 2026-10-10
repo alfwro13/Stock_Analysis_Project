@@ -17,6 +17,7 @@ from time_engine import (
     last_reported_session_end_utc,
     local_hm_from_epoch,
     reported_bar_still_forming,
+    reported_window_open,
     is_exchange_holiday,
     reset_cron_trigger_params,
     exchange_tz,
@@ -644,6 +645,16 @@ class TestReportedSession:
         from datetime import date
         with patch("time_engine.datetime", _fake_datetime(now)):
             assert reported_bar_still_forming(date.fromisoformat(bar_date), tz, end) is expected
+
+    @pytest.mark.parametrize("now,tz,end,expected", [
+        (datetime(2026, 10, 9, 21, 33, tzinfo=timezone.utc), "Europe/London", "23:59", True),
+        (datetime(2026, 10, 10, 2, 0, tzinfo=timezone.utc), "America/New_York", "23:59", True),
+        (datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", True),
+        (datetime(2026, 10, 9, 19, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", False),
+    ], ids=["fx-after-nyse-close", "futures-new-york-evening", "rates-in-session", "rates-after-close"])
+    def test_window_open(self, now, tz, end, expected):
+        with patch("time_engine.datetime", _fake_datetime(now)):
+            assert reported_window_open(tz, end) is expected
 
     @pytest.mark.parametrize("now,tz,end,expected", [
         (datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", datetime(2026, 10, 8, 19, 0, tzinfo=timezone.utc)),

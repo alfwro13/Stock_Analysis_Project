@@ -18,9 +18,10 @@ from market_session_helpers import (
     PRE_MARKET_STATES,
     build_registry_exchange_map,
     is_exchange_open,
+    reported_session,
     resolve_ticker_exchange,
 )
-from time_engine import is_trading_session, ticker_exchange
+from time_engine import is_trading_session, reported_bar_still_forming, reported_window_open, ticker_exchange
 from utils import is_daily_bar_still_forming
 from yahoo_engine import yahoo_engine
 
@@ -161,17 +162,28 @@ def _quote_from_live_feed(ticker: str, t_daily: pd.DataFrame, t_live: pd.DataFra
     # is confirmed in regular session right now. Outside regular hours that same feed
     # can only be a pre/post-market tick, which must never land in the settled
     # price/change_pts/change_pct columns (see AGENTS.md "never mix session data").
-    exchange = resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map)
-    if not is_exchange_open(exchange):
+    session = reported_session(ticker)
+    if session is not None:
+        judged_by = f"Yahoo's reported window ending {session[1]} {session[0]}"
+        in_regular_session = reported_window_open(*session)
+    else:
+        judged_by = resolve_ticker_exchange(ticker, registry_exchange_map=registry_exchange_map)
+        in_regular_session = is_exchange_open(judged_by)
+    if not in_regular_session:
         logger.warning(
             "Skipping price/change update for %s: quote snapshot unavailable and %s "
             "isn't in regular session — the only available tick could be pre/post-market.",
-            ticker, exchange,
+            ticker, judged_by,
         )
         return None
 
     current_price = float(t_live['Close'].iloc[-1])
-    if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date(), True) and len(t_daily) >= 2:
+    daily_date = t_daily.index[-1].date()
+    if session is not None:
+        bar_forming = reported_bar_still_forming(daily_date, *session)
+    else:
+        bar_forming = is_daily_bar_still_forming(daily_date, t_live.index[-1].date(), True)
+    if bar_forming and len(t_daily) >= 2:
         prev_close = float(t_daily['Close'].iloc[-2])
         prev_close_date = t_daily.index[-2].date()
     else:

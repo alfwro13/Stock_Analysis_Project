@@ -446,6 +446,49 @@ class TestFallbackFreezesOutsideRegularSession:
         assert row["price"] == pytest.approx(101.0)
 
 
+class TestReportedWindowGatesLiveFeedFallback:
+    """FX, futures and rates have no exchange session: with the quote snapshot unavailable, the Yahoo-reported window decides both whether the live tick is a regular-session price and whether today's daily bar is still forming."""
+
+    FX_TICKER = "_PULSE_TEST_FX=X"
+
+    @pytest.fixture(autouse=True)
+    def _session(self):
+        import market_session_helpers
+
+        market_session_helpers._instrument_sessions[self.FX_TICKER] = {
+            "tz": "Europe/London", "regular_end": "23:59", "updated_at": datetime.now(timezone.utc).timestamp(),
+        }
+        yield
+        market_session_helpers._instrument_sessions.pop(self.FX_TICKER, None)
+        _clear_cache(self.FX_TICKER)
+
+    def _run(self, *, window_open, bar_forming, exchange_open):
+        daily = _flat_daily_df([98.0, 100.0])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches(self.FX_TICKER, daily, live)
+        with p1, p2, \
+             patch("market_pulse_write.reported_window_open", return_value=window_open), \
+             patch("market_pulse_write.reported_bar_still_forming", return_value=bar_forming), \
+             patch("market_pulse_write.is_exchange_open", return_value=exchange_open):
+            _mw.fetch_and_save_pulse([self.FX_TICKER])
+        return _read_cache(self.FX_TICKER)
+
+    def test_exchange_state_is_ignored_while_the_window_is_open(self):
+        row = self._run(window_open=True, bar_forming=False, exchange_open=False)
+        assert row["price"] == pytest.approx(101.0)
+
+    def test_update_is_skipped_once_the_window_has_ended(self):
+        assert self._run(window_open=False, bar_forming=False, exchange_open=True) is None
+
+    def test_prev_close_skips_a_bar_the_window_says_is_forming(self):
+        row = self._run(window_open=True, bar_forming=True, exchange_open=False)
+        assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
+
+    def test_prev_close_is_the_last_bar_once_the_window_says_it_is_final(self):
+        row = self._run(window_open=True, bar_forming=False, exchange_open=False)
+        assert row["change_pts"] == pytest.approx(1.0, abs=0.01)
+
+
 class TestQuoteSnapshotSessionTagging:
     """fetch_and_save_pulse() must source price/change_pts/change_pct purely from Yahoo's own
     regularMarketPrice/regularMarketChange* fields when its quote snapshot is available — never

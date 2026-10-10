@@ -531,6 +531,69 @@ class TestIsTickerQuoteSettled:
         mock_settled.assert_called_once_with("NYSE", include_premarket=False)
 
 
+class TestIsTickerQuoteSettledForReportedSessions:
+    """FX, futures and rates are judged by the window Yahoo reports for them (instrument_sessions), not by an exchange resolved from HOME_EXCHANGE or the registry currency."""
+
+    @pytest.fixture(autouse=True)
+    def _sessions(self):
+        _ms._instrument_sessions.clear()
+        yield
+        _ms._instrument_sessions.clear()
+
+    @staticmethod
+    def _at(hour, minute=0):
+        from datetime import datetime, timezone
+
+        class _Fake(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                moment = datetime(2026, 10, 9, hour, minute, tzinfo=timezone.utc)
+                return moment.astimezone(tz) if tz else moment
+
+        return patch("time_engine.datetime", _Fake)
+
+    @staticmethod
+    def _store(ticker, tz, end):
+        _ms._instrument_sessions[ticker] = {"tz": tz, "regular_end": end, "updated_at": time.time()}
+
+    def test_fx_is_settled_while_every_exchange_is_closed(self):
+        self._store("GBPUSD=X", "Europe/London", "23:59")
+        with self._at(21, 33), \
+             patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled("GBPUSD=X") is True
+        exchange_gate.assert_not_called()
+
+    def test_rate_is_settled_only_inside_the_reported_window(self):
+        self._store("^TNX", "America/Chicago", "14:00")
+        with patch("market_session_helpers.is_quote_settled", return_value=True):
+            with self._at(18, 30):
+                assert _ms.is_ticker_quote_settled("^TNX") is True
+            with self._at(19, 30):
+                assert _ms.is_ticker_quote_settled("^TNX") is False
+
+    def test_index_future_ignores_the_spot_exchange_once_its_session_is_known(self):
+        self._store("ES=F", "America/New_York", "23:59")
+        with self._at(1, 0), \
+             patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled("ES=F") is True
+        exchange_gate.assert_not_called()
+
+    def test_unknown_session_keeps_the_exchange_judgement(self):
+        with patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled("GC=F") is False
+        exchange_gate.assert_called_once()
+
+    def test_registry_exchange_wins_over_a_stored_session(self):
+        self._store("^FTSE", "Asia/Tokyo", "23:59")
+        with patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled("^FTSE") is False
+        exchange_gate.assert_called_once_with("LSE", include_premarket=False)
+
+
 class TestBuildRegistryFutureTickers:
     def test_returns_every_future_ticker_in_registry(self):
         future_tickers = _ms.build_registry_future_tickers()

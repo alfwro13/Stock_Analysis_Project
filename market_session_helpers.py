@@ -2,8 +2,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from database import get_connection, get_ticker_registry
-from time_engine import EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, ticker_exchange, ticker_exchange_from_suffix
+from database import get_connection, get_instrument_sessions, get_ticker_registry
+from time_engine import (
+    EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, reported_window_open,
+    ticker_exchange, ticker_exchange_from_suffix, ticker_exchange_or_none,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +203,33 @@ def reset_registry_exchange_cache() -> None:
     _registry_session_cache = None
 
 
+_instrument_sessions: Dict[str, dict] = {}
+
+
+def has_reported_session(ticker: str) -> bool:
+    """FX, futures, rates and caret indexes have no exchange_calendars calendar and Yahoo buckets their daily bars on its own reported window; a registry index with an exchange or a suffixed listing keeps its exchange session."""
+    if ticker in cached_registry_reported_session_tickers():
+        return True
+    if ticker_exchange_or_none(ticker) or ticker in cached_registry_exchange_map():
+        return False
+    return ticker.endswith(("=X", "=F")) or ticker.startswith("^")
+
+
+def stored_sessions() -> Dict[str, dict]:
+    """Process-wide copy of instrument_sessions, loaded on first use; data_engine writes a newly learned session into it."""
+    if not _instrument_sessions:
+        _instrument_sessions.update(get_instrument_sessions())
+    return _instrument_sessions
+
+
+def reported_session(ticker: str) -> Optional[tuple]:
+    """(tz, local window end) Yahoo reported for `ticker`, or None while unknown, which callers judge by the exchange session as before."""
+    if not has_reported_session(ticker):
+        return None
+    stored = stored_sessions().get(ticker)
+    return (stored["tz"], stored["regular_end"]) if stored else None
+
+
 def resolve_ticker_exchange(
     ticker: str,
     currency: str = "",
@@ -247,6 +277,10 @@ def is_ticker_quote_settled(
     until the next regular open (found 2026-07-17). This is deliberately narrower than changing
     is_quote_settled() itself, which alert-firing engines (Crash & Moonshot, AI Contagion) also
     call and must keep its existing regular/premarket-only semantics for."""
+    # FX, futures and rates trade outside any exchange's hours; the window Yahoo reports is the one daily history already uses.
+    session = reported_session(ticker)
+    if session is not None:
+        return reported_window_open(*session)
     if registry_future_tickers is None:
         registry_future_tickers = build_registry_future_tickers()
     honor_premarket = ticker in registry_future_tickers
