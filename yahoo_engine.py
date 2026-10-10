@@ -171,6 +171,13 @@ class YahooEngine:
         # stock-detail-page view) caches a pre-close bar, and the nightly job then silently writes that
         # stale bar into stock_signals with a fresh last_updated timestamp -- current_price_map() then
         # trusts it as the verified close purely because the timestamp looks new. Found 2026-07-08.
+        # A forced fetch also evicts the ticker's entry and never stores: every force_refresh caller
+        # persists the frame itself, and the nightly universe step would otherwise hold ~4,300 frames
+        # (~100 MB) for the 4 h TTL with no reader (the parquet is read first everywhere else).
+        if force_refresh:
+            with self._lock:
+                for t in tickers:
+                    self._cache.pop(key_fn(t), None)
         result: dict[str, Optional[pd.DataFrame]] = (
             {t: None for t in tickers} if force_refresh else {t: self._get(key_fn(t)) for t in tickers}
         )
@@ -189,7 +196,8 @@ class YahooEngine:
                     is_single = len(missing) == 1
                     for t in missing:
                         df = self._slice_bulk(df_bulk, t, is_single)
-                        self._set(key_fn(t), df, ttl)
+                        if not force_refresh:
+                            self._set(key_fn(t), df, ttl)
                         result[t] = df
             except Exception:
                 logger.error("get_price_history failed for %s", missing, exc_info=True)

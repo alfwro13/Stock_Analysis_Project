@@ -221,6 +221,41 @@ class TestGetPriceHistory:
 
     @patch("yahoo_engine.yf.download")
     @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_force_refresh_does_not_retain_frames(self, mock_ctx, mock_dl):
+        """The nightly universe step force-refreshes ~4,300 frames whose only consumer is the parquet
+        it writes; holding them for the 4 h TTL kept ~100 MB resident with no reader."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["AAPL", "MSFT"])
+
+        result = self.eng.get_price_history(["AAPL", "MSFT"], force_refresh=True)
+
+        assert set(result) == {"AAPL", "MSFT"}
+        assert self.eng.get_stats()["cached_keys"] == 0
+        self.eng.get_price_history(["AAPL"])
+        assert mock_dl.call_count == 2
+
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_force_refresh_evicts_a_stale_cached_frame(self, mock_ctx, mock_dl):
+        """Not storing alone would leave an earlier pre-close frame to be served to the next
+        non-force reader, which fetch_daily_history() then writes over the fresh parquet."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        stale = _price_df()
+        self.eng._set("history:AAPL:2y:1d", stale, ttl=3600)
+        mock_dl.return_value = _yf_multi_df(["AAPL"])
+
+        self.eng.get_price_history(["AAPL"], force_refresh=True)
+
+        assert self.eng.get_stats()["cached_keys"] == 0
+        mock_dl.return_value = _yf_multi_df(["AAPL"])
+        refetched = self.eng.get_price_history(["AAPL"])["AAPL"]
+        assert mock_dl.call_count == 2
+        assert refetched is not stale
+
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
     def test_only_missing_tickers_fetched(self, mock_ctx, mock_dl):
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
