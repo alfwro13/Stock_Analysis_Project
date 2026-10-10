@@ -523,6 +523,9 @@ class TestRunTrapMonitorJobMarketGating:
 # ── _load_history() — auto-fetch ──────────────────────────────────────────────
 
 class TestLoadHistoryAutoFetch:
+    """_load_history() goes through data_engine.load_or_fetch_daily_history, so a fetched ticker
+    gets the same cleaning and atomic write as every other daily-history writer."""
+
     def setup_method(self):
         self.engine = TrapEngine(_CFG)
 
@@ -530,39 +533,84 @@ class TestLoadHistoryAutoFetch:
         df = _make_fetch_df()
         pq = tmp_path / "EXIST.parquet"
         df.to_parquet(pq, engine="pyarrow")
-        with patch("bull_bear_trap_engine.HISTORICAL_DIR", tmp_path):
+        with patch("data_engine.HISTORICAL_DIR", tmp_path):
             result = self.engine._load_history("EXIST")
         assert result is not None
-        assert len(result) <= 60
+        assert len(result) == 60
+        assert list(result.columns) == ["Open", "High", "Low", "Close", "Volume"]
 
     def test_auto_fetches_and_writes_parquet_when_missing(self, tmp_path):
         fetch_df = _make_fetch_df()
         with (
-            patch("bull_bear_trap_engine.HISTORICAL_DIR", tmp_path),
-            patch("bull_bear_trap_engine.yahoo_engine.get_price_history",
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history",
                   return_value={"NEWT": fetch_df}),
+            patch("time_engine.is_market_open", return_value=False),
         ):
             result = self.engine._load_history("NEWT")
         assert result is not None, "Expected DataFrame after auto-fetch"
         assert (tmp_path / "NEWT.parquet").exists(), "Parquet must be written to disk"
+        assert not list(tmp_path.glob("*.tmp")), "Atomic writer must not leave a temp file behind"
+
+    def test_fetched_history_goes_through_prepare_daily_history(self, tmp_path):
+        fetch_df = _make_fetch_df()
+        repaired = fetch_df.copy()
+        repaired["Close"] = repaired["Close"] * 2
+        with (
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history", return_value={"TRAPREPAIR": fetch_df}),
+            patch("data_engine.apply_saved_repairs", return_value=repaired.tz_localize(None)) as repair,
+            patch("time_engine.is_market_open", return_value=False),
+        ):
+            result = self.engine._load_history("TRAPREPAIR")
+        repair.assert_called_once()
+        assert result["Close"].iloc[-1] == pytest.approx(repaired["Close"].iloc[-1])
+        saved = pd.read_parquet(tmp_path / "TRAPREPAIR.parquet")
+        assert saved["Close"].iloc[-1] == pytest.approx(repaired["Close"].iloc[-1])
+
+    def test_in_progress_bar_is_trimmed_from_fetched_history(self, tmp_path):
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        n = 60
+        idx = pd.date_range(end=pd.Timestamp(today), periods=n, freq="D")
+        prices = np.linspace(90.0, 100.0, n)
+        fetch_df = pd.DataFrame({
+            "Open": prices, "High": prices + 1.0, "Low": prices - 1.0,
+            "Close": prices, "Volume": np.full(n, 1_000_000.0),
+        }, index=idx)
+        with (
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history", return_value={"TRAPFORMING": fetch_df}),
+            patch("time_engine.is_market_open", return_value=True),
+        ):
+            result = self.engine._load_history("TRAPFORMING")
+        assert result.index[-1].date() < today
+        assert len(pd.read_parquet(tmp_path / "TRAPFORMING.parquet")) == n - 1
 
     def test_returns_none_when_fetch_returns_empty(self, tmp_path):
         with (
-            patch("bull_bear_trap_engine.HISTORICAL_DIR", tmp_path),
-            patch("bull_bear_trap_engine.yahoo_engine.get_price_history",
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history",
                   return_value={}),
         ):
             result = self.engine._load_history("NOPE")
         assert result is None
+        assert not (tmp_path / "NOPE.parquet").exists()
 
     def test_returns_none_when_fetch_raises(self, tmp_path):
         with (
-            patch("bull_bear_trap_engine.HISTORICAL_DIR", tmp_path),
-            patch("bull_bear_trap_engine.yahoo_engine.get_price_history",
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history",
                   side_effect=Exception("network error")),
         ):
             result = self.engine._load_history("FAIL")
         assert result is None
+
+    def test_returns_none_when_parquet_lacks_ohlcv_columns(self, tmp_path):
+        pd.DataFrame({"Close": [1.0] * 30}, index=pd.date_range("2026-01-01", periods=30, freq="B")).to_parquet(
+            tmp_path / "NOVOL.parquet", engine="pyarrow")
+        with patch("data_engine.HISTORICAL_DIR", tmp_path):
+            assert self.engine._load_history("NOVOL") is None
 
 
 class TestGetTickerList:
