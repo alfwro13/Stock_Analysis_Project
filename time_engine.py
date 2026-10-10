@@ -364,6 +364,27 @@ def last_settled_session_close_utc(exchange: Optional[str] = None) -> datetime:
         day -= timedelta(days=1)
 
 
+def local_hm_from_epoch(epoch: float, tz_name: str) -> str:
+    return datetime.fromtimestamp(epoch, tz=ZoneInfo(tz_name)).strftime("%H:%M")
+
+
+def reported_bar_still_forming(bar_date, tz_name: str, regular_end: str) -> bool:
+    """True when a daily bar dated *bar_date* is today's in the instrument's own timezone and the regular window Yahoo reports for it (ending at local *regular_end*) is still open."""
+    now_local = datetime.now(timezone.utc).astimezone(ZoneInfo(tz_name))
+    return bar_date >= now_local.date() and now_local.time() <= _parse_hm(regular_end)
+
+
+def last_reported_session_end_utc(tz_name: str, regular_end: str) -> datetime:
+    """Latest instant a regular window ending at local *regular_end* in *tz_name* has closed; a file written before it predates that window's final bar."""
+    tz = ZoneInfo(tz_name)
+    now_local = datetime.now(timezone.utc).astimezone(tz)
+    end_time = _parse_hm(regular_end)
+    end = datetime.combine(now_local.date(), end_time, tzinfo=tz)
+    if end > now_local:
+        end = datetime.combine(now_local.date() - timedelta(days=1), end_time, tzinfo=tz)
+    return end.astimezone(timezone.utc)
+
+
 def reset_cron_trigger_params(exchange: Optional[str] = None) -> dict:
     """Return APScheduler CronTrigger kwargs for 5 min after exchange close; uses exchange tz so DST is automatic."""
     if exchange is None:

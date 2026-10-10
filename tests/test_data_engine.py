@@ -1219,3 +1219,190 @@ def test_history_staleness_check_uses_the_registry_exchange(tmp_path):
         daily_history_cache_revision("^N225", refresh_stale=True)
         daily_history_cache_revision("AAPL", refresh_stale=True)
     assert [call.args[0] for call in settled.call_args_list] == ["TSE", "NYSE"]
+
+
+# ── Yahoo-reported sessions (FX, futures, rates) ──────────────────────────────
+
+@pytest.fixture
+def reported_sessions():
+    import data_engine
+    from database import get_connection
+
+    data_engine._instrument_sessions.clear()
+    data_engine._session_lookup_failed.clear()
+    yield data_engine._instrument_sessions
+    data_engine._instrument_sessions.clear()
+    data_engine._session_lookup_failed.clear()
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM instrument_sessions")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _stored_session(tz, end, updated_at=None):
+    import time
+
+    return {"tz": tz, "regular_end": end, "updated_at": time.time() if updated_at is None else updated_at}
+
+
+def _frame_with_last_bar(last_bar):
+    import pandas as pd
+
+    return pd.DataFrame({"Close": [10.0, 11.0, 12.0]}, index=pd.date_range(end=last_bar, periods=3))
+
+
+def _prepare_at(now, ticker, frame, *, exchange_open=False):
+    from data_engine import prepare_daily_history
+
+    with patch("time_engine.datetime", _fake_datetime_for_data_engine(now)), \
+         patch("time_engine.is_market_open", return_value=exchange_open), \
+         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+        return prepare_daily_history(ticker, frame, None)
+
+
+def _fake_datetime_for_data_engine(fixed_utc):
+    from datetime import datetime
+
+    class _Fake(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_utc.astimezone(tz) if tz else fixed_utc
+
+        @classmethod
+        def combine(cls, *a, **kw):
+            return datetime.combine(*a, **kw)
+
+    return _Fake
+
+
+def test_fx_bar_is_trimmed_until_the_london_day_ends_even_after_nyse_closed(reported_sessions):
+    from datetime import datetime, timezone
+
+    reported_sessions["GBPUSD=X"] = _stored_session("Europe/London", "23:59")
+    nightly_run = datetime(2026, 10, 9, 21, 33, tzinfo=timezone.utc)
+    assert len(_prepare_at(nightly_run, "GBPUSD=X", _frame_with_last_bar("2026-10-09"))) == 2
+    after_midnight = datetime(2026, 10, 9, 23, 30, tzinfo=timezone.utc)
+    assert len(_prepare_at(after_midnight, "GBPUSD=X", _frame_with_last_bar("2026-10-09"))) == 3
+
+
+def test_futures_bar_follows_the_new_york_day_not_the_utc_date(reported_sessions):
+    from datetime import datetime, timezone
+
+    reported_sessions["GC=F"] = _stored_session("America/New_York", "23:59")
+    evening = datetime(2026, 10, 10, 2, 0, tzinfo=timezone.utc)
+    assert len(_prepare_at(evening, "GC=F", _frame_with_last_bar("2026-10-09"))) == 2
+
+
+def test_rate_bar_is_kept_once_the_cboe_window_has_ended(reported_sessions):
+    from datetime import datetime, timezone
+
+    reported_sessions["^TNX"] = _stored_session("America/Chicago", "14:00")
+    assert len(_prepare_at(datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc), "^TNX", _frame_with_last_bar("2026-10-09"))) == 2
+    assert len(_prepare_at(datetime(2026, 10, 9, 19, 30, tzinfo=timezone.utc), "^TNX", _frame_with_last_bar("2026-10-09"))) == 3
+
+
+def test_unregistered_fx_pair_uses_its_reported_session(reported_sessions):
+    from datetime import datetime, timezone
+
+    reported_sessions["EURGBP=X"] = _stored_session("Europe/London", "23:59")
+    assert len(_prepare_at(datetime(2026, 10, 9, 21, 33, tzinfo=timezone.utc), "EURGBP=X", _frame_with_last_bar("2026-10-09"))) == 2
+
+
+@pytest.mark.parametrize("exchange_open,expected_rows", [(False, 3), (True, 2)])
+def test_unknown_session_falls_back_to_the_exchange_judgement(reported_sessions, exchange_open, expected_rows):
+    from data_engine import prepare_daily_history
+
+    with patch("time_engine.is_market_open", return_value=exchange_open), \
+         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+        assert len(prepare_daily_history("GC=F", _history_ending_today(), None)) == expected_rows
+
+
+def test_registry_exchange_wins_over_a_stored_session(reported_sessions):
+    from datetime import datetime, timezone
+
+    reported_sessions["^FTSE"] = _stored_session("Asia/Tokyo", "23:59")
+    now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+    with patch("time_engine.is_market_open", side_effect=lambda exchange: exchange == "LSE"), \
+         patch("time_engine.datetime", _fake_datetime_for_data_engine(now)), \
+         patch("data_engine.apply_saved_repairs", side_effect=lambda t, df: df):
+        from data_engine import prepare_daily_history
+
+        assert len(prepare_daily_history("^FTSE", _frame_with_last_bar("2026-10-09"), None)) == 3
+
+
+def test_history_staleness_uses_the_reported_window_end(tmp_path, reported_sessions):
+    import os
+    import time
+
+    import pandas as pd
+    from data_engine import daily_history_cache_revision
+
+    reported_sessions["GBPUSD=X"] = _stored_session("Europe/London", "23:59")
+    path = tmp_path / "GBPUSD=X.parquet"
+    pd.DataFrame({"Close": [1.3]}, index=pd.to_datetime(["2026-10-08"])).to_parquet(path)
+    os.utime(path, (time.time() - 7200, time.time() - 7200))
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+         patch("time_engine.last_reported_session_end_utc", return_value=_settled_close_hours_ago(1)) as window, \
+         patch("time_engine.last_settled_session_close_utc") as exchange_close, \
+         patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+        daily_history_cache_revision("GBPUSD=X", refresh_stale=True)
+    window.assert_called_once_with("Europe/London", "23:59")
+    exchange_close.assert_not_called()
+    refresh.assert_called_once()
+
+
+def test_session_is_learned_once_from_yahoo_and_persisted(reported_sessions):
+    import data_engine
+    from database import get_instrument_sessions
+
+    shape = {"tz": "America/Chicago", "regular_end": 1791572400}
+    with patch("data_engine.yahoo_engine.get_session_shape", return_value=shape) as lookup:
+        data_engine._learn_reported_session("^TNX")
+        data_engine._learn_reported_session("^TNX")
+    lookup.assert_called_once_with("^TNX")
+    assert data_engine._reported_session("^TNX") == ("America/Chicago", "14:00")
+    assert get_instrument_sessions()["^TNX"]["regular_end"] == "14:00"
+    reported_sessions.clear()
+    assert data_engine._reported_session("^TNX") == ("America/Chicago", "14:00")
+
+
+def test_failed_session_lookup_is_not_retried_within_the_retry_window(reported_sessions):
+    import data_engine
+
+    with patch("data_engine.yahoo_engine.get_session_shape", return_value=None) as lookup:
+        data_engine._learn_reported_session("GC=F")
+        data_engine._learn_reported_session("GC=F")
+    lookup.assert_called_once_with("GC=F")
+    assert data_engine._reported_session("GC=F") is None
+
+
+def test_stored_session_survives_a_failed_refresh(reported_sessions):
+    import data_engine
+
+    old = _stored_session("America/Chicago", "14:00", updated_at=0.0)
+    reported_sessions["^TNX"] = old
+    with patch("data_engine.yahoo_engine.get_session_shape", return_value=None) as lookup:
+        data_engine._learn_reported_session("^TNX")
+    lookup.assert_called_once()
+    assert data_engine._reported_session("^TNX") == ("America/Chicago", "14:00")
+
+
+@pytest.mark.parametrize("ticker", ["AAPL", "VOD.L", "^FTSE", "^GSPC", "UK10YG", "TBILL-606"])
+def test_session_lookup_is_skipped_for_exchange_listed_and_unfetchable_tickers(reported_sessions, ticker):
+    import data_engine
+
+    with patch("data_engine.yahoo_engine.get_session_shape") as lookup:
+        data_engine._learn_reported_session(ticker)
+    lookup.assert_not_called()
+
+
+@pytest.mark.parametrize("ticker,expected", [
+    ("GBPUSD=X", True), ("DX-Y.NYB", True), ("^TNX", True), ("ES=F", True), ("EURGBP=X", True), ("^SOX", True),
+    ("^FTSE", False), ("^N225", False), ("AAPL", False), ("VOD.L", False),
+])
+def test_reported_session_applies_only_to_instruments_without_an_exchange_calendar(ticker, expected):
+    from data_engine import _has_reported_session
+
+    assert _has_reported_session(ticker) is expected

@@ -437,6 +437,17 @@ def init_db() -> None:
             )
         ''')
 
+        # Yahoo's own exchange timezone and regular-window end for instruments no exchange_calendars
+        # calendar models (FX, futures, rates); data_engine judges their daily bars against it.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS instrument_sessions (
+                ticker        TEXT PRIMARY KEY,
+                exchange_tz   TEXT NOT NULL,
+                regular_end   TEXT NOT NULL,
+                updated_at    TEXT NOT NULL
+            )
+        ''')
+
         # Today's-session intraday points per ticker, feeding the Markets page mini sparkline.
         # Full replace on each fetch cycle (see market_pulse_write.fetch_and_save_pulse) — rows are
         # left untouched when the market is closed so the last session's line persists.

@@ -86,6 +86,7 @@ EXPECTED_TABLES = [
     "backup_history",
     "market_ticker_registry",
     "market_pulse_sparkline",
+    "instrument_sessions",
     "learn_cards",
     "learn_term_state",
     "ticker_notes",
@@ -304,6 +305,15 @@ def test_market_pulse_sparkline_has_required_columns():
     required = {"ticker", "ts", "price"}
     missing = required - cols
     assert not missing, f"market_pulse_sparkline missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_instrument_sessions_has_required_columns():
+    """instrument_sessions must carry the Yahoo-reported timezone and window end per ticker."""
+    cols = _columns("instrument_sessions")
+    required = {"ticker", "exchange_tz", "regular_end", "updated_at"}
+    missing = required - cols
+    assert not missing, f"instrument_sessions missing columns: {missing}"
 
 
 @pytest.mark.db

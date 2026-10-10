@@ -12,6 +12,7 @@ Coverage:
   TestGetIntraday          — prepost flag separation, interval-specific TTLs
   TestSingleTickerMethods  — get_ticker_info, options, news, insider, earnings,
                              fund_holdings, ticker_actions, get_fx_rate
+  TestGetSessionShape      — exchange timezone + regular-window end from chart metadata
   TestInvalidate           — per-ticker flush, full flush
   TestStats                — hit_rate_pct arithmetic, cached_keys count
   TestSingleton            — module-level instance is shared
@@ -31,6 +32,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from yahoo_engine import YahooEngine, yahoo_engine
+
+_REAL_GET_SESSION_SHAPE = YahooEngine.get_session_shape
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -968,6 +971,42 @@ class TestGetTickerActions:
 
         assert result is not None
         assert "Dividends" in result.columns
+
+
+# ─── TestGetSessionShape ─────────────────────────────────────────────────────
+
+class TestGetSessionShape:
+
+    def setup_method(self):
+        self.eng = YahooEngine()
+
+    def _meta(self, meta):
+        ticker = MagicMock()
+        ticker.get_history_metadata.return_value = meta
+        return patch("yahoo_engine.yf.Ticker", return_value=ticker), patch("yahoo_engine.yahoo_connection_boundary"), ticker
+
+    def test_returns_timezone_and_regular_window_end_and_caches(self):
+        meta = {"exchangeTimezoneName": "America/Chicago",
+                "currentTradingPeriod": {"regular": {"start": 1791548400, "end": 1791572400}}}
+        yf_patch, boundary, ticker = self._meta(meta)
+        with yf_patch, boundary:
+            first = _REAL_GET_SESSION_SHAPE(self.eng, "^TNX")
+            second = _REAL_GET_SESSION_SHAPE(self.eng, "^TNX")
+        assert first == second == {"tz": "America/Chicago", "regular_end": 1791572400}
+        assert ticker.get_history_metadata.call_count == 1
+
+    def test_missing_window_returns_none_and_is_not_cached(self):
+        yf_patch, boundary, ticker = self._meta({"exchangeTimezoneName": "America/Chicago"})
+        with yf_patch, boundary:
+            assert _REAL_GET_SESSION_SHAPE(self.eng, "^TNX") is None
+            assert _REAL_GET_SESSION_SHAPE(self.eng, "^TNX") is None
+        assert ticker.get_history_metadata.call_count == 2
+
+    def test_yahoo_error_returns_none(self):
+        ticker = MagicMock()
+        ticker.get_history_metadata.side_effect = RuntimeError("boom")
+        with patch("yahoo_engine.yf.Ticker", return_value=ticker), patch("yahoo_engine.yahoo_connection_boundary"):
+            assert _REAL_GET_SESSION_SHAPE(self.eng, "GC=F") is None
 
 
 # ─── TestInvalidate ───────────────────────────────────────────────────────────

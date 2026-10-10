@@ -9,10 +9,13 @@ import pandas as pd
 from typing import Set, List, Dict, Any, Optional, Sequence
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
-from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers, get_stock_signal_tickers
+from database import (
+    get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers,
+    get_stock_signal_tickers, get_instrument_sessions, upsert_instrument_session,
+)
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
-from market_session_helpers import cached_registry_exchange_map, resolve_ticker_exchange
+from market_session_helpers import cached_registry_exchange_map, cached_registry_reported_session_tickers, resolve_ticker_exchange
 from price_repair_engine import apply_saved_repairs
 import time_engine
 
@@ -21,11 +24,62 @@ from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_
 logger = logging.getLogger(__name__)
 
 UNIVERSE_HISTORY_BATCH = 250
+SESSION_REFRESH_SECONDS = 30 * 86400
+SESSION_RETRY_SECONDS = 3600
+
+_instrument_sessions: Dict[str, dict] = {}
+_session_lookup_failed: Dict[str, float] = {}
 
 
 def _history_exchange(ticker: str) -> str:
     """Registry exchange first (^FTSE is LSE, not NYSE), then the ticker suffix; never HOME_EXCHANGE, which would judge AAPL's bar against the operator's home session."""
     return resolve_ticker_exchange(ticker, registry_exchange_map=cached_registry_exchange_map(), suffix_only=True)
+
+
+def _has_reported_session(ticker: str) -> bool:
+    """FX, futures, rates and caret indexes have no exchange_calendars calendar and Yahoo buckets their daily bars on its own reported window; a registry index with an exchange or a suffixed listing keeps its exchange session."""
+    if ticker in cached_registry_reported_session_tickers():
+        return True
+    if time_engine.ticker_exchange_or_none(ticker) or ticker in cached_registry_exchange_map():
+        return False
+    return ticker.endswith(("=X", "=F")) or ticker.startswith("^")
+
+
+def _stored_sessions() -> Dict[str, dict]:
+    if not _instrument_sessions:
+        _instrument_sessions.update(get_instrument_sessions())
+    return _instrument_sessions
+
+
+def _reported_session(ticker: str) -> Optional[tuple]:
+    """(tz, local window end) Yahoo reported for `ticker`, or None while unknown, which callers judge by the exchange session as before."""
+    if not _has_reported_session(ticker):
+        return None
+    stored = _stored_sessions().get(ticker)
+    return (stored["tz"], stored["regular_end"]) if stored else None
+
+
+def _learn_reported_session(ticker: str) -> None:
+    """Runs from prepare_daily_history so every history writer learns a session on the refresh that first needs it; a failed lookup is retried after SESSION_RETRY_SECONDS and the last stored session survives it."""
+    if not _has_reported_session(ticker) or is_excluded_from_yahoo_fetch(ticker):
+        return
+    now = time.time()
+    stored = _stored_sessions().get(ticker)
+    if stored and now - stored["updated_at"] < SESSION_REFRESH_SECONDS:
+        return
+    if now - _session_lookup_failed.get(ticker, 0.0) < SESSION_RETRY_SECONDS:
+        return
+    shape = yahoo_engine.get_session_shape(ticker)
+    try:
+        regular_end = time_engine.local_hm_from_epoch(shape["regular_end"], shape["tz"]) if shape else None
+    except Exception as e:
+        logger.error("Unusable session for %s: %s", ticker, e)
+        regular_end = None
+    if regular_end is None:
+        _session_lookup_failed[ticker] = now
+        return
+    if upsert_instrument_session(ticker, shape["tz"], regular_end):
+        _instrument_sessions[ticker] = {"tz": shape["tz"], "regular_end": regular_end, "updated_at": now}
 
 
 def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.DataFrame], ticker: Optional[str] = None) -> pd.DataFrame:
@@ -39,13 +93,18 @@ def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.Data
 
 
 def prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame], *, drop_missing_volume: bool = False) -> pd.DataFrame:
-    """Single cleaning path for every daily-history writer so saved repairs survive any refresh; df_live=None means no live feed was fetched, so the exchange state and the bar's own date decide whether the last bar is still forming."""
+    """Single cleaning path for every daily-history writer so saved repairs survive any refresh; df_live=None means no live feed was fetched, so the exchange state and the bar's own date decide whether the last bar is still forming; a ticker with a Yahoo-reported session is judged by that window alone."""
     df = df.dropna(subset=["Close", "Volume"] if drop_missing_volume else ["Close"])
     for col in ("Open", "High", "Low"):
         if col in df.columns:
             mask = (df[col] == 0) & (df["Close"] > 0)
             df.loc[mask, col] = df.loc[mask, "Close"]
-    if df_live is not None:
+    _learn_reported_session(ticker)
+    session = _reported_session(ticker)
+    if session is not None:
+        if not df.empty and time_engine.reported_bar_still_forming(df.index[-1].date(), *session):
+            df = df.iloc[:-1]
+    elif df_live is not None:
         df = _drop_in_progress_last_bar(df, df_live, ticker)
     elif not df.empty:
         exchange_open = time_engine.is_market_open(_history_exchange(ticker))
@@ -406,7 +465,11 @@ def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
     except FileNotFoundError:
         state = None
     if refresh_stale and not is_excluded_from_yahoo_fetch(ticker):
-        settled_close = time_engine.last_settled_session_close_utc(_history_exchange(ticker))
+        session = _reported_session(ticker)
+        settled_close = (
+            time_engine.last_reported_session_end_utc(*session) if session is not None
+            else time_engine.last_settled_session_close_utc(_history_exchange(ticker))
+        )
         if state is None or state.st_mtime < settled_close.timestamp():
             request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
     if state is None:

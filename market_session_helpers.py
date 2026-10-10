@@ -179,9 +179,25 @@ def cached_registry_exchange_map() -> Dict[str, str]:
     return _registry_exchange_cache
 
 
+_registry_session_cache: Optional[set] = None
+
+
+def cached_registry_reported_session_tickers() -> set:
+    """Enabled registry spot rows with no exchange (FX, rates, commodities) plus every future_ticker: instruments no exchange_calendars calendar models, so their daily bars are judged against the window Yahoo reports. Cached like the exchange map; an empty result (failed registry read) is never cached."""
+    global _registry_session_cache
+    if _registry_session_cache is None:
+        rows = get_ticker_registry(enabled_only=True)
+        tickers = {row["ticker"] for row in rows if not row.get("exchange")} | build_registry_future_tickers(rows)
+        if not tickers:
+            return tickers
+        _registry_session_cache = tickers
+    return _registry_session_cache
+
+
 def reset_registry_exchange_cache() -> None:
-    global _registry_exchange_cache
+    global _registry_exchange_cache, _registry_session_cache
     _registry_exchange_cache = None
+    _registry_session_cache = None
 
 
 def resolve_ticker_exchange(

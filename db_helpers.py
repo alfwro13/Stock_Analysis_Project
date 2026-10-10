@@ -1371,3 +1371,40 @@ def upsert_fx_quote(pair: str, rate: float, updated_at: float, conn=None):
     finally:
         if owns_conn and conn:
             conn.close()
+
+
+def get_instrument_sessions() -> dict:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute("SELECT ticker, exchange_tz, regular_end, updated_at FROM instrument_sessions").fetchall()
+        return {
+            row["ticker"]: {"tz": row["exchange_tz"], "regular_end": row["regular_end"], "updated_at": parse_utc_epoch(row["updated_at"])}
+            for row in rows
+        }
+    except Exception as e:
+        logger.error("Failed to read instrument sessions: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def upsert_instrument_session(ticker: str, exchange_tz: str, regular_end: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO instrument_sessions (ticker, exchange_tz, regular_end, updated_at)
+            VALUES (?, ?, ?, ?) ON CONFLICT(ticker) DO UPDATE SET
+            exchange_tz = excluded.exchange_tz, regular_end = excluded.regular_end, updated_at = excluded.updated_at""",
+            (ticker, exchange_tz, regular_end, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error("Failed to save instrument session for %s: %s", ticker, e)
+        return False
+    finally:
+        if conn:
+            conn.close()

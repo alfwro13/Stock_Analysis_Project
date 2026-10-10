@@ -68,6 +68,7 @@ _TTLS: dict[str, int] = {
     "isin_search":           86400,  # 24 h — ISIN→ticker mapping is stable
     "ticker_search":          3600,  # 1 h — company-name/ticker autocomplete
     "quote_snapshot":          300,  # 5 min — needs to reflect the live open/closed transition
+    "session_shape":         86400,  # 24 h — an instrument's timezone and regular window rarely change
 }
 
 
@@ -422,6 +423,27 @@ class YahooEngine:
             return snapshot
         except Exception:
             logger.error("get_quote_snapshot failed for %s", ticker, exc_info=True)
+        return None
+
+    def get_session_shape(self, ticker: str) -> Optional[dict]:
+        """Yahoo's exchange timezone and regular-window end (epoch) from chart metadata, cached 24 h — the window its daily bars are bucketed on, which no exchange calendar models for FX, futures and rates."""
+        key = f"session_shape:{ticker}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        try:
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Session Shape: {ticker}", lock=_yf_singleton_lock) as session:
+                    meta = yf.Ticker(ticker, session=session).get_history_metadata()
+            tz = (meta or {}).get("exchangeTimezoneName")
+            end = ((meta or {}).get("currentTradingPeriod") or {}).get("regular", {}).get("end")
+            if not tz or not end:
+                return None
+            shape = {"tz": tz, "regular_end": int(end)}
+            self._set(key, shape, _TTLS["session_shape"])
+            return shape
+        except Exception:
+            logger.error("get_session_shape failed for %s", ticker, exc_info=True)
         return None
 
     def get_options_expirations(self, ticker: str) -> Optional[list]:
