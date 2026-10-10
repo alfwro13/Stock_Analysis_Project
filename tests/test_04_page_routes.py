@@ -13,7 +13,7 @@ a refactor.
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -2047,6 +2047,13 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
     assert "callers=tests/test_04_page_routes.py:exercise:" in caplog.text
 
 
+def _stub_connection(rows=None, row=None):
+    conn = MagicMock()
+    conn.cursor.return_value.fetchall.return_value = rows or []
+    conn.cursor.return_value.fetchone.return_value = row
+    return conn
+
+
 @pytest.mark.parametrize(
     "method,path,patch_target,stub_result",
     [
@@ -2058,11 +2065,29 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
         ("get", "/api/universe/profiler-status", "api_routes_triggers.get_profiler_queue_breakdown", {"pending_count": 3}),
         ("get", "/index/%5EGSPC", "page_routes_macro.intraday_chart_revision", ""),
         ("get", "/market-sentiment", "page_routes_macro.get_latest_regime", {}),
+        ("get", "/api/system/metrics", "api_routes_system.get_all_job_last_runs", {}),
+        ("get", "/api/notifications/latest", "api_routes_system.get_connection", _stub_connection()),
+        ("post", "/api/system/git-pull", "api_routes_system.subprocess.run", MagicMock(returncode=0, stdout="sha\n", stderr="")),
+        ("get", "/api/freshness", "api_routes.get_connection", _stub_connection(row={"max_date": None})),
+        ("get", "/api/fx-drag?period=lifetime", "api_routes.portfolio_lifetime_fx_breakdown", []),
+        ("get", "/api/portfolio-optimizer/candidates", "api_routes._po_list_candidates", {"status": "success"}),
+        ("get", "/api/alert-referee/status", "alert_referee_engine.get_referee_summary", {}),
+        ("get", "/settings", "page_routes.get_unread_count", 0),
+        ("get", "/glossary", "page_routes._render_asset_docs", []),
+        ("get", "/notifications", "page_routes.get_connection", _stub_connection()),
+        ("get", "/tools", "page_routes.get_unread_count", 0),
+        ("get", "/fx-drag", "page_routes.portfolio_lifetime_fx_breakdown", []),
+        ("get", "/rss/alerts.xml", "page_routes.load_config", {"NOTIFICATIONS": {"RSS_FEED": {"ENABLED": True}}}),
     ],
-    ids=["intraday-yahoo", "portfolio-history", "ha-metrics", "markets-payload", "ha-market-status", "profiler-status", "index-detail", "market-sentiment"],
+    ids=[
+        "intraday-yahoo", "portfolio-history", "ha-metrics", "markets-payload", "ha-market-status",
+        "profiler-status", "index-detail", "market-sentiment", "system-metrics", "latest-notifications",
+        "git-pull", "data-freshness", "fx-drag-api", "optimizer-candidates", "alert-referee-status",
+        "settings-page", "glossary-page", "notifications-page", "tools-page", "fx-drag-page", "rss-alerts-feed",
+    ],
 )
 def test_blocked_request_does_not_stall_unrelated_request(
-    client, method, path, patch_target, stub_result,
+    client, confirm_token, method, path, patch_target, stub_result,
 ):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
@@ -2077,7 +2102,7 @@ def test_blocked_request_does_not_stall_unrelated_request(
 
     def request():
         if method == "post":
-            return client.post(path, json={"ticker": "TSTBLOCK"})
+            return client.post(path, json={"ticker": "TSTBLOCK"}, headers={"X-Confirm-Token": confirm_token})
         return client.get(path)
 
     with patch(patch_target, side_effect=stalled_call):
@@ -2091,6 +2116,32 @@ def test_blocked_request_does_not_stall_unrelated_request(
             finally:
                 release.set()
             assert slow.result(timeout=20).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "module_file",
+    ["api_routes.py", "api_routes_analysis.py", "api_routes_system.py", "api_routes_triggers.py", "page_routes.py"],
+)
+def test_async_route_handlers_always_await(module_file):
+    """An `async def` handler with no await of its own runs all its blocking DB/file work on the event loop; it must be a plain `def`, or await run_in_threadpool/asyncio.to_thread."""
+    import ast
+
+    def awaits_itself(handler):
+        stack = list(handler.body)
+        while stack:
+            node = stack.pop()
+            if isinstance(node, ast.Await):
+                return True
+            if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef, ast.Lambda, ast.ClassDef)):
+                stack.extend(ast.iter_child_nodes(node))
+        return False
+
+    source = (Path(__file__).resolve().parents[1] / module_file).read_text()
+    offenders = [
+        node.name for node in ast.parse(source).body
+        if isinstance(node, ast.AsyncFunctionDef) and not awaits_itself(node)
+    ]
+    assert offenders == []
 
 
 @pytest.mark.parametrize("page", ["stock_detail", "index_detail"])

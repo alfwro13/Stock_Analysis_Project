@@ -30,7 +30,7 @@ analysis_router = APIRouter()
 
 
 @analysis_router.get("/ai-contagion/status")
-async def get_ai_contagion_status():
+def get_ai_contagion_status():
     """Returns the last 20 AI Contagion scan snapshots for the market-sentiment status panel."""
     conn = None
     try:
@@ -69,7 +69,7 @@ async def get_ai_contagion_status():
 
 @analysis_router.post("/ai-contagion/trigger")
 @limiter.limit("4/minute")
-async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
+def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers an AI Contagion scan in the background (useful for testing)."""
     try:
         from scheduler_engine import run_ai_contagion_job
@@ -82,7 +82,7 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
 
 @analysis_router.get("/trap-monitor/results")
 @limiter.limit("20/minute")
-async def get_trap_monitor_results(request: Request):
+def get_trap_monitor_results(request: Request):
     """Returns all trap monitor scan results ordered by phase severity (most severe first).
     Also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
@@ -114,7 +114,7 @@ async def get_trap_monitor_results(request: Request):
 
 @analysis_router.post("/trap-monitor/run")
 @limiter.limit("4/minute")
-async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
+def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Trap Monitor scan in the background."""
     try:
         from scheduler_engine import run_trap_monitor_job
@@ -127,7 +127,7 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
 
 @analysis_router.get("/trap-monitor/accuracy")
 @limiter.limit("20/minute")
-async def get_trap_monitor_accuracy(request: Request):
+def get_trap_monitor_accuracy(request: Request):
     """Returns per-phase prediction accuracy at 14-day and 30-day horizons."""
     from database import get_trap_phase_accuracy
     data = get_trap_phase_accuracy()
@@ -141,7 +141,7 @@ def _resolve_referee_engine(engine: str) -> str:
 
 @analysis_router.get("/alert-referee/status")
 @limiter.limit("20/minute")
-async def get_alert_referee_status(request: Request, engine: str = Query(default="TrapMonitor")):
+def get_alert_referee_status(request: Request, engine: str = Query(default="TrapMonitor")):
     """Returns Alert Confidence Referee readiness, latest trained model, and recent shadow-mode
     log for the given engine ("TrapMonitor" — the original pilot — or "Confluence", the
     Cross-Engine Alert Referee scoring Idea A/B's combined pillar/regime signal)."""
@@ -156,7 +156,7 @@ async def get_alert_referee_status(request: Request, engine: str = Query(default
 
 @analysis_router.get("/alert-referee/log")
 @limiter.limit("30/minute")
-async def get_alert_referee_log(
+def get_alert_referee_log(
     request: Request,
     engine: str = Query(default="TrapMonitor"),
     ticker: str = Query(default=""),
@@ -184,7 +184,7 @@ async def get_alert_referee_log(
 
 @analysis_router.post("/alert-referee/train")
 @limiter.limit("4/minute")
-async def train_alert_referee(request: Request, background_tasks: BackgroundTasks, engine: str = Query(default="TrapMonitor")):
+def train_alert_referee(request: Request, background_tasks: BackgroundTasks, engine: str = Query(default="TrapMonitor")):
     """Manually triggers Alert Confidence Referee training in the background (the 'Run Now' Settings action)."""
     try:
         from alert_referee_engine import CONFLUENCE_ENGINE
@@ -201,7 +201,7 @@ async def train_alert_referee(request: Request, background_tasks: BackgroundTask
 
 @analysis_router.get("/bubble-radar/data")
 @limiter.limit("20/minute")
-async def get_bubble_radar_data(request: Request):
+def get_bubble_radar_data(request: Request):
     """Returns all currently-flagged tickers with their latest bubble metrics."""
     from bubble_radar_engine import get_bubble_radar_data
     data = get_bubble_radar_data()
@@ -210,7 +210,7 @@ async def get_bubble_radar_data(request: Request):
 
 @analysis_router.get("/bubble-radar/ticker/{ticker}")
 @limiter.limit("20/minute")
-async def get_bubble_radar_ticker(request: Request, ticker: str):
+def get_bubble_radar_ticker(request: Request, ticker: str):
     """Returns the latest bubble metrics and per-metric score breakdown for a single ticker."""
     from bubble_radar_engine import get_bubble_ticker_detail
     data = get_bubble_ticker_detail(ticker)
@@ -221,7 +221,7 @@ async def get_bubble_radar_ticker(request: Request, ticker: str):
 
 @analysis_router.get("/bubble-radar/history")
 @limiter.limit("10/minute")
-async def get_bubble_radar_history(request: Request):
+def get_bubble_radar_history(request: Request):
     """Returns historical bubble flag events with outcome tracking."""
     from bubble_radar_engine import get_bubble_radar_history
     data = get_bubble_radar_history()
@@ -230,7 +230,7 @@ async def get_bubble_radar_history(request: Request):
 
 @analysis_router.post("/bubble-radar/run")
 @limiter.limit("4/minute")
-async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
+def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Bubble Radar scan in the background."""
     try:
         from scheduler_engine import run_bubble_radar_job
@@ -243,7 +243,7 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
 
 @analysis_router.post("/risk-orchestrator/run")
 @limiter.limit("4/minute")
-async def run_risk_orchestrator(request: Request, background_tasks: BackgroundTasks):
+def run_risk_orchestrator(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Portfolio Heat Index scan in the background."""
     try:
         from scheduler_engine import run_risk_orchestrator_job
@@ -256,7 +256,7 @@ async def run_risk_orchestrator(request: Request, background_tasks: BackgroundTa
 
 @analysis_router.get("/risk-orchestrator/status")
 @limiter.limit("30/minute")
-async def get_risk_orchestrator_status(request: Request):
+def get_risk_orchestrator_status(request: Request):
     """Returns every scope's latest Portfolio Heat Index plus all per-ticker risk contributions."""
     conn = None
     try:
@@ -281,7 +281,7 @@ async def get_risk_orchestrator_status(request: Request):
 
 @analysis_router.get("/risk-orchestrator/pretrade-check")
 @limiter.limit("20/minute")
-async def get_risk_orchestrator_pretrade_check(
+def get_risk_orchestrator_pretrade_check(
     request: Request,
     ticker: str = Query(...),
     value: float = Query(..., gt=0),
@@ -314,7 +314,7 @@ async def get_risk_orchestrator_pretrade_check(
 
 @analysis_router.get("/pairs-spread/results")
 @limiter.limit("20/minute")
-async def get_pairs_spread_results(
+def get_pairs_spread_results(
     request: Request,
     scope: str = Query(default="portfolio_watchlist", pattern=r"^(portfolio_watchlist|universe)$"),
 ):
@@ -345,7 +345,7 @@ async def get_pairs_spread_results(
 
 @analysis_router.post("/pairs-spread/run")
 @limiter.limit("4/minute")
-async def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTasks):
+def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Pairs Spread Monitor scan (Portfolio + Watchlist scope) in the background."""
     try:
         from scheduler_engine import run_pairs_spread_monitor_job
@@ -358,7 +358,7 @@ async def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTa
 
 @analysis_router.post("/pairs-spread/run-universe")
 @limiter.limit("2/minute")
-async def run_pairs_spread_universe(request: Request, background_tasks: BackgroundTasks):
+def run_pairs_spread_universe(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers an on-demand-only full market-universe Pairs Spread scan in the background. No scheduled equivalent — too expensive to run nightly."""
     try:
         from scheduler_engine import run_pairs_spread_universe_scan
@@ -371,7 +371,7 @@ async def run_pairs_spread_universe(request: Request, background_tasks: Backgrou
 
 @analysis_router.get("/pairs-spread/chart/{ticker_a}/{ticker_b}")
 @limiter.limit("20/minute")
-async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str):
+def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str):
     """Returns aligned normalized price series for both tickers plus correlation/z-score, recomputed on demand from parquet."""
     try:
         from pairs_spread_engine import build_chart_series
@@ -386,7 +386,7 @@ async def get_pairs_spread_chart(request: Request, ticker_a: str, ticker_b: str)
 
 @analysis_router.get("/pattern-detection/results")
 @limiter.limit("20/minute")
-async def get_pattern_detection_results(request: Request, family: Optional[str] = Query(None)):
+def get_pattern_detection_results(request: Request, family: Optional[str] = Query(None)):
     """Returns all current pattern candidates across every registered family (or one family
     if `family` is given), confirmed patterns first. Each result carries a `direction`
     ("up"/"down") resolved from its family's PATTERN_TYPES registry entry, and the response
@@ -432,7 +432,7 @@ async def get_pattern_detection_results(request: Request, family: Optional[str] 
 
 @analysis_router.post("/pattern-detection/run")
 @limiter.limit("4/minute")
-async def run_pattern_detection_scan(request: Request, background_tasks: BackgroundTasks):
+def run_pattern_detection_scan(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Pattern Detection scan (every registered family) in the background."""
     try:
         from scheduler_engine import run_pattern_detection_job
@@ -445,7 +445,7 @@ async def run_pattern_detection_scan(request: Request, background_tasks: Backgro
 
 @analysis_router.post("/pattern-detection/backfill")
 @limiter.limit("1/minute")
-async def run_pattern_detection_backfill(request: Request, background_tasks: BackgroundTasks):
+def run_pattern_detection_backfill(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a one-time historical backtest over each monitored ticker's full parquet history — can take several minutes."""
     try:
         from pattern_detection_engine import backfill_historical_patterns
@@ -458,7 +458,7 @@ async def run_pattern_detection_backfill(request: Request, background_tasks: Bac
 
 @analysis_router.get("/pattern-detection/accuracy")
 @limiter.limit("20/minute")
-async def get_pattern_detection_accuracy_route(request: Request, family: Optional[str] = Query(None)):
+def get_pattern_detection_accuracy_route(request: Request, family: Optional[str] = Query(None)):
     """Returns per-family, per-pattern-type prediction accuracy at 14-day and 30-day horizons."""
     from database import get_pattern_detection_accuracy
     data = get_pattern_detection_accuracy(family)
@@ -467,7 +467,7 @@ async def get_pattern_detection_accuracy_route(request: Request, family: Optiona
 
 @analysis_router.get("/pattern-detection/chart/{ticker}")
 @limiter.limit("20/minute")
-async def get_pattern_detection_chart(request: Request, ticker: str):
+def get_pattern_detection_chart(request: Request, ticker: str):
     """Returns the ticker's recent daily close series plus every currently-active pattern's
     stored geometry (points/lines) across all registered families, for client-side overlay
     on a single chart. Each pattern carries a `direction` ("up"/"down") resolved from its
@@ -515,7 +515,7 @@ async def get_pattern_detection_chart(request: Request, ticker: str):
 
 @analysis_router.get("/predicted-movers/leaderboard")
 @limiter.limit("20/minute")
-async def get_predicted_movers_leaderboard(
+def get_predicted_movers_leaderboard(
     request: Request,
     scope: str = Query(default="portfolio", pattern=r"^(portfolio|watchlist|universe)$"),
     sort: str = Query(default="movers", pattern=r"^(gainers|losers|movers)$"),
@@ -550,7 +550,7 @@ async def get_sector_relative_momentum_results(
 
 @analysis_router.post("/sector-relative-momentum/run")
 @limiter.limit("4/minute")
-async def run_sector_relative_momentum_scan(request: Request, background_tasks: BackgroundTasks):
+def run_sector_relative_momentum_scan(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Sector-Relative Momentum ranking run in the background."""
     try:
         from scheduler_engine import run_sector_relative_momentum_job
@@ -563,7 +563,7 @@ async def run_sector_relative_momentum_scan(request: Request, background_tasks: 
 
 @analysis_router.get("/predicted-movers/accuracy")
 @limiter.limit("20/minute")
-async def get_predicted_movers_accuracy_data(
+def get_predicted_movers_accuracy_data(
     request: Request,
     scope: str = Query(default="portfolio", pattern=r"^(portfolio|watchlist)$"),
 ):
@@ -596,7 +596,7 @@ async def get_stable_shortlist(
 
 @analysis_router.post("/predicted-movers/shortlist/run")
 @limiter.limit("4/minute")
-async def run_stable_shortlist_scan(request: Request, background_tasks: BackgroundTasks):
+def run_stable_shortlist_scan(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Stable Shortlist run (outcome resolution plus this week's snapshots) in the background."""
     try:
         from scheduler_engine import run_stable_shortlist_job
@@ -609,7 +609,7 @@ async def run_stable_shortlist_scan(request: Request, background_tasks: Backgrou
 
 @analysis_router.get("/earnings-volatility/accuracy")
 @limiter.limit("20/minute")
-async def get_earnings_drift_accuracy_data(request: Request):
+def get_earnings_drift_accuracy_data(request: Request):
     """Returns per-ticker + overall direction-match hit rates at 1/5/20 trading days for logged post-earnings drift predictions."""
     try:
         from earnings_vol_engine import get_earnings_drift_accuracy_summary
@@ -622,7 +622,7 @@ async def get_earnings_drift_accuracy_data(request: Request):
 
 @analysis_router.get("/forensic-scores")
 @limiter.limit("20/minute")
-async def get_forensic_scores(request: Request):
+def get_forensic_scores(request: Request):
     """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
     conn = None
     try:
@@ -684,7 +684,7 @@ async def get_forensic_scores(request: Request):
 
 @analysis_router.post("/forensic-scores/run-fetch")
 @limiter.limit("4/minute")
-async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
+def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Quarterly Data Fetch in the background."""
     try:
         from scheduler_engine import run_forensic_quarterly_fetch_job
@@ -697,7 +697,7 @@ async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundT
 
 @analysis_router.post("/forensic-scores/run-score")
 @limiter.limit("4/minute")
-async def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks):
+def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Accounting Scores computation in the background."""
     try:
         from scheduler_engine import run_forensic_scores_job
@@ -710,7 +710,7 @@ async def trigger_forensic_scores(request: Request, background_tasks: Background
 
 @analysis_router.get("/market-regime/current")
 @limiter.limit("30/minute")
-async def get_market_regime_current(request: Request):
+def get_market_regime_current(request: Request):
     """Returns the latest HMM price regime state and the most recent regime transition."""
     conn = None
     try:
@@ -764,7 +764,7 @@ async def get_market_regime_current(request: Request):
 
 @analysis_router.get("/market-stress")
 @limiter.limit("30/minute")
-async def get_market_stress(request: Request):
+def get_market_stress(request: Request):
     """Returns the latest market-wide Isolation Forest stress score and the last 30 daily values."""
     conn = None
     try:
@@ -805,7 +805,7 @@ async def get_market_stress(request: Request):
 
 @analysis_router.get("/macro-conditions")
 @limiter.limit("30/minute")
-async def get_macro_conditions(request: Request):
+def get_macro_conditions(request: Request):
     """Returns the latest sovereign-yield threat levels, Treasury auction demand, and Fear &
     Greed — the Home Assistant integration's "Market Health" device reads this in one call.
     Threat levels are returned as raw GREEN/YELLOW/RED (same convention as
@@ -856,7 +856,7 @@ async def get_macro_conditions(request: Request):
 
 @analysis_router.get("/market-regime")
 @limiter.limit("10/minute")
-async def get_market_regime_full(request: Request):
+def get_market_regime_full(request: Request):
     """Returns full HMM regime history, transition matrix, and per-state statistics."""
     conn = None
     try:
@@ -951,7 +951,7 @@ async def get_market_regime_full(request: Request):
 
 @analysis_router.post("/market-regime/run")
 @limiter.limit("4/minute")
-async def run_market_regime_now(request: Request, background_tasks: BackgroundTasks):
+def run_market_regime_now(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the HMM price regime calculation in the background."""
     try:
         from regime_engine import run_price_regime_hmm
@@ -970,7 +970,7 @@ class StressTestRequest(BaseModel):
 
 @analysis_router.get("/stress-test/scenarios")
 @limiter.limit("30/minute")
-async def get_stress_test_scenarios(request: Request):
+def get_stress_test_scenarios(request: Request):
     """Returns the list of available stress-test scenarios."""
     try:
         from stress_engine import SCENARIOS
@@ -985,7 +985,7 @@ async def get_stress_test_scenarios(request: Request):
 
 @analysis_router.post("/stress-test/run")
 @limiter.limit("10/minute")
-async def run_stress_test(request: Request, body: StressTestRequest):
+def run_stress_test(request: Request, body: StressTestRequest):
     """Applies a beta-adjusted scenario shock to the portfolio and returns a monetary impact report."""
     try:
         from stress_engine import run_stress_test as _run
@@ -1031,7 +1031,7 @@ def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:
 
 @analysis_router.post("/etf-predictors/validate")
 @limiter.limit("10/minute")
-async def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
+def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
     try:
         from etf_predictor_engine import _ticker_exchange_explicit, find_unknown_exchange_tickers
         import time_engine as _te
@@ -1089,7 +1089,7 @@ async def validate_etf_predictor_config(request: Request, body: EtfValidateBody)
 
 @analysis_router.get("/etf-predictors")
 @limiter.limit("20/minute")
-async def list_etf_predictors(request: Request):
+def list_etf_predictors(request: Request):
     try:
         from database import get_etf_predictor_configs
         configs = get_etf_predictor_configs()
@@ -1101,7 +1101,7 @@ async def list_etf_predictors(request: Request):
 
 @analysis_router.post("/etf-predictors")
 @limiter.limit("10/minute")
-async def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
+def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
     try:
         from database import create_etf_predictor_config
         from scheduler_engine import register_etf_predictor_jobs
@@ -1134,7 +1134,7 @@ async def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
 
 @analysis_router.put("/etf-predictors/{config_id}")
 @limiter.limit("10/minute")
-async def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorConfigBody):
+def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorConfigBody):
     try:
         from database import update_etf_predictor_config, get_etf_predictor_config
         from scheduler_engine import register_etf_predictor_jobs, unregister_etf_predictor_jobs
@@ -1168,7 +1168,7 @@ async def update_etf_predictor(request: Request, config_id: int, body: EtfPredic
 
 @analysis_router.delete("/etf-predictors/{config_id}")
 @limiter.limit("10/minute")
-async def delete_etf_predictor(request: Request, config_id: int):
+def delete_etf_predictor(request: Request, config_id: int):
     try:
         from database import soft_delete_etf_predictor_config, get_etf_predictor_config
         from scheduler_engine import unregister_etf_predictor_jobs
@@ -1184,7 +1184,7 @@ async def delete_etf_predictor(request: Request, config_id: int):
 
 @analysis_router.post("/etf-predictors/{config_id}/run")
 @limiter.limit("5/minute")
-async def run_etf_predictor(request: Request, config_id: int, background_tasks: BackgroundTasks):
+def run_etf_predictor(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
         from database import get_etf_predictor_config
         if get_etf_predictor_config(config_id) is None:
@@ -1221,7 +1221,7 @@ async def run_etf_predictor(request: Request, config_id: int, background_tasks: 
 
 @analysis_router.post("/etf-predictors/{config_id}/fill-actuals")
 @limiter.limit("5/minute")
-async def fill_etf_predictor_actuals(request: Request, config_id: int, background_tasks: BackgroundTasks):
+def fill_etf_predictor_actuals(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
         from database import get_etf_predictor_config
         if get_etf_predictor_config(config_id) is None:
@@ -1246,7 +1246,7 @@ async def fill_etf_predictor_actuals(request: Request, config_id: int, backgroun
 
 @analysis_router.get("/etf-predictors/{config_id}/predictions")
 @limiter.limit("20/minute")
-async def get_etf_predictor_predictions(request: Request, config_id: int):
+def get_etf_predictor_predictions(request: Request, config_id: int):
     try:
         from database import get_etf_accuracy, get_etf_predictor_config
         if get_etf_predictor_config(config_id) is None:
@@ -1281,7 +1281,7 @@ _SENTIMENT_UK_MODES = frozenset([
 
 
 @analysis_router.get("/ai-prompt/market-regime")
-async def get_ai_prompt_market_regime(mode: str = "Plain English Briefing"):
+def get_ai_prompt_market_regime(mode: str = "Plain English Briefing"):
     if mode not in _REGIME_MODES:
         return JSONResponse(status_code=400, content={"status": "error", "message": f"Unrecognised mode: {mode}"})
     try:
@@ -1293,7 +1293,7 @@ async def get_ai_prompt_market_regime(mode: str = "Plain English Briefing"):
 
 
 @analysis_router.get("/ai-prompt/market-sentiment/us")
-async def get_ai_prompt_sentiment_us(mode: str = "US Market Health Check"):
+def get_ai_prompt_sentiment_us(mode: str = "US Market Health Check"):
     if mode not in _SENTIMENT_US_MODES:
         return JSONResponse(status_code=400, content={"status": "error", "message": f"Unrecognised mode: {mode}"})
     try:
@@ -1305,7 +1305,7 @@ async def get_ai_prompt_sentiment_us(mode: str = "US Market Health Check"):
 
 
 @analysis_router.get("/ai-prompt/market-sentiment/uk")
-async def get_ai_prompt_sentiment_uk(mode: str = "UK Market Health Check"):
+def get_ai_prompt_sentiment_uk(mode: str = "UK Market Health Check"):
     if mode not in _SENTIMENT_UK_MODES:
         return JSONResponse(status_code=400, content={"status": "error", "message": f"Unrecognised mode: {mode}"})
     try:
@@ -1317,7 +1317,7 @@ async def get_ai_prompt_sentiment_uk(mode: str = "UK Market Health Check"):
 
 
 @analysis_router.get("/ai-prompt/{ticker}")
-async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
+def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
     try:
         ticker = normalize_ticker(ticker)
         engine = AIPromptEngine()

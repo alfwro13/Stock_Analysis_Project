@@ -265,7 +265,7 @@ def api_price_repair_remove(req: DailyBarRemovalRequest):
 
 
 @api_router.post("/ticker/{ticker}/name-override")
-async def api_set_name_override(ticker: str, req: NameOverrideRequest):
+def api_set_name_override(ticker: str, req: NameOverrideRequest):
     ticker = normalize_ticker(ticker)
     conn = None
     try:
@@ -288,7 +288,7 @@ async def api_set_name_override(ticker: str, req: NameOverrideRequest):
 
 
 @api_router.post("/ticker/{ticker}/notes")
-async def api_add_ticker_note(ticker: str, req: TickerNoteRequest):
+def api_add_ticker_note(ticker: str, req: TickerNoteRequest):
     ticker = normalize_ticker(ticker)
     try:
         note_id = add_ticker_note(ticker, req.note_text.strip())
@@ -301,7 +301,7 @@ async def api_add_ticker_note(ticker: str, req: TickerNoteRequest):
 
 
 @api_router.put("/ticker/{ticker}/notes/{note_id}")
-async def api_update_ticker_note(ticker: str, note_id: int, req: TickerNoteRequest):
+def api_update_ticker_note(ticker: str, note_id: int, req: TickerNoteRequest):
     ticker = normalize_ticker(ticker)
     try:
         updated = update_ticker_note(note_id, ticker, req.note_text.strip())
@@ -314,7 +314,7 @@ async def api_update_ticker_note(ticker: str, note_id: int, req: TickerNoteReque
 
 
 @api_router.delete("/ticker/{ticker}/notes/{note_id}")
-async def api_delete_ticker_note(ticker: str, note_id: int):
+def api_delete_ticker_note(ticker: str, note_id: int):
     ticker = normalize_ticker(ticker)
     try:
         deleted = delete_ticker_note(note_id, ticker)
@@ -327,7 +327,7 @@ async def api_delete_ticker_note(ticker: str, note_id: int):
 
 
 @api_router.get("/ticker-notes")
-async def api_get_all_ticker_notes():
+def api_get_all_ticker_notes():
     try:
         entries = get_all_ticker_notes_grouped()
         company_names = get_company_names([e["ticker"] for e in entries])
@@ -340,7 +340,7 @@ async def api_get_all_ticker_notes():
 
 
 @api_router.post("/index/refresh")
-async def api_index_refresh(req: TickerRequest):
+def api_index_refresh(req: TickerRequest):
     ticker = normalize_ticker(req.ticker)
     try:
         fetch_and_save_pulse([ticker])
@@ -360,14 +360,14 @@ async def api_index_refresh(req: TickerRequest):
 
 @api_router.get("/options/chain/{ticker}")
 @limiter.limit("10/minute")
-async def api_options_chain(request: Request, ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+def api_options_chain(request: Request, ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     data = fetch_options_chain(ticker)
     if "error" in data:
         return JSONResponse(status_code=400, content=data)
     return JSONResponse(content=data)
 
 @api_router.post("/options/payoff")
-async def api_options_payoff(req: PayoffRequest):
+def api_options_payoff(req: PayoffRequest):
     try:
         legs_dict = [leg.model_dump() for leg in req.legs]
         matrix = calculate_payoff_matrix(legs_dict, req.current_price)
@@ -390,7 +390,7 @@ class GlossaryLearnPreferenceBody(BaseModel):
 
 @api_router.get("/learn/overview")
 @limiter.limit("30/minute")
-async def api_learn_overview(request: Request):
+def api_learn_overview(request: Request):
     try:
         return JSONResponse(content={"status": "success", **glossary_learn_engine.overview()})
     except Exception as e:
@@ -400,7 +400,7 @@ async def api_learn_overview(request: Request):
 
 @api_router.post("/learn/session")
 @limiter.limit("15/minute")
-async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30), section_id: Optional[str] = Query(None), study_all: bool = Query(False)):
+def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30), section_id: Optional[str] = Query(None), study_all: bool = Query(False)):
     try:
         cards = glossary_learn_engine.build_session(size=size, section_id=section_id, include_locked=study_all)
         return JSONResponse(content={"status": "success", "cards": cards})
@@ -411,7 +411,7 @@ async def api_learn_session(request: Request, size: int = Query(10, ge=1, le=30)
 
 @api_router.post("/learn/answer")
 @limiter.limit("120/minute")
-async def api_learn_answer(request: Request, body: GlossaryLearnAnswer):
+def api_learn_answer(request: Request, body: GlossaryLearnAnswer):
     if body.grade not in ("good", "hard", "fail"):
         return JSONResponse(status_code=400, content={"status": "error", "message": "invalid grade"})
     try:
@@ -425,7 +425,7 @@ async def api_learn_answer(request: Request, body: GlossaryLearnAnswer):
 
 
 @api_router.post("/learn/preference")
-async def api_learn_preference(body: GlossaryLearnPreferenceBody):
+def api_learn_preference(body: GlossaryLearnPreferenceBody):
     try:
         prefs = body.model_dump(exclude_unset=True, exclude_none=True)
         config_keys = {"unlock_all": "GLOSSARY_LEARN_UNLOCK_ALL", "study_all": "GLOSSARY_LEARN_STUDY_ALL"}
@@ -446,7 +446,7 @@ class TableColumnPreferenceBody(BaseModel):
 
 
 @api_router.post("/ui-preferences/columns")
-async def api_table_column_preference(body: TableColumnPreferenceBody):
+def api_table_column_preference(body: TableColumnPreferenceBody):
     if body.scope not in ("portfolio", "watchlist"):
         return JSONResponse(status_code=400, content={"status": "error", "message": "invalid scope"})
     try:
@@ -489,7 +489,7 @@ class TableViewsPreferenceBody(BaseModel):
 
 
 @api_router.post("/ui-preferences/views")
-async def api_table_views_preference(body: TableViewsPreferenceBody):
+def api_table_views_preference(body: TableViewsPreferenceBody):
     if body.scope not in ("portfolio", "watchlist"):
         return JSONResponse(status_code=400, content={"status": "error", "message": "invalid scope"})
     try:
@@ -507,7 +507,7 @@ async def api_table_views_preference(body: TableViewsPreferenceBody):
 
 @api_router.get("/screener-data")
 @limiter.limit("20/minute")
-async def get_screener_data(request: Request):
+def get_screener_data(request: Request):
     conn = None
     try:
         config_data = load_config()
@@ -584,7 +584,7 @@ async def get_screener_data(request: Request):
 
 @api_router.get("/reports/quality-compounders")
 @limiter.limit("10/minute")
-async def api_reports_quality_compounders(request: Request):
+def api_reports_quality_compounders(request: Request):
     try:
         data = get_quality_compounders()
         return JSONResponse(content={"data": data})
@@ -594,7 +594,7 @@ async def api_reports_quality_compounders(request: Request):
 
 @api_router.get("/reports/quality-on-sale")
 @limiter.limit("10/minute")
-async def api_reports_quality_on_sale(request: Request):
+def api_reports_quality_on_sale(request: Request):
     try:
         data = get_quality_on_sale()
         return JSONResponse(content={"data": data})
@@ -604,7 +604,7 @@ async def api_reports_quality_on_sale(request: Request):
 
 @api_router.get("/reports/garp-tenbaggers")
 @limiter.limit("10/minute")
-async def api_reports_garp_tenbaggers(request: Request):
+def api_reports_garp_tenbaggers(request: Request):
     try:
         data = get_garp_tenbaggers()
         return JSONResponse(content={"data": data})
@@ -614,7 +614,7 @@ async def api_reports_garp_tenbaggers(request: Request):
 
 @api_router.get("/reports/sectors")
 @limiter.limit("10/minute")
-async def api_reports_sectors(request: Request):
+def api_reports_sectors(request: Request):
     try:
         data = get_sector_trends()
         return JSONResponse(content={"data": data})
@@ -624,7 +624,7 @@ async def api_reports_sectors(request: Request):
 
 @api_router.get("/reports/mean-reversion")
 @limiter.limit("10/minute")
-async def api_reports_mean_reversion(
+def api_reports_mean_reversion(
     request: Request,
     max_rsi: float = Query(default=30.0, ge=0.0, le=100.0),
     min_sma_distance: float = Query(default=0.0, ge=0.0),
@@ -638,7 +638,7 @@ async def api_reports_mean_reversion(
 
 @api_router.get("/reports/leaders")
 @limiter.limit("10/minute")
-async def api_reports_leaders(request: Request):
+def api_reports_leaders(request: Request):
     try:
         data = get_leaders_laggards()
         return JSONResponse(content={"data": data})
@@ -648,7 +648,7 @@ async def api_reports_leaders(request: Request):
 
 @api_router.get("/reports/dividends")
 @limiter.limit("10/minute")
-async def api_reports_dividends(
+def api_reports_dividends(
     request: Request,
     min_yield: float = Query(default=0.02, ge=0.0, le=1.0),
     min_score: int   = Query(default=50,   ge=0,   le=100),
@@ -662,7 +662,7 @@ async def api_reports_dividends(
 
 
 @api_router.get("/freshness")
-async def get_data_freshness():
+def get_data_freshness():
     """Returns model-file age and price-data age, with pre-computed CSS state classes."""
     from constants import (
         FRESHNESS_MODEL_WARN_DAYS, FRESHNESS_MODEL_STALE_DAYS,
@@ -714,7 +714,7 @@ async def get_data_freshness():
 
 @api_router.get("/xray")
 @limiter.limit("10/minute")
-async def get_xray_report(request: Request, account_id: str = "all"):
+def get_xray_report(request: Request, account_id: str = "all"):
     """
     Returns the full Portfolio X-ray report JSON for the given account scope.
     account_id: "all" for every configured source (Ghostfolio + built-in Trading accounts,
@@ -740,7 +740,7 @@ async def get_xray_report(request: Request, account_id: str = "all"):
 
 
 @api_router.post("/xray/trigger")
-async def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
+def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
     """
     Manually triggers the X-ray risk cache pre-compute job in the background.
     Use this after first setup or after adding new holdings to immediately
@@ -754,7 +754,7 @@ async def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
 
 
 @api_router.get("/fx-drag")
-async def get_fx_drag(
+def get_fx_drag(
     request: Request,
     period: str = Query(default="ytd", pattern=r"^(ytd|1y|2y|lifetime)$"),
 ):
@@ -773,7 +773,7 @@ async def get_fx_drag(
 
 
 @api_router.get("/news-feed")
-async def get_news_feed(
+def get_news_feed(
     request: Request,
     source: str = Query(default="all", pattern=r"^(all|portfolio|watchlist|both)$"),
     limit: int = Query(default=50, ge=1, le=500),
@@ -824,7 +824,7 @@ async def get_news_feed(
 
 
 @api_router.post("/news-feed/run-now")
-async def run_news_feed_now(background_tasks: BackgroundTasks):
+def run_news_feed_now(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_manual_job, "news_feed_job", run_news_feed_job)
     return JSONResponse(content={
         "status": "success",
@@ -878,7 +878,7 @@ async def intraday_monitor_add(req: DipRadarAddRequest):
 
 
 @api_router.post("/intraday-monitor/remove")
-async def intraday_monitor_remove(req: TickerRequest):
+def intraday_monitor_remove(req: TickerRequest):
     ticker = req.ticker.upper().strip()
     conn = get_connection()
     try:
@@ -892,7 +892,7 @@ async def intraday_monitor_remove(req: TickerRequest):
 
 
 @api_router.get("/intraday-monitor/list")
-async def intraday_monitor_list():
+def intraday_monitor_list():
     today = datetime.now(timezone.utc).date().isoformat()
     conn = get_connection()
     try:
@@ -906,7 +906,7 @@ async def intraday_monitor_list():
 
 
 @api_router.get("/intraday-monitor/analysis/{ticker}")
-async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     conn = get_connection()
     try:
         row = conn.execute(
@@ -925,7 +925,7 @@ async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z
 
 
 @api_router.get("/intraday-monitor/summary")
-async def intraday_monitor_summary():
+def intraday_monitor_summary():
     today = datetime.now(timezone.utc).date().isoformat()
     conn = get_connection()
     try:
@@ -1080,7 +1080,7 @@ def _active_log_path() -> Path | None:
 
 
 @api_router.get("/logs/tail")
-async def logs_tail(lines: int = Query(default=500, ge=1, le=5000), full: bool = Query(default=False)):
+def logs_tail(lines: int = Query(default=500, ge=1, le=5000), full: bool = Query(default=False)):
     p = _active_log_path()
     if p is None:
         return JSONResponse({"status": "error", "message": "File logging is disabled or log file not found."})
@@ -1097,7 +1097,7 @@ async def logs_tail(lines: int = Query(default=500, ge=1, le=5000), full: bool =
 
 @api_router.get("/logs/stream")
 async def logs_stream():
-    p = _active_log_path()
+    p = await asyncio.to_thread(_active_log_path)
     if p is None:
         async def _disabled():
             yield "data: {\"error\": \"File logging is disabled or log file not found.\"}\n\n"
@@ -1109,7 +1109,7 @@ async def logs_stream():
             with open(p, "r", encoding="utf-8", errors="replace") as f:
                 f.seek(0, 2)
                 while True:
-                    chunk = f.read(65536)
+                    chunk = await asyncio.to_thread(f.read, 65536)
                     if chunk:
                         for line in chunk.splitlines():
                             line = line.strip()
@@ -1139,7 +1139,7 @@ class MonteCarloRequest(BaseModel):
 
 @api_router.get("/monte-carlo/accounts")
 @limiter.limit("10/minute")
-async def api_monte_carlo_accounts(request: Request):
+def api_monte_carlo_accounts(request: Request):
     try:
         accounts, total = list_scope_accounts_with_values()
         if not accounts:
@@ -1151,7 +1151,7 @@ async def api_monte_carlo_accounts(request: Request):
 
 @api_router.get("/performance-analytics/accounts")
 @limiter.limit("10/minute")
-async def api_performance_analytics_accounts(request: Request):
+def api_performance_analytics_accounts(request: Request):
     try:
         accounts, total = list_scope_accounts_with_values()
         if not accounts:
@@ -1181,7 +1181,7 @@ async def api_monte_carlo_run(request: Request, req: MonteCarloRequest):
 
 @api_router.get("/performance-analytics/report")
 @limiter.limit("10/minute")
-async def api_performance_analytics_report(request: Request, account_id: str = "all"):
+def api_performance_analytics_report(request: Request, account_id: str = "all"):
     """
     Returns the Portfolio Tearsheet report JSON for the given account scope: Sortino/Calmar/
     Omega ratios, drawdown duration analytics, distribution/tail stats, win/loss stats, and
@@ -1206,7 +1206,7 @@ class PortfolioOptimizerRunRequest(BaseModel):
 
 @api_router.get("/portfolio-optimizer/accounts")
 @limiter.limit("10/minute")
-async def api_portfolio_optimizer_accounts(request: Request):
+def api_portfolio_optimizer_accounts(request: Request):
     try:
         accounts, total = list_scope_accounts_with_values()
         if not accounts:
@@ -1218,7 +1218,7 @@ async def api_portfolio_optimizer_accounts(request: Request):
 
 @api_router.get("/portfolio-optimizer/candidates")
 @limiter.limit("10/minute")
-async def api_portfolio_optimizer_candidates(request: Request, account_id: str = "all"):
+def api_portfolio_optimizer_candidates(request: Request, account_id: str = "all"):
     """Held tickers (pre-checked) + full Watchlist ticker list (opt-in) for the candidate checklist."""
     try:
         result = _po_list_candidates(account_id)

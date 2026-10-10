@@ -419,18 +419,21 @@ def _pinned_requirement_version(contents: str, package: str) -> str | None:
 async def execute_restart():
     global _requirements_changed_pending
     if _requirements_changed_pending:
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-r", str(BASE_DIR / "requirements.txt")],
-                capture_output=True, text=True, timeout=300, cwd=str(BASE_DIR),
-            )
-            if result.returncode == 0:
-                notify("system_update_status", "Success", "requirements.txt changed on the last pull — dependencies were reinstalled before restart.")
-            else:
-                notify("system_update_status", "Error", f"pip install failed before restart:\n{result.stderr[-2000:]}", level="error")
-        except Exception as e:
-            logger.error("pip install before restart failed: %s", e)
-            notify("system_update_status", "Error", f"pip install before restart failed: {e}", level="error")
+        def _reinstall_requirements():
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-r", str(BASE_DIR / "requirements.txt")],
+                    capture_output=True, text=True, timeout=300, cwd=str(BASE_DIR),
+                )
+                if result.returncode == 0:
+                    notify("system_update_status", "Success", "requirements.txt changed on the last pull — dependencies were reinstalled before restart.")
+                else:
+                    notify("system_update_status", "Error", f"pip install failed before restart:\n{result.stderr[-2000:]}", level="error")
+            except Exception as e:
+                logger.error("pip install before restart failed: %s", e)
+                notify("system_update_status", "Error", f"pip install before restart failed: {e}", level="error")
+
+        await asyncio.to_thread(_reinstall_requirements)
         _requirements_changed_pending = False
     await asyncio.sleep(2)
     os.kill(os.getpid(), signal.SIGTERM)
@@ -635,7 +638,7 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
 
 
 @system_router.get("/ui-theme.css", response_class=PlainTextResponse)
-async def ui_theme_css():
+def ui_theme_css():
     ui = load_config().get("UI_PREFERENCES", {})
     props = " ".join([
         f"--font-size-nav: {ui.get('FONT_SIZE_NAV', 12)}px;",
@@ -653,7 +656,7 @@ async def ui_theme_css():
 
 
 @system_router.get("/settings/network-status")
-async def get_network_status():
+def get_network_status():
     """Returns the current active route and health status for Yahoo Finance connections."""
     config_data = load_config()
     ipv6_addr = config_data.get("YAHOO_IPV6_ADDRESS", "").strip()
@@ -705,14 +708,14 @@ async def get_network_status():
 
 
 @system_router.get("/system/yahoo-api-stats")
-async def get_yahoo_api_stats_endpoint():
+def get_yahoo_api_stats_endpoint():
     from database import get_yahoo_api_stats
     rows = get_yahoo_api_stats(days=8)
     return JSONResponse(content={"status": "success", "rows": rows})
 
 
 @system_router.get("/system/yahoo-api-stats/{date_str}")
-async def get_yahoo_api_stats_detail_endpoint(date_str: str):
+def get_yahoo_api_stats_detail_endpoint(date_str: str):
     from collections import defaultdict
     from database import get_yahoo_api_call_log
     from scheduler_manifest import job_label
@@ -768,7 +771,7 @@ async def get_yahoo_api_stats_detail_endpoint(date_str: str):
 
 
 @system_router.get("/system/metrics")
-async def get_system_metrics():
+def get_system_metrics():
     """Returns a comprehensive diagnostic payload of system hardware, DB, and ML states."""
     conn = None
     try:
@@ -1013,7 +1016,7 @@ def api_market_status(background_tasks: BackgroundTasks):
 
 
 @system_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
-async def git_pull_update():
+def git_pull_update():
     global _requirements_changed_pending, _sklearn_change_pending
     try:
         requirements_path = BASE_DIR / "requirements.txt"
@@ -1055,7 +1058,7 @@ async def git_pull_update():
 
 
 @system_router.get("/system/active-jobs")
-async def get_active_jobs_status():
+def get_active_jobs_status():
     from scheduler_engine import get_active_jobs
     jobs = get_active_jobs()
     return JSONResponse(content={
@@ -1068,7 +1071,7 @@ async def get_active_jobs_status():
 
 
 @system_router.post("/system/restart", dependencies=[Depends(require_confirm_token)])
-async def restart_system(background_tasks: BackgroundTasks):
+def restart_system(background_tasks: BackgroundTasks):
     from scheduler_engine import get_active_jobs
     active = get_active_jobs()
     if active:
@@ -1082,13 +1085,13 @@ async def restart_system(background_tasks: BackgroundTasks):
 
 
 @system_router.post("/system/force-restart", dependencies=[Depends(require_confirm_token)])
-async def force_restart_system(background_tasks: BackgroundTasks):
+def force_restart_system(background_tasks: BackgroundTasks):
     background_tasks.add_task(execute_restart)
     return JSONResponse(content={"status": "success", "message": "Force restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
 
 @system_router.post("/system/terminate-jobs", dependencies=[Depends(require_confirm_token)])
-async def terminate_active_jobs():
+def terminate_active_jobs():
     from scheduler_engine import get_active_jobs, force_clear_active_jobs
     cleared = get_active_jobs()
     force_clear_active_jobs()
@@ -1097,7 +1100,7 @@ async def terminate_active_jobs():
 
 
 @system_router.post("/settings", dependencies=[Depends(require_confirm_token)])
-async def save_settings(config: SettingsConfig):
+def save_settings(config: SettingsConfig):
     try:
         incoming_data = config.model_dump(exclude_none=True)
         if incoming_data.get("GHOSTFOLIO_ENABLED") is False:
@@ -1114,7 +1117,7 @@ async def save_settings(config: SettingsConfig):
 
 
 @system_router.get("/notifications/latest")
-async def get_latest_notifications(last_id: int = 0):
+def get_latest_notifications(last_id: int = 0):
     conn = None
     try:
         conn = get_connection()
@@ -1148,7 +1151,7 @@ async def get_latest_notifications(last_id: int = 0):
 
 
 @system_router.get("/system/scheduler-jobs/{job_id}/runs")
-async def get_scheduler_job_runs(job_id: str):
+def get_scheduler_job_runs(job_id: str):
     if _resolve_manifest(job_id) is None:
         return JSONResponse(
             status_code=404,
@@ -1172,7 +1175,7 @@ async def get_scheduler_job_runs(job_id: str):
 
 
 @system_router.get("/workflow-monitor/status")
-async def get_workflow_monitor_status():
+def get_workflow_monitor_status():
     try:
         graph = build_workflow_graph()
         conflicts = detect_workflow_conflicts(graph)
@@ -1203,7 +1206,7 @@ async def get_workflow_monitor_status():
 
 
 @system_router.post("/notifications/mark-read")
-async def mark_notifications_read():
+def mark_notifications_read():
     conn = None
     try:
         conn = get_connection()
@@ -1219,7 +1222,7 @@ async def mark_notifications_read():
 
 
 @system_router.post("/notifications/purge")
-async def purge_all_notifications():
+def purge_all_notifications():
     """
     Purges all historical notifications from the SQLite database.
     """
