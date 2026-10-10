@@ -40,31 +40,31 @@ templates.env.globals["css_version"] = CSS_VERSION
 
 
 @page_router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
+def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
 
 
 @page_router.get("/logout")
-async def logout():
+def logout():
     response = RedirectResponse("/login", status_code=302)
     response.delete_cookie("session")
     return response
 
 
 @page_router.get("/change-password", response_class=HTMLResponse)
-async def change_password_page(request: Request):
+def change_password_page(request: Request):
     return templates.TemplateResponse(request=request, name="change_password.html",
                                       context={"confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", "")})
 
 
 @page_router.get("/reset-password", response_class=HTMLResponse)
-async def reset_password_page(request: Request):
+def reset_password_page(request: Request):
     token = request.query_params.get("token", "")
     return templates.TemplateResponse(request=request, name="reset_password.html", context={"token": token})
 
 
 @page_router.get("/admin-reset-password", response_class=HTMLResponse)
-async def admin_reset_password_page(request: Request):
+def admin_reset_password_page(request: Request):
     if not load_config().get("FORCE_PASSWORD_RESET", False):
         return RedirectResponse("/login", status_code=302)
     return templates.TemplateResponse(request=request, name="admin_reset_password.html")
@@ -72,7 +72,7 @@ async def admin_reset_password_page(request: Request):
 
 
 @page_router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
+def settings_page(request: Request):
     from scheduler_engine import CONFIG_KEY_TO_JOB, job_label
     from notification_engine import build_routing_panel
     config_data = load_config()
@@ -114,7 +114,7 @@ async def settings_page(request: Request):
 
 
 @page_router.get("/options-sandbox", response_class=HTMLResponse)
-async def options_sandbox_page(request: Request):
+def options_sandbox_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="options_sandbox.html",
@@ -127,7 +127,7 @@ async def options_sandbox_page(request: Request):
 
 
 @page_router.get("/notifications", response_class=HTMLResponse)
-async def notifications_page(request: Request):
+def notifications_page(request: Request):
     conn = None
     try:
         conn = get_connection()
@@ -170,7 +170,7 @@ def _render_asset_docs() -> list[dict]:
 
 
 @page_router.get("/glossary", response_class=HTMLResponse)
-async def glossary(request: Request):
+def glossary(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="glossary.html",
@@ -184,7 +184,7 @@ async def glossary(request: Request):
 
 
 @page_router.get("/glossary/learn", response_class=HTMLResponse)
-async def glossary_learn(request: Request):
+def glossary_learn(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="learn.html",
@@ -193,14 +193,14 @@ async def glossary_learn(request: Request):
 
 
 @page_router.get("/", response_class=RedirectResponse)
-async def home():
+def home():
     return RedirectResponse(url="/portfolio")
 
 
 
 
 @page_router.get("/news", response_class=HTMLResponse)
-async def news_page(request: Request):
+def news_page(request: Request):
     config_data = load_config()
     return templates.TemplateResponse(
         request=request,
@@ -213,7 +213,7 @@ async def news_page(request: Request):
 
 
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
-async def earnings_volatility_page(request: Request):
+def earnings_volatility_page(request: Request):
     today_str = time_engine.now_local().strftime('%Y-%m-%d')
 
     conn = None
@@ -255,7 +255,7 @@ async def earnings_volatility_page(request: Request):
 
 
 @page_router.get("/earnings-volatility/accuracy", response_class=HTMLResponse)
-async def earnings_volatility_accuracy_page(request: Request):
+def earnings_volatility_accuracy_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="earnings_volatility_accuracy.html",
@@ -267,7 +267,7 @@ async def earnings_volatility_accuracy_page(request: Request):
 
 
 @page_router.get("/market-screener", response_class=HTMLResponse)
-async def market_screener_page(request: Request):
+def market_screener_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="market_screener.html",
@@ -281,7 +281,7 @@ async def market_screener_page(request: Request):
 
 
 @page_router.get("/quality-compounders", response_class=HTMLResponse)
-async def quality_compounders_page(request: Request):
+def quality_compounders_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="quality_compounders.html",
@@ -290,7 +290,7 @@ async def quality_compounders_page(request: Request):
 
 
 @page_router.get("/garp-tenbaggers", response_class=HTMLResponse)
-async def garp_tenbaggers_page(request: Request):
+def garp_tenbaggers_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="garp_tenbaggers.html",
@@ -299,7 +299,7 @@ async def garp_tenbaggers_page(request: Request):
 
 
 @page_router.get("/quality-on-sale", response_class=HTMLResponse)
-async def quality_on_sale_page(request: Request):
+def quality_on_sale_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="quality_on_sale.html",
@@ -308,7 +308,7 @@ async def quality_on_sale_page(request: Request):
 
 
 @page_router.get("/sector-trends", response_class=HTMLResponse)
-async def sector_trends_page(request: Request):
+def sector_trends_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="sector_trends.html",
@@ -317,7 +317,7 @@ async def sector_trends_page(request: Request):
 
 
 @page_router.get("/relative-strength-leaders", response_class=HTMLResponse)
-async def relative_strength_leaders_page(request: Request):
+def relative_strength_leaders_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="relative_strength_leaders.html",
@@ -326,7 +326,7 @@ async def relative_strength_leaders_page(request: Request):
 
 
 @page_router.get("/mean-reversion", response_class=HTMLResponse)
-async def mean_reversion_page(request: Request):
+def mean_reversion_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="mean_reversion.html",
@@ -335,7 +335,7 @@ async def mean_reversion_page(request: Request):
 
 
 @page_router.get("/dividend-harvest", response_class=HTMLResponse)
-async def dividend_harvest_page(request: Request):
+def dividend_harvest_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="dividend_harvest.html",
@@ -360,7 +360,7 @@ def markets_page(request: Request):
 
 
 @page_router.get("/tools", response_class=HTMLResponse)
-async def tools_page(request: Request):
+def tools_page(request: Request):
     lse_open_utc, _ = time_engine.market_window_utc("LSE")
     lse_open_dt = datetime.combine(datetime.now(timezone.utc).date(), lse_open_utc, tzinfo=timezone.utc)
     lse_open_str = time_engine.fmt_time(lse_open_dt)
@@ -372,7 +372,7 @@ async def tools_page(request: Request):
 
 
 @page_router.get("/reports", response_class=HTMLResponse)
-async def reports_page(request: Request):
+def reports_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="reports.html",
@@ -381,7 +381,7 @@ async def reports_page(request: Request):
 
 
 @page_router.get("/yahoo-api-usage", response_class=HTMLResponse)
-async def yahoo_api_usage_page(request: Request, date: str = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
+def yahoo_api_usage_page(request: Request, date: str = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return templates.TemplateResponse(
@@ -392,7 +392,7 @@ async def yahoo_api_usage_page(request: Request, date: str = Query(default=None,
 
 
 @page_router.get("/dip-radar", response_class=HTMLResponse)
-async def dip_radar_page(request: Request):
+def dip_radar_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="dip_radar_summary.html",
@@ -401,7 +401,7 @@ async def dip_radar_page(request: Request):
 
 
 @page_router.get("/bubble-radar", response_class=HTMLResponse)
-async def bubble_radar_page(request: Request):
+def bubble_radar_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="bubble_radar.html",
@@ -413,7 +413,7 @@ async def bubble_radar_page(request: Request):
 
 
 @page_router.get("/trap-monitor", response_class=HTMLResponse)
-async def trap_monitor_page(request: Request):
+def trap_monitor_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="trap_monitor.html",
@@ -425,7 +425,7 @@ async def trap_monitor_page(request: Request):
 
 
 @page_router.get("/portfolio-heat-index", response_class=HTMLResponse)
-async def portfolio_heat_index_page(request: Request):
+def portfolio_heat_index_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="portfolio_heat_index.html",
@@ -437,7 +437,7 @@ async def portfolio_heat_index_page(request: Request):
 
 
 @page_router.get("/pairs-spread", response_class=HTMLResponse)
-async def pairs_spread_monitor_page(request: Request):
+def pairs_spread_monitor_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="pairs_spread_monitor.html",
@@ -449,12 +449,12 @@ async def pairs_spread_monitor_page(request: Request):
 
 
 @page_router.get("/head-shoulders", response_class=RedirectResponse)
-async def head_shoulders_page_redirect():
+def head_shoulders_page_redirect():
     return RedirectResponse(url="/pattern-detection", status_code=302)
 
 
 @page_router.get("/pattern-detection", response_class=HTMLResponse)
-async def pattern_detection_page(request: Request):
+def pattern_detection_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="pattern_detection.html",
@@ -466,7 +466,7 @@ async def pattern_detection_page(request: Request):
 
 
 @page_router.get("/pattern-detection/{ticker}", response_class=HTMLResponse)
-async def pattern_detection_detail_page(request: Request, ticker: str):
+def pattern_detection_detail_page(request: Request, ticker: str):
     ticker = normalize_ticker(ticker)
     return templates.TemplateResponse(
         request=request,
@@ -480,7 +480,7 @@ async def pattern_detection_detail_page(request: Request, ticker: str):
 
 
 @page_router.get("/predicted-movers", response_class=HTMLResponse)
-async def predicted_movers_page(request: Request):
+def predicted_movers_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="predicted_movers.html",
@@ -492,7 +492,7 @@ async def predicted_movers_page(request: Request):
 
 
 @page_router.get("/sector-relative-momentum", response_class=HTMLResponse)
-async def sector_relative_momentum_page(request: Request):
+def sector_relative_momentum_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="sector_relative_momentum.html",
@@ -504,7 +504,7 @@ async def sector_relative_momentum_page(request: Request):
 
 
 @page_router.get("/ticker-notes", response_class=HTMLResponse)
-async def ticker_notes_page(request: Request):
+def ticker_notes_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="ticker_notes.html",
@@ -516,7 +516,7 @@ async def ticker_notes_page(request: Request):
 
 
 @page_router.get("/predicted-movers/accuracy", response_class=HTMLResponse)
-async def predicted_movers_accuracy_page(request: Request):
+def predicted_movers_accuracy_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="predicted_movers_accuracy.html",
@@ -528,7 +528,7 @@ async def predicted_movers_accuracy_page(request: Request):
 
 
 @page_router.get("/forensic-screener", response_class=HTMLResponse)
-async def forensic_screener_page(request: Request):
+def forensic_screener_page(request: Request):
     from scheduler_engine import get_all_job_last_runs
     job_last_runs = get_all_job_last_runs()
     return templates.TemplateResponse(
@@ -544,7 +544,7 @@ async def forensic_screener_page(request: Request):
 
 
 @page_router.get("/fx-drag", response_class=HTMLResponse)
-async def fx_drag_page(request: Request):
+def fx_drag_page(request: Request):
     initial_data = portfolio_lifetime_fx_breakdown()
     return templates.TemplateResponse(
         request=request,
@@ -560,7 +560,7 @@ async def fx_drag_page(request: Request):
 
 
 @page_router.get("/monte-carlo", response_class=HTMLResponse)
-async def monte_carlo_page(request: Request):
+def monte_carlo_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="monte_carlo.html",
@@ -569,7 +569,7 @@ async def monte_carlo_page(request: Request):
 
 
 @page_router.get("/performance-analytics", response_class=HTMLResponse)
-async def performance_analytics_page(request: Request):
+def performance_analytics_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="performance_analytics.html",
@@ -578,7 +578,7 @@ async def performance_analytics_page(request: Request):
 
 
 @page_router.get("/portfolio-optimizer", response_class=HTMLResponse)
-async def portfolio_optimizer_page(request: Request):
+def portfolio_optimizer_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="portfolio_optimizer.html",
@@ -587,7 +587,7 @@ async def portfolio_optimizer_page(request: Request):
 
 
 @page_router.get("/strategy-backtester", response_class=HTMLResponse)
-async def strategy_backtester_page(request: Request):
+def strategy_backtester_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="strategy_backtester.html",
@@ -596,7 +596,7 @@ async def strategy_backtester_page(request: Request):
 
 
 @page_router.get("/treasury-auctions", response_class=HTMLResponse)
-async def treasury_auctions_page(request: Request):
+def treasury_auctions_page(request: Request):
     conn = None
     rows = []
     summary = None
@@ -671,7 +671,7 @@ async def treasury_auctions_page(request: Request):
 
 
 @page_router.get("/market-regime", response_class=HTMLResponse)
-async def market_regime_page(request: Request):
+def market_regime_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="market_regime.html",
@@ -683,7 +683,7 @@ async def market_regime_page(request: Request):
 
 
 @page_router.get("/stress-test", response_class=HTMLResponse)
-async def stress_test_page(request: Request):
+def stress_test_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="stress_test.html",
@@ -725,7 +725,7 @@ async def ai_contagion_page(request: Request):
 
 
 @page_router.get("/score-history", response_class=HTMLResponse)
-async def score_history_page(request: Request, filter: str = "all", ref: str = ""):
+def score_history_page(request: Request, filter: str = "all", ref: str = ""):
     from score_analysis import get_score_analysis
     valid_filters = {"all", "portfolio", "watchlist"}
     active_filter = filter if filter in valid_filters else "all"
@@ -760,7 +760,7 @@ def _build_rss_base_url(server_url: str, port: int) -> str:
 
 
 @page_router.get("/rss/alerts.xml")
-async def rss_alerts_feed():
+def rss_alerts_feed():
     cfg = load_config()
     if not cfg.get("NOTIFICATIONS", {}).get("RSS_FEED", {}).get("ENABLED", False):
         return Response(status_code=404)
@@ -829,7 +829,7 @@ async def rss_alerts_feed():
 
 
 @page_router.get("/log-viewer", response_class=HTMLResponse)
-async def log_viewer_page(request: Request):
+def log_viewer_page(request: Request):
     cfg = load_config()
     fl = cfg.get("FILE_LOGGING", {})
     logging_enabled = fl.get("ENABLED", False)
