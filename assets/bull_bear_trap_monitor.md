@@ -134,7 +134,7 @@ Additional context: if close is more than 7% below EMA, the deep extension is no
 - **Portfolio** — `accounts_engine.get_combined_holdings()` (built-in Trading accounts + Ghostfolio when enabled), gated by `SCHEDULING.TRAP_MONITORS.MONITOR_PORTFOLIO` (default: `True`). Toggle via "Monitor Portfolio Tickers" checkbox in Settings.
 - **Watchlist** — `database.get_watchlist_tickers()`, gated by `SCHEDULING.TRAP_MONITORS.MONITOR_WATCHLIST` (default: `False`). Toggle via "Monitor Watchlist Tickers" checkbox in Settings.
 
-Each source is filtered through `utils.is_excluded_from_yahoo_fetch()` (synthetic tickers and the Settings-page Ignored Tickers list). Tickers are skipped if no Parquet file exists at `data/historical/{ticker}.parquet` and cannot be fetched.
+Each source is filtered through `utils.is_excluded_from_yahoo_fetch()` (synthetic tickers and the Settings-page Ignored Tickers list). History is read through `data_engine.load_or_fetch_daily_history()`: a ticker with no Parquet file at `data/historical/{ticker}.parquet` is fetched once and written through `data_engine.prepare_daily_history()` and the atomic writer (so saved Repair Data corrections and the in-progress-bar trim apply), and is skipped if it cannot be fetched.
 
 ---
 

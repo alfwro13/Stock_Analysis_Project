@@ -301,6 +301,82 @@ class TestStaleRowCleanup:
             self._cleanup(ticker)
 
 
+class TestLoadHistory:
+    """_load_history() goes through data_engine.load_or_fetch_daily_history, so a fetched ticker
+    gets the same cleaning and atomic write as every other daily-history writer."""
+
+    @staticmethod
+    def _ohlcv(n=80, end=None, tz=None):
+        prices = np.linspace(90.0, 100.0, n)
+        idx = pd.date_range(end=end, periods=n, freq="D", tz=tz) if end is not None else pd.date_range("2026-01-01", periods=n, freq="B", tz=tz)
+        return pd.DataFrame({
+            "Open": prices, "High": prices + 1.0, "Low": prices - 1.0,
+            "Close": prices, "Volume": np.full(n, 1_000_000.0),
+        }, index=idx)
+
+    def setup_method(self):
+        self.engine = PatternDetectionEngine(_CFG)
+
+    def test_existing_parquet_is_read_without_fetching(self, tmp_path):
+        self._ohlcv().to_parquet(tmp_path / "PDLOADEXIST.parquet", engine="pyarrow")
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.yahoo_engine.get_price_history") as fetch:
+            result = self.engine._load_history("PDLOADEXIST")
+        fetch.assert_not_called()
+        assert len(result) == 80
+        assert list(result.columns) == ["Open", "High", "Low", "Close", "Volume"]
+
+    def test_missing_ticker_is_fetched_and_written_atomically(self, tmp_path):
+        fetched = self._ohlcv(tz="UTC")
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.yahoo_engine.get_price_history", return_value={"PDLOADNEW": fetched}), \
+             patch("time_engine.is_market_open", return_value=False):
+            result = self.engine._load_history("PDLOADNEW")
+        assert len(result) == 80
+        assert (tmp_path / "PDLOADNEW.parquet").exists()
+        assert not list(tmp_path.glob("*.tmp"))
+
+    def test_fetched_history_goes_through_prepare_daily_history(self, tmp_path):
+        fetched = self._ohlcv(tz="UTC")
+        repaired = fetched.tz_localize(None)
+        repaired["Close"] = repaired["Close"] * 2
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.yahoo_engine.get_price_history", return_value={"PDLOADREPAIR": fetched}), \
+             patch("data_engine.apply_saved_repairs", return_value=repaired) as repair, \
+             patch("time_engine.is_market_open", return_value=False):
+            result = self.engine._load_history("PDLOADREPAIR")
+        repair.assert_called_once()
+        assert result["Close"].iloc[-1] == pytest.approx(repaired["Close"].iloc[-1])
+        assert pd.read_parquet(tmp_path / "PDLOADREPAIR.parquet")["Close"].iloc[-1] == pytest.approx(repaired["Close"].iloc[-1])
+
+    def test_in_progress_bar_is_trimmed_from_fetched_history(self, tmp_path):
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        fetched = self._ohlcv(n=80, end=pd.Timestamp(today))
+        assert fetched.index[-1].date() == today
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.yahoo_engine.get_price_history", return_value={"PDLOADFORMING": fetched}), \
+             patch("time_engine.is_market_open", return_value=True):
+            result = self.engine._load_history("PDLOADFORMING")
+        assert result.index[-1].date() < today
+        assert len(pd.read_parquet(tmp_path / "PDLOADFORMING.parquet")) == len(fetched) - 1
+
+    def test_returns_none_when_fetch_returns_nothing(self, tmp_path):
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.yahoo_engine.get_price_history", return_value={}):
+            assert self.engine._load_history("PDLOADNONE") is None
+        assert not (tmp_path / "PDLOADNONE.parquet").exists()
+
+    def test_lookback_is_capped_and_zero_volume_rows_dropped(self, tmp_path):
+        df = self._ohlcv(n=520)
+        df.iloc[-1, df.columns.get_loc("Volume")] = 0.0
+        df.to_parquet(tmp_path / "PDLOADCAP.parquet", engine="pyarrow")
+        with patch("data_engine.HISTORICAL_DIR", tmp_path):
+            result = self.engine._load_history("PDLOADCAP")
+        assert len(result) == 500
+        assert result.index[-1] == df.index[-2]
+
+
 class TestFillPatternOutcomes:
     @staticmethod
     def _cleanup():
