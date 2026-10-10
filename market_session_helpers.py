@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from database import get_connection, get_ticker_registry
-from time_engine import EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, ticker_exchange
+from time_engine import EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, ticker_exchange, ticker_exchange_from_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -165,18 +165,47 @@ def build_registry_future_tickers(registry_rows: Optional[List[Dict[str, Any]]] 
     return {row["future_ticker"] for row in registry_rows if row.get("future_ticker")}
 
 
-def resolve_ticker_exchange(ticker: str, currency: str = "", registry_exchange_map: Optional[Dict[str, str]] = None) -> str:
+_registry_exchange_cache: Optional[Dict[str, str]] = None
+
+
+def cached_registry_exchange_map() -> Dict[str, str]:
+    """Process-wide registry exchange map for per-ticker loops over thousands of tickers; an empty map (failed registry read) is never cached, and market_pulse.reload_ticker_registry() resets it after a registry write."""
+    global _registry_exchange_cache
+    if _registry_exchange_cache is None:
+        exchange_map = build_registry_exchange_map()
+        if not exchange_map:
+            return exchange_map
+        _registry_exchange_cache = exchange_map
+    return _registry_exchange_cache
+
+
+def reset_registry_exchange_cache() -> None:
+    global _registry_exchange_cache
+    _registry_exchange_cache = None
+
+
+def resolve_ticker_exchange(
+    ticker: str,
+    currency: str = "",
+    registry_exchange_map: Optional[Dict[str, str]] = None,
+    *,
+    suffix_only: bool = False,
+) -> str:
     """The exchange to gate `ticker`'s quote freshness on. Prefers market_ticker_registry's own
     `exchange` column (indexes/commodities/FX tracked by the Markets page/Market Pulse — the
     authoritative source per AGENTS.md's central-engine rule), falling back to
     time_engine.ticker_exchange(ticker, currency) for ordinary equities that have no registry
-    row. Callers refreshing many tickers at once should build registry_exchange_map() themselves
-    and pass it in to avoid a repeat query per ticker."""
+    row. suffix_only=True falls back to the ticker suffix alone (plain tickers are NYSE, never
+    the operator's HOME_EXCHANGE) for callers that key a ticker's own price history to its
+    exchange. Callers refreshing many tickers at once should build registry_exchange_map()
+    themselves and pass it in to avoid a repeat query per ticker."""
     if registry_exchange_map is None:
         registry_exchange_map = build_registry_exchange_map()
     exchange = registry_exchange_map.get(ticker)
     if exchange:
         return exchange
+    if suffix_only:
+        return ticker_exchange_from_suffix(ticker)
     return ticker_exchange(ticker, currency)
 
 

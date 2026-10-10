@@ -10,6 +10,7 @@ from market_session_helpers import (
     build_registry_exchange_map,
     build_registry_future_tickers,
     is_ticker_quote_settled,
+    reset_registry_exchange_cache,
 )
 from utils import normalize_ticker, ignored_tickers_set
 from time_engine import is_trading_session
@@ -61,6 +62,7 @@ def reload_ticker_registry() -> None:
     global _index_tickers_cache, _pulse_index_tickers_cache
     _index_tickers_cache = None
     _pulse_index_tickers_cache = None
+    reset_registry_exchange_cache()
 
 
 SPARKLINE_MAX_POINTS = 60

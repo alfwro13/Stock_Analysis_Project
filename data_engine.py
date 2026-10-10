@@ -12,6 +12,7 @@ from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers, get_stock_signal_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
+from market_session_helpers import cached_registry_exchange_map, resolve_ticker_exchange
 from price_repair_engine import apply_saved_repairs
 import time_engine
 
@@ -22,11 +23,16 @@ logger = logging.getLogger(__name__)
 UNIVERSE_HISTORY_BATCH = 250
 
 
+def _history_exchange(ticker: str) -> str:
+    """Registry exchange first (^FTSE is LSE, not NYSE), then the ticker suffix; never HOME_EXCHANGE, which would judge AAPL's bar against the operator's home session."""
+    return resolve_ticker_exchange(ticker, registry_exchange_map=cached_registry_exchange_map(), suffix_only=True)
+
+
 def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.DataFrame], ticker: Optional[str] = None) -> pd.DataFrame:
     """Yahoo's daily endpoint often includes today's still-forming bar when queried mid-session; trim it so the stored daily history never stores a partial-session close as if it were final (same comparison market_pulse_write.fetch_and_save_pulse already makes against its own live feed). Unlike the intraday scanners' own use of is_daily_bar_still_forming(), this runs at arbitrary times of day (nightly Update Pipeline, on-demand single-ticker fetch) rather than only while an exchange is confirmed open, so ticker must be passed to resolve whether its exchange has already closed for the day — otherwise a same-day post-close fetch is indistinguishable from a genuine mid-session one."""
     if df_live is None or df_live.empty or len(df_daily) < 2:
         return df_daily
-    exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker)) if ticker else None
+    exchange_open = time_engine.is_market_open(_history_exchange(ticker)) if ticker else None
     if is_daily_bar_still_forming(df_daily.index[-1].date(), df_live.index[-1].date(), exchange_open):
         return df_daily.iloc[:-1]
     return df_daily
@@ -42,7 +48,7 @@ def prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.Da
     if df_live is not None:
         df = _drop_in_progress_last_bar(df, df_live, ticker)
     elif not df.empty:
-        exchange_open = time_engine.is_market_open(time_engine.ticker_exchange_from_suffix(ticker))
+        exchange_open = time_engine.is_market_open(_history_exchange(ticker))
         last_date = df.index[-1].date()
         if is_daily_bar_still_forming(last_date, last_date, exchange_open):
             df = df.iloc[:-1]
@@ -400,7 +406,7 @@ def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
     except FileNotFoundError:
         state = None
     if refresh_stale and not is_excluded_from_yahoo_fetch(ticker):
-        settled_close = time_engine.last_settled_session_close_utc(time_engine.ticker_exchange_from_suffix(ticker))
+        settled_close = time_engine.last_settled_session_close_utc(_history_exchange(ticker))
         if state is None or state.st_mtime < settled_close.timestamp():
             request_cache_refresh("daily:" + ticker, lambda: _fetch_daily_history(ticker, force_refresh=True))
     if state is None:
