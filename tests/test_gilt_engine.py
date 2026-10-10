@@ -365,3 +365,16 @@ class TestSyncGiltData:
              patch("pandas.DataFrame.to_parquet", side_effect=IOError("disk full")):
             result = svc.sync_gilt_data()
         assert result is False
+
+    def test_failed_write_keeps_previous_baseline_and_leaves_no_temp_file(self, tmp_path):
+        """A mid-write failure must not truncate the baseline that regime, sentiment and market pulse read."""
+        svc = _make_service(tmp_path)
+        previous = pd.DataFrame({"Close": [4.0, 4.1]}, index=pd.to_datetime(["2026-01-01", "2026-01-02"]))
+        previous.index.name = "Date"
+        previous.to_parquet(svc.parquet_path)
+        with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()), \
+             patch.object(svc, "fetch_live_ft_yield", return_value=None), \
+             patch("pandas.DataFrame.to_parquet", side_effect=IOError("disk full")):
+            assert svc.sync_gilt_data() is False
+        pd.testing.assert_frame_equal(pd.read_parquet(svc.parquet_path), previous)
+        assert [p.name for p in tmp_path.iterdir()] == ["UK_GILT_BASELINE.parquet"]

@@ -400,6 +400,33 @@ def test_is_excluded_from_yahoo_fetch_false_for_normal_unignored_ticker():
 
 
 @pytest.mark.config
+def test_write_parquet_atomic_replaces_file_and_keeps_last_good_one_on_failure(tmp_path):
+    import pandas as pd
+    from unittest.mock import patch
+    from utils import write_parquet_atomic
+
+    path = tmp_path / "AAA.parquet"
+    good = pd.DataFrame({"Close": [10.0]}, index=pd.to_datetime(["2026-07-01"]))
+    write_parquet_atomic(good, path)
+    with patch.object(pd.DataFrame, "to_parquet", side_effect=OSError("disk full")):
+        with pytest.raises(OSError):
+            write_parquet_atomic(pd.DataFrame({"Close": [11.0]}, index=pd.to_datetime(["2026-07-02"])), str(path))
+
+    assert pd.read_parquet(path)["Close"].tolist() == [10.0]
+    assert [p.name for p in tmp_path.iterdir()] == ["AAA.parquet"]
+
+
+@pytest.mark.config
+def test_write_parquet_atomic_creates_missing_folder(tmp_path):
+    import pandas as pd
+    from utils import write_parquet_atomic
+
+    path = tmp_path / "nested" / "BBB.parquet"
+    write_parquet_atomic(pd.DataFrame({"Close": [1.0]}), path)
+    assert pd.read_parquet(path)["Close"].tolist() == [1.0]
+
+
+@pytest.mark.config
 def test_is_daily_bar_still_forming_true_when_daily_matches_live_date_and_is_today():
     """A daily bar dated the same as (or after) the live feed's last tick, and matching today's
     real calendar date, is still-forming, not a completed close."""

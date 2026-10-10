@@ -1,6 +1,5 @@
 import json
 import os
-import tempfile
 import time
 import random
 import logging
@@ -19,7 +18,7 @@ from market_session_helpers import cached_registry_exchange_map, cached_registry
 from price_repair_engine import apply_saved_repairs
 import time_engine
 
-from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename  # noqa: F401 — normalize_ticker re-exported for callers
+from utils import normalize_ticker, is_daily_bar_still_forming, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename, write_parquet_atomic  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
 
@@ -114,20 +113,6 @@ def prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.Da
     return apply_saved_repairs(ticker, df)
 
 
-def _write_history_parquet(df: pd.DataFrame, path: str) -> None:
-    """Atomic replace, so a reader never meets a half-written file while a long refresh rewrites thousands of them; the temp name never ends in .parquet, so a crash cannot leave a file that looks like a ticker."""
-    HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=HISTORICAL_DIR, suffix=".tmp", delete=False) as handle:
-            temporary = Path(handle.name)
-        df.to_parquet(temporary, engine="pyarrow")
-        temporary.replace(path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-
 def _persist_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame]) -> bool:
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
@@ -141,7 +126,7 @@ def _persist_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.D
     df = prepare_daily_history(ticker, df, df_live, drop_missing_volume=True)
     if df.empty:
         return False
-    _write_history_parquet(df, path)
+    write_parquet_atomic(df, path)
     return True
 
 
@@ -233,7 +218,7 @@ class DataEngine:
                         continue
                     df = prepare_daily_history(ticker, df, None)
                     if not df.empty:
-                        _write_history_parquet(df, HISTORICAL_DIR / f"{name}.parquet")
+                        write_parquet_atomic(df, HISTORICAL_DIR / f"{name}.parquet")
                 logger.info("All Market and Intermarket Baselines secured successfully.")
 
         except Exception as e:
@@ -385,7 +370,7 @@ class DataEngine:
                 self._strip_tz(df_daily)
                 df_daily = prepare_daily_history(ticker, df_daily, df_live)
                 if not df_daily.empty:
-                    _write_history_parquet(df_daily, history_path)
+                    write_parquet_atomic(df_daily, history_path)
                     persisted = True
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
@@ -446,7 +431,7 @@ def _fetch_daily_history(ticker: str, *, force_refresh=False):
     df = prepare_daily_history(ticker, df, None)
     if df.empty:
         return None
-    _write_history_parquet(df, path)
+    write_parquet_atomic(df, path)
     return df
 
 
@@ -518,7 +503,6 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_o
 
 def load_or_fetch_intraday_history(ticker: str):
     from cache_refresh_helpers import submit_cache_refresh
-    import tempfile
 
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
@@ -556,16 +540,7 @@ def load_or_fetch_intraday_history(ticker: str):
         df = df.copy()
         if df.index.tz is not None:
             df.index = df.index.tz_convert(None)
-        os.makedirs(root, exist_ok=True)
-        temporary = None
-        try:
-            with tempfile.NamedTemporaryFile(dir=root, suffix=".parquet", delete=False) as handle:
-                temporary = Path(handle.name)
-            df.to_parquet(temporary, engine="pyarrow")
-            temporary.replace(path)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
+        write_parquet_atomic(df, path)
         return df
 
     future = submit_cache_refresh("intraday:1d:5m:" + ticker, refresh)

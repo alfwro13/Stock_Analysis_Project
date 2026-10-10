@@ -81,7 +81,7 @@ def test_market_baseline_is_cleaned_and_written_atomically(tmp_path):
 
     import data_engine
 
-    with patch("data_engine._write_history_parquet", wraps=data_engine._write_history_parquet) as writer:
+    with patch("data_engine.write_parquet_atomic", wraps=data_engine.write_parquet_atomic) as writer:
         _run_baseline_fetch(tmp_path, {"^FTSE": _baseline_frame()})
     assert writer.call_args.args[1] == tmp_path / "FTSE_BASELINE.parquet"
     saved = pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet")
@@ -1126,22 +1126,6 @@ def test_universe_history_failed_batch_does_not_stop_later_batches(tmp_path):
         engine.bulk_download_historical([], universe=["AAA", "BBB"])
 
     assert [p.name for p in tmp_path.iterdir()] == ["BBB.parquet"]
-
-
-def test_history_write_replaces_atomically_and_keeps_last_good_file_on_failure(tmp_path):
-    import pandas as pd
-    from data_engine import _write_history_parquet
-
-    path = tmp_path / "AAA.parquet"
-    good = _ohlcv(["2026-07-01"], [10.0])
-    with patch("data_engine.HISTORICAL_DIR", tmp_path):
-        _write_history_parquet(good, str(path))
-        with patch.object(pd.DataFrame, "to_parquet", side_effect=OSError("disk full")):
-            with pytest.raises(OSError):
-                _write_history_parquet(_ohlcv(["2026-07-02"], [11.0]), str(path))
-
-    assert pd.read_parquet(path)["Close"].tolist() == [10.0]
-    assert [p.name for p in tmp_path.iterdir()] == ["AAA.parquet"]
 
 
 def test_read_only_history_returns_stale_file_without_queueing_a_refresh(tmp_path):

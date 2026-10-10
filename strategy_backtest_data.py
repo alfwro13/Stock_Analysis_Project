@@ -2,7 +2,6 @@
 
 import hashlib
 import logging
-import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -22,7 +21,7 @@ from price_history_helpers import normalized_close
 from stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
 from stable_shortlist_reads import get_shortlist
 from strategy_backtest_engine import InsufficientHistory
-from utils import is_excluded_from_yahoo_fetch, normalize_currency_bucket, safe_ticker_filename
+from utils import is_excluded_from_yahoo_fetch, normalize_currency_bucket, safe_ticker_filename, write_parquet_atomic
 from xray_engine import resolve_scope_holdings
 from yahoo_engine import yahoo_engine
 
@@ -127,16 +126,8 @@ def prepare_history_blocking(tickers: List[str]) -> Optional[Dict]:
             if df.empty:
                 failed.append(ticker)
                 continue
-            temporary = None
-            try:
-                with tempfile.NamedTemporaryFile(dir=BACKTEST_HISTORY_DIR, suffix=".parquet", delete=False) as handle:
-                    temporary = Path(handle.name)
-                df.to_parquet(temporary, engine="pyarrow")
-                temporary.replace(_extended_path(ticker))
-                prepared.append(ticker)
-            finally:
-                if temporary is not None:
-                    temporary.unlink(missing_ok=True)
+            write_parquet_atomic(df, _extended_path(ticker))
+            prepared.append(ticker)
     finally:
         with _prepare_lock:
             for ticker in tickers:

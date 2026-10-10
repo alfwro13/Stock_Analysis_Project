@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from config import HISTORICAL_DIR
+from utils import write_parquet_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class GiltDataService:
                 if attempt == retries - 1:
                     raise
                 wait = 2 ** attempt
-                logger.warning(f"Request to {url} failed (attempt {attempt + 1}/{retries}): {e}. Retrying in {wait}s.")
+                logger.warning("Request to %s failed (attempt %d/%d): %s. Retrying in %ds.", url, attempt + 1, retries, e, wait)
                 time.sleep(wait)
 
     def fetch_historical_boe(self, start_date: str = "01/Jan/2020") -> Optional[pd.DataFrame]:
@@ -49,7 +50,7 @@ class GiltDataService:
             "VFD": "N"
         }
         try:
-            logger.info(f"Querying Bank of England historical archive: {start_date} -> {current_date_str}")
+            logger.info("Querying Bank of England historical archive: %s -> %s", start_date, current_date_str)
             response = self._get_with_retry(self.boe_url, params=payload, timeout=15)
             
             df = pd.read_csv(io.BytesIO(response.content))
@@ -75,7 +76,7 @@ class GiltDataService:
     def fetch_live_ft_yield(self) -> Optional[float]:
         payload = {"s": "UK10YG"}
         try:
-            logger.info(f"Scraping live session snapshot via FT.com: {self.ft_url}?s=UK10YG")
+            logger.info("Scraping live session snapshot via FT.com: %s?s=UK10YG", self.ft_url)
             response = self._get_with_retry(self.ft_url, params=payload, timeout=12)
             html_content = response.text
             
@@ -99,7 +100,7 @@ class GiltDataService:
             if match:
                 yield_val = float(match.group(1).replace(",", "").strip())
                 if 0.0 < yield_val < 25.0:
-                    logger.info(f"FT.com parsing success. Isolated Live Yield: {yield_val}%")
+                    logger.info("FT.com parsing success. Isolated Live Yield: %s%%", yield_val)
                     return yield_val
 
             # Price-node fallback when the Yield label is absent from the page
@@ -107,9 +108,9 @@ class GiltDataService:
             if price_match:
                 yield_val = float(price_match.group(1))
                 if 0.0 < yield_val < 25.0:
-                    logger.info(f"Fallback UI extractor executed. Isolated Live Yield: {yield_val}%")
+                    logger.info("Fallback UI extractor executed. Isolated Live Yield: %s%%", yield_val)
                     return yield_val
-                logger.warning(f"Fallback UI extractor rejected out-of-range value: {yield_val}")
+                logger.warning("Fallback UI extractor rejected out-of-range value: %s", yield_val)
 
             logger.warning("Financial Times content layout has shifted. Yield token missed.")
             return None
@@ -151,8 +152,8 @@ class GiltDataService:
             gap_days = (target_date - last_boe_date).days
             if gap_days < 0:
                 logger.warning(
-                    f"BoE index is ahead of target date ({last_boe_date.date()} > {target_date.date()}); "
-                    "skipping weekend fill — check timezone or BoE publication lead."
+                    "BoE index is ahead of target date (%s > %s); skipping weekend fill — check timezone or BoE publication lead.",
+                    last_boe_date.date(), target_date.date(),
                 )
 
             # Only fill weekend calendar days — working-day gaps mean BoE hasn't published yet
@@ -164,7 +165,7 @@ class GiltDataService:
                         df_boe.loc[fill_date, "Close"] = live_yield
                         weekend_fills += 1
                 if weekend_fills:
-                    logger.info(f"Padded {weekend_fills} weekend days with live FT yield.")
+                    logger.info("Padded %d weekend days with live FT yield.", weekend_fills)
 
         df_boe.index = pd.to_datetime(df_boe.index)
         df_boe = df_boe.sort_index()
@@ -172,9 +173,9 @@ class GiltDataService:
         df_boe.index.name = "Date"
 
         try:
-            df_boe.to_parquet(self.parquet_path, engine="pyarrow")
-            logger.info(f"Synchronized Hybrid Pipeline: Written {len(df_boe)} rows to local Parquet storage.")
+            write_parquet_atomic(df_boe, self.parquet_path)
+            logger.info("Synchronized Hybrid Pipeline: Written %d rows to local Parquet storage.", len(df_boe))
             return True
         except Exception as e:
-            logger.error(f"Failed to persist unified Parquet matrix: {str(e)}")
+            logger.error("Failed to persist unified Parquet matrix: %s", e)
             return False

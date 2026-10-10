@@ -3,8 +3,10 @@ import logging
 import math
 import os
 import re
+import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
+from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
 
@@ -132,6 +134,21 @@ def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
     if not ticker or not _SAFE_TICKER_PATH_RE.match(ticker):
         return None
     return ticker
+
+
+def write_parquet_atomic(df: Any, path: Any) -> None:
+    """Atomic replace, so a reader never meets a half-written file; the temp name never ends in .parquet, so a crash cannot leave a file that looks like a ticker."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+        df.to_parquet(temporary, engine="pyarrow")
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def has_cached_fundamentals(ticker: Optional[str]) -> bool:
