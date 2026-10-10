@@ -1229,12 +1229,13 @@ def test_history_staleness_check_uses_the_registry_exchange(tmp_path):
 @pytest.fixture
 def reported_sessions():
     import data_engine
+    import market_session_helpers
     from database import get_connection
 
-    data_engine._instrument_sessions.clear()
+    market_session_helpers._instrument_sessions.clear()
     data_engine._session_lookup_failed.clear()
-    yield data_engine._instrument_sessions
-    data_engine._instrument_sessions.clear()
+    yield market_session_helpers._instrument_sessions
+    market_session_helpers._instrument_sessions.clear()
     data_engine._session_lookup_failed.clear()
     conn = get_connection()
     try:
@@ -1358,6 +1359,7 @@ def test_history_staleness_uses_the_reported_window_end(tmp_path, reported_sessi
 
 def test_session_is_learned_once_from_yahoo_and_persisted(reported_sessions):
     import data_engine
+    import market_session_helpers
     from database import get_instrument_sessions
 
     shape = {"tz": "America/Chicago", "regular_end": 1791572400}
@@ -1365,31 +1367,33 @@ def test_session_is_learned_once_from_yahoo_and_persisted(reported_sessions):
         data_engine._learn_reported_session("^TNX")
         data_engine._learn_reported_session("^TNX")
     lookup.assert_called_once_with("^TNX")
-    assert data_engine._reported_session("^TNX") == ("America/Chicago", "14:00")
+    assert market_session_helpers.reported_session("^TNX") == ("America/Chicago", "14:00")
     assert get_instrument_sessions()["^TNX"]["regular_end"] == "14:00"
     reported_sessions.clear()
-    assert data_engine._reported_session("^TNX") == ("America/Chicago", "14:00")
+    assert market_session_helpers.reported_session("^TNX") == ("America/Chicago", "14:00")
 
 
 def test_failed_session_lookup_is_not_retried_within_the_retry_window(reported_sessions):
     import data_engine
+    import market_session_helpers
 
     with patch("data_engine.yahoo_engine.get_session_shape", return_value=None) as lookup:
         data_engine._learn_reported_session("GC=F")
         data_engine._learn_reported_session("GC=F")
     lookup.assert_called_once_with("GC=F")
-    assert data_engine._reported_session("GC=F") is None
+    assert market_session_helpers.reported_session("GC=F") is None
 
 
 def test_stored_session_survives_a_failed_refresh(reported_sessions):
     import data_engine
+    import market_session_helpers
 
     old = _stored_session("America/Chicago", "14:00", updated_at=0.0)
     reported_sessions["^TNX"] = old
     with patch("data_engine.yahoo_engine.get_session_shape", return_value=None) as lookup:
         data_engine._learn_reported_session("^TNX")
     lookup.assert_called_once()
-    assert data_engine._reported_session("^TNX") == ("America/Chicago", "14:00")
+    assert market_session_helpers.reported_session("^TNX") == ("America/Chicago", "14:00")
 
 
 @pytest.mark.parametrize("ticker", ["AAPL", "VOD.L", "^FTSE", "^GSPC", "UK10YG", "TBILL-606"])
@@ -1406,6 +1410,6 @@ def test_session_lookup_is_skipped_for_exchange_listed_and_unfetchable_tickers(r
     ("^FTSE", False), ("^N225", False), ("AAPL", False), ("VOD.L", False),
 ])
 def test_reported_session_applies_only_to_instruments_without_an_exchange_calendar(ticker, expected):
-    from data_engine import _has_reported_session
+    from market_session_helpers import has_reported_session
 
-    assert _has_reported_session(ticker) is expected
+    assert has_reported_session(ticker) is expected
