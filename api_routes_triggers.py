@@ -19,7 +19,7 @@ from scheduler_engine import (
     reload_scheduler, run_sentiment_scan, run_index_scraper,
     run_fundamentals_profiler, run_universe_deep_sync_job,
     run_xray_risk_cache_job, run_anomaly_training_job, record_job_run,
-    run_maintenance_engine, run_manual_job,
+    run_maintenance_engine, run_manual_job, get_all_job_last_runs,
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import get_backup_status, restore_backup, run_backup
@@ -270,18 +270,20 @@ def trigger_universe_update_endpoint(request: Request, background_tasks: Backgro
 
 @triggers_router.get("/universe/profiler-status")
 async def get_profiler_status():
-    """
-    Returns a full breakdown of the Fundamentals Profiler queue so the UI can
-    show *why* the pending count is what it is (eligible vs already profiled
-    vs stale). The legacy 'pending_count' top-level key is preserved for any
-    external callers depending on the original API shape.
-    """
+    """Profiler queue breakdown plus the last scheduler run; top-level pending_count kept for external callers."""
     try:
         breakdown = await run_in_threadpool(get_profiler_queue_breakdown)
+        last = (await run_in_threadpool(get_all_job_last_runs)).get("fundamentals_profiler_job") or {}
+        last_run = last.get("last_run")
         return JSONResponse(content={
             "status": "success",
             "pending_count": breakdown.get("pending_count", 0),
-            "breakdown": breakdown
+            "breakdown": breakdown,
+            "last_run": {
+                "display": time_engine.fmt_datetime(datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")) if last_run else None,
+                "status": last.get("last_status"),
+                "duration_sec": last.get("last_duration_sec"),
+            },
         })
     except Exception as e:
         logger.error("Failed to compute profiler status: %s", e)

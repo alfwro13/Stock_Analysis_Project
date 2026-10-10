@@ -190,18 +190,37 @@ async function fetchProfilerQueueStatus() {
         staleEl.classList.remove('text-orange', 'text-muted');
         staleEl.classList.add(stale > 0 ? 'text-orange' : 'text-muted');
 
+        const excluded = b.excluded_count || 0;
         const scopeStr = firewall
             ? "Freetrade Firewall is ON (only index ∩ tradable assets are in scope)"
             : "Freetrade Firewall is OFF (full market universe in scope)";
+        const excludedStr = excluded > 0
+            ? ` ${excluded.toLocaleString()} blacklisted, synthetic or ignored tickers are not counted.`
+            : "";
         let explanation;
         if (eligible === 0) {
-            explanation = `${scopeStr}. No eligible tickers — check Freetrade Sync and Index Scraper.`;
+            explanation = `${scopeStr}. No eligible tickers — check Freetrade Sync and Index Scraper.${excludedStr}`;
         } else if (pending === 0) {
-            explanation = `${scopeStr}. All ${eligible.toLocaleString()} eligible tickers are profiled and fresh (TTL: 90 days). No work for the profiler.`;
+            explanation = `${scopeStr}. All ${eligible.toLocaleString()} eligible tickers are profiled and fresh (TTL: 90 days). No work for the profiler.${excludedStr}`;
         } else {
-            explanation = `${scopeStr}. ${pending.toLocaleString()} of ${eligible.toLocaleString()} eligible tickers need a profile (missing or stale).`;
+            explanation = `${scopeStr}. ${pending.toLocaleString()} of ${eligible.toLocaleString()} eligible tickers need a profile (missing or stale).${excludedStr}`;
         }
         hintEl.innerText = explanation;
+
+        const runEl = document.getElementById('profiler-run-hint');
+        const last = data.last_run || {};
+        const lastStr = last.display
+            ? `Last run: ${last.display} (${last.status || 'unknown'}).`
+            : "Last run: never.";
+        const refreshedStr = `${(b.refreshed_24h_count || 0).toLocaleString()} profiles refreshed in the last 24 hours.`;
+        let etaStr = "";
+        if (pending > 0) {
+            const runs = b.runs_to_clear || 0;
+            etaStr = b.days_to_clear
+                ? ` Queue clears in about ${runs.toLocaleString()} runs of ${(b.batch_size || 0).toLocaleString()} (≈ ${b.days_to_clear.toLocaleString()} days on the current schedule).`
+                : ` Queue clears in about ${runs.toLocaleString()} runs of ${(b.batch_size || 0).toLocaleString()}; the schedule is disabled.`;
+        }
+        runEl.innerText = `${lastStr} ${refreshedStr}${etaStr}`;
     } catch (e) {
         console.error("Failed to fetch profiler status", e);
         hintEl.innerText = "Failed to fetch profiler queue status.";
