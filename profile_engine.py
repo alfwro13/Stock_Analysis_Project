@@ -5,11 +5,11 @@ import time
 import random
 from pathlib import Path
 from datetime import datetime, timezone
-from config import load_config
-from database import get_connection
+from config import load_config, HISTORICAL_DIR, FUNDAMENTALS_DIR
+from database import get_connection, get_all_account_tickers, get_registry_spot_future_tickers
 from yahoo_engine import yahoo_engine
 from db_helpers import get_portfolio_watchlist_tickers
-from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
+from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_ticker, safe_ticker_filename
 from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,67 @@ def save_blacklist(blacklist: set) -> None:
     except Exception as e:
         logger.error("Failed to save blacklist: %s", e)
 
+_PURGED_TABLES = ("market_universe", "asset_profiles", "stock_signals", "quant_signals")
+
+
+def _purge_ticker_rows(cursor, ticker: str) -> int:
+    removed = 0
+    for table in _PURGED_TABLES:
+        cursor.execute(f"DELETE FROM {table} WHERE ticker = ?", (ticker,))
+        removed += cursor.rowcount
+    return removed
+
+
+def _protected_tickers() -> set:
+    """Held, watched, ever-traded and Markets-registry tickers: valuation history and the Markets page still read their files and rows."""
+    protected = set(get_portfolio_watchlist_tickers())
+    protected.update(normalize_ticker(t) for t in get_all_account_tickers())
+    protected.update(normalize_ticker(t) for t in get_registry_spot_future_tickers())
+    return protected
+
+
+def _delete_ticker_files(ticker: str, protected: set) -> int:
+    """Removes the ticker's daily-history parquet and fundamentals dump, which QuantEngine.run_all() would otherwise re-analyse into a fresh stock_signals row every night."""
+    safe = safe_ticker_filename(ticker)
+    if not safe or normalize_ticker(ticker) in protected:
+        return 0
+    removed = 0
+    for path in (HISTORICAL_DIR / f"{safe}.parquet", FUNDAMENTALS_DIR / f"{safe}.json"):
+        try:
+            if path.exists():
+                path.unlink()
+                removed += 1
+        except OSError as e:
+            logger.warning("Failed to delete %s: %s", path, e)
+    return removed
+
+
+def purge_blacklisted_tickers() -> int:
+    """Re-applies the blacklist purge to rows and files other writers re-created; protected tickers are left alone."""
+    blacklist = load_blacklist()
+    if not blacklist:
+        return 0
+    protected = _protected_tickers()
+    targets = sorted(t for t in blacklist if normalize_ticker(t) not in protected)
+
+    removed = 0
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        for ticker in targets:
+            removed += _purge_ticker_rows(cursor, ticker)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    for ticker in targets:
+        removed += _delete_ticker_files(ticker, protected)
+    if removed:
+        logger.info("Blacklist purge removed %d leftover rows/files for blacklisted tickers.", removed)
+    return removed
+
+
 def update_single_profile(ticker: str) -> bool:
     """Fetches yfinance metadata for one ticker, upserts asset_profiles; blacklists/purges on empty payload."""
     blacklist = load_blacklist()
@@ -58,11 +119,9 @@ def update_single_profile(ticker: str) -> bool:
             blacklist.add(ticker)
             save_blacklist(blacklist)
 
-            cursor.execute("DELETE FROM market_universe WHERE ticker = ?", (ticker,))
-            cursor.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
-            cursor.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
-            cursor.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+            _purge_ticker_rows(cursor, ticker)
             conn.commit()
+            _delete_ticker_files(ticker, _protected_tickers())
             return False
 
         company_name = info.get('shortName') or info.get('longName') or ticker
@@ -146,6 +205,7 @@ def _profile_queue() -> tuple:
 def run_profile_audit(limit: int = DEFAULT_BATCH_SIZE):
     logger.info("Initiating Asset Profile Audit (limit: %d)...", limit)
     try:
+        purge_blacklisted_tickers()
         rows, _, _ = _profile_queue()
         priority = set(get_portfolio_watchlist_tickers())
     except Exception as e:

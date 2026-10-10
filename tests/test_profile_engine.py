@@ -17,6 +17,8 @@ Covers:
   • batch: Portfolio/Watchlist first, then never-profiled, then oldest verification
   • breakdown: runs/days to clear from batch size and schedule
   • scheduler_jobs.run_fundamentals_profiler() — runner-level wiring
+  • blacklist purge: leftover parquet/fundamentals files and re-created rows are removed,
+    protected (held/watched/ledger/registry) tickers are not
 """
 
 import inspect
@@ -408,3 +410,108 @@ class TestFundamentalsProfilerRunner:
         assert set(body["last_run"]) == {"display", "status", "duration_sec"}
         for key in ("excluded_count", "refreshed_24h_count", "batch_size", "runs_to_clear", "days_to_clear"):
             assert key in body["breakdown"]
+
+
+# ── blacklist purge: files and re-created rows ───────────────────────────────
+
+@pytest.fixture
+def ticker_dirs(tmp_path):
+    history = tmp_path / "historical"
+    fundamentals = tmp_path / "fundamentals"
+    history.mkdir()
+    fundamentals.mkdir()
+    with patch("profile_engine.HISTORICAL_DIR", history), patch("profile_engine.FUNDAMENTALS_DIR", fundamentals):
+        yield history, fundamentals
+
+
+def _touch_ticker_files(ticker, history, fundamentals):
+    (history / f"{ticker}.parquet").write_bytes(b"x")
+    (fundamentals / f"{ticker}.json").write_text("{}")
+
+
+class TestBlacklistPurgeFiles:
+
+    def test_blacklisting_removes_history_and_fundamentals_files(self, tmp_path, ticker_dirs):
+        import profile_engine
+        history, fundamentals = ticker_dirs
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        _touch_ticker_files("PQPURGE", history, fundamentals)
+        with patch("profile_engine.BLACKLIST_PATH", bl), \
+             patch("profile_engine.yahoo_engine") as mock_ye, \
+             patch("profile_engine._protected_tickers", return_value=set()):
+            mock_ye.get_ticker_info.return_value = {}
+            assert profile_engine.update_single_profile("PQPURGE") is False
+        assert not (history / "PQPURGE.parquet").exists()
+        assert not (fundamentals / "PQPURGE.json").exists()
+
+    def test_protected_ticker_keeps_its_files_when_blacklisted(self, tmp_path, ticker_dirs):
+        import profile_engine
+        history, fundamentals = ticker_dirs
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        _touch_ticker_files("PQHELD", history, fundamentals)
+        with patch("profile_engine.BLACKLIST_PATH", bl), \
+             patch("profile_engine.yahoo_engine") as mock_ye, \
+             patch("profile_engine._protected_tickers", return_value={"PQHELD"}):
+            mock_ye.get_ticker_info.return_value = {}
+            profile_engine.update_single_profile("PQHELD")
+        assert (history / "PQHELD.parquet").exists()
+        assert (fundamentals / "PQHELD.json").exists()
+
+    def test_unsafe_ticker_name_never_touches_files_outside_the_directories(self, ticker_dirs, tmp_path):
+        import profile_engine
+        history, _ = ticker_dirs
+        outside = tmp_path / "escape.parquet"
+        outside.write_bytes(b"x")
+        assert profile_engine._delete_ticker_files("../escape", set()) == 0
+        assert outside.exists()
+
+    def test_sweep_removes_recreated_rows_and_files_but_not_protected_or_unlisted(self, tmp_path, ticker_dirs):
+        import database
+        import profile_engine
+        history, fundamentals = ticker_dirs
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text(json.dumps(["PQSWEEP", "PQHELD2"]))
+        tickers = ["PQSWEEP", "PQHELD2", "PQOTHER"]
+        for t in tickers:
+            _touch_ticker_files(t, history, fundamentals)
+        _seed_queue({"PQSWEEP": "2026-01-01 00:00:00", "PQHELD2": None, "PQOTHER": None})
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine._protected_tickers", return_value={"PQHELD2"}):
+                removed = profile_engine.purge_blacklisted_tickers()
+            conn = database.get_connection()
+            try:
+                left = {r["ticker"] for r in conn.execute(
+                    "SELECT ticker FROM stock_signals WHERE ticker IN ('PQSWEEP','PQHELD2','PQOTHER')").fetchall()}
+                profile_left = conn.execute("SELECT 1 FROM asset_profiles WHERE ticker = 'PQSWEEP'").fetchone()
+            finally:
+                conn.close()
+        finally:
+            _clear_queue(tickers)
+
+        assert removed == 4
+        assert left == {"PQHELD2", "PQOTHER"}
+        assert profile_left is None
+        assert not (history / "PQSWEEP.parquet").exists()
+        assert not (fundamentals / "PQSWEEP.json").exists()
+        assert (history / "PQHELD2.parquet").exists()
+        assert (history / "PQOTHER.parquet").exists()
+
+    def test_sweep_with_empty_blacklist_is_a_no_op(self, tmp_path, ticker_dirs):
+        import profile_engine
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        with patch("profile_engine.BLACKLIST_PATH", bl):
+            assert profile_engine.purge_blacklisted_tickers() == 0
+
+    def test_audit_runs_the_sweep_before_picking_a_batch(self, empty_blacklist):
+        import profile_engine
+        calls = []
+        with patch("profile_engine.purge_blacklisted_tickers", side_effect=lambda: calls.append("sweep") or 0), \
+             patch("profile_engine.get_portfolio_watchlist_tickers", return_value=[]), \
+             patch("profile_engine.update_single_profile", side_effect=lambda t: calls.append("fetch") or True), \
+             patch("profile_engine.time.sleep"):
+            profile_engine.run_profile_audit(limit=1)
+        assert calls and calls[0] == "sweep"

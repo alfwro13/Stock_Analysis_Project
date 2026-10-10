@@ -87,7 +87,9 @@ When profile\_engine.py executes its rolling audit metadata harvest, it evaluate
    DELETE FROM stock\_signals WHERE ticker \= ?;  
    DELETE FROM quant\_signals WHERE ticker \= ?;
 
-3. **Upstream Ingestion Veto:** The next time freetrade\_engine.py runs a background sync, it loads data/freetrade\_blacklist.json directly into a high-speed memory set(). As it iterates through the broker rows, any resolved ticker matching the blacklist is **vetoed and discarded instantly**, ensuring it can never pollute your local system data layers again.
+3. **Leftover File Purge and Daily Sweep:** The ticker's `data/historical/{ticker}.parquet` and `data/fundamentals/{ticker}.json` are deleted as well, because the nightly quant scan analyses every parquet it finds and would otherwise re-create the ticker's `stock_signals` row each night. The same purge runs again at the start of every profiler run for blacklisted tickers that other writers re-created. Held, watched, ever-traded (Buy/Sell ledger) and Markets-registry tickers are never swept or file-purged; their valuation history and pages still read them.
+
+4. **Upstream Ingestion Veto:** The next time freetrade\_engine.py runs a background sync, it loads data/freetrade\_blacklist.json directly into a high-speed memory set(). As it iterates through the broker rows, any resolved ticker matching the blacklist is **vetoed and discarded instantly**, ensuring it can never pollute your local system data layers again.
 
 ## **💻 4\. Command Line Diagnostics & Isolated Testing**
 
