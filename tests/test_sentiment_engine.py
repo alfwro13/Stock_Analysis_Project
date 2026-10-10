@@ -1,10 +1,17 @@
 """Tests for sentiment_engine pure-logic helpers."""
+import numpy as np
 import pandas as pd
+import pytest
 from datetime import date
 from unittest.mock import patch
 
 import sentiment_engine
 from sentiment_engine import (
+    generate_ftse_gbp_figure,
+    generate_sentiment_figure,
+    generate_uk_yield_equity_figure,
+    generate_vix_spy_figure,
+    generate_yield_equity_figure,
     fetch_parquet_data,
     fetch_stock_data,
     _bucket_fear_greed,
@@ -148,3 +155,67 @@ class TestGetLatestFearGreed:
              patch("sentiment_engine._check_and_trigger_async_refresh"):
             get_latest_fear_greed()
         assert cache["sentiment_html"] == "<div>existing chart</div>"
+
+
+# ---------------------------------------------------------------------------
+# Chart layout — every sentiment_engine chart follows AGENTS.md rule 18
+# ---------------------------------------------------------------------------
+
+def _frame(**columns):
+    idx = pd.date_range("2026-04-01", periods=30, freq="B")
+    return pd.DataFrame({name: np.linspace(*bounds, 30) for name, bounds in columns.items()}, index=idx)
+
+
+def _assert_rule_18_layout(layout):
+    assert layout.title.x == 0.5 and layout.title.xanchor == "center"
+    assert layout.legend.orientation == "h"
+    assert layout.legend.yanchor == "top" and layout.legend.y == -0.15
+    assert layout.legend.xanchor == "center" and layout.legend.x == 0.5
+    assert layout.yaxis.automargin is True and layout.yaxis2.automargin is True
+    assert layout.margin.b >= 60
+    assert layout.height >= 400
+
+
+class TestChartLayoutConvention:
+    def test_fear_greed_figure(self):
+        df = _frame(SPY_Close=(500, 520), Fear_Greed_Index=(20, 80))
+        _assert_rule_18_layout(generate_sentiment_figure(df).layout)
+
+    def test_vix_spy_figure(self):
+        df = _frame(SPY_Close=(500, 520), VIX_Close=(15, 25))
+        with patch("sentiment_engine.get_vix_spy_data", return_value=df):
+            fig = generate_vix_spy_figure()
+        _assert_rule_18_layout(fig.layout)
+
+    @pytest.mark.parametrize("builder, columns", [
+        (generate_yield_equity_figure, dict(SPY_Close=(500, 520), **{"^TYX_Close": (4.5, 5.0)})),
+        (generate_uk_yield_equity_figure, dict(FTSE_Close=(8000, 8200), UK_Close=(4.2, 4.6))),
+        (generate_ftse_gbp_figure, dict(FTSE_Close=(8000, 8200), GBPUSD_Close=(1.25, 1.30))),
+    ])
+    def test_merged_frame_figures(self, builder, columns):
+        _assert_rule_18_layout(builder(_frame(**columns)).layout)
+
+
+class TestAsyncChartCruncherWorker:
+    def test_worker_caches_all_three_shared_builder_charts_with_rule_18_layout(self, monkeypatch):
+        frames = {
+            "SPY": _frame(SPY_Close=(500, 520)),
+            "^TYX": _frame(**{"^TYX_Close": (4.5, 5.0)}),
+            "FTSE_BASELINE.parquet": _frame(FTSE_Close=(8000, 8200)),
+            "UK_GILT_BASELINE.parquet": _frame(UK_Close=(4.2, 4.6)),
+            "GBPUSD_BASELINE.parquet": _frame(GBPUSD_Close=(1.25, 1.30)),
+        }
+        cache = {}
+        monkeypatch.setattr(sentiment_engine, "_MACRO_HTML_CACHE", cache)
+        monkeypatch.setattr(sentiment_engine, "_IS_REFRESHING", True)
+        monkeypatch.setattr(sentiment_engine, "_LAST_CACHE_TIME", 0.0)
+        monkeypatch.setattr(sentiment_engine, "get_sentiment_data", lambda: None)
+        monkeypatch.setattr(sentiment_engine, "generate_vix_spy_figure", lambda: None)
+        monkeypatch.setattr(sentiment_engine, "fetch_stock_data", lambda ticker, start: frames[ticker])
+        monkeypatch.setattr(sentiment_engine, "fetch_parquet_data", lambda name, start: frames[name])
+
+        sentiment_engine._async_chart_cruncher_worker()
+
+        for key in ("yield_equity_html", "uk_yield_equity_html", "ftse_gbp_html"):
+            assert '"y":-0.15' in cache[key].replace(" ", "")
+            assert '"height":420' in cache[key].replace(" ", "")

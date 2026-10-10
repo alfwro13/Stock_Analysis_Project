@@ -8,6 +8,7 @@ Covers:
  - create_ai_contagion_correlation_heatmap (<2 tickers guard, correlation) [visuals_ai]
  - Smoke tests for macro economic charts (return HTML, empty-data guard)
  - create_yield_vs_gdp_chart (gap shading split, GDP step alignment, rule-18 layout)
+ - rule-18 layout of every visuals.py Market Sentiment chart (apply_sentiment_chart_layout)
 """
 
 import pytest
@@ -17,6 +18,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 from visuals import (
+    SENTIMENT_CHART_HEIGHT,
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
     create_intraday_chart,
@@ -326,6 +328,53 @@ class TestCreateYieldVsGdpChart:
         assert layout.yaxis.automargin is True
         assert layout.margin.b >= 60
         assert layout.height >= 400
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Market Sentiment charts — shared rule-18 layout
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _sentiment_chart_builders():
+    idx = pd.date_range("2026-04-01", periods=30, freq="B")
+    spy = pd.DataFrame({"Close": np.linspace(500.0, 520.0, 30)}, index=idx)
+    series = pd.DataFrame({"value": np.linspace(2.0, 4.0, 30)}, index=idx)
+    gdp = pd.DataFrame({"value": np.full(30, 5.0)}, index=idx)
+    return {
+        "us_inflation": lambda: create_us_inflation_chart(spy, series),
+        "uk_inflation": lambda: create_uk_inflation_chart(spy, series),
+        "us_liquidity": lambda: create_us_liquidity_chart(spy, series),
+        "uk_liquidity": lambda: create_uk_liquidity_chart(spy, series),
+        "us_credit": lambda: create_us_credit_chart(series),
+        "uk_credit": lambda: create_uk_credit_chart(series),
+        "yield_curve": lambda: create_yield_curve_chart(series),
+        "us_yield_gdp": lambda: create_yield_vs_gdp_chart(series, gdp, "US"),
+        "uk_yield_gdp": lambda: create_yield_vs_gdp_chart(series, gdp, "UK"),
+    }
+
+
+class TestSentimentChartLayoutConvention:
+
+    @pytest.mark.parametrize("name", sorted(_sentiment_chart_builders()))
+    def test_follows_rule_18_layout(self, name):
+        captured = []
+        with patch("plotly.graph_objects.Figure.to_html", autospec=True,
+                   side_effect=lambda fig, **kw: captured.append(fig) or "<div></div>"):
+            _sentiment_chart_builders()[name]()
+        layout = captured[0].layout
+        assert layout.title.x == 0.5 and layout.title.xanchor == "center"
+        assert layout.legend.orientation == "h"
+        assert layout.legend.yanchor == "top" and layout.legend.y == -0.15
+        assert layout.legend.xanchor == "center" and layout.legend.x == 0.5
+        assert layout.yaxis.automargin is True
+        assert layout.margin.b >= 60
+        assert layout.height == SENTIMENT_CHART_HEIGHT >= 400
+
+    def test_secondary_axis_also_gets_automargin(self):
+        captured = []
+        with patch("plotly.graph_objects.Figure.to_html", autospec=True,
+                   side_effect=lambda fig, **kw: captured.append(fig) or "<div></div>"):
+            _sentiment_chart_builders()["us_inflation"]()
+        assert captured[0].layout.yaxis2.automargin is True
 
 
 # ──────────────────────────────────────────────────────────────────────────────
