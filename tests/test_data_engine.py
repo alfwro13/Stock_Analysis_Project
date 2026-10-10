@@ -243,6 +243,38 @@ def test_get_all_tickers_excludes_ignored_registry_tickers():
     assert "^GSPC" not in tickers
 
 
+def test_get_all_tickers_excludes_non_yahoo_registry_series_from_every_source():
+    """UK10YG (FT/BoE gilt, no Yahoo listing) came back 404 four times a night from the Update Pipeline:
+    it must be dropped whether it arrives via the registry, the Watchlist, an account ledger or holdings."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.watchlist = {"watchlist": ["uk10yg", "MSFT"]}
+    engine.account_tickers = ["UK10YG", "TBILL-606"]
+
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("UK10YG", "AAPL")), \
+         patch("data_engine.get_registry_spot_future_tickers", return_value=["^GSPC", "UK10YG"]):
+        tickers = engine.get_all_tickers()
+
+    assert tickers == ["AAPL", "MSFT", "^GSPC"]
+
+
+def test_get_all_tickers_with_the_seeded_registry_never_includes_uk10yg():
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
+
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value={}):
+        tickers = engine.get_all_tickers()
+
+    assert "UK10YG" not in tickers
+    assert "^GSPC" in tickers
+
+
 def test_get_all_tickers_result_is_sorted():
     """Output must be alphabetically sorted."""
     from data_engine import DataEngine

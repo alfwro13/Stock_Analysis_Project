@@ -188,11 +188,12 @@ def is_excluded_from_yahoo_fetch(ticker: str, ignored: Optional[set] = None) -> 
     a registry series sourced elsewhere (UK10YG comes from FT/BoE), or on the Settings-page
     Ignored Tickers list. Pass a pre-computed `ignored` (from ignored_tickers_set()) when
     filtering many tickers in a loop, to avoid reloading config on every call."""
-    if ticker in NON_YAHOO_REGISTRY_TICKERS or is_synthetic_ticker(ticker):
+    normalized = normalize_ticker(ticker)
+    if normalized in NON_YAHOO_REGISTRY_TICKERS or is_synthetic_ticker(normalized):
         return True
     if ignored is None:
         ignored = ignored_tickers_set()
-    return normalize_ticker(ticker) in ignored
+    return normalized in ignored
 
 
 _MISSING_SECTORS = {"", "none", "unclassified", "unknown"}

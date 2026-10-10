@@ -48,27 +48,19 @@ class DataEngine:
 
     def get_all_tickers(self) -> List[str]:
         from accounts_engine import get_combined_holdings
-        tickers: Set[str] = set()
-        ignored_tickers = ignored_tickers_set(load_config())
-
-        for ticker in get_combined_holdings().keys():
-            if ticker and not is_excluded_from_yahoo_fetch(ticker, ignored_tickers):
-                tickers.add(normalize_ticker(ticker))
+        tickers: Set[str] = set(get_combined_holdings().keys())
 
         if isinstance(self.watchlist.get("watchlist"), list):
-            for ticker in self.watchlist["watchlist"]:
-                if ticker:
-                    tickers.add(normalize_ticker(ticker))
+            tickers.update(self.watchlist["watchlist"])
 
-        for ticker in self.account_tickers:
-            if ticker:
-                tickers.add(normalize_ticker(ticker))
+        tickers.update(self.account_tickers)
+        tickers.update(get_registry_spot_future_tickers())
 
-        for ticker in get_registry_spot_future_tickers():
-            if not is_excluded_from_yahoo_fetch(ticker, ignored_tickers):
-                tickers.add(normalize_ticker(ticker))
-
-        valid_tickers = [t for t in tickers if t not in ignored_tickers]
+        ignored_tickers = ignored_tickers_set(load_config())
+        valid_tickers = {
+            normalize_ticker(t) for t in tickers
+            if t and not is_excluded_from_yahoo_fetch(t, ignored_tickers)
+        }
         return sorted(valid_tickers)
 
     def get_universe_history_pool(self) -> List[str]:
