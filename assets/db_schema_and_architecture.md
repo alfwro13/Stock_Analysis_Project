@@ -192,8 +192,8 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 
 #### `scheduler_run_log`
 * **Purpose:** Records the latest run timestamp and aggregate timing per APScheduler job ID so jobs can guard against re-running within their minimum interval and the Workflow Monitor can report current health.
-* **Key Columns:** `job_id` (PK), `last_run`, `last_started`, `last_duration_sec`, `avg_duration_sec` (EMA of run duration), `last_status` (`success`/`error`).
-* **Written by:** each job's `record_job_run()` (`last_run`) plus the shared scheduler execution wrapper (`last_started`, duration, status) used by scheduled and Settings **Run Now** paths.
+* **Key Columns:** `job_id` (PK), `last_run`, `last_started`, `last_duration_sec`, `avg_duration_sec` (plain mean of the job's last 20 successful runs in `scheduler_run_history`; failed runs are excluded, and a job with no successful run keeps its previous value), `last_status` (`success`/`error`).
+* **Written by:** each job's `record_job_run()` (`last_run`) plus the shared scheduler execution wrapper (`last_started`, duration, status) used by scheduled and Settings **Run Now** paths. `db_helpers.refresh_job_average_duration()` recomputes `avg_duration_sec` after every run and once per `migrate_db()`; the Workflow Monitor and the Settings **Active processes** list both read this one value. The 20-run window is `constants.SCHEDULER_RUN_HISTORY_LIMIT`.
 
 #### `scheduler_run_history`
 * **Purpose:** Stores per-execution details for the run-history window opened by clicking a job name in Settings → System Diagnostics → Master APScheduler Matrix.

@@ -2666,6 +2666,12 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to copy head_shoulders_history: %s", e)
 
     try:
+        from db_helpers import refresh_job_average_duration
+        refresh_job_average_duration(cursor)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to recompute scheduler job average durations: %s", e)
+
+    try:
         conn.commit()
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to commit migration changes: %s", e)

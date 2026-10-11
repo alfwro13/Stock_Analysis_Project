@@ -12,7 +12,9 @@ from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from config import load_config
 import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
+from constants import SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_accounts, get_connection, get_etf_predictor_configs
+from db_helpers import refresh_job_average_duration
 from news_feed_engine import run_news_feed_job
 
 logger = logging.getLogger(__name__)
@@ -39,24 +41,37 @@ def _tracked_add_job(func, *args, **kwargs):
 scheduler.add_job = _tracked_add_job
 
 _active_jobs: dict[str, str] = {}
+_active_job_ids: dict[str, str] = {}
 _active_jobs_lock = _threading.Lock()
 _job_execution_context = _threading.local()
 
-def _mark_job_started(name: str) -> None:
+def _mark_job_started(name: str, job_id: str | None = None) -> None:
+    resolved_id = job_id or job_id_for_label(name)
     with _active_jobs_lock:
         _active_jobs[name] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        if resolved_id:
+            _active_job_ids[name] = resolved_id
 
 def _mark_job_done(name: str) -> None:
     with _active_jobs_lock:
         _active_jobs.pop(name, None)
+        _active_job_ids.pop(name, None)
 
 def get_active_jobs() -> dict[str, str]:
     with _active_jobs_lock:
         return dict(_active_jobs)
 
+def get_active_job_average_durations() -> dict[str, float | None]:
+    with _active_jobs_lock:
+        names = list(_active_jobs)
+        job_ids = dict(_active_job_ids)
+    runs = get_all_job_last_runs() if names else {}
+    return {name: runs.get(job_ids.get(name), {}).get("avg_duration_sec") for name in names}
+
 def force_clear_active_jobs() -> None:
     with _active_jobs_lock:
         _active_jobs.clear()
+        _active_job_ids.clear()
 
 def log_sched_notification(msg_type: str, msg_text: str):
     level = "error" if msg_type == "Error" else ("warning" if msg_type == "Warning" else "info")
@@ -106,7 +121,6 @@ def get_all_job_last_runs() -> dict:
             conn.close()
 
 
-_DURATION_EMA_ALPHA = 0.3
 _model_retraining_queue: list[str] = []
 _model_retraining_queued: set[str] = set()
 _model_retraining_current: str | None = None
@@ -203,17 +217,12 @@ def _record_job_duration(
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT avg_duration_sec FROM scheduler_run_log WHERE job_id = ?", (job_id,))
-        row = cursor.fetchone()
-        prev_avg = row[0] if row and row[0] is not None else None
-        new_avg = duration_sec if prev_avg is None else (_DURATION_EMA_ALPHA * duration_sec + (1 - _DURATION_EMA_ALPHA) * prev_avg)
         cursor.execute(
-            "INSERT INTO scheduler_run_log (job_id, last_run, last_started, last_duration_sec, avg_duration_sec, last_status) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO scheduler_run_log (job_id, last_run, last_started, last_duration_sec, last_status) "
+            "VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run, last_started = excluded.last_started, "
-            "last_duration_sec = excluded.last_duration_sec, avg_duration_sec = excluded.avg_duration_sec, "
-            "last_status = excluded.last_status",
-            (job_id, finished_iso, started_iso, duration_sec, new_avg, status),
+            "last_duration_sec = excluded.last_duration_sec, last_status = excluded.last_status",
+            (job_id, finished_iso, started_iso, duration_sec, status),
         )
         cursor.execute(
             "INSERT INTO scheduler_run_history "
@@ -221,6 +230,7 @@ def _record_job_duration(
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (job_id, started_iso, finished_iso, duration_sec, trigger_source, status, error_detail),
         )
+        refresh_job_average_duration(cursor, job_id)
         conn.commit()
     except Exception as e:
         logger.error("Failed to record duration for %s: %s", job_id, e)
@@ -265,7 +275,7 @@ def run_manual_job(job_id: str, fn, *args, **kwargs):
     return _run_tracked_job(job_id, "manual", fn, *args, **kwargs)
 
 
-def get_job_run_history(job_id: str, limit: int = 20) -> list[dict]:
+def get_job_run_history(job_id: str, limit: int = SCHEDULER_RUN_HISTORY_LIMIT) -> list[dict]:
     conn = None
     try:
         conn = get_connection()
@@ -273,7 +283,7 @@ def get_job_run_history(job_id: str, limit: int = 20) -> list[dict]:
             "SELECT id, job_id, started_at, finished_at, duration_sec, trigger_source, status, error_detail "
             "FROM scheduler_run_history WHERE job_id = ? "
             "ORDER BY started_at DESC, id DESC LIMIT ?",
-            (job_id, min(max(limit, 1), 20)),
+            (job_id, min(max(limit, 1), SCHEDULER_RUN_HISTORY_LIMIT)),
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -1133,7 +1143,7 @@ def shutdown_scheduler():
 # Sub-module re-exports — placed after all primary definitions so the sub-modules can
 # import from this module at their top level without a circular-import error.
 from scheduler_manifest import (
-    JOB_GRAPH, CONFIG_KEY_TO_JOB, job_label, display_name_for_config_key,
+    JOB_GRAPH, CONFIG_KEY_TO_JOB, job_label, job_id_for_label, display_name_for_config_key,
     scheduler_display_names, _DYNAMIC_ETF_RE, _resolve_manifest,
 )
 from scheduler_monitor import build_workflow_graph, detect_workflow_conflicts, _job_status

@@ -1277,7 +1277,7 @@ def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"
     job_name = f"ETF Price Predictor #{config_id} ({'post-close' if fill_actuals else 'pre-open'})"
-    _mark_job_started(job_name)
+    _mark_job_started(job_name, job_id)
     log_sched_notification("Scheduler", f"Started {job_name} ({job_type})...")
     try:
         from etf_predictor_engine import fill_actuals_for_config, run_prediction
@@ -1356,7 +1356,7 @@ def _run_account_scraper_job(account_id: int) -> None:
     job_id = f"account_scraper_{account_id}_job"
     acc = get_account(account_id)
     job_name = f"Account Price Scraper — {acc['name'] if acc else account_id}"
-    _mark_job_started(job_name)
+    _mark_job_started(job_name, job_id)
     try:
         from account_scraper_engine import run_scrape_for_account
         result = run_scrape_for_account(account_id)
@@ -1406,7 +1406,7 @@ def _run_account_topup_job(account_id: int) -> None:
     job_id = f"account_autotopup_{account_id}_job"
     acc = get_account(account_id)
     job_name = f"Account Auto Top-up — {acc['name'] if acc else account_id}"
-    _mark_job_started(job_name)
+    _mark_job_started(job_name, job_id)
     try:
         if not acc or not acc.get("autotopup_enabled"):
             return

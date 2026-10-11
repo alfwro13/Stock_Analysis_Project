@@ -1886,12 +1886,16 @@ Returns a snapshot of all scheduler jobs that are currently executing. The regis
     "Global Model Training (Walk-Forward)": "2026-06-10T14:32:01",
     "Daily Quant Screener (Portfolio & Watchlist)": "2026-06-10T14:28:45"
   },
+  "active_job_avg_sec": {
+    "Global Model Training (Walk-Forward)": 1840.2,
+    "Daily Quant Screener (Portfolio & Watchlist)": null
+  },
   "requirements_changed_pending": false,
   "scikit_learn_change_pending": null
 }
 ```
 
-`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
+`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `active_job_avg_sec` has the same keys and gives each running job's average duration in seconds — the mean of its last 20 successful runs, the same `avg_duration_sec` the Workflow Monitor shows — or `null` when the job has no successful run on record; the Settings **Active processes** list shows it beside the running time. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
 
 ---
 

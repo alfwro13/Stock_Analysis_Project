@@ -1258,6 +1258,22 @@ def test_active_jobs_reports_requirements_changed_pending(client):
     api_routes_system._requirements_changed_pending = False
 
 
+@pytest.mark.api
+def test_active_jobs_reports_average_duration_per_running_job(client):
+    """GET /api/system/active-jobs must return each running job's average duration beside its start time."""
+    import scheduler_engine
+
+    name = "Account Price Scraper — API Test"
+    with patch.object(scheduler_engine, "get_all_job_last_runs", return_value={"account_scraper_99_job": {"avg_duration_sec": 42.5}}):
+        scheduler_engine._mark_job_started(name, "account_scraper_99_job")
+        try:
+            body = _json(client.get("/api/system/active-jobs"))
+        finally:
+            scheduler_engine._mark_job_done(name)
+    assert name in body["active_jobs"]
+    assert body["active_job_avg_sec"][name] == 42.5
+
+
 def test_execute_restart_installs_pip_dependencies_when_pending():
     """execute_restart() must run pip install before signalling shutdown when requirements.txt changed."""
     import asyncio

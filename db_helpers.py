@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from config import load_config
+from constants import SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -1408,3 +1409,18 @@ def upsert_instrument_session(ticker: str, exchange_tz: str, regular_end: str) -
     finally:
         if conn:
             conn.close()
+
+
+def refresh_job_average_duration(cursor, job_id: Optional[str] = None) -> None:
+    """Sets scheduler_run_log.avg_duration_sec to the mean of each job's last successful runs; a job with no successful run keeps its value."""
+    cursor.execute(
+        "UPDATE scheduler_run_log SET avg_duration_sec = ("
+        "SELECT AVG(duration_sec) FROM ("
+        "SELECT duration_sec FROM scheduler_run_history "
+        "WHERE job_id = scheduler_run_log.job_id AND status = 'success' "
+        "ORDER BY started_at DESC, id DESC LIMIT ?)) "
+        "WHERE (? IS NULL OR job_id = ?) AND EXISTS ("
+        "SELECT 1 FROM scheduler_run_history "
+        "WHERE job_id = scheduler_run_log.job_id AND status = 'success')",
+        (SCHEDULER_RUN_HISTORY_LIMIT, job_id, job_id),
+    )

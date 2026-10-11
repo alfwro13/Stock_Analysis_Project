@@ -19,7 +19,7 @@ from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, i
 from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
-from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS
+from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -142,7 +142,8 @@ class MaintenanceEngine:
                 "SELECT id FROM ("
                 "SELECT id, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY started_at DESC, id DESC) AS run_number "
                 "FROM scheduler_run_history"
-                ") WHERE run_number > 20)"
+                ") WHERE run_number > ?)",
+                (SCHEDULER_RUN_HISTORY_LIMIT,),
             )
             self.metrics["scheduler_runs_deleted"] = cursor.rowcount
             conn.commit()

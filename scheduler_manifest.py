@@ -194,6 +194,13 @@ def job_label(job_id: str) -> str:
     return meta["label"] if meta else job_id
 
 
+def job_id_for_label(label: str) -> str | None:
+    for job_id, meta in JOB_GRAPH.items():
+        if meta["label"] == label:
+            return job_id
+    return None
+
+
 def display_name_for_config_key(config_key: str) -> str | None:
     job_id = CONFIG_KEY_TO_JOB.get(config_key)
     return job_label(job_id) if job_id else None
