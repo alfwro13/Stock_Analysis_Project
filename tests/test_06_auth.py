@@ -53,6 +53,7 @@ def _fresh_client():
         patch("main.start_scheduler"),
         patch("main.reload_scheduler"),
         patch("main.shutdown_scheduler"),
+        patch("main.harden_runtime_permissions"),
     ):
         import main as _main_module
         with TestClient(_main_module.app, raise_server_exceptions=False, follow_redirects=False) as c:

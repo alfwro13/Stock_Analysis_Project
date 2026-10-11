@@ -617,10 +617,16 @@ DEFAULT_CONFIG = {
     }
 }
 
+def _open_private(path):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    return os.fdopen(fd, 'w')
+
+
 def load_config() -> dict:
     if not SECRETS_PATH.exists():
         print("[INFO] config.json not found. Generating default template...")
-        with open(SECRETS_PATH, 'w') as f:
+        with _open_private(SECRETS_PATH) as f:
             json.dump(DEFAULT_CONFIG, f, indent=4)
         return copy.deepcopy(DEFAULT_CONFIG)
 
@@ -739,7 +745,7 @@ def update_config_atomic(new_data: dict) -> None:
 
         merged = deep_merge(current, new_data)
 
-        with open(tmp_path, 'w') as f:
+        with _open_private(tmp_path) as f:
             json.dump(merged, f, indent=4)
             f.flush()
             os.fsync(f.fileno())

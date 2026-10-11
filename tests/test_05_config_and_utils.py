@@ -896,3 +896,158 @@ def test_sanitize_floats_non_float_passthrough():
     assert sanitize_floats("string") == "string"
     assert sanitize_floats(42) == 42
     assert sanitize_floats(None) is None
+
+
+# ── Runtime file permissions (SEC 2/27, S1-10) ────────────────────────────────
+
+def _mode(path) -> int:
+    import os
+    import stat
+    return stat.S_IMODE(os.lstat(path).st_mode)
+
+
+def _make_project_tree(root):
+    import os
+    (root / "data" / "historical").mkdir(parents=True)
+    (root / "models").mkdir()
+    (root / "logs").mkdir()
+    files = {
+        "env": root / ".env",
+        "config": root / "config.json",
+        "parquet": root / "data" / "historical" / "AAPL.parquet",
+        "db": root / "data" / "analysis.db",
+        "model": root / "models" / "ml_ensemble.joblib",
+        "log": root / "logs" / "app.log",
+    }
+    for path in files.values():
+        path.write_text("x")
+        os.chmod(path, 0o666)
+    os.chmod(root, 0o775)
+    for sub in (root / "data", root / "data" / "historical", root / "models", root / "logs"):
+        os.chmod(sub, 0o775)
+    return files
+
+
+@pytest.mark.config
+def test_harden_runtime_permissions_tightens_secrets_and_write_bits(tmp_path):
+    from utils import harden_runtime_permissions
+    files = _make_project_tree(tmp_path)
+
+    harden_runtime_permissions(tmp_path)
+
+    assert _mode(tmp_path) == 0o700
+    assert _mode(files["env"]) == 0o600
+    assert _mode(files["config"]) == 0o600
+    assert _mode(files["parquet"]) == 0o644
+    assert _mode(files["db"]) == 0o644
+    assert _mode(files["model"]) == 0o644
+    assert _mode(tmp_path / "data") == 0o755
+    assert _mode(tmp_path / "data" / "historical") == 0o755
+    assert _mode(tmp_path / "models") == 0o755
+    assert _mode(files["log"]) == 0o666
+    assert _mode(tmp_path / "logs") == 0o775
+
+
+@pytest.mark.config
+def test_harden_runtime_permissions_never_follows_symlinks(tmp_path):
+    import os
+    from utils import harden_runtime_permissions
+    project = tmp_path / "project"
+    outside = tmp_path / "outside.bin"
+    project.mkdir()
+    outside.write_text("x")
+    os.chmod(outside, 0o666)
+    (project / "data").mkdir()
+    (project / "data" / "link.bin").symlink_to(outside)
+    (project / "data" / "linkdir").symlink_to(tmp_path, target_is_directory=True)
+
+    harden_runtime_permissions(project)
+
+    assert _mode(outside) == 0o666
+
+
+@pytest.mark.config
+def test_harden_runtime_permissions_is_idempotent_and_tolerates_missing_paths(tmp_path):
+    from utils import harden_runtime_permissions
+    project = tmp_path / "empty_project"
+    project.mkdir()
+
+    harden_runtime_permissions(project)
+    harden_runtime_permissions(project)
+
+    assert _mode(project) == 0o700
+
+
+@pytest.mark.config
+def test_harden_runtime_permissions_reports_unchangeable_path_and_continues(tmp_path, monkeypatch, caplog):
+    import os
+    import logging
+    import utils
+    files = _make_project_tree(tmp_path)
+    real_chmod = os.chmod
+
+    def flaky_chmod(path, mode, *a, **kw):
+        if str(path).endswith("analysis.db"):
+            raise PermissionError(1, "Operation not permitted")
+        return real_chmod(path, mode, *a, **kw)
+
+    monkeypatch.setattr(utils.os, "chmod", flaky_chmod)
+    with caplog.at_level(logging.WARNING, logger="utils"):
+        utils.harden_runtime_permissions(tmp_path)
+
+    assert _mode(files["db"]) == 0o666
+    assert _mode(files["parquet"]) == 0o644
+    assert any("Could not tighten permissions on 1 path" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.config
+def test_config_json_is_created_private_under_a_loose_umask(tmp_path, monkeypatch):
+    import os
+    import config
+    monkeypatch.setattr(config, "SECRETS_PATH", tmp_path / "config.json")
+    previous = os.umask(0o000)
+    try:
+        config.load_config()
+        assert _mode(tmp_path / "config.json") == 0o600
+
+        config.update_config_atomic({"BASE_CURRENCY": "USD"})
+        assert _mode(tmp_path / "config.json") == 0o600
+        assert not (tmp_path / "config.tmp").exists()
+    finally:
+        os.umask(previous)
+
+
+@pytest.mark.config
+def test_set_key_creates_env_file_private_under_a_loose_umask(tmp_path):
+    import os
+    from dotenv import set_key
+    previous = os.umask(0o000)
+    try:
+        set_key(str(tmp_path / ".env"), "API_KEY", "secret")
+    finally:
+        os.umask(previous)
+    assert _mode(tmp_path / ".env") == 0o600
+
+
+@pytest.mark.config
+def test_lifespan_hardens_permissions_before_database_init():
+    from pathlib import Path
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    import config
+    order = []
+    with (
+        patch("main.run_yfinance_smoke_test"),
+        patch("main.start_scheduler"),
+        patch("main.reload_scheduler"),
+        patch("main.shutdown_scheduler"),
+        patch("main.resume_interrupted_scans"),
+        patch("main.start_model_compatibility_guard"),
+        patch("utils.ensure_workflow_assets"),
+        patch("main.init_db", side_effect=lambda: order.append("init_db")),
+        patch("main.harden_runtime_permissions", side_effect=lambda base: order.append(("harden", Path(base)))),
+    ):
+        import main
+        with TestClient(main.app, raise_server_exceptions=False):
+            pass
+    assert order == [("harden", config.BASE_DIR), "init_db"]

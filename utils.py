@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import re
+import stat
 import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -119,6 +120,50 @@ def notify_requirements_drift() -> None:
         + "\n\nRun: pip install -r requirements.txt",
         level="warning",
     )
+
+
+def harden_runtime_permissions(base_dir: Any) -> None:
+    """Startup pass (main.py lifespan): project dir 0700, .env/config.json 0600, no group/other write bit under data/ and models/."""
+    base = Path(base_dir)
+    changed = failed = 0
+    first_error = ""
+
+    def restrict(path: Any, target_mode) -> None:
+        nonlocal changed, failed, first_error
+        try:
+            st = os.lstat(path)
+            if stat.S_ISLNK(st.st_mode):
+                return
+            current = stat.S_IMODE(st.st_mode)
+            target = target_mode(current)
+            if target != current:
+                os.chmod(path, target)
+                changed += 1
+        except FileNotFoundError:
+            return
+        except OSError as e:
+            failed += 1
+            first_error = first_error or f"{path}: {e}"
+
+    def drop_group_other_write(mode: int) -> int:
+        return mode & ~0o022
+
+    restrict(base, lambda mode: 0o700)
+    restrict(base / ".env", lambda mode: 0o600)
+    restrict(base / "config.json", lambda mode: 0o600)
+    for sub in ("data", "models"):
+        root = base / sub
+        if not root.is_dir():
+            continue
+        restrict(root, drop_group_other_write)
+        for dirpath, dirnames, filenames in os.walk(root):
+            for name in dirnames + filenames:
+                restrict(os.path.join(dirpath, name), drop_group_other_write)
+
+    if changed:
+        logger.info("Tightened file permissions on %d path(s).", changed)
+    if failed:
+        logger.warning("Could not tighten permissions on %d path(s); first: %s", failed, first_error)
 
 
 def normalize_ticker(ticker: str) -> str:
