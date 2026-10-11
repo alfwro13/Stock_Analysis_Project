@@ -120,6 +120,7 @@ def client():
         patch("main.start_scheduler"),
         patch("main.reload_scheduler"),
         patch("main.shutdown_scheduler"),
+        patch("main.harden_runtime_permissions"),
         patch("main.resume_interrupted_scans"),
         patch("api_routes_accounts.fetch_and_save_pulse"),
         patch("api_routes_system.fetch_and_save_pulse"),
@@ -153,6 +154,7 @@ def raw_client():
         patch("main.start_scheduler"),
         patch("main.reload_scheduler"),
         patch("main.shutdown_scheduler"),
+        patch("main.harden_runtime_permissions"),
         patch("main.resume_interrupted_scans"),
     ):
         import main as _main_module

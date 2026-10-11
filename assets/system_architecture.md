@@ -109,6 +109,12 @@ Every user-facing notification — scheduled-job status (start/success/error) an
 
 After `reload_scheduler()` completes during startup, the compatibility scan probes each persisted model family. A mismatch queues the owning canonical training job. `scheduler_engine.py` pauses later affected jobs and advances the queue from APScheduler completion events, so only one model family retrains at a time. Existing recurring jobs retain their normal schedules; disabled or otherwise absent jobs are added as one-time jobs under their canonical job IDs. Until retraining replaces an incompatible artifact, its loader returns through the feature's existing unavailable-model path.
 
+### 7. Runtime File Permissions
+
+`utils.harden_runtime_permissions(BASE_DIR)` runs first in the `main.py` lifespan, before `init_db()`. It sets the project directory to `0700`, `.env` and `config.json` to `0600`, and clears the group and other write bits on `data/`, `models/` and everything under them. Symlinks are skipped, and read bits are left alone. It is idempotent, so a restart repairs any file whose mode drifted (for example after a restore or a manual copy). A path it cannot change (owned by another account) is counted and reported in one warning line; startup continues.
+
+New files stay private because the service unit sets `UMask=0077` and no longer uses `Group=www-data` (README unit template). `config.py` creates `config.json` (first boot and the atomic temp file in `update_config_atomic`) through `_open_private()` with mode `0600`, so it is private even under a looser umask. `.env` is rewritten by `python-dotenv` (>= 1.2.2), which keeps the existing file mode and creates new files at `0600`.
+
 ### Cached Navigation
 
 On Watchlist, the navbar Prices line includes a plain clickable FX timestamp. It shows the oldest successful update among required pairs, or unavailable when a conversion is missing/expired; no required pairs shows “not required.” The centered FX status modal lists fresh and stale pairs, and polls cache-only status while open. Force Refresh awaits each pair sequentially, displays the active pair and success/completion counts, continues after failures, and retains last-good cache data. The modal and timestamp update without reloading; reload the page to apply refreshed rates to table/position-sizing values. Closing the modal stops status polling; an explicitly started refresh continues to completion.

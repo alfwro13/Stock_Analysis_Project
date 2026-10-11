@@ -150,6 +150,8 @@ To configure email-based self-service password reset:
 
 If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for three recovery methods including a console script (`python reset_admin_password.py`) and a `FORCE_PASSWORD_RESET` config-file flag.
 
+**File permissions:** on every start the app restricts its project folder to its own user (`0700`), keeps `.env` and `config.json` at `0600`, and removes group/other write access under `data/` and `models/`. Set `UMask=0077` in the service file below (and leave out `Group=`) so files created later stay private; after changing the unit, run `sudo systemctl daemon-reload` and restart.
+
 ### **4. Initial AI Training (Cold Start)**
 Before the system can provide Machine Learning predictions, it must build its historical training set.
 
@@ -248,7 +250,7 @@ After=network.target
 
 [Service]  
 User=yourusername  
-Group=www-data  
+UMask=0077  
 WorkingDirectory=/home/yourusername/Stock_Analysis_Project
 
 # Point explicitly to the Python executable inside your virtual environment  

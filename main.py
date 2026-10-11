@@ -18,13 +18,13 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette_csrf import CSRFMiddleware
 
-from config import PORT, SERVER_URL, load_config
+from config import BASE_DIR, PORT, SERVER_URL, load_config
 from auth import COOKIE_NAME, verify_session_token, verify_embed_token
 from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
 from log_config import configure_file_logging
-from utils import _request_stages
+from utils import _request_stages, harden_runtime_permissions
 
 from api_routes import api_router
 from page_routes import page_router
@@ -133,6 +133,7 @@ async def _watch_event_loop_lag():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing application lifecycle...")
+    harden_runtime_permissions(BASE_DIR)
     init_db()
     from utils import ensure_workflow_assets, notify_requirements_drift
     ensure_workflow_assets()
