@@ -29,6 +29,7 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `fastapi` | Core web framework — every route in `*_routes*.py` | Route signature/dependency-injection changes; response model validation |
+| `starlette` | ASGI toolkit under FastAPI: request/response objects and the middleware stack in `main.py`. Floor `>=1.3.1` clears published advisories | Middleware, `request.url` and form-parsing behaviour — run the page and API test files and log in once |
 | `uvicorn` | ASGI server that runs `main.py` | Startup flags, worker/reload behaviour |
 | `starlette-csrf` | CSRF middleware wrapping all POST endpoints (`main.py`) | Any CSRF bypass or token-validation change is a security-relevant upgrade — test login + a POST action manually |
 | `slowapi` | Rate limiting (`api_deps.py` limiter used across all `api_routes*.py`) | Rate-limit key function / storage backend signature |
@@ -43,6 +44,8 @@ and what should I test?" without grepping the whole codebase first.
 | `pandas` | DataFrame layer for nearly every engine | dtype inference changes, deprecated indexing APIs |
 | `pyarrow` | Parquet read/write for `data/historical/*.parquet` and `data/intraday/*.parquet` | Parquet format compatibility with existing on-disk files |
 | `requests` | HTTP client used directly by several engines (news, macro, insider, account scraper, Ghostfolio sync) | Session/adapter API, SSL default changes |
+| `urllib3` | Not imported directly; HTTP transport under `requests` and `yfinance`. Floor `>=2.8` clears published advisories | Connection-pool and retry behaviour for every outbound fetch |
+| `idna` | Not imported directly; host-name encoding under `requests`. Floor `>=3.15` clears published advisories | Non-ASCII host names in scraper and news URLs |
 | `ta` | Technical indicators (RSI, MACD, SMA, OBV) in `indicators.py`, `quant_signals.py`, `anomaly_engine.py`, `bull_bear_trap_engine.py`, `crash_engine.py`, `moonshot_engine.py` | Indicator formula changes would silently shift scores — no dedicated regression test compares indicator values against a fixed expected output beyond `tests/test_indicators_equivalence.py` |
 | `exchange_calendars` | Holiday-aware trading-day calendar, used only inside `time_engine.py` per AGENTS.md rule 12 | New/changed exchange calendar codes (`time_engine._EXCHANGE_CALENDAR_CODES`) |
 | `fake-useragent` | Random User-Agent header generation in `sentiment_engine.py` | API surface (`UserAgent()` constructor / `.random` property) — verified compatible through 2.2.0 |
@@ -58,6 +61,7 @@ and what should I test?" without grepping the whole codebase first.
 |---|---|---|
 | `plotly` | All interactive charts (`visuals*.py`, client-side JS) | `fig.to_html()` output format — see AGENTS.md rule 18's server-rendered-chart caveats |
 | `matplotlib` | Static Fear & Greed chart image (`sentiment_engine.py`), sent as a file attachment via Nextcloud | Rendering/backend changes for headless (non-GUI) image generation |
+| `pillow` | Not imported directly; `matplotlib`'s image backend. Floor `>=12.3` clears published advisories | Rendering of the Fear & Greed PNG |
 | `Jinja2` | Template engine for every page in `templates/` | Template syntax changes (rare — Jinja2 is very stable) |
 | `markdown` | Renders markdown to HTML for a Learn/glossary surface (`page_routes.py`) | Markdown syntax edge cases |
 
@@ -66,6 +70,7 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `apscheduler` | The only sanctioned scheduler per AGENTS.md rule 12 (`scheduler_engine.py`) | `CronTrigger`/job-store API changes — test that scheduled jobs still register (`tests/test_scheduler_engine.py`'s manifest-completeness check) |
+| `pip` | The installer behind the post-pull reinstall and the startup drift check (`api_routes_system.py`, `utils.py`). Floor `>=26.2` clears published advisories | Nothing at runtime; the next `pip install -r requirements.txt` upgrades it |
 | `psutil` | System diagnostics (CPU/memory/disk) surfaced in Settings → System Diagnostics (`ml_training_engine.py`, `system_check_engine.py`) | Platform-specific metric availability |
 
 ## ML / AI
