@@ -30,7 +30,7 @@ def fx_levels_on(dates: pd.DatetimeIndex, fx_close: pd.Series) -> pd.Series:
     if fx.empty:
         return pd.Series(float("nan"), index=dates)
     left = pd.DataFrame({"date": stamps, "slot": range(len(stamps))}).sort_values("date")
-    right = fx.rename("fx").rename_axis("fx_date").reset_index()
+    right = pd.DataFrame({"fx_date": fx.index.as_unit(stamps.unit), "fx": fx.to_numpy()})
     merged = pd.merge_asof(
         left, right, left_on="date", right_on="fx_date",
         tolerance=pd.Timedelta(days=FX_MAX_FILL_DAYS), direction="backward",
