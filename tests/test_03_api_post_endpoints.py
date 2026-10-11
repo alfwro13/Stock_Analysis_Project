@@ -1258,6 +1258,64 @@ def test_active_jobs_reports_requirements_changed_pending(client):
     api_routes_system._requirements_changed_pending = False
 
 
+@pytest.mark.api
+@pytest.mark.parametrize(
+    "running_head, current_head, expected",
+    [
+        ("aaa111", "aaa111", False),
+        ("aaa111", "bbb222", True),
+        (None, "bbb222", False),
+        ("aaa111", None, False),
+    ],
+)
+def test_active_jobs_restart_pending_compares_running_and_disk_commit(client, monkeypatch, running_head, current_head, expected):
+    """GET /api/system/active-jobs flags restart_pending only when both commits are known and differ."""
+    import api_routes_system
+
+    monkeypatch.setattr(api_routes_system, "_RUNNING_HEAD", running_head)
+    monkeypatch.setattr(api_routes_system, "_git_head", lambda: current_head)
+    resp = client.get("/api/system/active-jobs")
+    assert resp.status_code == 200
+    assert _json(resp)["restart_pending"] is expected
+
+
+@pytest.mark.api
+def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client, confirm_token, monkeypatch):
+    """A second Pull Latest click reporting 'Already up to date' must not clear the restart-pending state."""
+    import api_routes_system
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="newsha\n", stderr="")
+        if cmd[:2] == ["git", "pull"]:
+            return MagicMock(returncode=0, stdout="Already up to date.\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(api_routes_system, "_RUNNING_HEAD", "oldsha")
+    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+        pull = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+        status = client.get("/api/system/active-jobs")
+    assert pull.status_code == 200
+    assert _json(status)["restart_pending"] is True
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        MagicMock(returncode=128, stdout="", stderr="fatal: not a git repository"),
+        OSError("git not installed"),
+    ],
+)
+def test_git_head_returns_none_when_git_unavailable(outcome):
+    import api_routes_system
+
+    kwargs = {"side_effect": outcome} if isinstance(outcome, Exception) else {"return_value": outcome}
+    with patch("api_routes_system.subprocess.run", **kwargs):
+        assert api_routes_system._git_head() is None
+
+
 def test_execute_restart_installs_pip_dependencies_when_pending():
     """execute_restart() must run pip install before signalling shutdown when requirements.txt changed."""
     import asyncio

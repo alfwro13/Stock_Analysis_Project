@@ -415,6 +415,18 @@ def _pinned_requirement_version(contents: str, package: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _git_head() -> str | None:
+    try:
+        result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5, cwd=str(BASE_DIR))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+_RUNNING_HEAD = _git_head()
+
 
 async def execute_restart():
     global _requirements_changed_pending
@@ -1021,7 +1033,7 @@ def git_pull_update():
     try:
         requirements_path = BASE_DIR / "requirements.txt"
         old_requirements = requirements_path.read_text()
-        old_head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR)).stdout.strip()
+        old_head = _git_head() or ""
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         if result.returncode != 0:
             return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
@@ -1061,10 +1073,12 @@ def git_pull_update():
 def get_active_jobs_status():
     from scheduler_engine import get_active_jobs
     jobs = get_active_jobs()
+    current_head = _git_head()
     return JSONResponse(content={
         "status": "success",
         "active_jobs": jobs,
         "busy": bool(jobs),
+        "restart_pending": bool(_RUNNING_HEAD and current_head and _RUNNING_HEAD != current_head),
         "requirements_changed_pending": _requirements_changed_pending,
         "scikit_learn_change_pending": _sklearn_change_pending,
     })

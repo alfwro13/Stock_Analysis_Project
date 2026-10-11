@@ -1886,12 +1886,13 @@ Returns a snapshot of all scheduler jobs that are currently executing. The regis
     "Global Model Training (Walk-Forward)": "2026-06-10T14:32:01",
     "Daily Quant Screener (Portfolio & Watchlist)": "2026-06-10T14:28:45"
   },
+  "restart_pending": false,
   "requirements_changed_pending": false,
   "scikit_learn_change_pending": null
 }
 ```
 
-`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
+`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `restart_pending` is `true` when the git commit currently checked out on disk differs from the commit the running process started on (recorded at startup) — an update was pulled, by the Settings button or manually, but the service has not been restarted. It is computed on every call, so it survives a second "Pull Latest" click that reports "Already up to date", and it is `false` whenever either commit cannot be read. The Settings page uses it to show the "Restart pending" banner in System Updates & Power. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
 
 ---
 

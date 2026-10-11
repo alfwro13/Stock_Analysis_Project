@@ -169,6 +169,8 @@ The app itself also checks, on every startup, whether the packages actually inst
 
 Persisted scikit-learn models carry a version sidecar. After a scikit-learn upgrade, startup rejects incompatible artifacts and queues only their owning training jobs through APScheduler. Affected model families run sequentially, beginning within seconds of startup, while their inference paths remain unavailable until compatible artifacts are written. Settings → System Updates & Power warns about this before restart when Pull Latest from GitHub detects a changed scikit-learn pin.
 
+Settings → System Updates & Power also shows a **Restart pending** banner whenever the code on disk is newer than the code the running service started with — after Pull Latest from GitHub or a manual `git pull` — and clears it once the service restarts.
+
 ## **💻 Usage & The Web UI**
 
 To start the server, simply run the main application file. The system will automatically build the SQLite database on its first boot.
