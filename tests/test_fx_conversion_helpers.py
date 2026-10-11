@@ -2,7 +2,8 @@
 tests/test_fx_conversion_helpers.py — strict dated-FX conversion used by the Portfolio Optimizer and Strategy Backtester
 
 Covers:
-  • fx_levels_on(): latest close on or before each date, bounded age, NaN (never 1.0 or a live rate) outside it
+  • fx_levels_on(): latest close on or before each date, bounded age, NaN (never 1.0 or a live rate) outside it,
+    independent of the datetime resolution (s/ms/us/ns) of the dates and of the FX index
   • fx_level_on() / cached_fx_close(): the one-date reading and the daily-history loader behind the other dated-FX readers
   • close_in_base() / returns_in_base(): price scaling and return compounding over the same interval
   • BaseCurrencyConverter: base-currency pass-through, pence/pound bucketing, unknown currency, missing or stale FX
@@ -70,6 +71,26 @@ class TestFxLevelsOn:
         fx = _series([0.8, 0.9, 1.0])
         dates = pd.DatetimeIndex([fx.index[2], fx.index[0]])
         assert fx_levels_on(dates, fx).tolist() == [1.0, 0.8]
+
+    @pytest.mark.parametrize("fx_unit", ["s", "ms", "us", "ns"])
+    @pytest.mark.parametrize("date_unit", ["s", "ms", "us", "ns"])
+    def test_datetime_resolutions_may_differ_between_prices_and_fx(self, fx_unit, date_unit):
+        # Parquet-read FX closes are datetime64[ms] while dates parsed from stored strings are datetime64[us]
+        fx = _series([0.8, 0.81, 0.82])
+        fx.index = fx.index.as_unit(fx_unit)
+        dates = fx.index.as_unit(date_unit)
+        assert fx_levels_on(dates, fx).tolist() == [0.8, 0.81, 0.82]
+        assert fx.index.unit == fx_unit
+
+
+class TestReturnsInBaseResolutions:
+    def test_returns_dated_from_strings_convert_against_millisecond_fx(self):
+        fx = _series([0.8, 0.8, 0.88])
+        fx.index = fx.index.as_unit("ms")
+        returns = pd.Series([0.0, 0.0, 0.0], index=pd.to_datetime([str(d.date()) for d in fx.index]))
+        assert returns.index.unit != fx.index.unit
+        converted = returns_in_base(returns, fx)
+        assert converted.iloc[-1] == pytest.approx(0.1)
 
 
 class TestFxLevelOn:
