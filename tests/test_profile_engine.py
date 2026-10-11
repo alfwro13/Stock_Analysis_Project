@@ -9,7 +9,9 @@ Covers:
   • Module imports cleanly — no NameError for `time` or `random`
   • run_profile_audit: empty DB → exits immediately, no crash, no sleep calls
   • update_single_profile: blacklisted ticker → returns False without DB touch
-  • update_single_profile: Yahoo returns empty → blacklists ticker, returns False
+  • update_single_profile: an empty Yahoo answer is a strike; the 5th consecutive one blacklists
+  • update_single_profile: a failed Yahoo call (exception) never blacklists or strikes
+  • update_single_profile: a valid payload clears the ticker's strikes
   • update_single_profile: valid Yahoo payload → upserts to asset_profiles, True
   • count_pending_profiles: empty DB → 0
   • get_profiler_queue_breakdown: empty DB → all counts 0
@@ -136,6 +138,39 @@ class TestProfilingQueueCounts:
 
 # ── update_single_profile ─────────────────────────────────────────────────────
 
+def _get_strikes(ticker):
+    import database
+    conn = database.get_connection()
+    try:
+        row = conn.execute("SELECT strikes FROM profile_empty_strikes WHERE ticker = ?", (ticker,)).fetchone()
+        return row["strikes"] if row else None
+    finally:
+        conn.close()
+
+
+def _set_strikes(ticker, strikes):
+    import database
+    conn = database.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_empty_strikes (ticker, strikes, last_empty_at) VALUES (?, ?, '2026-01-01 00:00:00')",
+            (ticker, strikes),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _clear_strikes(ticker):
+    import database
+    conn = database.get_connection()
+    try:
+        conn.execute("DELETE FROM profile_empty_strikes WHERE ticker = ?", (ticker,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 class TestUpdateSingleProfile:
 
     def test_blacklisted_ticker_returns_false(self, tmp_path):
@@ -149,31 +184,109 @@ class TestUpdateSingleProfile:
         assert result is False
         mock_ye.get_ticker_info.assert_not_called()
 
-    def test_empty_yahoo_payload_blacklists_ticker(self, tmp_path):
-        """Yahoo returning {} causes the ticker to be written to the blacklist."""
+    def test_empty_answers_below_threshold_strike_without_blacklisting(self, tmp_path):
+        """Each empty answer is a logged strike; the ticker stays out of the blacklist and keeps its rows."""
+        import profile_engine
         bl = tmp_path / "freetrade_blacklist.json"
         bl.write_text("[]")
-        with patch("profile_engine.BLACKLIST_PATH", bl), \
-             patch("profile_engine.yahoo_engine") as mock_ye:
-            mock_ye.get_ticker_info.return_value = {}
-            from profile_engine import update_single_profile
-            result = update_single_profile("DEAD_TICKER")
-        assert result is False
-        saved = json.loads(bl.read_text())
-        assert "DEAD_TICKER" in saved
+        ticker = "STRIKE_BELOW_XYZ"
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine.yahoo_engine") as mock_ye:
+                mock_ye.get_ticker_info.return_value = {}
+                for expected in range(1, profile_engine.EMPTY_ANSWERS_TO_BLACKLIST):
+                    assert profile_engine.update_single_profile(ticker) is False
+                    assert _get_strikes(ticker) == expected
+            assert ticker not in json.loads(bl.read_text())
+        finally:
+            _clear_strikes(ticker)
 
-    def test_none_yahoo_payload_blacklists_ticker(self, tmp_path):
-        """Yahoo returning None is handled the same way as an empty dict."""
+    def test_strike_message_names_the_count(self, tmp_path, caplog):
+        import profile_engine
         bl = tmp_path / "freetrade_blacklist.json"
         bl.write_text("[]")
-        with patch("profile_engine.BLACKLIST_PATH", bl), \
-             patch("profile_engine.yahoo_engine") as mock_ye:
-            mock_ye.get_ticker_info.return_value = None
-            from profile_engine import update_single_profile
-            result = update_single_profile("NULL_TICKER")
-        assert result is False
-        saved = json.loads(bl.read_text())
-        assert "NULL_TICKER" in saved
+        ticker = "STRIKE_LOG_XYZ"
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine.yahoo_engine") as mock_ye, \
+                 caplog.at_level("WARNING", logger="profile_engine"):
+                mock_ye.get_ticker_info.return_value = None
+                profile_engine.update_single_profile(ticker)
+            assert f"Empty call strike 1/{profile_engine.EMPTY_ANSWERS_TO_BLACKLIST} for {ticker}" in caplog.text
+        finally:
+            _clear_strikes(ticker)
+
+    def test_fifth_consecutive_empty_answer_blacklists_and_clears_strikes(self, tmp_path):
+        import profile_engine
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        ticker = "STRIKE_FIFTH_XYZ"
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine.yahoo_engine") as mock_ye:
+                mock_ye.get_ticker_info.return_value = {}
+                for _ in range(profile_engine.EMPTY_ANSWERS_TO_BLACKLIST):
+                    assert profile_engine.update_single_profile(ticker) is False
+            assert ticker in json.loads(bl.read_text())
+            assert _get_strikes(ticker) is None
+        finally:
+            _clear_strikes(ticker)
+
+    def test_none_and_identityless_payloads_count_as_empty_answers(self, tmp_path):
+        """None (Yahoo's 404) and a payload with no identity field (`{'trailingPegRatio': None}`) strike the same way."""
+        import profile_engine
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        ticker = "STRIKE_KINDS_XYZ"
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine.yahoo_engine") as mock_ye:
+                mock_ye.get_ticker_info.return_value = None
+                profile_engine.update_single_profile(ticker)
+                mock_ye.get_ticker_info.return_value = {"trailingPegRatio": None}
+                profile_engine.update_single_profile(ticker)
+            assert _get_strikes(ticker) == 2
+        finally:
+            _clear_strikes(ticker)
+
+    def test_failed_yahoo_call_never_blacklists_or_strikes(self, tmp_path):
+        """A swallowed 429/timeout used to look like a delisting; now it is retried next run with strikes untouched."""
+        import profile_engine
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        ticker = "STRIKE_EXC_XYZ"
+        _set_strikes(ticker, profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine.yahoo_engine") as mock_ye:
+                mock_ye.get_ticker_info.side_effect = RuntimeError("HTTP 429")
+                assert profile_engine.update_single_profile(ticker) is False
+                mock_ye.get_ticker_info.assert_called_once_with(ticker, raise_errors=True)
+            assert ticker not in json.loads(bl.read_text())
+            assert _get_strikes(ticker) == profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1
+        finally:
+            _clear_strikes(ticker)
+
+    def test_valid_payload_resets_strikes(self, tmp_path):
+        """Strikes are consecutive: one good answer between two empty ones starts the count over."""
+        import profile_engine
+        bl = tmp_path / "freetrade_blacklist.json"
+        bl.write_text("[]")
+        ticker = "STRIKE_RESET_XYZ"
+        _set_strikes(ticker, profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
+        try:
+            with patch("profile_engine.BLACKLIST_PATH", bl), \
+                 patch("profile_engine.yahoo_engine") as mock_ye:
+                mock_ye.get_ticker_info.return_value = {"shortName": "Reset Corp"}
+                assert profile_engine.update_single_profile(ticker) is True
+                assert _get_strikes(ticker) is None
+                mock_ye.get_ticker_info.return_value = {}
+                profile_engine.update_single_profile(ticker)
+            assert _get_strikes(ticker) == 1
+            assert ticker not in json.loads(bl.read_text())
+        finally:
+            _clear_strikes(ticker)
+            _clear_queue([ticker])
 
     def test_valid_yahoo_payload_upserts_and_returns_true(self, tmp_path):
         """A full Yahoo payload upserts a row into asset_profiles and returns True."""
@@ -437,6 +550,7 @@ class TestBlacklistPurgeFiles:
         bl = tmp_path / "freetrade_blacklist.json"
         bl.write_text("[]")
         _touch_ticker_files("PQPURGE", history, fundamentals)
+        _set_strikes("PQPURGE", profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
         with patch("profile_engine.BLACKLIST_PATH", bl), \
              patch("profile_engine.yahoo_engine") as mock_ye, \
              patch("profile_engine._protected_tickers", return_value=set()):
@@ -451,6 +565,7 @@ class TestBlacklistPurgeFiles:
         bl = tmp_path / "freetrade_blacklist.json"
         bl.write_text("[]")
         _touch_ticker_files("PQHELD", history, fundamentals)
+        _set_strikes("PQHELD", profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
         with patch("profile_engine.BLACKLIST_PATH", bl), \
              patch("profile_engine.yahoo_engine") as mock_ye, \
              patch("profile_engine._protected_tickers", return_value={"PQHELD"}):

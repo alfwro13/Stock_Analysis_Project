@@ -65,7 +65,7 @@ Even within the standard US and UK markets, some newly listed assets or niche fu
 
 To eliminate data dead-weight and prevent loop locking, the platform runs a self-healing, automated **Blacklist Architecture** linking the profile\_engine.py and freetrade\_engine.py modules:
 
-\[profile\_engine.py\] ───► Hits Empty Identity Payload   
+\[profile\_engine.py\] ───► 5th consecutive Empty Identity Payload   
                                │  
                                ▼  
             \[Append Ticker to data/freetrade\_blacklist.json\]  
@@ -78,9 +78,9 @@ To eliminate data dead-weight and prevent loop locking, the platform runs a self
 
 ### **The Ingestion Loop Breaker**
 
-When profile\_engine.py executes its rolling audit metadata harvest, it evaluates the upstream payload. The engine utilizes a **softened verification check** designed specifically to accommodate Mutual Funds (which often return extremely sparse metadata). However, if an asset returns absolutely no recognizable tracking identity (shortName, longName, or symbol), the system intercepts the exception and fires an immediate system-wide cleaning routine:
+When profile\_engine.py executes its rolling audit metadata harvest, it evaluates the upstream payload. The engine utilizes a **softened verification check** designed specifically to accommodate Mutual Funds (which often return extremely sparse metadata). If an asset returns no recognizable tracking identity (shortName, longName, or symbol), the engine records an **empty-call strike** (`profile_empty_strikes`) and logs `Empty call strike N/5 for <ticker>` to `app.log`. The ticker stays queued for the next run, and only the 5th consecutive empty answer fires the system-wide cleaning routine below. A valid profile resets the count; a failed Yahoo call (rate limit, timeout, server error) is neither a strike nor a reset, so a transient outage can no longer blacklist a live ticker.
 
-1. **Blacklist Registration:** The malformed or untracked ticker is instantly appended to data/freetrade\_blacklist.json.  
+1. **Blacklist Registration:** On the 5th strike the ticker is appended to data/freetrade\_blacklist.json and its strike row is removed.  
 2. **Database Cascade Purge:** To remove the corrupted rows that slow down processing, the engine runs a broad SQL purge, deleting that specific ticker across all master relational database tables:  
    DELETE FROM market\_universe WHERE ticker \= ?;  
    DELETE FROM asset\_profiles WHERE ticker \= ?;  
@@ -139,5 +139,5 @@ To completely purge legacy data corruption, re-index your broker catalog, and ru
 2. **Execute Ingestion Inbound Processing:** Run the master Freetrade sync using the configuration schema:  
    python freetrade\_engine.py
 
-3. **Execute the Rolling Profile Audit:** Re-run the profile audit script. The system will harvest valid metadata entries seamlessly, and automatically drop any remaining missing-payload assets straight into the blacklist file:  
+3. **Execute the Rolling Profile Audit:** Re-run the profile audit script. The system will harvest valid metadata entries seamlessly, and automatically blacklist any asset that returns a missing payload on 5 consecutive runs:  
    python profile\_engine.py  

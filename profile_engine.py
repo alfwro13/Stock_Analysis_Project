@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
 PROFILE_TTL_DAYS = 90
 DEFAULT_BATCH_SIZE = 250
+EMPTY_ANSWERS_TO_BLACKLIST = 5
 
 def load_blacklist() -> set:
     if BLACKLIST_PATH.exists():
@@ -35,7 +36,7 @@ def save_blacklist(blacklist: set) -> None:
     except Exception as e:
         logger.error("Failed to save blacklist: %s", e)
 
-_PURGED_TABLES = ("market_universe", "asset_profiles", "stock_signals", "quant_signals")
+_PURGED_TABLES = ("market_universe", "asset_profiles", "stock_signals", "quant_signals", "profile_empty_strikes")
 
 
 def _purge_ticker_rows(cursor, ticker: str) -> int:
@@ -96,8 +97,19 @@ def purge_blacklisted_tickers() -> int:
     return removed
 
 
+def _record_empty_answer(cursor, ticker: str) -> int:
+    cursor.execute(
+        """
+        INSERT INTO profile_empty_strikes (ticker, strikes, last_empty_at) VALUES (?, 1, ?)
+        ON CONFLICT(ticker) DO UPDATE SET strikes = strikes + 1, last_empty_at = excluded.last_empty_at
+        """,
+        (ticker, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    return cursor.execute("SELECT strikes FROM profile_empty_strikes WHERE ticker = ?", (ticker,)).fetchone()["strikes"]
+
+
 def update_single_profile(ticker: str) -> bool:
-    """Fetches yfinance metadata for one ticker, upserts asset_profiles; blacklists/purges on empty payload."""
+    """Fetches yfinance metadata for one ticker, upserts asset_profiles; blacklists/purges after EMPTY_ANSWERS_TO_BLACKLIST consecutive empty answers, never on a failed call."""
     blacklist = load_blacklist()
 
     if ticker in blacklist:
@@ -109,13 +121,25 @@ def update_single_profile(ticker: str) -> bool:
         conn = get_connection()
         cursor = conn.cursor()
 
-        info = yahoo_engine.get_ticker_info(ticker) or {}
+        info = yahoo_engine.get_ticker_info(ticker, raise_errors=True) or {}
 
         # Softened check: Mutual Funds have small .info dicts; only blacklist when zero identity fields.
         has_identity = 'shortName' in info or 'longName' in info or 'symbol' in info or 'regularMarketPrice' in info
 
-        if not info or not has_identity:
-            logger.warning("No valid payload for %s. Permanently blacklisting and purging from database.", ticker)
+        if not has_identity:
+            strikes = _record_empty_answer(cursor, ticker)
+            if strikes < EMPTY_ANSWERS_TO_BLACKLIST:
+                conn.commit()
+                logger.warning(
+                    "Empty call strike %d/%d for %s: Yahoo returned no profile data.",
+                    strikes, EMPTY_ANSWERS_TO_BLACKLIST, ticker,
+                )
+                return False
+
+            logger.warning(
+                "Empty call strike %d/%d for %s. Permanently blacklisting and purging from database.",
+                strikes, EMPTY_ANSWERS_TO_BLACKLIST, ticker,
+            )
             blacklist.add(ticker)
             save_blacklist(blacklist)
 
@@ -142,11 +166,12 @@ def update_single_profile(ticker: str) -> bool:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (ticker, company_name, sector, industry, country, exchange, currency, quote_type, summary, last_verified))
 
+        cursor.execute("DELETE FROM profile_empty_strikes WHERE ticker = ?", (ticker,))
         conn.commit()
         return True
 
     except Exception as e:
-        logger.error("Failed to fetch/save profile for %s: %s", ticker, e)
+        logger.error("Failed to fetch/save profile for %s (not an empty-call strike): %s", ticker, e)
         return False
     finally:
         if conn:

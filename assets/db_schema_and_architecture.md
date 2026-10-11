@@ -20,6 +20,10 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Purpose:** Static, slow-moving corporate metadata. Stored separately (3NF normalization) to prevent querying Yahoo Finance for static data.
 * **Key Columns:** `ticker` (PK), `company_name`, `sector`, `quote_type`, `business_summary`, `last_verified_date`.
 
+#### `profile_empty_strikes`
+* **Purpose:** Consecutive empty-answer count per ticker for the Fundamentals Data Profiler. Yahoo's 404 for a symbol it does not know looks the same as a transient miss, so a ticker is blacklisted only on the 5th consecutive empty answer (`profile_engine.EMPTY_ANSWERS_TO_BLACKLIST`); a failed call (429, exhausted 5xx, timeout) neither adds nor clears a strike, and a valid profile deletes the row.
+* **Key Columns:** `ticker` (PK), `strikes`, `last_empty_at`.
+
 #### `company_name_overrides`
 * **Purpose:** Stores user-defined display name overrides per ticker. When present, the override takes precedence over `asset_profiles.company_name` and `market_universe.company_name` in the portfolio, watchlist, and stock detail pages.
 * **Key Columns:** `ticker` (PK), `display_name` (user-supplied name, NOT NULL), `updated_at` (UTC timestamp).
@@ -109,7 +113,7 @@ We offload heavy time-series math and unstructured payload caching to local file
 * 📁 **`data/strategy_backtests/<run_id>/` (`.parquet`)**: Per-run equity, allocation and transaction series for the Strategy Backtester (`equity.parquet`, `allocations.parquet`, `transactions.parquet`). Deleted with the run row. Both folders are inside `data/`, so Backup & Recovery includes them.
 * 📄 **`data/portfolio.json`**: Contains positions, shares, and VWAP synced from Ghostfolio (both Macro and Micro ledgers). Only exists while `GHOSTFOLIO_ENABLED` is `true` — unchecking **Enable Ghostfolio Integration** in Settings deletes it immediately, and the nightly maintenance job / System Configuration Check re-delete it if it reappears (e.g. restored from a backup) while disabled. `accounts_engine._read_portfolio_json()` also short-circuits to `{}` when the flag is off, regardless of whether the file exists.
 * 📄 **`data/watchlist.json`**: Legacy active-watchlist file, superseded by the `watchlist_items` table (see §1) — only read once at startup for the one-time migration. Same disabled-Ghostfolio deletion lifecycle as `portfolio.json` above.
-* 📄 **`data/freetrade_blacklist.json`**: Self-healing ledger of permanently banned tickers.
+* 📄 **`data/freetrade_blacklist.json`**: Self-healing ledger of permanently banned tickers. The Fundamentals Data Profiler adds a ticker only after 5 consecutive empty Yahoo answers (`profile_empty_strikes`).
 * 📄 **`data/isin_ticker_cache.json`**: Mapping of European ISINs to Yahoo Finance symbols.
 * 📄 **`data/exchange_hours.json`**: Per-exchange open/close times, timezones, currencies, and ticker suffixes. Auto-seeded with defaults for 28 exchanges on first boot; on every subsequent `init_db()` run, `db_schema._seed_exchange_hours_json()` also backfills any exchange or field added to `_DEFAULT_EXCHANGE_HOURS` after this install's file was first written (e.g. LSE's `quote_delay_minutes`, added 2026-07-10), without overwriting any field already present — so an install seeded before a new default field existed self-heals on the next restart instead of silently missing it forever. Edit this file to customise or add exchange definitions; read at runtime by `time_engine.py` and `etf_predictor_engine.py`.
 

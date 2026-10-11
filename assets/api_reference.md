@@ -885,7 +885,7 @@ Scrapes the current S&P 500 and FTSE 100 constituent lists and updates the `mark
 
 ### `POST /api/universe/sync-profiler`
 
-Runs the Fundamentals Data Profiler for stale/unprocessed tickers: fetches `.info` payloads from Yahoo Finance and stores them in `asset_profiles`. Processes up to `SCHEDULING.PROFILER_ENGINE.BATCH_SIZE` tickers per run, Portfolio/Watchlist first, then never-profiled, then oldest verification; blacklisted, synthetic and ignored tickers are never picked. Each run first re-applies the blacklist purge (DB rows and the ticker's history/fundamentals files) to blacklisted tickers that other writers re-created, except held, watched, ledger and Markets-registry tickers.
+Runs the Fundamentals Data Profiler for stale/unprocessed tickers: fetches `.info` payloads from Yahoo Finance and stores them in `asset_profiles`. Processes up to `SCHEDULING.PROFILER_ENGINE.BATCH_SIZE` tickers per run, Portfolio/Watchlist first, then never-profiled, then oldest verification; blacklisted, synthetic and ignored tickers are never picked. A ticker is blacklisted only after 5 consecutive empty Yahoo answers (`Empty call strike N/5` in `app.log`); a failed call neither strikes nor blacklists. Each run first re-applies the blacklist purge (DB rows and the ticker's history/fundamentals files) to blacklisted tickers that other writers re-created, except held, watched, ledger and Markets-registry tickers.
 
 **Request body:** none  
 **Response:** standard background task response

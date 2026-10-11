@@ -68,6 +68,7 @@ EXPECTED_TABLES = [
     "earnings_volatility_history",
     "market_universe",
     "asset_profiles",
+    "profile_empty_strikes",
     "ticker_metadata",
     "company_name_overrides",
     "market_regimes",
