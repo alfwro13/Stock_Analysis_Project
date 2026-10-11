@@ -1071,12 +1071,13 @@ def git_pull_update():
 
 @system_router.get("/system/active-jobs")
 def get_active_jobs_status():
-    from scheduler_engine import get_active_jobs
+    from scheduler_engine import get_active_job_average_durations, get_active_jobs
     jobs = get_active_jobs()
     current_head = _git_head()
     return JSONResponse(content={
         "status": "success",
         "active_jobs": jobs,
+        "active_job_avg_sec": get_active_job_average_durations(),
         "busy": bool(jobs),
         "restart_pending": bool(_RUNNING_HEAD and current_head and _RUNNING_HEAD != current_head),
         "requirements_changed_pending": _requirements_changed_pending,

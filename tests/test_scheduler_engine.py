@@ -13,6 +13,8 @@ from scheduler_engine import (
     record_job_run,
     get_all_job_last_runs,
     get_job_run_history,
+    get_active_job_average_durations,
+    _record_job_duration,
     run_manual_job,
     resume_interrupted_scans,
     _mark_job_started,
@@ -215,6 +217,89 @@ class TestActiveJobsTracking:
 
     def test_get_active_jobs_empty_when_no_jobs_running(self):
         assert get_active_jobs() == {}
+
+
+def _record_runs(job_id, durations, status="success", first_minute=0):
+    for offset, duration in enumerate(durations):
+        started = f"2026-01-01 10:{first_minute + offset:02d}:00"
+        _record_job_duration(job_id, started, started, duration, status, "scheduled")
+
+
+class TestAverageDuration:
+    def test_average_is_plain_mean_of_successful_runs(self):
+        _record_runs("avg_job", [10.0, 20.0, 60.0])
+        assert get_all_job_last_runs()["avg_job"]["avg_duration_sec"] == pytest.approx(30.0)
+
+    def test_failed_runs_do_not_move_the_average(self):
+        _record_runs("avg_err_job", [10.0, 30.0])
+        _record_runs("avg_err_job", [1.0], status="error", first_minute=10)
+        runs = get_all_job_last_runs()["avg_err_job"]
+        assert runs["avg_duration_sec"] == pytest.approx(20.0)
+        assert runs["last_status"] == "error"
+
+    def test_job_that_only_failed_has_no_average(self):
+        _record_runs("avg_never_ok_job", [5.0], status="error")
+        assert get_all_job_last_runs()["avg_never_ok_job"]["avg_duration_sec"] is None
+
+    def test_average_covers_only_the_last_twenty_runs(self):
+        _record_runs("avg_window_job", [1000.0] * 5 + [10.0] * 20)
+        assert get_all_job_last_runs()["avg_window_job"]["avg_duration_sec"] == pytest.approx(10.0)
+
+    def test_average_is_per_job(self):
+        _record_runs("avg_job_a", [10.0])
+        _record_runs("avg_job_b", [50.0])
+        runs = get_all_job_last_runs()
+        assert runs["avg_job_a"]["avg_duration_sec"] == pytest.approx(10.0)
+        assert runs["avg_job_b"]["avg_duration_sec"] == pytest.approx(50.0)
+
+    def test_migration_replaces_a_legacy_moving_average(self):
+        from database import get_connection
+        from db_helpers import refresh_job_average_duration
+
+        _record_runs("avg_legacy_job", [10.0, 30.0])
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE scheduler_run_log SET avg_duration_sec = 999 WHERE job_id = 'avg_legacy_job'")
+            refresh_job_average_duration(conn.cursor())
+            conn.commit()
+        finally:
+            conn.close()
+        assert get_all_job_last_runs()["avg_legacy_job"]["avg_duration_sec"] == pytest.approx(20.0)
+
+
+class TestActiveJobAverageDurations:
+    def setup_method(self):
+        with _sched_module._active_jobs_lock:
+            _sched_module._active_jobs.clear()
+            _sched_module._active_job_ids.clear()
+
+    def test_scheduled_job_average_resolved_from_its_label(self):
+        from scheduler_manifest import job_label
+
+        _record_runs("ml_training_job", [100.0, 200.0])
+        name = job_label("ml_training_job")
+        _mark_job_started(name)
+        assert get_active_job_average_durations() == {name: pytest.approx(150.0)}
+
+    def test_dynamic_job_average_resolved_from_explicit_job_id(self):
+        _record_runs("account_scraper_7_job", [4.0, 6.0])
+        _mark_job_started("Account Price Scraper — Pension", "account_scraper_7_job")
+        assert get_active_job_average_durations() == {"Account Price Scraper — Pension": pytest.approx(5.0)}
+
+    def test_job_without_history_has_no_average(self):
+        _mark_job_started("Unregistered Job")
+        assert get_active_job_average_durations() == {"Unregistered Job": None}
+
+    def test_finished_job_is_no_longer_reported(self):
+        _record_runs("account_scraper_8_job", [4.0])
+        _mark_job_started("Account Price Scraper — House", "account_scraper_8_job")
+        _mark_job_done("Account Price Scraper — House")
+        assert get_active_job_average_durations() == {}
+
+    def test_label_lookup_ignores_unknown_label(self):
+        from scheduler_manifest import job_id_for_label
+
+        assert job_id_for_label("Not A Job") is None
 
 
 # ---------------------------------------------------------------------------

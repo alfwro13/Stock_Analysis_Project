@@ -191,9 +191,11 @@ async function refreshActiveJobs() {
             el.innerHTML = '<span class="badge badge-success text-sm">No active processes — safe to restart</span>';
         } else {
             const now = Date.now();
+            const averages = data.active_job_avg_sec || {};
             const items = Object.entries(data.active_jobs).map(([name, since]) => {
                 const mins = Math.round((now - new Date(since + 'Z').getTime()) / 60000);
-                return `<li>${name} <span class="text-muted">(running ${mins} min)</span></li>`;
+                const avg = averages[name] == null ? '' : ` · <abbr title="Mean duration of this job's last 20 successful runs.">avg</abbr> ${formatDuration(averages[name])}`;
+                return `<li>${name} <span class="text-muted">(running ${mins} min${avg})</span></li>`;
             }).join('');
             el.innerHTML = `<div class="alert alert-warning mb-0"><strong>⚙️ Active processes — avoid restarting:</strong><ul class="mt-5 mb-0">${items}</ul></div>`;
         }
