@@ -38,7 +38,7 @@ The system executes this through a streamlined resolution architecture:
 1. **Stream Extraction:** The engine downloads the official, live Freetrade asset list directly from their published Google Sheets server via a structured CSV stream.  
 2. **US Fast-Path Bypass:** US securities traded on major exchanges (XNAS, XNYS, ARCX, BATS) as well as PINK sheets do not suffer from internal naming layout variances. The engine immediately approves these symbols, maps their internal dots (.) to hyphens (-), and passes them directly to the database layer.  
 3. **Mutual Fund ISIN Resolution:** Because UK Mutual Funds lack standardized ticker codes on external financial platforms, the engine extracts the asset's globally unique International Securities Identification Number (ISIN) and queries Yahoo Finance's internal search API to capture its proprietary local identifier (e.g., translating GB00BP9QDL57 to 0P0001SMTP.L).  
-4. **UK Equities Standardization:** Standard London Stock Exchange equities (XLON) simply have the standard Yahoo Finance .L suffix appended.  
+4. **UK Equities Standardization:** Standard London Stock Exchange equities (XLON) have the Yahoo Finance .L suffix appended, and a share-class dot becomes a hyphen exactly as for US symbols (Freetrade's `BT.A` resolves to `BT-A.L`, the symbol the index scrape and LSE scraper already write).  
 5. **Strict Market Rejection:** To protect the database from low-quality, untracked, or highly fragmented European ticker data, the engine actively ignores all Market Identifier Codes (MICs) not explicitly defined in the configuration schema, quietly dropping thousands of messy records from the pipeline.
 
 ## **⚙️ 2\. Centralized Configuration Mappings (config.py)**

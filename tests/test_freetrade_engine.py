@@ -9,6 +9,7 @@ Covers resolve_ticker() for all 5 routing branches:
   - Unsupported MIC → (None, False)
   - Supported non-US MIC → appends .L
   - Symbol trailing dot stripped (e.g. RR. → RR.L not RR..L)
+  - Internal dot becomes a hyphen on every branch (e.g. BT.A → BT-A.L, not BT.A.L)
 """
 
 import sys
@@ -119,6 +120,17 @@ class TestLondonEquities:
         """Freetrade exports RR. and BP. — must not become RR..L."""
         ticker, mapped = resolve_ticker("RR.", None, "XLON", {}, FT_CONFIG)
         assert ticker == "RR.L"
+        assert mapped is True
+
+    def test_internal_dot_becomes_hyphen_for_a_london_share_class(self):
+        """Freetrade exports BT.A; Yahoo's symbol is BT-A.L, which is what index_engine and lse_scraper write."""
+        ticker, mapped = resolve_ticker("BT.A", None, "XLON", {}, FT_CONFIG)
+        assert ticker == "BT-A.L"
+        assert mapped is True
+
+    def test_internal_dot_becomes_hyphen_in_the_mutual_fund_fallback(self):
+        ticker, mapped = resolve_ticker("ABC.X", None, "MUTUAL_FUND_EXCHANGE", {}, FT_CONFIG)
+        assert ticker == "ABC-X.L"
         assert mapped is True
 
     def test_whitespace_stripped_from_symbol(self):

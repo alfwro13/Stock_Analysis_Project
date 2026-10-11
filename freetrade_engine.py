@@ -36,8 +36,9 @@ def save_isin_cache(cache_dict: Dict[str, str]) -> None:
         logger.error(f"Failed to save ISIN cache: {e}")
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
-    # Strip whitespace and any trailing periods (Fixes RR. and BP. becoming RR..L)
-    ft_symbol = str(symbol).strip().rstrip('.')
+    # Trailing periods are stripped (RR. and BP. would become RR..L); internal dots become hyphens
+    # because Yahoo uses them for share classes on every exchange (BRK.B -> BRK-B, BT.A -> BT-A.L).
+    ft_symbol = str(symbol).strip().rstrip('.').replace('.', '-')
     mic = str(mic).strip().upper()
     
     us_mics = ft_config.get("US_MICS", [])
@@ -60,9 +61,8 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
 
         return ft_symbol + ".L", True
 
-    # BRK.B → BRK-B: Yahoo tickers use hyphens where US exchanges use dots
     if mic in us_mics:
-        return ft_symbol.replace('.', '-').upper(), True
+        return ft_symbol.upper(), True
 
     # MICs not in EXCHANGES config (e.g., XETR, XPAR) are unsupported – skip
     if mic not in exchanges:
