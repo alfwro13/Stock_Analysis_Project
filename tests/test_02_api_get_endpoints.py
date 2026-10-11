@@ -514,6 +514,7 @@ def test_no_endpoint_returns_500(client):
         "/api/settings/network-status",
         "/api/market-pulse",
         "/api/universe/profiler-status",
+        "/api/universe/blacklist",
         "/api/universe/imports/list",
         "/api/reports/quality-compounders",
         "/api/reports/quality-on-sale",

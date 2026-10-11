@@ -249,7 +249,52 @@ async function saveFredApiKey() {
     }
 }
 
+async function loadBlacklist() {
+    const countEl = document.getElementById('blacklist-count');
+    const listEl = document.getElementById('blacklist-list');
+    try {
+        const response = await fetch('/api/universe/blacklist');
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            setStatus('blacklist-status-msg', 'error', 'Failed to load the blacklist.');
+            return;
+        }
+        countEl.innerText = data.count.toLocaleString();
+        listEl.innerText = data.count ? data.tickers.join(', ') : 'No tickers are blacklisted.';
+    } catch (error) {
+        setStatus('blacklist-status-msg', 'error', 'Network error while loading the blacklist.');
+    }
+}
+
+async function removeFromBlacklist() {
+    const input = document.getElementById('BLACKLIST_REMOVE_TICKERS');
+    const tickers = input.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!tickers.length) {
+        setStatus('blacklist-status-msg', 'warning', 'Enter at least one ticker.');
+        return;
+    }
+    setStatus('blacklist-status-msg', 'info', 'Removing...');
+    try {
+        const response = await fetch('/api/universe/blacklist/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tickers }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.status !== 'success') {
+            setStatus('blacklist-status-msg', 'error', data.message || data.detail || 'Failed to update the blacklist.');
+            return;
+        }
+        input.value = '';
+        setStatus('blacklist-status-msg', 'success', data.message);
+        loadBlacklist();
+    } catch (error) {
+        setStatus('blacklist-status-msg', 'error', 'Network error while updating the blacklist.');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    loadBlacklist();
     fetchProfilerQueueStatus();
     setInterval(fetchProfilerQueueStatus, 30000);
 });

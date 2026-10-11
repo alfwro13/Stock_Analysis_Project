@@ -8,7 +8,7 @@ import time_engine
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api_deps import limiter, _error_500, require_confirm_token
 
@@ -32,7 +32,7 @@ from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
 from ml_training_engine import train_global_ml_model, train_quantile_models
 from risk_engine import update_all_tail_risks
-from profile_engine import get_profiler_queue_breakdown
+from profile_engine import get_profiler_queue_breakdown, load_blacklist, remove_from_blacklist
 from seed_macro_calendar import seed_calendar
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
@@ -51,6 +51,10 @@ class ImportRequest(BaseModel):
 
 class RestoreBackupRequest(BaseModel):
     filename: str
+
+
+class BlacklistRemoveRequest(BaseModel):
+    tickers: List[str] = Field(min_length=1, max_length=200)
 
 
 def log_notification(message_type: str, message_text: str) -> None:
@@ -288,6 +292,29 @@ async def get_profiler_status():
     except Exception as e:
         logger.error("Failed to compute profiler status: %s", e)
         return _error_500(e)
+
+@triggers_router.get("/universe/blacklist")
+def get_universe_blacklist():
+    tickers = sorted(load_blacklist())
+    return JSONResponse(content={"status": "success", "message": "Blacklist loaded.", "count": len(tickers), "tickers": tickers})
+
+@triggers_router.post("/universe/blacklist/remove")
+@limiter.limit("10/minute")
+def remove_universe_blacklist(request: Request, body: BlacklistRemoveRequest):
+    try:
+        removed, not_found = remove_from_blacklist(body.tickers)
+    except Exception as e:
+        return _error_500(e)
+    if not removed:
+        return JSONResponse(status_code=404, content={
+            "status": "error",
+            "message": "None of those tickers are on the blacklist: " + ", ".join(not_found) + ".",
+            "removed": [], "not_found": not_found,
+        })
+    message = "Removed from the blacklist: " + ", ".join(removed) + ". They return on the next universe scrape or nightly pipeline run."
+    if not_found:
+        message += " Not on the blacklist: " + ", ".join(not_found) + "."
+    return JSONResponse(content={"status": "success", "message": message, "removed": removed, "not_found": not_found})
 
 @triggers_router.post("/universe/sync-indices")
 @limiter.limit("10/minute")
