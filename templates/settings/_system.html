@@ -351,6 +351,20 @@
                 <label><abbr title="Excluded from every Yahoo Finance-touching fetch app-wide (portfolio, watchlist, X-ray, Trap Monitor, Insider Alerts, etc). Treasury Bill (TBILL-*) and Pension (PENSION-*) synthetic tickers are always excluded automatically and never need to be listed here.">Ignored Tickers</abbr> <span class="text-muted text-xs">(comma-separated, e.g. GBP, USD, 0P00018XAR.L)</span></label>
                 <input type="text" id="IGNORED_TICKERS" class="form-control" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
             </div>
+            <div class="settings-panel border-left-cyan" id="freetrade-blacklist-card" data-search-keywords="blacklist, blacklisted tickers, unblacklist, delisted tickers, empty call strike">
+                <strong>🚫 Freetrade Blacklist</strong>
+                <p class="settings-desc">Tickers the Fundamentals Data Profiler gave up on after 5 consecutive empty Yahoo answers. They are skipped by the profiler and the Freetrade sync, and their rows and files are purged. Remove a ticker to let it back in; it returns on the next universe scrape or nightly pipeline run.</p>
+                <div class="form-group">
+                    <label><abbr title="Comma-separated tickers to take off the blacklist, e.g. FERG, BNY. Matching ignores case.">Remove From Blacklist</abbr> <span class="text-muted text-xs">(comma-separated)</span></label>
+                    <div class="flex-gap-15">
+                        <input type="text" id="BLACKLIST_REMOVE_TICKERS" class="form-control flex-1" placeholder="e.g. BK, FERG.L">
+                        <button type="button" class="btn btn-primary" onclick="removeFromBlacklist()">Remove</button>
+                    </div>
+                </div>
+                <div id="blacklist-status-msg" class="mt-10"></div>
+                <p class="settings-desc-sm text-muted">Currently blacklisted: <strong id="blacklist-count">--</strong></p>
+                <div id="blacklist-list" class="dry-run-output"></div>
+            </div>
             <div class="form-group">
                 <label><abbr title="Currencies offered in the Add/Edit Transaction currency selector on the Accounts pages. GBp is London Stock Exchange pence — distinct from GBP.">Account Currencies</abbr> <span class="text-muted text-xs">(comma-separated, e.g. GBP, GBp, USD, EUR)</span></label>
                 <input type="text" id="ACCOUNT_CURRENCIES" class="form-control" value="{{ config.ACCOUNT_CURRENCIES | join(', ') if config.ACCOUNT_CURRENCIES else '' }}">

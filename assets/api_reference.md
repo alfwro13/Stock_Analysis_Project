@@ -892,6 +892,30 @@ Runs the Fundamentals Data Profiler for stale/unprocessed tickers: fetches `.inf
 
 ---
 
+### `GET /api/universe/blacklist`
+
+Returns the current contents of `data/freetrade_blacklist.json`, sorted. The Settings → Core System & Currencies → Freetrade Blacklist panel renders it.
+
+**Response:**
+```json
+{ "status": "success", "message": "Blacklist loaded.", "count": 2, "tickers": ["AA.L", "BK"] }
+```
+
+---
+
+### `POST /api/universe/blacklist/remove`
+
+Removes tickers from the blacklist file (the Settings → Core System & Currencies → Freetrade Blacklist "Remove" action). Matching ignores case and surrounding whitespace; entries are removed as stored. Nothing is re-fetched: a removed ticker returns on the next universe scrape or nightly pipeline run. Rate limited to 10/minute.
+
+**Request body:** `{ "tickers": ["BK", "FERG.L"] }` (1–200 entries)
+
+**Response (200):** `{ "status": "success", "message": "...", "removed": ["BK", "FERG.L"], "not_found": ["NOPE"] }`
+**Response (404):** none of the tickers were on the blacklist (`removed` empty, `not_found` lists them)
+**Response (422):** empty or oversized `tickers` list
+**Response (500):** the blacklist file could not be written
+
+---
+
 ### `POST /api/universe/deep-sync`
 
 Full universe synchronisation pipeline sequencing:
@@ -2061,6 +2085,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/trigger-universe-update` | Refresh universe ticker list |
 | `POST` | `/api/universe/sync-indices` | Scrape S&P 500 + FTSE 100 |
 | `POST` | `/api/universe/sync-profiler` | Run fundamentals profiler |
+| `GET` | `/api/universe/blacklist` | List blacklisted tickers |
+| `POST` | `/api/universe/blacklist/remove` | Remove tickers from the blacklist |
 | `POST` | `/api/universe/deep-sync` | Full universe deep sync pipeline |
 | `GET` | `/api/universe/imports/list` | List importable CSV files |
 | `POST` | `/api/universe/import/server` | Import universe from CSV |

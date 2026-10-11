@@ -21,6 +21,7 @@ Covers:
   • scheduler_jobs.run_fundamentals_profiler() — runner-level wiring
   • blacklist purge: leftover parquet/fundamentals files and re-created rows are removed,
     protected (held/watched/ledger/registry) tickers are not
+  • manual un-blacklist: remove_from_blacklist() and the /api/universe/blacklist routes
 """
 
 import inspect
@@ -630,3 +631,87 @@ class TestBlacklistPurgeFiles:
              patch("profile_engine.time.sleep"):
             profile_engine.run_profile_audit(limit=1)
         assert calls and calls[0] == "sweep"
+
+
+# ── manual un-blacklist ──────────────────────────────────────────────────────
+
+class TestRemoveFromBlacklist:
+
+    def test_matches_case_insensitively_and_reports_unknown_tickers(self, empty_blacklist):
+        import profile_engine
+        empty_blacklist.write_text(json.dumps(["BK", "bf1c65a3-ffc4", "KEEP.L"]))
+        removed, not_found = profile_engine.remove_from_blacklist([" bk ", "BF1C65A3-FFC4", "NOPE"])
+        assert removed == ["BK", "bf1c65a3-ffc4"]
+        assert not_found == ["NOPE"]
+        assert json.loads(empty_blacklist.read_text()) == ["KEEP.L"]
+
+    def test_nothing_matched_leaves_the_file_untouched(self, empty_blacklist):
+        import profile_engine
+        empty_blacklist.write_text(json.dumps(["BK"]))
+        before = empty_blacklist.read_text()
+        removed, not_found = profile_engine.remove_from_blacklist(["ZZ"])
+        assert removed == [] and not_found == ["ZZ"]
+        assert empty_blacklist.read_text() == before
+
+    def test_unwritable_file_raises_instead_of_reporting_success(self, empty_blacklist):
+        import profile_engine
+        empty_blacklist.write_text(json.dumps(["BK"]))
+        with patch("profile_engine.save_blacklist", return_value=False):
+            with pytest.raises(OSError):
+                profile_engine.remove_from_blacklist(["BK"])
+
+    def test_removal_made_during_a_yahoo_call_is_not_overwritten_by_a_new_blacklisting(self, empty_blacklist):
+        """update_single_profile loads the list before its Yahoo call; the blacklisting must re-read it."""
+        import profile_engine
+        empty_blacklist.write_text(json.dumps(["BK"]))
+        ticker = "STRIKE_RACE_XYZ"
+        _set_strikes(ticker, profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
+
+        def slow_yahoo_call(*args, **kwargs):
+            profile_engine.remove_from_blacklist(["BK"])
+            return {}
+
+        try:
+            with patch("profile_engine.yahoo_engine") as mock_ye:
+                mock_ye.get_ticker_info.side_effect = slow_yahoo_call
+                profile_engine.update_single_profile(ticker)
+            assert json.loads(empty_blacklist.read_text()) == [ticker]
+        finally:
+            _clear_strikes(ticker)
+
+
+class TestBlacklistEndpoints:
+
+    def test_get_lists_sorted_entries_and_count(self, client, empty_blacklist):
+        empty_blacklist.write_text(json.dumps(["ZZ", "AA.L"]))
+        body = client.get("/api/universe/blacklist").json()
+        assert body["status"] == "success"
+        assert body["count"] == 2
+        assert body["tickers"] == ["AA.L", "ZZ"]
+
+    def test_post_removes_listed_tickers(self, client, empty_blacklist):
+        empty_blacklist.write_text(json.dumps(["BK", "FERG.L", "STAY"]))
+        response = client.post("/api/universe/blacklist/remove", json={"tickers": ["bk", "FERG.L", "NOPE"]})
+        body = response.json()
+        assert response.status_code == 200
+        assert body["removed"] == ["BK", "FERG.L"]
+        assert body["not_found"] == ["NOPE"]
+        assert json.loads(empty_blacklist.read_text()) == ["STAY"]
+
+    def test_post_unknown_ticker_is_a_404_and_changes_nothing(self, client, empty_blacklist):
+        empty_blacklist.write_text(json.dumps(["STAY"]))
+        response = client.post("/api/universe/blacklist/remove", json={"tickers": ["NOPE"]})
+        assert response.status_code == 404
+        assert response.json()["status"] == "error"
+        assert json.loads(empty_blacklist.read_text()) == ["STAY"]
+
+    def test_post_rejects_an_empty_ticker_list(self, client, empty_blacklist):
+        response = client.post("/api/universe/blacklist/remove", json={"tickers": []})
+        assert response.status_code == 422
+
+    def test_post_write_failure_is_a_500(self, client, empty_blacklist):
+        empty_blacklist.write_text(json.dumps(["BK"]))
+        with patch("profile_engine.save_blacklist", return_value=False):
+            response = client.post("/api/universe/blacklist/remove", json={"tickers": ["BK"]})
+        assert response.status_code == 500
+        assert response.json()["status"] == "error"

@@ -3,6 +3,7 @@ import json
 import math
 import time
 import random
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from config import load_config, HISTORICAL_DIR, FUNDAMENTALS_DIR
@@ -28,13 +29,37 @@ def load_blacklist() -> set:
             logger.warning("Failed to read profile blacklist from %s", BLACKLIST_PATH, exc_info=True)
     return set()
 
-def save_blacklist(blacklist: set) -> None:
+def save_blacklist(blacklist: set) -> bool:
     try:
         BLACKLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(BLACKLIST_PATH, 'w') as f:
             json.dump(sorted(list(blacklist)), f, indent=4)
+        return True
     except Exception as e:
         logger.error("Failed to save blacklist: %s", e)
+        return False
+
+
+_blacklist_lock = threading.Lock()
+
+
+def add_to_blacklist(ticker: str) -> None:
+    """Re-reads the file under the lock so a removal made while this call's Yahoo request was in flight is not overwritten."""
+    with _blacklist_lock:
+        blacklist = load_blacklist()
+        blacklist.add(ticker)
+        save_blacklist(blacklist)
+
+
+def remove_from_blacklist(tickers: List[str]) -> tuple:
+    """(removed entries as stored, requested tickers not on the list); matches case-insensitively, raises OSError if the file cannot be written."""
+    wanted = {normalize_ticker(t) for t in tickers if str(t).strip()}
+    with _blacklist_lock:
+        blacklist = load_blacklist()
+        removed = sorted(e for e in blacklist if normalize_ticker(e) in wanted)
+        if removed and not save_blacklist(blacklist - set(removed)):
+            raise OSError("Failed to write the blacklist file.")
+    return removed, sorted(wanted - {normalize_ticker(e) for e in removed})
 
 _PURGED_TABLES = ("market_universe", "asset_profiles", "stock_signals", "quant_signals", "profile_empty_strikes")
 
@@ -140,8 +165,7 @@ def update_single_profile(ticker: str) -> bool:
                 "Empty call strike %d/%d for %s. Permanently blacklisting and purging from database.",
                 strikes, EMPTY_ANSWERS_TO_BLACKLIST, ticker,
             )
-            blacklist.add(ticker)
-            save_blacklist(blacklist)
+            add_to_blacklist(ticker)
 
             _purge_ticker_rows(cursor, ticker)
             conn.commit()

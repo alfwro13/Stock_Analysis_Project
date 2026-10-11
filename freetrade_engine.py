@@ -11,12 +11,12 @@ from typing import Optional, Dict, Any, Tuple
 from database import get_connection
 from config import load_config
 from yahoo_engine import yahoo_engine
+from profile_engine import load_blacklist
 
 logger = logging.getLogger(__name__)
 
 FREETRADE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZT9-lSDDlgQzHsH0vYdTSz-xnL7zIJQ1SHUddo-BBD5_QlN--57cRe_8Zvw-7QsMrw6X1phz-vKq/pub?output=csv"
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
-BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
 
 def load_isin_cache() -> Dict[str, str]:
     if ISIN_CACHE_PATH.exists():
@@ -34,15 +34,6 @@ def save_isin_cache(cache_dict: Dict[str, str]) -> None:
             json.dump(cache_dict, f, indent=4)
     except Exception as e:
         logger.error(f"Failed to save ISIN cache: {e}")
-
-def load_blacklist() -> set:
-    if BLACKLIST_PATH.exists():
-        try:
-            with open(BLACKLIST_PATH, 'r') as f:
-                return set(json.load(f))
-        except Exception:
-            logger.warning("Failed to read Freetrade blacklist from %s", BLACKLIST_PATH, exc_info=True)
-    return set()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
     # Strip whitespace and any trailing periods (Fixes RR. and BP. becoming RR..L)
