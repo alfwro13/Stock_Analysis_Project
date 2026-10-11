@@ -385,8 +385,8 @@ class YahooEngine:
         with self._intraday_gap_lock:
             return ticker in self._intraday_gap_alerted
 
-    def get_ticker_info(self, ticker: str) -> Optional[dict]:
-        """Raw yfinance .info dict for one ticker, cached 6 h."""
+    def get_ticker_info(self, ticker: str, *, raise_errors: bool = False) -> Optional[dict]:
+        """Raw yfinance .info dict for one ticker, cached 6 h; raise_errors lets a caller tell a failed fetch from Yahoo's empty answer."""
         key = f"info:{ticker}"
         cached = self._get(key)
         if cached is not None:
@@ -399,6 +399,8 @@ class YahooEngine:
                 self._set(key, info, _TTLS["info"])
                 return info
         except Exception:
+            if raise_errors:
+                raise
             logger.error("get_ticker_info failed for %s", ticker, exc_info=True)
         return None
 

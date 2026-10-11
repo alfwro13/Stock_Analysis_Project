@@ -595,6 +595,14 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS profile_empty_strikes (
+                ticker TEXT PRIMARY KEY,
+                strikes INTEGER NOT NULL,
+                last_empty_at TIMESTAMP NOT NULL
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS ticker_metadata (
                 ticker TEXT PRIMARY KEY,
                 sector TEXT,
