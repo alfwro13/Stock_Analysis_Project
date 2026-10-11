@@ -175,6 +175,8 @@ async function refreshActiveJobs() {
     try {
         const resp = await fetch('/api/system/active-jobs', { cache: 'no-store' });
         const data = await resp.json();
+        const restartBanner = document.getElementById('restart-pending-banner');
+        if (restartBanner) restartBanner.classList.toggle('d-none', !data.restart_pending);
         const requirementsBanner = document.getElementById('requirements-changed-banner');
         if (requirementsBanner) {
             requirementsBanner.classList.toggle('d-none', !data.requirements_changed_pending);
