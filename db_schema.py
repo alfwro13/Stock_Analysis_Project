@@ -1958,12 +1958,15 @@ def migrate_db(conn, cursor) -> None:
 
     # The scan wrote Yahoo's retired-news-endpoint empty answer as a 0.0 score from 2026-10-02; rows the
     # fixed scan wrote carry sentiment_scored_at, so this only ever touches those outage rows.
-    cursor.execute(
-        "UPDATE quant_signals SET sentiment_score = NULL "
-        "WHERE sentiment_score = 0 AND sentiment_scored_at IS NULL AND date >= '2026-10-01'"
-    )
-    if cursor.rowcount:
-        logger.info("[MIGRATION] Cleared %d sentiment scores written while Yahoo news was unavailable.", cursor.rowcount)
+    try:
+        cursor.execute(
+            "UPDATE quant_signals SET sentiment_score = NULL "
+            "WHERE sentiment_score = 0 AND sentiment_scored_at IS NULL AND date >= '2026-10-01'"
+        )
+        if cursor.rowcount:
+            logger.info("[MIGRATION] Cleared %d sentiment scores written while Yahoo news was unavailable.", cursor.rowcount)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed clearing outage sentiment scores: %s", e)
 
     cursor.execute("PRAGMA table_info(market_universe)")
     existing_universe_columns = [info['name'] for info in cursor.fetchall()]
