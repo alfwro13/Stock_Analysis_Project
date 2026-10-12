@@ -511,17 +511,32 @@ async function loadBackupStatus() {
         const select = document.getElementById('backup-restore-select');
         if (select) {
             if (!data.backups || data.backups.length === 0) {
-                select.innerHTML = '<option value="">No backups available</option>';
+                select.replaceChildren(new Option('No backups available', ''));
             } else {
-                select.innerHTML = data.backups.map(b =>
-                    `<option value="${b.filename}">${b.filename} (${_formatBytes(b.size_bytes)}, ${b.mtime})</option>`
-                ).join('');
+                select.replaceChildren(...data.backups.map(b => {
+                    const label = `${b.filename} (${_formatBytes(b.size_bytes)}, ${b.mtime})` + (b.hash_recorded ? '' : ' — no recorded hash');
+                    const option = new Option(label, b.filename);
+                    option.dataset.hashRecorded = b.hash_recorded ? '1' : '0';
+                    return option;
+                }));
             }
+            syncBackupTrustControl();
         }
     } catch (e) {
         const lastEl = document.getElementById('diag-backup-last');
         if (lastEl) lastEl.innerText = 'Error loading';
     }
+}
+
+function syncBackupTrustControl() {
+    const select = document.getElementById('backup-restore-select');
+    const group = document.getElementById('backup-trust-group');
+    const checkbox = document.getElementById('backup-trust-unhashed');
+    if (!select || !group || !checkbox) return;
+    const selected = select.selectedOptions[0];
+    const unhashed = !!selected && selected.value !== '' && selected.dataset.hashRecorded === '0';
+    group.classList.toggle('d-none', !unhashed);
+    if (!unhashed) checkbox.checked = false;
 }
 
 async function restoreSelectedBackup() {
@@ -541,11 +556,12 @@ async function restoreSelectedBackup() {
         const resp = await fetch('/api/backup/restore', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
-            body: JSON.stringify({ filename }),
+            body: JSON.stringify({ filename, trust_unhashed: document.getElementById('backup-trust-unhashed').checked }),
         });
         const data = await resp.json();
         if (resp.ok && data.status === 'success') {
             setBoxStatus('backup-restore-msg', 'success', '✅ ' + data.message);
+            loadBackupStatus();
         } else {
             setBoxStatus('backup-restore-msg', 'error', '❌ ' + (data.message || 'Restore failed.'));
         }

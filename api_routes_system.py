@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api_deps import limiter, require_confirm_token, _error_500
+from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_server
 
 from config import (
     BASE_DIR, DATA_DIR, DB_PATH, FUNDAMENTALS_DIR, HISTORICAL_DIR,
@@ -157,6 +158,37 @@ class ScheduleItemConfig(BaseModel):
     ZSCORE_THRESHOLD: Optional[float] = None
     REGULAR_ENABLED: Optional[bool] = None
     INVERSE_ENABLED: Optional[bool] = None
+
+    @field_validator("LOCATION")
+    @classmethod
+    def _valid_backup_location(cls, v):
+        if v is not None and v not in ("local", "nfs"):
+            raise ValueError("LOCATION must be 'local' or 'nfs'")
+        return v
+
+    @field_validator("LOCAL_PATH")
+    @classmethod
+    def _valid_backup_local_path(cls, v):
+        if v is not None:
+            check_local_backup_path(v)
+        return v
+
+    @field_validator("NFS_SERVER")
+    @classmethod
+    def _valid_backup_nfs_server(cls, v):
+        return v if v is None else check_nfs_server(v)
+
+    @field_validator("NFS_PATH")
+    @classmethod
+    def _valid_backup_nfs_path(cls, v):
+        return v if v is None else check_nfs_path(v)
+
+    @field_validator("RETENTION_COUNT")
+    @classmethod
+    def _valid_backup_retention(cls, v):
+        if v is not None and not 1 <= v <= 365:
+            raise ValueError("RETENTION_COUNT must be between 1 and 365")
+        return v
 
 class PatternFamilyScheduleConfig(BaseModel):
     REGULAR_ENABLED: Optional[bool] = None

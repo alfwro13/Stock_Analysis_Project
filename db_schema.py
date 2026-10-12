@@ -1567,7 +1567,8 @@ def init_db() -> None:
                 filename        TEXT,
                 size_bytes      INTEGER,
                 status          TEXT NOT NULL,
-                error_message   TEXT
+                error_message   TEXT,
+                sha256          TEXT
             )
         ''')
 
@@ -1776,6 +1777,14 @@ def migrate_db(conn, cursor) -> None:
                 cursor.execute(f"ALTER TABLE market_pulse_cache ADD COLUMN {extended_col} {col_type}")
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed on market_pulse_cache.%s: %s", extended_col, e)
+
+    cursor.execute("PRAGMA table_info(backup_history)")
+    if 'sha256' not in [info['name'] for info in cursor.fetchall()]:
+        try:
+            logger.info("[MIGRATION] Adding column: sha256 to backup_history...")
+            cursor.execute("ALTER TABLE backup_history ADD COLUMN sha256 TEXT")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on backup_history: %s", e)
 
     cursor.execute("PRAGMA table_info(accounts)")
     existing_account_columns = [info['name'] for info in cursor.fetchall()]

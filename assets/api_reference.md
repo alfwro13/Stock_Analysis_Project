@@ -1699,10 +1699,12 @@ Returns the most recent backup run plus the list of archives currently stored at
   "stored_count": 7,
   "stored_size_bytes": 7340032,
   "backups": [
-    { "filename": "backup_20260628_033000.tar.gz", "size_bytes": 1048576, "mtime": "2026-06-28 03:30:05" }
+    { "filename": "backup_20260628_033000.tar.gz", "size_bytes": 1048576, "mtime": "2026-06-28 03:30:05", "hash_recorded": true }
   ]
 }
 ```
+
+Only names matching `backup_YYYYMMDD_HHMMSS.tar.gz` that are regular files (not symlinks) are listed, counted for retention or restorable. `hash_recorded` is `false` for an archive with no SHA-256 in `backup_history` (made before checksums were added, or on a rebuilt host); restoring it needs `trust_unhashed`. `last_backup` ignores `adopted` rows (see restore below).
 
 ---
 
@@ -1713,8 +1715,10 @@ Extracts the named archive back into place, overwriting the live database, data 
 **Request body**
 
 ```json
-{ "filename": "backup_20260628_033000.tar.gz" }
+{ "filename": "backup_20260628_033000.tar.gz", "trust_unhashed": false }
 ```
+
+`trust_unhashed` (optional, default `false`) is the disaster-recovery override: it lets an archive with **no** recorded SHA-256 restore. It never overrides a recorded hash that does not match.
 
 **Response**
 
@@ -1722,7 +1726,14 @@ Extracts the named archive back into place, overwriting the live database, data 
 { "status": "success", "message": "Restore completed from backup_20260628_033000.tar.gz. Restart the service so all in-memory caches reload the restored data." }
 ```
 
-A filename containing `/` or `..` is rejected with `400` before any file is touched. A missing archive or extraction failure returns `500` with `status: "error"`.
+Verification happens before any live file changes, and every refusal returns `400` with a fixed `message`:
+- the name is not exactly `backup_YYYYMMDD_HHMMSS.tar.gz`;
+- the archive's SHA-256 does not match the one in `backup_history`;
+- no SHA-256 is recorded and `trust_unhashed` is not set;
+- a member is outside `data/` and `models/`, or is anything but a regular file or directory (links, devices);
+- `data/analysis.db` fails `PRAGMA integrity_check`.
+
+Members are extracted with `filter="data"`. `data/analysis.db-wal` and `-shm` are never extracted. The database is staged next to the live file and swapped in atomically, and the live `-wal`/`-shm` are removed. `backup_history` rows the restored database lacks are carried forward, so newer archives keep their hashes. A `trust_unhashed` restore records the archive's computed hash as a `trigger_type: "adopted"` row, so later restores verify normally. A missing archive or an extraction failure returns `500` with `status: "error"`.
 
 ---
 
