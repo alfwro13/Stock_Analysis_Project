@@ -335,6 +335,116 @@ def test_create_transaction_rejects_invalid_txn_type(client):
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("field,value,fragment", [
+    ("txn_date", "<img src=x onerror=alert(1)>", "txn_date"),
+    ("txn_date", "2026-02-30", "txn_date"),
+    ("txn_date", "15/01/2026", "txn_date"),
+    ("currency", "<script>alert(1)</script>", "currency"),
+    ("currency", "US", "currency"),
+    ("fee_currency", "<b>", "fee_currency"),
+])
+def test_create_transaction_rejects_unstorable_date_or_currency(client, field, value, fragment):
+    account_id = _create_account(client)
+    body = {
+        "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL", "currency": "USD",
+        "quantity": 1, "unit_price": 100.0, "exchange_rate": 0.8,
+    }
+    body[field] = value
+    with patch("api_routes_accounts.update_single_profile") as mock_profile:
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json=body)
+    assert resp.status_code == 422
+    assert fragment in _json(resp)["message"]
+    mock_profile.assert_not_called()
+
+    import database as _db
+    assert _db.get_transactions(account_id) == []
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_update_transaction_rejects_unstorable_date_or_currency(client):
+    account_id = _create_account(client)
+    with patch("api_routes_accounts.update_single_profile"):
+        txn_id = _json(client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "MSFT",
+            "currency": "USD", "quantity": 5, "unit_price": 300.0, "exchange_rate": 0.8,
+        }))["id"]
+
+    good = {"txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "MSFT",
+            "currency": "USD", "quantity": 5, "unit_price": 300.0, "exchange_rate": 0.8}
+    for field, value in (("txn_date", "<script>"), ("currency", "<b>"), ("fee_currency", "XX")):
+        resp = client.put(f"/api/accounts/{account_id}/transactions/{txn_id}", json={**good, field: value})
+        assert resp.status_code == 422, field
+        assert field in _json(resp)["message"]
+
+    import database as _db
+    txn = _db.get_transaction(txn_id)
+    assert txn["txn_date"] == "2026-01-15"
+    assert txn["currency"] == "USD"
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_create_transaction_falls_back_to_the_account_currency_when_blank(client):
+    account_id = _create_account(client)
+    resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+        "txn_type": "Cash", "txn_date": "2026-01-15", "currency": "", "fee_currency": "",
+        "quantity": 1, "unit_price": 50.0, "exchange_rate": 1.0,
+    })
+    assert resp.status_code == 200
+    import database as _db
+    assert _db.get_transaction(_json(resp)["id"])["currency"] == "GBP"
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_create_account_rejects_unstorable_currency_and_opened_date(client):
+    for body in (
+        {"name": "BadCcyAcc", "currency": "<b>"},
+        {"name": "BadOpenedAcc", "currency": "GBP", "opened_date": "<script>"},
+    ):
+        resp = client.post("/api/accounts", json=body)
+        assert resp.status_code == 422, body
+    import database as _db
+    assert not any(a["name"] in ("BadCcyAcc", "BadOpenedAcc") for a in _db.get_accounts())
+
+
+@pytest.mark.api
+def test_create_transfer_rejects_a_malformed_date(client):
+    src = _create_account(client, name="TransferApiBadDate", initial_cash=1000.0)
+    dst = _create_account(client, name="TransferApiBadDateDst", initial_cash=0.0)
+    resp = client.post(f"/api/accounts/{src}/transfer", json={
+        "to_account_id": dst, "amount": 100.0, "txn_date": "<img src=x onerror=alert(1)>",
+    })
+    assert resp.status_code == 422
+    assert "txn_date" in _json(resp)["message"]
+
+    import database as _db
+    assert _db.get_transactions(src) == []
+    _db.soft_delete_account(src)
+    _db.soft_delete_account(dst)
+
+
+@pytest.mark.api
+def test_csv_import_skip_notification_quotes_and_truncates_raw_values():
+    from api_routes_accounts import _notify_csv_import_skips
+    hostile = "<img src=x onerror=alert(1)>\nFAKE  — injected line"
+    rows = [
+        {"date": hostile, "ticker": "A" * 200, "reason": "unparseable date"},
+        {"date": "2021-02-01", "ticker": None, "reason": "no ticker in file"},
+    ]
+    with patch("api_routes_accounts.notification_engine.notify") as mock_notify:
+        _notify_csv_import_skips(1, "Acc", rows)
+    text = mock_notify.call_args[0][2]
+    body_lines = text.split("\n")[1:]
+    assert len(body_lines) == 2
+    assert body_lines[0].startswith("'<img src=x onerror=alert(1)>\\nFAKE")
+    assert "'" + "A" * 40 + "…'" in body_lines[0]
+    assert "A" * 41 not in body_lines[0]
+    assert body_lines[1] == "'2021-02-01'  ?  — no ticker in file"
+
+
+@pytest.mark.api
 def test_create_and_list_buy_transaction(client):
     account_id = _create_account(client)
     with patch("api_routes_accounts.update_single_profile") as mock_profile:
@@ -2619,6 +2729,49 @@ assert.match(fields['txn-fx-calc-status'].textContent, /total cost must exceed t
 """
     result = subprocess.run(
         [node, "-e", script, str(Path(__file__).parent.parent / "static/js/accounts.js")],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.api
+def test_show_transactions_table_escapes_every_field():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is unavailable")
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const context = {
+    document: {getElementById: () => null, addEventListener: () => {}},
+    window: {BASE_CURRENCY: 'GBP'},
+};
+vm.createContext(context);
+for (const file of process.argv.slice(1)) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+const payload = '<img src=x onerror=alert(1)>';
+const html = context._transactionsTableHtml(7, [{
+    id: 3, txn_date: payload, txn_type: payload, ticker: payload, quantity: payload,
+    unit_price: payload, fee: payload, fee_currency: '<b>FX</b>', currency: payload,
+}, {
+    id: 4, txn_date: '2026-01-05', txn_type: 'Buy', ticker: 'VOD.L', quantity: 10,
+    unit_price: 150.5, fee: 1.5, fee_currency: 'USD', currency: 'GBp',
+}]);
+assert.ok(!html.includes('<img'), html);
+assert.ok(!html.includes('<b>'), html);
+assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
+assert.ok(html.includes('&lt;b&gt;FX&lt;/b&gt;'));
+assert.ok(html.includes('<td>VOD.L</td>'));
+assert.ok(html.includes('<td>1.5 USD</td>'));
+assert.ok(html.includes('<td>GBp</td>'));
+assert.ok(html.includes('editTransaction(7, 3)'));
+"""
+    root = Path(__file__).parent.parent / "static/js"
+    result = subprocess.run(
+        [node, "-e", script, str(root / "utils.js"), str(root / "accounts.js")],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr

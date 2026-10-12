@@ -2,8 +2,18 @@ import logging
 from typing import Optional
 
 from database import get_connection
+from utils import is_currency_code, is_iso_date
 
 logger = logging.getLogger(__name__)
+
+
+def _invalid_txn_field(fields: dict) -> Optional[str]:
+    if "txn_date" in fields and not is_iso_date(fields["txn_date"]):
+        return "txn_date"
+    for name in ("currency", "fee_currency"):
+        if fields.get(name) is not None and not is_currency_code(fields[name]):
+            return name
+    return None
 
 
 def get_accounts(include_deleted: bool = False) -> list:
@@ -192,6 +202,10 @@ def add_transaction(
     linked_txn_id: Optional[int] = None,
     is_adjustment: bool = False,
 ) -> Optional[int]:
+    invalid = _invalid_txn_field({"txn_date": txn_date, "currency": currency, "fee_currency": fee_currency})
+    if invalid:
+        logger.error("Refused transaction for account %s: invalid %s", account_id, invalid)
+        return None
     conn = None
     try:
         conn = get_connection()
@@ -230,6 +244,10 @@ def update_transaction(txn_id: int, **fields) -> bool:
     unknown = set(fields) - _ALLOWED_TXN_COLUMNS
     if unknown:
         logger.error("update_transaction: unknown column(s) rejected: %s", unknown)
+        return False
+    invalid = _invalid_txn_field(fields)
+    if invalid:
+        logger.error("Refused update of transaction %s: invalid %s", txn_id, invalid)
         return False
     conn = None
     try:

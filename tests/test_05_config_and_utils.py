@@ -368,6 +368,31 @@ def test_safe_local_path_accepts_only_same_origin_relative_paths():
 
 
 @pytest.mark.config
+def test_is_currency_code_accepts_three_letters_and_keeps_pence_case():
+    """is_currency_code() guards a currency before it is stored or interpolated into a pair name:
+    'GBp' must pass, markup, padding, digits and a trailing newline must not."""
+    from utils import is_currency_code
+    for good in ("GBP", "GBp", "USD", "ZAc", "ILA", "usd"):
+        assert is_currency_code(good) is True, good
+    for bad in (None, "", "GB", "GBPP", "G1P", "<b>", "<img src=x onerror=alert(1)>", " GBP", "GBP\n", "GB P", "ÉUR", 123):
+        assert is_currency_code(bad) is False, repr(bad)
+
+
+@pytest.mark.config
+def test_is_iso_date_accepts_only_real_zero_padded_calendar_dates():
+    """is_iso_date() must refuse the forms date.fromisoformat() alone tolerates (compact, week
+    dates), impossible dates, markup, non-ASCII digits and a trailing newline."""
+    from utils import is_iso_date
+    for good in ("2026-01-05", "2024-02-29", "1999-12-31"):
+        assert is_iso_date(good) is True, good
+    for bad in (
+        None, "", "2026-1-5", "20260105", "2026-W02-1", "2026-02-30", "2026-13-01", "05/01/2026",
+        "2026-01-05T00:00:00", "2026-01-05\n", " 2026-01-05", "2026-01-05<script>", "２０２６-０１-０５", 20260105,
+    ):
+        assert is_iso_date(bad) is False, repr(bad)
+
+
+@pytest.mark.config
 def test_ignored_tickers_set_normalizes_and_uses_supplied_config():
     """ignored_tickers_set() must uppercase/strip entries and honor an explicitly-passed config
     dict rather than always reloading from disk — callers that already hold a loaded config

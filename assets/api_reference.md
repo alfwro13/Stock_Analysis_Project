@@ -3382,7 +3382,7 @@ Returns all non-deleted accounts, each annotated with `scraper_last_status` (`"s
 
 ### `POST /api/accounts`
 
-Creates a new account. Rate limit: 30/minute.
+Creates a new account. Returns 422 if `currency` is not a three-letter code or `opened_date` (when given) is not a real `YYYY-MM-DD` date — both feed the ledger's transaction currency and date. Rate limit: 30/minute.
 
 **Request body:**
 ```json
@@ -3395,7 +3395,7 @@ Creates a new account. Rate limit: 30/minute.
 
 ### `PUT /api/accounts/{id}`
 
-Updates an existing account. Same body as POST. Returns 404 if not found or soft-deleted. **`account_type` is immutable once an account is created — a PUT whose `account_type` differs from the existing value is rejected with 400** (e.g. House -> Pension would expose a `PENSION-{id}` synthetic ticker the ledger never created, or vice versa silently orphan a real one). Rate limit: 30/minute.
+Updates an existing account. Same body and 422 validation (`currency`, `opened_date`) as POST. Returns 404 if not found or soft-deleted. **`account_type` is immutable once an account is created — a PUT whose `account_type` differs from the existing value is rejected with 400** (e.g. House -> Pension would expose a `PENSION-{id}` synthetic ticker the ledger never created, or vice versa silently orphan a real one). Rate limit: 30/minute.
 
 ---
 
@@ -3506,13 +3506,13 @@ Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`
 }
 ```
 
-Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`.
+Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`, or if `txn_date` is not a real `YYYY-MM-DD` date or the resolved `currency` / `fee_currency` is not a three-letter code (case kept, so `GBp` is valid) — the message names the field.
 
 ---
 
 ### `PUT /api/accounts/{id}/transactions/{txn_id}`
 
-Updates a transaction. Same body and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. Rate limit: 30/minute.
+Updates a transaction. Same body, validation (422 for a malformed `txn_date`, `currency` or `fee_currency`) and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. Rate limit: 30/minute.
 
 ---
 
@@ -3525,7 +3525,7 @@ Records a cash transfer from this account to another of your built-in accounts. 
 { "to_account_id": 7, "amount": 250.0, "txn_date": "2026-01-15", "fee": 0, "notes": "optional" }
 ```
 
-Returns `{"status": "success", "message": "Transfer recorded.", "out_txn_id": ..., "in_txn_id": ...}`. Returns 404 if either account does not exist; 422 if `amount` is not positive or the source and destination accounts are the same.
+Returns `{"status": "success", "message": "Transfer recorded.", "out_txn_id": ..., "in_txn_id": ...}`. Returns 404 if either account does not exist; 422 if `amount` is not positive, `txn_date` is not a real `YYYY-MM-DD` date, or the source and destination accounts are the same.
 
 ---
 
@@ -3577,7 +3577,7 @@ Returns `{"status": "queued", "message": "..."}` immediately.
 
 ### `POST /api/accounts/{id}/import-csv`
 
-Imports a GIA/broker-style activity export CSV (multipart file upload, field name `file`) into the given built-in account (`account_csv_import_engine.import_csv_activities`). The required column layout, the four recognised `Type` values (`TOP_UP`, `INTEREST_FROM_CASH`, `ORDER`, `DIVIDEND` — `INTERNAL_TRANSFER` is ignored), and how the GBP exchange rate and fees are derived per row are documented in `assets/csv_import_format.md`. Columns are matched by exact header name, independent of order; a missing required column fails the whole import up front with a 422 naming it. Unlike Ghostfolio import, a row whose ticker can't be resolved (checked against the app's own `asset_profiles` cache, then a live Yahoo Finance lookup) is skipped outright rather than imported and flagged. Every skipped row — unresolved ticker, no ticker in the file, unparseable date, unrecognized `Type`, already-imported duplicate, or a DB write failure — is reported back individually under `skipped_rows` with its date, ticker, and a human-readable reason, so the operator can find the exact row in their file rather than just a per-ticker count. If any rows were skipped, the full list is also dispatched via `notification_engine.notify("accounts_csv_import", ...)` (source registered in `NOTIFICATION_SOURCES`, grouped under "Other" in the Settings Notification Settings panel since it has no parent scheduled job) so it's visible in the in-app Notifications panel after the modal is closed. Re-importing the same file is idempotent — each row is fingerprinted (date, type, ticker, amount, quantity, plus an occurrence counter for exact-duplicate rows) and stored in the transaction's `ghostfolio_ref` column prefixed `csv:`, the same dedup slot Ghostfolio import uses, so the two can never collide. On success, schedules the same background tasks as Ghostfolio import: a profile fetch for any newly-resolved ticker not yet in `asset_profiles`, and `accounts_engine.resnapshot_account`. Rate limit: 10/minute.
+Imports a GIA/broker-style activity export CSV (multipart file upload, field name `file`) into the given built-in account (`account_csv_import_engine.import_csv_activities`). The required column layout, the four recognised `Type` values (`TOP_UP`, `INTEREST_FROM_CASH`, `ORDER`, `DIVIDEND` — `INTERNAL_TRANSFER` is ignored), and how the GBP exchange rate and fees are derived per row are documented in `assets/csv_import_format.md`. Columns are matched by exact header name, independent of order; a missing required column fails the whole import up front with a 422 naming it. Unlike Ghostfolio import, a row whose ticker can't be resolved (checked against the app's own `asset_profiles` cache, then a live Yahoo Finance lookup) is skipped outright rather than imported and flagged. Every skipped row — unresolved ticker, no ticker in the file, unparseable date, a currency that is not a three-letter code, unrecognized `Type`, already-imported duplicate, or a DB write failure — is reported back individually under `skipped_rows` with its date, ticker, and a human-readable reason, so the operator can find the exact row in their file rather than just a per-ticker count. If any rows were skipped, the full list is also dispatched via `notification_engine.notify("accounts_csv_import", ...)` (source registered in `NOTIFICATION_SOURCES`, grouped under "Other" in the Settings Notification Settings panel since it has no parent scheduled job) so it's visible in the in-app Notifications panel after the modal is closed. Re-importing the same file is idempotent — each row is fingerprinted (date, type, ticker, amount, quantity, plus an occurrence counter for exact-duplicate rows) and stored in the transaction's `ghostfolio_ref` column prefixed `csv:`, the same dedup slot Ghostfolio import uses, so the two can never collide. On success, schedules the same background tasks as Ghostfolio import: a profile fetch for any newly-resolved ticker not yet in `asset_profiles`, and `accounts_engine.resnapshot_account`. Rate limit: 10/minute.
 
 **Request:** `multipart/form-data` with a `file` field (the CSV).
 
@@ -3690,7 +3690,7 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 { "txn_date": "2026-06-27", "amount": 500.0, "unit_price": null }
 ```
 
-**Response:** `{ "status": "success", "txn_id": 42, "units": 312.5, "unit_price": 1.6 }`. Returns 422 if no price can be resolved for that date and no override was supplied.
+**Response:** `{ "status": "success", "txn_id": 42, "units": 312.5, "unit_price": 1.6 }`. Returns 422 if `txn_date` is not a real `YYYY-MM-DD` date, or if no price can be resolved for that date and no override was supplied.
 
 ---
 
@@ -3708,7 +3708,7 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 { "txn_date": "2026-07-01", "units_removed": 5.0, "unit_price": null }
 ```
 
-**Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if neither or both of `units_after`/`units_removed` are supplied, if the resulting `units_removed` is not positive or exceeds the units currently held, or if no price can be resolved and no override was supplied.
+**Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if `txn_date` is not a real `YYYY-MM-DD` date, if neither or both of `units_after`/`units_removed` are supplied, if the resulting `units_removed` is not positive or exceeds the units currently held, or if no price can be resolved and no override was supplied.
 
 ---
 
@@ -3757,7 +3757,7 @@ Tracks zero-coupon UK Treasury bills (`treasury_bill_engine.py`) as holdings ins
 
 `indicative_ytm` is optional (stored purely for later reference/display — the yield shown in the app at purchase time, which the operator's own message confirms is only an estimate: "we will know the yield only after tender").
 
-**Response:** `{ "status": "success", "bill_id": 5, "txn_id": 210, "ticker": "TBILL-210" }`. Returns 422 on a validation failure (bad price/date ordering) or 400 if the account is not `Trading`.
+**Response:** `{ "status": "success", "bill_id": 5, "txn_id": 210, "ticker": "TBILL-210" }`. Returns 422 on a validation failure (`purchase_date`/`maturity_date` not real `YYYY-MM-DD` dates, bad price/date ordering) or 400 if the account is not `Trading`.
 
 ---
 
@@ -3835,7 +3835,7 @@ Posts the deferred top-up as a real `Cash` transaction (`update_cash=True`) for 
 { "pending_id": 7, "amount": 252.0, "txn_date": "2026-06-27" }
 ```
 
-**Response:** `{ "status": "success", "message": "Top-up confirmed.", "txn_id": 101 }`. Returns 400 if the pending row doesn't exist or has already been resolved.
+**Response:** `{ "status": "success", "message": "Top-up confirmed.", "txn_id": 101 }`. Returns 400 if the pending row doesn't exist or has already been resolved, and 422 if `txn_date` is not a real `YYYY-MM-DD` date.
 
 ---
 

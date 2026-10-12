@@ -7,6 +7,7 @@ import stat
 import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import date
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
@@ -36,6 +37,8 @@ def time_request_call(stage_name: str, function, *args, **kwargs):
 
 _SAFE_TICKER_PATH_RE = re.compile(r"[A-Za-z0-9^.=_\-]{1,64}")
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+_CURRENCY_CODE_RE = re.compile(r"[A-Za-z]{3}")
+_ISO_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 MERMAID_VERSION = "10.9.1"
 MERMAID_URL = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
@@ -189,6 +192,22 @@ def safe_local_path(value: Optional[str]) -> Optional[str]:
     if _CONTROL_CHARS_RE.search(value):
         return None
     return value
+
+
+def is_currency_code(value: Any) -> bool:
+    """Three ASCII letters with case kept, so the GBp pence code passes — the guard for a currency taken from a request or a CSV before it is stored or put in a pair name."""
+    return isinstance(value, str) and _CURRENCY_CODE_RE.fullmatch(value) is not None
+
+
+def is_iso_date(value: Any) -> bool:
+    """A real calendar date written exactly YYYY-MM-DD, the only form the ledger's string comparisons and strptime calls handle."""
+    if not isinstance(value, str) or _ISO_DATE_RE.fullmatch(value) is None:
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 def write_parquet_atomic(df: Any, path: Any) -> None:

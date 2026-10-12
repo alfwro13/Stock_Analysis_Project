@@ -60,7 +60,10 @@ from scheduler_engine import (
     unregister_account_scraper_job, unregister_account_topup_job,
 )
 from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
-from utils import has_cached_fundamentals, is_excluded_from_yahoo_fetch, normalize_ticker, measure_request_stage
+from utils import (
+    has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch, is_iso_date,
+    measure_request_stage, normalize_ticker,
+)
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -222,6 +225,17 @@ def _missing_fx_response(*currencies: Optional[str], txn_date: str) -> JSONRespo
     )
 
 
+def _invalid_input_response(dates: Optional[dict] = None, currencies: Optional[dict] = None) -> Optional[JSONResponse]:
+    """A 422 naming the first date or currency that cannot be stored; a blank currency is skipped because every caller falls back to a default for it."""
+    for name, value in (dates or {}).items():
+        if not is_iso_date(value):
+            return JSONResponse(status_code=422, content={"status": "error", "message": f"{name} must be a date in YYYY-MM-DD format."})
+    for name, value in (currencies or {}).items():
+        if value and not is_currency_code(value):
+            return JSONResponse(status_code=422, content={"status": "error", "message": f"{name} must be a 3-letter currency code."})
+    return None
+
+
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> Optional[float]:
     if exchange_rate is not None:
         return exchange_rate
@@ -276,9 +290,15 @@ def api_create_account(request: Request, body: AccountBody, background_tasks: Ba
             return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
         if body.account_type == "Watchlist":
             return JSONResponse(status_code=400, content={"status": "error", "message": "Watchlist accounts are created automatically and cannot be created manually."})
+        currency = body.currency.upper().strip()
+        invalid = _invalid_input_response(
+            dates={"opened_date": body.opened_date} if body.opened_date else None, currencies={"currency": currency},
+        )
+        if invalid:
+            return invalid
         account_id = create_account(
             name=body.name.strip(),
-            currency=body.currency.upper().strip(),
+            currency=currency,
             initial_cash=body.initial_cash,
             note=body.note,
             opened_date=body.opened_date,
@@ -311,10 +331,16 @@ def api_update_account(request: Request, account_id: int, body: AccountBody, bac
             return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
         if body.account_type != existing["account_type"]:
             return JSONResponse(status_code=400, content={"status": "error", "message": "Account type cannot be changed after creation."})
+        currency = body.currency.upper().strip()
+        invalid = _invalid_input_response(
+            dates={"opened_date": body.opened_date} if body.opened_date else None, currencies={"currency": currency},
+        )
+        if invalid:
+            return invalid
         ok = update_account(
             account_id,
             name=body.name.strip(),
-            currency=body.currency.upper().strip(),
+            currency=currency,
             initial_cash=body.initial_cash,
             note=body.note,
             opened_date=body.opened_date,
@@ -426,10 +452,15 @@ def api_create_transaction(
                 status_code=422,
                 content={"status": "error", "message": "Use POST /accounts/{id}/transfer to record a transfer."},
             )
+        currency = body.currency or acc["currency"]
+        invalid = _invalid_input_response(
+            dates={"txn_date": body.txn_date}, currencies={"currency": currency, "fee_currency": body.fee_currency},
+        )
+        if invalid:
+            return invalid
         ticker = normalize_ticker(body.ticker) if body.ticker else None
         if ticker:
             _ensure_ticker_data(ticker, background_tasks)
-        currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         if exchange_rate is None:
             return _missing_fx_response(currency, txn_date=body.txn_date)
@@ -492,8 +523,13 @@ def api_update_transaction(
                 status_code=422,
                 content={"status": "error", "message": f"txn_type must be one of: {', '.join(sorted(_TXN_TYPES))}"},
             )
-        ticker = normalize_ticker(body.ticker) if body.ticker else None
         currency = body.currency or acc["currency"]
+        invalid = _invalid_input_response(
+            dates={"txn_date": body.txn_date}, currencies={"currency": currency, "fee_currency": body.fee_currency},
+        )
+        if invalid:
+            return invalid
+        ticker = normalize_ticker(body.ticker) if body.ticker else None
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         if exchange_rate is None:
             return _missing_fx_response(currency, txn_date=body.txn_date)
@@ -567,6 +603,9 @@ def api_create_transfer(request: Request, account_id: int, body: TransferBody, b
             return JSONResponse(status_code=404, content={"status": "error", "message": "Destination account not found."})
         if body.amount <= 0:
             return JSONResponse(status_code=422, content={"status": "error", "message": "amount must be positive."})
+        invalid = _invalid_input_response(dates={"txn_date": body.txn_date})
+        if invalid:
+            return invalid
         result = create_transfer(account_id, body.to_account_id, body.amount, body.txn_date, body.fee, body.notes)
         if result.get("error"):
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
@@ -700,8 +739,22 @@ def api_bulk_delete_watchlist_items(request: Request, account_id: int, body: Wat
         return _error_500(e)
 
 
+_SKIP_VALUE_MAX_CHARS = 40
+
+
+def _quoted_skip_value(value: Optional[str]) -> str:
+    """repr() keeps a newline or control character in a raw CSV cell from forging extra lines in the notification; the cap keeps one cell from filling it."""
+    if not value:
+        return "?"
+    shown = value if len(value) <= _SKIP_VALUE_MAX_CHARS else value[:_SKIP_VALUE_MAX_CHARS] + "…"
+    return repr(shown)
+
+
 def _notify_csv_import_skips(account_id: int, account_name: str, skipped_rows: list) -> None:
-    lines = [f"{r['date'] or '?'}  {r['ticker'] or '?'}  — {r['reason']}" for r in skipped_rows]
+    lines = [
+        f"{_quoted_skip_value(r['date'])}  {_quoted_skip_value(r['ticker'])}  — {r['reason']}"
+        for r in skipped_rows
+    ]
     notification_engine.notify(
         "accounts_csv_import",
         "CSV Import — Skipped Rows",
@@ -958,6 +1011,9 @@ def api_confirm_autotopup(request: Request, account_id: int, body: AutoTopupConf
         _acc, error = _require_trading_account(account_id)
         if error:
             return error
+        invalid = _invalid_input_response(dates={"txn_date": body.txn_date})
+        if invalid:
+            return invalid
         result = confirm_autotopup(account_id, body.pending_id, body.amount, body.txn_date)
         if "error" in result:
             return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
@@ -1095,6 +1151,9 @@ def api_record_pension_contribution(request: Request, account_id: int, body: Pen
         _acc, error = _require_pension_account(account_id)
         if error:
             return error
+        invalid = _invalid_input_response(dates={"txn_date": body.txn_date})
+        if invalid:
+            return invalid
         result = record_pension_contribution(account_id, body.txn_date, body.amount, body.unit_price)
         if result.get("error"):
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
@@ -1112,6 +1171,9 @@ def api_record_pension_fee(request: Request, account_id: int, body: PensionFeeBo
         _acc, error = _require_pension_account(account_id)
         if error:
             return error
+        invalid = _invalid_input_response(dates={"txn_date": body.txn_date})
+        if invalid:
+            return invalid
         result = record_pension_fee(account_id, body.txn_date, body.units_after, body.units_removed, body.unit_price)
         if result.get("error"):
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
@@ -1167,6 +1229,9 @@ def api_buy_treasury_bill(request: Request, account_id: int, body: TreasuryBillB
         _acc, error = _require_trading_account(account_id)
         if error:
             return error
+        invalid = _invalid_input_response(dates={"purchase_date": body.purchase_date, "maturity_date": body.maturity_date})
+        if invalid:
+            return invalid
         result = buy_treasury_bill(
             account_id, body.purchase_date, body.face_value, body.purchase_price,
             body.maturity_date, body.auto_reinvest, body.notes, body.indicative_ytm,

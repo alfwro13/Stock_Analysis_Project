@@ -329,13 +329,13 @@ function _transactionsTableHtml(accountId, txns) {
     if (!txns.length) return '<p class="text-muted small">No transactions yet.</p>';
     const rows = txns.map(t => `
         <tr>
-            <td>${t.txn_date}</td>
-            <td>${t.txn_type}</td>
-            <td>${t.ticker || '—'}</td>
-            <td>${t.quantity ?? '—'}</td>
-            <td>${t.unit_price ?? '—'}</td>
-            <td>${t.fee}${t.fee_currency && t.fee_currency !== t.currency ? ' ' + t.fee_currency : ''}</td>
-            <td>${t.currency || '—'}</td>
+            <td>${escapeHtml(t.txn_date)}</td>
+            <td>${escapeHtml(t.txn_type)}</td>
+            <td>${escapeHtml(t.ticker || '—')}</td>
+            <td>${escapeHtml(t.quantity ?? '—')}</td>
+            <td>${escapeHtml(t.unit_price ?? '—')}</td>
+            <td>${escapeHtml(t.fee)}${t.fee_currency && t.fee_currency !== t.currency ? ' ' + escapeHtml(t.fee_currency) : ''}</td>
+            <td>${escapeHtml(t.currency || '—')}</td>
             <td>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editTransaction(${accountId}, ${t.id})">Edit</button>
                 <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTransaction(${accountId}, ${t.id})">Delete</button>
