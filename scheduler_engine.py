@@ -1,10 +1,12 @@
 import logging
+import contextlib as _contextlib
 import functools as _functools
 import threading as _threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -1138,6 +1140,26 @@ def start_scheduler():
 
 def shutdown_scheduler():
     scheduler.shutdown(wait=False)
+
+
+class JobsRunning(RuntimeError):
+    pass
+
+
+@_contextlib.contextmanager
+def scheduler_quiesced():
+    """Pauses job firing, then refuses (JobsRunning) if a job is already running — pause() leaves running jobs alone, and those hold the connections a database swap strands."""
+    paused = scheduler.state == STATE_RUNNING
+    if paused:
+        scheduler.pause()
+    try:
+        active = get_active_jobs()
+        if active:
+            raise JobsRunning(", ".join(active))
+        yield
+    finally:
+        if paused and scheduler.state == STATE_PAUSED:
+            scheduler.resume()
 
 
 # Sub-module re-exports — placed after all primary definitions so the sub-modules can
