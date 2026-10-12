@@ -1159,7 +1159,9 @@ class TestGetSessionShape:
 
     def test_returns_timezone_and_regular_window_end_and_caches(self):
         meta = {"exchangeTimezoneName": "America/Chicago",
-                "currentTradingPeriod": {"regular": {"start": 1791548400, "end": 1791572400}}}
+                "currentTradingPeriod": {"regular": {
+                    "start": pd.Timestamp(1791548400, unit="s", tz="America/Chicago"),
+                    "end": pd.Timestamp(1791572400, unit="s", tz="America/Chicago")}}}
         yf_patch, boundary, ticker = self._meta(meta)
         with yf_patch, boundary:
             first = _REAL_GET_SESSION_SHAPE(self.eng, "^TNX")

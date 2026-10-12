@@ -536,7 +536,7 @@ class YahooEngine:
             end = ((meta or {}).get("currentTradingPeriod") or {}).get("regular", {}).get("end")
             if not tz or not end:
                 return None
-            shape = {"tz": tz, "regular_end": int(end)}
+            shape = {"tz": tz, "regular_end": int(end.timestamp())}
             self._set(key, shape, _TTLS["session_shape"])
             return shape
         except Exception:
