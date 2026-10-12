@@ -11,7 +11,7 @@
 {% endif %}
 
 <div class="filter-tabs">
-    {% set ref_suffix = ('&ref=' + back_url) if back_url else '' %}
+    {% set ref_suffix = ('&ref=' ~ (back_url | urlencode)) if back_url else '' %}
     <a href="/score-history?filter=all{{ ref_suffix }}"       class="filter-tab {% if active_filter == 'all' %}active{% endif %}">&#127760; All Tickers</a>
     <a href="/score-history?filter=portfolio{{ ref_suffix }}" class="filter-tab {% if active_filter == 'portfolio' %}active{% endif %}">&#128188; My Portfolio</a>
     <a href="/score-history?filter=watchlist{{ ref_suffix }}" class="filter-tab {% if active_filter == 'watchlist' %}active{% endif %}">&#128064; My Watchlist</a>

@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from config import load_config
 from database import get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
-from utils import normalize_ticker, time_request_call
+from utils import normalize_ticker, safe_ticker_filename, time_request_call
 from constants import CSS_VERSION
 from page_helpers import _load_fundamentals_extra, get_unread_count, get_all_scope_heat_tier
 from page_data_stock import data_freshness, load_stock_row, parse_json_field
@@ -34,6 +34,8 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
     registry_ticker = next((t for t in get_index_tickers() if t == ticker), None)
     if registry_ticker:
         return RedirectResponse(f"/index/{registry_ticker}", status_code=302)
+    if not safe_ticker_filename(ticker):
+        raise HTTPException(status_code=404)
     is_in_watchlist = ticker in get_watchlist_tickers()
 
     stock_data, earnings_vol = load_stock_row(ticker)

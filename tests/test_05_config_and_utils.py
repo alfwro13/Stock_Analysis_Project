@@ -340,6 +340,32 @@ def test_normalize_ticker_already_uppercase():
 
 
 @pytest.mark.config
+def test_safe_ticker_filename_rejects_markup_traversal_and_trailing_newline():
+    """safe_ticker_filename() is the guard behind every ticker-built parquet path; markup,
+    separators and a trailing newline (which a '$'-anchored match let through) must be refused."""
+    from utils import safe_ticker_filename
+    for good in ("AAPL", "BRK-B", "LLOY.L", "^GSPC", "GC=F", "EURUSD=X", "0P0000XYZ.L"):
+        assert safe_ticker_filename(good) == good
+    for bad in ("", None, "../X", "A/B", "A\\B", "<img src=x>", "A B", "AAPL\n", "&lt;SPAN&gt;"):
+        assert safe_ticker_filename(bad) is None, bad
+
+
+@pytest.mark.config
+def test_safe_local_path_accepts_only_same_origin_relative_paths():
+    """safe_local_path() backs the score-history Back link and the login redirect: a tab/CR/LF
+    is dropped by browsers before URL parsing, so '/<TAB>/host' would become '//host'."""
+    from utils import safe_local_path
+    for good in ("/", "/portfolio", "/stock/AAPL?embed=true&embed_token=abc", "/score-history?filter=all"):
+        assert safe_local_path(good) == good
+    for bad in (
+        None, "", "portfolio", "javascript:alert(1)", "https://evil.example/", "//evil.example",
+        "/\\evil.example", "/a\\b", "/\t/evil.example", "/\n/evil.example", "/\r/evil.example",
+        "/ok\x00", "/ok\x7f",
+    ):
+        assert safe_local_path(bad) is None, repr(bad)
+
+
+@pytest.mark.config
 def test_ignored_tickers_set_normalizes_and_uses_supplied_config():
     """ignored_tickers_set() must uppercase/strip entries and honor an explicitly-passed config
     dict rather than always reloading from disk — callers that already hold a loaded config

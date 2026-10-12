@@ -497,6 +497,65 @@ def test_stock_detail_embed_mode_still_shows_back_button(client):
 
 
 @pytest.mark.pages
+@pytest.mark.parametrize("path", [
+    "/stock/%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E",
+    "/stock/%26lt%3BSPAN%26gt%3BXSS",
+    "/stock/A%20B",
+])
+def test_stock_detail_rejects_unsafe_ticker_with_404(client, path):
+    """A ticker that fails safe_ticker_filename() must 404 rather than render a page that
+    interpolates it (SEC 5/27, S5-1)."""
+    resp = client.get(path, follow_redirects=False)
+    assert resp.status_code == 404
+    assert "onerror" not in resp.text and "SPAN" not in resp.text
+
+
+@pytest.mark.pages
+def test_stock_detail_chart_error_shows_fixed_message_not_exception_text(client, tmp_path, monkeypatch):
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "Open": [100.0, 101.0], "High": [102.0, 103.0],
+        "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
+    }, index=pd.date_range("2026-01-01", periods=2))
+    df.to_parquet(tmp_path / "ZZXSSCHART.parquet")
+    monkeypatch.setattr("page_data_stock_panels.HISTORICAL_DIR", tmp_path)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("<img src=x onerror=alert(1)> /opt/secret/path")
+
+    monkeypatch.setattr("page_data_stock_panels.create_macro_chart", _boom)
+    resp = client.get("/stock/ZZXSSCHART", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "Chart unavailable" in resp.text
+    assert "See the server log for details." in resp.text
+    assert "onerror=alert" not in resp.text
+    assert "/opt/secret/path" not in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_chart_error_shows_fixed_message_not_exception_text(client, tmp_path, monkeypatch):
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "Open": [100.0, 101.0], "High": [102.0, 103.0],
+        "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
+    }, index=pd.date_range("2026-01-01", periods=2))
+    df.to_parquet(tmp_path / "^GSPC.parquet")
+    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("<img src=x onerror=alert(1)> /opt/secret/path")
+
+    monkeypatch.setattr("page_routes_macro.create_macro_chart", _boom)
+    resp = client.get("/index/%5EGSPC")
+    assert resp.status_code == 200
+    assert "Chart unavailable" in resp.text
+    assert "onerror=alert" not in resp.text
+    assert "/opt/secret/path" not in resp.text
+
+
+@pytest.mark.pages
 def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkeypatch):
     """A ticker that has a quant_signals row but no stock_signals row yet (e.g. freshly
     fetched, before the full nightly pipeline has run) hits the 'UNIVERSE SCAN ONLY'
@@ -2371,3 +2430,35 @@ vm.runInContext(fs.readFileSync(0, 'utf8'), context);
 """
     result = subprocess.run([node, '-e', script], input=source[source.rindex('(() => {'):], text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
+
+
+# ── Score History ref / Login next (SEC 5/27, S5-4, S5-6) ─────────────────────
+
+@pytest.mark.pages
+def test_score_history_back_link_accepts_same_origin_path(client):
+    resp = client.get("/score-history?filter=portfolio&ref=/portfolio")
+    assert resp.status_code == 200
+    assert '<a href="/portfolio" class="back-btn">' in resp.text
+
+
+@pytest.mark.pages
+@pytest.mark.parametrize("ref", [
+    "javascript:alert(1)",
+    "//evil.example",
+    "https://evil.example/",
+    "/%09/evil.example",
+    "/%0A/evil.example",
+    "/%5Cevil.example",
+])
+def test_score_history_drops_unsafe_ref(client, ref):
+    resp = client.get(f"/score-history?ref={ref}")
+    assert resp.status_code == 200
+    assert 'class="back-btn"' not in resp.text
+    assert "&amp;ref=" not in resp.text
+
+
+@pytest.mark.pages
+def test_score_history_filter_tabs_urlencode_ref(client):
+    resp = client.get("/score-history?ref=/portfolio%3Fa%3D1%26b%3D2")
+    assert resp.status_code == 200
+    assert "filter=all&amp;ref=/portfolio%3Fa%3D1%26b%3D2" in resp.text

@@ -21,7 +21,7 @@ from config import load_config
 import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse
-from utils import normalize_ticker
+from utils import normalize_ticker, safe_local_path
 from visuals_ai import (
     create_ai_contagion_performance_chart,
     create_ai_contagion_correlation_heatmap,
@@ -41,7 +41,8 @@ templates.env.globals["css_version"] = CSS_VERSION
 
 @page_router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse(request=request, name="login.html")
+    next_url = safe_local_path(request.query_params.get("next")) or "/"
+    return templates.TemplateResponse(request=request, name="login.html", context={"next_url": next_url})
 
 
 @page_router.get("/logout")
@@ -737,7 +738,7 @@ def score_history_page(request: Request, filter: str = "all", ref: str = ""):
         context={
             "data": data,
             "active_filter": active_filter,
-            "back_url": ref if ref else None,
+            "back_url": safe_local_path(ref),
             "unread_count": get_unread_count(),
             "config": load_config(),
         }

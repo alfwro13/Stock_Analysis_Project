@@ -206,6 +206,21 @@ class TestAuthMiddleware:
         resp = raw_client.get("/login")
         assert resp.status_code == 200
 
+    @pytest.mark.parametrize("query,expected", [
+        ("/portfolio", "/portfolio"),
+        ("/stock/AAPL?embed=true", "/stock/AAPL?embed=true"),
+        ("%2F%09%2Fevil.example", "/"),
+        ("%2F%0A%2Fevil.example", "/"),
+        ("%2F%2Fevil.example", "/"),
+        ("%2F%5Cevil.example", "/"),
+        ("javascript:alert(1)", "/"),
+    ])
+    def test_login_page_only_keeps_same_origin_next(self, raw_client, query, expected):
+        import json as _json
+        resp = raw_client.get(f"/login?next={query}")
+        assert resp.status_code == 200
+        assert f"const nextUrl = {_json.dumps(expected)};" in resp.text
+
     def test_api_login_endpoint_is_exempt_from_middleware(self, raw_client):
         # Wrong credentials → 401 from the endpoint, not 302 from the middleware.
         resp = raw_client.post("/api/login", json={

@@ -446,7 +446,8 @@ def index_detail(request: Request, ticker: str):
     except FileNotFoundError:
         macro_html = "<div class='chart-ph chart-ph--lg'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No historical data yet</span></div>"
     except Exception as e:
-        macro_html = f"<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>{type(e).__name__}: {e}</span></div>"
+        logger.warning("macro chart failed for %s: %s", ticker, e)
+        macro_html = "<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>See the server log for details.</span></div>"
 
     try:
         if not _safe_ticker:
