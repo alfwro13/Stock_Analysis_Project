@@ -4065,7 +4065,7 @@ See `assets/markets_page.md` for the dynamic-ordering algorithm, region tie-brea
 
 **Query params:** `view` — `dynamic` (default) or `static`.
 
-Returns every enabled `market_ticker_registry` row grouped by region, in the resolved region order, with live price/sentiment/sparkline data merged in. Registry-tracked tickers with a stale cache row are refreshed in the background (same `needs_refresh` pattern as `/api/market-pulse`).
+Returns every enabled `market_ticker_registry` row grouped by region, in the resolved region order, with live price/sentiment/sparkline data merged in. Registry-tracked tickers with a stale cache row are refreshed in the background (same `needs_refresh` pattern as `/api/market-pulse`), including both the spot and the future ticker of every dual-instrument row, whichever one the tile currently resolves to.
 
 **Response**
 
