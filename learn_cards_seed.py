@@ -3192,7 +3192,8 @@ CARDS = [
         ],
         "explanation": """<p>The <strong>yield tail</strong> measures the difference between where the majority of bids settled (the <em>median yield</em>) and the highest yield the government had to accept to sell all the bonds (the <em>stop-out yield</em>). It is expressed in <strong>basis points</strong> (bps), where 1 basis point = 0.01%.</p>
 <p>In a healthy auction, the median yield and stop-out yield are very close — all serious buyers submitted bids at roughly similar rates, reflecting high confidence in the price. A large tail (e.g., +3 basis points) means the government had to dig deeper into its bid stack and accept bids at significantly higher yields than the midpoint. This indicates the auction attracted fewer genuine voluntary buyers than expected, requiring the most reluctant participants (primary dealers who are legally required to bid) to absorb the extra supply at a premium yield.</p>
-<p>Even a tail of 2–3 basis points on a 10-year or 30-year auction is considered noteworthy by bond market professionals because it translates into meaningful additional interest costs on tens of billions of dollars of new debt. The October 2023 30-year auction's ~3bp tail became news instantly and triggered the equity selloff that afternoon.</p>""",
+<p>Even a tail of 2–3 basis points on a 10-year or 30-year auction is considered noteworthy by bond market professionals because it translates into meaningful additional interest costs on tens of billions of dollars of new debt. The October 2023 30-year auction's ~3bp tail became news instantly and triggered the equity selloff that afternoon.</p>
+<p>Treasury bills are quoted on a <em>discount rate</em> rather than a yield, so for bills the monitor measures the same gap between the highest and the average discount rate.</p>""",
     },
     {
         "term_key": "direct-bidders",
@@ -3265,7 +3266,8 @@ CARDS = [
         ],
         "explanation": """<p>Each maturity of Treasury bond has its own "normal" demand dynamics. A bid-to-cover of 2.3 might be completely normal for a 30-year bond (where demand is structurally lower because fewer investors want to commit for 30 years) but alarming for a 2-year note (where short-duration demand is usually much higher). Using a fixed universal threshold for all maturities would generate enormous false-alarm noise.</p>
 <p>Instead, the monitor computes the average bid-to-cover ratio and average yield tail for the previous <em>6 auctions of that specific maturity</em>. This rolling baseline adapts to each maturity's own demand patterns and adjusts automatically for structural shifts in the Treasury market over time. An alert only fires when the current auction is meaningfully worse than the recent specific-maturity history — not just lower than some abstract universal standard.</p>
-<p>The 6-auction window is deliberately short. Using 12 or 24 auctions would make the baseline too slow to reflect current market conditions. Using only 2 or 3 would make it too volatile and noisy. Six auctions (typically covering 3–6 months for most maturities) provides a balance between recency and statistical stability.</p>""",
+<p>The 6-auction window is deliberately short. Using 12 or 24 auctions would make the baseline too slow to reflect current market conditions. Using only 2 or 3 would make it too volatile and noisy. Six auctions (typically covering 3–6 months for most maturities) provides a balance between recency and statistical stability.</p>
+<p>Reopened auctions are pooled with the original issue — a "29-year 10-month" reopening counts as a 30-year. Inflation-linked (TIPS) and floating-rate (FRN) auctions each get their own baseline, because their demand is not comparable with ordinary fixed-rate auctions.</p>""",
     },
     # --- accounts ---
     {

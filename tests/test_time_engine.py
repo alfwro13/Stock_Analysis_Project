@@ -519,6 +519,18 @@ class TestExchangeTz:
         assert exchange_tz("BOGUS") == "America/New_York"
 
 
+class TestExchangeLocalDate:
+    def test_new_york_date_lags_utc_after_midnight_utc(self):
+        fixed = datetime(2026, 7, 16, 2, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(fixed)):
+            assert time_engine.exchange_local_date("NYSE").isoformat() == "2026-07-15"
+
+    def test_tokyo_date_leads_utc_late_evening(self):
+        fixed = datetime(2026, 7, 15, 20, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(fixed)):
+            assert time_engine.exchange_local_date("TSE").isoformat() == "2026-07-16"
+
+
 # ---------------------------------------------------------------------------
 # to_local / fmt_time / fmt_datetime
 # ---------------------------------------------------------------------------

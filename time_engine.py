@@ -221,6 +221,11 @@ def _local_today(tz: ZoneInfo):
     return datetime.now(timezone.utc).astimezone(tz).date()
 
 
+def exchange_local_date(exchange: str):
+    """Today's calendar date in *exchange*'s own timezone."""
+    return _local_today(ZoneInfo(exchange_tz(exchange)))
+
+
 def market_window_utc(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
