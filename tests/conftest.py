@@ -128,6 +128,7 @@ def client():
         import main as _main_module
         with TestClient(
             _main_module.app,
+            base_url="http://localhost",
             raise_server_exceptions=False,
             headers={"X-API-Key": _TEST_API_KEY},
         ) as c:
@@ -158,7 +159,7 @@ def raw_client():
         patch("main.resume_interrupted_scans"),
     ):
         import main as _main_module
-        with TestClient(_main_module.app, raise_server_exceptions=False, follow_redirects=False) as c:
+        with TestClient(_main_module.app, base_url="http://localhost", raise_server_exceptions=False, follow_redirects=False) as c:
             yield c
 
 

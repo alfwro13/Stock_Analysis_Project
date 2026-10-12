@@ -82,9 +82,13 @@ def verify_embed_token(token: str) -> bool:
     return bool(expected) and bool(token) and hmac.compare_digest(token.encode(), expected.encode())
 
 
-def _is_https() -> bool:
+def cookie_secure() -> bool:
     from config import load_config
-    return load_config().get("SERVER_URL", "").startswith("https://")
+    cfg = load_config()
+    setting = str(cfg.get("COOKIE_SECURE", "auto")).lower()
+    if setting in ("true", "false"):
+        return setting == "true"
+    return cfg.get("SERVER_URL", "").startswith("https://")
 
 
 def cookie_kwargs(remember: bool) -> dict:
@@ -92,6 +96,6 @@ def cookie_kwargs(remember: bool) -> dict:
         "key": COOKIE_NAME,
         "httponly": True,
         "samesite": "lax",
-        "secure": _is_https(),
+        "secure": cookie_secure(),
         "max_age": _REMEMBER_MAX_AGE if remember else None,
     }

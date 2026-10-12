@@ -16,10 +16,11 @@ from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette_csrf import CSRFMiddleware
 
-from config import BASE_DIR, PORT, SERVER_URL, load_config
-from auth import COOKIE_NAME, verify_session_token, verify_embed_token
+from config import ALLOWED_HOSTS, BASE_DIR, BIND_HOST, FRAME_ANCESTORS, PORT, SERVER_URL, load_config
+from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_token
 from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
@@ -159,7 +160,7 @@ app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
 
 @app.middleware("http")
 async def request_timing_middleware(request: Request, call_next):
-    path = request.url.path
+    path = request.scope["path"]
     route_path = "/stock/{ticker}" if path.startswith("/stock/") and path.count("/") == 2 else path
     if route_path not in _TIMED_ROUTES:
         return await call_next(request)
@@ -199,6 +200,7 @@ app.add_middleware(
     exempt_urls=[re.compile(r"^/api/(login|request-password-reset|reset-password|admin-reset-password)$")],
     cookie_httponly=False,           # JS must be able to read it
     cookie_samesite="lax",
+    cookie_secure=cookie_secure(),
 )
 
 # Paths that never require a session
@@ -215,7 +217,7 @@ _EMBED_PATH_PREFIXES = ("/stock/",)
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    path = request.url.path
+    path = request.scope["path"]
 
     # Static files, login, and password-reset routes are always public
     if path in _EXEMPT or any(path.startswith(p) for p in _EXEMPT_PREFIXES):
@@ -248,8 +250,7 @@ async def auth_middleware(request: Request, call_next):
     # Session cookie authentication
     token = request.cookies.get(COOKIE_NAME, "")
     if not token or not verify_session_token(token):
-        next_path = request.url.path
-        return RedirectResponse(f"/login?next={next_path}", status_code=302)
+        return RedirectResponse(f"/login?next={path}", status_code=302)
 
     # Force password change when only the default "changeme" plaintext password is set
     if (
@@ -262,6 +263,38 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=sorted({*ALLOWED_HOSTS, "localhost", "127.0.0.1"}),
+)
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-XSS-Protection": "0",
+    "X-Robots-Tag": "none",
+    "Content-Security-Policy": "; ".join([
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors " + " ".join(["'self'", *FRAME_ANCESTORS]),
+    ]),
+}
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -271,4 +304,4 @@ app.include_router(page_router)
 
 if __name__ == "__main__":
     logger.info(f"Starting Quantamental Web Server at {SERVER_URL}:{PORT}...")
-    uvicorn.run(app, host="0.0.0.0", port=PORT, timeout_graceful_shutdown=15)
+    uvicorn.run(app, host=BIND_HOST, port=PORT, timeout_graceful_shutdown=15)

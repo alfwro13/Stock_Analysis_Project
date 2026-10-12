@@ -45,6 +45,10 @@ async function saveSettings(silent = false) {
     const payload = {
         "SERVER_URL": document.getElementById('SERVER_URL').value,
         "PORT": parseInt(document.getElementById('PORT').value),
+        "BIND_HOST": document.getElementById('BIND_HOST').value.trim(),
+        "COOKIE_SECURE": document.getElementById('COOKIE_SECURE').value,
+        "ALLOWED_HOSTS": document.getElementById('ALLOWED_HOSTS').value.split(',').map(s => s.trim()).filter(Boolean),
+        "FRAME_ANCESTORS": document.getElementById('FRAME_ANCESTORS').value.split(',').map(s => s.trim()).filter(Boolean),
         "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
         "USER_TIMEZONE": document.getElementById('USER_TIMEZONE').value.trim(),
         "HOME_EXCHANGE": document.getElementById('HOME_EXCHANGE').value,

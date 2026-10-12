@@ -127,6 +127,8 @@ Portfolio, Watchlist and Stock Detail use cached FX and historical data during n
 
 Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**. The repair dialog checks an incorrect daily price bar against fresh Yahoo data and also accepts manually verified OHLCV when Yahoo remains wrong. Corrections remain in effect after later data refreshes. Dependent indicator history and, for held or watched tickers, the portfolio risk figures are refreshed automatically.
 
+**Network & Request Hardening:** Settings → Core System & Currencies also holds Bind Host, Secure Cookies, Allowed Hosts and Embed Frame Ancestors (restart required). The app answers only to the listed host names (`localhost` is always allowed), sends its own security headers (including a Content-Security-Policy whose `frame-ancestors` lists the embed origins), and marks its cookies `Secure` automatically when the Server URL is https.  See the Nginx section below.
+
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless
@@ -289,7 +291,9 @@ Once deployed as a service, you can manage the dashboard via the Web UI Settings
 
 ## **🔒 Nginx Reverse Proxy & Security Headers**
 
-For production deployments it is strongly recommended to place the dashboard behind an Nginx reverse proxy. This adds HTTPS termination, security headers, and clickjacking protection.
+For production deployments it is strongly recommended to place the dashboard behind an Nginx reverse proxy. This adds HTTPS termination and keeps the app's port off the network.
+
+The app sends its own security headers (a Content-Security-Policy including `frame-ancestors`, `X-Content-Type-Options`, `Referrer-Policy`, `X-XSS-Protection`, `X-Robots-Tag`), so Nginx only needs to add HSTS. It also rejects any request whose `Host` header is not on its allow-list — before it will answer through your domain, add that domain under **Settings → Core System & Currencies → Allowed Hosts** (restart required; `localhost` is always allowed).
 
 ### **1. Basic Nginx Site Configuration**
 
@@ -303,28 +307,9 @@ server {
     ssl_certificate     /etc/ssl/certs/your_cert.pem;
     ssl_certificate_key /etc/ssl/private/your_key.pem;
 
-    # --- Security Headers ---
-
-    # Prevent search engines from indexing the dashboard
-    add_header X-Robots-Tag none;
-
-    # Force HTTPS for 2 years (only add once SSL is confirmed working)
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
-
-    # Control which sites can embed the dashboard in an iframe.
-    # List every trusted origin explicitly — 'self' allows the app to embed itself,
-    # the two Home Assistant origins allow the HA dashboard iframe card.
-    # See the Home Assistant section below if you need to add more origins.
-    add_header Content-Security-Policy "frame-ancestors 'self' http://192.168.1.x:8123 https://ha.domain.com;";
-
-    # Prevent MIME-type sniffing attacks
-    add_header X-Content-Type-Options nosniff;
-
-    # Legacy XSS filter (belt-and-braces for older browsers)
-    add_header X-XSS-Protection "1; mode=block";
-
-    # Prevent the dashboard URL leaking in Referer headers on outbound links
-    add_header Referrer-Policy "no-referrer";
+    # Force HTTPS for 2 years (only add once SSL is confirmed working).
+    # Every other security header is sent by the app itself.
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
 
     # --- Proxy to the FastAPI app ---
     location / {
@@ -344,6 +329,8 @@ server {
 }
 ```
 
+`proxy_set_header Host $host` matters: the app checks that header against **Allowed Hosts**. If the proxy runs on another machine, also set **Bind Host** to the server's LAN address and block the app's port from every client except the proxy.
+
 Enable the site and reload Nginx:
 ```bash
 sudo ln -s /etc/nginx/sites-available/quantamental /etc/nginx/sites-enabled/
@@ -353,21 +340,15 @@ sudo systemctl reload nginx
 
 ### **2. Home Assistant iframe Embedding**
 
-The `frame-ancestors` directive controls which external sites are permitted to embed the dashboard in an `<iframe>`. Without it, any website could embed your dashboard (clickjacking risk).
+The `frame-ancestors` part of the app's Content-Security-Policy controls which external sites may embed the dashboard in an `<iframe>`. Without it, any website could embed your dashboard (clickjacking risk).
 
-List every origin that needs to embed the app — both origins for Home Assistant if it is accessible via local IP **and** an external HTTPS domain:
+List every origin that needs to embed the app under **Settings → Core System & Currencies → Embed Frame Ancestors** (comma-separated, restart required) — both origins for Home Assistant if it is accessible via local IP **and** an external HTTPS domain, plus a local hostname if you use one:
 
-```nginx
-add_header Content-Security-Policy "frame-ancestors 'self' http://192.168.1.x:8123 https://ha.domain.com;";
+```
+http://192.168.1.x:8123, https://ha.domain.com, http://homeassistant.local:8123
 ```
 
-If Home Assistant is also reachable via a local hostname, add that too:
-
-```nginx
-add_header Content-Security-Policy "frame-ancestors 'self' http://192.168.1.x:8123 https://ha.domain.com http://homeassistant.local:8123;";
-```
-
-> **Note:** `X-Frame-Options` is a legacy header that does not support multiple origins and is superseded by `frame-ancestors`. Do not use both — if `frame-ancestors` is present, browsers ignore `X-Frame-Options`.
+The dashboard's own origin (`'self'`) is always included. Do not also add a `Content-Security-Policy` or `X-Frame-Options` header in Nginx: the browser would enforce both, and `X-Frame-Options` cannot list multiple origins.
 
 ### **3. Self-Signed Certificate (LAN only)**
 

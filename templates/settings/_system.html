@@ -329,6 +329,29 @@
             </div>
             <div class="flex-gap-15">
                 <div class="form-group flex-1">
+                    <label><abbr title="Network interface the web server listens on. 0.0.0.0 accepts connections on every interface; use the server's LAN address to accept only that one.">Bind Host</abbr> <span class="text-muted text-xs">(restart req.)</span></label>
+                    <input type="text" id="BIND_HOST" class="form-control" value="{{ config.BIND_HOST | default('0.0.0.0') }}" placeholder="0.0.0.0">
+                </div>
+                <div class="form-group flex-1">
+                    <label><abbr title="Whether the session and CSRF cookies carry the Secure flag. Auto follows the Server URL scheme; Always breaks login over plain-HTTP direct access.">Secure Cookies</abbr> <span class="text-muted text-xs">(restart req.)</span></label>
+                    {% set cookie_secure = config.COOKIE_SECURE | default('auto') %}
+                    <select id="COOKIE_SECURE" class="form-select">
+                        <option value="auto"  {% if cookie_secure == 'auto'  %}selected{% endif %}>Auto (follow Server URL)</option>
+                        <option value="true"  {% if cookie_secure == 'true'  %}selected{% endif %}>Always</option>
+                        <option value="false" {% if cookie_secure == 'false' %}selected{% endif %}>Never</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label><abbr title="Host names the server answers to; a request with any other Host header gets a 400. localhost and 127.0.0.1 are always accepted so Settings stays reachable on the server itself.">Allowed Hosts</abbr> <span class="text-muted text-xs">(comma-separated, restart req.)</span></label>
+                <input type="text" id="ALLOWED_HOSTS" class="form-control" value="{{ config.ALLOWED_HOSTS | join(', ') if config.ALLOWED_HOSTS else '' }}" placeholder="e.g. stock.example.com, 192.168.1.70">
+            </div>
+            <div class="form-group">
+                <label><abbr title="Origins allowed to embed the dashboard in an iframe (for example Home Assistant), sent as the frame-ancestors part of the Content-Security-Policy. The dashboard itself is always allowed.">Embed Frame Ancestors</abbr> <span class="text-muted text-xs">(comma-separated origins, restart req.)</span></label>
+                <input type="text" id="FRAME_ANCESTORS" class="form-control" value="{{ config.FRAME_ANCESTORS | join(', ') if config.FRAME_ANCESTORS else '' }}" placeholder="e.g. https://ha.example.com">
+            </div>
+            <div class="flex-gap-15">
+                <div class="form-group flex-1">
                     <label><abbr title="3-letter ISO currency code for portfolio values, e.g. GBP, USD, EUR.">Base Currency</abbr></label>
                     <input type="text" id="BASE_CURRENCY" class="form-control" value="{{ config.BASE_CURRENCY }}" placeholder="GBP">
                 </div>
