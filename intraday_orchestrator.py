@@ -15,6 +15,7 @@ import time_engine
 import markets_engine
 from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, write_parquet_atomic
 from database import get_connection, get_mutual_fund_tickers
+from db_helpers import sentiment_fresh_since
 import accounts_engine
 from db_accounts import get_all_holding_price_limits, get_accounts
 from crash_engine import CrashEngine
@@ -120,14 +121,15 @@ class IntradayOrchestrator:
             query = f"""
                 SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
                        s.quote_type, s.top_holdings,
-                       q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
+                       q.ml_confidence_score, q.var_95, q.cvar_95,
+                       CASE WHEN q.sentiment_scored_at >= ? THEN q.sentiment_score END AS sentiment_score,
                        q.rsi_14, q.sma_50, q.hist_vol_20
                 FROM stock_signals s
                 LEFT JOIN quant_signals q ON s.ticker = q.ticker
                     AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
                 WHERE s.ticker IN ({placeholders})
             """
-            cursor.execute(query, tickers)
+            cursor.execute(query, [sentiment_fresh_since(), *tickers])
 
             metadata = {}
             for row in cursor.fetchall():
