@@ -555,7 +555,7 @@ Scans for upcoming earnings events and calculates implied vs historical volatili
 
 ### `POST /api/trigger-sentiment-scan`
 
-Runs the FinBERT NLP sentiment pipeline across all tickers — fetches recent news headlines and scores each one on a scale from -1.0 (panic) to +1.0 (euphoria).
+Runs the FinBERT NLP sentiment pipeline across all tickers — fetches recent news headlines and scores each one on a scale from -1.0 (panic) to +1.0 (euphoria). Headlines older than `SCHEDULING.SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS` are ignored; a ticker with none left gets no score (`NULL`), and a ticker whose headlines could not be fetched keeps its previous score.
 
 **Request body:** none  
 **Response:** standard background task response
@@ -567,6 +567,8 @@ Runs the FinBERT NLP sentiment pipeline across all tickers — fetches recent ne
 Returns the latest quantitative signal snapshot for all tickers that have both `quant_signals` data and a `market_universe` entry.
 
 Respects `FREETRADE_ONLY_MODE` setting — if enabled, only Freetrade-eligible tickers are returned.
+
+`sentiment_score` is the most recent FinBERT score scored within `SCHEDULING.SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS` (default 3 days); `null` when the ticker has no headlines inside that window.
 
 **Response**
 

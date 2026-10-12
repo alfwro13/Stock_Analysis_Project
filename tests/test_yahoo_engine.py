@@ -715,41 +715,121 @@ class TestGetOptionsChain:
             assert mock_tk_cls.call_count == 1
 
 
+_RSS_TWO_ITEMS = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<item><title>Apple &amp; suppliers rally</title><link>https://example.test/a</link><guid>g-1</guid>
+<pubDate>Mon, 12 Oct 2026 06:16:00 +0000</pubDate>
+<description>&lt;p&gt;Shares &lt;b&gt;jumped&lt;/b&gt; on Monday.&lt;/p&gt;</description></item>
+<item><title>Second headline</title><link>https://example.test/b</link><guid>g-2</guid>
+<pubDate>Sun, 11 Oct 2026 20:00:00 +0100</pubDate><description></description></item>
+<item><title>No date</title><link>https://example.test/c</link><guid>g-3</guid><description>x</description></item>
+</channel></rss>"""
+
+_RSS_EMPTY = '<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>'
+
+
+def _rss_session(status_code=200, text=_RSS_TWO_ITEMS):
+    session = MagicMock()
+    session.get.return_value = MagicMock(status_code=status_code, text=text)
+    return session
+
+
+def _boundary(mock_ctx, session):
+    mock_ctx.return_value.__enter__ = lambda s: session
+    mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+
 class TestGetNews:
 
     def setup_method(self):
         self.eng = YahooEngine()
 
     @patch("yahoo_engine.yahoo_connection_boundary")
-    def test_returns_list(self, mock_ctx):
-        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
-        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
-        fake_news = [{"title": "Headline 1"}, {"title": "Headline 2"}]
+    def test_rss_items_use_nested_content_shape(self, mock_ctx):
+        _boundary(mock_ctx, _rss_session())
 
-        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
-            mock_tk_cls.return_value.news = fake_news
-            result = self.eng.get_news("AAPL")
+        result = self.eng.get_news("AAPL")
 
-        assert result == fake_news
+        assert [i["content"]["title"] for i in result] == ["Apple & suppliers rally", "Second headline"]
+        first = result[0]
+        assert first["id"] == "g-1"
+        assert first["content"]["summary"] == "Shares jumped on Monday."
+        assert first["content"]["pubDate"] == "2026-10-12T06:16:00Z"
+        assert first["content"]["canonicalUrl"] == {"url": "https://example.test/a"}
+        assert result[1]["content"]["pubDate"] == "2026-10-11T19:00:00Z"
 
     @patch("yahoo_engine.yahoo_connection_boundary")
-    def test_caches_news(self, mock_ctx):
-        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
-        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+    def test_feed_url_encodes_ticker(self, mock_ctx):
+        session = _rss_session(text=_RSS_EMPTY)
+        _boundary(mock_ctx, session)
 
-        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
-            mock_tk_cls.return_value.news = [{"title": "x"}]
-            self.eng.get_news("AAPL")
-            self.eng.get_news("AAPL")
-            assert mock_tk_cls.call_count == 1
+        self.eng.get_news("^GSPC")
+
+        assert "s=%5EGSPC&" in session.get.call_args.args[0]
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_empty_feed_is_an_authoritative_empty_list_and_cached(self, mock_ctx):
+        session = _rss_session(text=_RSS_EMPTY)
+        _boundary(mock_ctx, session)
+
+        assert self.eng.get_news("VWRL.L") == []
+        assert self.eng.get_news("VWRL.L") == []
+        assert session.get.call_count == 1
+
+    @patch("yahoo_engine.yf.Search")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_rss_error_status_falls_back_to_search_filtered_by_related_tickers(self, mock_ctx, mock_search):
+        _boundary(mock_ctx, _rss_session(status_code=404, text="Not Found"))
+        mock_search.return_value.news = [
+            {"uuid": "u1", "title": "About AAPL", "publisher": "Reuters", "link": "https://example.test/s1",
+             "providerPublishTime": 1791786960, "relatedTickers": ["AAPL", "SPY"]},
+            {"uuid": "u2", "title": "About something else", "publisher": "AP", "link": "https://example.test/s2",
+             "providerPublishTime": 1791786960, "relatedTickers": ["MSFT"]},
+        ]
+
+        result = self.eng.get_news("AAPL")
+
+        assert [i["content"]["title"] for i in result] == ["About AAPL"]
+        assert result[0]["content"]["provider"] == {"displayName": "Reuters"}
+        assert result[0]["content"]["pubDate"].endswith("Z")
+
+    @patch("yahoo_engine.yf.Search")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_invalid_xml_falls_back_to_search(self, mock_ctx, mock_search):
+        _boundary(mock_ctx, _rss_session(text="<html>blocked"))
+        mock_search.return_value.news = []
+
+        assert self.eng.get_news("AAPL") is None
+        mock_search.assert_called_once()
+
+    @patch("yahoo_engine.yf.Search")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_empty_search_after_rss_failure_is_unavailable_and_not_cached(self, mock_ctx, mock_search):
+        session = _rss_session(status_code=404, text="Not Found")
+        _boundary(mock_ctx, session)
+        mock_search.return_value.news = []
+
+        assert self.eng.get_news("GSK.L") is None
+        assert self.eng.get_news("GSK.L") is None
+        assert session.get.call_count == 2
+
+    @patch("yahoo_engine.yf.Search")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_rss_success_never_calls_search(self, mock_ctx, mock_search):
+        _boundary(mock_ctx, _rss_session())
+
+        self.eng.get_news("AAPL")
+
+        mock_search.assert_not_called()
 
     @pytest.mark.parametrize("error", [
         pytest.param("HTTP 500 from Yahoo Finance", id="server_error"),
         pytest.param("HTTP 429 from Yahoo Finance", id="rate_limit"),
         pytest.param("Yahoo connection timed out", id="transport_error"),
     ])
+    @patch("yahoo_engine.yf.Search")
     @patch("yahoo_engine.yahoo_connection_boundary")
-    def test_transient_news_failure_logs_one_line_without_traceback(self, mock_ctx, error):
+    def test_transient_news_failure_logs_one_line_without_traceback(self, mock_ctx, mock_search, error):
         from curl_cffi import requests as cffi_requests
         from tools.network_engine import _RateLimitedError, _TransientHTTPError
 
@@ -759,24 +839,25 @@ class TestGetNews:
             "Yahoo connection timed out": cffi_requests.exceptions.Timeout,
         }[error]
         error = error_type(error)
-        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
-        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        session = MagicMock()
+        session.get.side_effect = error
+        _boundary(mock_ctx, session)
 
-        with patch("yahoo_engine.yf.Ticker", side_effect=error), \
-             patch("yahoo_engine.logger.warning") as mock_warning, \
+        with patch("yahoo_engine.logger.warning") as mock_warning, \
              patch("yahoo_engine.logger.error") as mock_error:
             assert self.eng.get_news("SWDA.L") is None
 
         mock_warning.assert_called_once_with("get_news failed for %s: %s", "SWDA.L", error)
         mock_error.assert_not_called()
+        mock_search.assert_not_called()
 
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_returns_none_on_exception(self, mock_ctx):
-        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
-        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        session = MagicMock()
+        session.get.side_effect = RuntimeError("net")
+        _boundary(mock_ctx, session)
 
-        with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("net")), \
-             patch("yahoo_engine.logger.error") as mock_error:
+        with patch("yahoo_engine.logger.error") as mock_error:
             assert self.eng.get_news("BAD") is None
 
         mock_error.assert_called_once_with("get_news failed for %s", "BAD", exc_info=True)

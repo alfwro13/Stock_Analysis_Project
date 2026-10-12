@@ -196,7 +196,8 @@ class CrashEngine:
                 if recent:
                     report.append("\n**Potential Catalysts / Recent Headlines:**")
                     for pub_time, publisher, headline in recent:
-                        report.append(f"- *{publisher}:* {headline}")
+                        source = f"*{publisher}:* " if publisher else ""
+                        report.append(f"- {source}{headline}")
         except Exception as e:
             logger.warning("Catalyst extraction failed for %s: %s", ticker, e)
             report.append("\n**Catalysts:** No major breaking news headlines found on Yahoo Finance within the last 48 hours.")

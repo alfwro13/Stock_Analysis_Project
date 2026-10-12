@@ -8,10 +8,12 @@ Coverage:
                              online fallback, HF_TOKEN injection, failure → None
   TestScoreText            — positive / negative / neutral label mapping,
                              text truncation at NLP_TEXT_TRUNCATE_CHARS
-  TestFetchAndScoreNews    — empty / non-list news, NLP_NEWS_FETCH_LIMIT cap,
-                             blank-item skipping, nested-content vs flat payloads
+  TestFetchAndScoreNews    — no headlines -> None, unavailable fetch/scoring -> error,
+                             age cutoff, NLP_NEWS_FETCH_LIMIT cap, blank-item skipping,
+                             nested-content vs flat payloads
   TestUpdateAllSentiment   — macro ticker injection, early-exit on no analyzer,
-                             UPDATE path, upsert path (rowcount == 0)
+                             UPDATE path, upsert path (rowcount == 0), NULL write for no
+                             headlines, untouched row when unavailable, degraded-scan alert
   TestRunCentralBankNlpAlert — unsupported currency, no news, keyword filter,
                                HAWKISH / DOVISH / NEUTRAL tone classification,
                                Nextcloud dispatch + DB logging on success
@@ -19,7 +21,7 @@ Coverage:
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
@@ -29,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import huggingface_engine
 from huggingface_engine import (
+    SentimentUnavailableError,
     _get_finbert_analyzer,
     _score_text,
     fetch_and_score_news,
@@ -36,6 +39,8 @@ from huggingface_engine import (
     update_all_sentiment,
 )
 from constants import NLP_CB_TONE_THRESHOLD, NLP_NEWS_FETCH_LIMIT, NLP_TEXT_TRUNCATE_CHARS
+
+MAX_AGE_DAYS = 3
 
 
 # ─── fixtures ────────────────────────────────────────────────────────────────
@@ -55,10 +60,14 @@ def _mock_analyzer(label: str = "positive", score: float = 0.9) -> MagicMock:
     return analyzer
 
 
+def _pub_date(days_ago: float = 0.1) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _news_item(title: str = "Markets rally", summary: str = "Stocks up",
-               publisher: str = "Reuters") -> dict:
+               publisher: str = "Reuters", days_ago: float = 0.1) -> dict:
     """Minimal Yahoo Finance news item in the nested-content format."""
-    return {"content": {"title": title, "summary": summary,
+    return {"content": {"title": title, "summary": summary, "pubDate": _pub_date(days_ago),
                         "provider": {"displayName": publisher}}}
 
 
@@ -147,19 +156,20 @@ class TestScoreText:
 # ─── TestFetchAndScoreNews ───────────────────────────────────────────────────
 
 class TestFetchAndScoreNews:
-    def test_returns_zero_for_empty_news_list(self):
+    def test_returns_none_for_empty_news_list(self):
         analyzer = _mock_analyzer("positive", 0.9)
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = []
-            result = fetch_and_score_news("AAPL", analyzer)
-        assert result == 0.0
+            result = fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
+        assert result is None
+        analyzer.assert_not_called()
 
-    def test_returns_zero_for_non_list_news(self):
+    def test_raises_when_news_fetch_failed(self):
         analyzer = _mock_analyzer("positive", 0.9)
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = None
-            result = fetch_and_score_news("AAPL", analyzer)
-        assert result == 0.0
+            with pytest.raises(SentimentUnavailableError):
+                fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
 
     def test_averages_scores_across_items(self):
         # Two items: positive 0.8 and negative 0.4 → average = (0.8 + -0.4) / 2 = 0.2
@@ -174,43 +184,67 @@ class TestFetchAndScoreNews:
         news = [_news_item(f"Headline {i}") for i in range(2)]
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = news
-            result = fetch_and_score_news("AAPL", analyzer)
+            result = fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
         assert result == pytest.approx(0.2)
+
+    def test_headlines_older_than_the_age_limit_are_ignored(self):
+        analyzer = _mock_analyzer("positive", 0.9)
+        news = [_news_item("Old", days_ago=MAX_AGE_DAYS + 1), _news_item("Fresh", days_ago=MAX_AGE_DAYS - 1)]
+        with patch("huggingface_engine.yahoo_engine") as mock_yf:
+            mock_yf.get_news.return_value = news
+            result = fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
+        assert result == pytest.approx(0.9)
+        assert analyzer.call_count == 1
+
+    def test_returns_none_when_every_headline_is_stale(self):
+        analyzer = _mock_analyzer("positive", 0.9)
+        news = [_news_item(days_ago=MAX_AGE_DAYS + 5)]
+        with patch("huggingface_engine.yahoo_engine") as mock_yf:
+            mock_yf.get_news.return_value = news
+            result = fetch_and_score_news("NWG.L", analyzer, MAX_AGE_DAYS)
+        assert result is None
+        analyzer.assert_not_called()
+
+    def test_headline_without_a_timestamp_is_not_counted(self):
+        analyzer = _mock_analyzer("positive", 0.9)
+        undated = {"content": {"title": "Undated", "summary": "x", "provider": {"displayName": "AP"}}}
+        with patch("huggingface_engine.yahoo_engine") as mock_yf:
+            mock_yf.get_news.return_value = [undated]
+            assert fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS) is None
 
     def test_respects_nlp_news_fetch_limit(self):
         analyzer = _mock_analyzer("positive", 0.5)
-        # Provide more items than the limit
         news = [_news_item(f"Headline {i}") for i in range(NLP_NEWS_FETCH_LIMIT + 10)]
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = news
-            fetch_and_score_news("AAPL", analyzer)
+            fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
         assert analyzer.call_count == NLP_NEWS_FETCH_LIMIT
 
     def test_skips_blank_items(self):
         analyzer = _mock_analyzer("positive", 0.9)
-        # Blank item: title, summary, and publisher all empty
-        blank = {"content": {"title": "", "summary": "", "provider": {"displayName": ""}}}
+        blank = {"content": {"title": "", "summary": "", "pubDate": _pub_date(), "provider": {"displayName": ""}}}
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = [blank]
-            result = fetch_and_score_news("AAPL", analyzer)
-        assert result == 0.0
+            result = fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
+        assert result is None
         analyzer.assert_not_called()
 
     def test_handles_flat_payload_without_content_key(self):
         analyzer = _mock_analyzer("positive", 0.7)
-        flat_item = {"title": "Flat headline", "summary": "Flat summary", "publisher": "BBC"}
+        flat_item = {"title": "Flat headline", "summary": "Flat summary", "publisher": "BBC",
+                     "providerPublishTime": int(datetime.now(timezone.utc).timestamp()) - 3600}
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = [flat_item]
-            result = fetch_and_score_news("AAPL", analyzer)
+            result = fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
         assert result == pytest.approx(0.7)
 
-    def test_returns_zero_when_all_items_raise(self):
+    def test_raises_when_every_fresh_headline_fails_to_score(self):
         analyzer = MagicMock(side_effect=RuntimeError("model error"))
         news = [_news_item()]
         with patch("huggingface_engine.yahoo_engine") as mock_yf:
             mock_yf.get_news.return_value = news
-            result = fetch_and_score_news("AAPL", analyzer)
-        assert result == 0.0
+            with pytest.raises(SentimentUnavailableError):
+                fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
 
 
 # ─── TestUpdateAllSentiment ──────────────────────────────────────────────────
@@ -230,6 +264,17 @@ class TestUpdateAllSentiment:
         conn.cursor.return_value = cursor
         return conn, cursor
 
+    def _run(self, tickers, fetch, rowcount: int = 1):
+        conn, cursor = self._make_conn(rowcount)
+        with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
+             patch("huggingface_engine.fetch_and_score_news", side_effect=fetch), \
+             patch("huggingface_engine.get_connection", return_value=conn), \
+             patch("huggingface_engine.notify") as mock_notify, \
+             patch("huggingface_engine.time") as mock_time:
+            mock_time.sleep = MagicMock()
+            update_all_sentiment(tickers)
+        return conn, cursor, mock_notify
+
     def test_aborts_when_analyzer_unavailable(self):
         with patch("huggingface_engine._get_finbert_analyzer", return_value=None), \
              patch("huggingface_engine.get_connection") as mock_conn:
@@ -237,55 +282,75 @@ class TestUpdateAllSentiment:
         mock_conn.assert_not_called()
 
     def test_always_includes_macro_tickers(self):
-        conn, cursor = self._make_conn()
-        with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
-             patch("huggingface_engine.fetch_and_score_news", return_value=0.0), \
-             patch("huggingface_engine.get_connection", return_value=conn), \
-             patch("huggingface_engine.time") as mock_time:
-            mock_time.sleep = MagicMock()
-            update_all_sentiment([])
+        _, cursor, _ = self._run([], lambda *a: 0.0)
 
-        # Extract tickers passed to UPDATE — args[1] is the params tuple (score, ticker, ticker)
-        updated_tickers = {c.args[1][1] for c in cursor.execute.call_args_list
-                           if c.args[1:]}
+        # UPDATE params are (score, scored_at, ticker, ticker)
+        updated_tickers = {c.args[1][2] for c in cursor.execute.call_args_list if c.args[1:]}
         assert MACRO_TICKERS.issubset(updated_tickers)
 
     def test_update_path_when_rowcount_positive(self):
-        conn, cursor = self._make_conn(rowcount=1)
-        with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
-             patch("huggingface_engine.fetch_and_score_news", return_value=0.5), \
-             patch("huggingface_engine.get_connection", return_value=conn), \
-             patch("huggingface_engine.time") as mock_time:
-            mock_time.sleep = MagicMock()
-            update_all_sentiment(["AAPL"])
+        _, cursor, _ = self._run(["AAPL"], lambda *a: 0.5, rowcount=1)
 
-        # Only the UPDATE statement should fire (no INSERT)
         sql_calls = [c.args[0].strip().upper()[:6] for c in cursor.execute.call_args_list]
         assert all(s == "UPDATE" for s in sql_calls)
 
+    def test_score_is_written_with_a_scored_at_timestamp(self):
+        _, cursor, _ = self._run(["AAPL"], lambda *a: 0.5)
+
+        score, scored_at, ticker, _ = next(
+            c.args[1] for c in cursor.execute.call_args_list if c.args[1][2] == "AAPL"
+        )
+        assert score == 0.5
+        assert datetime.strptime(scored_at, "%Y-%m-%d %H:%M:%S")
+
     def test_upsert_fires_when_update_matches_no_rows(self):
-        conn, cursor = self._make_conn(rowcount=0)
-        with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
-             patch("huggingface_engine.fetch_and_score_news", return_value=0.5), \
-             patch("huggingface_engine.get_connection", return_value=conn), \
-             patch("huggingface_engine.time") as mock_time:
-            mock_time.sleep = MagicMock()
-            update_all_sentiment(["NEW_TICKER"])
+        _, cursor, _ = self._run(["NEW_TICKER"], lambda *a: 0.5, rowcount=0)
 
         sql_calls = [c.args[0].strip().upper()[:6] for c in cursor.execute.call_args_list]
-        # Should have at least one UPDATE and one INSERT
         assert "UPDATE" in sql_calls
         assert "INSERT" in sql_calls
 
+    def test_no_headlines_clears_the_score_without_inserting(self):
+        _, cursor, _ = self._run(["VWRL.L"], lambda *a: None, rowcount=0)
+
+        params = [c.args[1] for c in cursor.execute.call_args_list if c.args[1][2] == "VWRL.L"]
+        assert params == [(None, None, "VWRL.L", "VWRL.L")]
+        assert all(c.args[0].strip().upper()[:6] != "INSERT" for c in cursor.execute.call_args_list)
+
+    def test_unavailable_news_leaves_the_stored_score_untouched(self):
+        def _fetch(ticker, *a):
+            if ticker == "AAPL":
+                raise SentimentUnavailableError(ticker)
+            return 0.1
+
+        _, cursor, _ = self._run(["AAPL", "MSFT"], _fetch)
+
+        written = {c.args[1][2] for c in cursor.execute.call_args_list}
+        assert "AAPL" not in written
+        assert "MSFT" in written
+
     def test_connection_always_closed(self):
-        conn, _ = self._make_conn()
-        with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
-             patch("huggingface_engine.fetch_and_score_news", return_value=0.0), \
-             patch("huggingface_engine.get_connection", return_value=conn), \
-             patch("huggingface_engine.time") as mock_time:
-            mock_time.sleep = MagicMock()
-            update_all_sentiment(["AAPL"])
+        conn, _, _ = self._run(["AAPL"], lambda *a: 0.0)
         conn.close.assert_called_once()
+
+    def test_degraded_scan_alerts_once_and_rearms_after_a_healthy_scan(self):
+        huggingface_engine._scan_degraded_alerted = False
+        _, _, first = self._run(["AAPL", "MSFT"], lambda *a: None)
+        _, _, repeat = self._run(["AAPL", "MSFT"], lambda *a: None)
+        _, _, healthy = self._run(["AAPL", "MSFT"], lambda *a: 0.3)
+        _, _, again = self._run(["AAPL", "MSFT"], lambda *a: None)
+
+        assert first.call_count == 1
+        assert first.call_args.args[0] == "sentiment_scan_degraded"
+        assert repeat.call_count == 0
+        assert healthy.call_count == 0
+        assert again.call_count == 1
+        huggingface_engine._scan_degraded_alerted = False
+
+    def test_healthy_scan_does_not_alert(self):
+        huggingface_engine._scan_degraded_alerted = False
+        _, _, mock_notify = self._run(["AAPL", "MSFT"], lambda *a: 0.3)
+        mock_notify.assert_not_called()
 
 
 # ─── TestRunCentralBankNlpAlert ──────────────────────────────────────────────

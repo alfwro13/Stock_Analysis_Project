@@ -114,7 +114,8 @@ async function saveSettings(silent = false) {
                 "FREQUENCY": document.getElementById('SENTIMENT_ENGINE_FREQ').value,
                 "START_TIME": document.getElementById('SENTIMENT_ENGINE_START').value,
                 "END_TIME": document.getElementById('SENTIMENT_ENGINE_END').value,
-                "INTERVAL_HOURS": parseInt(document.getElementById('SENTIMENT_ENGINE_INTERVAL').value) || 4
+                "INTERVAL_HOURS": parseInt(document.getElementById('SENTIMENT_ENGINE_INTERVAL').value) || 4,
+                "MAX_NEWS_AGE_DAYS": parseInt(document.getElementById('SENTIMENT_ENGINE_MAX_NEWS_AGE').value) || 3
             },
             "NEWS_FEED": {
                 "ENABLED": document.getElementById('NEWS_FEED_ENABLED').checked,

@@ -25,7 +25,7 @@ Every Plotly chart on `/market-sentiment` (the five built in `sentiment_engine.p
 |---|---|---|
 | `_get_finbert_analyzer()` | `() → Optional[pipeline]` | Thread-safe singleton loader |
 | `_score_text()` | `(analyzer, text) → float` | Score one string, returns `[-1, 1]` |
-| `fetch_and_score_news()` | `(ticker, analyzer) → float` | Fetch + score news for one ticker |
+| `fetch_and_score_news()` | `(ticker, analyzer, max_age_days) → Optional[float]` | Fetch + score the ticker's headlines no older than `max_age_days`; `None` when it has none, `SentimentUnavailableError` when the fetch or every scoring failed |
 | `update_all_sentiment()` | `(tickers: List[str]) → None` | Batch score all portfolio/watchlist tickers + macro set |
 | `run_central_bank_nlp_alert()` | `(event_name, currency) → bool` | Central bank tone detection + Nextcloud dispatch |
 
@@ -59,7 +59,7 @@ This means **production restarts incur zero network calls** once the model has b
 | `negative` | `-prob` (-1 to 0) |
 | `neutral` | `0.0` |
 
-The resulting continuous float is stored in `quant_signals.sentiment_score`.
+The resulting continuous float is stored in `quant_signals.sentiment_score`, with the UTC time it was scored in `quant_signals.sentiment_scored_at`. A ticker with no headlines inside the age limit has `sentiment_score = NULL` (never `0.0`): a neutral 0.000 means FinBERT scored real headlines as neutral.
 
 ### 2.4 UI Badge Mapping
 
@@ -86,17 +86,28 @@ Ticker list (portfolio + watchlist)
         +
 Macro set: ^GSPC, ^NDX, ^FTSE, ^FTMC, GBPUSD=X, DX-Y.NYB
         ↓
-yahoo_engine.get_news(ticker)          ← up to NLP_NEWS_FETCH_LIMIT items
+yahoo_engine.get_news(ticker)          ← Yahoo RSS headlines (see below)
+        ↓
+drop headlines older than SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS (default 3);
+at most NLP_NEWS_FETCH_LIMIT remaining headlines are scored
         ↓
 _score_text() per headline+summary+publisher
         ↓
-Compound average score
+Compound average score  (None when no headline is left)
         ↓
-UPDATE quant_signals SET sentiment_score = ?
-   (upsert via INSERT ... ON CONFLICT if ticker has no existing row today)
+UPDATE quant_signals SET sentiment_score = ?, sentiment_scored_at = ?
+   (upsert via INSERT ... ON CONFLICT only when there is a score and the ticker has no row)
 ```
 
-When Yahoo news requests fail after HTTP 5xx retries, hit a rate limit, or encounter a transport error, `yahoo_engine.get_news()` returns no items for that ticker and logs a one-line warning with the error. Unexpected news-fetch errors retain their traceback.
+**Three outcomes per ticker.** A score is written with its `sentiment_scored_at`. No headline inside the age limit writes `NULL` to both columns. A failed fetch (`get_news()` returned `None`) or a scan where every fresh headline failed to score leaves the stored value untouched, so an outage never overwrites a good score.
+
+**News source.** `yahoo_engine.get_news()` reads Yahoo's per-ticker RSS headline feed through the same impersonating session as every other Yahoo call (plain `requests` is answered with HTTP 429 whatever its User-Agent). yfinance's `Ticker.news` is no longer used: it POSTs to `finance.yahoo.com/xhr/ncp`, which Yahoo retired on 2026-10-02 (HTTP 404) and which yfinance reports as an empty list, so from that date every scan silently scored every ticker `0.0`. The headlines are returned in the nested `content` shape (`title`, `summary`, `pubDate`, `provider`, `canonicalUrl`) that `news_feed_engine`, `crash_engine` and this engine already read. Only when the RSS feed itself answers with a non-200 status or unparseable XML does `get_news()` fall back to `yf.Search(...).news`, keeping only items whose `relatedTickers` include the ticker; an empty Search answer after an RSS failure is treated as unavailable, not as "no headlines". A 200 answer with no items is authoritative: `get_news()` returns `[]` and caches it for 4 hours. Instruments Yahoo has no headlines for (several LSE ETFs) therefore have a `NULL` score.
+
+When Yahoo news requests fail after HTTP 5xx retries, hit a rate limit, or encounter a transport error, `yahoo_engine.get_news()` returns `None` for that ticker (no Search fallback) and logs a one-line warning with the error. Unexpected news-fetch errors retain their traceback.
+
+**Degraded-scan alert.** When fewer than `NLP_SENTIMENT_MIN_COVERAGE` (50%) of a scan's tickers get a score, the scan raises one `sentiment_scan_degraded` notification ("NLP Sentiment Scan Degraded", routed through `notification_engine.notify`, Settings → Notification Settings) giving the scored, no-headline and unavailable counts. It is sent once per degraded stretch and re-arms after the first healthy scan; the flag is in memory, so a restart during an outage may repeat it once.
+
+**Readers bound the score's age.** Portfolio/Watchlist rows, Stock Detail, Market Pulse and the Screener show the most recent non-NULL score, carried forward past newer rows the next scan has not reached yet. They only accept a score whose `sentiment_scored_at` is within the same `MAX_NEWS_AGE_DAYS` (`db_helpers.sentiment_fresh_since()`), so a ticker whose headlines dry up shows no score instead of its last real one. A weekend leaves Friday morning's headlines at the 3-day limit on Monday morning; raise **Max Headline Age (Days)** in Settings → NLP Market Sentiment Engine if that is too tight.
 
 ### 3.2 News Feed Article Scoring (`_score_unscoredrows` in `news_feed_engine.py`)
 

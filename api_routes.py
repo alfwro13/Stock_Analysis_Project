@@ -38,7 +38,7 @@ from config import (
 from database import (
     get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
 )
-from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names
+from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, sentiment_fresh_since
 from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
@@ -524,7 +524,7 @@ def get_screener_data(request: Request):
         latest_sentiment AS (
             SELECT ticker, MAX(date) AS max_date
             FROM quant_signals
-            WHERE sentiment_score IS NOT NULL
+            WHERE sentiment_score IS NOT NULL AND sentiment_scored_at >= ?
             GROUP BY ticker
         )
         SELECT
@@ -565,7 +565,7 @@ def get_screener_data(request: Request):
         if freetrade_only:
             query += " WHERE m.is_freetrade = 1"
 
-        cursor.execute(query)
+        cursor.execute(query, (sentiment_fresh_since(),))
         rows = cursor.fetchall()
         today_str = time_engine.now_local().strftime('%Y-%m-%d')
         data = []

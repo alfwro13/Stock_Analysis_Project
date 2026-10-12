@@ -263,6 +263,10 @@
                             <label>Interval (Hours)</label>
                             <input type="number" id="SENTIMENT_ENGINE_INTERVAL" class="form-control" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.INTERVAL_HOURS | default(4) }}" min="1">
                         </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="Headlines older than this are ignored. A ticker with no headlines inside the window shows no sentiment score instead of a neutral 0.000.">Max Headline Age (Days)</abbr></label>
+                            <input type="number" id="SENTIMENT_ENGINE_MAX_NEWS_AGE" class="form-control" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS | default(3) }}" min="1" max="30">
+                        </div>
                     </div>
                     <button type="button" class="btn btn-primary mt-0" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
                 </div>
