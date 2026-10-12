@@ -240,18 +240,17 @@ class TestSchedulerQuiesced:
 
     def test_firing_is_paused_inside_the_block_and_resumed_after(self, live_scheduler):
         from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
-        with _sched_module.scheduler_quiesced():
+        with _sched_module.scheduler_quiesced() as running:
             assert live_scheduler.state == STATE_PAUSED
+            assert running == {}
         assert live_scheduler.state == STATE_RUNNING
 
-    def test_refuses_naming_the_running_job_and_resumes(self, live_scheduler):
-        from apscheduler.schedulers.base import STATE_RUNNING
+    def test_yields_the_running_jobs_and_resumes(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
         _mark_job_started("Busy Job")
-        entered = []
-        with pytest.raises(_sched_module.JobsRunning, match="Busy Job"):
-            with _sched_module.scheduler_quiesced():
-                entered.append(True)
-        assert entered == []
+        with _sched_module.scheduler_quiesced() as running:
+            assert list(running) == ["Busy Job"]
+            assert live_scheduler.state == STATE_PAUSED
         assert live_scheduler.state == STATE_RUNNING
 
     def test_resumes_when_the_block_raises(self, live_scheduler):
@@ -274,13 +273,12 @@ class TestSchedulerQuiesced:
             live_scheduler.shutdown(wait=False)
         assert live_scheduler.state == STATE_STOPPED
 
-    def test_a_stopped_scheduler_still_refuses_while_a_job_runs(self):
+    def test_a_stopped_scheduler_still_reports_the_running_jobs(self):
         from apscheduler.schedulers.background import BackgroundScheduler
         _mark_job_started("Busy Job")
         with patch.object(_sched_module, "scheduler", BackgroundScheduler()):
-            with pytest.raises(_sched_module.JobsRunning):
-                with _sched_module.scheduler_quiesced():
-                    pass
+            with _sched_module.scheduler_quiesced() as running:
+                assert list(running) == ["Busy Job"]
 
 
 def _record_runs(job_id, durations, status="success", first_minute=0):

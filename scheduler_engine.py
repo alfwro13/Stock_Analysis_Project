@@ -1142,21 +1142,14 @@ def shutdown_scheduler():
     scheduler.shutdown(wait=False)
 
 
-class JobsRunning(RuntimeError):
-    pass
-
-
 @_contextlib.contextmanager
 def scheduler_quiesced():
-    """Pauses job firing, then refuses (JobsRunning) if a job is already running — pause() leaves running jobs alone, and those hold the connections a database swap strands."""
+    """Pauses job firing and yields the jobs already running — pause() leaves them alone, and they hold the connections a database swap strands."""
     paused = scheduler.state == STATE_RUNNING
     if paused:
         scheduler.pause()
     try:
-        active = get_active_jobs()
-        if active:
-            raise JobsRunning(", ".join(active))
-        yield
+        yield get_active_jobs()
     finally:
         if paused and scheduler.state == STATE_PAUSED:
             scheduler.resume()
