@@ -51,6 +51,7 @@ class ImportRequest(BaseModel):
 
 class RestoreBackupRequest(BaseModel):
     filename: str
+    trust_unhashed: bool = False
 
 
 class BlacklistRemoveRequest(BaseModel):
@@ -527,7 +528,7 @@ def get_backup_status_endpoint():
 @limiter.limit("5/minute")
 def trigger_backup_restore(request: Request, body: RestoreBackupRequest):
     try:
-        result = restore_backup(body.filename)
+        result = restore_backup(body.filename, trust_unhashed=body.trust_unhashed)
         if result["status"] == "success":
             return JSONResponse(content=result)
         return JSONResponse(status_code=500, content=result)

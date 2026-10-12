@@ -238,7 +238,7 @@
                         </select>
                     </div>
                     <div class="form-group flex-2 mb-0 {% if backup_loc == 'nfs' %}d-none{% endif %}" id="backup-local-path-group">
-                        <label>Local Path <span class="text-muted text-xs">(relative to app root)</span></label>
+                        <label>Local Path <span class="text-muted text-xs">(inside the app folder)</span></label>
                         <input type="text" id="BACKUP_LOCAL_PATH" class="form-control" value="{{ backup_cfg.LOCAL_PATH | default('backups') }}" placeholder="backups">
                     </div>
                     <div class="form-group flex-1 mb-0 {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-server-group">
@@ -301,15 +301,18 @@
 
             <div class="settings-panel border-left-orange">
                 <h4 class="settings-panel-header text-orange">♻️ Recovery</h4>
-                <p class="settings-desc-sm">Restoring overwrites the live database, data files, and models with the contents of the selected archive. Restart the service afterward so every in-memory cache reloads the restored data.</p>
+                <p class="settings-desc-sm">Restoring overwrites the live database, data files, and models with the contents of the selected archive, after checking it against the SHA-256 recorded when it was created. Restart the service afterward so every in-memory cache reloads the restored data.</p>
                 <div class="flex-gap-15 align-end">
                     <div class="form-group flex-1 mb-0">
                         <label>Backup file</label>
-                        <select id="backup-restore-select" class="form-select">
+                        <select id="backup-restore-select" class="form-select" onchange="syncBackupTrustControl()">
                             <option value="">Loading…</option>
                         </select>
                     </div>
                     <button type="button" class="btn btn-primary mt-0" onclick="restoreSelectedBackup()">⚠ Restore</button>
+                </div>
+                <div class="form-group d-none mt-10 mb-0" id="backup-trust-group">
+                    <label class="checkbox-label"><input type="checkbox" id="backup-trust-unhashed"> <abbr title="This archive has no SHA-256 recorded in the backup history (made before checksums were added, or on a rebuilt host), so its integrity cannot be verified. Tick only if you know where the file came from.">Trust this archive (no recorded hash)</abbr></label>
                 </div>
                 <div id="backup-restore-msg" class="mt-10"></div>
             </div>
