@@ -9,7 +9,7 @@ import pandas as pd
 import ta
 
 from utils import clamp_beta
-from yahoo_engine import yahoo_engine
+from yahoo_engine import yahoo_engine, news_item_published_at
 from database import get_ticker_registry_row_by_exchange
 import market_pulse
 import market_session_helpers
@@ -171,20 +171,9 @@ class CrashEngine:
                     publisher = content.get('publisher', '')
                     if not publisher and isinstance(content.get('provider'), dict):
                         publisher = content['provider'].get('displayName', '')
-                    pub_time_raw = (
-                        content.get('pubDate')
-                        or content.get('providerPublishTime')
-                        or item.get('providerPublishTime', 0)
-                    )
-                    try:
-                        if isinstance(pub_time_raw, str):
-                            pub_time = pd.to_datetime(pub_time_raw, utc=True)
-                        else:
-                            # UNIX timestamps are always UTC seconds since epoch
-                            pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc)
-                        parsed.append((pub_time, publisher, headline))
-                    except Exception as dt_e:
-                        logger.debug("Date parsing failed for news item on %s: %s", ticker, dt_e)
+                    published_ts = news_item_published_at(item)
+                    if published_ts:
+                        parsed.append((datetime.fromtimestamp(published_ts, tz=timezone.utc), publisher, headline))
 
                 cutoff = datetime.now(timezone.utc) - timedelta(days=2)
                 recent = sorted(

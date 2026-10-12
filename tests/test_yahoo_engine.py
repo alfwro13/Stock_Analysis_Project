@@ -31,7 +31,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from yahoo_engine import YahooEngine, yahoo_engine
+from yahoo_engine import YahooEngine, yahoo_engine, news_item_published_at
 
 _REAL_GET_SESSION_SHAPE = YahooEngine.get_session_shape
 
@@ -861,6 +861,28 @@ class TestGetNews:
             assert self.eng.get_news("BAD") is None
 
         mock_error.assert_called_once_with("get_news failed for %s", "BAD", exc_info=True)
+
+
+class TestNewsItemPublishedAt:
+    def test_second_timestamp_returned_as_float(self):
+        assert news_item_published_at({"providerPublishTime": 1717840000}) == 1717840000.0
+
+    def test_millisecond_timestamp_converted_to_seconds(self):
+        assert news_item_published_at({"providerPublishTime": 1717840000000}) == 1717840000.0
+
+    def test_iso_string_in_content_parsed_as_utc(self):
+        item = {"content": {"pubDate": "2024-06-08T12:00:00Z"}}
+        assert news_item_published_at(item) == 1717848000.0
+
+    def test_naive_iso_string_treated_as_utc(self):
+        item = {"pubDate": "2024-06-08T12:00:00"}
+        assert news_item_published_at(item) == 1717848000.0
+
+    def test_missing_timestamp_returns_zero(self):
+        assert news_item_published_at({}) == 0.0
+
+    def test_unparseable_string_returns_zero(self):
+        assert news_item_published_at({"content": {"pubDate": "not-a-date"}}) == 0.0
 
 
 class TestGetInsiderTransactions:

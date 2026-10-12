@@ -3,7 +3,6 @@ tests/test_news_feed_engine.py — unit tests for news_feed_engine pure function
 
 Covers:
   _make_article_id()        — UUID present vs absent, SHA-256 hash determinism
-  _extract_published_at()   — millisecond timestamp, second timestamp, ISO string, missing
   _build_ticker_source_map()— portfolio/watchlist union, 'both' label, ignored filter
 """
 import sys
@@ -15,7 +14,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from news_feed_engine import (
     _make_article_id,
-    _extract_published_at,
     _build_ticker_source_map,
 )
 
@@ -46,34 +44,6 @@ class TestMakeArticleId:
         item_a = {"content": {"title": "Headline A"}}
         item_b = {"content": {"title": "Headline B"}}
         assert _make_article_id(item_a, "AAPL", 1000.0) != _make_article_id(item_b, "AAPL", 1000.0)
-
-
-# ── _extract_published_at ─────────────────────────────────────────────────────
-
-class TestExtractPublishedAt:
-    def test_second_timestamp_returned_as_float(self):
-        item = {"providerPublishTime": 1717840000}
-        result = _extract_published_at(item)
-        assert result == 1717840000.0
-
-    def test_millisecond_timestamp_converted_to_seconds(self):
-        item = {"providerPublishTime": 1717840000000}
-        result = _extract_published_at(item)
-        assert abs(result - 1717840000.0) < 1.0
-
-    def test_iso_string_in_content_parsed(self):
-        item = {"content": {"pubDate": "2024-06-08T12:00:00Z"}}
-        result = _extract_published_at(item)
-        assert result > 1_000_000_000
-
-    def test_missing_timestamp_returns_zero(self):
-        result = _extract_published_at({})
-        assert result == 0.0
-
-    def test_unparseable_string_returns_zero(self):
-        item = {"content": {"pubDate": "not-a-date"}}
-        result = _extract_published_at(item)
-        assert result == 0.0
 
 
 # ── _build_ticker_source_map ──────────────────────────────────────────────────
