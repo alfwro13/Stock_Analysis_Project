@@ -522,6 +522,11 @@ def api_markets(background_tasks: BackgroundTasks, view: str = "dynamic"):
     # Without this, a region can report "open" indefinitely once no page traffic refreshes its
     # proxy's market_state (see GET /api/system/market-status's identical self-heal).
     needs_fetch.update(proxy_tickers_needing_refresh())
+    # The page draws a dual-instrument tile's spot and future as two cards, but a tile's own
+    # needs_refresh only covers the one ticker resolve_tile() picked, so the other card (e.g. ES=F
+    # while NYSE is open) was never fetched by page traffic and went stale.
+    refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
+    needs_fetch.update(registry_tickers_needing_refresh(markets_engine.registry_lookup_tickers(), refresh_rate))
     if needs_fetch:
         background_tasks.add_task(fetch_and_save_pulse, list(needs_fetch))
     return JSONResponse(content={"status": "success", "data": payload})
