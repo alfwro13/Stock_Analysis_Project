@@ -8,7 +8,7 @@ from typing import List, Any, Optional
 
 from transformers import pipeline
 
-from yahoo_engine import yahoo_engine, news_item_published_at
+from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from notification_engine import notify
 from database import get_connection
 from db_helpers import sentiment_max_age_days
@@ -90,14 +90,7 @@ def fetch_and_score_news(ticker: str, analyzer: Any, max_age_days: int) -> Optio
             break
         if news_item_published_at(item) < cutoff:
             continue
-        content = item.get('content', item)
-        title = content.get('title', '')
-        summary = content.get('summary', '')
-
-        publisher = content.get('publisher', '')
-        if not publisher and isinstance(content.get('provider'), dict):
-            publisher = content['provider'].get('displayName', '')
-
+        title, summary, publisher = news_item_text(item)
         text_to_analyze = f"{title}. {summary}. {publisher}"
         if not text_to_analyze.strip(". "):
             continue
@@ -234,9 +227,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
         parsed_headlines = []
 
         for item in news[:NLP_CB_NEWS_FETCH_LIMIT]:
-            content = item.get('content', item)
-            title = content.get('title', '')
-            summary = content.get('summary', '')
+            title, summary, _ = news_item_text(item)
 
             text_to_analyze = f"{title}. {summary}"
             if "rate" not in text_to_analyze.lower() and "inflation" not in text_to_analyze.lower() and target_entity.lower() not in text_to_analyze.lower():

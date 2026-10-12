@@ -9,7 +9,7 @@ import pandas as pd
 import ta
 
 from utils import clamp_beta
-from yahoo_engine import yahoo_engine, news_item_published_at
+from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from database import get_ticker_registry_row_by_exchange
 import market_pulse
 import market_session_helpers
@@ -166,11 +166,7 @@ class CrashEngine:
                 # Sort newest-first after parsing; news[:3] could otherwise be stale while breaking news sits at position 4+.
                 parsed: list[tuple[datetime, str, str]] = []
                 for item in news:
-                    content = item.get('content', item)
-                    headline = content.get('title', '')
-                    publisher = content.get('publisher', '')
-                    if not publisher and isinstance(content.get('provider'), dict):
-                        publisher = content['provider'].get('displayName', '')
+                    headline, _, publisher = news_item_text(item)
                     published_ts = news_item_published_at(item)
                     if published_ts:
                         parsed.append((datetime.fromtimestamp(published_ts, tz=timezone.utc), publisher, headline))
