@@ -635,19 +635,20 @@ def treasury_auctions_page(request: Request):
         if conn:
             conn.close()
 
+    from treasury_auction_engine import is_weak, format_weakness_message
+    for r in rows:
+        _, r["weak_btc"], r["weak_tail"] = is_weak(
+            r["bid_to_cover"], r["baseline_btc"], r["tail_bp"], r["baseline_tail"], r["maturity_label"],
+        )
+
     latest_weak_message = None
     latest_weak_row = next((r for r in rows if r.get("alert_fired")), None)
     if latest_weak_row:
-        from treasury_auction_engine import is_weak, format_weakness_message
-        weak, weak_btc, weak_tail = is_weak(
-            latest_weak_row["bid_to_cover"], latest_weak_row["baseline_btc"],
-            latest_weak_row["tail_bp"], latest_weak_row["baseline_tail"],
-        )
         latest_weak_message = format_weakness_message(
             latest_weak_row["maturity_label"], latest_weak_row["auction_date"],
             latest_weak_row["bid_to_cover"], latest_weak_row["baseline_btc"],
             latest_weak_row["tail_bp"], latest_weak_row["baseline_tail"],
-            weak_btc, weak_tail,
+            latest_weak_row["weak_btc"], latest_weak_row["weak_tail"],
         )
 
     cfg = load_config()

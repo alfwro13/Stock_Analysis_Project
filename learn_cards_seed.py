@@ -3177,7 +3177,7 @@ CARDS = [
         ],
         "explanation": """<p>The <strong>bid-to-cover ratio</strong> is total demand divided by total supply: (total value of bids submitted) / (total value of bonds offered). A ratio of 2.5 means investors submitted $97.5 billion of bids for a $39 billion auction — demand was 2.5× supply. This is the primary headline number that traders watch in real time.</p>
 <p>A <em>high</em> bid-to-cover (e.g., 2.8 for a 10-year auction) signals healthy competition for government bonds — many investors want to lend the government money at this yield. A <em>low</em> ratio (e.g., 2.2) means fewer bids came in relative to the supply, suggesting demand is weak and the government had to raise the yield to attract enough buyers.</p>
-<p>What's considered "high" or "low" varies by maturity: 10-year auctions typically attract bid-to-cover ratios around 2.4–2.7. The key is the comparison to recent history — the monitor flags when a ratio falls more than 0.2 below the rolling 6-auction average for that specific maturity, because context matters more than absolute level.</p>""",
+<p>What's considered "high" or "low" varies by maturity: 10-year auctions typically attract bid-to-cover ratios around 2.4–2.7. The key is the comparison to recent history — the monitor flags when a ratio falls more than 0.2 below the rolling 6-auction average for that specific maturity (0.4 for bills and for inflation-linked and floating-rate auctions, whose demand swings more from week to week), because context matters more than absolute level.</p>""",
     },
     {
         "term_key": "yield-tail",
@@ -3193,7 +3193,7 @@ CARDS = [
         "explanation": """<p>The <strong>yield tail</strong> measures the difference between where the majority of bids settled (the <em>median yield</em>) and the highest yield the government had to accept to sell all the bonds (the <em>stop-out yield</em>). It is expressed in <strong>basis points</strong> (bps), where 1 basis point = 0.01%.</p>
 <p>In a healthy auction, the median yield and stop-out yield are very close — all serious buyers submitted bids at roughly similar rates, reflecting high confidence in the price. A large tail (e.g., +3 basis points) means the government had to dig deeper into its bid stack and accept bids at significantly higher yields than the midpoint. This indicates the auction attracted fewer genuine voluntary buyers than expected, requiring the most reluctant participants (primary dealers who are legally required to bid) to absorb the extra supply at a premium yield.</p>
 <p>Even a tail of 2–3 basis points on a 10-year or 30-year auction is considered noteworthy by bond market professionals because it translates into meaningful additional interest costs on tens of billions of dollars of new debt. The October 2023 30-year auction's ~3bp tail became news instantly and triggered the equity selloff that afternoon.</p>
-<p>Treasury bills are quoted on a <em>discount rate</em> rather than a yield, so for bills the monitor measures the same gap between the highest and the average discount rate.</p>""",
+<p>Treasury bills are quoted on a <em>discount rate</em> rather than a yield, so for bills the monitor measures the same gap between the highest and the average discount rate. A tail counts as wide when it exceeds the 6-auction average by more than 2 basis points (4 for bills and for inflation-linked and floating-rate auctions).</p>""",
     },
     {
         "term_key": "direct-bidders",

@@ -3,7 +3,7 @@ tests/test_treasury_auction_engine.py — Sovereign Debt Auction Monitor Tests
 
 Covers:
   • _safe_float / _pct / _tail_bp — numeric helpers
-  • is_weak — alert threshold logic (both signals, each alone, neither)
+  • is_weak — alert threshold logic (both signals, each alone, neither, wide tier for bills/FRN/TIPS)
   • _get_baseline — rolling 6-auction mean from real SQLite rows
   • _maturity_label / _record_tail_bp — pooling of reopenings, TIPS/FRN series, bill discount-rate tails
   • fetch_auctions / _window_start — API request shape and catch-up window
@@ -11,6 +11,7 @@ Covers:
   • check_auction_results — unresulted auctions skipped, placeholder rows filled in
   • check_auction_results — alert fires on weak bid-to-cover, silent for older auctions
   • check_auction_results — alert dedup (alert_fired flag prevents re-alert)
+  • check_auction_results — flags re-derived for stored rows, even when the API returns nothing
   • migrate_db — empty placeholder rows trigger a rebuild of the table
 """
 
@@ -34,6 +35,7 @@ from treasury_auction_engine import (
     _window_start,
     fetch_auctions,
     is_weak,
+    _is_wide_series,
     format_weakness_message,
     _get_baseline,
     check_auction_results,
@@ -159,6 +161,44 @@ class TestIsWeak:
     def test_btc_exactly_at_threshold_no_alert(self):
         weak, weak_btc, weak_tail = is_weak(btc=2.3, mean_btc=2.5, tail=1.0, mean_tail=1.0)
         assert not weak
+
+    def test_nominal_note_flags_a_0_3_btc_drop(self):
+        weak, weak_btc, _ = is_weak(2.2, 2.5, 1.0, 1.0, "10Y")
+        assert weak and weak_btc
+
+    def test_bill_tolerates_a_0_3_btc_drop(self):
+        weak, _, _ = is_weak(2.2, 2.5, 1.0, 1.0, "4W")
+        assert not weak
+
+    def test_bill_flags_a_0_5_btc_drop(self):
+        weak, weak_btc, _ = is_weak(2.0, 2.5, 1.0, 1.0, "4W")
+        assert weak and weak_btc
+
+    def test_nominal_note_flags_a_3_bp_tail_widening(self):
+        weak, _, weak_tail = is_weak(2.5, 2.5, 4.0, 1.0, "10Y")
+        assert weak and weak_tail
+
+    def test_bill_tolerates_a_3_bp_tail_widening(self):
+        weak, _, _ = is_weak(2.5, 2.5, 4.0, 1.0, "8W")
+        assert not weak
+
+    def test_bill_flags_a_5_bp_tail_widening(self):
+        weak, _, weak_tail = is_weak(2.5, 2.5, 6.0, 1.0, "8W")
+        assert weak and weak_tail
+
+    def test_frn_uses_the_wide_tier(self):
+        assert not is_weak(2.2, 2.5, None, None, "2Y FRN")[0]
+        assert is_weak(2.0, 2.5, None, None, "2Y FRN")[0]
+
+
+class TestIsWideSeries:
+    @pytest.mark.parametrize("label", ["4W", "6W", "8W", "3M", "4M", "6M", "1Y", "27-Day", "2Y FRN", "10Y TIPS"])
+    def test_wide_series(self, label):
+        assert _is_wide_series(label)
+
+    @pytest.mark.parametrize("label", ["2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y", ""])
+    def test_nominal_notes_and_bonds_are_not_wide(self, label):
+        assert not _is_wide_series(label)
 
 
 # ── Plain-English alert message ──────────────────────────────────────────────
@@ -496,6 +536,71 @@ class TestCheckAuctionResults:
 
         assert self._fetch_row("TAEC3")["alert_fired"] == 1
         assert self._fetch_row("TAEC1")["alert_fired"] == 0
+
+    def _bill_row(self, btc, **overrides):
+        rec = _api_row(cusip="TAEBILL", security_type="Bill", security_term="4-Week",
+                       original_security_term="17-Week", high_yield="null", avg_med_yield="null",
+                       high_discnt_rate="3.90", avg_med_discnt_rate="3.90", bid_to_cover_ratio=btc)
+        rec.update(overrides)
+        return rec
+
+    def _seed_row(self, cusip, label, auction_date, btc, alert_fired):
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                """INSERT INTO treasury_auction_results
+                   (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp, alert_fired)
+                   VALUES (?, ?, ?, 4.50, ?, 1.0, ?)""",
+                (cusip, label, auction_date, btc, alert_fired),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_bill_btc_drop_within_the_wide_tier_does_not_alert(self):
+        self._seed_priors(label="4W")
+        _, mock_notify, _ = self._run([self._bill_row("2.4")])
+
+        mock_notify.assert_not_called()
+        assert self._fetch_row("TAEBILL")["alert_fired"] == 0
+
+    def test_bill_btc_drop_beyond_the_wide_tier_alerts(self):
+        self._seed_priors(label="4W")
+        _, mock_notify, _ = self._run([self._bill_row("2.2")])
+
+        mock_notify.assert_called_once()
+        assert self._fetch_row("TAEBILL")["alert_fired"] == 1
+
+    def test_nominal_note_alerts_on_a_0_3_btc_drop(self):
+        self._seed_priors(label="10Y")
+        _, mock_notify, _ = self._run([_api_row(bid_to_cover_ratio="2.4")])
+
+        mock_notify.assert_called_once()
+
+    def test_stored_flag_no_longer_weak_under_the_rule_is_cleared_silently(self):
+        self._seed_priors(label="4W")
+        self._seed_row("TAEOLD", "4W", "2026-06-10", 2.4, alert_fired=1)
+
+        _, mock_notify, _ = self._run([])
+
+        mock_notify.assert_not_called()
+        assert self._fetch_row("TAEOLD")["alert_fired"] == 0
+
+    def test_stored_weak_row_is_flagged_silently_even_when_the_api_returns_nothing(self):
+        self._seed_priors(label="4W")
+        self._seed_row("TAEOLD", "4W", "2026-06-10", 2.1, alert_fired=0)
+
+        _, mock_notify, _ = self._run([])
+
+        mock_notify.assert_not_called()
+        assert self._fetch_row("TAEOLD")["alert_fired"] == 1
+
+    def test_weak_auction_today_notifies_once_across_runs(self):
+        self._seed_priors(label="10Y")
+        self._run([_api_row(bid_to_cover_ratio="2.3")])
+        _, mock_notify, _ = self._run([_api_row(bid_to_cover_ratio="2.3")])
+
+        mock_notify.assert_not_called()
 
     def test_alert_dedup_does_not_refire(self):
         conn = db.get_connection()
