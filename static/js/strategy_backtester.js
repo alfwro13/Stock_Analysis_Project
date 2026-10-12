@@ -1,7 +1,10 @@
 var sbState = {
     accountId: "all", meta: null, candidates: [], currencies: [], shortlists: [],
-    runId: null, result: null, pollTimer: null, historyTimer: null,
+    runId: null, result: null, pollTimer: null, historyTimer: null, prefill: null,
 };
+
+var SB_EXPLAIN_KEY = "sb-show-explanations";
+var SB_PERIOD_WORD = { monthly: "month", quarterly: "quarter", annual: "year" };
 
 var SB_COLORS = ["#00ffcc", "#ffaa00", "#4da6ff", "#b366ff", "#ff6b6b", "#7bd88f", "#ff9ff3"];
 var SB_CHART_WRAPPERS = ["sb-equity-outer", "sb-drawdown-outer", "sb-alloc-outer"];
@@ -89,7 +92,8 @@ function sbRenderMeta(meta) {
     sbEl("sb-strategies").innerHTML = meta.strategies.map(function (s) {
         return '<div class="form-check">'
             + '<input class="form-check-input sb-strategy-checkbox" type="checkbox" value="' + escapeHtml(s.id) + '" id="sb-strat-' + escapeHtml(s.id) + '" checked>'
-            + '<label class="form-check-label small" for="sb-strat-' + escapeHtml(s.id) + '"><abbr title="' + escapeHtml(s.description) + '">' + escapeHtml(s.label) + "</abbr></label>"
+            + '<label class="form-check-label small" for="sb-strat-' + escapeHtml(s.id) + '">' + escapeHtml(s.label) + "</label>"
+            + '<div class="sb-strategy-explanation d-none" data-sb-strategy="' + escapeHtml(s.id) + '"></div>'
             + "</div>";
     }).join("");
     sbEl("sb-cadence").innerHTML = meta.cadences.map(function (c) {
@@ -101,7 +105,54 @@ function sbRenderMeta(meta) {
     presets.push('<option value="custom">Custom</option>');
     sbEl("sb-cost-preset").innerHTML = presets.join("");
     sbApplyDefaults(meta.defaults);
+    sbApplyPrefillRules();
+    sbRenderExplanations();
     sbEl("sb-history-note").textContent = "Extended history is downloaded once for the chosen tickers into its own cache. A run uses it only while it is up to date, and always shows the dates it actually covered.";
+}
+
+function sbExplanationParams() {
+    var n = sbSelectedTickers().length;
+    var percentField = function (id) { return String(parseFloat(sbEl(id).value)); };
+    return {
+        n: n >= 1 ? String(n) : "N",
+        each_pct: n >= 1 ? String(parseFloat((100 / n).toFixed(3))) : "100/N",
+        period: SB_PERIOD_WORD[sbEl("sb-cadence").value] || "period",
+        lookback: String(parseInt(sbEl("sb-lookback").value, 10)),
+        band_pp: percentField("sb-band"),
+        max_weight_pct: percentField("sb-max-weight"),
+        cash_reserve_pct: percentField("sb-cash-reserve"),
+    };
+}
+
+function sbRenderExplanations() {
+    var visible = sbEl("sb-show-explanations").checked;
+    var params = sbExplanationParams();
+    sbState.meta.strategies.forEach(function (s) {
+        var box = document.querySelector('.sb-strategy-explanation[data-sb-strategy="' + s.id + '"]');
+        box.classList.toggle("d-none", !visible);
+        if (!visible) return;
+        box.innerHTML = strategyStepsHtml(s.steps, params);
+    });
+}
+
+function sbApplyPrefillRules() {
+    var prefill = sbState.prefill;
+    if (!prefill) return;
+    if (prefill.maxWeight !== null) sbEl("sb-max-weight").value = prefill.maxWeight * 100;
+    if (prefill.cashReserve !== null) sbEl("sb-cash-reserve").value = prefill.cashReserve * 100;
+    if (sbState.meta.strategies.some(function (s) { return s.id === prefill.strategy; })) {
+        document.querySelectorAll(".sb-strategy-checkbox").forEach(function (cb) { cb.checked = cb.value === prefill.strategy; });
+    }
+}
+
+function sbApplyPrefillTickers() {
+    var prefill = sbState.prefill;
+    if (!prefill || !prefill.tickers.length) return;
+    var wanted = new Set(prefill.tickers);
+    document.querySelectorAll("#sb-candidates-list input[type=checkbox]").forEach(function (cb) {
+        if (!cb.disabled) cb.checked = wanted.has(cb.value);
+    });
+    prefill.tickers = [];
 }
 
 function sbSelectedTickers() {
@@ -156,6 +207,8 @@ function sbRenderAccountCandidates() {
         + (sbConverting() ? ", all converted to " + sbReportingCurrency() : " in " + currency)
         + (others ? ". " + others + " in other currencies are hidden." : ".")
         + " The figures on the right are days of price history (standard / extended).";
+    sbApplyPrefillTickers();
+    sbRenderExplanations();
 }
 
 function sbSelectedShortlist() {
@@ -168,6 +221,7 @@ function sbRenderShortlistCandidates() {
     if (!basket) {
         sbEl("sb-candidates-list").innerHTML = "";
         sbEl("sb-candidates-count").textContent = "";
+        sbRenderExplanations();
         return;
     }
     var currency = sbSelectedCurrency();
@@ -179,12 +233,17 @@ function sbRenderShortlistCandidates() {
         ? members.length + " members, all converted to " + sbReportingCurrency() + "."
         : members.length + " of " + basket.members.length + " members are quoted in " + currency + ".";
     sbEl("sb-shortlist-note").textContent = "Members of the snapshot taken " + basket.decision_ts + " UTC. The list is fixed at that moment, so this tests today's members over the past.";
+    sbRenderExplanations();
 }
 
 function sbRefreshCurrencyOptions(options) {
     var select = sbEl("sb-currency");
     options = options.concat([{ value: SB_CONVERT, label: "All currencies — converted to " + sbState.meta.base_currency }]);
     var previous = select.value;
+    if (sbState.prefill && sbState.prefill.convert) {
+        previous = SB_CONVERT;
+        sbState.prefill.convert = false;
+    }
     select.innerHTML = options.map(function (o) {
         return '<option value="' + escapeHtml(String(o.value)) + '">' + escapeHtml(o.label) + "</option>";
     }).join("");
@@ -255,15 +314,17 @@ function sbLoadAccounts() {
         var container = sbEl("sb-accounts-tiles");
         var tiles = data.accounts.map(function (acc) { return { id: acc.id, name: acc.name }; });
         tiles.push({ id: "all", name: "Global (All Accounts)", isTotal: true });
+        var wantedId = sbState.prefill && tiles.some(function (t) { return t.id === sbState.prefill.account; }) ? sbState.prefill.account : "all";
         tiles.forEach(function (tile) {
             var btn = document.createElement("button");
             btn.type = "button";
             btn.className = "mc-account-tile";
             btn.innerHTML = '<div class="mc-account-tile-name">' + escapeHtml(tile.name) + "</div>";
             btn.addEventListener("click", function () { sbSetActiveTile(btn, tile.id); });
-            if (tile.isTotal) btn.classList.add("mc-account-tile--active");
+            if (tile.id === wantedId) btn.classList.add("mc-account-tile--active");
             container.appendChild(btn);
         });
+        sbState.accountId = wantedId;
         sbShow("sb-accounts-bar", true);
         sbLoadCandidates(sbState.accountId);
     }).catch(function () {});
@@ -433,6 +494,9 @@ function sbOnBasketChange() {
 }
 
 function sbInit() {
+    sbState.prefill = readStrategyHandoff();
+    if (sbState.prefill) sbState.prefill.convert = true;
+    try { sbEl("sb-show-explanations").checked = localStorage.getItem(SB_EXPLAIN_KEY) === "1"; } catch (e) {}
     sbFetchJson("/api/strategy-backtester/meta").then(function (meta) {
         sbRenderMeta(meta);
         sbLoadAccounts();
@@ -447,7 +511,17 @@ function sbInit() {
         sbRefreshHistoryStatus();
     });
     sbEl("sb-shortlist-select").addEventListener("change", sbRenderBasket);
-    sbEl("sb-candidates-list").addEventListener("change", sbRefreshHistoryStatus);
+    sbEl("sb-candidates-list").addEventListener("change", function () {
+        sbRefreshHistoryStatus();
+        sbRenderExplanations();
+    });
+    sbEl("sb-show-explanations").addEventListener("change", function () {
+        try { localStorage.setItem(SB_EXPLAIN_KEY, sbEl("sb-show-explanations").checked ? "1" : "0"); } catch (e) {}
+        sbRenderExplanations();
+    });
+    ["sb-cadence", "sb-lookback", "sb-band", "sb-max-weight", "sb-cash-reserve"].forEach(function (id) {
+        sbEl(id).addEventListener("input", sbRenderExplanations);
+    });
     sbEl("sb-benchmark").addEventListener("change", sbRefreshHistoryStatus);
     sbEl("sb-cost-preset").addEventListener("change", sbSyncCostInputs);
     sbEl("sb-detail-strategy").addEventListener("change", sbRenderStrategyDetail);

@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from api_deps import limiter, require_confirm_token, _error_500
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from table_columns_helpers import normalize_column_order
 from log_config import configure_file_logging
@@ -84,6 +84,7 @@ from visuals import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 from monte_carlo_engine import run_simulation as _run_mc_simulation
 from portfolio_optimizer_engine import list_candidates as _po_list_candidates, optimize_portfolio as _po_optimize_portfolio
+from strategy_backtest_strategies import STRATEGIES as _BACKTEST_STRATEGIES
 
 logger = logging.getLogger(__name__)
 
@@ -1202,6 +1203,14 @@ class PortfolioOptimizerRunRequest(BaseModel):
     max_weight: float = Field(1.0, gt=0, le=1)
     cash_reserve: float = Field(0.0, ge=0, lt=1)
     min_history_days: int = Field(0, ge=0, le=252)
+    strategy: Optional[str] = None
+
+    @field_validator("strategy")
+    @classmethod
+    def _known_strategy(cls, value):
+        if value is not None and value not in _BACKTEST_STRATEGIES:
+            raise ValueError("Unknown strategy.")
+        return value
 
 
 @api_router.get("/portfolio-optimizer/accounts")
@@ -1237,7 +1246,7 @@ async def api_portfolio_optimizer_run(request: Request, req: PortfolioOptimizerR
     try:
         report = await asyncio.to_thread(
             _po_optimize_portfolio, req.account_id, req.include_tickers,
-            req.mode, req.max_weight, req.cash_reserve, req.min_history_days,
+            req.mode, req.max_weight, req.cash_reserve, req.min_history_days, req.strategy,
         )
         return JSONResponse(content=report)
     except Exception as e:

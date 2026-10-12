@@ -798,3 +798,40 @@ class TestMinHistoryDays:
             report = _run(aid)
         lookup.assert_not_called()
         assert len(report["weights"]) == 2
+
+
+class TestOptimizePortfolioStrategy:
+    def test_strategy_adds_target_weights_and_trades(self):
+        aid = _seed_long_only_account("PoeStrategyAcc", LO_TICKERS, seed=31)
+        report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3, strategy="inverse_vol")
+
+        assert report["strategy"]["id"] == "inverse_vol"
+        assert report["strategy"]["available"] is True
+        assert report["base_currency"] == "GBP"
+        targets = [w["suggested_weight_strategy"] for w in report["weights"]]
+        assert sum(targets) == pytest.approx(1.0, abs=1e-3)
+        assert sum(w["trade_value"] for w in report["weights"]) == pytest.approx(0.0, abs=1.0)
+
+    def test_trade_value_is_target_minus_current_times_scope_value(self):
+        aid = _seed_long_only_account("PoeStrategyTradeAcc", LO_TICKERS, seed=32)
+        report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3, strategy="rebalanced_ew")
+        total = sum((10 + i) * (50 + 5 * i) for i in range(len(LO_TICKERS)))
+        for w in report["weights"]:
+            expected = (w["suggested_weight_strategy"] - w["current_weight"]) * total
+            assert w["trade_value"] == pytest.approx(expected, abs=1.0)
+
+    def test_without_strategy_the_extra_fields_are_empty(self):
+        aid = _seed_long_only_account("PoeNoStrategyAcc", LO_TICKERS, seed=33)
+        report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3)
+
+        assert report["strategy"] is None
+        assert all(w["suggested_weight_strategy"] is None and w["trade_value"] is None for w in report["weights"])
+
+    def test_unavailable_strategy_warns_and_leaves_columns_empty(self):
+        aid = _seed_long_only_account("PoeStrategyNoneAcc", LO_TICKERS, seed=34)
+        with patch("strategy_backtest_strategies.snapshot_target", return_value=(None, "no mix")):
+            report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3, strategy="min_variance")
+        assert report["strategy"]["available"] is False
+        assert report["strategy"]["reason"] == "no mix"
+        assert any("no mix" in w for w in report["data_warnings"])
+        assert all(w["trade_value"] is None for w in report["weights"])

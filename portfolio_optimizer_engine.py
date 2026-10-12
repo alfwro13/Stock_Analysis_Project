@@ -361,8 +361,9 @@ def optimize_portfolio(
     max_weight: float = 1.0,
     cash_reserve: float = 0.0,
     min_history_days: int = 0,
+    strategy: Optional[str] = None,
 ) -> Dict:
-    """Pure computation, no DB writes; Long-Only cap/cash arguments are ignored in unconstrained mode."""
+    """Pure computation, no DB writes; Long-Only cap/cash arguments are ignored in unconstrained mode. A strategy adds its own long-only target mix and trade amounts."""
     long_only = mode == MODE_LONG_ONLY
     budget = 1.0 - cash_reserve if long_only else 1.0
     settings = {
@@ -373,13 +374,13 @@ def optimize_portfolio(
 
     def _no_result(warnings: List[str], window: Optional[Dict] = None) -> Dict:
         return {
-            "status": "success", "account_id": account_id, **settings, "weights": None,
+            "status": "success", "account_id": account_id, **settings, "weights": None, "strategy": None,
             "risk_free_rate": None, "efficient_frontier": None, "estimation_window": window,
             "data_warnings": warnings,
         }
 
     try:
-        holdings, _ = resolve_scope_holdings(account_id)
+        holdings, total_value = resolve_scope_holdings(account_id)
     except RuntimeError as e:
         logger.warning("Portfolio Optimizer failed for account_id=%s: %s", account_id, e)
         return {"status": "error", "message": str(e)}
@@ -438,7 +439,9 @@ def optimize_portfolio(
 
     mu = returns_df.mean(axis=0).to_numpy() * TRADING_DAYS
     cov = returns_df.cov().to_numpy() * TRADING_DAYS
-    rf = float(load_config().get("RISK_FREE_RATE", 0.045))
+    app_config = load_config()
+    rf = float(app_config.get("RISK_FREE_RATE", 0.045))
+    config_base_currency = app_config.get("BASE_CURRENCY", "GBP")
 
     if long_only:
         solved = long_only_allocations(mu, cov, rf, max_weight, budget)
@@ -452,10 +455,27 @@ def optimize_portfolio(
         w_mv, w_ms = result["w_mv"], result["w_ms"]
     w_ew = np.full(n, budget / n)
 
+    held_weights = {t: held[t]["weight"] for t in resolved_tickers if t in held}
+    strategy_info = None
+    w_strategy = None
+    if strategy:
+        from strategy_backtest_strategies import STRATEGIES, snapshot_target  # that module imports this one at load time
+
+        w_strategy, reason = snapshot_target(strategy, returns_df, {
+            "current_weights": held_weights, "risk_free_rate": rf,
+            "max_weight": max_weight if long_only else 1.0, "cash_reserve": cash_reserve if long_only else 0.0,
+        })
+        strategy_info = {"id": strategy, "label": STRATEGIES[strategy].label, "available": w_strategy is not None, "reason": reason}
+        if w_strategy is None:
+            data_warnings.append(f"{STRATEGIES[strategy].label} has no target mix for this candidate set: {reason}")
+
     names = _ticker_names([t for t in resolved_tickers if t not in held])
     for ticker in resolved_tickers:
         if ticker in held:
             names[ticker] = held[ticker].get("name") or ticker
+
+    held_sum = sum(held_weights.values())
+    strategy_base = total_value * (held_sum if held_sum > 1e-9 else 1.0)
 
     any_short = False
     weights_out = []
@@ -472,6 +492,8 @@ def optimize_portfolio(
             "suggested_weight_mv": round(mv, 4),
             "suggested_weight_ms": round(ms, 4) if ms is not None else None,
             "suggested_weight_ew": round(float(w_ew[i]), 4),
+            "suggested_weight_strategy": round(float(w_strategy[i]), 4) if w_strategy is not None else None,
+            "trade_value": round(float(w_strategy[i] * strategy_base - current_weight * total_value), 2) if w_strategy is not None else None,
             "is_new_addition": current_weight == 0.0,
             "is_short": is_short,
         })
@@ -513,6 +535,8 @@ def optimize_portfolio(
         "account_id": account_id,
         **settings,
         "weights": weights_out,
+        "strategy": strategy_info,
+        "base_currency": config_base_currency,
         "risk_free_rate": rf,
         "efficient_frontier": frontier,
         "estimation_window": estimation_window,

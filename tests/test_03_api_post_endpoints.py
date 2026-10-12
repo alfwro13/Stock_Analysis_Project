@@ -1096,6 +1096,7 @@ def test_portfolio_optimizer_run_long_only_respects_cap(client):
     {"mode": "long_only", "cash_reserve": -0.1},
     {"min_history_days": -1},
     {"min_history_days": 300},
+    {"strategy": "not_a_strategy"},
 ])
 def test_portfolio_optimizer_run_rejects_invalid_rules(client, body):
     """Mode, Weight Cap and Cash Reserve are validated at the API boundary (422)."""

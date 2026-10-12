@@ -1,0 +1,12 @@
+<div class="alert alert-warning mb-3" role="note">
+    <h6 class="alert-heading mb-2">What a backtest or an optimized mix does not capture</h6>
+    <p class="small mb-2">These tools compare rules on past prices. Before acting on a result, remember what the model leaves out:</p>
+    <ul class="small mb-0">
+        <li><strong>Hindsight and a short window.</strong> Today's tickers are replayed over roughly 1.5&ndash;5 years. Companies that failed or were dropped are not in the basket, so results look better than they honestly would have been. The comparison between rules is meaningful; the absolute return is not a forecast.</li>
+        <li><strong>Real trading costs.</strong> Costs are a flat percentage per trade. UK stamp duty (0.5% on UK shares), broker minimum fees and wider spreads on small or illiquid holdings are not modelled.</li>
+        <li><strong>Whole shares.</strong> The model buys any amount of any ticker. A real account rounds to whole shares (or the broker's fractional limits), so small weights land off target.</li>
+        <li><strong>Currency.</strong> Prices are converted to your base currency at each day's FX close. A broker's FX fee on foreign shares is not included.</li>
+        <li><strong>Concentration.</strong> Equal weight gives your least-convicted holding as much money as your most-convicted one, and a strategy can leave you holding far more or less of a sector than you intend.</li>
+        <li><strong>Taxes.</strong> Tax is not modelled. An ISA has no capital gains tax; other accounts do, and rebalancing can create a taxable gain.</li>
+    </ul>
+</div>

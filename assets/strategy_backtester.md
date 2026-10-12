@@ -43,6 +43,12 @@ The two rolling strategies call `portfolio_optimizer_engine.long_only_allocation
 
 If a rolling strategy cannot produce a valid mix on its **first** decision it is reported unavailable with the reason. Later failed decisions keep the existing holdings and are written to the decision log as `held`.
 
+**Explanations.** Every strategy carries an ordered list of `steps` next to its one-sentence `description` (`strategy_backtest_strategies.Strategy`), served by `GET /api/strategy-backtester/meta`. The *Show explanations* checkbox in box 2 of the page renders them under each strategy, filling the placeholders (`{n}`, `{each_pct}`, `{period}`, `{lookback}`, `{band_pp}`, `{max_weight_pct}`, `{cash_reserve_pct}`) from the live basket and Rules settings through `utils.js` `strategyStepsHtml()`; the choice is remembered per browser.
+
+**Portfolio Optimizer link.** `strategy_backtest_strategies.snapshot_target()` runs a strategy's own decision rule on a returns matrix as a first decision, so the Optimizer's *Strategy* column, its target mix and trade amounts are the rule the backtest replays, not a second implementation. Both pages open each other pre-filled through query parameters (`account`, `tickers`, `strategy`, `max_weight`, `cash_reserve`); nothing runs until the Run button is clicked. A saved run links to the Optimizer only for an account basket.
+
+**What the model leaves out.** Both pages show the same notice (`templates/partials/_backtest_caveats.html`): hindsight and the short window, UK stamp duty and broker minimums, whole-share rounding, broker FX fees, concentration and tax.
+
 ## 3. Simulation rules (`strategy_backtest_engine.py`)
 
 - **Common start.** All selected strategies begin on the same day: the latest start any of them needs (a rolling strategy needs `lookback` sessions of history first). The run fails with an explanation if fewer than 30 sessions remain to test.

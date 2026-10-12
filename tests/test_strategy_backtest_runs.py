@@ -531,6 +531,7 @@ class TestApi:
         }
         assert data["defaults"]["cadence"] == "quarterly" and data["defaults"]["lookback"] == 252
         assert data["cost_presets"]["typical"]["commission_bps"] == 10.0
+        assert all(len(s["steps"]) >= 3 and s["description"] for s in data["strategies"])
 
     @pytest.mark.parametrize("body", [
         {"strategies": []},
