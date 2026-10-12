@@ -7,6 +7,7 @@ Yahoo retired the news endpoint behind Ticker.news on 2026-10-02 and the scan st
   - sentiment_max_age_days()/sentiment_fresh_since() derive the cutoff from SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS
   - the four readers that carry the latest non-NULL score forward (Portfolio/Watchlist rows, Stock Detail,
     Market Pulse, Screener) stop showing a score once it is older than the cutoff
+  - the three readers of the latest row's score (AI prompt, Crash/Moonshot alert metadata, Index detail) do too
 """
 
 import sqlite3
@@ -20,13 +21,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
+import ai_engine
 import db_helpers
 import db_schema
 import market_pulse as _mp
 import page_data_signal_rows
 import page_data_stock
+from intraday_orchestrator import IntradayOrchestrator
 
-TICKERS = ("SENTMIG_A", "SENTMIG_B", "SENTMIG_C", "SENTMIG_D", "SENTFRESH_1", "SENTFRESH_2")
+TICKERS = ("SENTMIG_A", "SENTMIG_B", "SENTMIG_C", "SENTMIG_D", "SENTFRESH_1", "SENTFRESH_2", "^GSPC")
 
 
 def _conn():
@@ -156,3 +159,49 @@ class TestReadersBoundScoreAge:
         rows, _ = page_data_signal_rows.fetch_watchlist_signal_rows("SPY", ["SENTFRESH_2"])
 
         assert rows[0]["sentiment_score"] is None
+
+
+class TestRowLevelReadersBoundScoreAge:
+    @staticmethod
+    def _seed(ticker, scored_at, score=0.4321):
+        conn = _conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, company_name, current_price, currency, last_updated) "
+            "VALUES (?, ?, 10.0, 'USD', datetime('now'))", (ticker, ticker),
+        )
+        _seed_quant(conn, ticker, "2099-01-01", score, scored_at)
+        conn.commit()
+        conn.close()
+
+    def test_alert_metadata_shows_a_recent_score_and_hides_an_old_one(self):
+        self._seed("SENTFRESH_1", _utc(1))
+        self._seed("SENTFRESH_2", _utc(10))
+
+        meta = IntradayOrchestrator().get_asset_metadata(["SENTFRESH_1", "SENTFRESH_2"])
+
+        assert meta["SENTFRESH_1"]["sentiment_score"] == pytest.approx(0.4321)
+        assert meta["SENTFRESH_2"]["sentiment_score"] is None
+
+    def test_ai_prompt_shows_a_recent_score_and_hides_an_old_one(self):
+        self._seed("SENTFRESH_1", _utc(1))
+        self._seed("SENTFRESH_2", _utc(10))
+        engine = ai_engine.AIPromptEngine()
+
+        fresh = engine.generate_prompt("SENTFRESH_1", "Quantamental Deep-Dive")
+        old = engine.generate_prompt("SENTFRESH_2", "Quantamental Deep-Dive")
+
+        assert "VADER Media Sentiment: 0.432" in fresh
+        assert "VADER Media Sentiment: N/A" in old
+
+    def test_index_detail_shows_a_recent_score_and_hides_an_old_one(self, client):
+        conn = _conn()
+        _seed_quant(conn, "^GSPC", "2099-01-01", 0.4321, _utc(1))
+        conn.commit()
+        conn.close()
+        assert "(0.432)" in client.get("/index/^GSPC").text
+
+        conn = _conn()
+        _seed_quant(conn, "^GSPC", "2099-01-01", 0.4321, _utc(10))
+        conn.commit()
+        conn.close()
+        assert "(0.432)" not in client.get("/index/^GSPC").text

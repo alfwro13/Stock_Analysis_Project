@@ -10,6 +10,7 @@ import ta
 
 from config import HISTORICAL_DIR
 from database import get_connection
+from db_helpers import sentiment_fresh_since
 from portfolio_service import get_rate_to_base
 from time_engine import now_local
 from regime_engine import get_latest_regime
@@ -556,12 +557,12 @@ class AIPromptEngine:
                            q.ml_confidence_score,
                            q.var_95,
                            q.cvar_95,
-                           q.sentiment_score
+                           CASE WHEN q.sentiment_scored_at >= ? THEN q.sentiment_score END AS sentiment_score
                     FROM stock_signals s
                     LEFT JOIN quant_signals q ON s.ticker = q.ticker
                         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
                     WHERE s.ticker = ?
-                """, (ticker,))
+                """, (sentiment_fresh_since(), ticker))
                 stock_row = cursor.fetchone()
         except Exception as e:
             logger.error(f"[AI ENGINE] Core record query failed for {ticker}: {e}")

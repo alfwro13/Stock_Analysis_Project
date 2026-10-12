@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
+from db_helpers import sentiment_fresh_since
 from database import get_connection, get_auction_summary, get_ticker_registry_row, get_ticker_registry_row_by_future
 from macro_data_engine import get_uk_cpi_yoy_series, get_nominal_gdp_yoy_series, yield_gdp_link
 from regime_engine import get_latest_regime
@@ -403,11 +404,11 @@ def index_detail(request: Request, ticker: str):
             SELECT rsi_14, macd, macd_signal, macd_hist,
                    sma_50, sma_200, mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
                    hist_vol_20, atr_pct, var_95, cvar_95,
-                   sentiment_score, volume, volume_surge, composite_score, close_price, date
+                   CASE WHEN sentiment_scored_at >= ? THEN sentiment_score END AS sentiment_score, volume, volume_surge, composite_score, close_price, date
             FROM quant_signals
             WHERE ticker = ?
             ORDER BY date DESC LIMIT 1
-        """, (ticker,))
+        """, (sentiment_fresh_since(), ticker))
         q_row = cursor.fetchone()
         quant = {**_INDEX_QUANT_DEFAULTS, **(dict(q_row) if q_row else {})}
 
