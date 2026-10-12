@@ -34,7 +34,7 @@ def time_request_call(stage_name: str, function, *args, **kwargs):
         return function(*args, **kwargs)
 
 
-_SAFE_TICKER_PATH_RE = re.compile(r"[A-Za-z0-9^.=_\-]+")
+_SAFE_TICKER_PATH_RE = re.compile(r"[A-Za-z0-9^.=_\-]{1,64}")
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 MERMAID_VERSION = "10.9.1"
@@ -172,10 +172,10 @@ def normalize_ticker(ticker: str) -> str:
 
 
 def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
-    """Ticker validated free of path-traversal characters, or None if unsafe — the single
-    guard every HISTORICAL_DIR/INTRADAY_DIR/FUNDAMENTALS_DIR filename built from a ticker
-    must pass through, since a ticker can originate from user-typed input (e.g. an account
-    transaction) rather than only the trusted market universe."""
+    """Ticker validated free of path-traversal characters and at most 64 long (longer file names
+    raise ENAMETOOLONG), or None if unsafe — the single guard every HISTORICAL_DIR/INTRADAY_DIR/
+    FUNDAMENTALS_DIR filename built from a ticker must pass through, since a ticker can originate
+    from user-typed input (e.g. an account transaction) rather than only the trusted market universe."""
     ticker = str(ticker) if ticker is not None else ""
     if not ticker or not _SAFE_TICKER_PATH_RE.fullmatch(ticker):
         return None
