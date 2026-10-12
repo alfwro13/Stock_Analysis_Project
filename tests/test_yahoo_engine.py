@@ -31,7 +31,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from yahoo_engine import YahooEngine, yahoo_engine, news_item_published_at
+from yahoo_engine import YahooEngine, yahoo_engine, news_item_published_at, news_item_text
 
 _REAL_GET_SESSION_SHAPE = YahooEngine.get_session_shape
 
@@ -861,6 +861,22 @@ class TestGetNews:
             assert self.eng.get_news("BAD") is None
 
         mock_error.assert_called_once_with("get_news failed for %s", "BAD", exc_info=True)
+
+
+class TestNewsItemText:
+    def test_nested_content_shape(self):
+        item = {"content": {"title": "T", "summary": "S", "provider": {"displayName": "Reuters"}}}
+        assert news_item_text(item) == ("T", "S", "Reuters")
+
+    def test_flat_legacy_shape(self):
+        assert news_item_text({"title": "T", "publisher": "AP"}) == ("T", "", "AP")
+
+    def test_publisher_key_wins_over_provider(self):
+        item = {"content": {"title": "T", "publisher": "AP", "provider": {"displayName": "Reuters"}}}
+        assert news_item_text(item)[2] == "AP"
+
+    def test_missing_fields_are_empty_strings(self):
+        assert news_item_text({"content": {"title": None, "provider": None}}) == ("", "", "")
 
 
 class TestNewsItemPublishedAt:

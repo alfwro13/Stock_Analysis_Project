@@ -101,6 +101,14 @@ def _news_item(uid: str, title: str, summary: str, published: datetime, publishe
     }
 
 
+def news_item_text(item: dict) -> tuple[str, str, str]:
+    """(title, summary, publisher) of a news item in either Yahoo shape; empty strings when absent."""
+    content = item.get("content") or item
+    provider = content.get("provider")
+    publisher = content.get("publisher") or (provider.get("displayName") if isinstance(provider, dict) else "")
+    return content.get("title") or "", content.get("summary") or "", publisher or ""
+
+
 def news_item_published_at(item: dict) -> float:
     """Unix seconds of a news item's publish time from either Yahoo shape; 0.0 when absent or unparseable."""
     ts = item.get("providerPublishTime") or 0

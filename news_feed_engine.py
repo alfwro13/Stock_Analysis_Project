@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from config import load_config
-from yahoo_engine import yahoo_engine, news_item_published_at
+from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from database import get_connection, get_watchlist_tickers
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def _make_article_id(item: dict, ticker: str, published_at: float) -> str:
     uid = item.get("uuid") or item.get("id") or ""
     if uid:
         return uid
-    headline = (item.get("content") or {}).get("title") or item.get("title", "")
+    headline = news_item_text(item)[0]
     raw = f"{ticker}_{headline}_{int(published_at)}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -158,13 +158,11 @@ def run_news_feed_job() -> int:
                 if published_at == 0.0 or published_at < cutoff_ts:
                     continue
 
-                headline = content.get("title") or item.get("title", "N/A")
-                summary = content.get("summary") or item.get("summary") or ""
+                headline, summary, publisher = news_item_text(item)
+                headline = headline or "N/A"
 
                 url_info = content.get("canonicalUrl") or content.get("clickThroughUrl")
                 url = url_info.get("url", item.get("link", "")) if url_info else item.get("link", "")
-
-                publisher = (content.get("provider") or {}).get("displayName") or item.get("publisher") or ""
 
                 article_id = _make_article_id(item, ticker, published_at)
                 fetched_at = int(time.time())
