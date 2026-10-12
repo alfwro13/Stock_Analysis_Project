@@ -1735,6 +1735,8 @@ Verification happens before any live file changes, and every refusal returns `40
 
 Members are extracted with `filter="data"`. `data/analysis.db-wal` and `-shm` are never extracted. The database is staged next to the live file and swapped in atomically, and the live `-wal`/`-shm` are removed. `backup_history` rows the restored database lacks are carried forward, so newer archives keep their hashes. A `trust_unhashed` restore records the archive's computed hash as a `trigger_type: "adopted"` row, so later restores verify normally. A missing archive or an extraction failure returns `500` with `status: "error"`.
 
+Scheduled job firing is paused for the whole restore and resumed afterward, whatever the outcome. If a job is already running (the Active Jobs list), nothing is touched and the response is `409` with `status: "busy"` and a `message` naming the running job(s), the same shape as `POST /api/system/restart`: a running job holds connections to the database file being replaced and would lose its later writes.
+
 ---
 
 ### `GET /api/system/metrics`
@@ -2133,7 +2135,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
 | `POST` | `/api/backup/run` | Run an Automated Backup now |
 | `GET` | `/api/backup/status` | Last backup result + stored archive list |
-| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive) |
+| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive; 409 if jobs running) |
 | `GET` | `/api/settings/network-status` | Current routing health and mode |
 | `GET` | `/api/system/yahoo-api-stats` | Daily Yahoo Finance API call counts |
 | `GET` | `/api/system/yahoo-api-stats/{date_str}` | Per-day Yahoo Finance usage bucketed by 15-min interval and consuming job |

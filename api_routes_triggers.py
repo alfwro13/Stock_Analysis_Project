@@ -20,6 +20,7 @@ from scheduler_engine import (
     run_fundamentals_profiler, run_universe_deep_sync_job,
     run_xray_risk_cache_job, run_anomaly_training_job, record_job_run,
     run_maintenance_engine, run_manual_job, get_all_job_last_runs,
+    scheduler_quiesced,
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import get_backup_status, restore_backup, run_backup
@@ -528,7 +529,13 @@ def get_backup_status_endpoint():
 @limiter.limit("5/minute")
 def trigger_backup_restore(request: Request, body: RestoreBackupRequest):
     try:
-        result = restore_backup(body.filename, trust_unhashed=body.trust_unhashed)
+        with scheduler_quiesced() as running:
+            if running:
+                return JSONResponse(
+                    status_code=409,
+                    content={"status": "busy", "message": f"Cannot restore: {', '.join(running)} is currently running. Please wait for it to complete and try again."},
+                )
+            result = restore_backup(body.filename, trust_unhashed=body.trust_unhashed)
         if result["status"] == "success":
             return JSONResponse(content=result)
         return JSONResponse(status_code=500, content=result)

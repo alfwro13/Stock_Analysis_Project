@@ -219,6 +219,68 @@ class TestActiveJobsTracking:
         assert get_active_jobs() == {}
 
 
+class TestSchedulerQuiesced:
+    def setup_method(self):
+        with _sched_module._active_jobs_lock:
+            _sched_module._active_jobs.clear()
+
+    def teardown_method(self):
+        with _sched_module._active_jobs_lock:
+            _sched_module._active_jobs.clear()
+
+    @pytest.fixture
+    def live_scheduler(self):
+        from apscheduler.schedulers.background import BackgroundScheduler
+        sched = BackgroundScheduler()
+        sched.start()
+        with patch.object(_sched_module, "scheduler", sched):
+            yield sched
+        if sched.running:
+            sched.shutdown(wait=False)
+
+    def test_firing_is_paused_inside_the_block_and_resumed_after(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
+        with _sched_module.scheduler_quiesced() as running:
+            assert live_scheduler.state == STATE_PAUSED
+            assert running == {}
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_yields_the_running_jobs_and_resumes(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
+        _mark_job_started("Busy Job")
+        with _sched_module.scheduler_quiesced() as running:
+            assert list(running) == ["Busy Job"]
+            assert live_scheduler.state == STATE_PAUSED
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_resumes_when_the_block_raises(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_RUNNING
+        with pytest.raises(KeyError):
+            with _sched_module.scheduler_quiesced():
+                raise KeyError("boom")
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_does_not_resume_a_scheduler_that_was_already_paused(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_PAUSED
+        live_scheduler.pause()
+        with _sched_module.scheduler_quiesced():
+            pass
+        assert live_scheduler.state == STATE_PAUSED
+
+    def test_a_scheduler_shut_down_inside_the_block_is_not_resumed(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_STOPPED
+        with _sched_module.scheduler_quiesced():
+            live_scheduler.shutdown(wait=False)
+        assert live_scheduler.state == STATE_STOPPED
+
+    def test_a_stopped_scheduler_still_reports_the_running_jobs(self):
+        from apscheduler.schedulers.background import BackgroundScheduler
+        _mark_job_started("Busy Job")
+        with patch.object(_sched_module, "scheduler", BackgroundScheduler()):
+            with _sched_module.scheduler_quiesced() as running:
+                assert list(running) == ["Busy Job"]
+
+
 def _record_runs(job_id, durations, status="success", first_minute=0):
     for offset, duration in enumerate(durations):
         started = f"2026-01-01 10:{first_minute + offset:02d}:00"

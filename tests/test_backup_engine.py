@@ -5,8 +5,11 @@ import tarfile
 from unittest.mock import patch
 
 import pytest
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 
 import backup_engine
+import scheduler_engine
 from database import get_connection
 
 
@@ -641,6 +644,63 @@ class TestRestoreBackup:
             )
         assert resp.status_code == 400
         assert "No SHA-256" in resp.json()["message"]
+
+
+@pytest.mark.api
+class TestRestoreJobGuard:
+    @pytest.fixture
+    def live_scheduler(self):
+        sched = BackgroundScheduler()
+        sched.start()
+        with patch.object(scheduler_engine, "scheduler", sched):
+            yield sched
+        if sched.running:
+            sched.shutdown(wait=False)
+
+    @pytest.fixture(autouse=True)
+    def _no_leftover_active_jobs(self):
+        yield
+        scheduler_engine._mark_job_done("Busy Job")
+
+    @staticmethod
+    def _post(client, confirm_token):
+        return client.post(
+            "/api/backup/restore",
+            json={"filename": "backup_20200107_000001.tar.gz"},
+            headers={"X-Confirm-Token": confirm_token},
+        )
+
+    def test_returns_409_and_restores_nothing_while_a_job_is_running(self, client, confirm_token, live_scheduler):
+        scheduler_engine._mark_job_started("Busy Job")
+        with patch("api_routes_triggers.restore_backup") as restore:
+            resp = self._post(client, confirm_token)
+
+        assert resp.status_code == 409
+        assert resp.json()["status"] == "busy"
+        assert "Busy Job" in resp.json()["message"]
+        restore.assert_not_called()
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_pauses_the_scheduler_for_the_restore_and_resumes_it(self, client, confirm_token, live_scheduler):
+        seen = []
+
+        def _restore(filename, trust_unhashed=False):
+            seen.append(live_scheduler.state)
+            return {"status": "success", "message": "done"}
+
+        with patch("api_routes_triggers.restore_backup", side_effect=_restore):
+            resp = self._post(client, confirm_token)
+
+        assert resp.status_code == 200
+        assert seen == [STATE_PAUSED]
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_resumes_the_scheduler_when_the_restore_is_refused(self, client, confirm_token, live_scheduler):
+        with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreRefused("bad archive")):
+            resp = self._post(client, confirm_token)
+
+        assert resp.status_code == 400
+        assert live_scheduler.state == STATE_RUNNING
 
 
 @pytest.mark.db
