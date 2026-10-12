@@ -91,13 +91,18 @@ setInterval(async () => {
                     if (!(activeTypes.size === 0 || activeTypes.has(note.type))) {
                         card.style.display = 'none';
                     }
-                    card.innerHTML = `
-                        <div class="notification-header">
-                            <span class="notification-type">${note.type} Alert</span>
-                            <span>${note.timestamp}</span>
-                        </div>
-                        <div class="notification-body">${note.text}</div>
-                    `;
+                    const header = document.createElement('div');
+                    header.className = 'notification-header';
+                    const typeEl = document.createElement('span');
+                    typeEl.className = 'notification-type';
+                    typeEl.textContent = `${note.type} Alert`;
+                    const timeEl = document.createElement('span');
+                    timeEl.textContent = note.timestamp;
+                    header.append(typeEl, timeEl);
+                    const body = document.createElement('div');
+                    body.className = 'notification-body';
+                    body.textContent = note.text;
+                    card.append(header, body);
                     list.prepend(card);
                     lastNotificationId = Math.max(lastNotificationId, note.id);
                 });

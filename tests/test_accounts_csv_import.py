@@ -337,6 +337,49 @@ def test_map_unparseable_timestamp_is_skipped_not_crashed():
 
 
 @pytest.mark.db
+def test_map_order_with_a_markup_instrument_currency_is_skipped():
+    """`Instrument Currency` is stored verbatim as the transaction currency and rendered by the
+    Show Transactions table, so a non-code value must be refused at the boundary."""
+    row = _row({
+        "Title": "Apple", "Type": "ORDER", "Timestamp": "01/02/2021", "Account Currency": "GBP",
+        "Buy / Sell": "BUY", "Ticker": "aapl", "Quantity": "1", "Price per Share": "10",
+        "Price per Share in Account Currency": "10", "Instrument Currency": "<img src=x onerror=alert(1)>",
+    })
+    mapped, reason, shown_ticker = account_csv_import_engine._map_csv_row(row)
+    assert mapped is None
+    assert reason == "bad_currency"
+    assert shown_ticker == "AAPL"
+
+
+@pytest.mark.db
+def test_map_cash_row_with_a_markup_account_currency_is_skipped(monkeypatch):
+    monkeypatch.setattr(account_csv_import_engine, "fx_rate_on_date", lambda currency, date: 1.0)
+    row = _row({"Title": "Top up", "Type": "TOP_UP", "Timestamp": "01/02/2021",
+                "Account Currency": "<b>", "Total Amount in Account Currency": "50.00"})
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
+    assert mapped is None
+    assert reason == "bad_currency"
+
+
+@pytest.mark.db
+def test_import_skips_a_bad_currency_row_and_stores_nothing_for_it():
+    aid = create_account("BadCurrencyImportAcc", "GBP")
+    csv_text = _csv(
+        "Apple,ORDER,01/02/2021,GBP,10.00,BUY,AAPL,US0378331005,5.00,0.00,2,<script>alert(1)</script>,10.00,5.00,,,,,,,,,,,,",
+    )
+    with patch.object(account_csv_import_engine, "_ticker_resolvable") as resolvable:
+        result = account_csv_import_engine.import_csv_activities(aid, csv_text)
+
+    resolvable.assert_not_called()
+    assert result["imported"] == 0
+    assert result["skipped_rows"] == [{
+        "date": "01/02/2021", "ticker": "AAPL", "reason": "currency is not a 3-letter code",
+    }]
+    from database import get_transactions
+    assert get_transactions(aid) == []
+
+
+@pytest.mark.db
 def test_import_counts_internal_transfer_as_ignored():
     aid = create_account("IgnoredTransferAcc", "GBP")
     csv_text = _csv(

@@ -110,6 +110,38 @@ def test_transaction_add_update_delete_roundtrip():
 
 
 @pytest.mark.db
+def test_add_transaction_refuses_a_malformed_date_or_currency():
+    """Every transaction writer funnels through add_transaction(), so a date or currency that is
+    not storable must stop here (Transfer, Auto Top-up, Pension and Treasury Bill paths included)."""
+    aid = create_account("RefuseBadTxnAcc", "GBP")
+    for bad in (
+        {"txn_date": "<img src=x onerror=alert(1)>"},
+        {"txn_date": "2026-02-30"},
+        {"txn_date": "05/01/2026"},
+        {"txn_date": "2026-01-05", "currency": "<b>"},
+        {"txn_date": "2026-01-05", "currency": "GBP", "fee_currency": "GBPX"},
+    ):
+        assert add_transaction(aid, "Cash", unit_price=10, **bad) is None, bad
+    assert get_transactions(aid) == []
+
+    assert add_transaction(aid, "Cash", "2026-01-05", currency="GBp", fee_currency="USD", unit_price=10) is not None
+    assert add_transaction(aid, "Cash", "2026-01-05", unit_price=10) is not None
+
+
+@pytest.mark.db
+def test_update_transaction_refuses_a_malformed_date_or_currency():
+    aid = create_account("RefuseBadUpdateAcc", "GBP")
+    tid = add_transaction(aid, "Cash", "2026-01-05", currency="GBP", unit_price=10)
+    for bad in ({"txn_date": "<script>"}, {"currency": "<b>"}, {"fee_currency": "12"}):
+        assert update_transaction(tid, **bad) is False, bad
+    txn = get_transaction(tid)
+    assert txn["txn_date"] == "2026-01-05"
+    assert txn["currency"] == "GBP"
+    assert update_transaction(tid, txn_date="2026-02-01", currency="GBp") is True
+    assert update_transaction(tid, notes="<b>notes are free text</b>") is True
+
+
+@pytest.mark.db
 def test_transaction_isin_roundtrip():
     aid = create_account("IsinAcc", "GBP")
     tid = add_transaction(aid, "Buy", "2026-01-05", ticker="ZISIN", isin="GB0003452173",

@@ -10,7 +10,7 @@ from accounts_engine import fx_rate_on_date
 from config import BASE_CURRENCY
 from database import get_connection
 from db_accounts import add_transaction, get_transactions
-from utils import normalize_ticker
+from utils import is_currency_code, normalize_ticker
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,8 @@ def _map_csv_row(row: dict) -> tuple:
     account_currency = (row.get("Account Currency") or BASE_CURRENCY).strip()
 
     if row_type in _CSV_CASH_TYPE_MAP:
+        if not is_currency_code(account_currency):
+            return None, "bad_currency", None
         exchange_rate = 1.0 if account_currency == BASE_CURRENCY else fx_rate_on_date(account_currency, txn_date)
         if exchange_rate is None:
             return None, "no_fx_rate", None
@@ -93,6 +95,8 @@ def _map_csv_row(row: dict) -> tuple:
         return None, "no_ticker", "(no ticker)"
 
     currency = (row.get("Instrument Currency") or account_currency).strip()
+    if not is_currency_code(currency) or not is_currency_code(account_currency):
+        return None, "bad_currency", ticker
     company_name = row.get("Title") or None
     isin = row.get("ISIN") or None
 
@@ -179,6 +183,7 @@ _CSV_SKIP_REASON_LABELS = {
     "no_ticker": "no ticker in file",
     "unknown_type": "unrecognized row type",
     "bad_date": "unparseable date",
+    "bad_currency": "currency is not a 3-letter code",
     "no_fx_rate": "no exchange rate available for that date",
     "unresolved_ticker": "ticker not found (possibly delisted or mistyped)",
     "duplicate": "already imported",

@@ -38,7 +38,10 @@ below).
 
 A row whose `Type` is missing/blank is silently skipped (e.g. trailing blank lines). A row
 whose `Type` is `ORDER`/`DIVIDEND` but has no `Ticker` is skipped and reported under
-`unresolved_tickers` as `"(no ticker)"`.
+`unresolved_tickers` as `"(no ticker)"`. A row whose `Instrument Currency` (or `Account Currency`) is
+not a three-letter code (`GBP`, `USD`, `GBp`, …) is skipped with the reason "currency is not a
+3-letter code" before any ticker lookup — the value is stored as the transaction's currency and
+shown in the ledger, so free text is never accepted there.
 
 ## Recognised row types
 
@@ -108,11 +111,13 @@ Yahoo Finance lookup. If neither resolves it — typically a delisted or mistype
 Every skipped row (other than `INTERNAL_TRANSFER`/blank rows, which are expected and not
 worth reporting) is returned individually in the response's `skipped_rows` list, each entry
 giving the row's `date`, `ticker`, and a human-readable `reason` (unresolved ticker, no
-ticker in file, unparseable date, no exchange rate available for a foreign-currency cash row's date, unrecognized row type, already imported, or a database
+ticker in file, unparseable date, a currency that is not a 3-letter code, no exchange rate available for a foreign-currency cash row's date, unrecognized row type, already imported, or a database
 error) — enough detail to find the exact row in the source file. If any rows were skipped,
 the same detail is also dispatched through `notification_engine.notify()` so it remains
 visible in the in-app Notifications panel after the import modal is closed, rather than only
-in the one-off response.
+in the one-off response. The notification quotes each raw date and ticker value and cuts it at
+40 characters, so a stray newline or markup in a file cell cannot add lines to the message or
+fill it; the Notifications page renders notification text as plain text.
 
 ## Re-importing the same file
 

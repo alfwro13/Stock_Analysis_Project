@@ -2440,6 +2440,59 @@ vm.runInContext(fs.readFileSync(0, 'utf8'), context);
     assert result.returncode == 0, result.stderr
 
 
+def test_notifications_live_poll_renders_text_without_html_parsing():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('Node is required for the notification poll check')
+    source = (Path(__file__).resolve().parents[1] / 'static/js/notifications.js').read_text()
+    script = r"""
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const htmlWrites = [];
+const prepended = [];
+function element() {
+    return {className: '', textContent: '', dataset: {}, style: {}, children: [],
+        append(...nodes) {this.children.push(...nodes);},
+        prepend(node) {prepended.push(node);},
+        set innerHTML(value) {htmlWrites.push(value);}, get innerHTML() {return '';}};
+}
+const list = element();
+const payload = '<img src=x onerror=alert(1)>';
+let poll = null;
+const context = {
+    window: {LAST_NOTIFICATION_ID: 5},
+    localStorage: {getItem: () => null, setItem: () => {}},
+    document: {
+        querySelectorAll: () => [], getElementById: () => null, createElement: () => element(),
+        querySelector: selector => (selector === '.notification-list' ? list : null),
+    },
+    setInterval: callback => {poll = callback; return 1;},
+    fetch: async () => ({ok: true, json: async () => ({status: 'success', notifications: [
+        {id: 9, type: payload, timestamp: payload, text: payload + '\nsecond line'},
+    ]})}),
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(0, 'utf8'), context);
+(async () => {
+    await poll();
+    assert.equal(prepended.length, 1);
+    const [header, body] = prepended[0].children;
+    assert.equal(header.children[0].textContent, payload + ' Alert');
+    assert.equal(header.children[1].textContent, payload);
+    assert.equal(body.textContent, payload + '\nsecond line');
+    assert.equal(prepended[0].dataset.type, payload);
+    assert.deepEqual(htmlWrites, []);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+    result = subprocess.run([node, '-e', script], input=source, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
 # ── Score History ref / Login next (SEC 5/27, S5-4, S5-6) ─────────────────────
 
 @pytest.mark.pages
