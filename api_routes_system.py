@@ -9,13 +9,13 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 import joblib
 import time_engine
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api_deps import limiter, require_confirm_token, _error_500
 
@@ -385,6 +385,10 @@ class SettingsConfig(BaseModel):
     YAHOO_USE_IPV4: Optional[bool] = None
     YAHOO_USE_IPV6: Optional[bool] = None
     PORT: Optional[int] = None
+    BIND_HOST: Optional[str] = None
+    ALLOWED_HOSTS: Optional[List[str]] = None
+    COOKIE_SECURE: Optional[Literal["auto", "true", "false"]] = None
+    FRAME_ANCESTORS: Optional[List[str]] = None
     BASE_CURRENCY: Optional[str] = None
     USER_TIMEZONE: Optional[str] = None
     HOME_EXCHANGE: Optional[str] = None
@@ -402,6 +406,35 @@ class SettingsConfig(BaseModel):
     XRAY_TARGETS: Optional[dict] = None
     META_SCORING: Optional[dict] = None
     FILE_LOGGING: Optional[FileLoggingConfig] = None
+
+    @field_validator("BIND_HOST")
+    @classmethod
+    def _valid_bind_host(cls, v):
+        if v is not None and not re.fullmatch(r"[A-Za-z0-9.:\-]+", v):
+            raise ValueError("BIND_HOST must be an IP address or host name")
+        return v
+
+    @field_validator("ALLOWED_HOSTS")
+    @classmethod
+    def _valid_allowed_hosts(cls, v):
+        if v is None:
+            return v
+        if not v:
+            raise ValueError("ALLOWED_HOSTS must list at least one host")
+        for host in v:
+            if not re.fullmatch(r"(\*\.)?[A-Za-z0-9.\-]+|\*", host):
+                raise ValueError(f"Invalid host name: {host!r}")
+        return v
+
+    @field_validator("FRAME_ANCESTORS")
+    @classmethod
+    def _valid_frame_ancestors(cls, v):
+        if v is None:
+            return v
+        for origin in v:
+            if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", origin):
+                raise ValueError(f"Invalid origin (expected scheme://host[:port]): {origin!r}")
+        return v
 
 
 _requirements_changed_pending = False

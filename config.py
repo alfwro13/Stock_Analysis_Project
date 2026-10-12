@@ -70,6 +70,10 @@ DEFAULT_CONFIG = {
     "YAHOO_USE_IPV4": True,
     "YAHOO_USE_IPV6": False,
     "PORT": 8090,
+    "BIND_HOST": "0.0.0.0",
+    "ALLOWED_HOSTS": ["stock.awroblew.biz", "ha.awroblew.biz", "192.168.1.70", "localhost", "127.0.0.1"],
+    "COOKIE_SECURE": "auto",
+    "FRAME_ANCESTORS": ["http://192.168.1.71:8123", "https://ha.awroblew.biz"],
     "BASE_CURRENCY": "GBP",
     "PERFORMANCE": {
         "FX_FRESH_SECONDS": 600,
@@ -718,6 +722,10 @@ APP_SECRET_KEY = os.environ.get("APP_SECRET_KEY", "")
 YAHOO_IPV6_ADDRESS = current_config.get("YAHOO_IPV6_ADDRESS", "")
 GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})
 PORT = current_config.get("PORT", 8090)
+BIND_HOST = current_config.get("BIND_HOST", DEFAULT_CONFIG["BIND_HOST"])
+ALLOWED_HOSTS = current_config.get("ALLOWED_HOSTS", DEFAULT_CONFIG["ALLOWED_HOSTS"])
+COOKIE_SECURE = current_config.get("COOKIE_SECURE", DEFAULT_CONFIG["COOKIE_SECURE"])
+FRAME_ANCESTORS = current_config.get("FRAME_ANCESTORS", DEFAULT_CONFIG["FRAME_ANCESTORS"])
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
 USER_TIMEZONE = current_config.get("USER_TIMEZONE", "Europe/London")
 HOME_EXCHANGE  = current_config.get("HOME_EXCHANGE", "LSE")

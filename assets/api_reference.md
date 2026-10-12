@@ -1181,12 +1181,27 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
 | Nextcloud Talk credentials | `POST /api/save-nextcloud-settings` | `NEXTCLOUD_URL`, `NEXTCLOUD_BOT_USERNAME`, `NEXTCLOUD_APP_PASSWORD`, `NEXTCLOUD_CONVERSATION_TOKEN` |
 | HuggingFace token | `POST /api/save-hf-token` | `HF_TOKEN` |
 
+Request-path hardening keys, all applied at the next restart:
+
+| Key | Values | Effect |
+|---|---|---|
+| `BIND_HOST` | IP address or host name, default `0.0.0.0` | Interface uvicorn listens on. |
+| `ALLOWED_HOSTS` | Non-empty list of host names (`*.example.com` allowed) | A request whose `Host` header is not listed gets 400. `localhost` and `127.0.0.1` are always accepted. |
+| `COOKIE_SECURE` | `auto` (default), `true`, `false` | `Secure` flag on the session and CSRF cookies; `auto` follows the `SERVER_URL` scheme. |
+| `FRAME_ANCESTORS` | List of `scheme://host[:port]` origins | Extra origins in the CSP `frame-ancestors` directive (`'self'` is always included). |
+
+Invalid values are rejected with 422.
+
 **Request body** — all fields optional, send only what you want to change
 
 ```json
 {
   "SERVER_URL": "http://192.168.1.100",
   "PORT": 8090,
+  "BIND_HOST": "0.0.0.0",
+  "ALLOWED_HOSTS": ["stock.example.com", "192.168.1.70"],
+  "COOKIE_SECURE": "auto",
+  "FRAME_ANCESTORS": ["https://ha.example.com"],
   "BASE_CURRENCY": "GBP",
   "YAHOO_IPV6_ADDRESS": "2a00:1450:400f:804::200e",
   "IGNORED_TICKERS": ["GMESTOP"],

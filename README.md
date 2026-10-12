@@ -127,6 +127,8 @@ Portfolio, Watchlist and Stock Detail use cached FX and historical data during n
 
 Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**. The repair dialog checks an incorrect daily price bar against fresh Yahoo data and also accepts manually verified OHLCV when Yahoo remains wrong. Corrections remain in effect after later data refreshes. Dependent indicator history and, for held or watched tickers, the portfolio risk figures are refreshed automatically.
 
+**Network & Request Hardening:** Settings → Core System & Currencies also holds Bind Host, Secure Cookies, Allowed Hosts and Embed Frame Ancestors (restart required). The app answers only to the listed host names (`localhost` is always allowed), sends its own security headers (including a Content-Security-Policy whose `frame-ancestors` lists the embed origins), and marks its cookies `Secure` automatically when the Server URL is https. When the app is behind Nginx, remove the duplicate `add_header` lines from the site config or keep them identical to the app's.
+
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless
