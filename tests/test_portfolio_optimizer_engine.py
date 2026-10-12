@@ -835,3 +835,32 @@ class TestOptimizePortfolioStrategy:
         assert report["strategy"]["reason"] == "no mix"
         assert any("no mix" in w for w in report["data_warnings"])
         assert all(w["trade_value"] is None for w in report["weights"])
+
+
+class TestGrowthSeries:
+    def test_one_line_per_mix_starting_near_100(self):
+        aid = _seed_long_only_account("PoeGrowthAcc", LO_TICKERS, seed=41)
+        report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3, strategy="inverse_vol")
+
+        growth = report["growth"]
+        assert [s["key"] for s in growth["series"]] == ["current", "mv", "ms", "ew", "strategy"]
+        assert len(growth["dates"]) == report["estimation_window"]["trading_days"]
+        for line in growth["series"]:
+            assert len(line["values"]) == len(growth["dates"])
+            assert 90 < line["values"][0] < 110
+
+    def test_equal_weight_line_compounds_the_daily_equal_weight_return(self):
+        aid = _seed_long_only_account("PoeGrowthEwAcc", LO_TICKERS, seed=42)
+        report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3)
+        rng = np.random.default_rng(42)
+        n = 252
+        rets = np.column_stack([rng.normal(0.0004 + 0.0001 * i, 0.008 + 0.002 * i, n) for i in range(len(LO_TICKERS))])
+        expected = 100 * np.cumprod(1 + rets.mean(axis=1))[-1]
+
+        ew = next(s for s in report["growth"]["series"] if s["key"] == "ew")
+        assert ew["values"][-1] == pytest.approx(expected, rel=0.02)
+
+    def test_no_strategy_line_without_a_strategy(self):
+        aid = _seed_long_only_account("PoeGrowthNoStratAcc", LO_TICKERS, seed=43)
+        report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3)
+        assert "strategy" not in [s["key"] for s in report["growth"]["series"]]

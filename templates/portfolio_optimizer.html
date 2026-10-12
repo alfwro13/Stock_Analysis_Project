@@ -120,6 +120,20 @@
             </div>
 
             <div class="sentiment-module module-purple mt-3">
+                <div class="chart-wrapper" id="po-growth-outer">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('po-growth-outer')">&#9638; Fullscreen</button>
+                    <div id="po-growth-chart"></div>
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        <p class="mb-2">One line per mix: what 100 invested at the start of the period would have grown to if the mix's weights had been held constant (rebalanced every day) over the same past days the Optimizer learned from. Your Portfolio Today uses your current weights over the ticked tickers; any chosen Strategy gets its own line.</p>
+                        <p class="mb-0">The Steadiest and Best Reward-for-Risk mixes were fitted on these very days, so their lines look better than they honestly would have been on days they hadn't seen. Treat the chart as a comparison of mixes on the same history, not a forecast. The Strategy Backtester replays the rules properly, with costs and trading at the next close.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sentiment-module module-purple mt-3">
                 <div class="chart-wrapper" id="po-chart-outer">
                     <button class="fullscreen-btn" onclick="toggleFullscreen('po-chart-outer')">&#9638; Fullscreen</button>
                     <div id="po-chart"></div>

@@ -3309,11 +3309,14 @@ Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns s
     "current": {"return": 0.048, "volatility": 0.104}
   },
   "estimation_window": {"start": "2025-10-06", "end": "2026-10-06", "trading_days": 251},
+  "growth": {"dates": ["2025-10-06", "..."], "series": [{"key": "mv", "label": "Steadiest Mix", "values": [100.4, "..."]}]},
   "strategy": null,
   "base_currency": "GBP",
   "data_warnings": []
 }
 ```
+
+`growth` holds one series per mix (`current`, `mv`, `ms`, `ew` and, with a strategy, `strategy`) as the value of 100 invested at the start, compounding each day's return of the mix's constant weights over `estimation_window`; weight not invested earns `risk_free_rate`, and `current` is normalised over the ticked tickers. It is in-sample for the optimized mixes. `null` when no weights are returned.
 
 `strategy` is `null` unless a `strategy` was requested; otherwise `{id, label, available, reason}`. When `available`, every row carries `suggested_weight_strategy` (the strategy's target, always long-only) and `trade_value` = `(target × base − current_weight × scope value)` in `base_currency`, where `base` is the scope value of the ticked holdings (the whole scope when everything held is ticked). When the strategy has no valid mix for the selection, `available` is `false`, `reason` says why, a `data_warnings` entry is added and the per-row fields are `null`. Trade amounts exclude trading costs, stamp duty and whole-share rounding.
 

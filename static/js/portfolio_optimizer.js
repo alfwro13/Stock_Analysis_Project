@@ -65,7 +65,9 @@ function toggleFullscreen(wrapperId) {
 }
 
 window.addEventListener("resize", function () {
-    ChartFullscreen.relayoutForCurrentState("po-chart-outer", _PO_CHART_OPTS);
+    ["po-growth-outer", "po-chart-outer"].forEach(function (id) {
+        ChartFullscreen.relayoutForCurrentState(id, _PO_CHART_OPTS);
+    });
 });
 
 function renderWeightsTable(data) {
@@ -159,6 +161,33 @@ function renderResultsMeta(data) {
         parts.push("Unconstrained mode: pure textbook maths, so negative amounts and large single-ticker weights are possible.");
     }
     document.getElementById("po-results-meta").textContent = parts.join(" ");
+}
+
+var PO_GROWTH_COLORS = { current: "#ffffff", mv: "#00ffcc", ms: "#ffaa00", ew: "#4da6ff", strategy: "#ff6b6b" };
+
+function renderGrowthChart(growth) {
+    var el = document.getElementById("po-growth-chart");
+    if (!growth) {
+        el.innerHTML = "<p class='text-muted'>Growth chart unavailable for this candidate set.</p>";
+        return;
+    }
+    var traces = growth.series.map(function (s) {
+        return {
+            x: growth.dates, y: s.values, mode: "lines", name: s.label,
+            line: { color: PO_GROWTH_COLORS[s.key], width: s.key === "current" ? 3 : 2, dash: s.key === "ew" ? "dot" : "solid" },
+            hovertemplate: "%{y:.1f}<extra>" + s.label + "</extra>",
+        };
+    });
+    var layout = {
+        title: { text: "Growth of 100 — How Each Mix Would Have Done", x: 0.5, xanchor: "center" },
+        template: "plotly_dark", height: _poChartHeight(),
+        margin: { l: 60, r: 20, t: 50, b: 60 },
+        legend: { orientation: "h", yanchor: "top", y: -0.15, xanchor: "center", x: 0.5 },
+        paper_bgcolor: "#1e1e1e", plot_bgcolor: "#1e1e1e", font: { color: "#ccc" },
+        xaxis: { automargin: true, gridcolor: "#333" },
+        yaxis: { title: "Value of 100 invested", automargin: true, gridcolor: "#333" },
+    };
+    Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
 }
 
 function renderFrontierChart(frontier, longOnly) {
@@ -301,6 +330,7 @@ function runOptimization() {
             renderResultsMeta(data);
             renderWeightsTable(data);
             renderStrategyBox(data);
+            renderGrowthChart(data.growth);
             renderFrontierChart(data.efficient_frontier, data.mode === "long_only");
         })
         .catch(function (err) {
