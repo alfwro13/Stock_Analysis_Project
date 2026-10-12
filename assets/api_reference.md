@@ -3040,7 +3040,7 @@ Triggers an immediate background run of the **Forensic Accounting Scores** job, 
 
 ### `POST /api/trigger-treasury-auction-check`
 
-Triggers an immediate background run of the **Sovereign Debt Auction Monitor** (`treasury_auction_engine.check_auction_results()`), fetching today's US Treasury auction results and firing a weakness alert if warranted. Used by the "Run Now" button on the `/treasury-auctions` tools page; shares the same job id (`macro_auction_job_am`) as the scheduled AM check, so it updates the same Master APScheduler Matrix row.
+Triggers an immediate background run of the **Sovereign Debt Auction Monitor** (`treasury_auction_engine.check_auction_results()`), upserting every US Treasury auction result published since the newest stored one (a missed run self-heals) and firing a weakness alert if today's auction is weak. Used by the "Run Now" button on the `/treasury-auctions` tools page; shares the same job id (`macro_auction_job_am`) as the scheduled AM check, so it updates the same Master APScheduler Matrix row.
 
 **Auth:** Required (session cookie + CSRF token).
 

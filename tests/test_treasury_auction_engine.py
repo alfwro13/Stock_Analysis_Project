@@ -5,30 +5,73 @@ Covers:
   • _safe_float / _pct / _tail_bp — numeric helpers
   • is_weak — alert threshold logic (both signals, each alone, neither)
   • _get_baseline — rolling 6-auction mean from real SQLite rows
+  • _maturity_label / _record_tail_bp — pooling of reopenings, TIPS/FRN series, bill discount-rate tails
+  • fetch_auctions / _window_start — API request shape and catch-up window
   • check_auction_results — DB write + no-op when API returns nothing
-  • check_auction_results — alert fires on weak bid-to-cover
+  • check_auction_results — unresulted auctions skipped, placeholder rows filled in
+  • check_auction_results — alert fires on weak bid-to-cover, silent for older auctions
   • check_auction_results — alert dedup (alert_fired flag prevents re-alert)
+  • migrate_db — empty placeholder rows trigger a rebuild of the table
 """
 
 import sys
-from datetime import datetime, timezone
+from datetime import date, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
+import db_schema
 from treasury_auction_engine import (
     _safe_float,
     _pct,
     _tail_bp,
+    _maturity_label,
+    _record_tail_bp,
+    _window_start,
+    fetch_auctions,
     is_weak,
     format_weakness_message,
     _get_baseline,
     check_auction_results,
 )
+
+
+def _api_row(**overrides):
+    """One auctions_query record shaped like the live API: every value a string, 'null' for missing."""
+    row = {
+        "cusip": "912810TU0",
+        "security_type": "Note",
+        "security_term": "10-Year",
+        "original_security_term": "10-Year",
+        "floating_rate": "No",
+        "inflation_index_security": "No",
+        "auction_date": "2026-06-21",
+        "high_yield": "4.52",
+        "avg_med_yield": "4.50",
+        "high_discnt_rate": "null",
+        "avg_med_discnt_rate": "null",
+        "bid_to_cover_ratio": "2.65",
+        "direct_bidder_accepted": "10000000",
+        "indirect_bidder_accepted": "25000000",
+        "primary_dealer_accepted": "4000000",
+        "comp_accepted": "39000000",
+        "offering_amt": "39000000",
+    }
+    row.update(overrides)
+    return row
+
+
+def _clear_table():
+    conn = db.get_connection()
+    try:
+        conn.execute("DELETE FROM treasury_auction_results")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ── Numeric helpers ──────────────────────────────────────────────────────────
@@ -220,114 +263,243 @@ class TestGetBaseline:
             conn.close()
 
 
-# ── Full pipeline ─────────────────────────────────────────────────────────────
+# ── Labels and tails ─────────────────────────────────────────────────────────
 
-class TestCheckAuctionResults:
-    _SAMPLE_API_ROW = {
-        "cusip": "912810TU0",
-        "security_term": "10-Year",
-        "security_type": "Note",
-        "auction_date": "2026-06-21",
-        "high_yield": "4.52",
-        "avg_med_yield": "4.50",
-        "bid_to_cover_ratio": "2.65",
-        "direct_bidder_accepted": "10000000",
-        "indirect_bidder_accepted": "25000000",
-        "primary_dealer_accepted": "4000000",
-        "comp_accepted": "39000000",
-        "offering_amt": "39000000",
-    }
+class TestMaturityLabel:
+    def test_clean_note_term(self):
+        assert _maturity_label(_api_row()) == "10Y"
 
+    def test_reopened_note_pools_into_original_term(self):
+        rec = _api_row(security_term="9-Year 10-Month", original_security_term="10-Year")
+        assert _maturity_label(rec) == "10Y"
+
+    def test_reopened_bond_pools_into_original_term(self):
+        rec = _api_row(security_type="Bond", security_term="29-Year 10-Month", original_security_term="30-Year")
+        assert _maturity_label(rec) == "30Y"
+
+    def test_tips_is_its_own_series(self):
+        rec = _api_row(security_term="9-Year 10-Month", original_security_term="10-Year", inflation_index_security="Yes")
+        assert _maturity_label(rec) == "10Y TIPS"
+
+    def test_frn_is_its_own_series(self):
+        rec = _api_row(security_term="1-Year 10-Month", original_security_term="2-Year", floating_rate="Yes")
+        assert _maturity_label(rec) == "2Y FRN"
+
+    def test_reopened_bill_keeps_its_own_term_not_the_original_issue(self):
+        rec = _api_row(security_type="Bill", security_term="4-Week", original_security_term="17-Week")
+        assert _maturity_label(rec) == "4W"
+
+    def test_six_week_bill_uses_short_label(self):
+        rec = _api_row(security_type="Bill", security_term="6-Week", original_security_term="26-Week")
+        assert _maturity_label(rec) == "6W"
+
+    def test_null_original_term_falls_back_to_security_term(self):
+        rec = _api_row(original_security_term="null")
+        assert _maturity_label(rec) == "10Y"
+
+
+class TestRecordTailBp:
+    def test_note_uses_yields(self):
+        assert _record_tail_bp(_api_row()) == pytest.approx(2.0)
+
+    def test_bill_uses_discount_rates(self):
+        rec = _api_row(security_type="Bill", high_yield="null", avg_med_yield="null",
+                       high_discnt_rate="3.98", avg_med_discnt_rate="3.91")
+        assert _record_tail_bp(rec) == pytest.approx(7.0)
+
+    def test_frn_without_yield_has_no_tail(self):
+        rec = _api_row(floating_rate="Yes", high_yield="null", avg_med_yield="null")
+        assert _record_tail_bp(rec) is None
+
+
+# ── API request and catch-up window ──────────────────────────────────────────
+
+class TestFetchAuctions:
+    def test_sends_singular_filter_with_date_range_and_ascending_sort(self):
+        response = MagicMock()
+        response.json.return_value = {"data": [_api_row()]}
+        with patch("treasury_auction_engine.requests.get", return_value=response) as mock_get:
+            rows = fetch_auctions("2026-06-18", "2026-06-21")
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["filter"] == "auction_date:gte:2026-06-18,auction_date:lte:2026-06-21"
+        assert "filters" not in params
+        assert params["sort"] == "auction_date"
+        assert rows == [_api_row()]
+
+    def test_request_failure_returns_empty_list(self):
+        import requests as _requests
+        with patch("treasury_auction_engine.requests.get", side_effect=_requests.ConnectionError("down")):
+            assert fetch_auctions("2026-06-18", "2026-06-21") == []
+
+
+class TestWindowStart:
     def setup_method(self):
-        conn = db.get_connection()
-        conn.execute("DELETE FROM treasury_auction_results WHERE cusip = '912810TU0'")
-        conn.commit()
-        conn.close()
+        _clear_table()
 
-    def test_no_auctions_returns_zero(self):
-        with patch("treasury_auction_engine.fetch_todays_auctions", return_value=[]):
-            result = check_auction_results()
-        assert result == 0
+    def teardown_method(self):
+        _clear_table()
 
-    def test_new_auction_stored_in_db(self):
-        with (
-            patch("treasury_auction_engine.fetch_todays_auctions", return_value=[self._SAMPLE_API_ROW]),
-            patch("treasury_auction_engine.notify") as mock_notify,
-        ):
-            result = check_auction_results()
-
-        assert result == 1
-        conn = db.get_connection()
-        try:
-            row = conn.execute(
-                "SELECT bid_to_cover, tail_bp, maturity_label FROM treasury_auction_results WHERE cusip = '912810TU0'"
-            ).fetchone()
-            assert row is not None
-            assert row[0] == pytest.approx(2.65)
-            assert row[1] == pytest.approx(2.0)
-            assert row[2] == "10Y"
-        finally:
-            conn.close()
-
-    def test_duplicate_auction_not_double_stored(self):
-        with (
-            patch("treasury_auction_engine.fetch_todays_auctions", return_value=[self._SAMPLE_API_ROW]),
-            patch("treasury_auction_engine.notify"),
-        ):
-            check_auction_results()
-            result = check_auction_results()
-
-        assert result == 0
-
-    def test_weak_btc_fires_alert(self):
-        conn = db.get_connection()
-        try:
-            for i, (c, d, btc) in enumerate([
-                ("PRIOR10Y1", "2026-06-01", 2.7),
-                ("PRIOR10Y2", "2026-05-01", 2.8),
-                ("PRIOR10Y3", "2026-04-01", 2.75),
-                ("PRIOR10Y4", "2026-03-01", 2.65),
-                ("PRIOR10Y5", "2026-02-01", 2.72),
-                ("PRIOR10Y6", "2026-01-01", 2.70),
-            ]):
-                conn.execute(
-                    """INSERT OR IGNORE INTO treasury_auction_results
-                       (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
-                        direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
-                       VALUES (?, '10Y', ?, 4.50, ?, 1.0, NULL, NULL, NULL, NULL, 0)""",
-                    (c, d, btc),
-                )
-            conn.commit()
-        finally:
-            conn.close()
-
-        weak_row = dict(self._SAMPLE_API_ROW)
-        weak_row["bid_to_cover_ratio"] = "2.3"
-
-        with (
-            patch("treasury_auction_engine.fetch_todays_auctions", return_value=[weak_row]),
-            patch("treasury_auction_engine.notify") as mock_notify,
-        ):
-            check_auction_results()
-
-        mock_notify.assert_called_once()
-        call_kwargs = mock_notify.call_args
-        assert call_kwargs[0][0] == "treasury_auction_alert"
-        assert "bid-to-cover" in call_kwargs[0][2]
-
+    def _seed(self, auction_date):
         conn = db.get_connection()
         try:
             conn.execute(
-                "DELETE FROM treasury_auction_results WHERE cusip LIKE 'PRIOR10Y%'"
+                """INSERT INTO treasury_auction_results
+                   (cusip, maturity_label, auction_date, bid_to_cover, alert_fired)
+                   VALUES ('TAEWIN', '10Y', ?, 2.6, 0)""",
+                (auction_date,),
             )
             conn.commit()
         finally:
             conn.close()
 
+    def test_empty_table_looks_back_the_maximum(self):
+        assert _window_start(date(2026, 10, 12)) == (date(2026, 10, 12) - timedelta(days=180)).isoformat()
+
+    def test_resumes_a_few_days_before_the_newest_stored_auction(self):
+        self._seed("2026-07-02")
+        assert _window_start(date(2026, 10, 12)) == "2026-06-29"
+
+    def test_never_looks_back_further_than_the_maximum(self):
+        self._seed("2020-01-01")
+        assert _window_start(date(2026, 10, 12)) == (date(2026, 10, 12) - timedelta(days=180)).isoformat()
+
+
+# ── Full pipeline ─────────────────────────────────────────────────────────────
+
+class TestCheckAuctionResults:
+    _TODAY = date(2026, 6, 21)
+
+    def setup_method(self):
+        _clear_table()
+
+    def teardown_method(self):
+        _clear_table()
+
+    def _run(self, rows, today=None):
+        with (
+            patch("treasury_auction_engine.fetch_auctions", return_value=rows) as mock_fetch,
+            patch("treasury_auction_engine.time_engine.exchange_local_date", return_value=today or self._TODAY),
+            patch("treasury_auction_engine.notify") as mock_notify,
+        ):
+            result = check_auction_results()
+        return result, mock_notify, mock_fetch
+
+    def _seed_priors(self, label="10Y", btc=2.7):
+        conn = db.get_connection()
+        try:
+            for i in range(6):
+                conn.execute(
+                    """INSERT INTO treasury_auction_results
+                       (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp, alert_fired)
+                       VALUES (?, ?, ?, 4.50, ?, 1.0, 0)""",
+                    (f"TAEPRIOR{i}", label, f"2026-05-0{i + 1}", btc),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _fetch_row(self, cusip="912810TU0"):
+        conn = db.get_connection()
+        try:
+            return conn.execute(
+                "SELECT * FROM treasury_auction_results WHERE cusip = ?", (cusip,)
+            ).fetchone()
+        finally:
+            conn.close()
+
+    def test_no_auctions_returns_zero(self):
+        result, _, _ = self._run([])
+        assert result == 0
+
+    def test_new_auction_stored_in_db(self):
+        result, _, _ = self._run([_api_row()])
+
+        assert result == 1
+        row = self._fetch_row()
+        assert row["bid_to_cover"] == pytest.approx(2.65)
+        assert row["tail_bp"] == pytest.approx(2.0)
+        assert row["maturity_label"] == "10Y"
+
+    def test_fetches_from_empty_table_window_through_today(self):
+        _, _, mock_fetch = self._run([])
+        start = (self._TODAY - timedelta(days=180)).isoformat()
+        mock_fetch.assert_called_once_with(start, "2026-06-21")
+
+    def test_duplicate_auction_not_double_stored(self):
+        self._run([_api_row()])
+        result, _, _ = self._run([_api_row()])
+
+        assert result == 0
+
+    def test_announced_auction_without_results_is_not_stored(self):
+        rec = _api_row(cusip="TAEUPCOMING", auction_date="2026-06-22",
+                       bid_to_cover_ratio="null", high_yield="null", avg_med_yield="null")
+        result, _, _ = self._run([rec])
+
+        assert result == 0
+        assert self._fetch_row("TAEUPCOMING") is None
+
+    def test_existing_row_without_results_is_filled_in(self):
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                """INSERT INTO treasury_auction_results
+                   (cusip, maturity_label, auction_date, offering_amt, alert_fired)
+                   VALUES ('912810TU0', '9-Year 10-Month', '2026-06-21', 39000000, 0)"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result, _, _ = self._run([_api_row(security_term="9-Year 10-Month")])
+
+        assert result == 0
+        row = self._fetch_row()
+        assert row["bid_to_cover"] == pytest.approx(2.65)
+        assert row["maturity_label"] == "10Y"
+
+    def test_bill_tail_and_label_stored(self):
+        rec = _api_row(cusip="TAEBILL", security_type="Bill", security_term="4-Week",
+                       original_security_term="17-Week", high_yield="null", avg_med_yield="null",
+                       high_discnt_rate="3.98", avg_med_discnt_rate="3.91", bid_to_cover_ratio="2.40")
+        self._run([rec])
+
+        row = self._fetch_row("TAEBILL")
+        assert row["maturity_label"] == "4W"
+        assert row["tail_bp"] == pytest.approx(7.0)
+
+    def test_weak_btc_today_fires_alert(self):
+        self._seed_priors()
+        _, mock_notify, _ = self._run([_api_row(bid_to_cover_ratio="2.3")])
+
+        mock_notify.assert_called_once()
+        args = mock_notify.call_args[0]
+        assert args[0] == "treasury_auction_alert"
+        assert "bid-to-cover" in args[2]
+        assert self._fetch_row()["alert_fired"] == 1
+
+    def test_weak_btc_on_older_auction_is_flagged_silently(self):
+        self._seed_priors()
+        _, mock_notify, _ = self._run([_api_row(bid_to_cover_ratio="2.3", auction_date="2026-06-18")])
+
+        mock_notify.assert_not_called()
+        assert self._fetch_row()["alert_fired"] == 1
+
+    def test_catch_up_processes_oldest_first_so_baselines_include_earlier_rows(self):
+        rows = [
+            _api_row(cusip="TAEC3", auction_date="2026-06-17", bid_to_cover_ratio="2.2"),
+            _api_row(cusip="TAEC1", auction_date="2026-06-15", bid_to_cover_ratio="2.7"),
+            _api_row(cusip="TAEC2", auction_date="2026-06-16", bid_to_cover_ratio="2.7"),
+        ]
+        self._run(rows)
+
+        assert self._fetch_row("TAEC3")["alert_fired"] == 1
+        assert self._fetch_row("TAEC1")["alert_fired"] == 0
+
     def test_alert_dedup_does_not_refire(self):
         conn = db.get_connection()
         try:
-            conn.execute("DELETE FROM treasury_auction_results WHERE cusip = '912810TU0'")
             conn.execute(
                 """INSERT INTO treasury_auction_results
                    (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
@@ -338,17 +510,52 @@ class TestCheckAuctionResults:
             conn.commit()
         finally:
             conn.close()
+        self._seed_priors()
 
-        with (
-            patch("treasury_auction_engine.fetch_todays_auctions", return_value=[self._SAMPLE_API_ROW]),
-            patch("treasury_auction_engine.notify") as mock_notify,
-        ):
-            check_auction_results()
+        _, mock_notify, _ = self._run([_api_row(bid_to_cover_ratio="2.3")])
 
         mock_notify.assert_not_called()
+        assert self._fetch_row()["alert_fired"] == 1
+
+
+# ── Migration ────────────────────────────────────────────────────────────────
+
+class TestPlaceholderRowMigration:
+    def setup_method(self):
+        _clear_table()
 
     def teardown_method(self):
+        _clear_table()
+
+    def _seed(self, cusip, bid_to_cover):
         conn = db.get_connection()
-        conn.execute("DELETE FROM treasury_auction_results WHERE cusip = '912810TU0'")
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute(
+                """INSERT INTO treasury_auction_results
+                   (cusip, maturity_label, auction_date, bid_to_cover, alert_fired)
+                   VALUES (?, '10Y', '2026-06-21', ?, 0)""",
+                (cusip, bid_to_cover),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _migrate_and_count(self):
+        conn = db.get_connection()
+        try:
+            db_schema.migrate_db(conn, conn.cursor())
+            conn.commit()
+            return conn.execute("SELECT COUNT(*) FROM treasury_auction_results").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_placeholder_rows_trigger_a_full_rebuild(self):
+        self._seed("TAEMIG1", None)
+        self._seed("TAEMIG2", 2.6)
+
+        assert self._migrate_and_count() == 0
+
+    def test_table_without_placeholders_is_left_alone(self):
+        self._seed("TAEMIG3", 2.6)
+
+        assert self._migrate_and_count() == 1

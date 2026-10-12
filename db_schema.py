@@ -2678,6 +2678,18 @@ def migrate_db(conn, cursor) -> None:
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to copy head_shoulders_history: %s", e)
 
+    # The old fetch ignored its date filter and stored announced auctions with NULL results under
+    # un-pooled maturity labels. The table is a pure copy of a public API, so the next Sovereign
+    # Debt Auction Monitor run rebuilds it from the catch-up window.
+    try:
+        cursor.execute("SELECT COUNT(*) FROM treasury_auction_results WHERE bid_to_cover IS NULL")
+        if cursor.fetchone()[0]:
+            logger.info("[MIGRATION] Clearing treasury_auction_results holding empty placeholder rows...")
+            cursor.execute("DELETE FROM treasury_auction_results")
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to clear treasury_auction_results: %s", e)
+
     try:
         from db_helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)

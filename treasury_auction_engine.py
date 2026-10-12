@@ -1,9 +1,10 @@
 # GUI name: "Sovereign Debt Auction Monitor". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 import logging
 import requests
-from datetime import datetime, timezone
+from datetime import date, timedelta
 from typing import Optional
 
+import time_engine
 from database import get_connection
 from notification_engine import notify
 
@@ -11,14 +12,15 @@ logger = logging.getLogger(__name__)
 
 _API_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query"
 _FIELDS = (
-    "cusip,security_term,security_type,auction_date,high_yield,avg_med_yield,"
+    "cusip,security_type,security_term,original_security_term,floating_rate,inflation_index_security,"
+    "auction_date,high_yield,avg_med_yield,high_discnt_rate,avg_med_discnt_rate,"
     "bid_to_cover_ratio,direct_bidder_accepted,indirect_bidder_accepted,"
     "primary_dealer_accepted,comp_accepted,offering_amt"
 )
 
 _TERM_MAP: dict[str, str] = {
     "4-Week":  "4W",  "8-Week":   "8W",  "13-Week": "3M",  "17-Week": "4M",
-    "26-Week": "6M",  "52-Week":  "1Y",  "2-Year":  "2Y",  "3-Year":  "3Y",
+    "26-Week": "6M",  "52-Week":  "1Y",  "6-Week":  "6W",  "2-Year":  "2Y",  "3-Year":  "3Y",
     "5-Year":  "5Y",  "7-Year":   "7Y",  "10-Year": "10Y", "20-Year": "20Y",
     "30-Year": "30Y",
 }
@@ -26,9 +28,25 @@ _TERM_MAP: dict[str, str] = {
 _WEAK_BTC_THRESHOLD = 0.2
 _WEAK_TAIL_THRESHOLD = 2.0
 
+_AUCTION_EXCHANGE = "NYSE"
+_MAX_LOOKBACK_DAYS = 180
+_OVERLAP_DAYS = 3
 
-def _maturity_label(security_term: str) -> str:
-    return _TERM_MAP.get(security_term, security_term)
+
+def _clean(val) -> str:
+    return "" if val in (None, "null") else str(val)
+
+
+def _maturity_label(rec: dict) -> str:
+    term = _clean(rec.get("security_term"))
+    if rec.get("security_type") != "Bill":
+        term = _clean(rec.get("original_security_term")) or term
+    label = _TERM_MAP.get(term, term)
+    if rec.get("floating_rate") == "Yes":
+        return f"{label} FRN"
+    if rec.get("inflation_index_security") == "Yes":
+        return f"{label} TIPS"
+    return label
 
 
 def _safe_float(val) -> Optional[float]:
@@ -53,13 +71,32 @@ def _tail_bp(high_yield: Optional[float], median_yield: Optional[float]) -> Opti
     return round((high_yield - median_yield) * 100.0, 2)
 
 
-def fetch_todays_auctions() -> list[dict]:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def _record_tail_bp(rec: dict) -> Optional[float]:
+    if rec.get("security_type") == "Bill":
+        return _tail_bp(_safe_float(rec.get("high_discnt_rate")), _safe_float(rec.get("avg_med_discnt_rate")))
+    return _tail_bp(_safe_float(rec.get("high_yield")), _safe_float(rec.get("avg_med_yield")))
+
+
+def _window_start(today: date) -> str:
+    floor = today - timedelta(days=_MAX_LOOKBACK_DAYS)
+    conn = None
+    try:
+        conn = get_connection()
+        newest = conn.execute("SELECT MAX(auction_date) FROM treasury_auction_results").fetchone()[0]
+    finally:
+        if conn:
+            conn.close()
+    if not newest:
+        return floor.isoformat()
+    return max(floor, date.fromisoformat(newest) - timedelta(days=_OVERLAP_DAYS)).isoformat()
+
+
+def fetch_auctions(start: str, end: str) -> list[dict]:
     params = {
-        "filters": f"auction_date:eq:{today}",
+        "filter": f"auction_date:gte:{start},auction_date:lte:{end}",
         "fields": _FIELDS,
-        "sort": "-auction_date",
-        "page[size]": 25,
+        "sort": "auction_date",
+        "page[size]": 1000,
     }
     try:
         resp = requests.get(_API_BASE, params=params, timeout=15)
@@ -132,11 +169,16 @@ def format_weakness_message(
 
 
 def check_auction_results() -> int:
-    """Fetch today's Treasury auction results, persist new rows, alert on demand weakness. Returns new-row count."""
-    records = fetch_todays_auctions()
+    """Upsert every resulted auction since the newest stored one, alert on weak demand for today's. Returns new-row count."""
+    today = time_engine.exchange_local_date(_AUCTION_EXCHANGE)
+    records = [
+        r for r in fetch_auctions(_window_start(today), today.isoformat())
+        if _safe_float(r.get("bid_to_cover_ratio")) is not None
+    ]
     if not records:
-        logger.info("No Treasury auction results found for today.")
+        logger.info("No resulted Treasury auctions found in the catch-up window.")
         return 0
+    records.sort(key=lambda r: r.get("auction_date") or "")
 
     new_count = 0
     conn = None
@@ -144,56 +186,58 @@ def check_auction_results() -> int:
         conn = get_connection()
         for rec in records:
             cusip = rec.get("cusip") or ""
-            security_term = rec.get("security_term") or ""
             auction_date = rec.get("auction_date") or ""
             if not cusip or not auction_date:
                 continue
 
-            maturity = _maturity_label(security_term)
+            maturity = _maturity_label(rec)
             high_yield = _safe_float(rec.get("high_yield"))
-            median_yield = _safe_float(rec.get("avg_med_yield"))
             bid_to_cover = _safe_float(rec.get("bid_to_cover_ratio"))
-            tail = _tail_bp(high_yield, median_yield)
+            tail = _record_tail_bp(rec)
             competitive_accepted = _safe_float(rec.get("comp_accepted"))
             direct_pct = _pct(rec.get("direct_bidder_accepted"), competitive_accepted)
             indirect_pct = _pct(rec.get("indirect_bidder_accepted"), competitive_accepted)
             dealer_pct = _pct(rec.get("primary_dealer_accepted"), competitive_accepted)
             offering_amt = _safe_float(rec.get("offering_amt"))
 
-            cursor = conn.cursor()
-            cursor.execute(
+            existing = conn.execute(
+                "SELECT alert_fired FROM treasury_auction_results WHERE cusip = ? AND auction_date = ?",
+                (cusip, auction_date),
+            ).fetchone()
+            conn.execute(
                 """INSERT INTO treasury_auction_results
                    (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
                     direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                   ON CONFLICT(cusip, auction_date) DO NOTHING""",
+                   ON CONFLICT(cusip, auction_date) DO UPDATE SET
+                       maturity_label = excluded.maturity_label, high_yield = excluded.high_yield,
+                       bid_to_cover = excluded.bid_to_cover, tail_bp = excluded.tail_bp,
+                       direct_pct = excluded.direct_pct, indirect_pct = excluded.indirect_pct,
+                       dealer_pct = excluded.dealer_pct, offering_amt = excluded.offering_amt""",
                 (cusip, maturity, auction_date, high_yield, bid_to_cover, tail,
                  direct_pct, indirect_pct, dealer_pct, offering_amt),
             )
-            if cursor.rowcount > 0:
-                new_count += 1
             conn.commit()
-
-            row = conn.execute(
-                "SELECT alert_fired FROM treasury_auction_results WHERE cusip = ? AND auction_date = ?",
-                (cusip, auction_date),
-            ).fetchone()
-            if row and row[0]:
+            if existing is None:
+                new_count += 1
+            elif existing[0]:
                 continue
 
             mean_btc, mean_tail = _get_baseline(conn, maturity, cusip, auction_date)
             weak, weak_btc, weak_tail = is_weak(bid_to_cover, mean_btc, tail, mean_tail)
-            if weak:
+            if not weak:
+                continue
+            if auction_date == today.isoformat():
                 msg = format_weakness_message(
                     maturity, auction_date, bid_to_cover, mean_btc, tail, mean_tail, weak_btc, weak_tail
                 )
                 notify("treasury_auction_alert", "Auction Weakness", msg, level="warning")
-                conn.execute(
-                    "UPDATE treasury_auction_results SET alert_fired = 1 WHERE cusip = ? AND auction_date = ?",
-                    (cusip, auction_date),
-                )
-                conn.commit()
                 logger.warning("Treasury auction weakness alert fired: %s", msg)
+            conn.execute(
+                "UPDATE treasury_auction_results SET alert_fired = 1 WHERE cusip = ? AND auction_date = ?",
+                (cusip, auction_date),
+            )
+            conn.commit()
 
     except Exception as e:
         logger.error("Treasury auction results check failed: %s", e)
