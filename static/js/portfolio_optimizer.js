@@ -446,17 +446,21 @@ function _applyMinHistory() {
 }
 
 function loadCandidates(accountId) {
-    document.getElementById("po-candidates-list").innerHTML = "";
+    var list = document.getElementById("po-candidates-list");
+    list.innerHTML = '<p class="text-muted small mb-0">Loading tickers…</p>';
     fetch("/api/portfolio-optimizer/candidates?account_id=" + encodeURIComponent(accountId))
         .then(function (resp) { return resp.json(); })
         .then(function (data) {
             if (data.status !== "success") {
+                list.innerHTML = '<p class="text-muted small mb-0">Could not load tickers.</p>';
                 _showWarning(data.message || "Failed to load candidate tickers.");
                 return;
             }
             _renderCandidatesList(data.candidates);
         })
-        .catch(function () {});
+        .catch(function () {
+            list.innerHTML = '<p class="text-muted small mb-0">Could not load tickers.</p>';
+        });
 }
 
 function _setActiveTile(btn, accountId) {
@@ -474,7 +478,10 @@ function loadAccounts() {
     fetch("/api/portfolio-optimizer/accounts")
         .then(function (resp) { return resp.json(); })
         .then(function (data) {
-            if (data.status !== "success" || !data.accounts || !data.accounts.length) return;
+            if (data.status !== "success" || !data.accounts || !data.accounts.length) {
+                document.getElementById("po-candidates-list").innerHTML = '<p class="text-muted small mb-0">No accounts with holdings found.</p>';
+                return;
+            }
             var bar = document.getElementById("po-accounts-bar");
             var container = document.getElementById("po-accounts-tiles");
 

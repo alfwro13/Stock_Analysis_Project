@@ -275,10 +275,11 @@ function sbSyncStrategyAvailability() {
 }
 
 function sbLoadCandidates(accountId) {
-    sbEl("sb-candidates-list").innerHTML = "";
+    sbEl("sb-candidates-list").innerHTML = '<p class="text-muted small mb-0">Loading tickers…</p>';
     sbFetchJson("/api/strategy-backtester/candidates?account_id=" + encodeURIComponent(accountId))
         .then(function (data) {
             if (data.status !== "success") {
+                sbEl("sb-candidates-list").innerHTML = '<p class="text-muted small mb-0">Could not load tickers.</p>';
                 sbShowError(data.message || "Failed to load tickers.");
                 return;
             }
@@ -286,7 +287,10 @@ function sbLoadCandidates(accountId) {
             sbState.currencies = data.currencies;
             sbRenderBasket();
         })
-        .catch(function (err) { sbShowError(err.message); });
+        .catch(function (err) {
+            sbEl("sb-candidates-list").innerHTML = '<p class="text-muted small mb-0">Could not load tickers.</p>';
+            sbShowError(err.message);
+        });
 }
 
 function sbLoadShortlists() {
@@ -310,7 +314,10 @@ function sbSetActiveTile(btn, accountId) {
 
 function sbLoadAccounts() {
     sbFetchJson("/api/strategy-backtester/accounts").then(function (data) {
-        if (data.status !== "success" || !data.accounts || !data.accounts.length) return;
+        if (data.status !== "success" || !data.accounts || !data.accounts.length) {
+            sbEl("sb-candidates-list").innerHTML = '<p class="text-muted small mb-0">No accounts with holdings found.</p>';
+            return;
+        }
         var container = sbEl("sb-accounts-tiles");
         var tiles = data.accounts.map(function (acc) { return { id: acc.id, name: acc.name }; });
         tiles.push({ id: "all", name: "Global (All Accounts)", isTotal: true });
