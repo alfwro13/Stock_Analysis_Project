@@ -20,6 +20,10 @@ backups/
 # Scratch mountpoint for the Backup & Recovery feature's NFS Share location
 .nfs_backup_mount/
 
+# Work folders of the Backup & Recovery database snapshot and restore steps
+.backup_*/
+.restore_*/
+
 # Ignore Ghostfolio ha integration files - here only for the migration
 ghostfolio_ha_integration/
 Stock_Analysis_Project_ha_integration/

@@ -25,6 +25,7 @@ _NFS_SERVER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")
 _NFS_PATH_RE = re.compile(r"/[A-Za-z0-9._\-/]*")
 _DB_MEMBER = "data/analysis.db"
 _DB_SIDECARS = ("-wal", "-shm")
+_DB_FILE_NAMES = {"analysis.db", *("analysis.db" + suffix for suffix in _DB_SIDECARS)}
 _RESTORE_ROOTS = ("data", "models")
 _HISTORY_COLUMNS = (
     "started_at", "finished_at", "trigger_type", "location_type", "destination",
@@ -37,9 +38,21 @@ class RestoreRefused(ValueError):
 
 
 def _exclude_db_filter(tarinfo: tarfile.TarInfo):
-    if Path(tarinfo.name).name == "analysis.db":
+    if Path(tarinfo.name).name in _DB_FILE_NAMES:
         return None
     return tarinfo
+
+
+def _snapshot_database(destination: Path) -> None:
+    source = target = None
+    try:
+        source = sqlite3.connect(DB_PATH, timeout=20.0)
+        target = sqlite3.connect(destination)
+        source.backup(target)
+    finally:
+        for conn in (target, source):
+            if conn:
+                conn.close()
 
 
 def check_local_backup_path(raw: Optional[str]) -> Path:
@@ -190,13 +203,16 @@ def run_backup(trigger_type: str = "scheduled") -> dict:
     archive_path = backup_dir / filename
 
     try:
-        with tarfile.open(archive_path, "w:gz") as tar:
+        with tempfile.TemporaryDirectory(dir=BASE_DIR, prefix=".backup_") as work_dir, \
+                tarfile.open(archive_path, "w:gz") as tar:
             if "data" in components and DATA_DIR.exists():
                 tar.add(DATA_DIR, arcname="data", filter=_exclude_db_filter)
             if "models" in components and MODELS_DIR.exists():
                 tar.add(MODELS_DIR, arcname="models")
             if "database" in components and DB_PATH.exists():
-                tar.add(DB_PATH, arcname="data/analysis.db")
+                snapshot = Path(work_dir) / "analysis.db"
+                _snapshot_database(snapshot)
+                tar.add(snapshot, arcname=_DB_MEMBER)
 
         size_bytes = archive_path.stat().st_size
         sha256 = _sha256_file(archive_path)
