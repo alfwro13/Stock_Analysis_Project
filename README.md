@@ -70,7 +70,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Crash-Proof Local Storage & Maintenance** — Parquet + SQLite storage with weekly automated pruning/defrag. Maintenance also restores URTH and VWRL.L to the Watchlist for Pension benchmark history and adds a Stock Detail reminder when either ticker has no note.
 * **System Health Check Engine** — daily validation of scheduling/ML-coverage config with UI banner alerts.
 * **Workflow Monitor** — dependency flow-chart of every scheduled job with traffic-light status and conflict detection.
-* **Backup & Recovery** — scheduled or on-demand archive of DB/data/models to a local folder or NFS share, with a checksum-verified restore.
+* **Backup & Recovery** — scheduled or on-demand archive of the DB (a consistent snapshot, not a copy of the live file), data and models to a local folder or NFS share, with a checksum-verified restore.
 
 Watchlist Dashboard:
 <img width="1891" height="893" alt="watchlist_dash" src="https://github.com/user-attachments/assets/0ecfe656-45b0-46a9-bc7a-9b9ee3886536" />

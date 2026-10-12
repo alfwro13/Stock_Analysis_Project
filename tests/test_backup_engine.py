@@ -60,6 +60,20 @@ def app_tree(tmp_path, monkeypatch):
     return base
 
 
+@pytest.fixture
+def live_wal_db(app_tree):
+    """Keeps a WAL-mode writer open so a committed row lives only in analysis.db-wal, as on a running app."""
+    conn = sqlite3.connect(app_tree / "data" / "analysis.db")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        conn.execute("INSERT INTO marker VALUES ('only-in-wal')")
+        conn.commit()
+        yield conn
+    finally:
+        conn.close()
+
+
 @pytest.fixture(autouse=True)
 def _clean_backup_history():
     conn = get_connection()
@@ -281,6 +295,57 @@ class TestRunBackup:
         assert row["status"] == "success"
         assert row["trigger_type"] == "manual"
         assert row["sha256"] == _sha(app_tree / "backups" / result["filename"])
+
+    def test_database_member_is_a_snapshot_that_includes_uncheckpointed_wal_rows(self, app_tree, live_wal_db):
+        wal = app_tree / "data" / "analysis.db-wal"
+        assert wal.exists() and wal.stat().st_size > 0, "fixture must leave a committed row only in the WAL"
+
+        with patch("backup_engine.load_config", return_value=_cfg()):
+            result = backup_engine.run_backup(trigger_type="manual")
+
+        assert result["status"] == "success"
+        with tarfile.open(app_tree / "backups" / result["filename"], "r:gz") as tar:
+            names = tar.getnames()
+            extracted = app_tree / "extracted.db"
+            extracted.write_bytes(tar.extractfile("data/analysis.db").read())
+        assert not [n for n in names if n.endswith(("-wal", "-shm"))]
+        assert names.count("data/analysis.db") == 1
+
+        conn = sqlite3.connect(extracted)
+        try:
+            values = [row[0] for row in conn.execute("SELECT v FROM marker ORDER BY rowid")]
+            verdict = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            conn.close()
+        assert values == ["original", "only-in-wal"]
+        assert verdict == "ok"
+
+    def test_data_component_alone_never_archives_the_database_or_its_sidecars(self, app_tree, live_wal_db):
+        with patch("backup_engine.load_config", return_value=_cfg(INCLUDE_MODELS=False, INCLUDE_DATABASE=False)):
+            result = backup_engine.run_backup(trigger_type="manual")
+
+        assert result["status"] == "success"
+        with tarfile.open(app_tree / "backups" / result["filename"], "r:gz") as tar:
+            names = tar.getnames()
+        assert "data/historical/AAPL.parquet" in names
+        assert not [n for n in names if "analysis.db" in n]
+
+    def test_work_folder_is_removed_after_a_successful_run(self, app_tree):
+        with patch("backup_engine.load_config", return_value=_cfg()):
+            result = backup_engine.run_backup(trigger_type="manual")
+
+        assert result["status"] == "success"
+        assert list(app_tree.glob(".backup_*")) == []
+
+    def test_snapshot_failure_records_an_error_and_leaves_no_archive_or_work_folder(self, app_tree):
+        with patch("backup_engine.load_config", return_value=_cfg()), \
+                patch("backup_engine._snapshot_database", side_effect=sqlite3.OperationalError("disk I/O error")):
+            result = backup_engine.run_backup(trigger_type="manual")
+
+        assert result["status"] == "error"
+        assert "disk I/O error" in result["message"]
+        assert list((app_tree / "backups").glob("*.tar.gz")) == []
+        assert list(app_tree.glob(".backup_*")) == []
 
 
 @pytest.mark.db
