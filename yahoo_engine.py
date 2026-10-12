@@ -1,9 +1,15 @@
 import time
+import html
 import logging
+import re
 import threading
 import math
+import xml.etree.ElementTree as ET
 from collections import namedtuple
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Optional
+from urllib.parse import quote
 
 import yfinance as yf
 from curl_cffi import requests as cffi_requests
@@ -74,6 +80,63 @@ _TTLS: dict[str, int] = {
 
 _INTRADAY_GAP_ALERT_MINUTES = 30  # how long a ticker must be empty before it's "persistent", not a blip
 _HISTORY_GAP_ALERT_MINUTES = 1800  # 30h — daily bars only refresh ~once/night, so this is "missed a nightly run", not a blip
+
+
+_NEWS_RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+_NEWS_SEARCH_COUNT = 10
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _news_item(uid: str, title: str, summary: str, published: datetime, publisher: str, url: str) -> dict:
+    """Headline in the nested `content` shape every news consumer reads."""
+    return {
+        "id": uid,
+        "content": {
+            "title": title,
+            "summary": summary,
+            "pubDate": published.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "provider": {"displayName": publisher},
+            "canonicalUrl": {"url": url},
+        },
+    }
+
+
+def _clean_feed_text(text: Optional[str]) -> str:
+    return " ".join(_HTML_TAG_RE.sub(" ", html.unescape(text or "")).split())
+
+
+def _parse_rss_news(xml_text: str) -> list[dict]:
+    items = []
+    for node in ET.fromstring(xml_text).iter("item"):
+        title = _clean_feed_text(node.findtext("title"))
+        link = node.findtext("link") or ""
+        try:
+            published = parsedate_to_datetime(node.findtext("pubDate") or "").astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if not title:
+            continue
+        items.append(_news_item(
+            node.findtext("guid") or link or title, title,
+            _clean_feed_text(node.findtext("description")), published, "", link,
+        ))
+    return items
+
+
+def _search_news_items(ticker: str, raw_items: list[dict]) -> list[dict]:
+    # Search is a free-text match, so only items that list the ticker as related are about it.
+    items = []
+    for raw in raw_items:
+        title = _clean_feed_text(raw.get("title"))
+        ts = raw.get("providerPublishTime")
+        if not title or not ts or ticker not in (raw.get("relatedTickers") or []):
+            continue
+        link = raw.get("link") or ""
+        items.append(_news_item(
+            raw.get("uuid") or link or title, title, "",
+            datetime.fromtimestamp(ts, tz=timezone.utc), raw.get("publisher") or "", link,
+        ))
+    return items
 
 
 class YahooEngine:
@@ -494,7 +557,7 @@ class YahooEngine:
         return None
 
     def get_news(self, ticker: str) -> Optional[list]:
-        """Latest news items for a ticker, cached 4 h."""
+        """Latest headlines, cached 4 h. None means the fetch failed; [] is Yahoo's answer that there are none."""
         key = f"news:{ticker}"
         cached = self._get(key)
         if cached is not None:
@@ -502,15 +565,38 @@ class YahooEngine:
         try:
             with _yf_singleton_lock:
                 with yahoo_connection_boundary(f"News: {ticker}", lock=_yf_singleton_lock) as session:
-                    news = yf.Ticker(ticker, session=session).news
-            if news is not None:
-                self._set(key, news, _TTLS["news"])
-                return news
+                    news = self._fetch_rss_news(session, ticker)
+                    if news is None:
+                        news = self._fetch_search_news(session, ticker)
         except (_TransientHTTPError, _RateLimitedError, cffi_requests.RequestsError) as e:
             logger.warning("get_news failed for %s: %s", ticker, e)
+            return None
         except Exception:
             logger.error("get_news failed for %s", ticker, exc_info=True)
-        return None
+            return None
+        if news is not None:
+            self._set(key, news, _TTLS["news"])
+        return news
+
+    @staticmethod
+    def _fetch_rss_news(session, ticker: str) -> Optional[list[dict]]:
+        # yfinance's Ticker.news POSTs to /xhr/ncp, which Yahoo retired (HTTP 404) on 2026-10-02 and
+        # which yfinance reports as an empty list; the per-ticker RSS feed is its replacement.
+        response = session.get(_NEWS_RSS_URL.format(ticker=quote(ticker, safe="")), timeout=30)
+        if response.status_code != 200:
+            logger.warning("get_news RSS feed answered HTTP %s for %s", response.status_code, ticker)
+            return None
+        try:
+            return _parse_rss_news(response.text)
+        except ET.ParseError as e:
+            logger.warning("get_news RSS feed for %s was not valid XML: %s", ticker, e)
+            return None
+
+    @staticmethod
+    def _fetch_search_news(session, ticker: str) -> Optional[list[dict]]:
+        raw_items = yf.Search(ticker, news_count=_NEWS_SEARCH_COUNT, max_results=1, session=session).news
+        # After an RSS failure an empty search answer is unknown, not "no headlines".
+        return _search_news_items(ticker, raw_items) or None
 
     def get_insider_transactions(self, ticker: str) -> Optional[pd.DataFrame]:
         """SEC Form 4 insider transactions, cached 24 h."""

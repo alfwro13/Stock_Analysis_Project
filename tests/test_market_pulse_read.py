@@ -67,7 +67,7 @@ def _seed_quant_signal(ticker: str, score: float, date: str = "2026-06-07"):
     c = _conn()
     c.execute(
         "INSERT OR REPLACE INTO quant_signals "
-        "(ticker, date, sentiment_score) VALUES (?, ?, ?)",
+        "(ticker, date, sentiment_score, sentiment_scored_at) VALUES (?, ?, ?, datetime('now'))",
         (ticker, date, score),
     )
     c.commit()

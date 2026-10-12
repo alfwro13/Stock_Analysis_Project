@@ -162,7 +162,8 @@ DEFAULT_CONFIG = {
             "FREQUENCY": "mon-fri",
             "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
             "END_TIME": "21:00",     # UTC — covers NYSE close
-            "INTERVAL_HOURS": 4
+            "INTERVAL_HOURS": 4,
+            "MAX_NEWS_AGE_DAYS": 3
         },
         "CRASH_ALERTS": {
             "ENABLED": True,

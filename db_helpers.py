@@ -1,14 +1,25 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from config import load_config
-from constants import SCHEDULER_RUN_HISTORY_LIMIT
+from constants import NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_connection
 
 logger = logging.getLogger(__name__)
 
 LIVE_PRICE_OVERRIDE_MAX_GAP_SECONDS = 6 * 3600
+
+
+def sentiment_max_age_days() -> int:
+    """Age limit, in days, for a headline to count towards a sentiment score and for a stored score to be shown."""
+    cfg = load_config().get("SCHEDULING", {}).get("SENTIMENT_ENGINE", {})
+    return max(1, int(cfg.get("MAX_NEWS_AGE_DAYS", NLP_NEWS_MAX_AGE_DAYS)))
+
+
+def sentiment_fresh_since() -> str:
+    """UTC `"%Y-%m-%d %H:%M:%S"` cutoff: a `quant_signals.sentiment_scored_at` before it is too old to display."""
+    return (datetime.now(timezone.utc) - timedelta(days=sentiment_max_age_days())).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def parse_utc_epoch(stored_utc: Optional[str]) -> float:

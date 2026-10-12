@@ -182,6 +182,33 @@ class TestEdgeCases:
         assert result["price"] == 95.0
 
 
+class TestCatalystHeadlines:
+    def _report_for(self, news):
+        eng = _engine()
+        eng.spy_change_pct = None
+        df = pd.DataFrame({"Close": [100.0] * 56})
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=False), \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=None), \
+             patch("crash_engine.yahoo_engine.get_news", return_value=news):
+            return eng._generate_context_report("TEST", -4.0, df, {"company_name": "Test"})
+
+    @staticmethod
+    def _item(title, publisher):
+        from datetime import datetime, timezone
+        pub = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"id": title, "content": {"title": title, "summary": "", "pubDate": pub,
+                                          "provider": {"displayName": publisher}}}
+
+    def test_headline_without_publisher_has_no_empty_source_label(self):
+        report = self._report_for([self._item("Shares slide on guidance", "")])
+        assert "- Shares slide on guidance" in report
+        assert "*:*" not in report
+
+    def test_headline_with_publisher_keeps_source_label(self):
+        report = self._report_for([self._item("Shares slide on guidance", "Reuters")])
+        assert "- *Reuters:* Shares slide on guidance" in report
+
+
 # ── SPY market context awareness ──────────────────────────────────────────────
 
 class TestSpyMarketContext:

@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from config import load_config
 from database import get_connection, get_ticker_registry
-from db_helpers import resolve_live_price
+from db_helpers import resolve_live_price, sentiment_fresh_since
 from market_session_helpers import (
     MARKET_STATUS_PROXY,
     build_registry_exchange_map,
@@ -200,8 +200,9 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     here to what's actually displayed. A ticker falling back loses its change_pct/change_pts too,
     since those are computed relative to the same stuck snapshot and would misleadingly imply a
     day-over-day move for the fallback price that never happened."""
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "SELECT c.ticker, c.name, c.price, c.change_pts, c.change_pct, c.is_positive, c.last_updated, "
@@ -214,7 +215,8 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
         logger.error("[MARKET PULSE] Failed to read pulse cache: %s", e)
         return {}
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     config_data = load_config()
     refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
@@ -300,12 +302,13 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             requested_assets.append(t)
     all_tickers: List[str] = list(pulse_index_tickers.keys()) + requested_assets
     
-    conn = get_connection()
+    conn = None
     rows: List[Any] = []
     sentiment_scores: Dict[str, float] = {}
     equity_currency_map: Dict[str, str] = {}
     fallback_price_map: Dict[str, Any] = {}
     try:
+        conn = get_connection()
         cursor = conn.cursor()
 
         if all_tickers:
@@ -323,13 +326,16 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 FROM quant_signals
                 WHERE ticker IN ({placeholders})
                 AND sentiment_score IS NOT NULL
+                AND sentiment_scored_at >= ?
                 AND date = (
                     SELECT MAX(date) FROM quant_signals qs
                     WHERE qs.ticker = quant_signals.ticker
                         AND qs.sentiment_score IS NOT NULL
+                        AND qs.sentiment_scored_at >= ?
                 )
             """
-            cursor.execute(query, all_tickers)
+            fresh_since = sentiment_fresh_since()
+            cursor.execute(query, [*all_tickers, fresh_since, fresh_since])
             sentiment_rows = cursor.fetchall()
 
             for s_row in sentiment_rows:
@@ -348,7 +354,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
         logger.error("[MARKET PULSE] Failed to read pulse from DB: %s", e)
         return {"indexes": [], "assets": []}
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
     current_time: float = time.time()

@@ -129,6 +129,7 @@ class ScheduleItemConfig(BaseModel):
     DAYS_TO_KEEP_FILES: Optional[int] = None
     MAX_PER_TICKER: Optional[int] = None
     MAX_AGE_DAYS: Optional[int] = None
+    MAX_NEWS_AGE_DAYS: Optional[int] = None
     PRE_US_OPEN_TIME: Optional[str] = None
     POST_US_CLOSE_TIME: Optional[str] = None
     AM_TIME: Optional[str] = None

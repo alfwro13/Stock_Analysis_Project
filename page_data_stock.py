@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from database import get_connection
+from db_helpers import sentiment_fresh_since
 from utils import time_request_call
 from page_helpers import compute_badge_tags, get_pattern_tags_by_ticker
 
@@ -175,7 +176,7 @@ def load_stock_row(ticker):
                     WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
                     ORDER BY date DESC LIMIT 1) AS cvar_95,
                    (SELECT sentiment_score FROM quant_signals
-                    WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                    WHERE ticker = s.ticker AND sentiment_score IS NOT NULL AND sentiment_scored_at >= ?
                     ORDER BY date DESC LIMIT 1) AS sentiment_score,
                    q.atr_pct, q.volume, q.volume_surge, q.bullish_cross,
                    q.macd, q.macd_signal, q.macd_hist,
@@ -208,7 +209,7 @@ def load_stock_row(ticker):
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             WHERE s.ticker = ?
-        ''', (ticker,))
+        ''', (sentiment_fresh_since(), ticker))
         stock_data = cursor.fetchone()
 
         if stock_data:

@@ -70,7 +70,7 @@ PENSION_BENCHMARK_WATCHLIST_NOTE = (
 SCHEDULER_RUN_HISTORY_LIMIT = 20  # runs kept per job in scheduler_run_history; avg_duration_sec is the mean of the successful ones
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.157"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.158"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert
@@ -78,6 +78,8 @@ NLP_TEXT_TRUNCATE_CHARS    = 5000  # perf guard only — tokeniser truncation=Tr
 NLP_NEWS_FETCH_LIMIT       = 15    # headlines scored per ticker in the routine scan
 NLP_CB_NEWS_FETCH_LIMIT    = 20    # headlines scored for central bank NLP alerts
 NLP_CB_TONE_THRESHOLD      = 0.15  # |score| above which tone is hawkish/dovish vs neutral
+NLP_NEWS_MAX_AGE_DAYS      = 3     # default age limit for a headline to count; SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS overrides
+NLP_SENTIMENT_MIN_COVERAGE = 0.5   # a scan scoring a smaller share of its tickers raises the degraded-scan alert
 
 # ── Sentiment chart rendering ─────────────────────────────────────────────────
 SENTIMENT_CHART_FIGSIZE    = (12, 6)  # matplotlib figure size for Nextcloud alert chart
