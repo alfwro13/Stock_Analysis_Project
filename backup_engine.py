@@ -432,8 +432,8 @@ def restore_backup(filename: str, trust_unhashed: bool = False) -> dict:
     cfg = load_config().get("SCHEDULING", {}).get("BACKUP", {})
     try:
         backup_dir = _resolve_backup_dir(cfg)
-        archive_path = backup_dir / filename
-        if archive_path.is_symlink() or not archive_path.is_file():
+        archive_path = next((p for p in _list_archives(backup_dir) if p.name == filename), None)
+        if archive_path is None:
             raise FileNotFoundError(f"Backup file not found: {filename}")
 
         with tempfile.TemporaryDirectory(dir=BASE_DIR, prefix=".restore_") as work_dir:
