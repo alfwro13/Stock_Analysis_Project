@@ -6,7 +6,7 @@ import pandas as pd
 import time_engine
 from config import HISTORICAL_DIR, INTRADAY_DIR
 from database import get_connection
-from utils import measure_request_stage
+from utils import measure_request_stage, safe_ticker_filename
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -120,8 +120,11 @@ def fx_breakdown_for(ticker, stock_data, portfolio_math):
 
 def _macro_panel(ticker, currency):
     price_action = None
+    safe_ticker = safe_ticker_filename(ticker)
     try:
-        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
+        if not safe_ticker:
+            raise FileNotFoundError
+        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{safe_ticker}.parquet")
 
         baseline_file = "FTSE_BASELINE.parquet" if ticker.endswith('.L') or currency in ['GBp', 'GBP'] else "SP500_BASELINE.parquet"
         try:
@@ -150,16 +153,20 @@ def _macro_panel(ticker, currency):
         df_macro = pd.DataFrame()
         macro_html = "<div class='chart-ph chart-ph--lg'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No historical data yet</span><span class='chart-ph__hint'>Press <strong>Refresh</strong> above to fetch price history for this asset.</span></div>"
     except Exception as e:
+        logger.warning("macro chart failed for %s: %s", ticker, e)
         df_macro = pd.DataFrame()
-        macro_html = f"<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>{type(e).__name__}: {e}</span></div>"
+        macro_html = "<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>See the server log for details.</span></div>"
     return df_macro, macro_html, price_action
 
 
 def _intraday_panel(ticker, currency, df_macro, price_action):
     intraday_revision = intraday_chart_revision(ticker, currency)
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
+    safe_ticker = safe_ticker_filename(ticker)
     try:
-        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+        if not safe_ticker:
+            raise FileNotFoundError
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{safe_ticker}_intraday.parquet")
         if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 2:
             curr_pseudo = pd.Series({
                 'Open': df_intraday['Open'].iloc[0],

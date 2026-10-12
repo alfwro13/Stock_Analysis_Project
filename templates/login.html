@@ -45,9 +45,7 @@
     const form = document.getElementById('loginForm');
     const btn  = document.getElementById('loginBtn');
     const err  = document.getElementById('loginError');
-    const params = new URLSearchParams(window.location.search);
-    const rawNext = params.get('next') || '/';
-    const nextUrl = (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) ? rawNext : '/';
+    const nextUrl = {{ next_url | tojson }};
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();

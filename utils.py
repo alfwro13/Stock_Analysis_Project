@@ -34,7 +34,8 @@ def time_request_call(stage_name: str, function, *args, **kwargs):
         return function(*args, **kwargs)
 
 
-_SAFE_TICKER_PATH_RE = re.compile(r"^[A-Za-z0-9^.=_\-]+$")
+_SAFE_TICKER_PATH_RE = re.compile(r"[A-Za-z0-9^.=_\-]+")
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 MERMAID_VERSION = "10.9.1"
 MERMAID_URL = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
@@ -176,9 +177,18 @@ def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
     must pass through, since a ticker can originate from user-typed input (e.g. an account
     transaction) rather than only the trusted market universe."""
     ticker = str(ticker) if ticker is not None else ""
-    if not ticker or not _SAFE_TICKER_PATH_RE.match(ticker):
+    if not ticker or not _SAFE_TICKER_PATH_RE.fullmatch(ticker):
         return None
     return ticker
+
+
+def safe_local_path(value: Optional[str]) -> Optional[str]:
+    """Same-origin relative path or None — browsers drop tab/CR/LF before parsing a URL, so '/<TAB>/host' must not pass as local."""
+    if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:
+        return None
+    if _CONTROL_CHARS_RE.search(value):
+        return None
+    return value
 
 
 def write_parquet_atomic(df: Any, path: Any) -> None:
