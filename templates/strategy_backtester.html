@@ -18,6 +18,8 @@
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
 
+{% include "partials/_backtest_caveats.html" %}
+
 <div class="row g-3">
     <div class="col-12 col-lg-4">
         <div class="card card-bg mb-3">
@@ -57,6 +59,10 @@
         <div class="card card-bg mb-3">
             <div class="card-body">
                 <h6 class="card-title mb-2">2. Strategies</h6>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="sb-show-explanations">
+                    <label class="form-check-label small" for="sb-show-explanations">Show explanations</label>
+                </div>
                 <div id="sb-strategies" class="mb-1"></div>
             </div>
         </div>
@@ -205,6 +211,7 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <h6 class="card-title mb-0">Strategy Detail</h6>
                         <select class="form-select form-select-sm w-auto" id="sb-detail-strategy"></select>
+                        <a class="btn btn-outline-secondary btn-sm d-none" id="sb-open-optimizer" href="/portfolio-optimizer">See this mix in the Portfolio Optimizer</a>
                     </div>
                     <p id="sb-detail-help" class="text-muted small mb-2"></p>
 

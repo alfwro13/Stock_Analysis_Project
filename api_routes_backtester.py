@@ -73,7 +73,7 @@ def api_backtester_meta(request: Request):
     return JSONResponse(content={
         "status": "success",
         "strategies": [
-            {"id": s.id, "label": s.label, "description": s.description, "schedule": s.schedule,
+            {"id": s.id, "label": s.label, "description": s.description, "steps": list(s.steps), "schedule": s.schedule,
              "needs_current_weights": s.needs_current_weights}
             for s in STRATEGIES.values()
         ],

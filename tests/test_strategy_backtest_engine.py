@@ -297,3 +297,66 @@ class TestBenchmark:
         bench_real = pd.Series(True, index=prices.index)
         result = run_backtest(prices, real, bench, bench_real, ["buy_hold_ew"], CONFIG)
         assert result["benchmark"]["equity"].iloc[-1] == pytest.approx(1200.0)
+
+
+class TestStrategyExplanations:
+    def test_every_strategy_has_steps_using_only_known_placeholders(self):
+        from string import Formatter
+        from strategy_backtest_strategies import EXPLANATION_PLACEHOLDERS, STRATEGIES
+
+        for strategy in STRATEGIES.values():
+            assert len(strategy.steps) >= 3, strategy.id
+            fields = {f for step in strategy.steps for _, f, _, _ in Formatter().parse(step) if f}
+            assert fields <= EXPLANATION_PLACEHOLDERS, (strategy.id, fields - EXPLANATION_PLACEHOLDERS)
+
+    def test_steps_render_with_every_placeholder_filled(self):
+        from strategy_backtest_strategies import EXPLANATION_PLACEHOLDERS, STRATEGIES
+
+        values = {name: "7" for name in EXPLANATION_PLACEHOLDERS}
+        for strategy in STRATEGIES.values():
+            for step in strategy.steps:
+                assert "{" not in step.format(**values)
+
+
+class TestSnapshotTarget:
+    def _returns(self, n_days=120, n=4, seed=3):
+        rng = np.random.default_rng(seed)
+        data = rng.normal(0.0005, [0.006, 0.01, 0.014, 0.02][:n], (n_days, n))
+        return pd.DataFrame(data, columns=[f"T{i}" for i in range(n)])
+
+    def _config(self, **extra):
+        return {"risk_free_rate": 0.02, "max_weight": 1.0, "cash_reserve": 0.0, "band_pp": 5.0,
+                "current_weights": {"T0": 0.7, "T1": 0.3}, **extra}
+
+    @pytest.mark.parametrize("strategy_id", ["buy_hold_ew", "rebalanced_ew", "tolerance_band"])
+    def test_equal_weight_family_targets_one_over_n(self, strategy_id):
+        from strategy_backtest_strategies import snapshot_target
+
+        weights, _ = snapshot_target(strategy_id, self._returns(), self._config())
+        assert weights == pytest.approx([0.25] * 4)
+
+    def test_current_weights_renormalise_over_the_selected_tickers(self):
+        from strategy_backtest_strategies import snapshot_target
+
+        weights, _ = snapshot_target("current_weights", self._returns(), self._config(current_weights={"T0": 0.35, "T1": 0.15}))
+        assert weights == pytest.approx([0.7, 0.3, 0.0, 0.0])
+
+    def test_current_weights_unavailable_when_nothing_is_held(self):
+        from strategy_backtest_strategies import snapshot_target
+
+        weights, reason = snapshot_target("current_weights", self._returns(), self._config(current_weights={"OTHER": 1.0}))
+        assert weights is None and reason
+
+    def test_inverse_volatility_favours_the_calmer_ticker(self):
+        from strategy_backtest_strategies import snapshot_target
+
+        weights, _ = snapshot_target("inverse_vol", self._returns(), self._config())
+        assert weights.sum() == pytest.approx(1.0)
+        assert weights[0] > weights[3]
+
+    def test_min_variance_respects_cap_and_cash_reserve(self):
+        from strategy_backtest_strategies import snapshot_target
+
+        weights, _ = snapshot_target("min_variance", self._returns(), self._config(max_weight=0.5, cash_reserve=0.1))
+        assert weights.sum() == pytest.approx(0.9, abs=1e-3)
+        assert weights.max() <= 0.5 + 1e-4

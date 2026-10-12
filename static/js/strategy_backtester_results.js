@@ -109,11 +109,24 @@ function sbDateCell(date, utc) {
     return utc ? '<abbr title="' + escapeHtml(utc) + ' UTC">' + escapeHtml(date) + "</abbr>" : escapeHtml(date);
 }
 
+function sbRenderOptimizerLink(strategyId) {
+    var link = sbEl("sb-open-optimizer");
+    var run = sbState.run;
+    var linkable = run && run.basket.account_id;
+    link.classList.toggle("d-none", !linkable);
+    if (!linkable) return;
+    link.href = "/portfolio-optimizer?" + new URLSearchParams({
+        account: run.basket.account_id, tickers: run.basket.tickers.join(","), strategy: strategyId,
+        max_weight: run.config.max_weight, cash_reserve: run.config.cash_reserve,
+    }).toString();
+}
+
 function sbRenderStrategyDetail() {
     var result = sbState.result;
     var item = result.strategies.find(function (s) { return s.id === sbEl("sb-detail-strategy").value; });
     if (!item || !item.available) return;
     sbEl("sb-detail-help").textContent = sbState.meta.strategies.find(function (s) { return s.id === item.id; }).description;
+    sbRenderOptimizerLink(item.id);
     sbEl("sb-decisions-tbody").innerHTML = item.decisions.map(function (d) {
         return "<tr><td>" + sbDateCell(d.decision_date, d.decided_at_utc) + "</td><td>" + sbDateCell(d.executed_date, d.executed_at_utc) + "</td>"
             + "<td>" + escapeHtml(SB_STATUS_LABELS[d.status] || d.status) + "</td><td>" + escapeHtml(d.reason || "") + "</td>"
@@ -148,6 +161,7 @@ function sbRenderRun(detail) {
     var run = detail.run, result = detail.result;
     sbState.runId = run.id;
     sbState.result = result;
+    sbState.run = run;
     var config = run.config;
     sbShow("sb-placeholder", false);
     sbShow("sb-results", true);

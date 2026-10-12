@@ -2816,6 +2816,20 @@ CARDS = [
         ],
         "explanation": """<p>Occasionally the maths comes back wanting a <em>negative</em> amount of a ticker — in plain terms, betting against it rather than owning it. This can only happen in <strong>Unconstrained</strong> mode, which has no "no shorting" rule and no per-position cap: it reflects the true closed-form math, not a recommendation to actually short a position, and <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result. Long-Only mode never produces them.</p>""",
     },
+    {
+        "term_key": "chosen-strategy-trade-amounts",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Chosen Strategy and Trade Amounts",
+        "question": "What does the Trade column show when a Strategy is chosen in the Portfolio Optimizer?",
+        "answer": "The money to buy or sell, in your base currency, to move from your holdings to that strategy's target mix",
+        "distractors": [
+            "The trades the app will place automatically at the next close",
+            "The commission and spread paid on each holding",
+            "The profit or loss each holding has made so far",
+        ],
+        "explanation": """<p>The <strong>Strategy</strong> setting adds one of the Strategy Backtester's rules to the table: its target mix as of today, the change from what you hold now, and a <strong>Trade</strong> amount — the money to buy (positive) or sell (negative) in your base currency to move from your holdings to that mix. It uses the same allocation rule the Backtester replays over history, so the two pages cannot disagree about what a strategy does.</p>
+<p>A target mix is a snapshot, not a schedule. Buy-and-Hold and Tolerance-Band Rebalancing show the equal mix they start from, and how they behave over time needs the Strategy Backtester, which the page links to. Trade amounts leave out trading costs, UK stamp duty and whole-share rounding.</p>""",
+    },
     # --- strategy-backtester ---
     {
         "term_key": "what-strategy-backtester-does",

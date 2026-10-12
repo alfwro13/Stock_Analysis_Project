@@ -32,6 +32,27 @@ function formatCurrency(value, currencyCode) {
     }
 }
 
+function strategyStepsHtml(steps, params) {
+    const items = steps.map(step => '<li>' + escapeHtml(step.replace(/\{(\w+)\}/g, (match, key) => (params[key] === undefined ? match : params[key]))) + '</li>');
+    return '<ol class="small text-muted ps-4 mb-2">' + items.join('') + '</ol>';
+}
+
+function readStrategyHandoff() {
+    const query = new URLSearchParams(window.location.search);
+    if (!query.has('account') && !query.has('strategy')) return null;
+    const number = (key, min, max) => {
+        const value = parseFloat(query.get(key));
+        return isFinite(value) && value >= min && value <= max ? value : null;
+    };
+    return {
+        account: query.get('account'),
+        tickers: (query.get('tickers') || '').split(',').filter(Boolean),
+        strategy: query.get('strategy'),
+        maxWeight: number('max_weight', 0.005, 1),
+        cashReserve: number('cash_reserve', 0, 0.99),
+    };
+}
+
 function showTableError(tableSelector, colSpan) {
     $(tableSelector + ' tbody').html(
         '<tr><td colspan="' + colSpan + '" class="table-error-cell">⚠️ Failed to load data. Please refresh the page or try again.</td></tr>'

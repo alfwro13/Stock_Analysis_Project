@@ -73,6 +73,12 @@
                 <p>Occasionally the maths comes back wanting a <em>negative</em> amount of a ticker — in plain terms, betting against it rather than owning it. This can only happen in <strong>Unconstrained</strong> mode, which has no "no shorting" rule and no per-position cap: it reflects the true closed-form math, not a recommendation to actually short a position, and <strong>this app has no order execution and cannot act on it</strong>. Negative weights are always shown as-is, flagged with a badge, and never silently clipped to zero, since clipping would misrepresent the actual result. Long-Only mode never produces them.</p>
             </div>
 
+            <div class="term-box">
+                <span class="term-title">Chosen Strategy and Trade Amounts</span>
+                <p>The <strong>Strategy</strong> setting adds one of the Strategy Backtester's rules to the table: its target mix as of today, the change from what you hold now, and a <strong>Trade</strong> amount — the money to buy (positive) or sell (negative) in your base currency to move from your holdings to that mix. It uses the same allocation rule the Backtester replays over history, so the two pages cannot disagree about what a strategy does.</p>
+                <p>A target mix is a snapshot, not a schedule. Buy-and-Hold and Tolerance-Band Rebalancing show the equal mix they start from, and how they behave over time needs the Strategy Backtester, which the page links to. Trade amounts leave out trading costs, UK stamp duty and whole-share rounding.</p>
+            </div>
+
         </div>
     </div>
 </div>

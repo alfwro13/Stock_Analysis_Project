@@ -1,4 +1,13 @@
 var selectedAccountId = "all";
+var poStrategies = [];
+var poDefaults = {};
+var poPrefill = null;
+
+var PO_SCHEDULE_NOTES = {
+    initial_only: "This strategy never rebalances: the mix shown is only what it buys on day one. Its behaviour over time needs the Strategy Backtester.",
+    every_session: "The mix shown is this strategy's starting point. It only trades when a holding drifts beyond the band, which needs the Strategy Backtester to see.",
+    cadence: "The mix shown is what this strategy would hold after a rebalance today. It is always long-only, even when the three standard mixes are Unconstrained.",
+};
 
 function _fmt_pct(v) {
     if (v === null || v === undefined) return "—";
@@ -15,6 +24,16 @@ function _fmt_pp(weight, current) {
 function _ppClass(weight, current) {
     if (weight === null || weight === undefined || Math.abs(weight - current) < 0.00005) return "text-muted";
     return weight > current ? "text-success" : "text-danger";
+}
+
+function _fmt_trade(value, currency) {
+    if (value === null || value === undefined) return "—";
+    return (value > 0 ? "+" : "") + formatCurrency(value, currency);
+}
+
+function _tradeClass(value) {
+    if (value === null || value === undefined || Math.abs(value) < 0.005) return "text-muted";
+    return value > 0 ? "text-success" : "text-danger";
 }
 
 function _weightCells(weight, current) {
@@ -51,6 +70,8 @@ window.addEventListener("resize", function () {
 
 function renderWeightsTable(data) {
     var tbody = document.getElementById("po-weights-tbody");
+    var strategyOn = !!(data.strategy && data.strategy.available);
+    document.querySelectorAll(".po-strategy-col").forEach(function (th) { th.classList.toggle("d-none", !strategyOn); });
     var rows = data.weights.map(function (w) {
         var badges = "";
         if (w.is_new_addition) {
@@ -65,8 +86,15 @@ function renderWeightsTable(data) {
             + _weightCells(w.suggested_weight_mv, w.current_weight)
             + _weightCells(w.suggested_weight_ms, w.current_weight)
             + _weightCells(w.suggested_weight_ew, w.current_weight)
+            + (strategyOn
+                ? _weightCells(w.suggested_weight_strategy, w.current_weight)
+                    + "<td class='" + _tradeClass(w.trade_value) + "'>" + _fmt_trade(w.trade_value, data.base_currency) + "</td>"
+                : "")
             + "</tr>";
     });
+    var strategyCash = strategyOn
+        ? Math.max(0, 1 - data.weights.reduce(function (sum, w) { return sum + w.suggested_weight_strategy; }, 0))
+        : 0;
     if (data.cash_reserve) {
         var hasMs = data.weights.some(function (w) { return w.suggested_weight_ms !== null; });
         rows.push("<tr>"
@@ -75,9 +103,44 @@ function renderWeightsTable(data) {
             + _weightCells(data.cash_reserve, 0)
             + _weightCells(hasMs ? data.cash_reserve : null, 0)
             + _weightCells(data.cash_reserve, 0)
+            + (strategyOn ? _weightCells(strategyCash, 0) + "<td></td>" : "")
             + "</tr>");
     }
     tbody.innerHTML = rows.join("");
+}
+
+function _strategyParams(data) {
+    var n = data.weights.length;
+    return {
+        n: String(n),
+        each_pct: String(parseFloat((100 / n).toFixed(3))),
+        period: "rebalance period (month, quarter or year)",
+        lookback: String(data.estimation_window.trading_days),
+        band_pp: String(poDefaults.band_pp),
+        max_weight_pct: String(data.mode === "long_only" ? parseFloat((data.max_weight * 100).toFixed(2)) : 100),
+        cash_reserve_pct: String(data.mode === "long_only" ? parseFloat((data.cash_reserve * 100).toFixed(2)) : 0),
+    };
+}
+
+function renderStrategyBox(data) {
+    var box = document.getElementById("po-strategy-box");
+    var info = data.strategy;
+    box.classList.toggle("d-none", !info);
+    if (!info) return;
+    var strategy = poStrategies.find(function (s) { return s.id === info.id; });
+    document.getElementById("po-strategy-title").textContent = info.label + (info.available ? "" : " — not available for this selection");
+    document.getElementById("po-strategy-note").textContent = info.available
+        ? strategy.description + " " + PO_SCHEDULE_NOTES[strategy.schedule] + " Weight Cap and Cash Reserve apply only to the two optimizer strategies, as in the Strategy Backtester."
+        : info.reason;
+    document.getElementById("po-strategy-steps").innerHTML = strategyStepsHtml(strategy.steps, _strategyParams(data));
+    var params = {
+        account: data.account_id, tickers: data.weights.map(function (w) { return w.symbol; }).join(","), strategy: info.id,
+    };
+    if (data.mode === "long_only") {
+        params.max_weight = data.max_weight;
+        params.cash_reserve = data.cash_reserve;
+    }
+    document.getElementById("po-open-backtest").href = "/strategy-backtester?" + new URLSearchParams(params).toString();
 }
 
 function renderResultsMeta(data) {
@@ -197,6 +260,8 @@ function runOptimization() {
         account_id: selectedAccountId, include_tickers: tickers, mode: _selectedMode(),
         min_history_days: _minHistoryDays(),
     };
+    var strategy = document.getElementById("po-strategy").value;
+    if (strategy) payload.strategy = strategy;
     if (payload.mode === "long_only") {
         try {
             payload.max_weight = _readPercentInput("po-max-weight", 0, 100, false, "Weight Cap must be above 0% and at most 100%.");
@@ -235,6 +300,7 @@ function runOptimization() {
             document.getElementById("po-results").classList.remove("d-none");
             renderResultsMeta(data);
             renderWeightsTable(data);
+            renderStrategyBox(data);
             renderFrontierChart(data.efficient_frontier, data.mode === "long_only");
         })
         .catch(function (err) {
@@ -276,11 +342,51 @@ function _renderCandidatesList(candidates) {
     container.innerHTML = html;
     _syncWatchlistTicks();
     _applyMinHistory();
+    _applyPrefillTickers();
 
     var countEl = document.getElementById("po-candidates-count");
     if (countEl) {
         countEl.textContent = held.length + " held, " + watchlist.length + " on your Watchlist. Scroll the box below to see them all. The number on the right is each ticker's days of price history.";
     }
+}
+
+function _applyPrefillTickers() {
+    if (!poPrefill || !poPrefill.tickers.length) return;
+    var wanted = new Set(poPrefill.tickers);
+    document.querySelectorAll("#po-candidates-list .po-candidate-checkbox").forEach(function (cb) {
+        if (!cb.disabled) cb.checked = wanted.has(cb.value);
+    });
+    poPrefill.tickers = [];
+}
+
+function _applyPrefillRules() {
+    if (!poPrefill) return;
+    if (poPrefill.maxWeight !== null || poPrefill.cashReserve !== null) {
+        document.getElementById("po-mode-long-only").checked = true;
+        if (poPrefill.maxWeight !== null) document.getElementById("po-max-weight").value = poPrefill.maxWeight * 100;
+        if (poPrefill.cashReserve !== null) document.getElementById("po-cash-reserve").value = poPrefill.cashReserve * 100;
+        _syncModeControls();
+    }
+}
+
+function loadStrategies() {
+    fetch("/api/strategy-backtester/meta")
+        .then(function (resp) { return resp.json(); })
+        .then(function (data) {
+            poStrategies = data.strategies || [];
+            poDefaults = data.defaults || {};
+            var select = document.getElementById("po-strategy");
+            poStrategies.forEach(function (s) {
+                var option = document.createElement("option");
+                option.value = s.id;
+                option.textContent = s.label;
+                select.appendChild(option);
+            });
+            if (poPrefill && poStrategies.some(function (s) { return s.id === poPrefill.strategy; })) {
+                select.value = poPrefill.strategy;
+            }
+        })
+        .catch(function () {});
 }
 
 function _minHistoryDays() {
@@ -347,13 +453,15 @@ function loadAccounts() {
             });
             tiles.push({ id: "all", name: "Global (All Accounts)", value: data.total, isTotal: true });
 
+            var wantedId = poPrefill && tiles.some(function (t) { return t.id === poPrefill.account; }) ? poPrefill.account : "all";
+            selectedAccountId = wantedId;
             tiles.forEach(function (tile) {
                 var btn = document.createElement("button");
                 btn.type = "button";
                 btn.className = "mc-account-tile";
                 btn.innerHTML = '<div class="mc-account-tile-name">' + tile.name + "</div>";
                 btn.addEventListener("click", function () { _setActiveTile(btn, tile.id); });
-                if (tile.isTotal) {
+                if (tile.id === wantedId) {
                     btn.classList.add("mc-account-tile--active");
                 }
                 container.appendChild(btn);
@@ -366,8 +474,11 @@ function loadAccounts() {
 }
 
 function initPage() {
+    poPrefill = readStrategyHandoff();
+    loadStrategies();
     loadAccounts();
     _syncModeControls();
+    _applyPrefillRules();
     document.querySelectorAll("input[name=po-mode]").forEach(function (el) {
         el.addEventListener("change", _syncModeControls);
     });

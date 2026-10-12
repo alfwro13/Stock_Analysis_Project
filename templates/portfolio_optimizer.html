@@ -19,6 +19,8 @@
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
 
+{% include "partials/_backtest_caveats.html" %}
+
 <div id="po-accounts-bar" class="d-none mb-4">
     <p class="text-muted small mb-2">Select account scope:</p>
     <div id="po-accounts-tiles" class="d-flex flex-wrap gap-2"></div>
@@ -58,6 +60,12 @@
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label for="po-strategy" class="form-label small mb-1"><abbr title="Adds a column with the target mix of one Strategy Backtester strategy, computed from the same price history, and the buy/sell amounts to reach it.">Strategy</abbr></label>
+                    <select class="form-select form-select-sm" id="po-strategy">
+                        <option value="">None — compare the three standard mixes</option>
+                    </select>
+                </div>
+                <div class="mb-3">
                     <label for="po-min-history" class="form-label small mb-1"><abbr title="Tickers with fewer days of price history than this are unticked and skipped. The days shown next to each ticker are its history in the last year.">Min Days of History</abbr></label>
                     <input type="number" class="form-control form-control-sm" id="po-min-history" min="0" max="252" step="1" value="30">
                 </div>
@@ -93,10 +101,22 @@
                             <th><abbr title="Change from what you hold now, in percentage points.">Δ</abbr></th>
                             <th><abbr title="Every selected ticker gets the same share — a simple baseline to compare the other mixes against.">Equal Weight Mix</abbr></th>
                             <th><abbr title="Change from what you hold now, in percentage points.">Δ</abbr></th>
+                            <th class="po-strategy-col d-none" id="po-strategy-head">Chosen Strategy</th>
+                            <th class="po-strategy-col d-none"><abbr title="Change from what you hold now, in percentage points.">Δ</abbr></th>
+                            <th class="po-strategy-col d-none"><abbr title="Money to buy (positive) or sell (negative), in your base currency, to move what you hold now to the chosen strategy's mix. Costs and whole-share rounding are not included.">Trade</abbr></th>
                         </tr>
                     </thead>
                     <tbody id="po-weights-tbody"></tbody>
                 </table>
+            </div>
+
+            <div class="card card-bg mt-3 d-none" id="po-strategy-box">
+                <div class="card-body">
+                    <h6 class="card-title mb-2" id="po-strategy-title"></h6>
+                    <p class="text-muted small mb-2" id="po-strategy-note"></p>
+                    <div id="po-strategy-steps"></div>
+                    <a class="btn btn-outline-primary btn-sm" id="po-open-backtest" href="/strategy-backtester">Backtest this strategy</a>
+                </div>
             </div>
 
             <div class="sentiment-module module-purple mt-3">

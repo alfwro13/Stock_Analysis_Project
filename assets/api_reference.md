@@ -3280,6 +3280,7 @@ Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns s
 | `max_weight` | float in (0, 1] | `1.0` | **Weight Cap** per ticker (decimal). Used only in `long_only`; out-of-range returns 422 |
 | `min_history_days` | int in [0, 252] | `0` | **Min Days of History**: candidates with fewer days of cached history (same count as `history_days` from `GET .../candidates`) are removed before solving and named in `data_warnings` (`"Removed X (12 days) — below the 30-day Min Days of History."`). `0` disables the filter; the page sends 30 by default |
 | `cash_reserve` | float in [0, 1) | `0.0` | **Cash Reserve** held back as cash (decimal). Used only in `long_only`; out-of-range returns 422 |
+| `strategy` | string \| null | `null` | A Strategy Backtester strategy id (`GET /api/strategy-backtester/meta`). Adds that strategy's long-only target mix and buy/sell amounts through `strategy_backtest_strategies.snapshot_target()`, the same decision rule the backtest replays; an unknown id returns 422. Weight Cap and Cash Reserve apply only to the two optimizer strategies, as in the Backtester |
 
 **Response (sufficient data):**
 
@@ -3293,6 +3294,7 @@ Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns s
   "weights": [
     {"symbol": "VWRL.L", "name": "Vanguard FTSE All-World UCITS ETF", "current_weight": 0.62,
      "suggested_weight_mv": 0.41, "suggested_weight_ms": 0.55, "suggested_weight_ew": 0.3333,
+     "suggested_weight_strategy": null, "trade_value": null,
      "is_new_addition": false, "is_short": false},
     {"symbol": "AAPL", "name": "Apple Inc.", "current_weight": 0.0,
      "suggested_weight_mv": -0.03, "suggested_weight_ms": 0.12, "suggested_weight_ew": 0.3333,
@@ -3307,9 +3309,13 @@ Runs the **Portfolio Optimizer** for a chosen candidate ticker set and returns s
     "current": {"return": 0.048, "volatility": 0.104}
   },
   "estimation_window": {"start": "2025-10-06", "end": "2026-10-06", "trading_days": 251},
+  "strategy": null,
+  "base_currency": "GBP",
   "data_warnings": []
 }
 ```
+
+`strategy` is `null` unless a `strategy` was requested; otherwise `{id, label, available, reason}`. When `available`, every row carries `suggested_weight_strategy` (the strategy's target, always long-only) and `trade_value` = `(target × base − current_weight × scope value)` in `base_currency`, where `base` is the scope value of the ticked holdings (the whole scope when everything held is ticked). When the strategy has no valid mix for the selection, `available` is `false`, `reason` says why, a `data_warnings` entry is added and the per-row fields are `null`. Trade amounts exclude trading costs, stamp duty and whole-share rounding.
 
 `efficient_frontier.current` is the requesting account's actual current allocation (using each ticker's real `current_weight`, not a suggested one) plotted on the same return/volatility axes — `null` if none of the resolved candidate tickers are currently held (e.g. every included ticker is a not-yet-held Watchlist addition). If the checked candidate set excludes some of the account's real holdings, a `data_warnings` entry says so, since `current` then only reflects the included tickers, not the whole account.
 
@@ -4745,7 +4751,7 @@ HTML page (Tools menu).
 
 ### `GET /api/strategy-backtester/meta`
 
-Rate limit 30/minute. Returns the page's static options: `strategies` (`id`, `label`, `description`, `schedule`, `needs_current_weights`), `cadences`, `defaults` (cadence, lookback, initial capital, cost preset, cash rate, band, Weight Cap, Cash Reserve, history), `cost_presets` (`none` / `low` / `typical`, each with `commission_bps`, `spread_bps`, `slippage_bps`), `default_benchmarks` (`GBP` -> `SWDA.L`, `USD` -> `SPY`), `base_currency` (config `BASE_CURRENCY`, the target of a converted run) and `limits` (`max_tickers` 40, `min_tickers` 2, `max_saved_runs` 20, `min_test_sessions` 30, `extended_period` `5y`).
+Rate limit 30/minute. Returns the page's static options: `strategies` (`id`, `label`, `description`, `steps` — the ordered explanation templates with `{n}`, `{each_pct}`, `{period}`, `{lookback}`, `{band_pp}`, `{max_weight_pct}` and `{cash_reserve_pct}` placeholders the pages fill from their live settings, `schedule`, `needs_current_weights`), `cadences`, `defaults` (cadence, lookback, initial capital, cost preset, cash rate, band, Weight Cap, Cash Reserve, history), `cost_presets` (`none` / `low` / `typical`, each with `commission_bps`, `spread_bps`, `slippage_bps`), `default_benchmarks` (`GBP` -> `SWDA.L`, `USD` -> `SPY`), `base_currency` (config `BASE_CURRENCY`, the target of a converted run) and `limits` (`max_tickers` 40, `min_tickers` 2, `max_saved_runs` 20, `min_test_sessions` 30, `extended_period` `5y`).
 
 ### `GET /api/strategy-backtester/accounts`
 
