@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from config import load_config
-from yahoo_engine import yahoo_engine
+from yahoo_engine import yahoo_engine, news_item_published_at
 from database import get_connection, get_watchlist_tickers
 
 logger = logging.getLogger(__name__)
@@ -35,25 +35,6 @@ def _make_article_id(item: dict, ticker: str, published_at: float) -> str:
     headline = (item.get("content") or {}).get("title") or item.get("title", "")
     raw = f"{ticker}_{headline}_{int(published_at)}"
     return hashlib.sha256(raw.encode()).hexdigest()
-
-
-def _extract_published_at(item: dict) -> float:
-    """Returns Unix timestamp (seconds). Returns 0 if unparseable."""
-    ts = item.get("providerPublishTime", 0)
-    if ts and ts > 1_000_000_000_000:
-        return ts / 1000
-    if ts and ts > 1_000_000_000:
-        return float(ts)
-
-    content = item.get("content") or {}
-    pub_str = content.get("pubDate") or item.get("pubDate") or ""
-    if pub_str:
-        try:
-            dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
-            return dt.timestamp()
-        except ValueError:
-            pass
-    return 0.0
 
 
 def _fetch_full_text(url: str) -> str | None:
@@ -173,7 +154,7 @@ def run_news_feed_job() -> int:
                 if premium_data.get("isPremiumNews", False):
                     continue
 
-                published_at = _extract_published_at(item)
+                published_at = news_item_published_at(item)
                 if published_at == 0.0 or published_at < cutoff_ts:
                     continue
 

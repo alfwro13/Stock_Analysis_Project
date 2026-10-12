@@ -8,11 +8,10 @@ from typing import List, Any, Optional
 
 from transformers import pipeline
 
-from yahoo_engine import yahoo_engine
+from yahoo_engine import yahoo_engine, news_item_published_at
 from notification_engine import notify
 from database import get_connection
 from db_helpers import sentiment_max_age_days
-from news_feed_engine import _extract_published_at
 from config import load_config
 from constants import (
     NLP_FINBERT_MAX_TOKENS, NLP_TEXT_TRUNCATE_CHARS,
@@ -89,7 +88,7 @@ def fetch_and_score_news(ticker: str, analyzer: Any, max_age_days: int) -> Optio
     for item in news:
         if len(scores) >= NLP_NEWS_FETCH_LIMIT:
             break
-        if _extract_published_at(item) < cutoff:
+        if news_item_published_at(item) < cutoff:
             continue
         content = item.get('content', item)
         title = content.get('title', '')

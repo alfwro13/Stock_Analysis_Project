@@ -101,6 +101,22 @@ def _news_item(uid: str, title: str, summary: str, published: datetime, publishe
     }
 
 
+def news_item_published_at(item: dict) -> float:
+    """Unix seconds of a news item's publish time from either Yahoo shape; 0.0 when absent or unparseable."""
+    ts = item.get("providerPublishTime") or 0
+    if ts > 1_000_000_000_000:
+        return ts / 1000
+    if ts > 1_000_000_000:
+        return float(ts)
+
+    pub_str = (item.get("content") or {}).get("pubDate") or item.get("pubDate") or ""
+    try:
+        dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
+
+
 def _clean_feed_text(text: Optional[str]) -> str:
     return " ".join(_HTML_TAG_RE.sub(" ", html.unescape(text or "")).split())
 
