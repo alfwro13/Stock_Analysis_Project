@@ -338,6 +338,16 @@ def long_only_allocations(mu: np.ndarray, cov: np.ndarray, rf: float, cap: float
     return {"w_mv": w_mv, "w_ms": w_ms, "warnings": warnings}
 
 
+def _growth_series(returns_df: pd.DataFrame, mixes: List[Tuple[str, str, np.ndarray]], rf: float) -> Dict:
+    daily_cash = rf / TRADING_DAYS
+    series = []
+    for key, label, weights in mixes:
+        daily = returns_df.to_numpy() @ weights + max(0.0, 1.0 - float(weights.sum())) * daily_cash
+        values = 100.0 * np.cumprod(1.0 + daily)
+        series.append({"key": key, "label": label, "values": [round(float(v), 2) for v in values]})
+    return {"dates": [pd.Timestamp(d).strftime("%Y-%m-%d") for d in returns_df.index], "series": series}
+
+
 def _pct(fraction: float) -> str:
     return f"{fraction * 100:g}%"
 
@@ -375,7 +385,7 @@ def optimize_portfolio(
     def _no_result(warnings: List[str], window: Optional[Dict] = None) -> Dict:
         return {
             "status": "success", "account_id": account_id, **settings, "weights": None, "strategy": None,
-            "risk_free_rate": None, "efficient_frontier": None, "estimation_window": window,
+            "risk_free_rate": None, "efficient_frontier": None, "growth": None, "estimation_window": window,
             "data_warnings": warnings,
         }
 
@@ -517,6 +527,16 @@ def optimize_portfolio(
             )
         current_point = _risk_return_point(current_w, mu, cov)
 
+    mixes = []
+    if current_sum > 1e-9:
+        mixes.append(("current", "Your Portfolio Today", current_w / current_sum))
+    mixes.append(("mv", "Steadiest Mix", w_mv))
+    if w_ms is not None:
+        mixes.append(("ms", "Best Reward-for-Risk Mix", w_ms))
+    mixes.append(("ew", "Equal Weight Mix", w_ew))
+    if w_strategy is not None:
+        mixes.append(("strategy", strategy_info["label"], w_strategy))
+
     cash_return = (1.0 - budget) * rf
     if long_only:
         frontier = {
@@ -539,6 +559,7 @@ def optimize_portfolio(
         "base_currency": config_base_currency,
         "risk_free_rate": rf,
         "efficient_frontier": frontier,
+        "growth": _growth_series(returns_df, mixes, rf),
         "estimation_window": estimation_window,
         "data_warnings": data_warnings,
     }

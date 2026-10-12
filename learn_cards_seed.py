@@ -2830,6 +2830,20 @@ CARDS = [
         "explanation": """<p>The <strong>Strategy</strong> setting adds one of the Strategy Backtester's rules to the table: its target mix as of today, the change from what you hold now, and a <strong>Trade</strong> amount — the money to buy (positive) or sell (negative) in your base currency to move from your holdings to that mix. It uses the same allocation rule the Backtester replays over history, so the two pages cannot disagree about what a strategy does.</p>
 <p>A target mix is a snapshot, not a schedule. Buy-and-Hold and Tolerance-Band Rebalancing show the equal mix they start from, and how they behave over time needs the Strategy Backtester, which the page links to. Trade amounts leave out trading costs, UK stamp duty and whole-share rounding.</p>""",
     },
+    {
+        "term_key": "growth-of-100-chart",
+        "section_id": "portfolio-optimizer",
+        "term_title": "Growth of 100 Chart",
+        "question": "What does each line on the Portfolio Optimizer's Growth of 100 chart show?",
+        "answer": "What 100 invested at the start would have become if that mix's weights had been held over the same past days",
+        "distractors": [
+            "The forecast value of each mix over the next year",
+            "The yearly return of each ticker on its own",
+            "The trades the app will place for each mix",
+        ],
+        "explanation": """<p>One line per mix showing what 100 invested at the start of the period would have grown to if that mix's weights had been held every day over the same past days the Optimizer learned from. It puts your portfolio, the Steadiest Mix, the Best Reward-for-Risk Mix, the Equal Weight Mix and any chosen Strategy on one picture, so you can see which would have gone furthest and which would have had the bumpiest ride.</p>
+<p>The optimized mixes were fitted on these very days, so their lines flatter themselves; the chart compares mixes on shared history and is not a forecast. Cash held back by a Cash Reserve earns the risk-free rate. For a rule replayed with costs and next-close trading, use the Strategy Backtester.</p>""",
+    },
     # --- strategy-backtester ---
     {
         "term_key": "what-strategy-backtester-does",
