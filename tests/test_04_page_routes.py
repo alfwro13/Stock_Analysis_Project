@@ -511,6 +511,14 @@ def test_stock_detail_rejects_unsafe_ticker_with_404(client, path):
 
 
 @pytest.mark.pages
+def test_stock_detail_overlong_ticker_returns_404_not_500(client):
+    """A charset-valid ticker beyond the file-name limit used to raise ENAMETOOLONG from
+    intraday_chart_revision(); safe_ticker_filename() now refuses it, so the route 404s."""
+    resp = client.get("/stock/ZZ" + "A" * 260, follow_redirects=False)
+    assert resp.status_code == 404
+
+
+@pytest.mark.pages
 def test_stock_detail_chart_error_shows_fixed_message_not_exception_text(client, tmp_path, monkeypatch):
     import pandas as pd
 

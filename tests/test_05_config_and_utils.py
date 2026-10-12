@@ -348,6 +348,8 @@ def test_safe_ticker_filename_rejects_markup_traversal_and_trailing_newline():
         assert safe_ticker_filename(good) == good
     for bad in ("", None, "../X", "A/B", "A\\B", "<img src=x>", "A B", "AAPL\n", "&lt;SPAN&gt;"):
         assert safe_ticker_filename(bad) is None, bad
+    assert safe_ticker_filename("A" * 64) == "A" * 64
+    assert safe_ticker_filename("A" * 65) is None
 
 
 @pytest.mark.config
