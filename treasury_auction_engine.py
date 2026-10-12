@@ -27,6 +27,11 @@ _TERM_MAP: dict[str, str] = {
 
 _WEAK_BTC_THRESHOLD = 0.2
 _WEAK_TAIL_THRESHOLD = 2.0
+# Bills, FRNs and TIPS move more week to week than nominal notes/bonds (prod bid-to-cover stdev 0.22/0.27
+# vs 0.09), so the coupon thresholds flagged about one in four bill auctions.
+_WIDE_WEAK_BTC_THRESHOLD = 0.4
+_WIDE_WEAK_TAIL_THRESHOLD = 4.0
+_BILL_LABELS = frozenset(label for term, label in _TERM_MAP.items() if term.endswith("-Week"))
 
 _AUCTION_EXCHANGE = "NYSE"
 _MAX_LOOKBACK_DAYS = 180
@@ -128,10 +133,18 @@ def _get_baseline(conn, maturity_label: str, exclude_cusip: str, exclude_date: s
     return mean_btc, mean_tail
 
 
+def _is_wide_series(maturity_label: str) -> bool:
+    return maturity_label in _BILL_LABELS or maturity_label.endswith(("-Day", " FRN", " TIPS"))
+
+
 def is_weak(btc: Optional[float], mean_btc: Optional[float],
-            tail: Optional[float], mean_tail: Optional[float]) -> tuple[bool, bool, bool]:
-    weak_btc = btc is not None and mean_btc is not None and btc < mean_btc - _WEAK_BTC_THRESHOLD
-    weak_tail = tail is not None and mean_tail is not None and tail > mean_tail + _WEAK_TAIL_THRESHOLD
+            tail: Optional[float], mean_tail: Optional[float],
+            maturity_label: str = "") -> tuple[bool, bool, bool]:
+    wide = _is_wide_series(maturity_label)
+    btc_threshold = _WIDE_WEAK_BTC_THRESHOLD if wide else _WEAK_BTC_THRESHOLD
+    tail_threshold = _WIDE_WEAK_TAIL_THRESHOLD if wide else _WEAK_TAIL_THRESHOLD
+    weak_btc = btc is not None and mean_btc is not None and btc < mean_btc - btc_threshold
+    weak_tail = tail is not None and mean_tail is not None and tail > mean_tail + tail_threshold
     return weak_btc or weak_tail, weak_btc, weak_tail
 
 
@@ -168,8 +181,35 @@ def format_weakness_message(
     )
 
 
+def _refresh_weak_flags(conn, today: str) -> None:
+    """Re-derive alert_fired for every stored auction from the current rule; only a newly weak auction dated today notifies."""
+    rows = conn.execute(
+        """SELECT cusip, maturity_label, auction_date, bid_to_cover, tail_bp, alert_fired
+           FROM treasury_auction_results ORDER BY auction_date"""
+    ).fetchall()
+    for r in rows:
+        cusip, maturity, auction_date, bid_to_cover, tail, flagged = (
+            r["cusip"], r["maturity_label"], r["auction_date"], r["bid_to_cover"], r["tail_bp"], r["alert_fired"],
+        )
+        mean_btc, mean_tail = _get_baseline(conn, maturity, cusip, auction_date)
+        weak, weak_btc, weak_tail = is_weak(bid_to_cover, mean_btc, tail, mean_tail, maturity)
+        if weak == bool(flagged):
+            continue
+        if weak and auction_date == today:
+            msg = format_weakness_message(
+                maturity, auction_date, bid_to_cover, mean_btc, tail, mean_tail, weak_btc, weak_tail
+            )
+            notify("treasury_auction_alert", "Auction Weakness", msg, level="warning")
+            logger.warning("Treasury auction weakness alert fired: %s", msg)
+        conn.execute(
+            "UPDATE treasury_auction_results SET alert_fired = ? WHERE cusip = ? AND auction_date = ?",
+            (int(weak), cusip, auction_date),
+        )
+        conn.commit()
+
+
 def check_auction_results() -> int:
-    """Upsert every resulted auction since the newest stored one, alert on weak demand for today's. Returns new-row count."""
+    """Upsert every resulted auction since the newest stored one, then re-derive the weak flags. Returns new-row count."""
     today = time_engine.exchange_local_date(_AUCTION_EXCHANGE)
     records = [
         r for r in fetch_auctions(_window_start(today), today.isoformat())
@@ -177,7 +217,6 @@ def check_auction_results() -> int:
     ]
     if not records:
         logger.info("No resulted Treasury auctions found in the catch-up window.")
-        return 0
     records.sort(key=lambda r: r.get("auction_date") or "")
 
     new_count = 0
@@ -200,10 +239,10 @@ def check_auction_results() -> int:
             dealer_pct = _pct(rec.get("primary_dealer_accepted"), competitive_accepted)
             offering_amt = _safe_float(rec.get("offering_amt"))
 
-            existing = conn.execute(
-                "SELECT alert_fired FROM treasury_auction_results WHERE cusip = ? AND auction_date = ?",
+            is_new = conn.execute(
+                "SELECT 1 FROM treasury_auction_results WHERE cusip = ? AND auction_date = ?",
                 (cusip, auction_date),
-            ).fetchone()
+            ).fetchone() is None
             conn.execute(
                 """INSERT INTO treasury_auction_results
                    (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
@@ -218,27 +257,10 @@ def check_auction_results() -> int:
                  direct_pct, indirect_pct, dealer_pct, offering_amt),
             )
             conn.commit()
-            if existing is None:
+            if is_new:
                 new_count += 1
-            elif existing[0]:
-                continue
 
-            mean_btc, mean_tail = _get_baseline(conn, maturity, cusip, auction_date)
-            weak, weak_btc, weak_tail = is_weak(bid_to_cover, mean_btc, tail, mean_tail)
-            if not weak:
-                continue
-            if auction_date == today.isoformat():
-                msg = format_weakness_message(
-                    maturity, auction_date, bid_to_cover, mean_btc, tail, mean_tail, weak_btc, weak_tail
-                )
-                notify("treasury_auction_alert", "Auction Weakness", msg, level="warning")
-                logger.warning("Treasury auction weakness alert fired: %s", msg)
-            conn.execute(
-                "UPDATE treasury_auction_results SET alert_fired = 1 WHERE cusip = ? AND auction_date = ?",
-                (cusip, auction_date),
-            )
-            conn.commit()
-
+        _refresh_weak_flags(conn, today.isoformat())
     except Exception as e:
         logger.error("Treasury auction results check failed: %s", e)
     finally:

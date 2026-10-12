@@ -1621,6 +1621,41 @@ def test_treasury_auctions_page_shows_plain_english_alert_in_summary(client):
         conn.close()
 
 
+@pytest.mark.pages
+def test_treasury_auctions_page_highlights_bid_to_cover_by_the_series_threshold(client):
+    """A 0.3 bid-to-cover drop is red for a note (0.2 rule) but not for a bill (0.4 rule)."""
+    import re
+    import database as db
+    conn = db.get_connection()
+    try:
+        conn.executemany(
+            """INSERT INTO treasury_auction_results
+               (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp, alert_fired)
+               VALUES (?, ?, ?, NULL, ?, 1.0, ?)""",
+            [
+                ("PAGETIER01", "4W", "2026-03-02", 2.8, 0), ("PAGETIER02", "4W", "2026-04-02", 2.8, 0),
+                ("PAGETIER03", "4W", "2026-05-02", 2.8, 0), ("PAGETIER04", "4W", "2026-06-02", 2.5, 1),
+                ("PAGETIER11", "10Y", "2026-03-03", 2.8, 0), ("PAGETIER12", "10Y", "2026-04-03", 2.8, 0),
+                ("PAGETIER13", "10Y", "2026-05-03", 2.8, 0), ("PAGETIER14", "10Y", "2026-06-03", 2.5, 1),
+            ],
+        )
+        conn.commit()
+
+        resp = client.get("/treasury-auctions")
+        assert resp.status_code == 200
+        rows = {
+            m.group(1): m.group(0)
+            for m in re.finditer(r"<tr[^>]*>.*?(2026-06-0[23]).*?</tr>", resp.text, re.DOTALL)
+        }
+        bid_to_cover_cell = lambda row: row.split("<td")[3]
+        assert "negative-val" not in bid_to_cover_cell(rows["2026-06-02"])
+        assert "negative-val" in bid_to_cover_cell(rows["2026-06-03"])
+    finally:
+        conn.execute("DELETE FROM treasury_auction_results WHERE cusip LIKE 'PAGETIER%'")
+        conn.commit()
+        conn.close()
+
+
 # ── Log Viewer ────────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
