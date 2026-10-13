@@ -171,11 +171,18 @@ async function refreshActiveJobs() {
         if (restartBanner) restartBanner.classList.toggle('d-none', !data.restart_pending);
         const requirementsBanner = document.getElementById('requirements-changed-banner');
         if (requirementsBanner) {
-            requirementsBanner.classList.toggle('d-none', !data.requirements_changed_pending);
+            const install = data.dependency_install || {};
+            requirementsBanner.classList.toggle('d-none', !(data.requirements_changed_pending || install.state === 'failed'));
             const change = data.scikit_learn_change_pending;
-            requirementsBanner.textContent = change
-                ? `⚠️ scikit-learn will change from ${change.from_version} to ${change.to_version}. Dependencies will be reinstalled before restart. After the app starts, affected model retraining will begin automatically, normally within seconds, and run one model family at a time.`
-                : '⚠️ The last pull updated requirements.txt. Dependencies will be reinstalled automatically before the service restarts.';
+            if (install.state === 'failed') {
+                requirementsBanner.textContent = `⚠️ Dependency installation failed and the service was not restarted. Run this in a shell on the server, then restart the service: ${install.command}`;
+            } else if (install.state === 'running') {
+                requirementsBanner.textContent = '⚠️ Dependencies are being installed. The service restarts automatically when the installation finishes.';
+            } else {
+                requirementsBanner.textContent = change
+                    ? `⚠️ scikit-learn will change from ${change.from_version} to ${change.to_version}. Dependencies will be reinstalled before restart. After the app starts, affected model retraining will begin automatically, normally within seconds, and run one model family at a time.`
+                    : '⚠️ requirements.txt and the installed packages differ. Dependencies will be reinstalled automatically before the service restarts.';
+            }
         }
         const el = document.getElementById('active-jobs-display');
         if (!el) return;
@@ -196,6 +203,27 @@ async function refreshActiveJobs() {
 refreshActiveJobs();
 setInterval(refreshActiveJobs, 30000);
 
+async function waitForDependencyInstall(statusId, startMessage) {
+    const started = Date.now();
+    setStatus(statusId, 'warning', startMessage);
+    while (true) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        try {
+            const resp = await fetch('/api/system/active-jobs', { cache: 'no-store' });
+            const install = (await resp.json()).dependency_install || {};
+            if (install.state === 'failed') {
+                setStatus(statusId, 'error', `Dependency installation failed and the service was not restarted. Run this in a shell on the server, then restart the service: ${install.command}`);
+                return false;
+            }
+            if (install.state !== 'running') return true;
+        } catch (_) {
+            return true;
+        }
+        const mins = Math.floor((Date.now() - started) / 60000);
+        setStatus(statusId, 'warning', `Installing updated dependencies (${mins} min so far). The service restarts automatically when it finishes.`);
+    }
+}
+
 async function restartSystem() {
     const btn = document.querySelector('button[onclick="restartSystem()"]');
     btn.disabled = true;
@@ -209,6 +237,10 @@ async function restartSystem() {
             return;
         }
         if (response.ok) {
+            if (result.installing && !(await waitForDependencyInstall('git-status-msg', result.message))) {
+                btn.disabled = false;
+                return;
+            }
             setStatus('git-status-msg', 'success', "Signal sent. Waiting for service to come back up...");
             await new Promise(resolve => setTimeout(resolve, 3000));
             const maxWait = 60000;
@@ -245,6 +277,10 @@ async function forceRestart() {
         const response = await stepUpFetch('/api/system/force-restart', { method: 'POST' });
         const result = await response.json();
         if (response.ok) {
+            if (result.installing && !(await waitForDependencyInstall('manual-actions-status', result.message))) {
+                btn.disabled = false;
+                return;
+            }
             setStatus('manual-actions-status', 'success', "Signal sent. Waiting for service to come back up...");
             await new Promise(resolve => setTimeout(resolve, 3000));
             const maxWait = 60000;

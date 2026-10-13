@@ -846,6 +846,7 @@ def test_check_requirements_drift_missing_file_returns_empty_list(tmp_path):
 
 @pytest.mark.utils
 def test_notify_requirements_drift_sends_notification_on_mismatch(monkeypatch):
+    import shlex
     import utils
     monkeypatch.setattr(utils, "check_requirements_drift", lambda: ["pytest: installed 1.0, requirements.txt pins ==2.0"])
     calls = []
@@ -854,6 +855,16 @@ def test_notify_requirements_drift_sends_notification_on_mismatch(monkeypatch):
     assert len(calls) == 1
     assert calls[0][0][0] == "system_update_status"
     assert "pytest" in calls[0][0][2]
+    assert shlex.join(utils.pip_install_command()) in calls[0][0][2]
+
+
+@pytest.mark.utils
+def test_pip_install_command_uses_the_running_interpreter_and_project_requirements():
+    """The hand-run fallback must not depend on venv/bin/pip or `activate`, which stay stale when a venv is moved."""
+    import utils
+    command = utils.pip_install_command()
+    assert command[:5] == [sys.executable, "-m", "pip", "install", "-r"]
+    assert command[5] == str(Path(utils.__file__).resolve().parent / "requirements.txt")
 
 
 @pytest.mark.utils
