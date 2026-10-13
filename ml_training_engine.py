@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-import joblib
 import numpy as np
 import pandas as pd
 import psutil
@@ -20,6 +19,7 @@ from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
     CONTINUOUS_FEATURES, FUNDAMENTAL_FEATURES, TRAINING_HISTORY_QUERY, build_model_features,
+    save_feature_stats,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ def _save_feature_stats(df: pd.DataFrame) -> None:
             format(len(col_data), ','),
         )
     logger.info('  Training universe size (median tickers/date): %s', format(train_universe_size, ','))
-    joblib.dump(feature_stats, FEATURE_STATS_PATH)
+    save_feature_stats(feature_stats, FEATURE_STATS_PATH)
     logger.info('✅ Feature statistics saved to %s', FEATURE_STATS_PATH)
 
 

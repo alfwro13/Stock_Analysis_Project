@@ -1,11 +1,9 @@
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import joblib
 
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
 from database import get_connection
+from ml_features import FEATURE_STATS_PATH, load_feature_stats
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +14,8 @@ def _time_to_minutes(time_str: str) -> int:
 
 
 def _load_train_universe_size() -> Optional[int]:
-    try:
-        stats = joblib.load(Path("models/feature_stats.joblib"))
-        return stats.get("_meta", {}).get("train_universe_size")
-    except Exception:
-        return None
+    stats = load_feature_stats(FEATURE_STATS_PATH)
+    return stats["_meta"].get("train_universe_size") if stats else None
 
 
 def run_system_checks() -> List[Dict[str, Any]]:

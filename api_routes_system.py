@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Literal, Optional
 
-import joblib
 import time_engine
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -908,7 +907,6 @@ def get_system_metrics():
 
         models_dir = BASE_DIR / "models"
         ml_model_path = models_dir / "ml_ensemble.joblib"
-        feat_stats_path = models_dir / "feature_stats.joblib"
 
         def get_file_stats(path: Path) -> dict:
             if not path.exists():
@@ -921,13 +919,11 @@ def get_system_metrics():
 
         feature_count = 0
         train_universe_size = 0
-        if feat_stats_path.exists():
-            try:
-                f_stats = joblib.load(feat_stats_path)
-                feature_count = len(f_stats.keys()) if isinstance(f_stats, dict) else 0
-                train_universe_size = int(f_stats.get("_meta", {}).get("train_universe_size") or 0) if isinstance(f_stats, dict) else 0
-            except Exception:
-                logger.warning("Failed to load ML feature stats from %s", feat_stats_path, exc_info=True)
+        from ml_features import FEATURE_STATS_PATH, load_feature_stats
+        f_stats = load_feature_stats(FEATURE_STATS_PATH)
+        if f_stats is not None:
+            feature_count = len(f_stats)
+            train_universe_size = int(f_stats["_meta"].get("train_universe_size") or 0)
 
         inference_coverage = get_cnt("""
             SELECT COUNT(DISTINCT qs.ticker) FROM quant_signals qs
@@ -947,6 +943,7 @@ def get_system_metrics():
         hmm_states = get_cnt("SELECT COUNT(*) FROM market_regimes WHERE ai_hmm_state IS NOT NULL")
         rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
 
+        from anomaly_engine import read_trained_at
         from config import ANOMALY_MODELS_DIR
         _stale_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
         anomaly_model_cnt = 0
@@ -955,9 +952,7 @@ def get_system_metrics():
             for _jf in ANOMALY_MODELS_DIR.glob("*.joblib"):
                 anomaly_model_cnt += 1
                 try:
-                    from model_compatibility_engine import load_sklearn_artifact
-                    _payload = load_sklearn_artifact(_jf, "anomaly_training_job")
-                    _trained_at = _payload.get('trained_at')
+                    _trained_at = read_trained_at(_jf)
                     if not _trained_at:
                         anomaly_stale_cnt += 1
                         continue

@@ -558,7 +558,7 @@ The full pipeline runs via APScheduler:
 | File | Location | Description |
 |---|---|---|
 | `ml_ensemble.joblib` | `models/` | Serialised VotingClassifier ensemble |
-| `feature_stats.joblib` | `models/` | Training population means and stds per feature (diagnostic use) |
+| `feature_stats.json` | `models/` | Training population means and stds per feature, plus the median training universe size (`_meta.train_universe_size`). Plain JSON, not a pickle: it is read on every Home Assistant poll through `ml_features.load_feature_stats()`, and a non-finite moment is stored as `null` and skipped by the drift check. The old `feature_stats.joblib` is no longer read and can be deleted by hand. Until the next Global Model Training run writes the JSON, the coverage thresholds use their fallbacks (30 for inference, 200 for the system check) and the drift check is skipped |
 | `*.joblib.sklearn-version` | Beside each persisted estimator | Exact scikit-learn version used to train that artifact; startup queues Global Model Training (Walk-Forward) when it differs from the installed version |
 
 The shared `model_compatibility_engine.py` loader checks the sidecar before unpickling. Existing artifacts created before sidecars were introduced are checked by promoting scikit-learn's `InconsistentVersionWarning` to an error; a compatible legacy artifact receives its sidecar on first load.
@@ -599,7 +599,7 @@ conn.close()
 # 2. Delete stale model files
 import os
 os.remove("models/ml_ensemble.joblib")
-os.remove("models/feature_stats.joblib")
+os.remove("models/feature_stats.json")
 
 # 3. Run full pipeline
 from ml_backfill_engine import run_historical_backfill, get_target_tickers

@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import joblib
 import numpy as np
 import pandas as pd
 import pytest
@@ -113,21 +114,22 @@ def test_training_completes_after_releasing_intermediates(training_history, tmp_
 
     with ExitStack() as stack:
         for name in paths:
-            stack.enter_context(patch.object(engine, name, tmp_path / (name + ".joblib")))
+            suffix = ".json" if name == "FEATURE_STATS_PATH" else ".joblib"
+            stack.enter_context(patch.object(engine, name, tmp_path / (name + suffix)))
         stack.enter_context(patch.object(engine, "RandomizedSearchCV", side_effect=small_search))
         stack.enter_context(patch.object(engine, "XGBRegressor", side_effect=small_regressor))
         stack.enter_context(patch.object(engine, "log_notification"))
         stack.enter_context(patch.object(engine.psutil, "virtual_memory", return_value=MagicMock(available=8 * 1024**3)))
         if kind == "classifier":
             engine.train_global_ml_model()
-            model = engine.joblib.load(engine.MODEL_PATH)
+            model = joblib.load(engine.MODEL_PATH)
             scores = model.predict_proba(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
             assert np.isfinite(scores).all()
             assert engine.FEATURE_STATS_PATH.exists()
         else:
             engine.train_quantile_models()
             for path in [engine.QUANTILE_Q10_PATH, engine.QUANTILE_Q90_PATH]:
-                model = engine.joblib.load(path)
+                model = joblib.load(path)
                 scores = model.predict(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
                 assert np.isfinite(scores).all()
 
@@ -198,7 +200,7 @@ def test_walk_forward_folds_keep_the_label_embargo_between_train_and_test():
 
 
 def test_feature_stats_record_universe_size_and_feature_moments(tmp_path):
-    import joblib
+    import json
     import ml_training_engine as engine
 
     rng = np.random.default_rng(2)
@@ -208,11 +210,11 @@ def test_feature_stats_record_universe_size_and_feature_moments(tmp_path):
     })
     for col in engine.CONTINUOUS_FEATURES:
         df[col] = rng.normal(size=5)
-    path = tmp_path / "stats.joblib"
+    path = tmp_path / "stats.json"
     with patch.object(engine, "FEATURE_STATS_PATH", path):
         engine._save_feature_stats(df)
 
-    stats = joblib.load(path)
+    stats = json.loads(path.read_text())
     assert stats["_meta"]["train_universe_size"] == 2
     assert set(stats["features"]) == set(engine.CONTINUOUS_FEATURES)
     assert stats["features"]["rsi_14"]["mean"] == pytest.approx(float(df["rsi_14"].mean()))

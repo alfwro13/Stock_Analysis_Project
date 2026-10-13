@@ -3,6 +3,7 @@ tests/test_ml_inference_engine.py — Daily ML Inference unit tests
 
 Covers:
   • update_daily_ml_predictions mirrors ml_confidence_score onto stock_signals.ml_confidence
+  • the coverage guard and drift check read the JSON feature statistics, and a null moment skips only that feature
 """
 
 import sys
@@ -69,7 +70,7 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
                 conn.close()
         return [f"MLU{i:02d}" for i in range(n)]
 
-    def test_ml_confidence_synced_to_stock_signals(self, fake_inference_df):
+    def test_ml_confidence_synced_to_stock_signals(self, fake_inference_df, tmp_path):
         tickers = self._seed_universe()
         target = tickers[:2]
         fake_df = fake_inference_df(tickers)
@@ -79,11 +80,10 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
 
         from ml_inference_engine import update_daily_ml_predictions
         with patch("ml_inference_engine.MODEL_PATH") as mock_path, \
-             patch("ml_inference_engine.FEATURE_STATS_PATH") as mock_stats_path, \
-             patch("ml_inference_engine.joblib.load", return_value=fake_model), \
+             patch("ml_inference_engine.FEATURE_STATS_PATH", tmp_path / "absent.json"), \
+             patch("model_compatibility_engine.joblib.load", return_value=fake_model), \
              patch("ml_inference_engine.pd.read_sql_query", return_value=fake_df):
             mock_path.exists.return_value = True
-            mock_stats_path.exists.return_value = False
             update_daily_ml_predictions(target)
 
         conn = None
@@ -115,3 +115,29 @@ def test_latest_features_query_returns_only_each_tickers_newest_complete_row():
         if conn:
             conn.close()
     assert sorted((r["ticker"], r["date"]) for r in rows) == [("MLU00", "2026-01-05"), ("MLU01", "2026-01-05")]
+
+
+class TestFeatureStatsFromJson:
+    @staticmethod
+    def _run(stats, target_count=2):
+        tickers = TestUpdateDailyMlPredictionsSyncsStockSignals._seed_universe()
+        fake_model = MagicMock()
+        fake_model.predict_proba.return_value = np.array([[0.2, 0.8]])
+        from ml_inference_engine import update_daily_ml_predictions
+        with patch("ml_inference_engine.MODEL_PATH") as mock_path, \
+             patch("ml_inference_engine.load_feature_stats", return_value=stats) as load, \
+             patch("ml_inference_engine.log_notification") as notify, \
+             patch("model_compatibility_engine.joblib.load", return_value=fake_model):
+            mock_path.exists.return_value = True
+            update_daily_ml_predictions(tickers[:target_count])
+        return load, notify
+
+    def test_universe_below_json_threshold_refuses_to_score(self):
+        _, notify = self._run({"_meta": {"train_universe_size": 100000}, "features": {}})
+        assert notify.call_args.args[0] == "Error"
+
+    def test_null_moment_does_not_abort_the_drift_check(self):
+        stats = {"_meta": {"train_universe_size": 10}, "features": {"rsi_14": {"mean": None, "std": None}}}
+        load, notify = self._run(stats)
+        load.assert_called_once()
+        notify.assert_not_called()

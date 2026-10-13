@@ -1,17 +1,47 @@
-from typing import Dict, Optional, Tuple
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from config import BASE_DIR
+from utils import sanitize_floats
+
+logger = logging.getLogger(__name__)
 
 
 MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH          = MODELS_DIR / "ml_ensemble.joblib"
-FEATURE_STATS_PATH  = MODELS_DIR / "feature_stats.joblib"
+FEATURE_STATS_PATH  = MODELS_DIR / "feature_stats.json"
 QUANTILE_Q10_PATH   = MODELS_DIR / "quantile_q10.joblib"
 QUANTILE_Q90_PATH   = MODELS_DIR / "quantile_q90.joblib"
+
+
+def save_feature_stats(stats: Dict[str, Any], path: Path) -> None:
+    """JSON, not a pickle: the Home Assistant poll reads this file, and a missing measurement stays null."""
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(json.dumps(sanitize_floats(stats)))
+    os.replace(tmp, path)
+
+
+def load_feature_stats(path: Path) -> Optional[Dict[str, Any]]:
+    """None when the file is absent or unreadable, so every caller falls back the same way."""
+    try:
+        stats = json.loads(path.read_text())
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as error:
+        logger.warning("Could not read feature statistics %s: %s", path, error)
+        return None
+    if not (isinstance(stats, dict) and isinstance(stats.get("_meta"), dict) and isinstance(stats.get("features"), dict)):
+        logger.warning("Feature statistics %s do not have the expected layout; ignoring them", path)
+        return None
+    return stats
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE REGISTRY  (18 features — 6 fundamental features removed 2026-05-29)

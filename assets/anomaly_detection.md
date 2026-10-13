@@ -158,7 +158,7 @@ Normalising against a single live point has no statistical meaning. The training
 **Entry point:** `AnomalyEngine.train_all(tickers, parquet_dir)`  
 **Triggered by:** `run_anomaly_training_job()` in `scheduler_jobs.py` (nightly 18:30, registered in `scheduler_engine.reload_scheduler()`) or the "Train Models Now" button in Settings → Machine Learning & AI Engine. It is also queued within seconds of startup when `model_compatibility_engine.py` detects that the saved Isolation Forest family was trained by a different scikit-learn version.
 
-**Stale-model cleanup:** `train_all` deletes the saved model (and its `.sklearn-version` sidecar) for any ticker outside the training list, and `train_all`/`train_one` delete it for a ticker that can no longer be trained (missing Parquet, missing columns, too few clean rows, degenerate score range). This stops an outdated artifact from being rejected on every scoring pass after a scikit-learn upgrade. An empty ticker list prunes nothing.
+**Stale-model cleanup:** `train_all` deletes the saved model (and its `.sklearn-version` and `.trained-at.json` sidecars) for any ticker outside the training list, and `train_all`/`train_one` delete it for a ticker that can no longer be trained (missing Parquet, missing columns, too few clean rows, degenerate score range). This stops an outdated artifact from being rejected on every scoring pass after a scikit-learn upgrade. An empty ticker list prunes nothing.
 
 ```
 For each ticker:
@@ -170,6 +170,7 @@ For each ticker:
   6. Compute score_min, score_max over training set
   7. Save {model, score_min, score_max} → data/anomaly_models/{ticker}.joblib
   8. Save the installed scikit-learn version → data/anomaly_models/{ticker}.joblib.sklearn-version
+  9. Save {trained_at} as JSON → data/anomaly_models/{ticker}.joblib.trained-at.json
 ```
 
 **Minimum data requirement:** 50 clean rows. This ensures:
@@ -351,7 +352,7 @@ data/anomaly_models/
   ...
 ```
 
-Each `.joblib` contains `{'model': IsolationForest, 'score_min': float, 'score_max': float}`.
+Each `.joblib` contains `{'model': IsolationForest, 'score_min': float, 'score_max': float, 'trained_at': str}`. `{ticker}.joblib.trained-at.json` repeats `trained_at` as plain JSON; `GET /api/system/metrics` reads it through `anomaly_engine.read_trained_at()` to count stale models (older than 7 days) without unpickling any model. A model with no readable sidecar, such as one trained before the sidecar existed, counts as stale until the next training run.
 
 **Alert state (shared with Crash and Moonshot):**
 

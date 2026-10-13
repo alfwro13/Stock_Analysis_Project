@@ -1741,7 +1741,7 @@ Scheduled job firing is paused for the whole restore and resumed afterward, what
 
 ### `GET /api/system/metrics`
 
-Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML model state, storage, and macro data counts.
+Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML model state, storage, and macro data counts. It never unpickles a model: the ML feature statistics come from `models/feature_stats.json` and each anomaly model's age from its `.trained-at.json` sidecar.
 
 **Response**
 
