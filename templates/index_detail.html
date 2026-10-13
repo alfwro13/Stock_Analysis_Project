@@ -46,9 +46,11 @@
 <div id="overview" class="summary-box mb-3">
     <div class="d-flex justify-content-between align-items-center">
         <h2 class="m-0 border-0 p-0">Market Snapshot</h2>
+        {% if not close_only %}
         <button id="refreshDataBtn" onclick="refreshIndexData()" class="btn-refresh">
             <span class="btn-icon">&#8635;</span> Refresh
         </button>
+        {% endif %}
     </div>
     <div class="d-flex flex-wrap gap-4 mt-3 mb-3 font-16">
         <div>
@@ -103,19 +105,27 @@
 
         {# Price Action #}
         <div id="price-action" class="mb-4">
-            <h2>Price Action &amp; Pivot Levels</h2>
+            <h2>{% if close_only %}Yield Ranges &amp; Levels{% else %}Price Action &amp; Pivot Levels{% endif %}</h2>
             {% if price_action %}
             <div class="row g-3">
                 <div class="col-12 col-sm-6 col-xl-4">
                     <div class="data-card">
-                        <h3>Trading Ranges</h3>
+                        <h3>{% if close_only %}Yield Ranges{% else %}Trading Ranges{% endif %}</h3>
+                        {% if not close_only %}
                         <div class="data-row"><span class="data-label">Daily Low:</span> <span class="data-value">{{ fmt(price_action.day_low) }}</span></div>
                         <div class="data-row"><span class="data-label">Daily High:</span> <span class="data-value">{{ fmt(price_action.day_high) }}</span></div>
                         <div class="divider-line"></div>
+                        {% endif %}
                         <div class="data-row"><span class="data-label">1-Month Low:</span> <span class="data-value">{{ fmt(price_action.month_low) }}</span></div>
                         <div class="data-row"><span class="data-label">1-Month High:</span> <span class="data-value">{{ fmt(price_action.month_high) }}</span></div>
+                        {% if close_only %}
+                        <div class="divider-line"></div>
+                        <div class="data-row"><span class="data-label">1-Year Low:</span> <span class="data-value">{{ fmt(price_action.year_low) }}</span></div>
+                        <div class="data-row"><span class="data-label">1-Year High:</span> <span class="data-value">{{ fmt(price_action.year_high) }}</span></div>
+                        {% endif %}
                     </div>
                 </div>
+                {% if not close_only %}
                 <div class="col-12 col-sm-6 col-xl-4">
                     <div class="data-card">
                         <h3>Pivot Points (Daily Floors)</h3>
@@ -130,6 +140,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
                 <div class="col-12 col-sm-6 col-xl-4">
                     <div class="data-card">
                         <h3>Technical Levels</h3>
@@ -169,6 +180,7 @@
                                 {% else %}N/A{% endif %}
                             </span>
                         </div>
+                        {% if not close_only %}
                         <div class="divider-line"></div>
                         <div class="data-row">
                             <span class="data-label"><abbr title="Today's volume. Elevated volume confirms price moves.">Volume:</abbr></span>
@@ -179,6 +191,7 @@
                                 {% else %}N/A{% endif %}
                             </span>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -249,6 +262,7 @@
                                 {% else %}N/A{% endif %}
                             </span>
                         </div>
+                        {% if not close_only %}
                         <div class="data-row">
                             <span class="data-label"><abbr title="Average True Range as % of price. Measures typical daily price swing size.">ATR %:</abbr></span>
                             <span class="data-value">
@@ -293,6 +307,7 @@
                                 {% else %}N/A{% endif %}
                             </span>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -318,6 +333,7 @@
 <script>
     window.INTRADAY_REVISION = {{ intraday_revision | tojson }};
     window.INDEX_TICKER = {{ ticker | tojson }};
+    window.INDEX_CLOSE_ONLY = {{ close_only | tojson }};
     window.INDEX_REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
     window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
 </script>

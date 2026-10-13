@@ -250,6 +250,17 @@ class TestQuantIndicatorFrame:
         pd.testing.assert_series_equal(
             out["atr_pct"], compute_atr(df["High"], df["Low"], df["Close"]) / df["Close"], check_names=False)
 
+    def test_close_only_series_matches_the_full_builder_on_the_close_derived_columns(self):
+        from indicators import CLOSE_ONLY_INDICATORS, compute_close_only_indicators, compute_quant_indicator_frame
+
+        close = self._frame()["Close"]
+        out = compute_close_only_indicators(close)
+        flat = pd.DataFrame({"Close": close, "High": close, "Low": close, "Volume": 0.0})
+        assert list(out.columns) == list(CLOSE_ONLY_INDICATORS)
+        pd.testing.assert_frame_equal(out, compute_quant_indicator_frame(flat)[list(CLOSE_ONLY_INDICATORS)])
+        assert "atr_pct" not in out.columns and "volume_surge" not in out.columns
+        assert out["rsi_14"].notna().iloc[-1]
+
     def test_short_history_is_nan_not_an_error(self):
         from indicators import compute_quant_indicator_frame
 

@@ -287,3 +287,15 @@ def compute_quant_indicator_frame(df: pd.DataFrame, spy_df: Optional[pd.DataFram
         "rel_strength_5d": rel_strength_5d, "rel_strength_20d": rel_strength_20d,
         "week52_pct": (close_safe - low_52w) / range_52w,
     }, index=df.index)
+
+
+CLOSE_ONLY_INDICATORS: Tuple[str, ...] = (
+    "rsi_14", "macd", "macd_signal", "macd_hist", "sma_50", "sma_200",
+    "mom_1m", "mom_3m", "mom_6m", "mom_12m_skip1m", "hist_vol_20",
+)
+
+
+def compute_close_only_indicators(close: pd.Series) -> pd.DataFrame:
+    """Close-derived subset of compute_quant_indicator_frame for a series with no High/Low/Volume (a yield); the range- and volume-based columns are meaningless there and are not returned."""
+    flat = pd.DataFrame({"Close": close, "High": close, "Low": close, "Volume": 0.0})
+    return compute_quant_indicator_frame(flat)[list(CLOSE_ONLY_INDICATORS)]

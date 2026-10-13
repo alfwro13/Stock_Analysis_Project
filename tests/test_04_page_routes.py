@@ -464,6 +464,62 @@ def test_index_detail_wires_intraday_auto_refresh_globals(client):
     assert "window.INDEX_REFRESH_RATE_MS" in resp.text
 
 
+def _write_gilt_baseline(tmp_path, rows=700):
+    import numpy as np
+    import pandas as pd
+
+    close = 4.0 + np.cumsum(np.random.default_rng(3).normal(0, 0.02, rows))
+    pd.DataFrame({"Close": close}, index=pd.bdate_range("2024-01-01", periods=rows)).to_parquet(
+        tmp_path / "UK_GILT_BASELINE.parquet"
+    )
+
+
+@pytest.mark.pages
+def test_index_detail_gilt_renders_yield_history_from_close_only_baseline(client, tmp_path, monkeypatch):
+    """UK10YG is an FT/BoE series whose baseline holds only Close: the candlestick/OBV macro chart,
+    pivot levels, volume and Yahoo-refresh controls cannot apply, so the page shows a yield-history chart
+    and Close-derived ranges and technicals instead of a failure placeholder."""
+    _write_gilt_baseline(tmp_path)
+    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+    resp = client.get("/index/UK10YG")
+    assert resp.status_code == 200
+    assert "Chart unavailable" not in resp.text
+    assert "UK10YG Yield - 2-Year Daily History" in resp.text
+    assert "Yield Ranges" in resp.text
+    assert "1-Year Low" in resp.text
+    assert "Currency: GBP" in resp.text
+    assert "window.INDEX_CLOSE_ONLY = true" in resp.text
+    for absent in ("refreshDataBtn", "Pivot Points", "Daily Low", "Volume:", "ATR %", "VaR (95%)", "Media Sentiment"):
+        assert absent not in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_gilt_intraday_slot_plots_accumulated_ft_readings(client, tmp_path, monkeypatch):
+    _write_gilt_baseline(tmp_path)
+    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+    with patch("page_routes_macro.get_intraday_points", return_value=[[1_000_000.0, 5.40], [1_000_300.0, 5.42]]):
+        resp = client.get("/index/UK10YG")
+    assert "Today&#x27;s FT Yield Readings" in resp.text or "Today's FT Yield Readings" in resp.text
+    assert "Not enough readings yet" not in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_gilt_with_a_single_reading_shows_the_placeholder(client, tmp_path, monkeypatch):
+    _write_gilt_baseline(tmp_path)
+    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+    with patch("page_routes_macro.get_intraday_points", return_value=[[1_000_000.0, 5.40]]):
+        resp = client.get("/index/UK10YG")
+    assert "Not enough readings yet" in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_yahoo_sourced_index_keeps_refresh_button_and_pivot_levels(client):
+    resp = client.get("/index/%5EGSPC")
+    assert resp.status_code == 200
+    assert "refreshDataBtn" in resp.text
+    assert "window.INDEX_CLOSE_ONLY = false" in resp.text
+
+
 # ── Stock Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
