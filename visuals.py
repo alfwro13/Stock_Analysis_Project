@@ -86,6 +86,33 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
     return fig.to_html(full_html=False, include_plotlyjs=include_plotlyjs, config=clean_config)
 
 
+_CHART_CONFIG = {'responsive': True, 'displaylogo': False}
+YIELD_HISTORY_YEARS = 2
+
+
+def create_yield_history_chart(close: pd.Series, ticker: str) -> str:
+    # Averages run on the full history first so the 200-day line is valid across the displayed window.
+    averages = {window: close.rolling(window=window).mean() for window in (21, 50, 200)}
+    shown = close.index >= close.index[-1] - pd.DateOffset(years=YIELD_HISTORY_YEARS)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=close.index[shown], y=close[shown], line=dict(color='#4da6ff', width=2), name="Yield"))
+    for window, color in ((21, '#00ffcc'), (50, 'yellow'), (200, 'white')):
+        fig.add_trace(go.Scatter(x=close.index[shown], y=averages[window][shown], line=dict(color=color, width=1.5), name=f"{window}D MA"))
+    apply_sentiment_chart_layout(fig, f"{ticker} Yield - {YIELD_HISTORY_YEARS}-Year Daily History")
+    fig.update_yaxes(ticksuffix="%")
+    return fig.to_html(full_html=False, include_plotlyjs=False, config=_CHART_CONFIG)
+
+
+def create_reading_line_chart(points: list, title: str, market_tz: str) -> str:
+    """points is [[unix_ts, value], ...] oldest first; timestamps are UTC and shown in market_tz."""
+    stamps = pd.to_datetime([p[0] for p in points], unit='s', utc=True).tz_convert(market_tz).tz_localize(None)
+    fig = go.Figure(go.Scatter(x=stamps, y=[p[1] for p in points], mode='lines+markers', line=dict(color='#4da6ff', width=2), name="Reading"))
+    apply_sentiment_chart_layout(fig, title)
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(ticksuffix="%")
+    return fig.to_html(full_html=False, include_plotlyjs=False, config=_CHART_CONFIG)
+
+
 def create_macro_chart(df, df_baseline, ticker):
     # Compute long-window indicators on the full history before truncating so
     # MA_200 (needs 200 rows) and OBV (cumulative, benefits from full context)

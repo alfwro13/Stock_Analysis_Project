@@ -24,10 +24,14 @@ from sentiment_engine import (
     get_ftse_gbp_html,
 )
 import markets_engine
-from utils import normalize_ticker, safe_ticker_filename
+from utils import NON_YAHOO_REGISTRY_TICKERS, normalize_ticker, safe_ticker_filename
+from indicators import compute_close_only_indicators
+from market_pulse import get_intraday_points
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
+    create_yield_history_chart,
+    create_reading_line_chart,
     intraday_market_tz,
     EXCHANGE_DELAYS,
     create_us_liquidity_chart,
@@ -357,9 +361,21 @@ def market_sentiment_page(request: Request):
     )
 
 
+def _close_only_ranges(close: pd.Series) -> dict:
+    month, year = close.tail(21), close.tail(252)
+    return {"month_low": month.min(), "month_high": month.max(), "year_low": year.min(), "year_high": year.max()}
+
+
+def _reading_placeholder_html() -> str:
+    return ("<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span>"
+            "<span class='chart-ph__title'>Not enough readings yet</span>"
+            "<span class='chart-ph__hint'>FT.com gives one yield snapshot per refresh, so today's line builds up as the page refreshes.</span></div>")
+
+
 @page_router_macro.get("/index/{ticker}", response_class=HTMLResponse)
 def index_detail(request: Request, ticker: str):
     ticker = normalize_ticker(ticker)
+    close_only = ticker in NON_YAHOO_REGISTRY_TICKERS
     registry_row = get_ticker_registry_row(ticker)
     is_future_page = False
     spot_of_future = None
@@ -414,7 +430,7 @@ def index_detail(request: Request, ticker: str):
 
         cursor.execute("SELECT currency FROM asset_profiles WHERE ticker = ?", (ticker,))
         ap = cursor.fetchone()
-        currency = ap["currency"] if ap else "USD"
+        currency = ap["currency"] if ap else ((registry_row or {}).get("currency") or "USD")
     finally:
         if conn:
             conn.close()
@@ -432,45 +448,61 @@ def index_detail(request: Request, ticker: str):
         df_macro = pd.read_parquet(parquet_path) if parquet_path else pd.DataFrame()
         if df_macro.empty:
             raise FileNotFoundError
-        macro_html = create_macro_chart(df_macro, None, ticker)
-        last_day = df_macro.iloc[-1]
-        prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
-        last_21 = df_macro.tail(21)
-        P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
-        price_action = {
-            "day_low": last_day['Low'], "day_high": last_day['High'],
-            "month_low": last_21['Low'].min(), "month_high": last_21['High'].max(),
-            "s1": (P * 2) - prev_day['High'],
-            "s2": P - (prev_day['High'] - prev_day['Low']),
-        }
+        if close_only:
+            close = df_macro['Close'].dropna()
+            macro_html = create_yield_history_chart(close, ticker)
+            price_action = _close_only_ranges(close)
+            latest = compute_close_only_indicators(close).iloc[-1]
+            quant.update({name: (None if pd.isna(value) else float(value)) for name, value in latest.items()})
+        else:
+            macro_html = create_macro_chart(df_macro, None, ticker)
+            last_day = df_macro.iloc[-1]
+            prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
+            last_21 = df_macro.tail(21)
+            P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
+            price_action = {
+                "day_low": last_day['Low'], "day_high": last_day['High'],
+                "month_low": last_21['Low'].min(), "month_high": last_21['High'].max(),
+                "s1": (P * 2) - prev_day['High'],
+                "s2": P - (prev_day['High'] - prev_day['Low']),
+            }
     except FileNotFoundError:
         macro_html = "<div class='chart-ph chart-ph--lg'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No historical data yet</span></div>"
     except Exception as e:
         logger.warning("macro chart failed for %s: %s", ticker, e)
         macro_html = "<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>See the server log for details.</span></div>"
 
-    try:
-        if not _safe_ticker:
-            raise FileNotFoundError
-        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{_safe_ticker}_intraday.parquet")
-        s1 = price_action['s1'] if price_action else None
-        s2 = price_action['s2'] if price_action else None
-        mkt_tz = intraday_market_tz(ticker, currency)
-        delay_min = EXCHANGE_DELAYS.get(currency, 0)
-        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
-                                              market_tz=mkt_tz, data_delay_minutes=delay_min)
-    except FileNotFoundError:
+    if close_only:
         intraday_revision = ""
-        intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span></div>"
-    except Exception:
-        intraday_revision = ""
-        intraday_html = "<div class='chart-ph chart-ph--sm chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Intraday data unavailable</span></div>"
+        readings = get_intraday_points(ticker)
+        intraday_html = (
+            create_reading_line_chart(readings, f"{ticker} - Today's FT Yield Readings", intraday_market_tz(ticker, currency))
+            if len(readings) >= 2 else _reading_placeholder_html()
+        )
+    else:
+        try:
+            if not _safe_ticker:
+                raise FileNotFoundError
+            df_intraday = pd.read_parquet(INTRADAY_DIR / f"{_safe_ticker}_intraday.parquet")
+            s1 = price_action['s1'] if price_action else None
+            s2 = price_action['s2'] if price_action else None
+            mkt_tz = intraday_market_tz(ticker, currency)
+            delay_min = EXCHANGE_DELAYS.get(currency, 0)
+            intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
+                                                  market_tz=mkt_tz, data_delay_minutes=delay_min)
+        except FileNotFoundError:
+            intraday_revision = ""
+            intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span></div>"
+        except Exception:
+            intraday_revision = ""
+            intraday_html = "<div class='chart-ph chart-ph--sm chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Intraday data unavailable</span></div>"
 
     return templates.TemplateResponse(
         request=request, name="index_detail.html",
         context={
             "ticker":        ticker,
             "display_name":  display_name,
+            "close_only":    close_only,
             "asset_type":    registry_row["asset_type"] if registry_row else None,
             "is_future_page": is_future_page,
             "spot_ticker":   spot_of_future["ticker"] if is_future_page else None,

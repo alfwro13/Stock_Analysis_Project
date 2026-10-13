@@ -108,7 +108,7 @@
     function startIntradayAutoRefresh() {
         if (_intradayTimer) clearInterval(_intradayTimer);
         _intradayTimer = null;
-        if (!window.ENABLE_LIVE_ASSETS || document.hidden) return;
+        if (window.INDEX_CLOSE_ONLY || !window.ENABLE_LIVE_ASSETS || document.hidden) return;
         _refreshIntradayChart();
         _intradayTimer = setInterval(function () {
             resetCountdown();
@@ -139,7 +139,7 @@
 
     function initRefreshStatus() {
         const el = document.getElementById('refresh-status');
-        if (!el) return;
+        if (!el || window.INDEX_CLOSE_ONLY) return;
         if (!window.ENABLE_LIVE_ASSETS) {
             el.innerHTML = '<span class="pulse-dot offline"></span> Manual updates only';
             return;
