@@ -9,8 +9,11 @@ Covers pure business logic:
       - cross-sectional median imputation per date
       - columns absent from FUNDAMENTAL_FEATURES are left untouched
   • build_model_features: derived columns, inf cleaning, sector fallback, per-date z-scores
+  • save_feature_stats / load_feature_stats: JSON round trip, null for a missing measurement,
+    None for an absent, corrupt or wrongly-shaped file
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -26,6 +29,8 @@ from ml_features import (
     _winsorize_and_impute_fundamentals,
     FUNDAMENTAL_BOUNDS,
     build_model_features,
+    load_feature_stats,
+    save_feature_stats,
 )
 
 
@@ -255,3 +260,34 @@ class TestBuildModelFeatures:
         result = build_model_features(raw)
         assert list(result.loc[[0, 1], "sector_code"]) == [99, 99]
         assert result.loc[0, "volume_surge"] == 0
+
+
+class TestFeatureStatsFile:
+    STATS = {"_meta": {"train_universe_size": 1200}, "features": {"rsi_14": {"mean": 51.5, "std": 12.0}}}
+
+    def test_round_trip_leaves_no_temp_file(self, tmp_path):
+        path = tmp_path / "feature_stats.json"
+        save_feature_stats(self.STATS, path)
+        assert load_feature_stats(path) == self.STATS
+        assert [p.name for p in tmp_path.iterdir()] == ["feature_stats.json"]
+
+    def test_non_finite_moment_is_stored_as_null(self, tmp_path):
+        path = tmp_path / "feature_stats.json"
+        stats = {"_meta": {"train_universe_size": 5}, "features": {"rsi_14": {"mean": 1.0, "std": float("nan")}}}
+        save_feature_stats(stats, path)
+        assert json.loads(path.read_text())["features"]["rsi_14"]["std"] is None
+        assert load_feature_stats(path)["features"]["rsi_14"]["std"] is None
+
+    def test_missing_file_is_none(self, tmp_path):
+        assert load_feature_stats(tmp_path / "absent.json") is None
+
+    def test_corrupt_or_wrongly_shaped_file_is_none(self, tmp_path):
+        path = tmp_path / "feature_stats.json"
+        for content in ("{not json", "[1, 2]", '{"_meta": 3, "features": {}}', '{"_meta": {}}'):
+            path.write_text(content)
+            assert load_feature_stats(path) is None
+
+    def test_pickle_is_never_read(self, tmp_path):
+        path = tmp_path / "feature_stats.json"
+        path.write_bytes(b"\x80\x04N.")
+        assert load_feature_stats(path) is None

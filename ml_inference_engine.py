@@ -1,14 +1,13 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-import joblib
 import pandas as pd
 
 from model_compatibility_engine import load_sklearn_artifact
 from database import get_connection, log_notification
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
-    CONTINUOUS_FEATURES, LATEST_FEATURES_QUERY, build_model_features,
+    CONTINUOUS_FEATURES, LATEST_FEATURES_QUERY, build_model_features, load_feature_stats,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,14 +68,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             return
 
         # ── Load saved stats (shared by Change A and Change B) ────────────────
-        saved_stats: Optional[Dict[str, Any]] = None
-        try:
-            if FEATURE_STATS_PATH.exists():
-                saved_stats = joblib.load(FEATURE_STATS_PATH)
-        except Exception as _e:
-            logger.info(
-                'Could not load feature_stats.joblib (%s); coverage/drift checks will use fallbacks.', _e
-            )
+        saved_stats: Optional[Dict[str, Any]] = load_feature_stats(FEATURE_STATS_PATH)
 
         # ── Change A: Universe-coverage guard ─────────────────────────────────
         # Refuse to score when the cross-section is too thin for reliable
@@ -113,7 +105,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
         # ── Change B: Train-vs-serve feature drift diagnostic ─────────────────
         # Compares today's raw (pre-z-score) feature means against the pooled
-        # training statistics saved in feature_stats.joblib.  Emits a single
+        # training statistics saved in feature_stats.json.  Emits a single
         # WARNING listing all drifted features; never alters any predictions.
         try:
             if saved_stats is not None:
@@ -125,8 +117,10 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                     if col not in train_feature_stats or col not in df.columns:
                         continue
                     today_mean: float = float(df[col].mean())
-                    train_mean: float = train_feature_stats[col]['mean']
-                    train_std:  float = train_feature_stats[col]['std']
+                    train_mean: Optional[float] = train_feature_stats[col]['mean']
+                    train_std:  Optional[float] = train_feature_stats[col]['std']
+                    if train_mean is None or train_std is None:
+                        continue
                     if abs(today_mean - train_mean) / (train_std + 1e-9) > 1.0:
                         drifted.append(col)
                 if drifted:
@@ -137,7 +131,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                     )
             else:
                 logger.info(
-                    "Feature drift check skipped — feature_stats.joblib not found."
+                    "Feature drift check skipped — feature_stats.json not found."
                 )
         except Exception as _drift_e:
             logger.info('Feature drift check skipped due to error: %s', _drift_e)

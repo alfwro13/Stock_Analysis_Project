@@ -1,7 +1,10 @@
 """Tests for system_check_engine.run_system_checks and the /api/system/checks endpoint."""
+from unittest.mock import patch
+
 import pytest
 import database as _db_module
 import system_check_engine as _sce
+from ml_features import save_feature_stats
 
 
 _BASE_CONFIG = {
@@ -194,3 +197,31 @@ class TestSystemChecksEndpoint:
             assert "level" in issue
             assert "message" in issue
             assert issue["level"] in ("warning", "error")
+
+
+# ---------------------------------------------------------------------------
+# Training universe size comes from the JSON feature statistics, never a pickle
+# ---------------------------------------------------------------------------
+
+class TestLoadTrainUniverseSize:
+    def test_reads_universe_size_from_json_stats(self, tmp_path, monkeypatch):
+        path = tmp_path / "feature_stats.json"
+        save_feature_stats({"_meta": {"train_universe_size": 1200}, "features": {}}, path)
+        monkeypatch.setattr(_sce, "FEATURE_STATS_PATH", path)
+        with patch("joblib.load", side_effect=AssertionError("unpickled")):
+            assert _sce._load_train_universe_size() == 1200
+
+    def test_none_when_stats_file_absent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_sce, "FEATURE_STATS_PATH", tmp_path / "absent.json")
+        assert _sce._load_train_universe_size() is None
+
+
+@pytest.mark.api
+def test_market_status_output_is_unchanged_and_never_unpickles(client, tmp_path, monkeypatch):
+    path = tmp_path / "feature_stats.json"
+    save_feature_stats({"_meta": {"train_universe_size": 1200}, "features": {}}, path)
+    monkeypatch.setattr(_sce, "FEATURE_STATS_PATH", path)
+    with patch("joblib.load", side_effect=AssertionError("unpickled")):
+        resp = client.get("/api/system/market-status")
+    assert resp.status_code == 200
+    assert set(resp.json()) == {"status", "us_market_open", "uk_market_open", "yahoo_ok", "system_ok"}

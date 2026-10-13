@@ -4,7 +4,7 @@ tests/test_07_api_routes_audit.py  ── api_routes.py Audit Regression Tests
 Covers the bugs found and fixed in the June 2026 api_routes.py audit:
 
 1. Anomaly datetime comparison — /api/system/metrics must not crash when a
-   .joblib model file has a naive (no tzinfo) or missing 'trained_at' field.
+   anomaly model's trained-at sidecar holds a naive (no tzinfo) or missing 'trained_at'.
 2. Path traversal — /api/universe/import/server uses the resolved path
    throughout, not a re-created unresolved one.
 3. Intraday chart placeholder HTML — /api/intraday-chart/<ticker> must NOT
@@ -15,9 +15,9 @@ Covers the bugs found and fixed in the June 2026 api_routes.py audit:
 """
 
 import io
+import json
 import os
 import sys
-import joblib
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -42,7 +42,8 @@ def _json(resp) -> dict:
 class TestAnomalyDatetimeComparison:
     """
     /api/system/metrics scans ANOMALY_MODELS_DIR for .joblib files and
-    compares their 'trained_at' field against a UTC-aware cutoff.
+    compares the 'trained_at' in each one's JSON sidecar against a UTC-aware cutoff,
+    without unpickling any model.
 
     Before the fix, datetime.fromisoformat() on a naive string raised TypeError
     when compared against a timezone-aware datetime.  After the fix the naive
@@ -50,9 +51,10 @@ class TestAnomalyDatetimeComparison:
     """
 
     def _make_model_file(self, directory: Path, filename: str, trained_at) -> Path:
-        """Write a minimal .joblib payload to a temp directory."""
+        """Write a placeholder model file and its trained-at sidecar to a temp directory."""
         path = directory / filename
-        joblib.dump({"trained_at": trained_at, "model": None}, path)
+        path.write_bytes(b"not a pickle")
+        (directory / f"{filename}.trained-at.json").write_text(json.dumps({"trained_at": trained_at}))
         return path
 
     # ANOMALY_MODELS_DIR is imported locally inside get_system_metrics via
@@ -86,6 +88,27 @@ class TestAnomalyDatetimeComparison:
             with patch("config.ANOMALY_MODELS_DIR", tmppath):
                 resp = client.get("/api/system/metrics")
         assert resp.status_code == 200
+
+    def test_model_without_sidecar_counted_as_stale(self, client):
+        """A model trained before the sidecar existed is counted as stale until it is retrained."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            (tmppath / "legacy_model.joblib").write_bytes(b"not a pickle")
+            with patch("config.ANOMALY_MODELS_DIR", tmppath):
+                resp = client.get("/api/system/metrics")
+        assert resp.status_code == 200
+        assert _json(resp)["ml"]["anomaly_stale_count"] >= 1
+
+    def test_metrics_never_unpickles_anomaly_models(self, client):
+        fresh_ts = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            self._make_model_file(tmppath, "fresh_model.joblib", fresh_ts)
+            with patch("config.ANOMALY_MODELS_DIR", tmppath), \
+                 patch("joblib.load", side_effect=AssertionError("unpickled")):
+                resp = client.get("/api/system/metrics")
+        assert resp.status_code == 200
+        assert _json(resp)["ml"]["anomaly_stale_count"] == 0
 
     def test_stale_naive_model_counted_as_stale(self, client):
         """A model with a naive trained_at more than 7 days ago must be counted as stale."""

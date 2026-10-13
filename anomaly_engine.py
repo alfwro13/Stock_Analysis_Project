@@ -1,6 +1,7 @@
 # anomaly_engine.py
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,19 @@ _TRADING_DAYS = 252
 _FEATURE_COLS = ['volume_ratio', 'rsi_14', 'daily_return_pct',
                  'sma50_dist_pct', 'hist_vol_20', 'beta']
 _REQUIRED_PAYLOAD_KEYS = {'model', 'score_min', 'score_max'}
+
+
+def _trained_at_path(model_path: Path) -> Path:
+    return model_path.with_name(f"{model_path.name}.trained-at.json")
+
+
+def read_trained_at(model_path: Path) -> str | None:
+    """Reads the sidecar so the Diagnostics panel never has to unpickle a model to learn its age."""
+    try:
+        sidecar = json.loads(_trained_at_path(model_path).read_text())
+    except (OSError, ValueError):
+        return None
+    return sidecar.get("trained_at") if isinstance(sidecar, dict) else None
 
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -99,6 +113,7 @@ class AnomalyEngine:
         path = self.models_dir / f"{ticker}.joblib"
         path.unlink(missing_ok=True)
         path.with_name(f"{path.name}.sklearn-version").unlink(missing_ok=True)
+        _trained_at_path(path).unlink(missing_ok=True)
 
     def train_all(self, tickers: list[str], parquet_dir: Path) -> None:
         """Train one IsolationForest per ticker and persist to disk."""
@@ -174,6 +189,7 @@ class AnomalyEngine:
             'trained_at': datetime.now(timezone.utc).isoformat(),
         }
         dump_sklearn_artifact(payload, out_path)
+        _trained_at_path(out_path).write_text(json.dumps({'trained_at': payload['trained_at']}))
         self._model_cache[ticker] = payload  # keep cache current
         logger.debug("Saved anomaly model for %s (%d rows) → %s", ticker, len(feature_df), out_path)
 

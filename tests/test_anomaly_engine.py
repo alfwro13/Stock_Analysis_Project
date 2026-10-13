@@ -6,6 +6,7 @@ and the backfill DB-write path.
 import sys
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
-from anomaly_engine import AnomalyEngine
+from anomaly_engine import AnomalyEngine, read_trained_at
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +131,23 @@ class TestTrainAndScore:
         assert result is not None
         assert result['score'] >= 0.0
 
+    def test_trained_at_sidecar_matches_payload_and_is_readable_without_unpickling(self, tmp_path):
+        engine = _engine(tmp_path)
+        engine.train_one("AAPL", _make_ohlcv(), beta=1.0)
+        model_path = tmp_path / "AAPL.joblib"
+        assert (tmp_path / "AAPL.joblib.trained-at.json").exists()
+        with patch("model_compatibility_engine.joblib.load", side_effect=AssertionError("unpickled")):
+            trained_at = read_trained_at(model_path)
+        assert trained_at == engine._model_cache["AAPL"]["trained_at"]
+
+    def test_read_trained_at_is_none_without_a_usable_sidecar(self, tmp_path):
+        model_path = tmp_path / "AAPL.joblib"
+        assert read_trained_at(model_path) is None
+        (tmp_path / "AAPL.joblib.trained-at.json").write_text("not json")
+        assert read_trained_at(model_path) is None
+        (tmp_path / "AAPL.joblib.trained-at.json").write_text("[1, 2]")
+        assert read_trained_at(model_path) is None
+
     def test_beta_none_defaults_to_1(self, tmp_path):
         engine = _engine(tmp_path)
         # beta=None should not raise — falls back to 1.0 via clamp_beta
@@ -173,6 +191,7 @@ class TestTrainAll:
         assert (tmp_path / "AAPL.joblib").exists()
         assert not (tmp_path / "OLD.joblib").exists()
         assert not (tmp_path / "OLD.joblib.sklearn-version").exists()
+        assert not (tmp_path / "OLD.joblib.trained-at.json").exists()
 
     def test_removes_stale_model_when_ticker_no_longer_trainable(self, tmp_path):
         engine = _engine(tmp_path)
