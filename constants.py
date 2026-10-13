@@ -70,7 +70,7 @@ PENSION_BENCHMARK_WATCHLIST_NOTE = (
 SCHEDULER_RUN_HISTORY_LIMIT = 20  # runs kept per job in scheduler_run_history; avg_duration_sec is the mean of the successful ones
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.166"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.167"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

@@ -18,18 +18,18 @@ function formatCurrency(value, currencyCode) {
         num = num / 100.0;
         currencyCode = 'GBP';
     }
-    if (!currencyCode) {
-        return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (currencyCode) {
+        try {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: currencyCode,
+                maximumFractionDigits: 2,
+            }).format(num);
+        } catch (e) {
+            // A code Intl rejects is third-party text: drop it, never echo it into callers that write HTML.
+        }
     }
-    try {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: currencyCode,
-            maximumFractionDigits: 2,
-        }).format(num);
-    } catch (e) {
-        return currencyCode + ' ' + num.toFixed(2);
-    }
+    return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 function strategyStepsHtml(steps, params) {

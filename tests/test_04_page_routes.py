@@ -2820,6 +2820,24 @@ def test_dom_built_screener_tables_escape_third_party_text(script, file):
     _s5_2_run_node(script, _s5_2_js('utils.js'), _s5_2_js(file))
 
 
+def test_format_currency_never_echoes_a_malformed_currency_code():
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const context = {};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+const payload = '<img src=x onerror=alert(1)>';
+assert.equal(context.formatCurrency(1234.5, payload), '1,234.50');
+assert.equal(context.formatCurrency(1234.5, 'USD'), '$1,234.50');
+assert.equal(context.formatCurrency(12345, 'GBp'), '\u00a3123.45');
+assert.equal(context.formatCurrency(1234.5, ''), '1,234.50');
+assert.equal(context.formatCurrency(null, payload), '\u2014');
+"""
+    _s5_2_run_node(script, _s5_2_js('utils.js'))
+
+
 # ── Score History ref / Login next (SEC 5/27, S5-4, S5-6) ─────────────────────
 
 @pytest.mark.pages
