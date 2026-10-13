@@ -312,39 +312,64 @@ def _write_pulse_row(cursor: Any, conn: Any, ticker: str, name: str, quote: _Quo
         upsert_fx_quote(ticker, quote.price, time.time(), conn=conn)
 
 
+def _thin_points(points: list) -> list:
+    """Evenly spaced subset of at most SPARKLINE_MAX_POINTS that always keeps the first and the newest point."""
+    if len(points) <= SPARKLINE_MAX_POINTS:
+        return points
+    last = len(points) - 1
+    return [points[round(i * last / (SPARKLINE_MAX_POINTS - 1))] for i in range(SPARKLINE_MAX_POINTS)]
+
+
 def _write_sparkline(cursor: Any, ticker: str, t_live: pd.DataFrame) -> None:
     # Full replace, not append — the mini sparkline is inherently "today's session".
     try:
         cursor.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (ticker,))
-        sparkline_series = t_live['Close'].dropna()
-        if len(sparkline_series) > SPARKLINE_MAX_POINTS:
-            step = len(sparkline_series) / SPARKLINE_MAX_POINTS
-            sparkline_series = sparkline_series.iloc[[int(i * step) for i in range(SPARKLINE_MAX_POINTS)]]
+        points = _thin_points([(idx.timestamp(), float(val)) for idx, val in t_live['Close'].dropna().items()])
         cursor.executemany(
             "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
-            [(ticker, idx.timestamp(), float(val)) for idx, val in sparkline_series.items()],
+            [(ticker, ts, price) for ts, price in points],
         )
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
 
 
-def _live_gilt_yield(parquet_path: Any) -> Optional[float]:
-    live_gilt_yield = GiltDataService().fetch_live_ft_yield()
-    if live_gilt_yield is None and parquet_path.exists():
+def _live_gilt_yield(parquet_path: Any) -> tuple[Optional[float], bool]:
+    """Second element is True only for a fresh FT reading, never the Parquet fallback."""
+    feed_yield = GiltDataService().fetch_live_ft_yield()
+    if feed_yield is not None:
+        return feed_yield, True
+    if parquet_path.exists():
         try:
             df_gilt_hist = pd.read_parquet(parquet_path)
             if not df_gilt_hist.empty:
-                live_gilt_yield = float(df_gilt_hist['Close'].iloc[-1])
-                logger.info("Live FT scrape returned None. Falling back to Parquet value: %s", live_gilt_yield)
+                fallback_yield = float(df_gilt_hist['Close'].iloc[-1])
+                logger.info("Live FT scrape returned None. Falling back to Parquet value: %s", fallback_yield)
+                return fallback_yield, False
         except Exception as ex:
             logger.error("Failed to read Parquet fallback for market pulse: %s", ex)
-    return live_gilt_yield
+    return None, False
+
+
+def _append_gilt_sparkline(cursor: Any, price: float, now: float) -> None:
+    # FT offers one snapshot per fetch and no intraday series, so today's line is built from our own readings.
+    ticker = "UK10YG"
+    day_start = datetime.fromtimestamp(now, timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    cursor.execute(
+        "SELECT ts, price FROM market_pulse_sparkline WHERE ticker = ? AND ts >= ? ORDER BY ts",
+        (ticker, day_start),
+    )
+    points = _thin_points([(row['ts'], row['price']) for row in cursor.fetchall()] + [(now, price)])
+    cursor.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (ticker,))
+    cursor.executemany(
+        "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
+        [(ticker, ts, value) for ts, value in points],
+    )
 
 
 def _save_gilt_pulse(cursor: Any, index_tickers: dict, current_time: float) -> None:
     try:
         parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
-        live_gilt_yield = _live_gilt_yield(parquet_path)
+        live_gilt_yield, from_feed = _live_gilt_yield(parquet_path)
 
         if live_gilt_yield is not None:
             gilt_prev_close: float = live_gilt_yield
@@ -368,6 +393,8 @@ def _save_gilt_pulse(cursor: Any, index_tickers: dict, current_time: float) -> N
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', ("UK10YG", index_tickers.get("UK10YG", "UK 10Y Gilt"), live_gilt_yield, gilt_change_pts,
                   gilt_change_pct, int(gilt_change_pts >= 0), current_time))
+            if from_feed:
+                _append_gilt_sparkline(cursor, live_gilt_yield, current_time)
         else:
             cursor.execute("SELECT price FROM market_pulse_cache WHERE ticker = 'UK10YG'")
             existing_gilt = cursor.fetchone()

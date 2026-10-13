@@ -873,6 +873,19 @@ class TestSparklineWrite:
         assert len(points) == 3
         assert points[0]["price"] == pytest.approx(101.0)
 
+    def test_long_series_is_thinned_but_keeps_first_and_newest_bar(self):
+        prices = [100.0 + i * 0.01 for i in range(200)]
+        p1, p2 = _pulse_patches(NORMAL_TICKER, _flat_daily_df([100.0, 100.5]), _multi_point_live_df(prices))
+        with p1, p2:
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        points = _read_sparkline(NORMAL_TICKER)
+        assert len(points) == _mw.SPARKLINE_MAX_POINTS
+        assert points[0]["price"] == pytest.approx(prices[0])
+        assert points[-1]["price"] == pytest.approx(prices[-1])
+        stamps = [p["ts"] for p in points]
+        assert stamps == sorted(set(stamps))
+
     def test_empty_intraday_data_leaves_prior_sparkline_untouched(self):
         """Market closed this cycle (t_live empty) — the last session's line must persist."""
         daily = _flat_daily_df([100.0, 100.5])
@@ -1021,9 +1034,24 @@ class TestGiltPulse:
 
     def setup_method(self):
         _clear_cache("UK10YG")
+        _clear_sparkline("UK10YG")
 
     def teardown_method(self):
         _clear_cache("UK10YG")
+        _clear_sparkline("UK10YG")
+
+    @staticmethod
+    def _utc_day_start() -> float:
+        return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+    @staticmethod
+    def _seed_sparkline(points):
+        conn = _conn()
+        conn.executemany(
+            "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES ('UK10YG', ?, ?)", points
+        )
+        conn.commit()
+        conn.close()
 
     @staticmethod
     def _write_baseline(tmp_path, closes):
@@ -1088,3 +1116,36 @@ class TestGiltPulse:
         self._run(tmp_path, None)
 
         assert _read_cache("UK10YG") is None
+
+    def test_live_readings_accumulate_into_the_sparkline(self, tmp_path):
+        self._run(tmp_path, 4.50)
+        self._run(tmp_path, 4.55)
+
+        points = _read_sparkline("UK10YG")
+        assert [p["price"] for p in points] == [pytest.approx(4.50), pytest.approx(4.55)]
+        assert points[0]["ts"] < points[1]["ts"]
+
+    def test_new_utc_day_replaces_yesterdays_points(self, tmp_path):
+        day_start = self._utc_day_start()
+        self._seed_sparkline([(day_start - 7200, 4.10), (day_start - 3600, 4.20), (day_start, 4.30)])
+        self._run(tmp_path, 4.50)
+
+        assert [p["price"] for p in _read_sparkline("UK10YG")] == [pytest.approx(4.30), pytest.approx(4.50)]
+
+    def test_points_are_capped_and_keep_the_newest_reading(self, tmp_path):
+        day_start = self._utc_day_start()
+        self._seed_sparkline([(day_start + i, 4.0 + i / 1000) for i in range(_mw.SPARKLINE_MAX_POINTS)])
+        self._run(tmp_path, 9.99)
+
+        points = _read_sparkline("UK10YG")
+        assert len(points) == _mw.SPARKLINE_MAX_POINTS
+        assert points[0]["ts"] == day_start
+        assert points[-1]["price"] == pytest.approx(9.99)
+        assert len({p["ts"] for p in points}) == _mw.SPARKLINE_MAX_POINTS
+
+    def test_baseline_fallback_is_not_drawn_as_a_live_reading(self, tmp_path):
+        self._write_baseline(tmp_path, [4.30, 4.40])
+        self._seed_sparkline([(self._utc_day_start(), 4.35)])
+        self._run(tmp_path, None)
+
+        assert [p["price"] for p in _read_sparkline("UK10YG")] == [pytest.approx(4.35)]
