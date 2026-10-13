@@ -873,6 +873,19 @@ class TestSparklineWrite:
         assert len(points) == 3
         assert points[0]["price"] == pytest.approx(101.0)
 
+    def test_long_series_is_thinned_but_keeps_first_and_newest_bar(self):
+        prices = [100.0 + i * 0.01 for i in range(200)]
+        p1, p2 = _pulse_patches(NORMAL_TICKER, _flat_daily_df([100.0, 100.5]), _multi_point_live_df(prices))
+        with p1, p2:
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        points = _read_sparkline(NORMAL_TICKER)
+        assert len(points) == _mw.SPARKLINE_MAX_POINTS
+        assert points[0]["price"] == pytest.approx(prices[0])
+        assert points[-1]["price"] == pytest.approx(prices[-1])
+        stamps = [p["ts"] for p in points]
+        assert stamps == sorted(set(stamps))
+
     def test_empty_intraday_data_leaves_prior_sparkline_untouched(self):
         """Market closed this cycle (t_live empty) — the last session's line must persist."""
         daily = _flat_daily_df([100.0, 100.5])

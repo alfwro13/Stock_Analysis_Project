@@ -312,17 +312,22 @@ def _write_pulse_row(cursor: Any, conn: Any, ticker: str, name: str, quote: _Quo
         upsert_fx_quote(ticker, quote.price, time.time(), conn=conn)
 
 
+def _thin_points(points: list) -> list:
+    """Evenly spaced subset of at most SPARKLINE_MAX_POINTS that always keeps the first and the newest point."""
+    if len(points) <= SPARKLINE_MAX_POINTS:
+        return points
+    last = len(points) - 1
+    return [points[round(i * last / (SPARKLINE_MAX_POINTS - 1))] for i in range(SPARKLINE_MAX_POINTS)]
+
+
 def _write_sparkline(cursor: Any, ticker: str, t_live: pd.DataFrame) -> None:
     # Full replace, not append — the mini sparkline is inherently "today's session".
     try:
         cursor.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (ticker,))
-        sparkline_series = t_live['Close'].dropna()
-        if len(sparkline_series) > SPARKLINE_MAX_POINTS:
-            step = len(sparkline_series) / SPARKLINE_MAX_POINTS
-            sparkline_series = sparkline_series.iloc[[int(i * step) for i in range(SPARKLINE_MAX_POINTS)]]
+        points = _thin_points([(idx.timestamp(), float(val)) for idx, val in t_live['Close'].dropna().items()])
         cursor.executemany(
             "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
-            [(ticker, idx.timestamp(), float(val)) for idx, val in sparkline_series.items()],
+            [(ticker, ts, price) for ts, price in points],
         )
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
@@ -353,10 +358,7 @@ def _append_gilt_sparkline(cursor: Any, price: float, now: float) -> None:
         "SELECT ts, price FROM market_pulse_sparkline WHERE ticker = ? AND ts >= ? ORDER BY ts",
         (ticker, day_start),
     )
-    points = [(row['ts'], row['price']) for row in cursor.fetchall()] + [(now, price)]
-    if len(points) > SPARKLINE_MAX_POINTS:
-        last = len(points) - 1
-        points = [points[round(i * last / (SPARKLINE_MAX_POINTS - 1))] for i in range(SPARKLINE_MAX_POINTS)]
+    points = _thin_points([(row['ts'], row['price']) for row in cursor.fetchall()] + [(now, price)])
     cursor.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (ticker,))
     cursor.executemany(
         "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
