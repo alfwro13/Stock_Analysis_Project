@@ -29,7 +29,7 @@ $(document).ready(function() {
 
             column.data().unique().sort().each(function(d) {
                 if (d && d !== 'N/A') {
-                    select.append('<option value="' + d + '">' + d + '</option>');
+                    select.append(new Option(d, d));
                 }
             });
 
@@ -45,7 +45,7 @@ $(document).ready(function() {
                 data: 'sector',
                 render: function(data) {
                     const encodedSector = encodeURIComponent(data);
-                    return `<a href="/market-screener?sector=${encodedSector}" class="text-accent-bold" title="View all ${data} stocks">${data}</a>`;
+                    return `<a href="/market-screener?sector=${encodedSector}" class="text-accent-bold" title="View all ${escapeHtml(data)} stocks">${escapeHtml(data)}</a>`;
                 }
             },
             { data: 'exchange', visible: false, defaultContent: 'US' },
@@ -63,7 +63,7 @@ $(document).ready(function() {
                 render: function(data, type, row) {
                     if (data == null) return '—';
                     const encodedSector = encodeURIComponent(row.sector);
-                    return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} > 50D SMA">${data.toFixed(2)}%</a>`;
+                    return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" class="text-light text-decoration-dotted" title="Filter Screener for ${escapeHtml(row.sector)} > 50D SMA">${data.toFixed(2)}%</a>`;
                 }
             },
             {
@@ -71,7 +71,7 @@ $(document).ready(function() {
                 render: function(data, type, row) {
                     if (data == null) return '—';
                     const encodedSector = encodeURIComponent(row.sector);
-                    return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} Golden Crosses">${data.toFixed(2)}%</a>`;
+                    return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" class="text-light text-decoration-dotted" title="Filter Screener for ${escapeHtml(row.sector)} Golden Crosses">${data.toFixed(2)}%</a>`;
                 }
             }
         ]

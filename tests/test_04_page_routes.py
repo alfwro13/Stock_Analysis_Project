@@ -2550,6 +2550,276 @@ vm.runInContext(fs.readFileSync(0, 'utf8'), context);
     assert result.returncode == 0, result.stderr
 
 
+# ── Third-party text as HTML (SEC 11/27, S5-2) ────────────────────────────────
+
+_S5_2_PAYLOAD = "<img src=x onerror=alert(1)>"
+_S5_2_PAGES = [
+    "/market-screener", "/quality-compounders", "/garp-tenbaggers", "/quality-on-sale",
+    "/sector-trends", "/relative-strength-leaders", "/bubble-radar", "/forensic-screener",
+    "/stress-test", "/news",
+]
+
+
+def _s5_2_run_node(script, *args):
+    import shutil
+    import subprocess
+
+    node = shutil.which('node')
+    if node is None:
+        pytest.skip('Node is required for the front-end escaping checks')
+    result = subprocess.run([node, '-e', script, *args], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def _s5_2_js(name):
+    return str(Path(__file__).resolve().parents[1] / 'static/js' / name)
+
+
+def test_utils_js_is_loaded_by_base_template_only():
+    templates = Path(__file__).resolve().parents[1] / 'templates'
+    assert (templates / 'base.html').read_text().count('/static/js/utils.js') == 1
+    duplicates = [
+        str(p.relative_to(templates)) for p in templates.rglob('*.html')
+        if p.name != 'base.html' and '/static/js/utils.js' in p.read_text()
+    ]
+    assert duplicates == []
+
+
+@pytest.mark.pages
+@pytest.mark.parametrize("path", _S5_2_PAGES)
+def test_pages_load_utils_js_once_before_their_own_script(client, path):
+    resp = client.get(path)
+    assert resp.status_code == 200
+    assert resp.text.count('/static/js/utils.js') == 1
+
+
+def test_news_js_uses_the_shared_escape_helper():
+    source = (Path(__file__).resolve().parents[1] / 'static/js/news.js').read_text()
+    assert 'escHtml' not in source
+    assert 'escapeHtml(' in source
+
+
+_S5_2_DATATABLE_SCRIPT = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const spec = JSON.parse(process.argv[1]);
+const payload = '<img src=x onerror=alert(1)>';
+class Option { constructor(text, value) { this.text = text; this.value = value; } }
+const appended = [];
+let tableConfig = null;
+function chain() {
+    return new Proxy(function () {}, {
+        get(_, key) {
+            if (key === 'DataTable') return cfg => { tableConfig = cfg; return chain(); };
+            if (key === 'append') return (...args) => { appended.push(...args); return chain(); };
+            if (key === 'ready') return fn => { fn(); return chain(); };
+            return () => chain();
+        },
+        apply() { return chain(); },
+    });
+}
+const $ = function () { return chain(); };
+$.fn = {dataTable: {ext: {search: [], errMode: ''}, render: {number: () => () => ''}}};
+const context = {
+    $, Option, URLSearchParams, document: {}, window: {location: {search: ''}},
+};
+vm.createContext(context);
+for (const file of process.argv.slice(2)) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+assert.ok(tableConfig, 'DataTable was not constructed');
+const col = name => {
+    const c = tableConfig.columns.find(x => x.data === name);
+    assert.ok(c && c.render, 'missing render for ' + name);
+    return c;
+};
+for (const name of spec.text) {
+    const shown = col(name).render(payload, 'display', {});
+    assert.ok(!shown.includes('<img'), name + ': ' + shown);
+    assert.ok(shown.includes('&lt;img'), name + ': ' + shown);
+    assert.equal(col(name).render(payload, 'sort', {}), payload, name + ' sort value');
+    assert.equal(col(name).render(payload, 'filter', {}), payload, name + ' filter value');
+}
+for (const name of spec.links) {
+    const shown = col(name).render(payload, 'display', {sector: payload});
+    assert.ok(!shown.includes('<img'), name + ': ' + shown);
+    assert.ok(shown.includes('&lt;img'), name + ': ' + shown);
+}
+for (const name of spec.currency) {
+    const shown = col(name).render(1.5, 'display', {currency: payload});
+    assert.ok(!shown.includes('<img'), name + ': ' + shown);
+    assert.equal(col(name).render(1.5, 'sort', {currency: payload}), 1.5);
+}
+for (const name of spec.rowSector) {
+    const shown = col(name).render(1.5, 'display', {sector: payload});
+    assert.ok(!shown.includes('<img'), name + ': ' + shown);
+}
+if (spec.url) {
+    const shown = col('freetrade_url').render('https://x" onmouseover="alert(1)', 'display', {});
+    assert.ok(!shown.includes('" onmouseover'), shown);
+    assert.ok(shown.includes('&quot;'), shown);
+}
+const values = [payload, 'Technology'];
+const each = cb => values.forEach(cb);
+const api = {column: () => ({data: () => ({unique: () => ({sort: () => ({each})})})})};
+tableConfig.initComplete.call({api: () => api});
+assert.ok(appended.some(a => a instanceof Option && a.text === payload && a.value === payload));
+assert.ok(!appended.some(a => typeof a === 'string' && a.includes(payload)));
+"""
+
+
+@pytest.mark.parametrize("script_name,spec", [
+    ("market_screener.js", {
+        "text": ["company_name", "freetrade_subtitle", "sector", "exchange"],
+        "links": ["ticker"], "currency": ["close_price", "sma_50", "sma_200"],
+        "rowSector": [], "url": True,
+    }),
+    ("quality_compounders.js", {
+        "text": ["company_name", "sector"], "links": ["ticker"],
+        "currency": ["close_price"], "rowSector": [], "url": False,
+    }),
+    ("quality_on_sale.js", {
+        "text": ["company_name", "sector"], "links": ["ticker"],
+        "currency": ["close_price"], "rowSector": [], "url": False,
+    }),
+    ("garp_tenbaggers.js", {
+        "text": ["company_name", "sector"], "links": ["ticker"],
+        "currency": ["close_price"], "rowSector": [], "url": False,
+    }),
+    ("relative_strength_leaders.js", {
+        "text": ["company_name", "sector", "country"], "links": ["ticker"],
+        "currency": ["close_price"], "rowSector": [], "url": False,
+    }),
+    ("sector_trends.js", {
+        "text": [], "links": ["sector"], "currency": [],
+        "rowSector": ["pct_above_50d", "pct_bullish_cross"], "url": False,
+    }),
+])
+def test_screener_datatables_escape_third_party_text_for_display_only(script_name, spec):
+    import json
+
+    _s5_2_run_node(
+        _S5_2_DATATABLE_SCRIPT, json.dumps(spec), _s5_2_js('utils.js'), _s5_2_js(script_name),
+    )
+
+
+_S5_2_DOM_PRELUDE = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const payload = '<img src=x onerror=alert(1)>';
+const els = {};
+const listeners = {};
+function el(id) {
+    if (!els[id]) {
+        const handlers = {};
+        els[id] = {
+            id, innerHTML: '', textContent: '', value: 'all', disabled: false, style: {}, dataset: {}, handlers,
+            classList: {add() {}, remove() {}, toggle() {}},
+            addEventListener(type, fn) { handlers[type] = fn; },
+            scrollIntoView() {},
+        };
+    }
+    return els[id];
+}
+const settle = () => new Promise(resolve => setTimeout(resolve, 20));
+function load(context, files) {
+    vm.createContext(context);
+    for (const file of files) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+}
+"""
+
+_S5_2_FORENSIC_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const context = {
+    window: {FORENSIC_CFG: {}}, alert() {}, setTimeout, console,
+    document: {
+        getElementById: el,
+        addEventListener(type, fn) { listeners[type] = fn; },
+    },
+    fetch: async () => ({json: async () => ({results: [{
+        ticker: payload, company_name: payload, sector: payload, source: 'portfolio',
+        forensic_last_updated: payload, piotroski_f_score: 5, altman_z_score: 2.0, beneish_m_score: -2.0,
+    }]})}),
+};
+load(context, process.argv.slice(1));
+(async () => {
+    listeners.DOMContentLoaded();
+    await settle();
+    const html = els['forensic-tbody'].innerHTML;
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'), html);
+    assert.ok(!html.includes('<img'), html);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+_S5_2_BUBBLE_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const fetched = [];
+const context = {
+    window: {BUBBLE_RADAR_CFG: {watchThreshold: 30, flagThreshold: 60}}, setTimeout,
+    document: {
+        getElementById: el, querySelectorAll: () => [],
+        addEventListener(type, fn) { listeners[type] = fn; },
+    },
+    fetch: async url => {
+        fetched.push(url);
+        const body = url.endsWith('/data')
+            ? {results: [{ticker: payload, company_name: payload, flag: 'bubble', bubble_score: 70,
+                sma_ext_pct: 1, rsi_avg_20d: 1, ps_ratio: 1, peg_ratio: 1, scan_date: payload}]}
+            : {result: {flag: 'watch', bubble_score: 50, scan_date: payload,
+                metric_scores: {a: {label: payload, value: 1, score: 2}}}};
+        return {json: async () => body};
+    },
+};
+load(context, process.argv.slice(1));
+(async () => {
+    listeners.DOMContentLoaded();
+    await settle();
+    const rows = els['br-flagged-body'].innerHTML;
+    assert.ok(!rows.includes('<img'), rows);
+    assert.ok(!rows.includes('onclick'), rows);
+    assert.ok(rows.includes('&lt;img src=x onerror=alert(1)&gt;'), rows);
+    els['br-flagged-body'].handlers.click({target: {closest: () => ({dataset: {ticker: payload}})}});
+    await settle();
+    assert.equal(fetched[fetched.length - 1], '/api/bubble-radar/ticker/' + encodeURIComponent(payload));
+    const detail = els['br-detail-body'].innerHTML;
+    assert.ok(!detail.includes('<img'), detail);
+    assert.ok(detail.includes('&lt;img'), detail);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+_S5_2_STRESS_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const context = {
+    window: {STRESS_BASE_CURRENCY: 'GBP'}, console,
+    document: {getElementById: el, querySelectorAll: () => []},
+    fetch: async () => ({json: async () => ({status: 'success', result: {
+        scenario: {name: 'GFC'}, scenario_id: 'gfc_2008', estimated_loss: -100, estimated_loss_pct: -5,
+        portfolio_value: 2000, portfolio_currency: 'GBP', data_warnings: [payload],
+        sector_impact: [{sector: payload, estimated_loss: -50, weight: 0.5}],
+        holdings: [{symbol: payload, name: payload, sector: payload, weight: 0.5, beta: 1,
+            sector_multiplier: 1.2, estimated_drop_pct: -10, estimated_loss: -50}],
+    }})}),
+};
+load(context, process.argv.slice(1));
+(async () => {
+    context.window.runStressTest();
+    await settle();
+    for (const id of ['result-warnings-list', 'sector-bars', 'holdings-tbody']) {
+        const html = els[id].innerHTML;
+        assert.ok(html.length > 0, id);
+        assert.ok(!html.includes('<img'), id + ': ' + html);
+        assert.ok(html.includes('&lt;img'), id + ': ' + html);
+    }
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+
+@pytest.mark.parametrize("script,file", [
+    (_S5_2_FORENSIC_SCRIPT, 'forensic_screener.js'),
+    (_S5_2_BUBBLE_SCRIPT, 'bubble_radar.js'),
+    (_S5_2_STRESS_SCRIPT, 'stress_test.js'),
+], ids=['forensic_screener', 'bubble_radar', 'stress_test'])
+def test_dom_built_screener_tables_escape_third_party_text(script, file):
+    _s5_2_run_node(script, _s5_2_js('utils.js'), _s5_2_js(file))
+
+
 # ── Score History ref / Login next (SEC 5/27, S5-4, S5-6) ─────────────────────
 
 @pytest.mark.pages

@@ -203,3 +203,47 @@ def test_quant_cache_readers_reject_symlinks_outside_cache_roots(tmp_path):
         engine = QuantEngine()
         assert engine.load_parquet("ZZLINK") is None
         assert engine.load_fundamentals("ZZLINK") == {}
+
+
+class TestEducationalNotesEscapeExternalValues:
+    """educational_notes is rendered |safe on stock_detail, so Yahoo's currency must be escaped by the writer (SEC 11/27, S5-2)."""
+
+    TICKER = "TST_QS_NOTES_XSS"
+
+    def test_yahoo_currency_is_html_escaped_in_the_stop_loss_note(self):
+        import numpy as np
+
+        idx = pd.date_range("2024-01-01", periods=260, freq="B")
+        close = np.linspace(100.0, 130.0, len(idx))
+        df = pd.DataFrame(
+            {"Open": close * 0.99, "High": close * 1.01, "Low": close * 0.98,
+             "Close": close, "Volume": np.full(len(idx), 1_000_000.0)},
+            index=idx,
+        )
+        payload = "<img src=x onerror=alert(1)>"
+        engine = QuantEngine()
+        try:
+            with patch.object(engine, "load_parquet", return_value=df), \
+                 patch.object(engine, "load_fundamentals", return_value={"currency": payload, "shortName": "Test Co"}):
+                engine.analyze_ticker(self.TICKER)
+
+            conn = _db.get_connection()
+            try:
+                row = conn.execute(
+                    "SELECT educational_notes FROM stock_signals WHERE ticker=?", (self.TICKER,)
+                ).fetchone()
+            finally:
+                conn.close()
+            assert row is not None
+            notes = row["educational_notes"]
+            assert "Dynamic ATR Stop-Loss" in notes
+            assert "<img" not in notes
+            assert "&lt;img src=x onerror=alert(1)&gt;" in notes
+        finally:
+            conn = _db.get_connection()
+            try:
+                conn.execute("DELETE FROM stock_signals WHERE ticker=?", (self.TICKER,))
+                conn.execute("DELETE FROM atr_stop_history WHERE ticker=?", (self.TICKER,))
+                conn.commit()
+            finally:
+                conn.close()

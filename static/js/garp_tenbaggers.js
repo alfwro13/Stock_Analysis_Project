@@ -24,7 +24,7 @@ $(document).ready(function() {
 
             var sectorSelect = $('<select id="garpSectorFilter" class="form-select"><option value="ALL">All Sectors</option></select>');
             api.column(2).data().unique().sort().each(function(d) {
-                if (d && d !== 'N/A') sectorSelect.append('<option value="' + d + '">' + d + '</option>');
+                if (d && d !== 'N/A') sectorSelect.append(new Option(d, d));
             });
 
             var mlWrapper = $('<span class="rpt-ml-wrapper"></span>');
@@ -36,13 +36,13 @@ $(document).ready(function() {
         },
 
         columns: [
-            { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
-            { data: 'company_name' },
-            { data: 'sector' },
+            { data: 'ticker', render: function(data) { return '<a href="/stock/' + escapeHtml(data) + '" class="ticker-link">' + escapeHtml(data) + '</a>'; } },
+            { data: 'company_name', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
+            { data: 'sector', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
             {
                 data: 'close_price',
                 render: function(data, type, row) {
-                    return type === 'display' ? formatCurrency(data, row.currency) : data;
+                    return type === 'display' ? escapeHtml(formatCurrency(data, row.currency)) : data;
                 }
             },
             { data: 'peter_lynch_peg', render: function(data) {

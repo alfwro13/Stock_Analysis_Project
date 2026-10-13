@@ -73,14 +73,14 @@
 
         tbody.innerHTML = results.map(r => `
             <tr>
-                <td><a href="/stock/${r.ticker}" class="text-decoration-none fw-bold">${r.ticker}</a></td>
-                <td>${r.company_name}</td>
-                <td><span class="text-secondary small">${r.sector}</span></td>
+                <td><a href="/stock/${escapeHtml(r.ticker)}" class="text-decoration-none fw-bold">${escapeHtml(r.ticker)}</a></td>
+                <td>${escapeHtml(r.company_name)}</td>
+                <td><span class="text-secondary small">${escapeHtml(r.sector)}</span></td>
                 <td>${fscoreBadge(r.piotroski_f_score)}</td>
                 <td>${altmanCell(r.altman_z_score)}</td>
                 <td>${beneishCell(r.beneish_m_score)}</td>
                 <td>${flagBadges(r)}</td>
-                <td class="text-secondary small">${r.forensic_last_updated || '—'}</td>
+                <td class="text-secondary small">${escapeHtml(r.forensic_last_updated || '—')}</td>
             </tr>`).join('');
     }
 

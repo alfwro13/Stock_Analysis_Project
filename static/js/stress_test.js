@@ -130,7 +130,7 @@
         var warnList = document.getElementById('result-warnings-list');
         if (r.data_warnings && r.data_warnings.length > 0) {
             warnList.innerHTML = r.data_warnings.map(function (w) {
-                return '<li>' + w + '</li>';
+                return '<li>' + escapeHtml(w) + '</li>';
             }).join('');
             warnDiv.classList.remove('d-none');
         } else {
@@ -165,7 +165,7 @@
             html += '<div class="stress-sector-bar-wrap">'
                 + '<div class="stress-sector-label">'
                 + '<span style="color:#555;">' + weightStr + '</span> '
-                + s.sector
+                + escapeHtml(s.sector)
                 + '</div>'
                 + '<div class="stress-sector-bar-track">'
                 + '<div class="stress-sector-bar-fill" style="width:' + barPct + '%;background:' + barColor + ';"></div>'
@@ -204,12 +204,12 @@
                 + 'onmouseover="this.style.background=\'rgba(255,255,255,.03)\'" '
                 + 'onmouseout="this.style.background=\'' + (idx < 3 && !isGain ? 'rgba(255,77,77,.04)' : '') + '\'">'
                 + '<td style="padding:7px 10px;font-weight:700;">'
-                + '<a href="/stock/' + h.symbol + '" style="color:#4da6ff;text-decoration:none;">' + h.symbol + '</a>'
+                + '<a href="/stock/' + escapeHtml(h.symbol) + '" style="color:#4da6ff;text-decoration:none;">' + escapeHtml(h.symbol) + '</a>'
                 + '</td>'
-                + '<td style="padding:7px 10px;color:#ccc;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + h.name + '</td>'
+                + '<td style="padding:7px 10px;color:#ccc;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(h.name) + '</td>'
                 + '<td style="text-align:right;padding:7px 8px;color:#888;font-family:monospace;">' + (h.weight * 100).toFixed(1) + '%</td>'
                 + '<td style="text-align:right;padding:7px 8px;color:#aaa;font-family:monospace;">' + h.beta.toFixed(2) + '</td>'
-                + '<td style="padding:7px 8px;color:#777;font-size:11px;">' + h.sector + '</td>'
+                + '<td style="padding:7px 8px;color:#777;font-size:11px;">' + escapeHtml(h.sector) + '</td>'
                 + '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:' + multColor + ';">' + h.sector_multiplier.toFixed(2) + '×</td>'
                 + '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:' + dropColor + ';font-weight:700;">'
                 + (h.estimated_drop_pct >= 0 ? '+' : '') + h.estimated_drop_pct.toFixed(1) + '%'
