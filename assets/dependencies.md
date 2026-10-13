@@ -70,7 +70,7 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `apscheduler` | The only sanctioned scheduler per AGENTS.md rule 12 (`scheduler_engine.py`) | `CronTrigger`/job-store API changes — test that scheduled jobs still register (`tests/test_scheduler_engine.py`'s manifest-completeness check) |
-| `pip` | The installer behind the post-pull reinstall and the startup drift check (`api_routes_system.py`, `utils.py`). Floor `>=26.2` clears published advisories | Nothing at runtime; the next `pip install -r requirements.txt` upgrades it |
+| `pip` | The installer behind the reinstall that runs before a restart when packages are out of date (`api_routes_system.py`) and the startup drift check (`utils.py`). Floor `>=26.2` clears published advisories; the reinstall passes `--resume-retries`, which needs pip 25.1 or newer | Nothing at runtime; the next `pip install -r requirements.txt` upgrades it. A large upgrade (torch pulls several GB of CUDA wheels) is bounded by `constants.DEPENDENCY_INSTALL_TIMEOUT_SECONDS` |
 | `psutil` | System diagnostics (CPU/memory/disk) surfaced in Settings → System Diagnostics (`ml_training_engine.py`, `system_check_engine.py`) | Platform-specific metric availability |
 
 ## ML / AI

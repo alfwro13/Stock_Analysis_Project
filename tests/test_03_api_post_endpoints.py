@@ -1349,43 +1349,174 @@ def test_active_jobs_reports_average_duration_per_running_job(client):
     assert body["active_job_avg_sec"][name] == 42.5
 
 
-def test_execute_restart_installs_pip_dependencies_when_pending():
+@pytest.fixture
+def restart_env(tmp_path, monkeypatch):
+    import api_routes_system
+
+    monkeypatch.setattr(api_routes_system, "_pip_tmp_dir", lambda: tmp_path / "pip_tmp")
+    monkeypatch.setattr(api_routes_system, "_requirements_changed_pending", False)
+    monkeypatch.setattr(api_routes_system, "check_requirements_drift", lambda: [])
+    monkeypatch.setitem(api_routes_system._dependency_install, "state", "idle")
+    monkeypatch.setitem(api_routes_system._dependency_install, "command", None)
+    return api_routes_system
+
+
+def _run_execute_restart(module, pip_result=None, pip_side_effect=None):
+    import asyncio
+
+    with (
+        patch("api_routes_system.subprocess.run", return_value=pip_result, side_effect=pip_side_effect) as mock_run,
+        patch("api_routes_system.notify") as mock_notify,
+        patch("api_routes_system.asyncio.sleep", new=AsyncMock()),
+        patch("api_routes_system.os.kill") as mock_kill,
+    ):
+        asyncio.run(module.execute_restart())
+    return mock_run, mock_notify, mock_kill
+
+
+def _manual_pip_command():
+    import shlex
+    from config import BASE_DIR
+
+    return shlex.join([sys.executable, "-m", "pip", "install", "-r", str(BASE_DIR / "requirements.txt")])
+
+
+def test_execute_restart_installs_pip_dependencies_when_pending(restart_env, tmp_path):
     """execute_restart() must run pip install before signalling shutdown when requirements.txt changed."""
-    import asyncio
-    import api_routes_system
+    from constants import DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 
-    api_routes_system._requirements_changed_pending = True
-    fake_pip_result = MagicMock(returncode=0, stdout="", stderr="")
-    with (
-        patch("api_routes_system.subprocess.run", return_value=fake_pip_result) as mock_run,
-        patch("api_routes_system.notify") as mock_notify,
-        patch("api_routes_system.asyncio.sleep", new=AsyncMock()),
-        patch("api_routes_system.os.kill"),
-    ):
-        asyncio.run(api_routes_system.execute_restart())
+    restart_env._requirements_changed_pending = True
+    mock_run, mock_notify, mock_kill = _run_execute_restart(
+        restart_env, pip_result=MagicMock(returncode=0, stdout="", stderr=""),
+    )
 
-    assert mock_run.call_args[0][0][:3] == [sys.executable, "-m", "pip"]
+    args, kwargs = mock_run.call_args
+    assert args[0][:5] == [sys.executable, "-m", "pip", "install", "-r"]
+    assert "--resume-retries" in args[0]
+    assert kwargs["timeout"] == DEPENDENCY_INSTALL_TIMEOUT_SECONDS
+    assert kwargs["env"]["TMPDIR"] == str(tmp_path / "pip_tmp")
+    assert not (tmp_path / "pip_tmp").exists()
     mock_notify.assert_called_once()
-    assert mock_notify.call_args[0][0] == "system_update_status"
-    assert api_routes_system._requirements_changed_pending is False
+    assert mock_notify.call_args[0][:2] == ("system_update_status", "Success")
+    mock_kill.assert_called_once()
+    assert restart_env._requirements_changed_pending is False
+    assert restart_env._dependency_install["state"] == "restarting"
 
 
-def test_execute_restart_skips_pip_install_when_not_pending():
-    """execute_restart() must not touch pip when no requirements.txt change is pending."""
-    import asyncio
-    import api_routes_system
-
-    api_routes_system._requirements_changed_pending = False
-    with (
-        patch("api_routes_system.subprocess.run") as mock_run,
-        patch("api_routes_system.notify") as mock_notify,
-        patch("api_routes_system.asyncio.sleep", new=AsyncMock()),
-        patch("api_routes_system.os.kill"),
-    ):
-        asyncio.run(api_routes_system.execute_restart())
+def test_execute_restart_skips_pip_install_when_not_pending(restart_env):
+    """execute_restart() must not touch pip when nothing is pending and installed packages match requirements.txt."""
+    mock_run, mock_notify, mock_kill = _run_execute_restart(restart_env)
 
     mock_run.assert_not_called()
     mock_notify.assert_not_called()
+    mock_kill.assert_called_once()
+
+
+def test_execute_restart_installs_when_packages_drifted_without_pending_flag(restart_env, monkeypatch):
+    """A lost in-memory pull flag must not stop the reinstall while installed packages are below requirements.txt."""
+    monkeypatch.setattr(restart_env, "check_requirements_drift", lambda: ["torch: installed 2.13.0, requirements.txt requires >=2.14.1"])
+    mock_run, mock_notify, mock_kill = _run_execute_restart(
+        restart_env, pip_result=MagicMock(returncode=0, stdout="", stderr=""),
+    )
+
+    mock_run.assert_called_once()
+    mock_kill.assert_called_once()
+    assert mock_notify.call_args[0][:2] == ("system_update_status", "Success")
+
+
+def test_execute_restart_aborts_and_gives_shell_command_when_pip_fails(restart_env):
+    """A failed install must not restart onto missing packages; the notification carries the command to run by hand."""
+    restart_env._requirements_changed_pending = True
+    mock_run, mock_notify, mock_kill = _run_execute_restart(
+        restart_env, pip_result=MagicMock(returncode=1, stdout="", stderr="ERROR: boom"),
+    )
+
+    mock_kill.assert_not_called()
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][:2] == ("system_update_status", "Error")
+    assert _manual_pip_command() in mock_notify.call_args[0][2]
+    assert "ERROR: boom" in mock_notify.call_args[0][2]
+    assert restart_env._requirements_changed_pending is True
+    assert restart_env._dependency_install["state"] == "failed"
+    assert restart_env._dependency_install["command"] == _manual_pip_command()
+    assert restart_env._dependency_install_lock.acquire(blocking=False)
+    restart_env._dependency_install_lock.release()
+
+
+def test_execute_restart_aborts_when_pip_times_out(restart_env):
+    """A pip timeout is a failed install: no restart, flag kept, shell command reported."""
+    import subprocess
+
+    restart_env._requirements_changed_pending = True
+    _, mock_notify, mock_kill = _run_execute_restart(
+        restart_env, pip_side_effect=subprocess.TimeoutExpired(cmd="pip", timeout=1800),
+    )
+
+    mock_kill.assert_not_called()
+    assert mock_notify.call_args[0][:2] == ("system_update_status", "Error")
+    assert "within 30 minutes" in mock_notify.call_args[0][2]
+    assert _manual_pip_command() in mock_notify.call_args[0][2]
+    assert restart_env._requirements_changed_pending is True
+    assert restart_env._dependency_install["state"] == "failed"
+
+
+def test_execute_restart_does_not_start_a_second_pip_while_one_is_running(restart_env):
+    """A second Restart click while pip runs must neither start another pip nor restart the app."""
+    restart_env._requirements_changed_pending = True
+    assert restart_env._dependency_install_lock.acquire(blocking=False)
+    try:
+        mock_run, mock_notify, mock_kill = _run_execute_restart(restart_env)
+    finally:
+        restart_env._dependency_install_lock.release()
+
+    mock_run.assert_not_called()
+    mock_notify.assert_not_called()
+    mock_kill.assert_not_called()
+
+
+@pytest.mark.api
+def test_restart_reports_installing_when_dependencies_must_be_reinstalled(client, step_up_headers, restart_env):
+    restart_env._requirements_changed_pending = True
+    with patch("api_routes_system.execute_restart", new=AsyncMock()):
+        resp = client.post("/api/system/restart", headers=step_up_headers)
+
+    assert resp.status_code == 200
+    body = _json(resp)
+    assert body["installing"] is True
+    assert "Installing updated dependencies" in body["message"]
+
+
+@pytest.mark.api
+def test_restart_keeps_quick_restart_message_when_nothing_to_install(client, step_up_headers, restart_env):
+    with patch("api_routes_system.execute_restart", new=AsyncMock()):
+        resp = client.post("/api/system/force-restart", headers=step_up_headers)
+
+    assert resp.status_code == 200
+    body = _json(resp)
+    assert body["installing"] is False
+    assert "back online in ~5-10 seconds" in body["message"]
+
+
+@pytest.mark.api
+def test_restart_is_refused_while_dependencies_are_installing(client, step_up_headers, restart_env):
+    restart_env._dependency_install["state"] = "running"
+    with patch("api_routes_system.execute_restart", new=AsyncMock()) as mock_restart:
+        resp = client.post("/api/system/force-restart", headers=step_up_headers)
+
+    assert resp.status_code == 409
+    assert "already being installed" in _json(resp)["message"]
+    mock_restart.assert_not_called()
+
+
+@pytest.mark.api
+def test_active_jobs_reports_package_drift_and_install_state(client, restart_env, monkeypatch):
+    monkeypatch.setattr(restart_env, "check_requirements_drift", lambda: ["torch: installed 2.13.0, requirements.txt requires >=2.14.1"])
+    restart_env._dependency_install.update(state="failed", command="/venv/bin/python3 -m pip install -r requirements.txt")
+
+    body = _json(client.get("/api/system/active-jobs"))
+
+    assert body["requirements_changed_pending"] is True
+    assert body["dependency_install"] == {"state": "failed", "command": "/venv/bin/python3 -m pip install -r requirements.txt"}
 
 
 def test_bg_execute_ml_inference_runs_quantile_scoring_too():

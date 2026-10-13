@@ -3,7 +3,9 @@ import logging
 import math
 import os
 import re
+import shlex
 import stat
+import sys
 import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -60,13 +62,13 @@ def ensure_workflow_assets() -> None:
         logger.warning("Could not fetch Mermaid bundle (%s); Workflow Monitor graph unavailable until fetched.", e)
 
 
+def pip_install_command() -> list[str]:
+    """The one requirements reinstall command; interpreter-based, so it works when venv/bin/pip or `activate` still point at a moved venv."""
+    return [sys.executable, "-m", "pip", "install", "-r", str(Path(__file__).resolve().parent / "requirements.txt")]
+
+
 def check_requirements_drift(req_path: Optional[str] = None) -> list[str]:
-    """Compares installed package versions against requirements.txt pins. The only existing
-    reinstall path (api_routes_system.py's git-pull -> _requirements_changed_pending -> restart
-    flow) tracks that flag in an in-memory global, so it's lost on any restart that doesn't go
-    through the Settings 'Pull Latest from GitHub' + Restart buttons — a crash, `systemctl
-    restart`, a server reboot, or a manual `git pull` on the server. This runs at every startup
-    instead, independent of how the process came up, so drift is never silently invisible."""
+    """Installed-vs-requirements.txt mismatches; read from disk, so it survives the in-memory pull flag being lost on a restart."""
     import re
     import importlib.metadata
     from packaging.version import Version, InvalidVersion
@@ -121,7 +123,8 @@ def notify_requirements_drift() -> None:
         "system_update_status",
         "Warning",
         "Installed packages don't match requirements.txt:\n" + detail
-        + "\n\nRun: pip install -r requirements.txt",
+        + "\n\nRestart the service from Settings to install them, or run this in a shell on the server "
+        "and then restart the service:\n" + shlex.join(pip_install_command()),
         level="warning",
     )
 

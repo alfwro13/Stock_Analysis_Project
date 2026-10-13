@@ -1968,17 +1968,22 @@ Returns a snapshot of all scheduler jobs that are currently executing. The regis
   },
   "restart_pending": false,
   "requirements_changed_pending": false,
+  "dependency_install": { "state": "idle", "command": null },
   "scikit_learn_change_pending": null
 }
 ```
 
-`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `active_job_avg_sec` has the same keys and gives each running job's average duration in seconds — the mean of its last 20 successful runs, the same `avg_duration_sec` the Workflow Monitor shows — or `null` when the job has no successful run on record; the Settings **Active processes** list shows it beside the running time. `restart_pending` is `true` when the git commit currently checked out on disk differs from the commit the running process started on (recorded at startup) — an update was pulled, by the Settings button or manually, but the service has not been restarted. It is computed on every call, so it survives a second "Pull Latest" click that reports "Already up to date", and it is `false` whenever either commit cannot be read. The Settings page uses it to show the "Restart pending" banner in System Updates & Power. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
+`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `active_job_avg_sec` has the same keys and gives each running job's average duration in seconds — the mean of its last 20 successful runs, the same `avg_duration_sec` the Workflow Monitor shows — or `null` when the job has no successful run on record; the Settings **Active processes** list shows it beside the running time. `restart_pending` is `true` when the git commit currently checked out on disk differs from the commit the running process started on (recorded at startup) — an update was pulled, by the Settings button or manually, but the service has not been restarted. It is computed on every call, so it survives a second "Pull Latest" click that reports "Already up to date", and it is `false` whenever either commit cannot be read. The Settings page uses it to show the "Restart pending" banner in System Updates & Power. `requirements_changed_pending` is `true` when the last `POST /api/system/git-pull` changed `requirements.txt` (an in-memory flag) **or** an installed package is below a `requirements.txt` pin or floor — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner. `dependency_install.state` is `idle`, `running` (pip is installing), `failed` (the restart was cancelled; `command` is the interpreter-based command to run by hand) or `restarting` (pip succeeded); `command` is `null` until an installation has been attempted in this process. `scikit_learn_change_pending` is either `null` or the pending `from_version`/`to_version` pair used to expand that banner with the automatic retraining timing.
 
 ---
 
 ### `POST /api/system/restart`
 
-Sends a `SIGTERM` to the running process after a 2-second delay, triggering a graceful shutdown. The process manager (e.g. systemd or Docker) is expected to restart it automatically. If the last git pull changed `requirements.txt`, runs `pip install -r requirements.txt` in the current interpreter's environment first and dispatches a `system_update_status` notification with the outcome.
+Sends a `SIGTERM` to the running process after a 2-second delay, triggering a graceful shutdown. The process manager (e.g. systemd or Docker) is expected to restart it automatically.
+
+**Dependency reinstall before the restart.** When the last git pull changed `requirements.txt`, or an installed package is below a `requirements.txt` pin or floor (`utils.check_requirements_drift()`, so a lost in-memory pull flag does not skip it), the background task first runs `python -m pip install -r requirements.txt` in the current interpreter's environment, with `--resume-retries` and a temp dir inside the venv (`<sys.prefix>/.pip_tmp`, removed afterwards; `/tmp` is RAM-backed on the host and `data/` is backed up). The limit is `constants.DEPENDENCY_INSTALL_TIMEOUT_SECONDS` (30 minutes). The response then has `installing: true` and the service restarts only after pip succeeds, with a `system_update_status` Success notification.
+
+Only one installation runs at a time: while one is running a second restart request returns HTTP **409** (`status: "busy"`). If pip fails or times out the service is **not** restarted, the pending state is kept (the Settings banner stays), and a `system_update_status` Error notification carries the exact interpreter-based command to run by hand in a shell on the server; run it, then restart the service. Progress and the failure command are exposed as `dependency_install` on `GET /api/system/active-jobs`.
 
 Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated.
 
@@ -1991,7 +1996,27 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 ```json
 {
   "status": "success",
+  "installing": false,
   "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."
+}
+```
+
+**Response (dependencies will be installed first)**
+
+```json
+{
+  "status": "success",
+  "installing": true,
+  "message": "Installing updated dependencies before restart. This can take several minutes; the service restarts automatically when it finishes."
+}
+```
+
+**Response (installation already running — HTTP 409)**
+
+```json
+{
+  "status": "busy",
+  "message": "Dependencies are already being installed. The service restarts automatically when the installation finishes."
 }
 ```
 
@@ -2008,7 +2033,7 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 
 ### `POST /api/system/force-restart`
 
-Identical to `POST /api/system/restart` except it skips the active-jobs check — it shares the same `execute_restart()` background task, so the same pip-install-before-shutdown behavior (when the last git pull changed `requirements.txt`) applies here too. Used by the Settings UI to restart even while a scheduler job is running.
+Identical to `POST /api/system/restart` except it skips the active-jobs check — it shares the same `execute_restart()` background task, so the same dependency-reinstall-before-shutdown behavior, single-installation lock, `installing` flag and abort-on-failure rule apply here too. Used by the Settings UI to restart even while a scheduler job is running.
 
 **Requires:** a password step-up (see `POST /api/step-up`).
 
@@ -2019,6 +2044,7 @@ Identical to `POST /api/system/restart` except it skips the active-jobs check �
 ```json
 {
   "status": "success",
+  "installing": false,
   "message": "Force restart signal sent. The dashboard will be back online in ~5-10 seconds."
 }
 ```

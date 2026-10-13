@@ -3,10 +3,12 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Literal, Optional
@@ -24,6 +26,7 @@ from config import (
     INTRADAY_DIR, PORTFOLIO_PATH, WATCHLIST_PATH, load_config,
     update_config_atomic,
 )
+from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
@@ -41,6 +44,7 @@ from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from tools.network_engine import GLOBAL_IPV6_STATUS
+from utils import check_requirements_drift, pip_install_command
 from yahoo_engine import yahoo_engine
 from curl_cffi import requests as cffi_requests
 
@@ -470,6 +474,8 @@ class SettingsConfig(BaseModel):
 
 _requirements_changed_pending = False
 _sklearn_change_pending: dict[str, str] | None = None
+_dependency_install_lock = threading.Lock()
+_dependency_install: dict[str, Any] = {"state": "idle", "command": None}
 
 
 def _pinned_requirement_version(contents: str, package: str) -> str | None:
@@ -493,27 +499,76 @@ def _git_head() -> str | None:
 _RUNNING_HEAD = _git_head()
 
 
+def _reinstall_needed() -> bool:
+    return _requirements_changed_pending or bool(check_requirements_drift())
+
+
+def _pip_tmp_dir() -> Path:
+    return Path(sys.prefix) / ".pip_tmp"
+
+
+def _run_dependency_install(command: list[str]) -> str | None:
+    """Returns None on success, else the failure text; pip's temp dir sits in the venv because /tmp is RAM-backed and data/ is backed up."""
+    tmp_dir = _pip_tmp_dir()
+    try:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        tmp_dir.mkdir(parents=True)
+        result = subprocess.run(
+            command + ["--resume-retries", str(DEPENDENCY_INSTALL_RESUME_RETRIES)],
+            capture_output=True, text=True, timeout=DEPENDENCY_INSTALL_TIMEOUT_SECONDS,
+            cwd=str(BASE_DIR), env={**os.environ, "TMPDIR": str(tmp_dir)},
+        )
+    except subprocess.TimeoutExpired:
+        return f"pip did not finish within {DEPENDENCY_INSTALL_TIMEOUT_SECONDS // 60} minutes."
+    except OSError as e:
+        return f"pip could not be started: {e}"
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    if result.returncode == 0:
+        return None
+    return result.stderr[-2000:] or f"pip exited with status {result.returncode}."
+
+
 async def execute_restart():
     global _requirements_changed_pending
-    if _requirements_changed_pending:
-        def _reinstall_requirements():
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", str(BASE_DIR / "requirements.txt")],
-                    capture_output=True, text=True, timeout=300, cwd=str(BASE_DIR),
+    if await asyncio.to_thread(_reinstall_needed):
+        if not _dependency_install_lock.acquire(blocking=False):
+            return
+        try:
+            command = pip_install_command()
+            shell_command = shlex.join(command)
+            _dependency_install.update(state="running", command=shell_command)
+            error = await asyncio.to_thread(_run_dependency_install, command)
+            if error is not None:
+                _dependency_install["state"] = "failed"
+                logger.error("pip install before restart failed: %s", error)
+                notify(
+                    "system_update_status", "Error",
+                    "Dependency installation failed, so the service was not restarted.\n\n"
+                    f"Run this in a shell on the server, then restart the service:\n{shell_command}\n\n{error}",
+                    level="error",
                 )
-                if result.returncode == 0:
-                    notify("system_update_status", "Success", "requirements.txt changed on the last pull — dependencies were reinstalled before restart.")
-                else:
-                    notify("system_update_status", "Error", f"pip install failed before restart:\n{result.stderr[-2000:]}", level="error")
-            except Exception as e:
-                logger.error("pip install before restart failed: %s", e)
-                notify("system_update_status", "Error", f"pip install before restart failed: {e}", level="error")
-
-        await asyncio.to_thread(_reinstall_requirements)
-        _requirements_changed_pending = False
+                return
+            _requirements_changed_pending = False
+            _dependency_install["state"] = "restarting"
+            notify("system_update_status", "Success", "Dependencies were reinstalled before restart.")
+        finally:
+            _dependency_install_lock.release()
     await asyncio.sleep(2)
     os.kill(os.getpid(), signal.SIGTERM)
+
+
+def _queue_restart(background_tasks: BackgroundTasks, message: str) -> JSONResponse:
+    if _dependency_install["state"] == "running":
+        return JSONResponse(status_code=409, content={
+            "status": "busy",
+            "message": "Dependencies are already being installed. The service restarts automatically when the installation finishes.",
+        })
+    installing = _reinstall_needed()
+    background_tasks.add_task(execute_restart)
+    if installing:
+        message = "Installing updated dependencies before restart. This can take several minutes; the service restarts automatically when it finishes."
+    return JSONResponse(content={"status": "success", "installing": installing, "message": message})
 
 
 @system_router.post("/market-pulse")
@@ -1146,7 +1201,8 @@ def get_active_jobs_status():
         "active_job_avg_sec": get_active_job_average_durations(),
         "busy": bool(jobs),
         "restart_pending": bool(_RUNNING_HEAD and current_head and _RUNNING_HEAD != current_head),
-        "requirements_changed_pending": _requirements_changed_pending,
+        "requirements_changed_pending": _reinstall_needed(),
+        "dependency_install": dict(_dependency_install),
         "scikit_learn_change_pending": _sklearn_change_pending,
     })
 
@@ -1161,14 +1217,12 @@ def restart_system(background_tasks: BackgroundTasks):
             status_code=409,
             content={"status": "busy", "message": f"Cannot restart: {names} is currently running. Please wait for it to complete and try again."}
         )
-    background_tasks.add_task(execute_restart)
-    return JSONResponse(content={"status": "success", "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."})
+    return _queue_restart(background_tasks, "Restart signal sent. The dashboard will be back online in ~5-10 seconds.")
 
 
 @system_router.post("/system/force-restart", dependencies=[Depends(require_step_up)])
 def force_restart_system(background_tasks: BackgroundTasks):
-    background_tasks.add_task(execute_restart)
-    return JSONResponse(content={"status": "success", "message": "Force restart signal sent. The dashboard will be back online in ~5-10 seconds."})
+    return _queue_restart(background_tasks, "Force restart signal sent. The dashboard will be back online in ~5-10 seconds.")
 
 
 @system_router.post("/system/terminate-jobs", dependencies=[Depends(require_step_up)])
