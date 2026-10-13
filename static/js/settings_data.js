@@ -233,9 +233,9 @@ async function saveFredApiKey() {
     btn.innerText = '⏳ Saving…';
     setStatus('fred-status-msg', 'info', 'Saving…');
     try {
-        const res = await fetch('/api/save-fred-api-key', {
+        const res = await stepUpFetch('/api/save-fred-api-key', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ FRED_API_KEY: secretValue('FRED_API_KEY').trim(), CLEAR_FRED_API_KEY: secretClear('FRED_API_KEY') }),
         });
         const data = await res.json().catch(() => ({}));

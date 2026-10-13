@@ -171,9 +171,9 @@ async function saveHFToken() {
     btn.innerText = '⏳ Saving…';
     setStatus('hf-status-msg', 'info', 'Saving…');
     try {
-        const res = await fetch('/api/save-hf-token', {
+        const res = await stepUpFetch('/api/save-hf-token', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ HF_TOKEN: secretValue('HF_TOKEN').trim(), CLEAR_HF_TOKEN: secretClear('HF_TOKEN') }),
         });
         const data = await res.json().catch(() => ({}));
@@ -194,9 +194,9 @@ async function testHFToken() {
     btn.innerText = '⏳ Verifying…';
     setStatus('hf-status-msg', 'info', 'Verifying token…');
     try {
-        const res = await fetch('/api/test-hf-token', {
+        const res = await stepUpFetch('/api/test-hf-token', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ HF_TOKEN: document.getElementById('HF_TOKEN').value.trim() }),
         });
         const data = await res.json().catch(() => ({}));

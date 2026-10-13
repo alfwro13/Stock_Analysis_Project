@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api_deps import limiter, require_confirm_token, _error_500
+from api_deps import limiter, require_step_up, _error_500
 from config import BASE_DIR, load_config, update_config_atomic
 from database import get_connection
 
@@ -48,22 +48,37 @@ class LoginRequest(BaseModel):
 @limiter.limit("10/minute")
 def login(request: Request, body: LoginRequest, response: Response):
     import secrets as _secrets
-    from auth import create_session_token, cookie_kwargs, verify_password
+    from auth import check_dashboard_password, create_session_token, cookie_kwargs
     valid_user = _secrets.compare_digest(
         body.username.encode(), os.environ.get("DASHBOARD_USERNAME", "").encode()
     )
-    stored_hash = os.environ.get("DASHBOARD_PASSWORD_HASH", "")
-    if stored_hash:
-        valid_pass = verify_password(body.password, stored_hash)
-    else:
-        valid_pass = _secrets.compare_digest(
-            body.password.encode(), os.environ.get("DASHBOARD_PASSWORD", "").encode()
-        )
+    valid_pass = check_dashboard_password(body.password)
     if not (valid_user and valid_pass):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     token = create_session_token(body.username, body.remember_me)
     response.set_cookie(value=token, **cookie_kwargs(body.remember_me))
     return {"status": "ok"}
+
+
+class StepUpRequest(BaseModel):
+    password: str
+
+
+@auth_router.post("/step-up")
+@limiter.limit("5/minute")
+def step_up(request: Request, body: StepUpRequest, response: Response):
+    from auth import (
+        COOKIE_NAME, STEP_UP_MAX_AGE, check_dashboard_password, create_step_up_token,
+        step_up_cookie_kwargs, verify_session_token,
+    )
+    session = request.cookies.get(COOKIE_NAME, "")
+    if not session or not verify_session_token(session):
+        raise HTTPException(status_code=401, detail="A signed-in session is required.")
+    if not check_dashboard_password(body.password):
+        logger.warning("Step-up rejected: incorrect password")
+        raise HTTPException(status_code=401, detail="Incorrect password.")
+    response.set_cookie(value=create_step_up_token(session), **step_up_cookie_kwargs())
+    return {"status": "ok", "expires_in": STEP_UP_MAX_AGE}
 
 
 def _secret_update(value: str, clear: bool) -> Optional[str]:
@@ -72,7 +87,7 @@ def _secret_update(value: str, clear: bool) -> Optional[str]:
     return value if value.strip() else None
 
 
-@auth_router.post("/generate-api-key", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/generate-api-key", dependencies=[Depends(require_step_up)])
 def generate_api_key():
     import secrets as _secrets
     from dotenv import set_key
@@ -82,7 +97,7 @@ def generate_api_key():
     return {"api_key": new_key}
 
 
-@auth_router.post("/generate-embed-token", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/generate-embed-token", dependencies=[Depends(require_step_up)])
 def generate_embed_token():
     import secrets as _secrets
     from dotenv import set_key
@@ -98,19 +113,13 @@ class ChangePasswordRequest(BaseModel):
     confirm_password: str
 
 
-@auth_router.post("/change-password", dependencies=[Depends(require_confirm_token)])
-def change_password(body: ChangePasswordRequest):
-    import secrets as _secrets
+@auth_router.post("/change-password")
+@limiter.limit("5/minute")
+def change_password(request: Request, body: ChangePasswordRequest):
     from dotenv import set_key
-    from auth import hash_password, verify_password
+    from auth import check_dashboard_password, hash_password
 
-    stored_hash = os.environ.get("DASHBOARD_PASSWORD_HASH", "")
-    if stored_hash:
-        valid_current = verify_password(body.current_password, stored_hash)
-    else:
-        current_plain = os.environ.get("DASHBOARD_PASSWORD", "")
-        valid_current = _secrets.compare_digest(body.current_password.encode(), current_plain.encode())
-    if not valid_current:
+    if not check_dashboard_password(body.current_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
     if body.new_password != body.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match.")
@@ -268,7 +277,7 @@ class SaveAccountEmailRequest(BaseModel):
     email: str
 
 
-@auth_router.post("/save-account-email", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/save-account-email", dependencies=[Depends(require_step_up)])
 def save_account_email(body: SaveAccountEmailRequest):
     from dotenv import set_key
     set_key(str(BASE_DIR / ".env"), "ACCOUNT_EMAIL", body.email.strip())
@@ -317,7 +326,7 @@ class SaveNextcloudSettingsRequest(BaseModel):
     CLEAR_CONVERSATION_TOKEN: bool = False
 
 
-@auth_router.post("/save-nextcloud-settings", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/save-nextcloud-settings", dependencies=[Depends(require_step_up)])
 def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
@@ -335,7 +344,7 @@ def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
     return {"status": "ok"}
 
 
-@auth_router.post("/test-nextcloud-message", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/test-nextcloud-message", dependencies=[Depends(require_step_up)])
 def test_nextcloud_message():
     from notification_engine import send_test_message
     url = os.environ.get("NEXTCLOUD_URL", "")
@@ -357,7 +366,7 @@ class SaveGhostfolioSettingsRequest(BaseModel):
     CLEAR_GHOSTFOLIO_TOKEN: bool = False
 
 
-@auth_router.post("/save-ghostfolio-settings", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/save-ghostfolio-settings", dependencies=[Depends(require_step_up)])
 def save_ghostfolio_settings(body: SaveGhostfolioSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
@@ -375,7 +384,7 @@ class SaveFredApiKeyRequest(BaseModel):
     CLEAR_FRED_API_KEY: bool = False
 
 
-@auth_router.post("/save-fred-api-key", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/save-fred-api-key", dependencies=[Depends(require_step_up)])
 def save_fred_api_key(body: SaveFredApiKeyRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
@@ -391,7 +400,7 @@ class SaveHFTokenRequest(BaseModel):
     CLEAR_HF_TOKEN: bool = False
 
 
-@auth_router.post("/save-hf-token", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/save-hf-token", dependencies=[Depends(require_step_up)])
 def save_hf_token(body: SaveHFTokenRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
@@ -406,7 +415,7 @@ class TestHFTokenRequest(BaseModel):
     HF_TOKEN: str = ""
 
 
-@auth_router.post("/test-hf-token", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/test-hf-token", dependencies=[Depends(require_step_up)])
 def test_hf_token(body: TestHFTokenRequest):
     token = body.HF_TOKEN.strip() or os.environ.get("HF_TOKEN", "")
     if not token:
@@ -424,7 +433,7 @@ class ChangeUsernameRequest(BaseModel):
     new_username: str
 
 
-@auth_router.post("/change-username", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/change-username", dependencies=[Depends(require_step_up)])
 def change_username(body: ChangeUsernameRequest):
     from dotenv import set_key
     username = body.new_username.strip()
@@ -436,7 +445,7 @@ def change_username(body: ChangeUsernameRequest):
     return {"status": "ok"}
 
 
-@auth_router.post("/rotate-app-secret", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/rotate-app-secret", dependencies=[Depends(require_step_up)])
 def rotate_app_secret():
     import secrets as _secrets
     from dotenv import set_key
@@ -445,17 +454,6 @@ def rotate_app_secret():
     set_key(env_path, "APP_SECRET_KEY", new_secret)
     os.environ["APP_SECRET_KEY"] = new_secret
     return {"status": "ok"}
-
-
-@auth_router.post("/rotate-confirm-token", dependencies=[Depends(require_confirm_token)])
-def rotate_confirm_token():
-    import secrets as _secrets
-    from dotenv import set_key
-    new_token = _secrets.token_hex(16)
-    env_path = str(BASE_DIR / ".env")
-    set_key(env_path, "ADMIN_CONFIRM_TOKEN", new_token)
-    os.environ["ADMIN_CONFIRM_TOKEN"] = new_token
-    return {"status": "ok", "new_token": new_token}
 
 
 class SaveSmtpSettingsRequest(BaseModel):
@@ -467,7 +465,7 @@ class SaveSmtpSettingsRequest(BaseModel):
     clear_smtp_pass: bool = False
 
 
-@auth_router.post("/save-smtp-settings", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/save-smtp-settings", dependencies=[Depends(require_step_up)])
 def save_smtp_settings(body: SaveSmtpSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
@@ -486,7 +484,7 @@ def save_smtp_settings(body: SaveSmtpSettingsRequest):
     return {"status": "ok", "message": "Mail server settings saved."}
 
 
-@auth_router.post("/send-test-email", dependencies=[Depends(require_confirm_token)])
+@auth_router.post("/send-test-email", dependencies=[Depends(require_step_up)])
 def send_test_email():
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart

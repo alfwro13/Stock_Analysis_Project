@@ -236,11 +236,11 @@ class TestSettingsFieldValidation:
         assert ok.SCHEDULING.BACKUP.NFS_SERVER == "192.168.1.200"
 
     @pytest.mark.api
-    def test_post_settings_rejects_backup_path_outside_app_dir(self, client, confirm_token):
+    def test_post_settings_rejects_backup_path_outside_app_dir(self, client, step_up_headers):
         resp = client.post(
             "/api/settings",
             json={"SCHEDULING": {"BACKUP": {"LOCAL_PATH": "/etc"}}},
-            headers={"X-Confirm-Token": confirm_token},
+            headers=step_up_headers,
         )
         assert resp.status_code == 422
 
@@ -631,7 +631,7 @@ class TestRestoreBackup:
 
     @pytest.mark.api
     def test_restore_route_returns_400_with_a_fixed_message_for_an_unhashed_archive(
-        self, client, confirm_token, app_tree
+        self, client, step_up_headers, app_tree
     ):
         _craft_archive(
             app_tree, "backup_20200107_000001.tar.gz", [("data/x.txt", "file", "x")], register_hash=False,
@@ -640,7 +640,7 @@ class TestRestoreBackup:
             resp = client.post(
                 "/api/backup/restore",
                 json={"filename": "backup_20200107_000001.tar.gz"},
-                headers={"X-Confirm-Token": confirm_token},
+                headers=step_up_headers,
             )
         assert resp.status_code == 400
         assert "No SHA-256" in resp.json()["message"]
@@ -663,17 +663,17 @@ class TestRestoreJobGuard:
         scheduler_engine._mark_job_done("Busy Job")
 
     @staticmethod
-    def _post(client, confirm_token):
+    def _post(client, step_up_headers):
         return client.post(
             "/api/backup/restore",
             json={"filename": "backup_20200107_000001.tar.gz"},
-            headers={"X-Confirm-Token": confirm_token},
+            headers=step_up_headers,
         )
 
-    def test_returns_409_and_restores_nothing_while_a_job_is_running(self, client, confirm_token, live_scheduler):
+    def test_returns_409_and_restores_nothing_while_a_job_is_running(self, client, step_up_headers, live_scheduler):
         scheduler_engine._mark_job_started("Busy Job")
         with patch("api_routes_triggers.restore_backup") as restore:
-            resp = self._post(client, confirm_token)
+            resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 409
         assert resp.json()["status"] == "busy"
@@ -681,7 +681,7 @@ class TestRestoreJobGuard:
         restore.assert_not_called()
         assert live_scheduler.state == STATE_RUNNING
 
-    def test_pauses_the_scheduler_for_the_restore_and_resumes_it(self, client, confirm_token, live_scheduler):
+    def test_pauses_the_scheduler_for_the_restore_and_resumes_it(self, client, step_up_headers, live_scheduler):
         seen = []
 
         def _restore(filename, trust_unhashed=False):
@@ -689,15 +689,15 @@ class TestRestoreJobGuard:
             return {"status": "success", "message": "done"}
 
         with patch("api_routes_triggers.restore_backup", side_effect=_restore):
-            resp = self._post(client, confirm_token)
+            resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 200
         assert seen == [STATE_PAUSED]
         assert live_scheduler.state == STATE_RUNNING
 
-    def test_resumes_the_scheduler_when_the_restore_is_refused(self, client, confirm_token, live_scheduler):
+    def test_resumes_the_scheduler_when_the_restore_is_refused(self, client, step_up_headers, live_scheduler):
         with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreRefused("bad archive")):
-            resp = self._post(client, confirm_token)
+            resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 400
         assert live_scheduler.state == STATE_RUNNING

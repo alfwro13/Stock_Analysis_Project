@@ -1172,6 +1172,8 @@ Saves application settings. Only fields present in the request body are updated 
 
 After saving, the scheduler is reloaded to apply any changed schedule configurations.
 
+Requires a password step-up (see `POST /api/step-up`).
+
 `SettingsConfig` (`api_routes_system.py`) declares `extra: "forbid"` — any field not in its schema is rejected with a 422. Credentials are **not** part of this schema; they are `.env` secrets saved through their own dedicated endpoints and read back at runtime via `os.environ.get(...)`, never through `POST /api/settings`:
 
 | Credential | Save endpoint | `.env` key(s) |
@@ -1419,11 +1421,40 @@ Returns a single day's Yahoo Finance requests bucketed into 15-minute local-time
 
 ---
 
+### `POST /api/step-up`
+
+Re-enters the dashboard password to unlock the **step-up-gated** routes for 5 minutes. Requires a signed-in browser session; an `X-API-Key` request has no session and is refused with `401`. Rate-limited to 5 requests per minute.
+
+**Request body**
+
+```json
+{ "password": "current-dashboard-password" }
+```
+
+**Response (success)**
+
+```json
+{ "status": "ok", "expires_in": 300 }
+```
+
+On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Strict`, `Path=/api`, `Max-Age=300`, and bound to the session cookie it was issued for. A new login, `GET /logout` or rotating the app secret invalidates it. The window is fixed: it does not slide on use.
+
+**Error responses**
+
+| Status | Condition |
+|--------|-----------|
+| `401` | No valid session cookie, or incorrect password |
+| `429` | More than 5 attempts in a minute |
+
+**Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
+
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/save-smtp-settings`, `/api/send-test-email`.
+
+---
+
 ### `POST /api/change-password`
 
-Changes the dashboard login password. Requires `X-Confirm-Token` header. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
-
-**Headers:** `X-Confirm-Token: <token>`
+Changes the dashboard login password. The current password in the body is the re-authentication, so no step-up is needed; the route is rate-limited to 5 requests per minute. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
 
 **Request body**
 
@@ -1442,15 +1473,13 @@ Changes the dashboard login password. Requires `X-Confirm-Token` header. The new
 | Status | Condition |
 |--------|-----------|
 | `400` | Wrong current password, mismatched new passwords, too short, or forbidden value |
-| `403` | Invalid or missing `X-Confirm-Token` |
+| `429` | More than 5 attempts in a minute |
 
 ---
 
 ### `POST /api/generate-api-key`
 
-Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, invalidating the previous one. Requires `X-Confirm-Token` header. The key is returned only in this response; Settings shows it once and afterwards reports only that a key is set.
-
-**Headers:** `X-Confirm-Token: <token>`
+Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, invalidating the previous one. Requires a password step-up (see `POST /api/step-up`). The key is returned only in this response; Settings shows it once and afterwards reports only that a key is set.
 
 **Response**
 
@@ -1462,11 +1491,9 @@ Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, in
 
 ### `POST /api/generate-embed-token`
 
-Generates a new Embed Token (32-byte hex) and persists it to `.env` as `EMBED_TOKEN`, invalidating the previous one. Requires `X-Confirm-Token` header.
+Generates a new Embed Token (32-byte hex) and persists it to `.env` as `EMBED_TOKEN`, invalidating the previous one. Requires a password step-up (see `POST /api/step-up`).
 
 The embed token bypasses login only for `GET` requests carrying `?embed=true` on the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) — see the auth middleware in `main.py`. It grants no other access (no other page, no `/api/*` endpoint, no non-GET method), unlike the general-purpose `API_KEY`/`X-API-Key` mechanism.
-
-**Headers:** `X-Confirm-Token: <token>`
 
 The token is returned only in this response; Settings shows it once and afterwards reports only that a token is set.
 
@@ -1480,9 +1507,7 @@ The token is returned only in this response; Settings shows it once and afterwar
 
 ### `POST /api/save-account-email`
 
-Saves the account email address used for password-reset notifications. Requires `X-Confirm-Token` header. Stored as `ACCOUNT_EMAIL` in `.env`.
-
-**Headers:** `X-Confirm-Token: <token>`
+Saves the account email address used for password-reset notifications. Requires a password step-up. Stored as `ACCOUNT_EMAIL` in `.env`.
 
 **Request body**
 
@@ -1494,9 +1519,9 @@ Saves the account email address used for password-reset notifications. Requires 
 
 ### `POST /api/save-smtp-settings`
 
-Saves SMTP mail server configuration to `.env`. Takes effect immediately without a restart. Requires `X-Confirm-Token` header.
+Saves SMTP mail server configuration to `.env`. Takes effect immediately without a restart. Requires a password step-up.
 
-**Headers:** `X-Confirm-Token: <token>`, `Content-Type: application/json`
+**Headers:** `Content-Type: application/json`
 
 **Request body**
 
@@ -1516,9 +1541,7 @@ Saves SMTP mail server configuration to `.env`. Takes effect immediately without
 
 ### `POST /api/send-test-email`
 
-Sends a test email to the configured `ACCOUNT_EMAIL` using the current SMTP settings. Returns `400` if `SMTP_HOST` or `ACCOUNT_EMAIL` is not configured. Returns `500` on SMTP send failure. Requires `X-Confirm-Token` header.
-
-**Headers:** `X-Confirm-Token: <token>`
+Sends a test email to the configured `ACCOUNT_EMAIL` using the current SMTP settings. Returns `400` if `SMTP_HOST` or `ACCOUNT_EMAIL` is not configured. Returns `500` on SMTP send failure. Requires a password step-up.
 
 ---
 
@@ -1731,7 +1754,7 @@ Only names matching `backup_YYYYMMDD_HHMMSS.tar.gz` that are regular files (not 
 
 ### `POST /api/backup/restore`
 
-Extracts the named archive back into place, overwriting the live database, data files, and models with whatever components that archive contains. **Destructive — requires `X-Confirm-Token`.** Restart the service afterward so in-memory caches reload the restored data.
+Extracts the named archive back into place, overwriting the live database, data files, and models with whatever components that archive contains. **Destructive — requires a password step-up (see `POST /api/step-up`).** Restart the service afterward so in-memory caches reload the restored data.
 
 **Request body**
 
@@ -1875,6 +1898,8 @@ At-a-glance market/system status for the Home Assistant integration's sensors. `
 
 Pulls the latest code from the Git remote. Returns the git output. Also diffs the pre-pull and post-pull commits to detect whether `requirements.txt` changed; if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down. When the pinned scikit-learn version changed, `scikit_learn_changed` is `true`, `scikit_learn_change` contains the old/new versions, and the message warns that affected model retraining begins automatically within seconds of the restarted app starting.
 
+**Requires:** a password step-up (see `POST /api/step-up`).
+
 **Request body:** none
 
 **Response (success)**
@@ -1957,6 +1982,8 @@ Sends a `SIGTERM` to the running process after a 2-second delay, triggering a gr
 
 Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated.
 
+**Requires:** a password step-up (see `POST /api/step-up`).
+
 **Request body:** none
 
 **Response (idle)**
@@ -1982,6 +2009,8 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 ### `POST /api/system/force-restart`
 
 Identical to `POST /api/system/restart` except it skips the active-jobs check — it shares the same `execute_restart()` background task, so the same pip-install-before-shutdown behavior (when the last git pull changed `requirements.txt`) applies here too. Used by the Settings UI to restart even while a scheduler job is running.
+
+**Requires:** a password step-up (see `POST /api/step-up`).
 
 **Request body:** none
 

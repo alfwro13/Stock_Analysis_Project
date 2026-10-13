@@ -16,7 +16,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
-from api_deps import limiter, require_confirm_token, _error_500
+from api_deps import limiter, require_step_up, _error_500
 from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_server
 
 from config import (
@@ -1093,7 +1093,7 @@ def api_market_status(background_tasks: BackgroundTasks):
     })
 
 
-@system_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
+@system_router.post("/system/git-pull", dependencies=[Depends(require_step_up)])
 def git_pull_update():
     global _requirements_changed_pending, _sklearn_change_pending
     try:
@@ -1151,7 +1151,7 @@ def get_active_jobs_status():
     })
 
 
-@system_router.post("/system/restart", dependencies=[Depends(require_confirm_token)])
+@system_router.post("/system/restart", dependencies=[Depends(require_step_up)])
 def restart_system(background_tasks: BackgroundTasks):
     from scheduler_engine import get_active_jobs
     active = get_active_jobs()
@@ -1165,13 +1165,13 @@ def restart_system(background_tasks: BackgroundTasks):
     return JSONResponse(content={"status": "success", "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
 
-@system_router.post("/system/force-restart", dependencies=[Depends(require_confirm_token)])
+@system_router.post("/system/force-restart", dependencies=[Depends(require_step_up)])
 def force_restart_system(background_tasks: BackgroundTasks):
     background_tasks.add_task(execute_restart)
     return JSONResponse(content={"status": "success", "message": "Force restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
 
-@system_router.post("/system/terminate-jobs", dependencies=[Depends(require_confirm_token)])
+@system_router.post("/system/terminate-jobs", dependencies=[Depends(require_step_up)])
 def terminate_active_jobs():
     from scheduler_engine import get_active_jobs, force_clear_active_jobs
     cleared = get_active_jobs()
@@ -1180,7 +1180,7 @@ def terminate_active_jobs():
     return JSONResponse(content={"status": "success", "terminated": names})
 
 
-@system_router.post("/settings", dependencies=[Depends(require_confirm_token)])
+@system_router.post("/settings", dependencies=[Depends(require_step_up)])
 def save_settings(config: SettingsConfig):
     try:
         incoming_data = config.model_dump(exclude_none=True)

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from api_deps import limiter, _error_500, require_confirm_token
+from api_deps import limiter, _error_500, require_step_up
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
 from database import get_connection, get_universe_tickers
@@ -525,7 +525,7 @@ def get_backup_status_endpoint():
         return _error_500(e)
 
 
-@triggers_router.post("/backup/restore", dependencies=[Depends(require_confirm_token)])
+@triggers_router.post("/backup/restore", dependencies=[Depends(require_step_up)])
 @limiter.limit("5/minute")
 def trigger_backup_restore(request: Request, body: RestoreBackupRequest):
     try:

@@ -56,7 +56,7 @@ def test_cookie_secure_modes():
         assert auth.cookie_secure() is False
 
 
-def test_settings_rejects_invalid_values(client, confirm_token):
+def test_settings_rejects_invalid_values(client, step_up_headers):
     for body in (
         {"ALLOWED_HOSTS": []},
         {"ALLOWED_HOSTS": ["bad host/x"]},
@@ -64,5 +64,5 @@ def test_settings_rejects_invalid_values(client, confirm_token):
         {"COOKIE_SECURE": "maybe"},
         {"BIND_HOST": "0.0.0.0; rm"},
     ):
-        r = client.post("/api/settings", json=body, headers={"X-Confirm-Token": confirm_token})
+        r = client.post("/api/settings", json=body, headers=step_up_headers)
         assert r.status_code == 422, body

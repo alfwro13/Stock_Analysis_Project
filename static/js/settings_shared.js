@@ -1,6 +1,63 @@
-var CONFIRM_TOKEN = window.CONFIRM_TOKEN;
 var currentDiscoveredAccounts = JSON.parse(document.getElementById('discoveredAccountsData').textContent);
 var macroInitState = JSON.parse(document.getElementById('macroInitState').textContent);
+var stepUpPending = null;
+
+function promptStepUp() {
+    if (stepUpPending) return stepUpPending;
+    const modalEl = document.getElementById('stepUpModal');
+    const form = document.getElementById('stepUpForm');
+    const input = document.getElementById('stepUpPassword');
+    const errorEl = document.getElementById('stepUpError');
+    const submitBtn = document.getElementById('stepUpSubmit');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    stepUpPending = new Promise(resolve => {
+        let unlocked = false;
+        const onSubmit = async (e) => {
+            e.preventDefault();
+            submitBtn.disabled = true;
+            errorEl.classList.add('d-none');
+            try {
+                const res = await fetch('/api/step-up', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: input.value }),
+                });
+                if (res.ok) {
+                    unlocked = true;
+                    modal.hide();
+                    return;
+                }
+                const data = await res.json().catch(() => ({}));
+                errorEl.textContent = res.status === 429
+                    ? 'Too many attempts. Wait a minute and try again.'
+                    : (data.detail || 'Could not confirm the password.');
+            } catch (err) {
+                errorEl.textContent = 'Network error. Try again.';
+            }
+            errorEl.classList.remove('d-none');
+            submitBtn.disabled = false;
+            input.select();
+        };
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            form.removeEventListener('submit', onSubmit);
+            input.value = '';
+            stepUpPending = null;
+            resolve(unlocked);
+        }, { once: true });
+        modalEl.addEventListener('shown.bs.modal', () => input.focus(), { once: true });
+        form.addEventListener('submit', onSubmit);
+        errorEl.classList.add('d-none');
+        submitBtn.disabled = false;
+        modal.show();
+    });
+    return stepUpPending;
+}
+
+async function stepUpFetch(url, options) {
+    const res = await fetch(url, options);
+    if (res.status !== 403 || !res.headers.get('X-Step-Up-Required')) return res;
+    return (await promptStepUp()) ? fetch(url, options) : res;
+}
 
 function setStatus(elId, type, msg) {
     const el = document.getElementById(elId);
@@ -670,14 +727,14 @@ async function saveSettings(silent = false) {
 
     try {
         const [response, smtpResponse] = await Promise.all([
-            fetch('/api/settings', {
+            stepUpFetch('/api/settings', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             }),
-            fetch('/api/save-smtp-settings', {
+            stepUpFetch('/api/save-smtp-settings', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(smtpPayload())
             })
         ]);

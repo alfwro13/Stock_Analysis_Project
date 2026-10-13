@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from api_deps import limiter, require_confirm_token, _error_500
+from api_deps import limiter, _error_500
 from pydantic import BaseModel, Field, field_validator
 
 from table_columns_helpers import normalize_column_order

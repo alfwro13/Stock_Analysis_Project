@@ -146,7 +146,7 @@ def test_trigger_endpoint_returns_success(client, endpoint, label):
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.api
-def test_post_settings_with_valid_payload(client, confirm_token):
+def test_post_settings_with_valid_payload(client, step_up_headers):
     """POST /api/settings with a valid partial payload must return status=success."""
     payload = {
         "UI_PREFERENCES": {
@@ -157,25 +157,25 @@ def test_post_settings_with_valid_payload(client, confirm_token):
             "FREETRADE_ONLY_MODE": False,
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     data = _json(resp)
     assert data.get("status") == "success", f"Expected success, got: {data}"
 
 
 @pytest.mark.api
-def test_post_settings_with_account_currencies(client, confirm_token):
+def test_post_settings_with_account_currencies(client, step_up_headers):
     """POST /api/settings with ACCOUNT_CURRENCIES must persist and round-trip via load_config."""
     import config as _config
     payload = {"ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR", "JPY"]}
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     assert _config.load_config().get("ACCOUNT_CURRENCIES") == ["GBP", "GBp", "USD", "EUR", "JPY"]
 
 
 @pytest.mark.api
-def test_post_settings_with_notification_routing(client, confirm_token):
+def test_post_settings_with_notification_routing(client, step_up_headers):
     """POST /api/settings with NOTIFICATION_ROUTING must persist and round-trip via load_config."""
     import config as _config
     payload = {
@@ -184,7 +184,7 @@ def test_post_settings_with_notification_routing(client, confirm_token):
             "quant_analysis_job": {"log_file": False, "in_app": True, "nextcloud_talk": True},
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     routing = _config.load_config().get("NOTIFICATION_ROUTING", {})
@@ -193,7 +193,7 @@ def test_post_settings_with_notification_routing(client, confirm_token):
 
 
 @pytest.mark.api
-def test_post_settings_with_risk_orchestrator(client, confirm_token):
+def test_post_settings_with_risk_orchestrator(client, step_up_headers):
     """POST /api/settings with SCHEDULING.RISK_ORCHESTRATOR (weights/thresholds) and
     RISK_ORCHESTRATOR_DIGEST must persist and round-trip via load_config — regression for a
     bug where SchedulingConfig had no RISK_ORCHESTRATOR field at all, so the whole block was
@@ -210,7 +210,7 @@ def test_post_settings_with_risk_orchestrator(client, confirm_token):
             "RISK_ORCHESTRATOR_DIGEST": {"ENABLED": True, "TIME": "20:20"},
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     scheduling = _config.load_config().get("SCHEDULING", {})
@@ -224,13 +224,13 @@ def test_post_settings_with_risk_orchestrator(client, confirm_token):
 
 
 @pytest.mark.api
-def test_post_settings_with_stable_shortlist_round_trips(client, confirm_token):
+def test_post_settings_with_stable_shortlist_round_trips(client, step_up_headers):
     """POST /api/settings with SCHEDULING.STABLE_SHORTLIST must persist every field and reload the scheduler."""
     import config as _config
     block = {"ENABLED": True, "DAYS": ["thu"], "TIME": "20:15", "TOPK": 8, "N_DROP": 3, "HOLD_THRESH": 1,
              "SECTOR_CAP": 3, "MAX_SIGNAL_AGE_DAYS": 5, "MIN_QUANT_SCORE": 60}
     resp = client.post("/api/settings", json={"SCHEDULING": {"STABLE_SHORTLIST": block}},
-                       headers={"X-Confirm-Token": confirm_token})
+                       headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     saved = _config.load_config()["SCHEDULING"]["STABLE_SHORTLIST"]
     assert {k: saved[k] for k in block} == block
@@ -241,15 +241,15 @@ def test_post_settings_with_stable_shortlist_round_trips(client, confirm_token):
     ("TOPK", 0), ("TOPK", 51), ("N_DROP", -1), ("HOLD_THRESH", 13), ("SECTOR_CAP", 0),
     ("MAX_SIGNAL_AGE_DAYS", 0), ("MIN_QUANT_SCORE", 101),
 ])
-def test_post_settings_rejects_out_of_range_stable_shortlist_values(client, confirm_token, field, value):
+def test_post_settings_rejects_out_of_range_stable_shortlist_values(client, step_up_headers, field, value):
     """The Stable Shortlist turnover settings are bounded at the settings boundary."""
     resp = client.post("/api/settings", json={"SCHEDULING": {"STABLE_SHORTLIST": {field: value}}},
-                       headers={"X-Confirm-Token": confirm_token})
+                       headers=step_up_headers)
     assert resp.status_code == 422, f"{field}={value} → {resp.status_code}"
 
 
 @pytest.mark.api
-def test_post_settings_with_alert_referee_training_confluence(client, confirm_token):
+def test_post_settings_with_alert_referee_training_confluence(client, step_up_headers):
     """POST /api/settings with SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE (the Cross-Engine
     Alert Referee's own schedule/mode/threshold block) must persist and round-trip via
     load_config — regression for a bug where SchedulingConfig had no
@@ -268,7 +268,7 @@ def test_post_settings_with_alert_referee_training_confluence(client, confirm_to
             },
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     block = _config.load_config().get("SCHEDULING", {}).get("ALERT_REFEREE_TRAINING_CONFLUENCE", {})
@@ -281,7 +281,7 @@ def test_post_settings_with_alert_referee_training_confluence(client, confirm_to
 
 
 @pytest.mark.api
-def test_post_settings_with_position_sizing_min_risk_reward(client, confirm_token):
+def test_post_settings_with_position_sizing_min_risk_reward(client, step_up_headers):
     """POST /api/settings with POSITION_SIZING.MIN_RISK_REWARD must persist and round-trip via
     load_config — regression for a bug where PositionSizingConfig had no MIN_RISK_REWARD field,
     so the Position Sizing Defaults card's Min Risk/Reward input was silently dropped on every
@@ -295,7 +295,7 @@ def test_post_settings_with_position_sizing_min_risk_reward(client, confirm_toke
             "MIN_RISK_REWARD": 1.8,
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     block = _config.load_config().get("POSITION_SIZING", {})
@@ -303,7 +303,7 @@ def test_post_settings_with_position_sizing_min_risk_reward(client, confirm_toke
 
 
 @pytest.mark.api
-def test_post_settings_with_crash_alerts_flash_crash_threshold(client, confirm_token):
+def test_post_settings_with_crash_alerts_flash_crash_threshold(client, step_up_headers):
     """POST /api/settings with NOTIFICATIONS.CRASH_ALERTS.FLASH_CRASH_THRESHOLD must persist and
     round-trip via load_config — regression for a bug where NotificationItemConfig had no
     FLASH_CRASH_THRESHOLD field, so the Crash & Moonshot Alerts card's Flash Crash Threshold
@@ -321,7 +321,7 @@ def test_post_settings_with_crash_alerts_flash_crash_threshold(client, confirm_t
             }
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     block = _config.load_config().get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {})
@@ -329,7 +329,7 @@ def test_post_settings_with_crash_alerts_flash_crash_threshold(client, confirm_t
 
 
 @pytest.mark.api
-def test_post_settings_with_risk_orchestrator_alerts(client, confirm_token):
+def test_post_settings_with_risk_orchestrator_alerts(client, step_up_headers):
     """POST /api/settings with NOTIFICATIONS.RISK_ORCHESTRATOR_ALERTS (Pillar C2's shared
     cooldown block for PHI/correlation/stop-breach escalations) must persist and round-trip."""
     import config as _config
@@ -340,7 +340,7 @@ def test_post_settings_with_risk_orchestrator_alerts(client, confirm_token):
             }
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     block = _config.load_config().get("NOTIFICATIONS", {}).get("RISK_ORCHESTRATOR_ALERTS", {})
@@ -351,7 +351,7 @@ def test_post_settings_with_risk_orchestrator_alerts(client, confirm_token):
 
 
 @pytest.mark.api
-def test_post_settings_with_meta_scoring(client, confirm_token):
+def test_post_settings_with_meta_scoring(client, step_up_headers):
     """POST /api/settings with META_SCORING (Regime-Weighted Conviction Score's regime-switched
     weight vectors and crash-veto threshold) must persist and round-trip via load_config."""
     import config as _config
@@ -364,7 +364,7 @@ def test_post_settings_with_meta_scoring(client, confirm_token):
             "CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.8},
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     ms = _config.load_config().get("META_SCORING", {})
@@ -374,7 +374,7 @@ def test_post_settings_with_meta_scoring(client, confirm_token):
 
 
 @pytest.mark.api
-def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(client, confirm_token):
+def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(client, step_up_headers):
     """POST /api/settings with GHOSTFOLIO_ENABLED=False must purge portfolio.json/watchlist.json,
     clear GHOSTFOLIO_ACCOUNTS, and force GHOSTFOLIO_SYNC.ENABLED off."""
     import config as _config
@@ -384,7 +384,7 @@ def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(clie
         "SCHEDULING": {"GHOSTFOLIO_SYNC": {"ENABLED": True, "FREQUENCY": "mon-fri", "INTERVAL_HOURS": 0, "TIME": "06:00"}},
     }
     with patch("api_routes_system.purge_ghostfolio_files") as mock_purge:
-        resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+        resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
     mock_purge.assert_called_once()
@@ -395,18 +395,18 @@ def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(clie
 
 
 @pytest.mark.api
-def test_post_settings_ghostfolio_enabled_does_not_purge(client, confirm_token):
+def test_post_settings_ghostfolio_enabled_does_not_purge(client, step_up_headers):
     """POST /api/settings with GHOSTFOLIO_ENABLED=True must not touch portfolio.json/watchlist.json."""
     payload = {"GHOSTFOLIO_ENABLED": True}
     with patch("api_routes_system.purge_ghostfolio_files") as mock_purge:
-        resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+        resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200
     assert _json(resp).get("status") == "success"
     mock_purge.assert_not_called()
 
 
 @pytest.mark.api
-def test_post_settings_with_position_sizing(client, confirm_token):
+def test_post_settings_with_position_sizing(client, step_up_headers):
     """POST /api/settings with position sizing values must return status=success."""
     payload = {
         "POSITION_SIZING": {
@@ -415,7 +415,7 @@ def test_post_settings_with_position_sizing(client, confirm_token):
             "STOP_MULTIPLE": 2.0,
         }
     }
-    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200
     data = _json(resp)
     assert data.get("status") == "success"
@@ -1133,63 +1133,53 @@ def test_portfolio_optimizer_run_rejects_invalid_rules(client, body):
 # ── Backup & Recovery ────────────────────────────────────────────────────────
 
 @pytest.mark.api
-def test_backup_restore_missing_confirm_token_returns_422(client):
-    """POST /api/backup/restore without the required X-Confirm-Token header must return 422."""
+def test_backup_restore_without_step_up_returns_403(client):
+    """POST /api/backup/restore without a step-up cookie must return 403 and flag the step-up prompt."""
     resp = client.post("/api/backup/restore", json={"filename": "backup_20260101_000000.tar.gz"})
-    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
-
-
-@pytest.mark.api
-def test_backup_restore_wrong_confirm_token_returns_403(client):
-    """POST /api/backup/restore with an incorrect X-Confirm-Token must return 403."""
-    resp = client.post(
-        "/api/backup/restore",
-        json={"filename": "backup_20260101_000000.tar.gz"},
-        headers={"X-Confirm-Token": "wrong-token"},
-    )
     assert resp.status_code == 403, f"Expected 403, got {resp.status_code}"
+    assert resp.headers.get("X-Step-Up-Required") == "1"
 
 
 @pytest.mark.api
-def test_backup_restore_rejects_path_traversal(client, confirm_token):
+def test_backup_restore_rejects_path_traversal(client, step_up_headers):
     """POST /api/backup/restore with a path-traversal filename must return 400, not touch disk."""
     resp = client.post(
         "/api/backup/restore",
         json={"filename": "../../etc/passwd"},
-        headers={"X-Confirm-Token": confirm_token},
+        headers=step_up_headers,
     )
     assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text}"
     assert _json(resp).get("status") == "error"
 
 
 @pytest.mark.api
-def test_backup_restore_success(client, confirm_token):
+def test_backup_restore_success(client, step_up_headers):
     """POST /api/backup/restore with a valid filename must return status=success when the engine succeeds."""
     with patch("api_routes_triggers.restore_backup", return_value={"status": "success", "message": "Restore completed."}):
         resp = client.post(
             "/api/backup/restore",
             json={"filename": "backup_20260101_000000.tar.gz"},
-            headers={"X-Confirm-Token": confirm_token},
+            headers=step_up_headers,
         )
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
     assert _json(resp).get("status") == "success"
 
 
 @pytest.mark.api
-def test_backup_restore_engine_error_returns_500(client, confirm_token):
+def test_backup_restore_engine_error_returns_500(client, step_up_headers):
     """POST /api/backup/restore must surface an engine-level failure as a 500 with status=error."""
     with patch("api_routes_triggers.restore_backup", return_value={"status": "error", "message": "Backup file not found"}):
         resp = client.post(
             "/api/backup/restore",
             json={"filename": "backup_missing.tar.gz"},
-            headers={"X-Confirm-Token": confirm_token},
+            headers=step_up_headers,
         )
     assert resp.status_code == 500, f"Expected 500, got {resp.status_code}"
     assert _json(resp).get("status") == "error"
 
 
 @pytest.mark.api
-def test_git_pull_flags_requirements_txt_change(client, confirm_token):
+def test_git_pull_flags_requirements_txt_change(client, step_up_headers):
     """POST /api/system/git-pull must flag requirements_changed when it appears in the pulled diff."""
     import api_routes_system
 
@@ -1204,7 +1194,7 @@ def test_git_pull_flags_requirements_txt_change(client, confirm_token):
 
     api_routes_system._requirements_changed_pending = False
     with patch("api_routes_system.subprocess.run", side_effect=fake_run):
-        resp = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+        resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
     body = _json(resp)
     assert body["requirements_changed"] is True
@@ -1213,7 +1203,7 @@ def test_git_pull_flags_requirements_txt_change(client, confirm_token):
 
 
 @pytest.mark.api
-def test_git_pull_warns_when_scikit_learn_pin_changes(client, confirm_token):
+def test_git_pull_warns_when_scikit_learn_pin_changes(client, step_up_headers):
     import api_routes_system
 
     def fake_run(cmd, **kwargs):
@@ -1234,7 +1224,7 @@ def test_git_pull_warns_when_scikit_learn_pin_changes(client, confirm_token):
             side_effect=["scikit-learn==1.9.0\n", "scikit-learn==1.9.1\n"],
         ),
     ):
-        resp = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+        resp = client.post("/api/system/git-pull", headers=step_up_headers)
 
     body = _json(resp)
     assert resp.status_code == 200
@@ -1252,7 +1242,7 @@ def test_git_pull_warns_when_scikit_learn_pin_changes(client, confirm_token):
 
 
 @pytest.mark.api
-def test_git_pull_does_not_flag_unrelated_changes(client, confirm_token):
+def test_git_pull_does_not_flag_unrelated_changes(client, step_up_headers):
     """POST /api/system/git-pull must not flag requirements_changed when requirements.txt wasn't touched."""
     import api_routes_system
 
@@ -1267,7 +1257,7 @@ def test_git_pull_does_not_flag_unrelated_changes(client, confirm_token):
 
     api_routes_system._requirements_changed_pending = False
     with patch("api_routes_system.subprocess.run", side_effect=fake_run):
-        resp = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+        resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
     assert _json(resp)["requirements_changed"] is False
     assert api_routes_system._requirements_changed_pending is False
@@ -1307,7 +1297,7 @@ def test_active_jobs_restart_pending_compares_running_and_disk_commit(client, mo
 
 
 @pytest.mark.api
-def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client, confirm_token, monkeypatch):
+def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client, step_up_headers, monkeypatch):
     """A second Pull Latest click reporting 'Already up to date' must not clear the restart-pending state."""
     import api_routes_system
 
@@ -1322,7 +1312,7 @@ def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client,
 
     monkeypatch.setattr(api_routes_system, "_RUNNING_HEAD", "oldsha")
     with patch("api_routes_system.subprocess.run", side_effect=fake_run):
-        pull = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+        pull = client.post("/api/system/git-pull", headers=step_up_headers)
         status = client.get("/api/system/active-jobs")
     assert pull.status_code == 200
     assert _json(status)["restart_pending"] is True

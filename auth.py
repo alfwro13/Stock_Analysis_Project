@@ -31,7 +31,17 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def check_dashboard_password(password: str) -> bool:
+    stored_hash = os.environ.get("DASHBOARD_PASSWORD_HASH", "")
+    if stored_hash:
+        return verify_password(password, stored_hash)
+    return hmac.compare_digest(password.encode(), os.environ.get("DASHBOARD_PASSWORD", "").encode())
+
+
 COOKIE_NAME = "session"
+STEP_UP_COOKIE_NAME = "stepup"
+STEP_UP_MAX_AGE = 5 * 60
+STEP_UP_COOKIE_PATH = "/api"
 _REMEMBER_MAX_AGE = 30 * 24 * 3600  # 30 days
 
 
@@ -51,12 +61,15 @@ def _secret() -> bytes:
     return key.encode()
 
 
+def _sign(payload: str, purpose: bytes = b"") -> str:
+    return hmac.new(_secret(), purpose + payload.encode(), hashlib.sha256).hexdigest()
+
+
 def create_session_token(username: str, remember: bool) -> str:
     payload = base64.urlsafe_b64encode(
         json.dumps({"u": username, "t": int(time.time()), "r": remember}).encode()
     ).decode()
-    sig = hmac.new(_secret(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}.{sig}"
+    return f"{payload}.{_sign(payload)}"
 
 
 _SESSION_MAX_AGE = 24 * 3600  # non-remember sessions expire after 24 hours
@@ -65,14 +78,38 @@ _SESSION_MAX_AGE = 24 * 3600  # non-remember sessions expire after 24 hours
 def verify_session_token(token: str) -> bool:
     try:
         payload, sig = token.rsplit(".", 1)
-        expected = hmac.new(_secret(), payload.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
+        if not hmac.compare_digest(sig, _sign(payload)):
             return False
         data = json.loads(base64.urlsafe_b64decode(payload + "=="))
         issued_at = data.get("t", 0)
         remember = data.get("r", False)
         max_age = _REMEMBER_MAX_AGE if remember else _SESSION_MAX_AGE
         return (time.time() - issued_at) < max_age
+    except Exception:
+        return False
+
+
+def _session_binding(session_token: str) -> str:
+    return hashlib.sha256(session_token.encode()).hexdigest()
+
+
+def create_step_up_token(session_token: str) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"t": int(time.time()), "s": _session_binding(session_token)}).encode()
+    ).decode()
+    return f"{payload}.{_sign(payload, b'stepup:')}"
+
+
+def verify_step_up_token(token: str, session_token: str) -> bool:
+    try:
+        payload, sig = token.rsplit(".", 1)
+        if not hmac.compare_digest(sig, _sign(payload, b"stepup:")):
+            return False
+        data = json.loads(base64.urlsafe_b64decode(payload + "=="))
+        age = time.time() - data.get("t", 0)
+        return 0 <= age < STEP_UP_MAX_AGE and hmac.compare_digest(
+            str(data.get("s", "")), _session_binding(session_token)
+        )
     except Exception:
         return False
 
@@ -98,4 +135,15 @@ def cookie_kwargs(remember: bool) -> dict:
         "samesite": "lax",
         "secure": cookie_secure(),
         "max_age": _REMEMBER_MAX_AGE if remember else None,
+    }
+
+
+def step_up_cookie_kwargs() -> dict:
+    return {
+        "key": STEP_UP_COOKIE_NAME,
+        "httponly": True,
+        "samesite": "strict",
+        "secure": cookie_secure(),
+        "max_age": STEP_UP_MAX_AGE,
+        "path": STEP_UP_COOKIE_PATH,
     }

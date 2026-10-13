@@ -73,13 +73,33 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="stepUpModal" tabindex="-1" aria-labelledby="stepUpTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" id="stepUpForm" autocomplete="off">
+            <div class="modal-header">
+                <h2 class="modal-title" id="stepUpTitle">Confirm your password</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="settings-desc">This action changes the server or its credentials. Enter the dashboard password to continue; it stays unlocked for 5 minutes.</p>
+                <label for="stepUpPassword" class="form-label">Dashboard password</label>
+                <input type="password" class="form-control" id="stepUpPassword" autocomplete="current-password" required>
+                <div id="stepUpError" class="text-danger mt-2 d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="stepUpSubmit">Confirm</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script type="application/json" id="discoveredAccountsData">{{ config.GHOSTFOLIO_ACCOUNTS.discovered | tojson | safe }}</script>
 <script type="application/json" id="macroInitState">{% if config.SCHEDULING.MACRO_ENGINE.INITIALIZED %}true{% else %}false{% endif %}</script>
 <script>
-window.CONFIRM_TOKEN = "{{ confirm_token }}";
 window.ETF_USER_TZ = "{{ config.USER_TIMEZONE | default('Europe/London') }}";
 window.MARKET_EXCHANGE_LIST = {{ (exchange_list | default([])) | tojson }};
 </script>
