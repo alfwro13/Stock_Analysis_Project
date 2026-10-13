@@ -489,6 +489,7 @@ def test_index_detail_gilt_renders_yield_history_from_close_only_baseline(client
     assert "1-Year Low" in resp.text
     assert "Currency: GBP" in resp.text
     assert "window.INDEX_CLOSE_ONLY = true" in resp.text
+    assert 'href="https://markets.ft.com/data/bonds/tearsheet/summary?s=UK10YG"' in resp.text
     for absent in ("refreshDataBtn", "Pivot Points", "Daily Low", "Volume:", "ATR %", "VaR (95%)", "Media Sentiment"):
         assert absent not in resp.text
 
