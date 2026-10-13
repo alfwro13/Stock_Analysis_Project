@@ -597,6 +597,42 @@ class TestConfirmToken:
         assert "embed_token" in data, f"Response must contain embed_token; got {data}"
         assert len(data["embed_token"]) == 64, "embed_token must be 64 hex chars (32-byte token)"
 
+    @pytest.mark.parametrize("endpoint, base, field, clear_field, env_name", [
+        ("/api/save-hf-token", {}, "HF_TOKEN", "CLEAR_HF_TOKEN", "HF_TOKEN"),
+        ("/api/save-fred-api-key", {}, "FRED_API_KEY", "CLEAR_FRED_API_KEY", "FRED_API_KEY"),
+        ("/api/save-ghostfolio-settings", {"GHOSTFOLIO_URL": "http://gf.test"}, "GHOSTFOLIO_TOKEN",
+         "CLEAR_GHOSTFOLIO_TOKEN", "GHOSTFOLIO_TOKEN"),
+        ("/api/save-nextcloud-settings", {"NEXTCLOUD_URL": "http://nc.test", "BOT_USERNAME": "bot"},
+         "APP_PASSWORD", "CLEAR_APP_PASSWORD", "NEXTCLOUD_APP_PASSWORD"),
+        ("/api/save-nextcloud-settings", {"NEXTCLOUD_URL": "http://nc.test", "BOT_USERNAME": "bot"},
+         "CONVERSATION_TOKEN", "CLEAR_CONVERSATION_TOKEN", "NEXTCLOUD_CONVERSATION_TOKEN"),
+        ("/api/save-smtp-settings", {"smtp_host": "smtp.test", "smtp_port": "587", "smtp_user": "u", "smtp_from": "f"},
+         "smtp_pass", "clear_smtp_pass", "SMTP_PASS"),
+    ])
+    def test_secret_save_blank_keeps_value_and_clear_flag_empties_it(
+        self, client, confirm_token, endpoint, base, field, clear_field, env_name
+    ):
+        headers = {"X-Confirm-Token": confirm_token}
+        with patch("dotenv.set_key") as set_key, patch.dict(os.environ, {env_name: "stored-secret"}):
+            assert client.post(endpoint, json={**base, field: ""}, headers=headers).status_code == 200
+            assert client.post(endpoint, json={**base, field: "   "}, headers=headers).status_code == 200
+            assert client.post(endpoint, json=base, headers=headers).status_code == 200
+            assert os.environ[env_name] == "stored-secret"
+            assert env_name not in [call.args[1] for call in set_key.call_args_list]
+
+            assert client.post(endpoint, json={**base, field: "replacement"}, headers=headers).status_code == 200
+            assert os.environ[env_name] == "replacement"
+
+            assert client.post(endpoint, json={**base, clear_field: True}, headers=headers).status_code == 200
+            assert os.environ[env_name] == ""
+
+    def test_test_hf_token_without_value_uses_stored_token(self, client, confirm_token):
+        with patch.dict(os.environ, {"HF_TOKEN": "stored-hf"}), \
+                patch("huggingface_hub.whoami", return_value={"name": "someone"}) as whoami:
+            resp = client.post("/api/test-hf-token", json={}, headers={"X-Confirm-Token": confirm_token})
+        assert resp.status_code == 200
+        assert whoami.call_args.kwargs["token"] == "stored-hf"
+
     def test_change_password_requires_confirm_token(self, client):
         """POST /api/change-password must reject requests without X-Confirm-Token."""
         resp = client.post("/api/change-password", json={

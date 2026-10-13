@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Optional
 
@@ -16,6 +17,33 @@ def _invalid_txn_field(fields: dict) -> Optional[str]:
     return None
 
 
+def _public_account(row) -> dict:
+    account = dict(row)
+    headers = account.pop("scraper_headers", None)
+    account["scraper_headers_set"] = headers not in (None, "", "{}")
+    return account
+
+
+def get_scraper_headers(account_id: int) -> dict:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT scraper_headers FROM accounts WHERE id = ? AND deleted_at IS NULL",
+            (account_id,)
+        )
+        row = cursor.fetchone()
+        headers = json.loads(row["scraper_headers"] or "{}") if row else {}
+        return headers if isinstance(headers, dict) else {}
+    except Exception as e:
+        logger.error("Failed to read scraper headers for account %s: %s", account_id, e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_accounts(include_deleted: bool = False) -> list:
     conn = None
     try:
@@ -25,7 +53,7 @@ def get_accounts(include_deleted: bool = False) -> list:
             cursor.execute("SELECT * FROM accounts ORDER BY created_at")
         else:
             cursor.execute("SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY created_at")
-        return [dict(row) for row in cursor.fetchall()]
+        return [_public_account(row) for row in cursor.fetchall()]
     except Exception as e:
         logger.error("Failed to get accounts: %s", e)
         return []
@@ -44,7 +72,7 @@ def get_account(account_id: int) -> Optional[dict]:
             (account_id,)
         )
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _public_account(row) if row else None
     except Exception as e:
         logger.error("Failed to get account %s: %s", account_id, e)
         return None
@@ -599,7 +627,7 @@ def get_watchlist_account() -> Optional[dict]:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM accounts WHERE account_type = 'Watchlist' AND deleted_at IS NULL LIMIT 1")
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _public_account(row) if row else None
     except Exception as e:
         logger.error("Failed to get watchlist account: %s", e)
         return None

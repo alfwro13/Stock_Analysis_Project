@@ -7,7 +7,9 @@ function openScraperModal(accountId, accountObj) {
     document.getElementById('scraper-account-id').value = accountId;
     document.getElementById('scraper-url').value = acc ? (acc.scraper_url || '') : '';
     document.getElementById('scraper-selector').value = acc ? (acc.scraper_selector || '') : '';
-    document.getElementById('scraper-headers').value = acc ? (acc.scraper_headers || '{}') : '{}';
+    const headersInput = document.getElementById('scraper-headers');
+    headersInput.value = '';
+    headersInput.placeholder = acc && acc.scraper_headers_set ? 'Saved headers are kept — leave blank to keep, {} to clear' : '{}';
     document.getElementById('scraper-time').value = acc ? (acc.scrape_time || '02:00') : '02:00';
     document.getElementById('scraper-enabled').checked = !!(acc && acc.scraper_enabled);
     document.getElementById('scraper-csv').value = '';
@@ -17,7 +19,8 @@ function openScraperModal(accountId, accountObj) {
 }
 
 function _parseScraperHeaders(status) {
-    const raw = document.getElementById('scraper-headers').value.trim() || '{}';
+    const raw = document.getElementById('scraper-headers').value.trim();
+    if (!raw) return undefined;
     try {
         return JSON.parse(raw);
     } catch (e) {

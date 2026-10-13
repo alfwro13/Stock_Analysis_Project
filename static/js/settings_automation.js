@@ -174,9 +174,10 @@ async function saveHFToken() {
         const res = await fetch('/api/save-hf-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
-            body: JSON.stringify({ HF_TOKEN: document.getElementById('HF_TOKEN').value.trim() }),
+            body: JSON.stringify({ HF_TOKEN: secretValue('HF_TOKEN').trim(), CLEAR_HF_TOKEN: secretClear('HF_TOKEN') }),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.ok) markSecretSaved('HF_TOKEN');
         setStatus('hf-status-msg', res.ok ? 'success' : 'error',
             res.ok ? 'HF Token saved.' : (data.detail || 'Failed to save.'));
     } catch (e) {

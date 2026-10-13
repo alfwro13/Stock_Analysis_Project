@@ -1,3 +1,4 @@
+{% from "settings/_secret_field.html" import secret_field %}
             <details class="settings-card">
                 <summary>🖥️ Live UI Updates &amp; Notifications</summary>
                 <p class="settings-desc">Enable or disable real-time price fetching for individual stocks on specific pages. Market Indexes will always remain live.</p>
@@ -274,10 +275,7 @@
                 <div class="settings-panel-sm border-left-cyan">
                     <h4 class="settings-panel-header text-cyan">🤗 HuggingFace API Token</h4>
                     <p class="settings-desc-sm">Optional. Suppresses unauthenticated-request warnings and enables higher rate limits when downloading or updating FinBERT and other HuggingFace models. Get a free token at <a href="https://huggingface.co/settings/tokens" target="_blank" class="text-cyan">huggingface.co/settings/tokens</a>.</p>
-                    <div class="form-group mb-10">
-                        <label>HuggingFace Token</label>
-                        <input type="password" id="HF_TOKEN" class="form-control" value="{{ hf_token }}" autocomplete="new-password" placeholder="hf_xxxxxxxxxxxxxxxxxxxx">
-                    </div>
+                    {{ secret_field("HF_TOKEN", "HuggingFace Token", secrets_set.HF_TOKEN, placeholder="hf_xxxxxxxxxxxxxxxxxxxx") }}
                     <button type="button" class="btn btn-primary mt-0" onclick="saveHFToken()">💾 Save HF Token</button>
                     <button type="button" class="btn btn-primary mt-0" onclick="testHFToken()">🧪 Verify Token</button>
                     <div id="hf-status-msg"></div>

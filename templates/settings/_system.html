@@ -1,3 +1,4 @@
+{% from "settings/_secret_field.html" import secret_field %}
         <details class="settings-card" id="diagnostics-panel" ontoggle="handleDiagnosticsToggle(this)">
             <summary>🩺 System Diagnostics and Maintenance</summary>
 
@@ -414,10 +415,7 @@
                         <label><abbr title="Login username for the SMTP server — usually your email address.">Username</abbr></label>
                         <input type="text" id="SMTP_USER" class="form-control" value="{{ smtp_user }}" placeholder="you@example.com" autocomplete="username">
                     </div>
-                    <div class="form-group flex-1">
-                        <label><abbr title="Password or app password for the SMTP account.">Password</abbr></label>
-                        <input type="password" id="SMTP_PASS" class="form-control" value="{{ smtp_pass }}" autocomplete="new-password">
-                    </div>
+                    {{ secret_field("SMTP_PASS", '<abbr title="Password or app password for the SMTP account.">Password</abbr>', secrets_set.SMTP_PASS, wrapper_class="flex-1") }}
                     <div class="form-group flex-1">
                         <label><abbr title="From address on outgoing emails. Defaults to Username if left blank.">From Address</abbr></label>
                         <input type="text" id="SMTP_FROM" class="form-control" value="{{ smtp_from }}" placeholder="noreply@example.com">
@@ -612,14 +610,8 @@
                 <label>Bot Username</label>
                 <input type="text" id="BOT_USERNAME" class="form-control" value="{{ nextcloud_bot_username }}" placeholder="notify.bot">
             </div>
-            <div class="form-group">
-                <label>App Password</label>
-                <input type="password" id="APP_PASSWORD" class="form-control" value="{{ nextcloud_app_password }}" autocomplete="new-password">
-            </div>
-            <div class="form-group">
-                <label>Talk Conversation Token</label>
-                <input type="text" id="CONVERSATION_TOKEN" class="form-control" value="{{ nextcloud_conversation_token }}" placeholder="ch2dtvqn">
-            </div>
+            {{ secret_field("APP_PASSWORD", "App Password", secrets_set.NEXTCLOUD_APP_PASSWORD) }}
+            {{ secret_field("CONVERSATION_TOKEN", "Talk Conversation Token", secrets_set.NEXTCLOUD_CONVERSATION_TOKEN, placeholder="ch2dtvqn") }}
             <div class="flex-gap-15 mt-0">
                 <button type="button" class="btn btn-primary" onclick="saveNextcloudSettings()">💾 Save Nextcloud Settings</button>
                 <button type="button" class="btn btn-primary" onclick="testNextcloudMessage()">🧪 Send Test Message</button>
@@ -642,10 +634,7 @@
                     <label>Ghostfolio Server URL</label>
                     <input type="text" id="GHOSTFOLIO_URL" class="form-control" value="{{ ghostfolio_url }}" placeholder="http://192.168.1.x:3333">
                 </div>
-                <div class="form-group">
-                    <label>Security API Token</label>
-                    <input type="password" id="API_TOKEN" class="form-control" value="{{ ghostfolio_token }}" autocomplete="new-password">
-                </div>
+                {{ secret_field("API_TOKEN", "Security API Token", secrets_set.GHOSTFOLIO_TOKEN) }}
                 <button type="button" class="btn btn-primary mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
                 <div id="ghostfolio-creds-msg"></div>
 
@@ -755,17 +744,13 @@
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">API Key</h4>
                 <p class="settings-desc">Use this key to access the API from scripts or external tools via the <code>X-API-Key</code> header. Generating a new key immediately invalidates the old one.</p>
-                <div class="form-group">
-                    <label>Current API key</label>
+                <p id="ua_api_key_state" class="settings-desc-sm {{ 'text-success' if secrets_set.API_KEY else 'text-warning' }}">{{ 'An API key is set. It is shown only once, when generated — generate a new one to get a value you can copy.' if secrets_set.API_KEY else 'No API key set — generate one below to enable script access.' }}</p>
+                <div id="ua_api_key_once" class="form-group d-none">
+                    <label for="ua_api_key">New API key — copy it now, it will not be shown again</label>
                     <div class="flex-gap-10">
-                        <input type="password" id="ua_api_key" class="form-control font-monospace flex-1" value="{{ api_key }}" readonly>
-                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="toggleApiKeyVisibility()">👁 Show</button>
+                        <input type="text" id="ua_api_key" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('ua_api_key', this)">📋 Copy</button>
                     </div>
-                    {% if not api_key %}
-                    <p class="settings-desc mt-5 text-warning">
-                        No API key set — generate one below to enable script access.
-                    </p>
-                    {% endif %}
                 </div>
                 <button type="button" class="btn btn-primary mt-0" onclick="generateApiKey()">🔄 Generate New API Key</button>
                 <div id="ua-apikey-msg"></div>
@@ -774,17 +759,13 @@
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">Embed Token</h4>
                 <p class="settings-desc">Use this token to embed pages (e.g. a Home Assistant iframe card) without logging in: append <code>&amp;embed_token=&lt;token&gt;</code> to any <code>?embed=true</code> URL for <code>/portfolio</code>, <code>/watchlist</code>, or <code>/stock/&lt;ticker&gt;</code>. Generating a new token immediately invalidates the old one.</p>
-                <div class="form-group">
-                    <label>Current embed token</label>
+                <p id="ua_embed_token_state" class="settings-desc-sm {{ 'text-success' if secrets_set.EMBED_TOKEN else 'text-warning' }}">{{ 'An embed token is set. It is shown only once, when generated — generate a new one to get a value you can copy.' if secrets_set.EMBED_TOKEN else 'No embed token set — generate one below to enable no-login embedding.' }}</p>
+                <div id="ua_embed_token_once" class="form-group d-none">
+                    <label for="ua_embed_token">New embed token — copy it now, it will not be shown again</label>
                     <div class="flex-gap-10">
-                        <input type="password" id="ua_embed_token" class="form-control font-monospace flex-1" value="{{ embed_token }}" readonly>
-                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="toggleEmbedTokenVisibility()">👁 Show</button>
+                        <input type="text" id="ua_embed_token" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('ua_embed_token', this)">📋 Copy</button>
                     </div>
-                    {% if not embed_token %}
-                    <p class="settings-desc mt-5 text-warning">
-                        No embed token set — generate one below to enable no-login embedding.
-                    </p>
-                    {% endif %}
                 </div>
                 <button type="button" class="btn btn-primary mt-0" onclick="generateEmbedToken()">🔄 Generate New Embed Token</button>
                 <div id="ua-embedtoken-msg"></div>

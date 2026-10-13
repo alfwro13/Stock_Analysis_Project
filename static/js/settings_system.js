@@ -67,16 +67,25 @@ async function runMaintenanceDryRun() {
     btn.innerText = "🔍 Dry Run"; btn.disabled = false;
 }
 
-function toggleApiKeyVisibility() {
-    const input = document.getElementById('ua_api_key');
-    const btn = event.currentTarget;
-    if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = '🙈 Hide';
-    } else {
-        input.type = 'password';
-        btn.textContent = '👁 Show';
+function showGeneratedSecret(id, value) {
+    document.getElementById(id).value = value;
+    document.getElementById(id + '_once').classList.remove('d-none');
+    const state = document.getElementById(id + '_state');
+    state.textContent = 'Set. The new value is shown below, once.';
+    state.classList.replace('text-warning', 'text-success');
+}
+
+function copyGeneratedSecret(id, btn) {
+    const input = document.getElementById(id);
+    if (!navigator.clipboard) {
+        input.select();
+        return;
     }
+    navigator.clipboard.writeText(input.value).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = 'Copied!';
+        setTimeout(() => { btn.innerText = orig; }, 1500);
+    }).catch(() => input.select());
 }
 
 async function generateApiKey() {
@@ -85,24 +94,10 @@ async function generateApiKey() {
     const res = await fetch('/api/generate-api-key', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-        const input = document.getElementById('ua_api_key');
-        input.value = data.api_key;
-        input.type = 'text';
-        setStatus('ua-apikey-msg', 'success', 'New API key generated and saved.');
+        showGeneratedSecret('ua_api_key', data.api_key);
+        setStatus('ua-apikey-msg', 'success', 'New API key generated and saved. Copy it now — it will not be shown again.');
     } else {
         setStatus('ua-apikey-msg', 'error', data.detail || 'Failed to generate key.');
-    }
-}
-
-function toggleEmbedTokenVisibility() {
-    const input = document.getElementById('ua_embed_token');
-    const btn = event.currentTarget;
-    if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = '🙈 Hide';
-    } else {
-        input.type = 'password';
-        btn.textContent = '👁 Show';
     }
 }
 
@@ -112,10 +107,8 @@ async function generateEmbedToken() {
     const res = await fetch('/api/generate-embed-token', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-        const input = document.getElementById('ua_embed_token');
-        input.value = data.embed_token;
-        input.type = 'text';
-        setStatus('ua-embedtoken-msg', 'success', 'New embed token generated and saved.');
+        showGeneratedSecret('ua_embed_token', data.embed_token);
+        setStatus('ua-embedtoken-msg', 'success', 'New embed token generated and saved. Copy it now — it will not be shown again.');
     } else {
         setStatus('ua-embedtoken-msg', 'error', data.detail || 'Failed to generate token.');
     }
@@ -144,8 +137,7 @@ async function changePassword() {
 
 async function discoverGhostfolioAccounts() {
     const btn = document.querySelector('button[onclick="discoverGhostfolioAccounts()"]');
-    const token = document.getElementById('API_TOKEN').value;
-    if (!token) {
+    if (!secretIsSet('API_TOKEN')) {
         alert("Please enter and save your Ghostfolio URL and API Token before running discovery.");
         return;
     }
@@ -675,15 +667,10 @@ async function saveSmtpSettings() {
         const res = await fetch('/api/save-smtp-settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
-            body: JSON.stringify({
-                smtp_host: document.getElementById('SMTP_HOST').value,
-                smtp_port: document.getElementById('SMTP_PORT').value,
-                smtp_user: document.getElementById('SMTP_USER').value,
-                smtp_pass: document.getElementById('SMTP_PASS').value,
-                smtp_from: document.getElementById('SMTP_FROM').value,
-            }),
+            body: JSON.stringify(smtpPayload()),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.ok) markSecretSaved('SMTP_PASS');
         setStatus('smtp-status-msg', res.ok ? 'success' : 'error', res.ok ? data.message : (data.detail || 'Failed to save.'));
     } catch (e) {
         setStatus('smtp-status-msg', 'error', 'Network error while saving.');
@@ -724,10 +711,12 @@ async function saveGhostfolioSettings() {
             headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
             body: JSON.stringify({
                 GHOSTFOLIO_URL: document.getElementById('GHOSTFOLIO_URL').value.trim(),
-                GHOSTFOLIO_TOKEN: document.getElementById('API_TOKEN').value.trim(),
+                GHOSTFOLIO_TOKEN: secretValue('API_TOKEN').trim(),
+                CLEAR_GHOSTFOLIO_TOKEN: secretClear('API_TOKEN'),
             }),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.ok) markSecretSaved('API_TOKEN');
         setStatus('ghostfolio-creds-msg', res.ok ? 'success' : 'error',
             res.ok ? 'Ghostfolio credentials saved.' : (data.detail || 'Failed to save.'));
     } catch (e) {
@@ -746,8 +735,10 @@ async function saveNextcloudSettings() {
     const payload = {
         NEXTCLOUD_URL: document.getElementById('NEXTCLOUD_URL').value.trim(),
         BOT_USERNAME: document.getElementById('BOT_USERNAME').value.trim(),
-        APP_PASSWORD: document.getElementById('APP_PASSWORD').value,
-        CONVERSATION_TOKEN: document.getElementById('CONVERSATION_TOKEN').value.trim(),
+        APP_PASSWORD: secretValue('APP_PASSWORD'),
+        CLEAR_APP_PASSWORD: secretClear('APP_PASSWORD'),
+        CONVERSATION_TOKEN: secretValue('CONVERSATION_TOKEN').trim(),
+        CLEAR_CONVERSATION_TOKEN: secretClear('CONVERSATION_TOKEN'),
     };
     try {
         const res = await fetch('/api/save-nextcloud-settings', {
@@ -757,6 +748,8 @@ async function saveNextcloudSettings() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+            markSecretSaved('APP_PASSWORD');
+            markSecretSaved('CONVERSATION_TOKEN');
             setStatus('nc-status-msg', 'success', 'Nextcloud settings saved to .env.');
         } else {
             setStatus('nc-status-msg', 'error', data.detail || 'Failed to save.');

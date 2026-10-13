@@ -166,6 +166,7 @@ from db_helpers import (  # noqa: E402
 from db_accounts import (  # noqa: E402
     get_accounts,
     get_account,
+    get_scraper_headers,
     create_account,
     update_account,
     soft_delete_account,
@@ -238,6 +239,7 @@ __all__ = [
     "get_auction_summary",
     "get_accounts",
     "get_account",
+    "get_scraper_headers",
     "create_account",
     "update_account",
     "soft_delete_account",
