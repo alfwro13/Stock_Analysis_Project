@@ -44,6 +44,32 @@ def _assert_success(resp, endpoint: str):
     )
 
 
+# ── Index refresh ─────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+@pytest.mark.parametrize("ticker", ["UK10YG", "TBILL-606"])
+def test_post_index_refresh_rejects_non_yahoo_tickers_before_any_fetch(client, ticker):
+    with patch("api_routes.fetch_and_save_pulse") as pulse, patch("api_routes.DataEngine") as engine:
+        resp = client.post("/api/index/refresh", json={"ticker": ticker})
+    assert resp.status_code == 422
+    assert _json(resp)["status"] == "error"
+    pulse.assert_not_called()
+    engine.assert_not_called()
+
+
+@pytest.mark.api
+def test_post_index_refresh_still_refreshes_a_yahoo_index(client):
+    with patch("api_routes.fetch_and_save_pulse") as pulse, \
+         patch("api_routes.DataEngine") as engine, \
+         patch("api_routes.QuantEngine"), \
+         patch("api_routes.update_all_tail_risks"), \
+         patch("api_routes.update_all_sentiment"):
+        engine.return_value.fetch_and_save_data.return_value = True
+        resp = client.post("/api/index/refresh", json={"ticker": "^GSPC"})
+    _assert_success(resp, "/api/index/refresh")
+    pulse.assert_called_once_with(["^GSPC"])
+
+
 # ── Notification CRUD ─────────────────────────────────────────────────────────
 
 @pytest.mark.api

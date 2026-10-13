@@ -57,7 +57,7 @@ from news_feed_engine import run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, fetch_and_save_single_ticker, load_or_fetch_intraday_history
 import glossary_learn_engine
-from utils import normalize_ticker, measure_request_stage
+from utils import normalize_ticker, measure_request_stage, is_excluded_from_yahoo_fetch
 from page_helpers import intraday_chart_revision
 from cache_refresh_helpers import submit_cache_refresh
 from quant_signals import QuantEngine
@@ -343,6 +343,10 @@ def api_get_all_ticker_notes():
 @api_router.post("/index/refresh")
 def api_index_refresh(req: TickerRequest):
     ticker = normalize_ticker(req.ticker)
+    if is_excluded_from_yahoo_fetch(ticker):
+        return JSONResponse(status_code=422, content={
+            "status": "error", "message": "This instrument is not sourced from Yahoo Finance and cannot be refreshed here.",
+        })
     try:
         fetch_and_save_pulse([ticker])
         data_engine = DataEngine()
