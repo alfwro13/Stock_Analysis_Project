@@ -25,11 +25,6 @@ function sentimentBadge(label, score) {
     return `<span class="sent-badge sent-${label}" title="Sentiment: ${label}${pct}">${icon}${pct}</span>`;
 }
 
-function escHtml(s) {
-    if (!s) return '';
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function looksLikeHeading(text) {
     const t = text.trim();
     if (t.length < 5 || t.length > 80) return false;
@@ -51,7 +46,7 @@ function formatArticleBody(text, ticker) {
     return blocks.map(block => {
         block = block.trim();
         if (!block) return '';
-        const safe = escHtml(block);
+        const safe = escapeHtml(block);
         const lit = tickerRe ? safe.replace(tickerRe, m => `<span class="reader-ticker">${m}</span>`) : safe;
         if (looksLikeHeading(block)) {
             return `<h3 class="reader-h3">${lit}</h3>`;
@@ -87,12 +82,12 @@ function renderList(articles) {
     inner.innerHTML = articles.map(a => `
         <div class="article-item${a.id === selectedId ? ' selected' : ''}"
              id="art-${a.id}" onclick="selectArticle(${a.id})">
-            <div class="art-headline">${escHtml(a.headline)}</div>
+            <div class="art-headline">${escapeHtml(a.headline)}</div>
             <div class="art-meta">
-                <span class="art-ticker-badge">${escHtml(a.ticker)}</span>
+                <span class="art-ticker-badge">${escapeHtml(a.ticker)}</span>
                 ${sourceBadge(a.source_list)}
                 ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
-                <span>${escHtml(a.publisher || '')}</span>
+                <span>${escapeHtml(a.publisher || '')}</span>
                 <span>${relTime(a.published_at)}</span>
             </div>
         </div>
@@ -154,15 +149,15 @@ function selectArticle(id) {
         : `<div class="reader-body summary-fallback">${formatArticleBody(a.summary || 'No summary available.', a.ticker)}<p class="reader-p"><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></p></div>`;
 
     const headlineHtml = a.url
-        ? `<a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="reader-headline-link">${escHtml(a.headline)}</a>`
-        : escHtml(a.headline);
+        ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="reader-headline-link">${escapeHtml(a.headline)}</a>`
+        : escapeHtml(a.headline);
     reader.innerHTML = `
         <h2>${headlineHtml}</h2>
         <div class="reader-meta">
-            <span class="art-ticker-badge">${escHtml(a.ticker)}${a.company_name ? ' · ' + escHtml(a.company_name) : ''}</span>
+            <span class="art-ticker-badge">${escapeHtml(a.ticker)}${a.company_name ? ' · ' + escapeHtml(a.company_name) : ''}</span>
             ${sourceBadge(a.source_list)}
             ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
-            <span>${escHtml(a.publisher || '')}</span>
+            <span>${escapeHtml(a.publisher || '')}</span>
             <span>${pubDate}</span>
         </div>
         ${bodyHtml}

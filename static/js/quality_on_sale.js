@@ -23,20 +23,20 @@ $(document).ready(function() {
             var select = $('<select id="qosSectorFilter" class="form-select me-2"><option value="ALL">All Sectors</option></select>');
             column.data().unique().sort().each(function(d) {
                 if (d && d !== 'N/A') {
-                    select.append('<option value="' + d + '">' + d + '</option>');
+                    select.append(new Option(d, d));
                 }
             });
             $('#qosTable_wrapper .dataTables_filter').prepend(select);
         },
 
         columns: [
-            { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
-            { data: 'company_name' },
-            { data: 'sector' },
+            { data: 'ticker', render: function(data) { return '<a href="/stock/' + escapeHtml(data) + '" class="ticker-link">' + escapeHtml(data) + '</a>'; } },
+            { data: 'company_name', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
+            { data: 'sector', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
             {
                 data: 'close_price',
                 render: function(data, type, row) {
-                    return type === 'display' ? formatCurrency(data, row.currency) : data;
+                    return type === 'display' ? escapeHtml(formatCurrency(data, row.currency)) : data;
                 }
             },
             {

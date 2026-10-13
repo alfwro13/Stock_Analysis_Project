@@ -46,16 +46,16 @@
         }
         if (empty) empty.style.display = 'none';
         tbody.innerHTML = results.map(r => `
-            <tr class="clickable" data-ticker="${r.ticker}" onclick="brShowDetail('${r.ticker}')">
-                <td><strong style="color:#e0e0e0;">${r.ticker}</strong><br>
-                    <span style="font-size:11px;color:#666;">${r.company_name || ''}</span></td>
+            <tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
+                <td><strong style="color:#e0e0e0;">${escapeHtml(r.ticker)}</strong><br>
+                    <span style="font-size:11px;color:#666;">${escapeHtml(r.company_name || '')}</span></td>
                 <td><span class="${flagClass(r.flag)}">${flagLabel(r.flag)}</span></td>
                 <td>${scoreBar(Math.round(r.bubble_score))}</td>
                 <td style="font-family:monospace;font-size:12px;">${fmt(r.sma_ext_pct, 1)}%</td>
                 <td style="font-family:monospace;font-size:12px;">${fmt(r.rsi_avg_20d, 1)}</td>
                 <td style="font-family:monospace;font-size:12px;">${fmt(r.ps_ratio, 1)}×</td>
                 <td style="font-family:monospace;font-size:12px;">${fmt(r.peg_ratio, 2)}</td>
-                <td style="font-size:11px;color:#666;">${r.scan_date || ''}</td>
+                <td style="font-size:11px;color:#666;">${escapeHtml(r.scan_date || '')}</td>
             </tr>`).join('');
     }
 
@@ -78,9 +78,9 @@
                 return '<span style="color:#444;">—</span>';
             }
             return `<tr>
-                <td><strong style="color:#e0e0e0;">${r.ticker}</strong></td>
+                <td><strong style="color:#e0e0e0;">${escapeHtml(r.ticker)}</strong></td>
                 <td><span class="${flagClass(r.flag_level)}">${flagLabel(r.flag_level)}</span></td>
-                <td style="font-size:11px;color:#888;">${r.flagged_date}</td>
+                <td style="font-size:11px;color:#888;">${escapeHtml(r.flagged_date)}</td>
                 <td style="font-family:monospace;font-size:12px;">${fmt(r.price_at_flag, 2)}</td>
                 <td>${outcomeCell(o4)}</td>
                 <td>${outcomeCell(o8)}</td>
@@ -89,7 +89,7 @@
         }).join('');
     }
 
-    window.brShowDetail = function (ticker) {
+    function showDetail(ticker) {
         const panel = document.getElementById('br-detail-panel');
         const title = document.getElementById('br-detail-ticker');
         const body  = document.getElementById('br-detail-body');
@@ -97,7 +97,7 @@
         panel.style.display = 'block';
         title.textContent = ticker;
         body.innerHTML = '<div style="color:#555;font-size:12px;">Loading…</div>';
-        fetch(`/api/bubble-radar/ticker/${ticker}`)
+        fetch(`/api/bubble-radar/ticker/${encodeURIComponent(ticker)}`)
             .then(r => r.json())
             .then(data => {
                 if (!data.result) {
@@ -114,7 +114,7 @@
                         ? parseFloat(m.value).toFixed(2)
                         : '—';
                     return `<div class="bubble-metric-row">
-                        <span class="bubble-metric-label">${m.label}</span>
+                        <span class="bubble-metric-label">${escapeHtml(m.label)}</span>
                         <span class="bubble-metric-val">${val}</span>
                         <span class="bubble-score-bar" style="width:80px;display:inline-block;">
                             <span class="bubble-score-fill ${barCls}" style="width:${barW}%;display:inline-block;"></span>
@@ -126,14 +126,14 @@
                     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
                         <span class="${flagClass(r.flag)}">${flagLabel(r.flag)}</span>
                         <span style="font-size:20px;font-weight:700;font-family:monospace;">${Math.round(r.bubble_score)}<span style="font-size:13px;color:#666;">/100</span></span>
-                        <span style="font-size:12px;color:#555;">as of ${r.scan_date}</span>
+                        <span style="font-size:12px;color:#555;">as of ${escapeHtml(r.scan_date)}</span>
                     </div>
                     ${rows}`;
             })
             .catch(() => {
                 body.innerHTML = '<div class="bubble-empty">Failed to load metric detail.</div>';
             });
-    };
+    }
 
     function switchTab(name) {
         document.querySelectorAll('.bubble-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -184,6 +184,11 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         loadFlagged();
+
+        document.getElementById('br-flagged-body').addEventListener('click', e => {
+            const row = e.target.closest('tr[data-ticker]');
+            if (row) showDetail(row.dataset.ticker);
+        });
 
         document.querySelectorAll('.bubble-tab').forEach(t => {
             t.addEventListener('click', () => switchTab(t.dataset.tab));
