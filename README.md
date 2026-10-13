@@ -148,6 +148,8 @@ On first start, `config.py` writes default credentials (`admin` / `changeme`) to
 To configure email-based self-service password reset:
 1. Go to **Settings → User Account → Account Email** and save your email address.
 2. Add SMTP credentials to `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (optional `SMTP_FROM`). If SMTP is not configured, reset links are delivered via Nextcloud Talk or logged to the server.
+
+**Stored credentials are write-only in Settings.** The SMTP password, Nextcloud app password and conversation token, Ghostfolio token, FRED key and HuggingFace token are never sent back to the browser: each field shows only whether a value is stored, an empty field keeps it, and a **Clear the stored value on save** checkbox removes it. The API key and embed token are displayed once, when generated. The Account Price Scraper's custom request headers follow the same rule.
 3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour.
 
 If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for three recovery methods including a console script (`python reset_admin_password.py`) and a `FORCE_PASSWORD_RESET` config-file flag.
@@ -215,7 +217,7 @@ By appending a simple URL parameter, the system will automatically hide the top 
 * **Portfolio:** http://localhost:8090/portfolio?embed=true&embed_token=\<your-embed-token\>
 * **Watchlist:** http://localhost:8090/watchlist?embed=true&embed_token=\<your-embed-token\>
 
-The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the general-purpose API Key used by the Native Home Assistant Integration below. Generating a new embed token immediately invalidates the old one.
+The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the general-purpose API Key used by the Native Home Assistant Integration below. Generating a new embed token immediately invalidates the old one. The token is shown only once, when it is generated — copy it then; Settings afterwards shows only that a token is set.
 
 **Example Home Assistant Webpage Card Configuration:**
 ```

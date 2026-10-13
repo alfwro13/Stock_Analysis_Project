@@ -1180,6 +1180,9 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
 | Ghostfolio URL + token | `POST /api/save-ghostfolio-settings` | `GHOSTFOLIO_URL`, `GHOSTFOLIO_TOKEN` |
 | Nextcloud Talk credentials | `POST /api/save-nextcloud-settings` | `NEXTCLOUD_URL`, `NEXTCLOUD_BOT_USERNAME`, `NEXTCLOUD_APP_PASSWORD`, `NEXTCLOUD_CONVERSATION_TOKEN` |
 | HuggingFace token | `POST /api/save-hf-token` | `HF_TOKEN` |
+| SMTP password (with host, port, user, from) | `POST /api/save-smtp-settings` | `SMTP_PASS` (with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_FROM`) |
+
+**Stored secrets are write-only (SEC 12/27 · S1-2).** `GET /settings` never renders a stored secret: it shows only whether each of the API key, embed token, SMTP password, Nextcloud app password, Nextcloud conversation token, Ghostfolio token, FRED key and HF token is set, and sends `Cache-Control: no-store`. Every secret field in the save endpoints above is optional: an absent, empty or whitespace-only value leaves the stored value unchanged, a non-empty value replaces it, and a `CLEAR_<FIELD>` flag (`CLEAR_FRED_API_KEY`, `CLEAR_HF_TOKEN`, `CLEAR_GHOSTFOLIO_TOKEN`, `CLEAR_APP_PASSWORD`, `CLEAR_CONVERSATION_TOKEN`, and `clear_smtp_pass` on the SMTP endpoint) set to `true` empties it. The URL, host and user-name fields of those endpoints are not secrets and are still always written.
 
 Request-path hardening keys, all applied at the next restart:
 
@@ -1443,6 +1446,20 @@ Changes the dashboard login password. Requires `X-Confirm-Token` header. The new
 
 ---
 
+### `POST /api/generate-api-key`
+
+Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, invalidating the previous one. Requires `X-Confirm-Token` header. The key is returned only in this response; Settings shows it once and afterwards reports only that a key is set.
+
+**Headers:** `X-Confirm-Token: <token>`
+
+**Response**
+
+```json
+{ "api_key": "<64-char-hex>" }
+```
+
+---
+
 ### `POST /api/generate-embed-token`
 
 Generates a new Embed Token (32-byte hex) and persists it to `.env` as `EMBED_TOKEN`, invalidating the previous one. Requires `X-Confirm-Token` header.
@@ -1450,6 +1467,8 @@ Generates a new Embed Token (32-byte hex) and persists it to `.env` as `EMBED_TO
 The embed token bypasses login only for `GET` requests carrying `?embed=true` on the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) — see the auth middleware in `main.py`. It grants no other access (no other page, no `/api/*` endpoint, no non-GET method), unlike the general-purpose `API_KEY`/`X-API-Key` mechanism.
 
 **Headers:** `X-Confirm-Token: <token>`
+
+The token is returned only in this response; Settings shows it once and afterwards reports only that a token is set.
 
 **Response**
 
@@ -1490,6 +1509,8 @@ Saves SMTP mail server configuration to `.env`. Takes effect immediately without
   "smtp_from": "noreply@example.com"
 }
 ```
+
+`smtp_pass` is optional and write-only: leave it empty or omit it to keep the stored password, or send `"clear_smtp_pass": true` to empty it.
 
 ---
 
@@ -2095,11 +2116,11 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/trigger-universe-quant-scan` | Quant scan (full universe) |
 | `POST` | `/api/trigger-earnings-scan` | Earnings volatility scan |
 | `POST` | `/api/trigger-sentiment-scan` | FinBERT sentiment scan |
-| `POST` | `/api/save-hf-token` | Persist HuggingFace API token to `.env` |
-| `POST` | `/api/save-fred-api-key` | Persist FRED API key to `.env` |
-| `POST` | `/api/save-ghostfolio-settings` | Persist Ghostfolio URL + token to `.env` |
-| `POST` | `/api/save-nextcloud-settings` | Persist Nextcloud Talk credentials to `.env` |
-| `POST` | `/api/test-hf-token` | Verify HuggingFace token via `whoami` |
+| `POST` | `/api/save-hf-token` | Persist HuggingFace API token to `.env` (empty keeps the stored value; `CLEAR_HF_TOKEN` clears it) |
+| `POST` | `/api/save-fred-api-key` | Persist FRED API key to `.env` (empty keeps the stored value; `CLEAR_FRED_API_KEY` clears it) |
+| `POST` | `/api/save-ghostfolio-settings` | Persist Ghostfolio URL + token to `.env` (empty token keeps the stored one; `CLEAR_GHOSTFOLIO_TOKEN` clears it) |
+| `POST` | `/api/save-nextcloud-settings` | Persist Nextcloud Talk credentials to `.env` (empty app password or conversation token keeps the stored one; `CLEAR_APP_PASSWORD` / `CLEAR_CONVERSATION_TOKEN` clear them) |
+| `POST` | `/api/test-hf-token` | Verify the posted HuggingFace token, or the stored one when none is posted, via `whoami` |
 | `GET` | `/api/screener-data` | Latest quant signal snapshot (Market Screener) |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
 | `POST` | `/api/market-pulse` | Live pulse for custom tickers |
@@ -3380,14 +3401,14 @@ HTML page. Dedicated House account detail view (replaces the generic ledger page
 
 ### `GET /api/accounts`
 
-Returns all non-deleted accounts, each annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`), and `pending_topups` (unresolved rows from `account_autotopup_pending`, oldest first — powers the `[PENDING ACTION]` tile tag). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
+Returns all non-deleted accounts. The stored scraper request headers may carry a provider cookie or `Authorization` value, so `scraper_headers` is never returned: each account carries `scraper_headers_set` (boolean) instead (`db_accounts._public_account()`, which `get_account()`/`get_accounts()`/`get_watchlist_account()` all apply; the scraper reads the real value through `db_accounts.get_scraper_headers()`). Each account is annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`), and `pending_topups` (unresolved rows from `account_autotopup_pending`, oldest first — powers the `[PENDING ACTION]` tile tag). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
 
 **Response:**
 ```json
 {
   "status": "success",
   "accounts": [
-    {"id": 1, "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "note": null, "pension_ticker_label": null, "scraper_last_status": null, "deleted_at": null, "created_at": "2026-06-25 10:00:00"}
+    {"id": 1, "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "note": null, "pension_ticker_label": null, "scraper_headers_set": false, "scraper_last_status": null, "deleted_at": null, "created_at": "2026-06-25 10:00:00"}
   ]
 }
 ```
@@ -3638,13 +3659,15 @@ Saves the scraper configuration and (re)registers the account's dynamic schedule
 { "scraper_url": "http://192.168.1.71:8123/house_valuation.html", "scraper_selector": "#gf-price", "scraper_headers": {}, "scrape_time": "02:00", "scraper_enabled": true }
 ```
 
+`scraper_headers` is optional and write-only: omit it (or send `null`) to keep the stored headers, send an object to replace them, and send `{}` to clear them. The stored value is never returned (`GET /api/accounts` carries `scraper_headers_set` only).
+
 Returns `{"status": "success", "message": "Scraper configuration saved."}`. Returns 404 if the account does not exist; 400 if it is not `House`/`Pension`.
 
 ---
 
 ### `POST /api/accounts/{id}/scraper/test`
 
-Fetches and extracts using the supplied (not-yet-saved) `url`/`selector`/`headers` — does **not** persist anything. Used by the config modal's "Test" button to validate a selector before saving. Rate limit: 20/minute.
+Fetches and extracts using the supplied (not-yet-saved) `url`/`selector`/`headers` — does **not** persist anything. When `headers` is omitted or `null`, the account's saved headers are used, because the stored value is never sent to the browser. Used by the config modal's "Test" button to validate a selector before saving. Rate limit: 20/minute.
 
 **Request body:**
 ```json

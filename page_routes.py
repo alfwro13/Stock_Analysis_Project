@@ -93,24 +93,24 @@ def settings_page(request: Request):
             "exchange_list": sorted(time_engine.EXCHANGE_HOURS.keys()),
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
-            "api_key": os.environ.get("API_KEY", ""),
-            "embed_token": os.environ.get("EMBED_TOKEN", ""),
+            "secrets_set": {
+                name: bool(os.environ.get(name))
+                for name in (
+                    "API_KEY", "EMBED_TOKEN", "NEXTCLOUD_APP_PASSWORD", "NEXTCLOUD_CONVERSATION_TOKEN",
+                    "GHOSTFOLIO_TOKEN", "FRED_API_KEY", "HF_TOKEN", "SMTP_PASS",
+                )
+            },
             "confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", ""),
             "nextcloud_url": os.environ.get("NEXTCLOUD_URL", ""),
             "nextcloud_bot_username": os.environ.get("NEXTCLOUD_BOT_USERNAME", ""),
-            "nextcloud_app_password": os.environ.get("NEXTCLOUD_APP_PASSWORD", ""),
-            "nextcloud_conversation_token": os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN", ""),
             "ghostfolio_url": os.environ.get("GHOSTFOLIO_URL", ""),
-            "ghostfolio_token": os.environ.get("GHOSTFOLIO_TOKEN", ""),
-            "fred_api_key": os.environ.get("FRED_API_KEY", ""),
-            "hf_token": os.environ.get("HF_TOKEN", ""),
             "account_email": os.environ.get("ACCOUNT_EMAIL", ""),
             "smtp_host": os.environ.get("SMTP_HOST", ""),
             "smtp_port": os.environ.get("SMTP_PORT", "587"),
             "smtp_user": os.environ.get("SMTP_USER", ""),
-            "smtp_pass": os.environ.get("SMTP_PASS", ""),
             "smtp_from": os.environ.get("SMTP_FROM", ""),
-        }
+        },
+        headers={"Cache-Control": "no-store"},
     )
 
 

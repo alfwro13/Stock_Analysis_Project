@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -63,6 +64,12 @@ def login(request: Request, body: LoginRequest, response: Response):
     token = create_session_token(body.username, body.remember_me)
     response.set_cookie(value=token, **cookie_kwargs(body.remember_me))
     return {"status": "ok"}
+
+
+def _secret_update(value: str, clear: bool) -> Optional[str]:
+    if clear:
+        return ""
+    return value if value.strip() else None
 
 
 @auth_router.post("/generate-api-key", dependencies=[Depends(require_confirm_token)])
@@ -304,8 +311,10 @@ def admin_reset_password(body: AdminResetPasswordBody):
 class SaveNextcloudSettingsRequest(BaseModel):
     NEXTCLOUD_URL: str
     BOT_USERNAME: str
-    APP_PASSWORD: str
-    CONVERSATION_TOKEN: str
+    APP_PASSWORD: str = ""
+    CONVERSATION_TOKEN: str = ""
+    CLEAR_APP_PASSWORD: bool = False
+    CLEAR_CONVERSATION_TOKEN: bool = False
 
 
 @auth_router.post("/save-nextcloud-settings", dependencies=[Depends(require_confirm_token)])
@@ -315,10 +324,12 @@ def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
     mapping = {
         "NEXTCLOUD_URL": body.NEXTCLOUD_URL,
         "NEXTCLOUD_BOT_USERNAME": body.BOT_USERNAME,
-        "NEXTCLOUD_APP_PASSWORD": body.APP_PASSWORD,
-        "NEXTCLOUD_CONVERSATION_TOKEN": body.CONVERSATION_TOKEN,
+        "NEXTCLOUD_APP_PASSWORD": _secret_update(body.APP_PASSWORD, body.CLEAR_APP_PASSWORD),
+        "NEXTCLOUD_CONVERSATION_TOKEN": _secret_update(body.CONVERSATION_TOKEN, body.CLEAR_CONVERSATION_TOKEN),
     }
     for key, value in mapping.items():
+        if value is None:
+            continue
         set_key(env_path, key, value)
         os.environ[key] = value
     return {"status": "ok"}
@@ -342,7 +353,8 @@ def test_nextcloud_message():
 
 class SaveGhostfolioSettingsRequest(BaseModel):
     GHOSTFOLIO_URL: str
-    GHOSTFOLIO_TOKEN: str
+    GHOSTFOLIO_TOKEN: str = ""
+    CLEAR_GHOSTFOLIO_TOKEN: bool = False
 
 
 @auth_router.post("/save-ghostfolio-settings", dependencies=[Depends(require_confirm_token)])
@@ -350,35 +362,43 @@ def save_ghostfolio_settings(body: SaveGhostfolioSettingsRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
     set_key(env_path, "GHOSTFOLIO_URL", body.GHOSTFOLIO_URL)
-    set_key(env_path, "GHOSTFOLIO_TOKEN", body.GHOSTFOLIO_TOKEN)
     os.environ["GHOSTFOLIO_URL"] = body.GHOSTFOLIO_URL
-    os.environ["GHOSTFOLIO_TOKEN"] = body.GHOSTFOLIO_TOKEN
+    token = _secret_update(body.GHOSTFOLIO_TOKEN, body.CLEAR_GHOSTFOLIO_TOKEN)
+    if token is not None:
+        set_key(env_path, "GHOSTFOLIO_TOKEN", token)
+        os.environ["GHOSTFOLIO_TOKEN"] = token
     return {"status": "ok"}
 
 
 class SaveFredApiKeyRequest(BaseModel):
-    FRED_API_KEY: str
+    FRED_API_KEY: str = ""
+    CLEAR_FRED_API_KEY: bool = False
 
 
 @auth_router.post("/save-fred-api-key", dependencies=[Depends(require_confirm_token)])
 def save_fred_api_key(body: SaveFredApiKeyRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
-    set_key(env_path, "FRED_API_KEY", body.FRED_API_KEY)
-    os.environ["FRED_API_KEY"] = body.FRED_API_KEY
+    key = _secret_update(body.FRED_API_KEY, body.CLEAR_FRED_API_KEY)
+    if key is not None:
+        set_key(env_path, "FRED_API_KEY", key)
+        os.environ["FRED_API_KEY"] = key
     return {"status": "ok"}
 
 
 class SaveHFTokenRequest(BaseModel):
-    HF_TOKEN: str
+    HF_TOKEN: str = ""
+    CLEAR_HF_TOKEN: bool = False
 
 
 @auth_router.post("/save-hf-token", dependencies=[Depends(require_confirm_token)])
 def save_hf_token(body: SaveHFTokenRequest):
     from dotenv import set_key
     env_path = str(BASE_DIR / ".env")
-    set_key(env_path, "HF_TOKEN", body.HF_TOKEN)
-    os.environ["HF_TOKEN"] = body.HF_TOKEN
+    token = _secret_update(body.HF_TOKEN, body.CLEAR_HF_TOKEN)
+    if token is not None:
+        set_key(env_path, "HF_TOKEN", token)
+        os.environ["HF_TOKEN"] = token
     return {"status": "ok", "message": "HF Token saved."}
 
 
@@ -442,8 +462,9 @@ class SaveSmtpSettingsRequest(BaseModel):
     smtp_host: str
     smtp_port: str
     smtp_user: str
-    smtp_pass: str
     smtp_from: str
+    smtp_pass: str = ""
+    clear_smtp_pass: bool = False
 
 
 @auth_router.post("/save-smtp-settings", dependencies=[Depends(require_confirm_token)])
@@ -454,10 +475,12 @@ def save_smtp_settings(body: SaveSmtpSettingsRequest):
         "SMTP_HOST": body.smtp_host.strip(),
         "SMTP_PORT": body.smtp_port.strip(),
         "SMTP_USER": body.smtp_user.strip(),
-        "SMTP_PASS": body.smtp_pass.strip(),
+        "SMTP_PASS": _secret_update(body.smtp_pass.strip(), body.clear_smtp_pass),
         "SMTP_FROM": body.smtp_from.strip(),
     }
     for key, val in fields.items():
+        if val is None:
+            continue
         set_key(env_path, key, val)
         os.environ[key] = val
     return {"status": "ok", "message": "Mail server settings saved."}

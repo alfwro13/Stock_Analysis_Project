@@ -236,9 +236,10 @@ async function saveFredApiKey() {
         const res = await fetch('/api/save-fred-api-key', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
-            body: JSON.stringify({ FRED_API_KEY: document.getElementById('FRED_API_KEY').value.trim() }),
+            body: JSON.stringify({ FRED_API_KEY: secretValue('FRED_API_KEY').trim(), CLEAR_FRED_API_KEY: secretClear('FRED_API_KEY') }),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.ok) markSecretSaved('FRED_API_KEY');
         setStatus('fred-status-msg', res.ok ? 'success' : 'error',
             res.ok ? 'FRED API key saved.' : (data.detail || 'Failed to save.'));
     } catch (e) {

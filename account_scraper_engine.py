@@ -1,7 +1,6 @@
 # GUI name: "Account Price Scraper". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import csv
 import io
-import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -13,6 +12,7 @@ import requests
 
 from database import (
     add_price_history, get_account, get_latest_price, get_price_as_of, get_price_history,
+    get_scraper_headers,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,11 +69,7 @@ def run_scrape_for_account(account_id: int) -> dict:
         return {"status": "error", "message": "Account not found."}
     if not acc.get("scraper_url") or not acc.get("scraper_selector"):
         return {"status": "error", "message": "Scraper is not configured for this account."}
-    try:
-        headers = json.loads(acc.get("scraper_headers") or "{}")
-    except Exception:
-        headers = {}
-    result = fetch_and_extract(acc["scraper_url"], acc["scraper_selector"], headers)
+    result = fetch_and_extract(acc["scraper_url"], acc["scraper_selector"], get_scraper_headers(account_id))
     if result["status"] != "success":
         return result
     today = datetime.now(timezone.utc).date().isoformat()

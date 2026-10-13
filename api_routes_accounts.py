@@ -30,6 +30,7 @@ from quant_signals import QuantEngine
 from database import (
     get_accounts,
     get_account,
+    get_scraper_headers,
     create_account,
     update_account,
     soft_delete_account,
@@ -119,7 +120,7 @@ class WatchlistBulkDeleteBody(BaseModel):
 class ScraperConfigBody(BaseModel):
     scraper_url: str
     scraper_selector: str
-    scraper_headers: dict = {}
+    scraper_headers: Optional[dict] = None
     scrape_time: str = "02:00"
     scraper_enabled: bool = False
 
@@ -127,7 +128,7 @@ class ScraperConfigBody(BaseModel):
 class ScraperTestBody(BaseModel):
     url: str
     selector: str
-    headers: dict = {}
+    headers: Optional[dict] = None
 
 
 class AutoTopupConfigBody(BaseModel):
@@ -1046,14 +1047,15 @@ def api_update_scraper_config(request: Request, account_id: int, body: ScraperCo
         acc, error = _require_scraper_account(account_id)
         if error:
             return error
-        ok = update_account(
-            account_id,
-            scraper_url=body.scraper_url.strip(),
-            scraper_selector=body.scraper_selector.strip(),
-            scraper_headers=json.dumps(body.scraper_headers or {}),
-            scrape_time=body.scrape_time,
-            scraper_enabled=body.scraper_enabled,
-        )
+        fields = {
+            "scraper_url": body.scraper_url.strip(),
+            "scraper_selector": body.scraper_selector.strip(),
+            "scrape_time": body.scrape_time,
+            "scraper_enabled": body.scraper_enabled,
+        }
+        if body.scraper_headers is not None:
+            fields["scraper_headers"] = json.dumps(body.scraper_headers)
+        ok = update_account(account_id, **fields)
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save scraper config."})
         unregister_account_scraper_job(account_id)
@@ -1072,7 +1074,8 @@ def api_test_scraper(request: Request, account_id: int, body: ScraperTestBody):
         _acc, error = _require_scraper_account(account_id)
         if error:
             return error
-        result = test_scrape(body.url, body.selector, body.headers)
+        headers = body.headers if body.headers is not None else get_scraper_headers(account_id)
+        result = test_scrape(body.url, body.selector, headers)
         if result["status"] != "success":
             return JSONResponse(status_code=422, content={"status": "error", "message": result["message"]})
         return JSONResponse(content={"status": "success", "price": result["price"]})

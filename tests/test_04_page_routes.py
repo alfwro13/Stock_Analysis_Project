@@ -75,6 +75,40 @@ def test_settings_page_loads(client):
 
 
 @pytest.mark.pages
+def test_settings_page_never_renders_stored_secrets(client):
+    import os
+    stored = {
+        "EMBED_TOKEN": "zz-embed-token-value",
+        "NEXTCLOUD_APP_PASSWORD": "zz-nextcloud-password", "NEXTCLOUD_CONVERSATION_TOKEN": "zz-conversation-token",
+        "GHOSTFOLIO_TOKEN": "zz-ghostfolio-token", "FRED_API_KEY": "zz-fred-key",
+        "HF_TOKEN": "zz-hf-token", "SMTP_PASS": "zz-smtp-password",
+    }
+    with patch.dict(os.environ, stored):
+        resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "no-store"
+    for value in [*stored.values(), os.environ["API_KEY"]]:
+        assert value not in resp.text
+    assert "An API key is set" in resp.text
+    assert "An embed token is set" in resp.text
+    for field_id in ("HF_TOKEN", "FRED_API_KEY", "SMTP_PASS", "APP_PASSWORD", "CONVERSATION_TOKEN", "API_TOKEN"):
+        assert f'id="{field_id}"' in resp.text
+        assert f'id="{field_id}" class="form-control" autocomplete="new-password" data-secret-set="1"' in resp.text
+
+
+@pytest.mark.pages
+def test_settings_page_marks_unset_secrets_as_not_set(client):
+    import os
+    names = ("HF_TOKEN", "FRED_API_KEY", "SMTP_PASS", "NEXTCLOUD_APP_PASSWORD",
+             "NEXTCLOUD_CONVERSATION_TOKEN", "GHOSTFOLIO_TOKEN", "EMBED_TOKEN")
+    with patch.dict(os.environ, {name: "" for name in names}):
+        resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert 'id="HF_TOKEN" class="form-control" autocomplete="new-password" data-secret-set="0"' in resp.text
+    assert "No embed token set" in resp.text
+
+
+@pytest.mark.pages
 def test_settings_scheduler_job_names_keep_plain_table_text(client):
     resp = client.get("/settings")
     assert resp.status_code == 200

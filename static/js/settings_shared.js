@@ -8,6 +8,45 @@ function setStatus(elId, type, msg) {
     el.className = 'status-msg-sm ' + (type === 'success' ? 'msg-success' : type === 'error' ? 'msg-error' : type === 'warning' ? 'msg-warning' : 'msg-info');
 }
 
+function secretValue(id) {
+    return document.getElementById(id).value;
+}
+
+function secretClear(id) {
+    const box = document.getElementById(id + '_clear');
+    return !!(box && box.checked);
+}
+
+function secretIsSet(id) {
+    const input = document.getElementById(id);
+    return !secretClear(id) && (input.value.trim() !== '' || input.dataset.secretSet === '1');
+}
+
+function markSecretSaved(id) {
+    const input = document.getElementById(id);
+    const isSet = secretIsSet(id);
+    input.value = '';
+    input.dataset.secretSet = isSet ? '1' : '0';
+    input.placeholder = isSet ? 'Stored — leave blank to keep' : (input.dataset.emptyPlaceholder || '');
+    const state = document.getElementById(id + '_state');
+    state.textContent = isSet ? 'Stored on the server and never shown again. Type a new value to replace it.' : 'Not set.';
+    state.classList.toggle('text-success', isSet);
+    state.classList.toggle('text-warning', !isSet);
+    document.getElementById(id + '_clear').checked = false;
+    document.getElementById(id + '_clear_row').classList.toggle('d-none', !isSet);
+}
+
+function smtpPayload() {
+    return {
+        smtp_host: document.getElementById('SMTP_HOST').value,
+        smtp_port: document.getElementById('SMTP_PORT').value,
+        smtp_user: document.getElementById('SMTP_USER').value,
+        smtp_pass: secretValue('SMTP_PASS'),
+        clear_smtp_pass: secretClear('SMTP_PASS'),
+        smtp_from: document.getElementById('SMTP_FROM').value,
+    };
+}
+
 function setBoxStatus(elId, type, htmlMsg) {
     const el = document.getElementById(elId);
     el.style.display = 'block';
@@ -639,17 +678,12 @@ async function saveSettings(silent = false) {
             fetch('/api/save-smtp-settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
-                body: JSON.stringify({
-                    smtp_host: document.getElementById('SMTP_HOST').value,
-                    smtp_port: document.getElementById('SMTP_PORT').value,
-                    smtp_user: document.getElementById('SMTP_USER').value,
-                    smtp_pass: document.getElementById('SMTP_PASS').value,
-                    smtp_from: document.getElementById('SMTP_FROM').value,
-                })
+                body: JSON.stringify(smtpPayload())
             })
         ]);
 
         const result = await response.json();
+        if (smtpResponse.ok) markSecretSaved('SMTP_PASS');
 
         if (!silent) {
             if (response.ok && smtpResponse.ok) {

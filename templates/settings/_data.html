@@ -1,3 +1,4 @@
+{% from "settings/_secret_field.html" import secret_field %}
             <details class="settings-card" id="market-universe-card">
                 <summary>🌍 Market Universe Pipeline</summary>
                 <p class="settings-desc">Manage all data ingestion sources, Freetrade filtering, Wikipedia index scraping, and fundamental downloading.</p>
@@ -249,10 +250,7 @@
             <details class="settings-card" id="macro-data-card">
                 <summary>🏦 Macroeconomic Data</summary>
                 <p class="settings-desc">The Federal Reserve Economic Data (FRED) API is required to fetch structural macroeconomic indicators like M2 Money Supply and High Yield Spreads. Get a free API key at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" class="text-cyan">fred.stlouisfed.org</a>.</p>
-                <div class="form-group mb-25">
-                    <label>FRED API Key</label>
-                    <input type="password" id="FRED_API_KEY" class="form-control" value="{{ fred_api_key }}" autocomplete="new-password" placeholder="Enter your FRED API key">
-                </div>
+                {{ secret_field("FRED_API_KEY", "FRED API Key", secrets_set.FRED_API_KEY, placeholder="Enter your FRED API key") }}
                 <button type="button" class="btn btn-primary mt-0" onclick="saveFredApiKey()">💾 Save FRED API Key</button>
                 <div id="fred-status-msg"></div>
 
