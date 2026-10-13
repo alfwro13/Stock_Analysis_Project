@@ -415,6 +415,32 @@ class TestGetIntraday:
         assert "SPY" in result
         assert isinstance(result["QQQ"], pd.DataFrame)
 
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_bulk_union_grid_nan_rows_are_dropped_per_ticker(self, mock_ctx, mock_dl, mock_notify):
+        """A multi-ticker download is on the union of every ticker's bar times, so each ticker
+        carries all-NaN rows for slots it did not trade — they must not reach the cache or a parquet."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        grid = pd.date_range("2026-10-12 12:20", periods=6, freq="5min", tz="UTC")
+        cols = ["Open", "High", "Low", "Close", "Volume"]
+        frames = {}
+        for ticker, live in (("^GSPC", [0, 1, 2]), ("^N225", [3, 4]), ("^HOLIDAY", [])):
+            values = np.full((len(grid), len(cols)), np.nan)
+            values[live, :] = 100.0
+            frames[ticker] = pd.DataFrame(values, index=grid, columns=cols)
+        mock_dl.return_value = pd.concat(frames, axis=1)
+
+        result = self.eng.get_intraday(["^GSPC", "^N225", "^HOLIDAY"])
+
+        assert list(result["^GSPC"].index) == [t.tz_convert(None) for t in grid[[0, 1, 2]]]
+        assert list(result["^N225"].index) == [t.tz_convert(None) for t in grid[[3, 4]]]
+        assert result["^GSPC"]["Close"].notna().all()
+        assert result["^HOLIDAY"].empty
+        assert "^HOLIDAY" not in self.eng._intraday_gap_since
+        mock_notify.assert_not_called()
+
     @patch("yahoo_engine.suppress_yf_delisted_noise")
     @patch("yahoo_engine.yf.download")
     @patch("yahoo_engine.yahoo_connection_boundary")

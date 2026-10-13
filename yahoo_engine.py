@@ -394,6 +394,12 @@ class YahooEngine:
                         is_single = len(missing) == 1
                         for t in missing:
                             df = self._slice_bulk(df_bulk, t, is_single)
+                            if df is not None:
+                                # A multi-ticker download sits on the union of every ticker's bar times, so a
+                                # ticker that did not trade in a slot gets an all-NaN row; persisted, those rows
+                                # stretch an index chart's time axis across ~22 h. An all-NaN result is still a
+                                # successful answer (the market was closed), not a gap, so it is kept as empty.
+                                df = df.dropna(subset=["Close"])
                             if df is not None and not df.empty:
                                 df.attrs["yahoo_fetched_at"] = time.time()
                             self._set(key_fn(t), df, ttl)
