@@ -1,4 +1,4 @@
-pip>=26.2
+pip>=26.2.1
 pytest>=9.1.1
 packaging>=23.0
 fastapi==0.142.2
