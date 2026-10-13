@@ -2103,6 +2103,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/screener-data` | Latest quant signal snapshot (Market Screener) |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
 | `POST` | `/api/market-pulse` | Live pulse for custom tickers |
+| `POST` | `/api/index/refresh` | Manual Yahoo refresh of one index/registry ticker (non-Yahoo tickers rejected with 422) |
 | `GET` | `/api/reports/quality-compounders` | Quality compounder stock list |
 | `GET` | `/api/reports/quality-on-sale` | Quality stocks at a discount |
 | `GET` | `/api/reports/garp-tenbaggers` | GARP 10-bagger candidates |
@@ -4140,6 +4141,14 @@ Net-new, generalized market-status endpoint covering every exchange referenced b
 ```
 
 `regions` values are `open` (every constituent exchange open), `partial` ("Some Open"), `pre`, or `closed` — see `markets_engine.get_region_state()`. Every exchange is holiday-aware via `time_engine.is_exchange_holiday()` (backed by `exchange_calendars`, added 2026-07-13), consulted by `market_session_helpers.is_exchange_open()` as a veto ahead of its Yahoo `marketState` proxy lookup for NYSE/LSE/XETRA/TSE/HKEX/SSE/ASX/Euronext, and inside `time_engine`'s own weekday+hours heuristic for every other exchange — which itself now sources the day's actual open/close from `exchange_calendars` (`time_engine.market_window_utc()`), correctly shortening the window on a real early-close/half-day rather than assuming the static full-day hours in `exchange_hours.json`.
+
+---
+
+### `POST /api/index/refresh`
+
+**Body:** `{"ticker": "^GSPC"}`
+
+Manual Refresh button on `/index/{ticker}`: refreshes the ticker's Market Pulse row, daily history, quant signals, tail risk and sentiment from Yahoo Finance, then returns `{"status": "success"}`. A ticker for which `utils.is_excluded_from_yahoo_fetch()` is true (registry series sourced elsewhere such as `UK10YG`, synthetic `TBILL-*`/`PENSION-*` tickers, and the Settings Ignored Tickers list) is rejected before any fetch with `422` and `{"status": "error", "message": "This instrument is not sourced from Yahoo Finance and cannot be refreshed here."}`; the button is not rendered for `UK10YG`. `500` when the data fetch fails.
 
 ---
 
