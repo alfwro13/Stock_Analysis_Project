@@ -56,15 +56,13 @@ import pytest
 _TEST_API_KEY = "test-api-key-do-not-use-in-production"
 os.environ["API_KEY"] = _TEST_API_KEY
 
-_TEST_CONFIRM_TOKEN = "test-confirm-token-do-not-use-in-production"
-os.environ["ADMIN_CONFIRM_TOKEN"] = _TEST_CONFIRM_TOKEN
-
 _TEST_USERNAME = "testadmin"
 _TEST_PASSWORD = "TestPassword123"
 os.environ["DASHBOARD_USERNAME"] = _TEST_USERNAME
 os.environ["DASHBOARD_PASSWORD"] = _TEST_PASSWORD
 os.environ["DASHBOARD_PASSWORD_HASH"] = ""
 os.environ.setdefault("APP_SECRET_KEY", "test-app-secret-key-do-not-use-in-production")
+_TEST_APP_SECRET = os.environ["APP_SECRET_KEY"]
 
 # ── 1. Make the project root importable ──────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -135,10 +133,24 @@ def client():
             yield c
 
 
-@pytest.fixture(scope="session")
-def confirm_token():
-    """Returns the ADMIN_CONFIRM_TOKEN used in tests, for endpoints that require it."""
-    return _TEST_CONFIRM_TOKEN
+@pytest.fixture
+def auth_cookies():
+    """A valid session cookie plus a matching CSRF cookie, minted fresh so they never expire mid-suite."""
+    from itsdangerous import URLSafeSerializer
+    from auth import COOKIE_NAME, create_session_token
+    csrf = URLSafeSerializer(_TEST_APP_SECRET, "csrftoken").dumps("test-csrf")
+    return {COOKIE_NAME: create_session_token(_TEST_USERNAME, False), "csrftoken": csrf}
+
+
+@pytest.fixture
+def step_up_headers(auth_cookies):
+    """Request headers that carry a session and a fresh step-up cookie, for confirm-gated routes."""
+    from auth import COOKIE_NAME, STEP_UP_COOKIE_NAME, create_step_up_token
+    cookies = {**auth_cookies, STEP_UP_COOKIE_NAME: create_step_up_token(auth_cookies[COOKIE_NAME])}
+    return {
+        "Cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
+        "X-CSRFToken": auth_cookies["csrftoken"],
+    }
 
 
 @pytest.fixture(scope="session")

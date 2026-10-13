@@ -21,6 +21,7 @@ from config import load_config
 import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse
+from auth import STEP_UP_COOKIE_NAME, STEP_UP_COOKIE_PATH
 from utils import normalize_ticker, safe_local_path
 from visuals_ai import (
     create_ai_contagion_performance_chart,
@@ -49,13 +50,13 @@ def login_page(request: Request):
 def logout():
     response = RedirectResponse("/login", status_code=302)
     response.delete_cookie("session")
+    response.delete_cookie(STEP_UP_COOKIE_NAME, path=STEP_UP_COOKIE_PATH)
     return response
 
 
 @page_router.get("/change-password", response_class=HTMLResponse)
 def change_password_page(request: Request):
-    return templates.TemplateResponse(request=request, name="change_password.html",
-                                      context={"confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", "")})
+    return templates.TemplateResponse(request=request, name="change_password.html")
 
 
 @page_router.get("/reset-password", response_class=HTMLResponse)
@@ -100,7 +101,6 @@ def settings_page(request: Request):
                     "GHOSTFOLIO_TOKEN", "FRED_API_KEY", "HF_TOKEN", "SMTP_PASS",
                 )
             },
-            "confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", ""),
             "nextcloud_url": os.environ.get("NEXTCLOUD_URL", ""),
             "nextcloud_bot_username": os.environ.get("NEXTCLOUD_BOT_USERNAME", ""),
             "ghostfolio_url": os.environ.get("GHOSTFOLIO_URL", ""),

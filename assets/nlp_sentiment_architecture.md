@@ -175,7 +175,7 @@ And the Hub applies stricter rate limits. Providing a token suppresses this and 
 | `/api/save-hf-token` | POST | Persist token to `.env`; an empty token keeps the stored one, `CLEAR_HF_TOKEN` clears it |
 | `/api/test-hf-token` | POST | Verify the posted token, or the stored one when none is posted, via `huggingface_hub.whoami()` |
 
-Both require the `X-Confirm-Token` header.
+Both require a password step-up (`POST /api/step-up`).
 
 ---
 

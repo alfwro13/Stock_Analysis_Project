@@ -150,6 +150,8 @@ To configure email-based self-service password reset:
 2. Add SMTP credentials to `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (optional `SMTP_FROM`). If SMTP is not configured, reset links are delivered via Nextcloud Talk or logged to the server.
 
 **Stored credentials are write-only in Settings.** The SMTP password, Nextcloud app password and conversation token, Ghostfolio token, FRED key and HuggingFace token are never sent back to the browser: each field shows only whether a value is stored, an empty field keeps it, and a **Clear the stored value on save** checkbox removes it. The API key and embed token are displayed once, when generated. The Account Price Scraper's custom request headers follow the same rule.
+
+**Sensitive Settings actions ask for your password.** Saving settings or credentials, pulling updates, restarting, restoring a backup and rotating secrets prompt for the dashboard password once; that unlocks them for 5 minutes. Scripts using the API key cannot use these actions.
 3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour.
 
 If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for three recovery methods including a console script (`python reset_admin_password.py`) and a `FORCE_PASSWORD_RESET` config-file flag.

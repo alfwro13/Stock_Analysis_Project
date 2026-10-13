@@ -91,7 +91,7 @@ function copyGeneratedSecret(id, btn) {
 async function generateApiKey() {
     if (!confirm('Generate a new API key? The current key will stop working immediately.')) return;
     setStatus('ua-apikey-msg', 'info', 'Generating…');
-    const res = await fetch('/api/generate-api-key', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+    const res = await stepUpFetch('/api/generate-api-key', { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
         showGeneratedSecret('ua_api_key', data.api_key);
@@ -104,7 +104,7 @@ async function generateApiKey() {
 async function generateEmbedToken() {
     if (!confirm('Generate a new embed token? The current token will stop working immediately.')) return;
     setStatus('ua-embedtoken-msg', 'info', 'Generating…');
-    const res = await fetch('/api/generate-embed-token', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+    const res = await stepUpFetch('/api/generate-embed-token', { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
         showGeneratedSecret('ua_embed_token', data.embed_token);
@@ -121,7 +121,7 @@ async function changePassword() {
     setStatus('ua-pw-msg', 'info', 'Updating…');
     const res = await fetch('/api/change-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ current_password: current, new_password: newPw, confirm_password: confirm }),
     });
     const data = await res.json().catch(() => ({}));
@@ -201,7 +201,7 @@ async function restartSystem() {
     btn.disabled = true;
     setStatus('git-status-msg', 'warning', "Sending restart signal...");
     try {
-        const response = await fetch('/api/system/restart', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+        const response = await stepUpFetch('/api/system/restart', { method: 'POST' });
         const result = await response.json();
         if (response.status === 409) {
             setStatus('git-status-msg', 'warning', result.message);
@@ -242,7 +242,7 @@ async function forceRestart() {
     btn.disabled = true;
     setStatus('manual-actions-status', 'warning', "Sending force restart signal...");
     try {
-        const response = await fetch('/api/system/force-restart', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+        const response = await stepUpFetch('/api/system/force-restart', { method: 'POST' });
         const result = await response.json();
         if (response.ok) {
             setStatus('manual-actions-status', 'success', "Signal sent. Waiting for service to come back up...");
@@ -304,7 +304,7 @@ async function confirmTerminate() {
     btn.disabled = true;
     btn.innerText = "Terminating...";
     try {
-        const resp = await fetch('/api/system/terminate-jobs', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+        const resp = await stepUpFetch('/api/system/terminate-jobs', { method: 'POST' });
         const data = await resp.json();
         if (resp.ok) {
             const names = data.terminated || [];
@@ -330,7 +330,7 @@ async function gitPull() {
     btn.innerText = "Pulling repository...";
     document.getElementById('git-status-msg').innerText = "";
     try {
-        const response = await fetch('/api/system/git-pull', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+        const response = await stepUpFetch('/api/system/git-pull', { method: 'POST' });
         const result = await response.json();
         if (response.ok) {
             setStatus('git-status-msg', 'success', result.message);
@@ -545,9 +545,9 @@ async function restoreSelectedBackup() {
     btn.innerText = '⏳ Restoring…';
     setBoxStatus('backup-restore-msg', 'info', '⏳ Restoring — do not navigate away…');
     try {
-        const resp = await fetch('/api/backup/restore', {
+        const resp = await stepUpFetch('/api/backup/restore', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename, trust_unhashed: document.getElementById('backup-trust-unhashed').checked }),
         });
         const data = await resp.json();
@@ -664,9 +664,9 @@ async function saveSmtpSettings() {
     btn.innerText = '⏳ Saving…';
     setStatus('smtp-status-msg', 'info', 'Saving…');
     try {
-        const res = await fetch('/api/save-smtp-settings', {
+        const res = await stepUpFetch('/api/save-smtp-settings', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(smtpPayload()),
         });
         const data = await res.json().catch(() => ({}));
@@ -686,9 +686,8 @@ async function sendTestEmail() {
     btn.innerText = '⏳ Sending…';
     setStatus('smtp-status-msg', 'info', 'Sending test email…');
     try {
-        const res = await fetch('/api/send-test-email', {
+        const res = await stepUpFetch('/api/send-test-email', {
             method: 'POST',
-            headers: { 'X-Confirm-Token': CONFIRM_TOKEN },
         });
         const data = await res.json().catch(() => ({}));
         setStatus('smtp-status-msg', res.ok ? 'success' : 'error', res.ok ? data.message : (data.detail || 'Send failed.'));
@@ -706,9 +705,9 @@ async function saveGhostfolioSettings() {
     btn.innerText = '⏳ Saving…';
     setStatus('ghostfolio-creds-msg', 'info', 'Saving…');
     try {
-        const res = await fetch('/api/save-ghostfolio-settings', {
+        const res = await stepUpFetch('/api/save-ghostfolio-settings', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 GHOSTFOLIO_URL: document.getElementById('GHOSTFOLIO_URL').value.trim(),
                 GHOSTFOLIO_TOKEN: secretValue('API_TOKEN').trim(),
@@ -741,9 +740,9 @@ async function saveNextcloudSettings() {
         CLEAR_CONVERSATION_TOKEN: secretClear('CONVERSATION_TOKEN'),
     };
     try {
-        const res = await fetch('/api/save-nextcloud-settings', {
+        const res = await stepUpFetch('/api/save-nextcloud-settings', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
         const data = await res.json().catch(() => ({}));
@@ -768,7 +767,7 @@ async function testNextcloudMessage() {
     btn.innerText = '⏳ Sending…';
     setStatus('nc-status-msg', 'info', 'Sending test message…');
     try {
-        const res = await fetch('/api/test-nextcloud-message', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+        const res = await stepUpFetch('/api/test-nextcloud-message', { method: 'POST' });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
             setStatus('nc-status-msg', 'success', data.message || 'Test message sent successfully.');
@@ -789,9 +788,9 @@ async function saveAccountEmail() {
     btn.innerText = '⏳ Saving…';
     setStatus('ua-email-msg', 'info', 'Saving…');
     try {
-        const res = await fetch('/api/save-account-email', {
+        const res = await stepUpFetch('/api/save-account-email', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: document.getElementById('ua_account_email').value }),
         });
         const data = await res.json().catch(() => ({}));
@@ -814,9 +813,9 @@ async function changeUsername() {
     btn.innerText = '⏳ Saving…';
     setStatus('ua-username-msg', 'info', 'Updating…');
     try {
-        const res = await fetch('/api/change-username', {
+        const res = await stepUpFetch('/api/change-username', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ new_username: document.getElementById('ua_new_username').value }),
         });
         const data = await res.json().catch(() => ({}));
@@ -843,9 +842,8 @@ async function rotateAppSecret() {
     btn.innerText = '⏳ Rotating…';
     setStatus('ua-secret-msg', 'info', 'Rotating…');
     try {
-        const res = await fetch('/api/rotate-app-secret', {
+        const res = await stepUpFetch('/api/rotate-app-secret', {
             method: 'POST',
-            headers: { 'X-Confirm-Token': CONFIRM_TOKEN },
         });
         const data = await res.json().catch(() => ({}));
         setStatus('ua-secret-msg', res.ok ? 'success' : 'error',
@@ -855,32 +853,6 @@ async function rotateAppSecret() {
     } finally {
         btn.disabled = false;
         btn.innerText = '🔄 Rotate App Secret';
-    }
-}
-
-async function rotateConfirmToken() {
-    if (!confirm('Rotating the confirm token will update CONFIRM_TOKEN on this page. Continue?')) return;
-    const btn = document.querySelector('button[onclick="rotateConfirmToken()"]');
-    btn.disabled = true;
-    btn.innerText = '⏳ Rotating…';
-    setStatus('ua-confirmtoken-msg', 'info', 'Rotating…');
-    try {
-        const res = await fetch('/api/rotate-confirm-token', {
-            method: 'POST',
-            headers: { 'X-Confirm-Token': CONFIRM_TOKEN },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-            if (data.new_token) CONFIRM_TOKEN = data.new_token;
-            setStatus('ua-confirmtoken-msg', 'success', 'Confirm token rotated and updated in-page.');
-        } else {
-            setStatus('ua-confirmtoken-msg', 'error', data.detail || 'Failed to rotate.');
-        }
-    } catch (e) {
-        setStatus('ua-confirmtoken-msg', 'error', 'Network error while rotating.');
-    } finally {
-        btn.disabled = false;
-        btn.innerText = '🔄 Rotate Confirm Token';
     }
 }
 

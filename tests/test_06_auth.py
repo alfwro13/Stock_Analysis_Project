@@ -8,7 +8,7 @@ Full coverage of the auth surface:
   3. POST /api/login          – credential validation, cookie lifecycle, remember-me flag
   4. GET  /logout             – cookie deletion and redirect
   5. POST /api/change-password – all validation rules and the happy path
-  6. require_confirm_token    – missing / invalid / valid token on admin endpoints
+  6. require_step_up          – missing / expired / valid password step-up on admin endpoints
 
 Design notes
 ────────────
@@ -20,7 +20,7 @@ Design notes
   between test cases via the shared cookie jar.
 
 • `client`      — session-scoped, X-API-Key pre-set (from conftest).
-  Used when auth must pass but we are testing a different layer (e.g. confirm token,
+  Used when auth must pass but we are testing a different layer (e.g. step-up,
   change-password business logic).
 """
 
@@ -467,47 +467,53 @@ class TestLogout:
 # 5.  POST /api/change-password
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    from api_deps import limiter
+    limiter.reset()
+
+
 class TestChangePassword:
     """Uses the api-key-authenticated `client` so middleware is bypassed;
-    only the change-password business logic is under test.
-    All requests must include X-Confirm-Token (added as a security fix)."""
+    only the change-password business logic is under test. The current password in
+    the body is this route's re-authentication, so it needs no step-up cookie."""
 
-    def test_wrong_current_password_returns_400(self, client, confirm_token, test_password):
+    def test_wrong_current_password_returns_400(self, client, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": "definitely-not-the-right-password",
             "new_password": "brandnewpass99",
             "confirm_password": "brandnewpass99",
-        }, headers={"X-Confirm-Token": confirm_token})
+        })
         assert resp.status_code == 400
         assert "incorrect" in resp.json().get("detail", "").lower()
 
-    def test_mismatched_new_passwords_return_400(self, client, confirm_token, test_password):
+    def test_mismatched_new_passwords_return_400(self, client, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
             "new_password": "newpassword456",
             "confirm_password": "differentpass456",
-        }, headers={"X-Confirm-Token": confirm_token})
+        })
         assert resp.status_code == 400
         assert "match" in resp.json().get("detail", "").lower()
 
-    def test_password_shorter_than_8_chars_returns_400(self, client, confirm_token, test_password):
+    def test_password_shorter_than_8_chars_returns_400(self, client, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
             "new_password": "short",
             "confirm_password": "short",
-        }, headers={"X-Confirm-Token": confirm_token})
+        })
         assert resp.status_code == 400
         assert "8" in resp.json().get("detail", "")
 
-    def test_changeme_password_is_rejected(self, client, confirm_token, test_password):
+    def test_changeme_password_is_rejected(self, client, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
             "new_password": "changeme",
             "confirm_password": "changeme",
-        }, headers={"X-Confirm-Token": confirm_token})
+        })
         assert resp.status_code == 400
 
-    def test_valid_password_change_returns_200(self, client, confirm_token, test_password):
+    def test_valid_password_change_returns_200(self, client, test_password):
         original = os.environ.get("DASHBOARD_PASSWORD", test_password)
         try:
             with patch("dotenv.set_key"):  # prevent writing to the real .env file
@@ -515,87 +521,178 @@ class TestChangePassword:
                     "current_password": original,
                     "new_password": "brandnewpass99",
                     "confirm_password": "brandnewpass99",
-                }, headers={"X-Confirm-Token": confirm_token})
+                })
             assert resp.status_code == 200
             assert resp.json().get("status") == "ok"
         finally:
             os.environ["DASHBOARD_PASSWORD"] = original
             os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
 
+    def test_repeated_wrong_guesses_are_rate_limited(self, client):
+        body = {"current_password": "wrong", "new_password": "brandnewpass99", "confirm_password": "brandnewpass99"}
+        codes = [client.post("/api/change-password", json=body).status_code for _ in range(6)]
+        assert codes[:5] == [400] * 5
+        assert codes[5] == 429
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6.  require_confirm_token  (admin endpoint guard)
+# 6.  Password step-up  (POST /api/step-up + require_step_up on admin endpoints)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestConfirmToken:
-    """Uses the api-key-authenticated `client` (middleware bypassed) to isolate
-    the confirm-token dependency layer."""
+_GATED_ROUTES = [
+    "/api/settings",
+    "/api/system/git-pull",
+    "/api/system/restart",
+    "/api/system/force-restart",
+    "/api/system/terminate-jobs",
+    "/api/backup/restore",
+    "/api/generate-api-key",
+    "/api/generate-embed-token",
+    "/api/save-account-email",
+    "/api/save-nextcloud-settings",
+    "/api/test-nextcloud-message",
+    "/api/save-ghostfolio-settings",
+    "/api/save-fred-api-key",
+    "/api/save-hf-token",
+    "/api/test-hf-token",
+    "/api/change-username",
+    "/api/rotate-app-secret",
+    "/api/save-smtp-settings",
+    "/api/send-test-email",
+]
 
-    def test_missing_token_returns_422(self, client):
-        resp = client.post("/api/settings", json={})
-        assert resp.status_code == 422, (
-            f"A missing X-Confirm-Token header must return 422 Unprocessable Entity; "
-            f"got {resp.status_code}"
-        )
 
-    def test_invalid_token_returns_403(self, client):
-        resp = client.post("/api/settings", json={}, headers={"X-Confirm-Token": "wrong-token"})
+class TestCheckDashboardPassword:
+
+    def test_hash_takes_precedence_over_the_plaintext_value(self):
+        from auth import check_dashboard_password
+        with patch.dict(os.environ, {"DASHBOARD_PASSWORD_HASH": hash_password("hashed-secret"), "DASHBOARD_PASSWORD": "plain"}):
+            assert check_dashboard_password("hashed-secret") is True
+            assert check_dashboard_password("plain") is False
+
+    def test_falls_back_to_the_plaintext_value_when_no_hash_is_stored(self):
+        from auth import check_dashboard_password
+        with patch.dict(os.environ, {"DASHBOARD_PASSWORD_HASH": "", "DASHBOARD_PASSWORD": "plain-secret"}):
+            assert check_dashboard_password("plain-secret") is True
+            assert check_dashboard_password("other") is False
+
+
+class TestStepUpTokens:
+
+    def test_fresh_token_is_valid_for_its_session(self):
+        from auth import create_step_up_token, verify_step_up_token
+        session = create_session_token("alice", remember=False)
+        assert verify_step_up_token(create_step_up_token(session), session) is True
+
+    def test_token_is_rejected_for_a_different_session(self):
+        from auth import create_step_up_token, verify_step_up_token
+        first = create_session_token("alice", remember=False)
+        second = create_session_token("alice", remember=True)
+        assert verify_step_up_token(create_step_up_token(first), second) is False
+
+    def test_token_expires_after_five_minutes(self):
+        from auth import STEP_UP_MAX_AGE, create_step_up_token, verify_step_up_token
+        session = create_session_token("alice", remember=False)
+        token = create_step_up_token(session)
+        with patch("auth.time.time", return_value=time.time() + STEP_UP_MAX_AGE + 1):
+            assert verify_step_up_token(token, session) is False
+
+    def test_tampered_token_is_rejected(self):
+        from auth import create_step_up_token, verify_step_up_token
+        session = create_session_token("alice", remember=False)
+        payload, sig = create_step_up_token(session).rsplit(".", 1)
+        assert verify_step_up_token(payload + "." + sig[:-1] + ("0" if sig[-1] != "0" else "1"), session) is False
+
+    def test_session_token_cannot_stand_in_for_a_step_up_token(self):
+        from auth import verify_step_up_token
+        session = create_session_token("alice", remember=False)
+        assert verify_step_up_token(session, session) is False
+
+    def test_step_up_token_is_not_a_session_token(self):
+        from auth import create_step_up_token
+        session = create_session_token("alice", remember=False)
+        assert verify_session_token(create_step_up_token(session)) is False
+
+    def test_rotating_app_secret_invalidates_the_token(self, monkeypatch):
+        from auth import create_step_up_token, verify_step_up_token
+        session = create_session_token("alice", remember=False)
+        token = create_step_up_token(session)
+        monkeypatch.setenv("APP_SECRET_KEY", "a-different-secret")
+        assert verify_step_up_token(token, session) is False
+
+
+class TestStepUpRoutes:
+
+    @pytest.mark.parametrize("path", _GATED_ROUTES)
+    def test_gated_route_without_step_up_returns_403_and_flags_the_prompt(self, client, path):
+        resp = client.post(path, json={})
+        assert resp.status_code == 403
+        assert resp.headers.get("X-Step-Up-Required") == "1"
+
+    def test_session_without_step_up_cookie_is_refused(self, client, auth_cookies):
+        headers = {
+            "Cookie": "; ".join(f"{k}={v}" for k, v in auth_cookies.items()),
+            "X-CSRFToken": auth_cookies["csrftoken"],
+        }
+        assert client.post("/api/save-account-email", json={"email": "a@b.c"}, headers=headers).status_code == 403
+
+    def test_gated_route_runs_with_a_valid_step_up(self, client, step_up_headers):
+        with patch("dotenv.set_key"), patch.dict(os.environ, {"ACCOUNT_EMAIL": ""}):
+            resp = client.post("/api/save-account-email", json={"email": "a@b.c"}, headers=step_up_headers)
+        assert resp.status_code == 200
+
+    def test_expired_step_up_cookie_is_refused(self, client, step_up_headers):
+        from auth import STEP_UP_MAX_AGE
+        with patch("auth.time.time", return_value=time.time() + STEP_UP_MAX_AGE + 1):
+            resp = client.post("/api/save-account-email", json={"email": "a@b.c"}, headers=step_up_headers)
         assert resp.status_code == 403
 
-    def test_valid_token_allows_settings_update(self, client, confirm_token):
-        resp = client.post(
-            "/api/settings",
-            json={"UI_PREFERENCES": {"REFRESH_RATE": 60}},
-            headers={"X-Confirm-Token": confirm_token},
-        )
-        assert resp.status_code == 200
-        assert resp.json().get("status") == "success"
+    def test_api_key_alone_cannot_step_up(self, client, test_password):
+        resp = client.post("/api/step-up", json={"password": test_password})
+        assert resp.status_code == 401
 
-    def test_git_pull_requires_confirm_token(self, client):
-        resp = client.post("/api/system/git-pull")
-        assert resp.status_code == 422
+    def test_wrong_password_is_refused_and_sets_no_cookie(self, test_password, auth_cookies):
+        with _fresh_client() as c:
+            c.cookies.update(auth_cookies)
+            resp = c.post("/api/step-up", json={"password": "not-the-password"},
+                          headers={"X-CSRFToken": auth_cookies["csrftoken"]})
+        assert resp.status_code == 401
+        assert "stepup=" not in resp.headers.get("set-cookie", "")
 
-    def test_system_restart_requires_confirm_token(self, client):
-        resp = client.post("/api/system/restart")
-        assert resp.status_code == 422
+    def test_correct_password_sets_a_scoped_httponly_cookie_that_unlocks_gated_routes(
+        self, test_password, auth_cookies
+    ):
+        headers = {"X-CSRFToken": auth_cookies["csrftoken"]}
+        with _fresh_client() as c:
+            c.cookies.update(auth_cookies)
+            resp = c.post("/api/step-up", json={"password": test_password}, headers=headers)
+            assert resp.status_code == 200
+            set_cookie = resp.headers.get("set-cookie", "").lower()
+            assert "stepup=" in set_cookie
+            assert "httponly" in set_cookie
+            assert "path=/api" in set_cookie
+            assert "max-age=300" in set_cookie
+            assert "samesite=strict" in set_cookie
+            with patch("dotenv.set_key"), patch.dict(os.environ, {"ACCOUNT_EMAIL": ""}):
+                follow = c.post("/api/save-account-email", json={"email": "a@b.c"}, headers=headers)
+        assert follow.status_code == 200
 
-    def test_generate_api_key_requires_confirm_token(self, client):
-        """POST /api/generate-api-key must reject requests without X-Confirm-Token."""
-        resp = client.post("/api/generate-api-key")
-        assert resp.status_code == 422, (
-            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
-        )
+    def test_logout_clears_the_step_up_cookie(self):
+        with _fresh_client() as c:
+            resp = c.get("/logout", cookies={COOKIE_NAME: create_session_token("alice", remember=False)})
+        cleared = [v for k, v in resp.headers.multi_items() if k.lower() == "set-cookie" and v.startswith("stepup=")]
+        assert cleared and "max-age=0" in cleared[0].lower()
+        assert "path=/api" in cleared[0].lower()
 
-    def test_generate_api_key_invalid_token_returns_403(self, client):
-        resp = client.post("/api/generate-api-key", headers={"X-Confirm-Token": "wrong"})
-        assert resp.status_code == 403
+    def test_change_password_page_does_not_render_a_token(self, client):
+        html = client.get("/change-password").text
+        assert "X-Confirm-Token" not in html
 
-    def test_generate_api_key_valid_token_returns_200(self, client, confirm_token):
-        with patch("dotenv.set_key"), patch.dict(os.environ, {}, clear=False):
-            resp = client.post("/api/generate-api-key", headers={"X-Confirm-Token": confirm_token})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "api_key" in data, f"Response must contain api_key; got {data}"
-        assert len(data["api_key"]) == 64, "api_key must be 64 hex chars (32-byte token)"
-
-    def test_generate_embed_token_requires_confirm_token(self, client):
-        """POST /api/generate-embed-token must reject requests without X-Confirm-Token."""
-        resp = client.post("/api/generate-embed-token")
-        assert resp.status_code == 422, (
-            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
-        )
-
-    def test_generate_embed_token_invalid_token_returns_403(self, client):
-        resp = client.post("/api/generate-embed-token", headers={"X-Confirm-Token": "wrong"})
-        assert resp.status_code == 403
-
-    def test_generate_embed_token_valid_token_returns_200(self, client, confirm_token):
-        with patch("dotenv.set_key"), patch.dict(os.environ, {}, clear=False):
-            resp = client.post("/api/generate-embed-token", headers={"X-Confirm-Token": confirm_token})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "embed_token" in data, f"Response must contain embed_token; got {data}"
-        assert len(data["embed_token"]) == 64, "embed_token must be 64 hex chars (32-byte token)"
+    def test_settings_page_does_not_render_a_confirm_token(self, client):
+        html = client.get("/settings").text
+        assert "CONFIRM_TOKEN" not in html
+        assert "X-Confirm-Token" not in html
+        assert 'id="stepUpModal"' in html
 
     @pytest.mark.parametrize("endpoint, base, field, clear_field, env_name", [
         ("/api/save-hf-token", {}, "HF_TOKEN", "CLEAR_HF_TOKEN", "HF_TOKEN"),
@@ -610,9 +707,9 @@ class TestConfirmToken:
          "smtp_pass", "clear_smtp_pass", "SMTP_PASS"),
     ])
     def test_secret_save_blank_keeps_value_and_clear_flag_empties_it(
-        self, client, confirm_token, endpoint, base, field, clear_field, env_name
+        self, client, step_up_headers, endpoint, base, field, clear_field, env_name
     ):
-        headers = {"X-Confirm-Token": confirm_token}
+        headers = step_up_headers
         with patch("dotenv.set_key") as set_key, patch.dict(os.environ, {env_name: "stored-secret"}):
             assert client.post(endpoint, json={**base, field: ""}, headers=headers).status_code == 200
             assert client.post(endpoint, json={**base, field: "   "}, headers=headers).status_code == 200
@@ -626,38 +723,29 @@ class TestConfirmToken:
             assert client.post(endpoint, json={**base, clear_field: True}, headers=headers).status_code == 200
             assert os.environ[env_name] == ""
 
-    def test_test_hf_token_without_value_uses_stored_token(self, client, confirm_token):
+    def test_generate_api_key_with_step_up_returns_a_key(self, client, step_up_headers):
+        with patch("dotenv.set_key"), patch.dict(os.environ, {}, clear=False):
+            resp = client.post("/api/generate-api-key", headers=step_up_headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["api_key"]) == 64
+
+    def test_generate_embed_token_with_step_up_returns_a_token(self, client, step_up_headers):
+        with patch("dotenv.set_key"), patch.dict(os.environ, {}, clear=False):
+            resp = client.post("/api/generate-embed-token", headers=step_up_headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["embed_token"]) == 64
+
+    def test_settings_update_with_step_up_succeeds(self, client, step_up_headers):
+        resp = client.post("/api/settings", json={"UI_PREFERENCES": {"REFRESH_RATE": 60}}, headers=step_up_headers)
+        assert resp.status_code == 200
+        assert resp.json().get("status") == "success"
+
+    def test_test_hf_token_without_value_uses_stored_token(self, client, step_up_headers):
         with patch.dict(os.environ, {"HF_TOKEN": "stored-hf"}), \
                 patch("huggingface_hub.whoami", return_value={"name": "someone"}) as whoami:
-            resp = client.post("/api/test-hf-token", json={}, headers={"X-Confirm-Token": confirm_token})
+            resp = client.post("/api/test-hf-token", json={}, headers=step_up_headers)
         assert resp.status_code == 200
         assert whoami.call_args.kwargs["token"] == "stored-hf"
-
-    def test_change_password_requires_confirm_token(self, client):
-        """POST /api/change-password must reject requests without X-Confirm-Token."""
-        resp = client.post("/api/change-password", json={
-            "current_password": "x", "new_password": "y", "confirm_password": "y"
-        })
-        assert resp.status_code == 422, (
-            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
-        )
-
-    def test_change_password_invalid_token_returns_403(self, client):
-        resp = client.post("/api/change-password", json={
-            "current_password": "x", "new_password": "newpass99", "confirm_password": "newpass99"
-        }, headers={"X-Confirm-Token": "wrong"})
-        assert resp.status_code == 403
-
-    def test_test_nextcloud_message_requires_confirm_token(self, client):
-        """POST /api/test-nextcloud-message must reject requests without X-Confirm-Token."""
-        resp = client.post("/api/test-nextcloud-message")
-        assert resp.status_code == 422, (
-            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
-        )
-
-    def test_test_nextcloud_message_invalid_token_returns_403(self, client):
-        resp = client.post("/api/test-nextcloud-message", headers={"X-Confirm-Token": "wrong"})
-        assert resp.status_code == 403
 
 
 # ─────────────────────────────────────────────────────────────────────────────

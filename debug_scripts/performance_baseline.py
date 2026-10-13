@@ -14,7 +14,6 @@ from unittest.mock import patch
 
 os.environ.setdefault("DASHBOARD_USERNAME", "baseline")
 os.environ.setdefault("DASHBOARD_PASSWORD", secrets.token_urlsafe(24))
-os.environ.setdefault("ADMIN_CONFIRM_TOKEN", secrets.token_urlsafe(24))
 os.environ.setdefault("APP_SECRET_KEY", secrets.token_urlsafe(24))
 os.environ.setdefault("API_KEY", secrets.token_urlsafe(24))
 

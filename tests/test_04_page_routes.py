@@ -2290,7 +2290,7 @@ def _stub_connection(rows=None, row=None):
     ],
 )
 def test_blocked_request_does_not_stall_unrelated_request(
-    client, confirm_token, method, path, patch_target, stub_result,
+    client, step_up_headers, method, path, patch_target, stub_result,
 ):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
@@ -2305,7 +2305,7 @@ def test_blocked_request_does_not_stall_unrelated_request(
 
     def request():
         if method == "post":
-            return client.post(path, json={"ticker": "TSTBLOCK"}, headers={"X-Confirm-Token": confirm_token})
+            return client.post(path, json={"ticker": "TSTBLOCK"}, headers=step_up_headers)
         return client.get(path)
 
     with patch(patch_target, side_effect=stalled_call):
