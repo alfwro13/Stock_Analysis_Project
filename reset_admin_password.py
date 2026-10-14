@@ -28,7 +28,7 @@ def main() -> None:
     while True:
         pw = getpass.getpass("New password: ")
         if password_policy_error(pw):
-            print(f"The password must be at least {min_length} characters and not a commonly used password. Try again.")
+            print(f"The password must be at least {MIN_LENGTH_POLICY} characters and not a commonly used password. Try again.")
             continue
         confirm = getpass.getpass("Confirm new password: ")
         if pw != confirm:

@@ -1159,10 +1159,10 @@ class TestPasswordPolicy:
         assert password_policy_error("correct horse battery staple") is None
 
     def test_list_file_entries_are_lowercase_and_not_shorter_than_the_minimum(self):
-        from auth import MIN_PASSWORD_LENGTH, _common_passwords
+        from auth import MIN_LENGTH_POLICY, _common_passwords
         entries = _common_passwords()
         assert len(entries) > 500
-        assert all(e == e.lower() and len(e) >= MIN_PASSWORD_LENGTH for e in entries)
+        assert all(e == e.lower() and len(e) >= MIN_LENGTH_POLICY for e in entries)
 
     def test_cli_reset_applies_the_policy_and_revokes_sessions(self, monkeypatch, capsys):
         import reset_admin_password

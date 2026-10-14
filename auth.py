@@ -171,7 +171,7 @@ def step_up_cookie_kwargs() -> dict:
     }
 
 
-MIN_PASSWORD_LENGTH = 12
+MIN_LENGTH_POLICY = 12
 _COMMON_PASSWORDS_PATH = Path(__file__).resolve().parent / "tools" / "common_passwords.txt"
 
 
@@ -182,8 +182,8 @@ def _common_passwords() -> frozenset:
 
 
 def password_policy_error(password: str) -> Optional[str]:
-    if len(password) < MIN_PASSWORD_LENGTH:
-        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    if len(password) < MIN_LENGTH_POLICY:
+        return f"Password must be at least {MIN_LENGTH_POLICY} characters."
     if password.lower() in _common_passwords():
         return "That password is too common. Please choose a different password."
     return None
