@@ -143,20 +143,20 @@ Once file logging is enabled, click **📄 Open Log Viewer** in the same Setting
 
 ### **Security — Dashboard Credentials**
 
-On first start, `config.py` writes default credentials (`admin` / `changeme`) to `.env` and immediately forces a password change on first login. Passwords are stored as PBKDF2-SHA256 hashes (`DASHBOARD_PASSWORD_HASH` in `.env`); the plaintext key is cleared after the first change.
+On first start, `config.py` writes default credentials (`admin` / `changeme`) to `.env` and immediately forces a password change on first login. Passwords are stored as PBKDF2-SHA256 hashes (`DASHBOARD_PASSWORD_HASH` in `.env`); the plaintext key is cleared after the first change and the default is never written back.
 
 To configure email-based self-service password reset:
 1. Go to **Settings → User Account → Account Email** and save your email address.
-2. Add SMTP credentials to `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (optional `SMTP_FROM`). If SMTP is not configured, reset links are delivered via Nextcloud Talk or logged to the server.
+2. Add SMTP credentials to `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (optional `SMTP_FROM`). If SMTP is not configured, reset links are delivered via Nextcloud Talk; if neither works no link is issued.
 
 **Stored credentials are write-only in Settings.** The SMTP password, Nextcloud app password and conversation token, Ghostfolio token, FRED key and HuggingFace token are never sent back to the browser: each field shows only whether a value is stored, an empty field keeps it, and a **Clear the stored value on save** checkbox removes it. The API key and embed token are displayed once, when generated. The Account Price Scraper's custom request headers follow the same rule.
 
 **Passwords and sessions.** A new password must be at least 12 characters and not a commonly used one. Changing or resetting the password signs out every other browser, and **Settings → User Account → Log Out Everywhere** signs out all of them on demand. Five wrong passwords in a row lock sign-in for 30 seconds, doubling up to 15 minutes; failures are logged and the lockout raises a **Failed Login Alert** notification. API-key access is not affected.
 
 **Sensitive Settings actions ask for your password.** Saving settings or credentials, pulling updates, restarting, restoring a backup and rotating secrets prompt for the dashboard password once; that unlocks them for 5 minutes. Scripts using the API key cannot use these actions.
-3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour.
+3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour, a new request invalidates older links, and the reply never reveals whether the email matched. Link requests are limited to 3 per hour.
 
-If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for three recovery methods including a console script (`python reset_admin_password.py`) and a `FORCE_PASSWORD_RESET` config-file flag.
+If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for the recovery methods, including a console script (`python reset_admin_password.py`). There is no unauthenticated browser reset page.
 
 **File permissions:** on every start the app restricts its project folder to its own user (`0700`), keeps `.env` and `config.json` at `0600`, and removes group/other write access under `data/` and `models/`. Set `UMask=0077` in the service file below (and leave out `Group=`) so files created later stay private; after changing the unit, run `sudo systemctl daemon-reload` and restart.
 

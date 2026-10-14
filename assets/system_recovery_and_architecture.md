@@ -57,7 +57,7 @@ Once the background notifications confirm these tasks are complete, refresh your
 
 The dashboard uses PBKDF2-SHA256 password hashing. The hash is stored as `DASHBOARD_PASSWORD_HASH` in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared after the first password change.
 
-There are three ways to reset the admin password if you are locked out:
+There are three ways to reset the admin password if you are locked out. The first two need a shell on the server; the self-service reset needs a configured email or Nextcloud Talk channel. There is no browser reset page that works without one of these: the old `FORCE_PASSWORD_RESET` flag and `/admin-reset-password` page were removed because they let anyone who could reach the app set the password.
 
 ---
 
@@ -74,28 +74,9 @@ The script prompts for a new password, hashes it, and writes it to `.env`. It al
 
 ---
 
-### Option 2 — `FORCE_PASSWORD_RESET` flag in `config.json`
+### Option 2 — Direct `.env` edit
 
-This method does not require a server restart.
-
-1. Open `config.json` in any text editor and set:
-
-   ```json
-   "FORCE_PASSWORD_RESET": true
-   ```
-
-2. Navigate to `http://<server>:<port>/admin-reset-password` in a browser.
-   The page is accessible without authentication when the flag is enabled.
-
-3. Enter and confirm a new password. On success the flag is automatically cleared.
-
-> Security note: The `FORCE_PASSWORD_RESET` flag bypasses login. Only set it from a trusted network connection and clear it immediately after resetting.
-
----
-
-### Option 3 — Direct `.env` edit
-
-If neither of the above is feasible you can edit `.env` directly:
+If the console script is not feasible you can edit `.env` directly:
 
 1. Run this Python one-liner on the server to generate a hash:
 
@@ -122,9 +103,9 @@ Users can initiate a reset from the login page by clicking **Forgot password?**.
 Prerequisites — configure in **Settings → User Account**:
 - `ACCOUNT_EMAIL` — the registered email address
 - For email delivery: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` in `.env`
-- Without SMTP: the reset link is sent via **Nextcloud Talk** if configured, otherwise it is logged at `INFO` level in the application logs.
+- Without SMTP (or if SMTP fails): the reset link is sent via **Nextcloud Talk** if configured. If neither works nothing is issued or logged; use the console script.
 
-Reset links expire after **1 hour** and are single-use.
+Reset links expire after **1 hour** and are single-use; requesting a new link invalidates every older one. The request always returns the same reply immediately, whether or not the email matches. Both reset routes are rate-limited (3 requests per hour to request a link, 10 per hour to redeem one).
 
 ### Failed-login lockout
 

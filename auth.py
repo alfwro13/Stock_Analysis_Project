@@ -40,7 +40,8 @@ def check_dashboard_password(password: str) -> bool:
     stored_hash = os.environ.get("DASHBOARD_PASSWORD_HASH", "")
     if stored_hash:
         return verify_password(password, stored_hash)
-    return hmac.compare_digest(password.encode(), os.environ.get("DASHBOARD_PASSWORD", "").encode())
+    stored_plain = os.environ.get("DASHBOARD_PASSWORD", "")
+    return bool(stored_plain) and hmac.compare_digest(password.encode(), stored_plain.encode())
 
 
 COOKIE_NAME = "session"

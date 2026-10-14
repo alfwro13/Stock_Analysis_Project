@@ -2,12 +2,12 @@ import os
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api_deps import enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
-from config import BASE_DIR, load_config, update_config_atomic
+from config import BASE_DIR, load_config
 from database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -200,28 +200,27 @@ def _send_reset_notification(reset_url: str) -> bool:
         except Exception as e:
             logger.warning("SMTP send failed: %s", e)
 
-    nextcloud_url = os.environ.get("NEXTCLOUD_URL", "")
-    if nextcloud_url:
-        try:
-            from nextcloud_talk import send_nextcloud_message
-            send_nextcloud_message(f"Password reset link (expires 1h):\n{reset_url}")
+    if os.environ.get("NEXTCLOUD_URL"):
+        from nextcloud_talk import send_text_message
+        if send_text_message(f"Password reset link (expires 1h):\n{reset_url}", {}):
             logger.info("Password reset link sent via Nextcloud Talk")
             return True
-        except Exception as e:
-            logger.warning("Nextcloud reset notification failed: %s", e)
+        logger.warning("Nextcloud reset notification failed")
 
     return False
 
 
-@auth_router.post("/request-password-reset")
-def request_password_reset(body: PasswordResetRequestBody):
+_RESET_REQUEST_REPLY = {"status": "ok", "message": "If the email matches, a reset link has been sent."}
+
+
+def _issue_reset_link(email: str) -> None:
     import secrets
     import hashlib as _hl
     from datetime import datetime, timezone, timedelta
 
     account_email = os.environ.get("ACCOUNT_EMAIL", "")
-    if not account_email or body.email.lower().strip() != account_email.lower().strip():
-        return {"status": "ok", "message": "If the email matches, a reset link has been sent."}
+    if not account_email or email.lower().strip() != account_email.lower().strip():
+        return
 
     token = secrets.token_urlsafe(32)
     token_hash = _hl.sha256(token.encode()).hexdigest()
@@ -230,6 +229,7 @@ def request_password_reset(body: PasswordResetRequestBody):
     conn = None
     try:
         conn = get_connection()
+        conn.execute("UPDATE password_reset_tokens SET used = 1 WHERE used = 0")
         conn.execute(
             "INSERT INTO password_reset_tokens (token_hash, expires_at, used) VALUES (?, ?, 0)",
             (token_hash, expires_at),
@@ -244,18 +244,21 @@ def request_password_reset(body: PasswordResetRequestBody):
     base = server_url.rstrip("/")
     if not (base.endswith(":8090") or base.endswith(f":{port}")):
         base = f"{base}:{port}"
-    reset_url = f"{base}/reset-password?token={token}"
 
-    sent = _send_reset_notification(reset_url)
-    if not sent:
-        logger.info("Password reset URL (no delivery channel configured): %s", reset_url)
-        return {"status": "ok", "message": "Reset link logged to server — check application logs."}
+    if not _send_reset_notification(f"{base}/reset-password?token={token}"):
+        logger.warning("Password reset link could not be delivered: no working SMTP or Nextcloud Talk channel")
 
-    return {"status": "ok", "message": "If the email matches, a reset link has been sent."}
+
+@auth_router.post("/request-password-reset")
+@limiter.limit("3/hour")
+def request_password_reset(request: Request, body: PasswordResetRequestBody, background_tasks: BackgroundTasks):
+    background_tasks.add_task(_issue_reset_link, body.email)
+    return _RESET_REQUEST_REPLY
 
 
 @auth_router.post("/reset-password")
-def reset_password(body: PasswordResetBody):
+@limiter.limit("10/hour")
+def reset_password(request: Request, body: PasswordResetBody):
     import hashlib as _hl
     from datetime import datetime, timezone
 
@@ -295,24 +298,6 @@ def save_account_email(body: SaveAccountEmailRequest):
     from dotenv import set_key
     set_key(str(BASE_DIR / ".env"), "ACCOUNT_EMAIL", body.email.strip())
     os.environ["ACCOUNT_EMAIL"] = body.email.strip()
-    return {"status": "ok"}
-
-
-class AdminResetPasswordBody(BaseModel):
-    new_password: str
-    confirm_password: str
-
-
-@auth_router.post("/admin-reset-password")
-def admin_reset_password(body: AdminResetPasswordBody):
-    cfg = load_config()
-    if not cfg.get("FORCE_PASSWORD_RESET", False):
-        raise HTTPException(status_code=403, detail="Admin reset is not enabled.")
-
-    _check_new_password(body.new_password, body.confirm_password)
-    _store_new_password(body.new_password)
-
-    update_config_atomic({"FORCE_PASSWORD_RESET": False})
     return {"status": "ok"}
 
 

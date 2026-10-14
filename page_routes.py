@@ -65,13 +65,6 @@ def reset_password_page(request: Request):
     return templates.TemplateResponse(request=request, name="reset_password.html", context={"token": token})
 
 
-@page_router.get("/admin-reset-password", response_class=HTMLResponse)
-def admin_reset_password_page(request: Request):
-    if not load_config().get("FORCE_PASSWORD_RESET", False):
-        return RedirectResponse("/login", status_code=302)
-    return templates.TemplateResponse(request=request, name="admin_reset_password.html")
-
-
 
 @page_router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):

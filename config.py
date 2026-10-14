@@ -9,16 +9,20 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Auto-provision default dashboard credentials into .env if not already set
+# Auto-provision default dashboard credentials into .env on a fresh install only: an empty
+# DASHBOARD_PASSWORD key or a stored hash means a password was already set and must not be reverted.
 def _provision_default_credentials():
+    from dotenv import set_key
     env_path = BASE_DIR / ".env"
     changed = False
-    for key, default in [("DASHBOARD_USERNAME", "admin"), ("DASHBOARD_PASSWORD", "changeme")]:
-        if not os.environ.get(key):
-            from dotenv import set_key
-            set_key(str(env_path), key, default)
-            os.environ[key] = default
-            changed = True
+    if not os.environ.get("DASHBOARD_USERNAME"):
+        set_key(str(env_path), "DASHBOARD_USERNAME", "admin")
+        os.environ["DASHBOARD_USERNAME"] = "admin"
+        changed = True
+    if not os.environ.get("DASHBOARD_PASSWORD_HASH") and "DASHBOARD_PASSWORD" not in os.environ:
+        set_key(str(env_path), "DASHBOARD_PASSWORD", "changeme")
+        os.environ["DASHBOARD_PASSWORD"] = "changeme"
+        changed = True
     if changed:
         print("[INFO] Default dashboard credentials written to .env. Login: admin / changeme")
 
@@ -58,7 +62,6 @@ DEPRECATED_SCHEDULE_KEYS: set = {"UNIVERSE_FUNDAMENTALS"}
 
 DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
-    "FORCE_PASSWORD_RESET": False,
     "YAHOO_IPV6_ADDRESS": "",
     "YAHOO_USE_IPV4": True,
     "YAHOO_USE_IPV6": False,

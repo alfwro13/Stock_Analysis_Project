@@ -9,6 +9,7 @@ Full coverage of the auth surface:
   4. GET  /logout             – cookie deletion and redirect
   5. POST /api/change-password – all validation rules and the happy path
   6. require_step_up          – missing / expired / valid password step-up on admin endpoints
+  7. Reset flows              – retired admin reset, self-service email reset, default-credential provisioning
 
 Design notes
 ────────────
@@ -606,6 +607,12 @@ class TestCheckDashboardPassword:
             assert check_dashboard_password("hashed-secret") is True
             assert check_dashboard_password("plain") is False
 
+    def test_empty_plaintext_value_never_authenticates(self):
+        from auth import check_dashboard_password
+        with patch.dict(os.environ, {"DASHBOARD_PASSWORD_HASH": "", "DASHBOARD_PASSWORD": ""}):
+            assert check_dashboard_password("") is False
+            assert check_dashboard_password("changeme") is False
+
     def test_falls_back_to_the_plaintext_value_when_no_hash_is_stored(self):
         from auth import check_dashboard_password
         with patch.dict(os.environ, {"DASHBOARD_PASSWORD_HASH": "", "DASHBOARD_PASSWORD": "plain-secret"}):
@@ -831,48 +838,197 @@ class TestSecretGeneration:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8.  POST /api/admin-reset-password
+# 8.  Reset flows  (S1-5 retired the admin reset; S1-6 hardened the email reset)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestAdminResetPassword:
+_RESET_PASSWORD = "A-brand-new-passphrase-1"
 
-    def _post(self, client, new_password: str, confirm_password: str):
-        return client.post(
+
+def _request_reset(c, email="owner@example.com"):
+    return c.post("/api/request-password-reset", json={"email": email})
+
+
+def _complete_reset(c, token, password=_RESET_PASSWORD):
+    return c.post("/api/reset-password", json={"token": token, "new_password": password, "confirm_password": password})
+
+
+def _token_from(url: str) -> str:
+    return url.split("token=", 1)[1]
+
+
+class TestAdminResetRetired:
+
+    def test_flag_is_not_a_config_default(self):
+        from config import DEFAULT_CONFIG
+        assert "FORCE_PASSWORD_RESET" not in DEFAULT_CONFIG
+
+    @pytest.mark.parametrize("method,path", [
+        ("get", "/admin-reset-password"),
+        ("post", "/api/admin-reset-password"),
+        ("get", "/change-password"),
+        ("post", "/api/change-password"),
+    ])
+    def test_stale_flag_in_config_grants_no_unauthenticated_access(self, raw_client, method, path):
+        with patch("config.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
+            resp = getattr(raw_client, method)(path)
+        assert resp.status_code == 302
+        assert resp.headers["location"].startswith("/login")
+
+    def test_admin_reset_route_is_gone_for_an_authenticated_caller(self, client):
+        resp = client.post(
             "/api/admin-reset-password",
-            json={"new_password": new_password, "confirm_password": confirm_password},
+            json={"new_password": _RESET_PASSWORD, "confirm_password": _RESET_PASSWORD},
         )
+        assert resp.status_code in (404, 405)
 
-    def test_returns_403_when_flag_disabled(self, client):
-        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": False}):
-            resp = self._post(client, "StrongPass1!", "StrongPass1!")
-        assert resp.status_code == 403
 
-    def test_returns_400_on_password_mismatch(self, client):
-        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
-            resp = self._post(client, "StrongPass1!", "DifferentPass!")
-        assert resp.status_code == 400
-        assert "match" in resp.json()["detail"].lower()
+class TestSelfServiceReset:
 
-    def test_returns_400_when_password_too_short(self, client):
-        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
-            resp = self._post(client, "short", "short")
-        assert resp.status_code == 400
-        assert "12" in resp.json()["detail"]
+    @pytest.fixture(autouse=True)
+    def _account_email_and_tokens(self):
+        from database import get_connection
+        with patch.dict(os.environ, {"ACCOUNT_EMAIL": "owner@example.com"}):
+            yield
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute("DELETE FROM password_reset_tokens")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
 
-    def test_returns_400_for_changeme_password(self, client):
-        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
-            resp = self._post(client, "changeme", "changeme")
-        assert resp.status_code == 400
+    def test_reply_is_identical_whether_or_not_the_email_matches(self):
+        with _fresh_client() as c, patch("api_routes_auth._send_reset_notification", return_value=True):
+            matching = _request_reset(c)
+            other = _request_reset(c, "someone-else@example.com")
+        assert matching.status_code == other.status_code == 200
+        assert matching.json() == other.json()
 
-    def test_happy_path_returns_ok(self, client):
+    def test_reply_is_identical_when_delivery_fails(self):
+        with _fresh_client() as c:
+            with patch("api_routes_auth._send_reset_notification", return_value=True):
+                delivered = _request_reset(c)
+            with patch("api_routes_auth._send_reset_notification", return_value=False):
+                failed = _request_reset(c)
+        assert delivered.json() == failed.json()
+        assert "log" not in failed.json()["message"].lower()
+
+    def test_non_matching_email_issues_and_sends_nothing(self):
+        with _fresh_client() as c, patch("api_routes_auth._send_reset_notification") as send:
+            _request_reset(c, "someone-else@example.com")
+        send.assert_not_called()
+
+    def test_failed_delivery_never_writes_the_link_to_the_logs(self, caplog):
+        sent = []
         with (
-            patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}),
-            patch("dotenv.set_key"),
-            patch("api_routes_auth.update_config_atomic"),
+            _fresh_client() as c,
+            patch("api_routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or False),
+            caplog.at_level("DEBUG"),
         ):
-            resp = self._post(client, "NewSecurePass1!", "NewSecurePass1!")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "ok"
+            _request_reset(c)
+        assert len(sent) == 1
+        assert _token_from(sent[0]) not in caplog.text
+        assert "/reset-password?token=" not in caplog.text
+        assert "could not be delivered" in caplog.text
+
+    def test_a_new_request_invalidates_the_older_link(self):
+        sent = []
+        with (
+            _fresh_client() as c,
+            patch("api_routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or True),
+            patch("dotenv.set_key"),
+        ):
+            _request_reset(c)
+            _request_reset(c)
+            stale = _complete_reset(c, _token_from(sent[0]))
+            current = _complete_reset(c, _token_from(sent[1]))
+        assert stale.status_code == 400
+        assert current.status_code == 200
+
+    def test_a_valid_link_is_single_use_and_signs_out_other_sessions(self):
+        sent = []
+        before = create_session_token("alice", remember=False)
+        with (
+            _fresh_client() as c,
+            patch("api_routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or True),
+            patch("dotenv.set_key"),
+        ):
+            _request_reset(c)
+            first = _complete_reset(c, _token_from(sent[0]))
+            second = _complete_reset(c, _token_from(sent[0]))
+        assert first.status_code == 200
+        assert second.status_code == 400
+        assert verify_session_token(before) is False
+
+    def test_request_route_is_rate_limited_to_three_per_hour(self):
+        with _fresh_client() as c, patch("api_routes_auth._send_reset_notification", return_value=True):
+            codes = [_request_reset(c).status_code for _ in range(4)]
+        assert codes == [200, 200, 200, 429]
+
+    def test_reset_route_is_rate_limited_to_ten_per_hour(self):
+        with _fresh_client() as c:
+            codes = [_complete_reset(c, "not-a-real-token").status_code for _ in range(11)]
+        assert codes == [400] * 10 + [429]
+
+
+class TestDefaultCredentialProvisioning:
+
+    @staticmethod
+    def _provision(monkeypatch, **env):
+        import config
+        for name in ("DASHBOARD_USERNAME", "DASHBOARD_PASSWORD", "DASHBOARD_PASSWORD_HASH"):
+            monkeypatch.delenv(name, raising=False)
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        with patch("dotenv.set_key") as set_key:
+            config._provision_default_credentials()
+        return {call.args[1]: call.args[2] for call in set_key.call_args_list}
+
+    def test_fresh_install_gets_the_default_login(self, monkeypatch):
+        written = self._provision(monkeypatch)
+        assert written == {"DASHBOARD_USERNAME": "admin", "DASHBOARD_PASSWORD": "changeme"}
+
+    def test_cleared_plaintext_key_is_not_reverted_after_a_password_change(self, monkeypatch):
+        written = self._provision(
+            monkeypatch, DASHBOARD_USERNAME="admin", DASHBOARD_PASSWORD="", DASHBOARD_PASSWORD_HASH="pbkdf2:sha256:1:aa:bb",
+        )
+        assert written == {}
+
+    def test_lost_hash_does_not_bring_the_default_password_back(self, monkeypatch):
+        written = self._provision(monkeypatch, DASHBOARD_USERNAME="admin", DASHBOARD_PASSWORD="")
+        assert written == {}
+
+    def test_stored_hash_without_a_plaintext_key_is_left_alone(self, monkeypatch):
+        written = self._provision(
+            monkeypatch, DASHBOARD_USERNAME="admin", DASHBOARD_PASSWORD_HASH="pbkdf2:sha256:1:aa:bb",
+        )
+        assert written == {}
+
+
+class TestResetDelivery:
+
+    def test_nextcloud_delivery_sends_the_link_when_smtp_is_not_configured(self):
+        from api_routes_auth import _send_reset_notification
+        with (
+            patch.dict(os.environ, {"SMTP_HOST": "", "NEXTCLOUD_URL": "https://cloud.example"}),
+            patch("nextcloud_talk.send_text_message", return_value=True) as send,
+        ):
+            assert _send_reset_notification("http://host:8090/reset-password?token=abc") is True
+        assert "reset-password?token=abc" in send.call_args[0][0]
+
+    def test_nextcloud_failure_reports_undelivered(self):
+        from api_routes_auth import _send_reset_notification
+        with (
+            patch.dict(os.environ, {"SMTP_HOST": "", "NEXTCLOUD_URL": "https://cloud.example"}),
+            patch("nextcloud_talk.send_text_message", return_value=False),
+        ):
+            assert _send_reset_notification("http://host:8090/reset-password?token=abc") is False
+
+    def test_no_channel_configured_reports_undelivered(self):
+        from api_routes_auth import _send_reset_notification
+        with patch.dict(os.environ, {"SMTP_HOST": "", "NEXTCLOUD_URL": ""}):
+            assert _send_reset_notification("http://host:8090/reset-password?token=abc") is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -956,20 +1112,6 @@ class TestSessionEpoch:
         finally:
             os.environ["DASHBOARD_PASSWORD"] = original
             os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
-
-    def test_email_reset_and_admin_reset_bump_the_epoch(self, client):
-        before = create_session_token("alice", remember=False)
-        with (
-            patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}),
-            patch("dotenv.set_key"),
-            patch("api_routes_auth.update_config_atomic"),
-        ):
-            resp = client.post(
-                "/api/admin-reset-password",
-                json={"new_password": "A-brand-new-passphrase-1", "confirm_password": "A-brand-new-passphrase-1"},
-            )
-        assert resp.status_code == 200
-        assert verify_session_token(before) is False
 
     def test_logout_everywhere_revokes_every_session_and_clears_cookies(self, step_up_headers, auth_cookies):
         other_device = create_session_token("alice", remember=True)

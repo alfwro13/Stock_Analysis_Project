@@ -1509,7 +1509,7 @@ The change raises the session epoch, so every other signed-in browser is signed 
 }
 ```
 
-**Validation:** the new password must be at least 12 characters and must not be on the common-password list (`tools/common_passwords.txt`, matched case-insensitively). The same rule applies to `POST /api/reset-password`, `POST /api/admin-reset-password` and `python reset_admin_password.py`; it is checked only when a password is set, so an existing shorter password keeps working until it is changed.
+**Validation:** the new password must be at least 12 characters and must not be on the common-password list (`tools/common_passwords.txt`, matched case-insensitively). The same rule applies to `POST /api/reset-password` and `python reset_admin_password.py`; it is checked only when a password is set, so an existing shorter password keeps working until it is changed.
 
 **Error responses**
 
@@ -1592,12 +1592,13 @@ Sends a test email to the configured `ACCOUNT_EMAIL` using the current SMTP sett
 
 Initiates a self-service password reset. No authentication required — accessible from the login page.
 
-If `email` matches `ACCOUNT_EMAIL` in `.env`, a one-time reset token (valid 1 hour) is generated and delivered via:
-1. SMTP email — if `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` are set in `.env`
-2. Nextcloud Talk — if `NEXTCLOUD_URL` is configured and SMTP is not
-3. Server log (`INFO`) — if no delivery channel is configured
+The reply is always the same `200 OK` message, sent immediately: whether the email matched, and whether delivery worked, is never visible to the caller. The work happens after the response is sent. If `email` matches `ACCOUNT_EMAIL` in `.env`, every earlier unused reset link is invalidated and a new one-time token (valid 1 hour) is delivered via:
+1. SMTP email — if `SMTP_HOST` and `ACCOUNT_EMAIL` are set in `.env`
+2. Nextcloud Talk — if SMTP is not configured or failed and `NEXTCLOUD_URL` is configured (sent directly, not through the notification router, so the link is never written to the log file or in-app notifications)
 
-The response is always `200 OK` regardless of whether the email matched (prevents email enumeration).
+If neither channel works, a warning without the link is logged and no link is issued anywhere; recover with `python reset_admin_password.py` instead.
+
+**Rate limit:** 3 requests per hour per client address (in memory; resets on restart). Behind nginx every request shares the proxy address, so this is effectively account-wide. Exceeding it returns `429`.
 
 **Request body**
 
@@ -1617,6 +1618,8 @@ The response is always `200 OK` regardless of whether the email matched (prevent
 
 Completes a self-service password reset using a valid reset token. No authentication required.
 
+**Rate limit:** 10 requests per hour per client address (in memory; resets on restart). Exceeding it returns `429`.
+
 **Request body**
 
 ```json
@@ -1632,30 +1635,6 @@ Completes a self-service password reset using a valid reset token. No authentica
 | Status | Condition |
 |--------|-----------|
 | `400` | Invalid, expired, or already-used token; mismatched passwords; fewer than 12 characters; common password |
-
-On success the session epoch is raised (every browser is signed out) and the failed-login lockout is cleared.
-
----
-
-### `POST /api/admin-reset-password`
-
-Admin emergency password reset — bypasses the old password requirement. Only works when `FORCE_PASSWORD_RESET: true` is set in `config.json`. Clears the flag automatically on success.
-
-**Request body**
-
-```json
-{
-  "new_password": "newpassword99",
-  "confirm_password": "newpassword99"
-}
-```
-
-**Error responses**
-
-| Status | Condition |
-|--------|-----------|
-| `403` | `FORCE_PASSWORD_RESET` is not enabled in `config.json` |
-| `400` | Mismatched passwords; fewer than 12 characters; common password |
 
 On success the session epoch is raised (every browser is signed out) and the failed-login lockout is cleared.
 
