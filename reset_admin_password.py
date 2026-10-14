@@ -23,7 +23,7 @@ def main() -> None:
     print("This will overwrite the stored password hash in .env.")
     print("Restart the app after completing this step.\n")
 
-    from auth import MIN_PASSWORD_LENGTH as min_length, password_policy_error
+    from auth import MIN_LENGTH_POLICY, password_policy_error
 
     while True:
         pw = getpass.getpass("New password: ")
