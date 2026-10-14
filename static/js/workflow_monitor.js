@@ -79,6 +79,7 @@ async function openWorkflowGraphTab() {
         const { svg } = await mermaid.render(`wfGraphTab${++_workflowRenderSeq}`, def);
         const nodeJson = JSON.stringify(data.nodes || []).replace(/</g, "\\u003c");
         const base = location.origin;
+        const ver = encodeURIComponent(window.CSS_VERSION || "");
         const ts = new Date().toLocaleString();
         win.document.open();
         win.document.write(`<!doctype html>
@@ -159,8 +160,8 @@ html,body{height:100%;background:#0e0e0e;color:#ccc;font-family:system-ui,sans-s
 <script>
 var _wfNodes = ${nodeJson};
 <\/script>
-<script src="${base}/static/js/utils.js"><\/script>
-<script src="${base}/static/js/workflow_tab.js"><\/script>
+<script src="${base}/static/js/utils.js?v=${ver}"><\/script>
+<script src="${base}/static/js/workflow_tab.js?v=${ver}"><\/script>
 </body>
 </html>`);
         win.document.close();
