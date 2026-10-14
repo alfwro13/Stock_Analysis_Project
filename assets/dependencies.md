@@ -27,10 +27,18 @@ a package whose files do not match its hash is refused.
   `requirements.txt` changes on `main` and pushes it to a `refresh-lock` branch,
   with a link in the run summary to open the pull request (the repository setting
   that lets Actions open pull requests is off on purpose; a pull request you open
-  yourself runs `tests.yml`). Dispatched from another branch, for example a
-  Dependabot branch, it commits the new lock to that branch instead; a push made
-  with the workflow token does not start `tests.yml`, so close and reopen that
-  branch's pull request.
+  yourself runs `tests.yml`). On a Dependabot pull request that changes
+  `requirements.txt` it commits the new lock to the PR branch using the
+  `LOCK_REFRESH_TOKEN` secret, a fine-grained PAT (this repository only,
+  Contents: read and write). It must be stored as a **Dependabot** secret
+  (Settings > Secrets and variables > Dependabot), because Dependabot-triggered
+  runs cannot see Actions secrets. A push made with the PAT, unlike one made with
+  the workflow token, starts `tests.yml` on the PR. Only `dependabot[bot]` pull
+  requests run the job, and the PAT is read in the push step only. Once the lock
+  commit is on the branch Dependabot stops rebasing it; comment
+  `@dependabot recreate` to start over. Dispatched by hand from another branch it
+  commits with the workflow token, so close and reopen that branch's pull
+  request.
 - **Advisories:** `.github/workflows/pip-audit.yml` runs `pip-audit` against the
   lock every Monday and on demand; it fails the run on any advisory. Fix by
   regenerating with `-P <package>` and merging.
@@ -58,8 +66,10 @@ and what should I test?" without grepping the whole codebase first.
    Dependabot PR automatically — check the PR's checks tab first. CI installs
    `requirements.lock`, not `requirements.txt`, so a Dependabot PR that only
    edits `requirements.txt` is tested against the old versions until the lock is
-   regenerated: run **Refresh dependency lock** on the Dependabot branch (it
-   commits the lock there), then close and reopen the PR.
+   regenerated; **Refresh dependency lock** does this on the Dependabot branch
+   and the push re-runs CI, so wait for the second run. If the job fails on the
+   missing `LOCK_REFRESH_TOKEN` secret, create it (see Automation above) or run
+   the workflow by hand on the branch, then close and reopen the PR.
 
 ## Web framework & server
 

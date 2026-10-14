@@ -5,16 +5,22 @@ on:
   push:
     branches: [main]
     paths: [requirements.txt]
+  pull_request:
+    paths: [requirements.txt]
 
 permissions:
   contents: write
 
 jobs:
   refresh:
+    if: github.event_name != 'pull_request' || github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+          persist-credentials: false
 
       - uses: actions/setup-python@v7
         with:
@@ -28,26 +34,44 @@ jobs:
 
       - name: Publish the new lock
         env:
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ github.head_ref || github.ref_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_TOKEN: ${{ github.token }}
+          LOCK_REFRESH_TOKEN: ${{ secrets.LOCK_REFRESH_TOKEN }}
         run: |
           if git diff --quiet -- requirements.lock; then
             echo "requirements.lock is already up to date."
             exit 0
           fi
+          # A push made with the workflow token does not start tests.yml; a PAT push does.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ -z "$LOCK_REFRESH_TOKEN" ]; then
+              echo "::error::Dependabot secret LOCK_REFRESH_TOKEN is missing (Settings > Secrets and variables > Dependabot)."
+              exit 1
+            fi
+            push_token="$LOCK_REFRESH_TOKEN"
+          else
+            push_token="$WORKFLOW_TOKEN"
+          fi
+          remote="https://x-access-token:${push_token}@github.com/${GITHUB_REPOSITORY}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ "$REF_NAME" != "$DEFAULT_BRANCH" ]; then
             git add requirements.lock
             git commit -m "Regenerate requirements.lock"
-            git push origin "HEAD:$REF_NAME"
-            echo "Pushed the lock to $REF_NAME. Close and reopen its pull request to start the tests."
+            git push "$remote" "HEAD:refs/heads/$REF_NAME"
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              echo "Pushed the lock to $REF_NAME; the push re-runs the tests on its pull request."
+            else
+              echo "Pushed the lock to $REF_NAME. Close and reopen its pull request to start the tests."
+            fi
             exit 0
           fi
           git checkout -B refresh-lock
           git add requirements.lock
           git commit -m "Regenerate requirements.lock"
-          git push --force origin refresh-lock
+          git push --force "$remote" refresh-lock
           link="https://github.com/$GITHUB_REPOSITORY/compare/$DEFAULT_BRANCH...refresh-lock?expand=1"
           echo "Pushed refresh-lock. Open the pull request: $link"
           echo "requirements.lock was regenerated on branch refresh-lock. [Open the pull request]($link)." >> "$GITHUB_STEP_SUMMARY"
