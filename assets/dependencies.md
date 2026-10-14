@@ -76,7 +76,7 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `fastapi` | Core web framework — every route in `*_routes*.py` | Route signature/dependency-injection changes; response model validation |
-| `starlette` | ASGI toolkit under FastAPI: request/response objects and the middleware stack in `main.py`. Floor `>=1.3.1` clears published advisories | Middleware, `request.url` and form-parsing behaviour — run the page and API test files and log in once |
+| `starlette` | ASGI toolkit under FastAPI: request/response objects and the middleware stack in `main.py`. Floor `>=1.7.0` clears published advisories | Middleware, `request.url` and form-parsing behaviour — run the page and API test files and log in once |
 | `uvicorn` | ASGI server that runs `main.py` | Startup flags, worker/reload behaviour |
 | `starlette-csrf` | CSRF middleware wrapping all POST endpoints (`main.py`) | Any CSRF bypass or token-validation change is a security-relevant upgrade — test login + a POST action manually |
 | `slowapi` | Rate limiting (`api_deps.py` limiter used across all `api_routes*.py`) | Rate-limit key function / storage backend signature |
