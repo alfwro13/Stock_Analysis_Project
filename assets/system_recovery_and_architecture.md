@@ -70,7 +70,7 @@ source venv/bin/activate
 python reset_admin_password.py
 ```
 
-The script prompts for a new password, hashes it, and writes it to `.env`. **Restart the app afterwards for the change to take effect.**
+The script prompts for a new password, hashes it, and writes it to `.env`. It also raises `SESSION_EPOCH` (so every existing browser session is signed out) and clears any failed-login lockout. The password must be at least 12 characters and not on the common-password list. **Restart the app afterwards for the change to take effect.**
 
 ---
 
@@ -109,7 +109,7 @@ If neither of the above is feasible you can edit `.env` directly:
    "
    ```
 
-2. Paste the output as the value of `DASHBOARD_PASSWORD_HASH` in `.env`, and set `DASHBOARD_PASSWORD=`.
+2. Paste the output as the value of `DASHBOARD_PASSWORD_HASH` in `.env`, and set `DASHBOARD_PASSWORD=`. To sign out existing browser sessions as well, raise `SESSION_EPOCH` by one (add `SESSION_EPOCH=1` if the key is absent).
 
 3. Restart the app.
 
@@ -125,3 +125,7 @@ Prerequisites — configure in **Settings → User Account**:
 - Without SMTP: the reset link is sent via **Nextcloud Talk** if configured, otherwise it is logged at `INFO` level in the application logs.
 
 Reset links expire after **1 hour** and are single-use.
+
+### Failed-login lockout
+
+Five consecutive wrong passwords (sign-in, step-up or change-password) lock the account: every attempt, even with the correct password, is refused for 30 seconds, then 60, 120 and so on up to 15 minutes. The lockout is stored in the `login_throttle` table and survives a restart. It clears on its own, on a correct password after it expires, on any password change or reset, and when `python reset_admin_password.py` is run. API-key access (Home Assistant, scripts) is never locked out. The **Failed Login Alert** notification (Settings → Notification Settings) fires when the lockout begins.

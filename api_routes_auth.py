@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api_deps import limiter, require_step_up, _error_500
+from api_deps import enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
 from config import BASE_DIR, load_config, update_config_atomic
 from database import get_connection
 
@@ -49,10 +49,12 @@ class LoginRequest(BaseModel):
 def login(request: Request, body: LoginRequest, response: Response):
     import secrets as _secrets
     from auth import check_dashboard_password, create_session_token, cookie_kwargs
+    enforce_login_lockout()
     valid_user = _secrets.compare_digest(
         body.username.encode(), os.environ.get("DASHBOARD_USERNAME", "").encode()
     )
     valid_pass = check_dashboard_password(body.password)
+    record_password_attempt(request, "login", valid_user and valid_pass, known_user=valid_user)
     if not (valid_user and valid_pass):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     token = create_session_token(body.username, body.remember_me)
@@ -74,8 +76,10 @@ def step_up(request: Request, body: StepUpRequest, response: Response):
     session = request.cookies.get(COOKIE_NAME, "")
     if not session or not verify_session_token(session):
         raise HTTPException(status_code=401, detail="A signed-in session is required.")
-    if not check_dashboard_password(body.password):
-        logger.warning("Step-up rejected: incorrect password")
+    enforce_login_lockout()
+    password_ok = check_dashboard_password(body.password)
+    record_password_attempt(request, "step-up", password_ok)
+    if not password_ok:
         raise HTTPException(status_code=401, detail="Incorrect password.")
     response.set_cookie(value=create_step_up_token(session), **step_up_cookie_kwargs())
     return {"status": "ok", "expires_in": STEP_UP_MAX_AGE}
@@ -113,27 +117,48 @@ class ChangePasswordRequest(BaseModel):
     confirm_password: str
 
 
-@auth_router.post("/change-password")
-@limiter.limit("5/minute")
-def change_password(request: Request, body: ChangePasswordRequest):
+def _store_new_password(new_password: str) -> None:
     from dotenv import set_key
-    from auth import check_dashboard_password, hash_password
+    from auth import bump_session_epoch, clear_login_failures, hash_password
 
-    if not check_dashboard_password(body.current_password):
-        raise HTTPException(status_code=400, detail="Current password is incorrect.")
-    if body.new_password != body.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match.")
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
-    if body.new_password == "changeme":
-        raise HTTPException(status_code=400, detail="Please choose a different password.")
-
-    new_hash = hash_password(body.new_password)
+    new_hash = hash_password(new_password)
     env_path = str(BASE_DIR / ".env")
     set_key(env_path, "DASHBOARD_PASSWORD_HASH", new_hash)
     set_key(env_path, "DASHBOARD_PASSWORD", "")
     os.environ["DASHBOARD_PASSWORD_HASH"] = new_hash
     os.environ["DASHBOARD_PASSWORD"] = ""
+    bump_session_epoch()
+    clear_login_failures()
+
+
+def _check_new_password(new_password: str, confirm_password: str) -> None:
+    from auth import password_policy_error
+
+    if new_password != confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+    policy_error = password_policy_error(new_password)
+    if policy_error:
+        raise HTTPException(status_code=400, detail=policy_error)
+
+
+@auth_router.post("/change-password")
+@limiter.limit("5/minute")
+def change_password(request: Request, body: ChangePasswordRequest, response: Response):
+    from auth import COOKIE_NAME, check_dashboard_password, cookie_kwargs, create_session_token, session_claims
+
+    enforce_login_lockout()
+    current_ok = check_dashboard_password(body.current_password)
+    record_password_attempt(request, "change-password", current_ok)
+    if not current_ok:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    _check_new_password(body.new_password, body.confirm_password)
+
+    claims = session_claims(request.cookies.get(COOKIE_NAME, ""))
+    _store_new_password(body.new_password)
+    if claims:
+        remember = claims.get("r") is True
+        token = create_session_token(os.environ.get("DASHBOARD_USERNAME", ""), remember)
+        response.set_cookie(value=token, **cookie_kwargs(remember))
     return {"status": "ok"}
 
 
@@ -233,15 +258,8 @@ def request_password_reset(body: PasswordResetRequestBody):
 def reset_password(body: PasswordResetBody):
     import hashlib as _hl
     from datetime import datetime, timezone
-    from auth import hash_password as _hash
-    from dotenv import set_key
 
-    if body.new_password != body.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match.")
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
-    if body.new_password == "changeme":
-        raise HTTPException(status_code=400, detail="Please choose a different password.")
+    _check_new_password(body.new_password, body.confirm_password)
 
     token_hash = _hl.sha256(body.token.encode()).hexdigest()
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -264,12 +282,7 @@ def reset_password(body: PasswordResetBody):
         if conn:
             conn.close()
 
-    new_hash = _hash(body.new_password)
-    env_path = str(BASE_DIR / ".env")
-    set_key(env_path, "DASHBOARD_PASSWORD_HASH", new_hash)
-    set_key(env_path, "DASHBOARD_PASSWORD", "")
-    os.environ["DASHBOARD_PASSWORD_HASH"] = new_hash
-    os.environ["DASHBOARD_PASSWORD"] = ""
+    _store_new_password(body.new_password)
     return {"status": "ok"}
 
 
@@ -292,26 +305,12 @@ class AdminResetPasswordBody(BaseModel):
 
 @auth_router.post("/admin-reset-password")
 def admin_reset_password(body: AdminResetPasswordBody):
-    from dotenv import set_key
-    from auth import hash_password as _hash
-
     cfg = load_config()
     if not cfg.get("FORCE_PASSWORD_RESET", False):
         raise HTTPException(status_code=403, detail="Admin reset is not enabled.")
 
-    if body.new_password != body.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match.")
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
-    if body.new_password == "changeme":
-        raise HTTPException(status_code=400, detail="Please choose a different password.")
-
-    new_hash = _hash(body.new_password)
-    env_path = str(BASE_DIR / ".env")
-    set_key(env_path, "DASHBOARD_PASSWORD_HASH", new_hash)
-    set_key(env_path, "DASHBOARD_PASSWORD", "")
-    os.environ["DASHBOARD_PASSWORD_HASH"] = new_hash
-    os.environ["DASHBOARD_PASSWORD"] = ""
+    _check_new_password(body.new_password, body.confirm_password)
+    _store_new_password(body.new_password)
 
     update_config_atomic({"FORCE_PASSWORD_RESET": False})
     return {"status": "ok"}
@@ -442,6 +441,17 @@ def change_username(body: ChangeUsernameRequest):
     env_path = str(BASE_DIR / ".env")
     set_key(env_path, "DASHBOARD_USERNAME", username)
     os.environ["DASHBOARD_USERNAME"] = username
+    return {"status": "ok"}
+
+
+@auth_router.post("/logout-everywhere", dependencies=[Depends(require_step_up)])
+def logout_everywhere(response: Response):
+    from auth import COOKIE_NAME, STEP_UP_COOKIE_NAME, STEP_UP_COOKIE_PATH, bump_session_epoch
+
+    bump_session_epoch()
+    response.delete_cookie(COOKIE_NAME)
+    response.delete_cookie(STEP_UP_COOKIE_NAME, path=STEP_UP_COOKIE_PATH)
+    logger.info("All dashboard sessions revoked (logout everywhere)")
     return {"status": "ok"}
 
 

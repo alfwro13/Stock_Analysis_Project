@@ -724,7 +724,7 @@
 
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">Change Password</h4>
-                <p class="settings-desc">Update your dashboard login password. You will remain logged in after saving.</p>
+                <p class="settings-desc">Update your dashboard login password: at least 12 characters and not a commonly used password. This device stays signed in; every other signed-in device is signed out.</p>
                 <div class="form-group">
                     <label>Current password</label>
                     <input type="password" id="ua_current_password" class="form-control" autocomplete="current-password">
@@ -782,6 +782,13 @@
                 <h4 class="settings-panel-header text-blue">Session</h4>
                 <p class="settings-desc">Sign out of the dashboard on this device.</p>
                 <a href="/logout" class="btn btn-primary mt-0 d-inline-block">🚪 Log Out</a>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Log Out Everywhere</h4>
+                <p class="settings-desc">Signs out every browser and device, including this one, including "remember me" sessions. Use it after a lost device or a suspected compromise. API-key and embed-token access is not affected.</p>
+                <button type="button" class="btn btn-primary mt-0" onclick="logoutEverywhere()">🚪 Log Out Everywhere</button>
+                <div id="ua-logout-all-msg"></div>
             </div>
 
         </details>

@@ -473,6 +473,32 @@ def _reset_rate_limits():
     limiter.reset()
 
 
+def _clear_login_throttle():
+    from database import get_connection
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute("DELETE FROM login_throttle")
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_throttle_and_credentials():
+    names = ("SESSION_EPOCH", "DASHBOARD_PASSWORD", "DASHBOARD_PASSWORD_HASH")
+    previous = {name: os.environ.get(name) for name in names}
+    _clear_login_throttle()
+    yield
+    _clear_login_throttle()
+    for name, value in previous.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+
+
 class TestChangePassword:
     """Uses the api-key-authenticated `client` so middleware is bypassed;
     only the change-password business logic is under test. The current password in
@@ -496,14 +522,23 @@ class TestChangePassword:
         assert resp.status_code == 400
         assert "match" in resp.json().get("detail", "").lower()
 
-    def test_password_shorter_than_8_chars_returns_400(self, client, test_password):
+    def test_password_shorter_than_12_chars_returns_400(self, client, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
-            "new_password": "short",
-            "confirm_password": "short",
+            "new_password": "elevenchars",
+            "confirm_password": "elevenchars",
         })
         assert resp.status_code == 400
-        assert "8" in resp.json().get("detail", "")
+        assert "12" in resp.json().get("detail", "")
+
+    def test_common_password_returns_400(self, client, test_password):
+        resp = client.post("/api/change-password", json={
+            "current_password": test_password,
+            "new_password": "Password123456",
+            "confirm_password": "Password123456",
+        })
+        assert resp.status_code == 400
+        assert "common" in resp.json().get("detail", "").lower()
 
     def test_changeme_password_is_rejected(self, client, test_password):
         resp = client.post("/api/change-password", json={
@@ -557,6 +592,7 @@ _GATED_ROUTES = [
     "/api/test-hf-token",
     "/api/change-username",
     "/api/rotate-app-secret",
+    "/api/logout-everywhere",
     "/api/save-smtp-settings",
     "/api/send-test-email",
 ]
@@ -821,7 +857,7 @@ class TestAdminResetPassword:
         with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
             resp = self._post(client, "short", "short")
         assert resp.status_code == 400
-        assert "8" in resp.json()["detail"]
+        assert "12" in resp.json()["detail"]
 
     def test_returns_400_for_changeme_password(self, client):
         with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
@@ -837,3 +873,305 @@ class TestAdminResetPassword:
             resp = self._post(client, "NewSecurePass1!", "NewSecurePass1!")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9.  Session epoch  (S1-4: revoke sessions on password change and "log out everywhere")
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _legacy_token(username: str = "alice") -> str:
+    """A token minted before the epoch claim existed."""
+    import base64
+    import json
+    from auth import _sign
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"u": username, "t": int(time.time()), "r": False}).encode()
+    ).decode()
+    return f"{payload}.{_sign(payload)}"
+
+
+class TestSessionEpoch:
+
+    def test_bump_invalidates_tokens_issued_before_it(self):
+        from auth import bump_session_epoch
+        old = create_session_token("alice", remember=True)
+        with patch("dotenv.set_key"):
+            bump_session_epoch()
+        assert verify_session_token(old) is False
+
+    def test_token_issued_after_a_bump_is_valid(self):
+        from auth import bump_session_epoch
+        with patch("dotenv.set_key"):
+            bump_session_epoch()
+        assert verify_session_token(create_session_token("alice", remember=False)) is True
+
+    def test_bump_persists_the_epoch_to_env(self):
+        from auth import bump_session_epoch
+        with patch("dotenv.set_key") as set_key:
+            new_epoch = bump_session_epoch()
+        assert set_key.call_args[0][1:] == ("SESSION_EPOCH", str(new_epoch))
+        assert os.environ["SESSION_EPOCH"] == str(new_epoch)
+
+    def test_token_without_an_epoch_counts_as_epoch_zero(self, monkeypatch):
+        monkeypatch.setenv("SESSION_EPOCH", "0")
+        assert verify_session_token(_legacy_token()) is True
+        monkeypatch.setenv("SESSION_EPOCH", "1")
+        assert verify_session_token(_legacy_token()) is False
+
+    def test_change_password_signs_out_other_sessions_and_keeps_this_one(self, test_password, auth_cookies):
+        other_device = create_session_token("someone-else", remember=True)
+        original = os.environ.get("DASHBOARD_PASSWORD", test_password)
+        try:
+            with _fresh_client() as c, patch("dotenv.set_key"):
+                c.cookies.update(auth_cookies)
+                resp = c.post(
+                    "/api/change-password",
+                    json={
+                        "current_password": test_password,
+                        "new_password": "A-brand-new-passphrase-1",
+                        "confirm_password": "A-brand-new-passphrase-1",
+                    },
+                    headers={"X-CSRFToken": auth_cookies["csrftoken"]},
+                )
+            assert resp.status_code == 200
+            assert verify_session_token(other_device) is False
+            assert verify_session_token(auth_cookies[COOKIE_NAME]) is False
+            reissued = resp.cookies.get(COOKIE_NAME, "").strip('"')
+            assert reissued and verify_session_token(reissued) is True
+        finally:
+            os.environ["DASHBOARD_PASSWORD"] = original
+            os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
+
+    def test_change_password_by_api_key_issues_no_session_cookie(self, client, test_password):
+        original = os.environ.get("DASHBOARD_PASSWORD", test_password)
+        try:
+            with patch("dotenv.set_key"):
+                resp = client.post("/api/change-password", json={
+                    "current_password": original,
+                    "new_password": "A-brand-new-passphrase-1",
+                    "confirm_password": "A-brand-new-passphrase-1",
+                })
+            assert resp.status_code == 200
+            assert COOKIE_NAME not in resp.cookies
+        finally:
+            os.environ["DASHBOARD_PASSWORD"] = original
+            os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
+
+    def test_email_reset_and_admin_reset_bump_the_epoch(self, client):
+        before = create_session_token("alice", remember=False)
+        with (
+            patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}),
+            patch("dotenv.set_key"),
+            patch("api_routes_auth.update_config_atomic"),
+        ):
+            resp = client.post(
+                "/api/admin-reset-password",
+                json={"new_password": "A-brand-new-passphrase-1", "confirm_password": "A-brand-new-passphrase-1"},
+            )
+        assert resp.status_code == 200
+        assert verify_session_token(before) is False
+
+    def test_logout_everywhere_revokes_every_session_and_clears_cookies(self, step_up_headers, auth_cookies):
+        other_device = create_session_token("alice", remember=True)
+        with _fresh_client() as c, patch("dotenv.set_key"):
+            resp = c.post("/api/logout-everywhere", headers=step_up_headers)
+        assert resp.status_code == 200
+        assert verify_session_token(other_device) is False
+        assert verify_session_token(auth_cookies[COOKIE_NAME]) is False
+        cleared = [v.lower() for k, v in resp.headers.multi_items() if k.lower() == "set-cookie"]
+        assert any(v.startswith("session=") and "max-age=0" in v for v in cleared)
+        assert any(v.startswith("stepup=") and "max-age=0" in v and "path=/api" in v for v in cleared)
+
+    def test_stale_session_cookie_is_redirected_to_login(self, raw_client):
+        from auth import bump_session_epoch
+        token = create_session_token("alice", remember=False)
+        with patch("dotenv.set_key"):
+            bump_session_epoch()
+        resp = raw_client.get("/portfolio", cookies={COOKIE_NAME: token})
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["location"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10.  Account-wide failed-password counter and lockout  (S1-8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _login(c, username, password):
+    return c.post("/api/login", json={"username": username, "password": password, "remember_me": False})
+
+
+def _throttle_row():
+    from database import get_connection
+    conn = None
+    try:
+        conn = get_connection()
+        return conn.execute("SELECT failed_count, locked_until FROM login_throttle WHERE id = 1").fetchone()
+    finally:
+        if conn:
+            conn.close()
+
+
+class TestLoginLockout:
+
+    def test_four_failures_do_not_lock_the_account(self, test_username, test_password):
+        with _fresh_client() as c:
+            codes = [_login(c, test_username, "wrong-guess").status_code for _ in range(4)]
+            assert codes == [401] * 4
+            assert _login(c, test_username, test_password).status_code == 200
+
+    def test_fifth_failure_locks_even_the_correct_password(self, test_username, test_password):
+        with _fresh_client() as c:
+            codes = [_login(c, test_username, "wrong-guess").status_code for _ in range(5)]
+            assert codes == [401] * 5
+            locked = _login(c, test_username, test_password)
+        assert locked.status_code == 429
+        assert 0 < int(locked.headers["Retry-After"]) <= 30
+        assert "Too many failed attempts" in locked.json()["detail"]
+        assert COOKIE_NAME not in locked.cookies
+
+    def test_lockout_is_persisted_in_the_database(self, test_username):
+        with _fresh_client() as c:
+            for _ in range(5):
+                _login(c, test_username, "wrong-guess")
+        row = _throttle_row()
+        assert row["failed_count"] == 5
+        assert row["locked_until"]
+
+    def test_success_resets_the_counter(self, test_username, test_password):
+        with _fresh_client() as c:
+            for _ in range(4):
+                _login(c, test_username, "wrong-guess")
+            assert _login(c, test_username, test_password).status_code == 200
+            assert _throttle_row()["failed_count"] == 0
+            codes = [_login(c, test_username, "wrong-guess").status_code for _ in range(4)]
+        assert codes == [401] * 4
+
+    def test_wrong_username_with_right_password_counts_as_a_failure(self, test_password):
+        with _fresh_client() as c:
+            _login(c, "nobody", test_password)
+        assert _throttle_row()["failed_count"] == 1
+
+    def test_lock_doubles_with_each_further_failure_up_to_the_cap(self):
+        from auth import login_lockout_remaining, record_login_failure
+        observed = []
+        for _ in range(10):
+            record_login_failure("login", "203.0.113.9", known_user=True)
+            observed.append(login_lockout_remaining())
+        expected = [0] * 4 + [30, 60, 120, 240, 480, 900]
+        for got, want in zip(observed, expected):
+            assert abs(got - want) <= 1
+
+    def test_lock_expires_on_its_own(self, test_username, test_password):
+        from database import get_connection
+        with _fresh_client() as c:
+            for _ in range(5):
+                _login(c, test_username, "wrong-guess")
+            conn = None
+            try:
+                conn = get_connection()
+                conn.execute("UPDATE login_throttle SET locked_until = '2000-01-01 00:00:00' WHERE id = 1")
+                conn.commit()
+            finally:
+                if conn:
+                    conn.close()
+            assert _login(c, test_username, test_password).status_code == 200
+
+    def test_step_up_and_change_password_share_the_counter(self, test_username, auth_cookies, client):
+        with _fresh_client() as c:
+            c.cookies.update(auth_cookies)
+            headers = {"X-CSRFToken": auth_cookies["csrftoken"]}
+            for _ in range(3):
+                assert c.post("/api/step-up", json={"password": "wrong-guess"}, headers=headers).status_code == 401
+            for _ in range(2):
+                resp = client.post("/api/change-password", json={
+                    "current_password": "wrong-guess", "new_password": "x", "confirm_password": "x",
+                })
+                assert resp.status_code == 400
+            assert _throttle_row()["failed_count"] == 5
+            blocked = c.post("/api/step-up", json={"password": os.environ["DASHBOARD_PASSWORD"]}, headers=headers)
+            assert blocked.status_code == 429
+        assert "stepup=" not in blocked.headers.get("set-cookie", "")
+        client_blocked = client.post("/api/change-password", json={
+            "current_password": os.environ["DASHBOARD_PASSWORD"], "new_password": "x", "confirm_password": "x",
+        })
+        assert client_blocked.status_code == 429
+
+    def test_step_up_without_a_session_does_not_count(self, client):
+        assert client.post("/api/step-up", json={"password": "wrong-guess"}).status_code == 401
+        assert _throttle_row() is None
+
+    def test_api_key_access_is_not_affected_by_a_lockout(self, client, test_username):
+        with _fresh_client() as c:
+            for _ in range(5):
+                _login(c, test_username, "wrong-guess")
+        assert client.get("/api/notifications/latest").status_code == 200
+
+    def test_failures_are_logged_with_client_and_username_match(self, test_username, caplog):
+        with caplog.at_level("WARNING", logger="auth"), _fresh_client() as c:
+            _login(c, "nobody", "wrong-guess")
+        record = next(r for r in caplog.records if "Failed dashboard password attempt" in r.getMessage())
+        assert "login" in record.getMessage()
+        assert "username_matched=False" in record.getMessage()
+        assert "wrong-guess" not in record.getMessage()
+
+    def test_notification_fires_once_when_the_lockout_starts(self, test_username):
+        with patch("notification_engine.notify") as notify, _fresh_client() as c:
+            for _ in range(8):
+                from database import get_connection
+                conn = get_connection()
+                conn.execute("UPDATE login_throttle SET locked_until = NULL")
+                conn.commit()
+                conn.close()
+                _login(c, test_username, "wrong-guess")
+        alerts = [call for call in notify.call_args_list if call.args[0] == "failed_login_alert"]
+        assert len(alerts) == 1
+        assert "5 consecutive" in alerts[0].args[2]
+
+    def test_failed_login_alert_is_a_registered_notification_source(self):
+        from notification_engine import NOTIFICATION_SOURCES
+        meta = NOTIFICATION_SOURCES["failed_login_alert"]
+        assert meta["label"] == "Failed Login Alert"
+        assert meta["default"] == {"log_file": True, "in_app": True, "nextcloud_talk": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11.  Password policy  (S1-8: 12 characters minimum, no common passwords)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPasswordPolicy:
+
+    @pytest.mark.parametrize("password", ["", "short", "elevenchars", "changeme"])
+    def test_too_short_is_rejected(self, password):
+        from auth import password_policy_error
+        assert "at least 12 characters" in password_policy_error(password)
+
+    def test_exactly_twelve_characters_is_accepted(self):
+        from auth import password_policy_error
+        assert password_policy_error("Zx9!kQw2#mPe") is None
+
+    @pytest.mark.parametrize("password", ["password123456", "PASSWORD123456", "Qwertyuiop123", "123456789012"])
+    def test_common_password_is_rejected_whatever_its_case(self, password):
+        from auth import password_policy_error
+        assert "too common" in password_policy_error(password)
+
+    def test_a_passphrase_is_accepted(self):
+        from auth import password_policy_error
+        assert password_policy_error("correct horse battery staple") is None
+
+    def test_list_file_entries_are_lowercase_and_not_shorter_than_the_minimum(self):
+        from auth import MIN_LENGTH_POLICY, _common_passwords
+        entries = _common_passwords()
+        assert len(entries) > 500
+        assert all(e == e.lower() and len(e) >= MIN_LENGTH_POLICY for e in entries)
+
+    def test_cli_reset_applies_the_policy_and_revokes_sessions(self, monkeypatch, capsys):
+        import reset_admin_password
+        answers = iter(["elevenchars", "password123456", "Correct-Horse-Battery-9", "Correct-Horse-Battery-9"])
+        monkeypatch.setattr("getpass.getpass", lambda prompt="": next(answers))
+        with patch("dotenv.set_key") as set_key, patch("auth.clear_login_failures") as clear:
+            reset_admin_password.main()
+        out = capsys.readouterr().out
+        assert out.count("at least 12 characters and not a commonly used password") == 2
+        written = [call.args[1] for call in set_key.call_args_list]
+        assert {"DASHBOARD_PASSWORD_HASH", "DASHBOARD_PASSWORD", "SESSION_EPOCH"} <= set(written)
+        clear.assert_called_once()

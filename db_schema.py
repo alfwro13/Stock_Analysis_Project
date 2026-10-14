@@ -1389,6 +1389,15 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS login_throttle (
+                id              INTEGER PRIMARY KEY CHECK (id = 1),
+                failed_count    INTEGER NOT NULL DEFAULT 0,
+                locked_until    TEXT,
+                last_failure_at TEXT
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS yahoo_api_stats (
                 date                  TEXT PRIMARY KEY,
                 total_calls           INTEGER NOT NULL DEFAULT 0,

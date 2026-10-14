@@ -5,9 +5,11 @@ Usage:
     python reset_admin_password.py
 
 The script prompts for a new password, hashes it, and writes DASHBOARD_PASSWORD_HASH
-to the .env file.  The running app must be restarted to pick up the change.
+to the .env file.  It also bumps SESSION_EPOCH (signing out every browser) and clears
+any failed-login lockout.  The running app must be restarted to pick up the change.
 """
 import getpass
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -21,13 +23,12 @@ def main() -> None:
     print("This will overwrite the stored password hash in .env.")
     print("Restart the app after completing this step.\n")
 
+    from auth import MIN_LENGTH_POLICY, password_policy_error
+
     while True:
         pw = getpass.getpass("New password: ")
-        if len(pw) < 8:
-            print("Password must be at least 8 characters. Try again.")
-            continue
-        if pw == "changeme":
-            print("'changeme' is not allowed. Try again.")
+        if password_policy_error(pw):
+            print(f"The password must be at least {MIN_LENGTH_POLICY} characters and not a commonly used password. Try again.")
             continue
         confirm = getpass.getpass("Confirm new password: ")
         if pw != confirm:
@@ -35,7 +36,7 @@ def main() -> None:
             continue
         break
 
-    from auth import hash_password
+    from auth import bump_session_epoch, clear_login_failures, hash_password
     from dotenv import set_key
 
     env_path = PROJECT_ROOT / ".env"
@@ -44,6 +45,11 @@ def main() -> None:
     new_hash = hash_password(pw)
     set_key(str(env_path), "DASHBOARD_PASSWORD_HASH", new_hash)
     set_key(str(env_path), "DASHBOARD_PASSWORD", "")
+    bump_session_epoch()
+    try:
+        clear_login_failures()
+    except sqlite3.OperationalError:
+        pass  # login_throttle is created on the first boot after upgrade; no lockout can exist before it
 
     print("\nPassword updated successfully.")
     print("Restart the app for the change to take effect.")
