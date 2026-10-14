@@ -537,23 +537,20 @@ class TestChartAPIPathSafety:
 
     def test_encoded_slash_traversal_blocked_by_routing(self, client):
         resp = client.get(
-            "/api/pattern-detection/chart/..%2F..%2F..%2Fetc%2Fpasswd",
-            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+            "/api/pattern-detection/chart/..%2F..%2F..%2Fetc%2Fpasswd"
         )
         assert resp.status_code == 404
 
     def test_ticker_with_disallowed_characters_rejected(self, client):
         resp = client.get(
-            "/api/pattern-detection/chart/FOO%20BAR",
-            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+            "/api/pattern-detection/chart/FOO%20BAR"
         )
         assert resp.status_code == 400
         assert resp.json()["status"] == "error"
 
     def test_valid_ticker_with_no_data_returns_404_not_400(self, client):
         resp = client.get(
-            "/api/pattern-detection/chart/ZZZNOPE",
-            headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+            "/api/pattern-detection/chart/ZZZNOPE"
         )
         assert resp.status_code == 404
 
@@ -586,8 +583,7 @@ class TestChartAPIMultiPattern:
             with patch("api_routes_analysis.HISTORICAL_DIR", tmp_path):
                 df.to_parquet(tmp_path / f"{ticker}.parquet", engine="pyarrow")
                 resp = client.get(
-                    f"/api/pattern-detection/chart/{ticker}",
-                    headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+                    f"/api/pattern-detection/chart/{ticker}"
                 )
             assert resp.status_code == 200
             data = resp.json()
@@ -623,8 +619,7 @@ class TestResultsAPIDirectionAndScope:
             with patch("accounts_engine.get_combined_holdings", return_value={ticker: {"ticker": ticker}}), \
                  patch("database.get_watchlist_tickers", return_value=[]):
                 resp = client.get(
-                    "/api/pattern-detection/results",
-                    headers={"X-API-Key": "test-api-key-do-not-use-in-production"},
+                    "/api/pattern-detection/results"
                 )
             assert resp.status_code == 200
             data = resp.json()
