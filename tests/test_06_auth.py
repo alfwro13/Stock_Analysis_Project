@@ -1171,8 +1171,7 @@ class TestPasswordPolicy:
         with patch("dotenv.set_key") as set_key, patch("auth.clear_login_failures") as clear:
             reset_admin_password.main()
         out = capsys.readouterr().out
-        assert "at least 12 characters" in out
-        assert "too common" in out
+        assert out.count("at least 12 characters and not a commonly used password") == 2
         written = [call.args[1] for call in set_key.call_args_list]
         assert {"DASHBOARD_PASSWORD_HASH", "DASHBOARD_PASSWORD", "SESSION_EPOCH"} <= set(written)
         clear.assert_called_once()

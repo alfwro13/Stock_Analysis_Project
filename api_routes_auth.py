@@ -156,8 +156,9 @@ def change_password(request: Request, body: ChangePasswordRequest, response: Res
     claims = session_claims(request.cookies.get(COOKIE_NAME, ""))
     _store_new_password(body.new_password)
     if claims:
-        remember = bool(claims.get("r", False))
-        response.set_cookie(value=create_session_token(claims["u"], remember), **cookie_kwargs(remember))
+        remember = claims.get("r") is True
+        token = create_session_token(os.environ.get("DASHBOARD_USERNAME", ""), remember)
+        response.set_cookie(value=token, **cookie_kwargs(remember))
     return {"status": "ok"}
 
 
