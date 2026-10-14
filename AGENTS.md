@@ -212,9 +212,9 @@ Every code change that adds, removes, or significantly alters a feature **must**
 | File | Description |
 |---|---|
 | `ml_ensemble.joblib` | Primary soft-voting classifier (XGBoost + RF) |
-| `production_ensemble*.pkl` | Long/short directional ensembles |
-| `raw_xgb_model*.pkl` | Raw XGBoost base learners |
-| `feature_names.json` | Ordered feature list for inference |
-| `feature_stats.joblib` | Cross-sectional z-score stats |
+| `quantile_q10.joblib`, `quantile_q90.joblib` | Q10/Q90 quantile models behind the ML upside range |
+| `feature_stats.json` | Training feature statistics (mean/std) for the inference drift check; plain data, not a pickle |
+| `alert_referee_trapmonitor.joblib`, `alert_referee_confluence.joblib` | Alert Confidence Referee models |
+| `*.sklearn-version` | Version sidecars written by `model_compatibility_engine` |
 
 Retrain via Settings → Machine Learning & AI Engine: Run Backfill Now (Historical Data Backfill & Sync), then Run Training Now (Global Model Training).
