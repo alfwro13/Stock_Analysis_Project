@@ -2643,7 +2643,7 @@ function chain() {
 const $ = function () { return chain(); };
 $.fn = {dataTable: {ext: {search: [], errMode: ''}, render: {number: () => () => ''}}};
 const context = {
-    $, Option, URLSearchParams, document: {}, window: {location: {search: ''}},
+    $, Option, URL, URLSearchParams, document: {}, window: {location: {search: ''}},
 };
 vm.createContext(context);
 for (const file of process.argv.slice(2)) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
@@ -2675,9 +2675,15 @@ for (const name of spec.rowSector) {
     assert.ok(!shown.includes('<img'), name + ': ' + shown);
 }
 if (spec.url) {
-    const shown = col('freetrade_url').render('https://x" onmouseover="alert(1)', 'display', {});
-    assert.ok(!shown.includes('" onmouseover'), shown);
-    assert.ok(shown.includes('&quot;'), shown);
+    const render = col('freetrade_url').render;
+    const ok = render('https://example.com/kiid.pdf', 'display', {});
+    assert.ok(ok.includes('<a href="https://example.com/kiid.pdf"'), ok);
+    const breakout = render('https://x.test/a"onmouseover="alert(1)', 'display', {});
+    assert.ok(!breakout.includes('"onmouseover'), breakout);
+    assert.equal(breakout.match(/href="/g).length, 1, breakout);
+    for (const bad of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,x', '/relative', 'N/A', '', null]) {
+        assert.equal(render(bad, 'display', {}), 'N/A', JSON.stringify(bad));
+    }
 }
 const values = [payload, 'Technology'];
 const each = cb => values.forEach(cb);
