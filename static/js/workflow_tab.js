@@ -55,7 +55,7 @@
         var g = el.closest ? el.closest("g.node") : null;
         if (!g) return null;
         var raw = g.id || "";
-        var m = raw.match(/^flowchart-(.+)-\d+$/);
+        var m = raw.match(/(?:^|-)flowchart-(.+)-\d+$/);
         if (!m) return null;
         var candidate = m[1];
         if (nodeMap[candidate]) return candidate;
