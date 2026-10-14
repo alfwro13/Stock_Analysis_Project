@@ -74,3 +74,15 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # package.json only records the version of each front-end library committed
+  # under static/vendor/; Dependabot's PR bumps that version and fails
+  # test_settings_loads_vendored_mermaid_that_exists_in_the_repo until the new
+  # dist file is committed (see assets/dependencies.md, "Vendored Mermaid").
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "javascript"

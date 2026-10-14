@@ -162,13 +162,31 @@ and what should I test?" without grepping the whole codebase first.
 `a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f`. It is loaded
 only by the Settings page, where `static/js/workflow_monitor.js` draws the Workflow
 Monitor flow-chart. It is committed to git like every other front-end library;
-the application no longer downloads it at startup. To upgrade, download the new
-`dist/mermaid.min.js`, store it under a new versioned filename, update the
-`<script>` in `templates/settings.html`, delete the old file and bump `CSS_VERSION`.
+the application no longer downloads it at startup.
+
+**Tracking new releases:** `package.json` at the repository root records the
+vendored version (`"mermaid": "12.2.0"`, an exact pin). Nothing is installed from
+it, and it has no lockfile. `.github/dependabot.yml` has an `npm` ecosystem, so
+Dependabot opens a weekly PR when Mermaid releases and GitHub raises security
+alerts for Mermaid advisories. That PR only changes the version in `package.json`,
+and `test_settings_loads_vendored_mermaid_that_exists_in_the_repo` fails on it
+until the vendored file matches, which is the reminder to do the steps below.
+
+To upgrade (on the Dependabot branch, or by hand if you change `package.json`
+yourself), download `dist/mermaid.min.js` for the new version from jsDelivr and
+compare its SHA-256 with `https://data.jsdelivr.com/v1/packages/npm/mermaid@<version>?structure=flat`.
+Store it as `static/vendor/mermaid/mermaid-<version>.min.js`, update the
+`<script>` in `templates/settings.html`, delete the old file, update the version
+and hash in this section, and bump `CSS_VERSION`.
 Then check that the Workflow Monitor graph on Settings renders (nodes, status
 colours, edges) and that single- and double-click on a node still work in the
 graph tab: `static/js/workflow_tab.js` parses Mermaid's generated node element
 ids (`<diagram id>-flowchart-<job id>-<n>`), which a major upgrade can change.
+Mermaid also changes defaults between majors (12.x switched the layout from
+`dagre` to `elk`), which is why `workflow_monitor.js` pins `layout: "dagre"` and
+`flowchart.wrappingWidth`: re-check the defaults of any new major against what is
+pinned. After a deploy, hard-reload: the graph tab loads `workflow_tab.js` without
+a version query.
 
 ## Vendored column reordering
 

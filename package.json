@@ -1,0 +1,8 @@
+{
+  "name": "stock-analysis-vendored-frontend",
+  "private": true,
+  "description": "Version manifest for the front-end libraries vendored under static/vendor/. Nothing is installed from it; Dependabot reads it to report new releases and advisories.",
+  "dependencies": {
+    "mermaid": "12.2.0"
+  }
+}

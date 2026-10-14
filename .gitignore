@@ -28,6 +28,9 @@ backups/
 ghostfolio_ha_integration/
 Stock_Analysis_Project_ha_integration/
 
+# Dependabot reads package.json; nothing is ever installed from it
+node_modules/
+
 # Ignore specific files
 to_do*.txt
 config.json
