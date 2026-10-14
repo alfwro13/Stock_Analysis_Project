@@ -169,6 +169,8 @@ Pipeline steps: Ghostfolio sync → price history download → quant signals →
 
 Pulls the latest holdings from Ghostfolio and refreshes the local portfolio state. Requires Ghostfolio credentials in settings.
 
+TLS certificates are always verified when `GHOSTFOLIO_URL` is `https://` (SEC 19/27 · S3-5); this covers the sync, the account discovery and the X-ray client. A plain `http://` LAN URL is unaffected. An instance served with a self-signed or private-CA certificate needs `REQUESTS_CA_BUNDLE` (a path to that CA's PEM file) in the app's environment, for example in `.env`.
+
 **Request body:** none  
 **Response:** standard background task response
 
@@ -2734,6 +2736,13 @@ Tickers with no Parquet data or no Ghostfolio BUY activities are omitted from th
 
 Stores and retrieves news articles for portfolio and watchlist tickers. Articles are fetched via yfinance, full-text extracted via trafilatura, and sentiment-scored via FinBERT. Results are stored in the `news_articles` table.
 
+**Article body fetch rules (SEC 19/27 · S6-2).** The article URL comes from Yahoo's payload, so the body is fetched by `outbound_fetch_helpers.fetch_body()` (the same vetted fetch as the Account Price Scraper), not by trafilatura, which only parses the HTML it is handed:
+- The URL must be `https://`; an `http://` article keeps its headline and summary but gets no full text.
+- The host name is resolved first, and any loopback, private, link-local, CGNAT or multicast answer refuses the fetch. There is no allow-list for news.
+- The connection is pinned to the vetted IP with the certificate and SNI checked against the host name. A TLS error fails the fetch; it is never retried without verification.
+- Up to 2 redirects are followed, and every hop is re-vetted (https, public address, pinned) like the first request.
+- The body is cut off at 2 MB (it was 20 MB). Any refusal or failure leaves `full_text` empty and is logged at debug level.
+
 ### `GET /api/news-feed`
 
 Returns paginated news articles from the local `news_articles` table.
@@ -3767,7 +3776,7 @@ A generic URL + CSS-selector price feed, replicating what Ghostfolio's "manual a
 - The URL must be `https://`. A saved `http://` URL is refused when it next runs.
 - The host name is resolved first. A target that resolves to a loopback, private, link-local, CGNAT or multicast address is refused unless its host name or IP is in the `SCRAPER_ALLOWED_HOSTS` Settings key (match is on the requested host, not the resolved address). A name with even one non-public answer is refused.
 - The connection is pinned to the vetted IP (certificate and SNI are still checked against the host name), so a DNS change between the check and the connect cannot redirect it. If an address is unreachable, the next vetted one is tried.
-- Redirects are not followed (a 3xx is an error), and the body is cut off at 2 MB.
+- Redirects are not followed (a 3xx is an error), and the body is cut off at 2 MB. The fetch itself lives in `outbound_fetch_helpers.py`, shared with the News Feed article fetch.
 - Custom headers are limited to `Cookie`, `Authorization`, `User-Agent` and `Accept*`; any other name, `Host` included, is refused (400 on save, 422 on test, a warning notification on a scheduled run).
 - Error messages never carry page text or exception detail; that goes to the server log only.
 

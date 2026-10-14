@@ -613,10 +613,63 @@ class TestFetchActivities:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# TLS verification (SEC 19/27 · S3-5)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestTlsVerificationStaysOn:
+    """Every Ghostfolio call, including the one that sends the access token, must use requests' default verification."""
+
+    def test_authenticate_does_not_disable_verification(self, monkeypatch):
+        engine = _engine_with_bearer(monkeypatch)
+        with patch("requests.post", return_value=_mock_resp(200, {"authToken": "t"})) as post:
+            assert engine.authenticate() is True
+        assert "verify" not in post.call_args.kwargs
+
+    def test_discover_accounts_does_not_disable_verification(self, monkeypatch):
+        engine = _engine_with_bearer(monkeypatch)
+        with patch("requests.get", return_value=_mock_resp(200, {"accounts": []})) as get, \
+             patch("ghostfolio_sync.update_config_atomic"):
+            engine.discover_accounts()
+        assert "verify" not in get.call_args.kwargs
+
+    def test_sync_portfolio_does_not_disable_verification(self, monkeypatch, tmp_path):
+        engine = _engine_with_bearer(monkeypatch)
+        with patch("requests.get", return_value=_mock_resp(200, {"holdings": []})) as get, \
+             patch("ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
+            engine.sync_portfolio()
+        assert get.call_count == 2
+        assert all("verify" not in c.kwargs for c in get.call_args_list)
+
+    def test_fetch_activities_does_not_disable_verification(self, monkeypatch):
+        engine = _engine_with_bearer(monkeypatch)
+        with patch("requests.get", return_value=_mock_resp(200, {"activities": []})) as get:
+            engine.fetch_activities()
+        assert "verify" not in get.call_args.kwargs
+
+    def test_importing_the_modules_does_not_silence_insecure_request_warnings(self):
+        import warnings
+
+        import urllib3
+
+        import ghostfolio_sync  # noqa: F401
+        import xray_engine  # noqa: F401
+        ignored = [
+            f for f in warnings.filters
+            if f[0] == "ignore" and f[2] is urllib3.exceptions.InsecureRequestWarning
+        ]
+        assert ignored == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 7. run_full_sync()
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestRunFullSync:
+
+    @pytest.fixture(autouse=True)
+    def _integration_enabled(self):
+        with patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": True}):
+            yield
 
     def test_integration_disabled_returns_false_without_authenticating(self, monkeypatch):
         """run_full_sync() must skip entirely when GHOSTFOLIO_ENABLED is False."""
@@ -638,9 +691,12 @@ class TestRunFullSync:
     def test_auth_failure_returns_false(self, monkeypatch):
         """run_full_sync() returns False when authentication fails."""
         engine = _engine_with_bearer(monkeypatch)
-        with patch.object(engine, "authenticate", return_value=False):
+        with patch.object(engine, "authenticate", return_value=False) as mock_auth, \
+             patch.object(engine, "discover_accounts") as mock_discover:
             result = engine.run_full_sync()
         assert result is False
+        mock_auth.assert_called_once()
+        mock_discover.assert_not_called()
 
     def test_success_calls_all_steps_in_order(self, monkeypatch, tmp_path):
         """run_full_sync() must call authenticate → discover_accounts → sync_portfolio."""

@@ -4,6 +4,7 @@ tests/test_news_feed_engine.py — unit tests for news_feed_engine pure function
 Covers:
   _make_article_id()        — UUID present vs absent, SHA-256 hash determinism
   _build_ticker_source_map()— portfolio/watchlist union, 'both' label, ignored filter
+  _fetch_full_text()        — vetted fetch only: https, public address, 2 redirects, 2 MB, no TLS-off retry
 """
 import sys
 from pathlib import Path
@@ -12,9 +13,12 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import news_feed_engine
+import outbound_fetch_helpers
 from news_feed_engine import (
     _make_article_id,
     _build_ticker_source_map,
+    _fetch_full_text,
 )
 
 
@@ -79,3 +83,38 @@ class TestBuildTickerSourceMap:
     def test_empty_portfolio_and_watchlist_returns_empty(self):
         result = self._run([], [])
         assert result == {}
+
+
+class TestFetchFullText:
+    def test_extracts_text_from_the_vetted_body(self):
+        with patch("news_feed_engine.fetch_body", return_value="<html>x</html>") as fetch, \
+             patch("trafilatura.extract", return_value="Article text") as extract, \
+             patch("trafilatura.fetch_url", side_effect=AssertionError("trafilatura must not download")):
+            assert _fetch_full_text("https://publisher.example/a") == "Article text"
+        assert fetch.call_args.kwargs == {"max_redirects": news_feed_engine._ARTICLE_MAX_REDIRECTS}
+        assert extract.call_args.args == ("<html>x</html>",)
+
+    def test_article_fetch_allows_two_redirects_and_two_megabytes(self):
+        assert news_feed_engine._ARTICLE_MAX_REDIRECTS == 2
+        assert outbound_fetch_helpers.DEFAULT_MAX_BODY_BYTES == 2 * 1024 * 1024
+
+    @pytest.mark.parametrize("url", ["", "N/A", None])
+    def test_missing_url_returns_none_without_fetching(self, url):
+        with patch("news_feed_engine.fetch_body") as fetch:
+            assert _fetch_full_text(url) is None
+        fetch.assert_not_called()
+
+    def test_http_url_is_refused_before_any_lookup(self):
+        with patch.object(outbound_fetch_helpers, "_resolve", side_effect=AssertionError("must not resolve")):
+            assert _fetch_full_text("http://publisher.example/a") is None
+
+    @pytest.mark.parametrize("address", ["127.0.0.1", "10.0.0.5", "192.168.1.71", "169.254.169.254", "::1"])
+    def test_non_public_address_is_never_connected_to(self, address):
+        with patch.object(outbound_fetch_helpers, "_resolve", return_value=[address]), \
+             patch.object(outbound_fetch_helpers, "_get_pinned") as pinned:
+            assert _fetch_full_text("https://publisher.example/a") is None
+        pinned.assert_not_called()
+
+    def test_fetch_failure_returns_none(self):
+        with patch("news_feed_engine.fetch_body", side_effect=Exception("TLS handshake failed")):
+            assert _fetch_full_text("https://publisher.example/a") is None

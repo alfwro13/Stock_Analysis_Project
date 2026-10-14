@@ -1419,7 +1419,7 @@ def test_scraper_test_endpoint_refuses_a_loopback_target_without_connecting(clie
     import database as _db
     account_id = _create_account(client, account_type="House")
     try:
-        with patch("account_scraper_engine._get_pinned") as pinned:
+        with patch("outbound_fetch_helpers._get_pinned") as pinned:
             resp = client.post(f"/api/accounts/{account_id}/scraper/test", json={
                 "url": "https://127.0.0.1:8090/api/settings", "selector": "#gf-price",
             })

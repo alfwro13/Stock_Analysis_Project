@@ -1683,3 +1683,11 @@ class TestSimulateScopeWithHypotheticalHolding:
         with patch("xray_engine.load_config", return_value=_builtin_config()):
             with pytest.raises(RuntimeError):
                 simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_HYPO, 1000.0)
+
+
+class TestGhostfolioXRayClientTls:
+    def test_session_keeps_certificate_verification_on(self):
+        with patch("xray_engine.GHOSTFOLIO_URL", "https://ghost.example"), \
+             patch("xray_engine.GHOSTFOLIO_TOKEN", "tok"):
+            client = GhostfolioXRayClient()
+        assert client._session.verify is True

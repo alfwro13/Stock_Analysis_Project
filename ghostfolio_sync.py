@@ -1,7 +1,6 @@
 import json
 import logging
 import requests
-import urllib3
 from slugify import slugify
 from typing import Dict, Any, Optional
 
@@ -16,9 +15,6 @@ from config import (
     WATCHLIST_PATH,
     GHOSTFOLIO_ACCOUNTS,
 )
-
-# Disable insecure request warnings for self-hosted instances using IP addresses
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def purge_ghostfolio_files() -> int:
@@ -53,7 +49,7 @@ class GhostfolioSyncEngine:
         payload = {"accessToken": self.token}
         
         try:
-            response = requests.post(auth_url, json=payload, verify=False, timeout=10)
+            response = requests.post(auth_url, json=payload, timeout=10)
             response.raise_for_status()
             
             bearer_token = response.json().get("authToken")
@@ -71,7 +67,7 @@ class GhostfolioSyncEngine:
     def discover_accounts(self) -> list:
         logger.info("Discovering active accounts on Ghostfolio server...")
         try:
-            response = requests.get(f"{self.url}/api/v1/account", headers=self.headers, verify=False, timeout=10)
+            response = requests.get(f"{self.url}/api/v1/account", headers=self.headers, timeout=10)
             response.raise_for_status()
             
             accounts_list = response.json().get("accounts", [])
@@ -127,7 +123,7 @@ class GhostfolioSyncEngine:
             for acc_id in self.active_account_ids:
                 acc_name = next((acc["name"] for acc in self.discovered_accounts if acc["id"] == acc_id), acc_id)
                 holdings_url = f"{self.url}/api/v1/portfolio/holdings?accounts={acc_id}"
-                resp = requests.get(holdings_url, headers=self.headers, verify=False, timeout=15)
+                resp = requests.get(holdings_url, headers=self.headers, timeout=15)
 
                 try:
                     resp.raise_for_status()
@@ -199,7 +195,6 @@ class GhostfolioSyncEngine:
             response = requests.get(
                 url,
                 headers=self.headers,
-                verify=False,
                 timeout=15,
             )
             response.raise_for_status()
