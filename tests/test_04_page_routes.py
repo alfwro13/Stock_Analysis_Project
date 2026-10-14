@@ -2605,9 +2605,16 @@ def test_score_history_filter_tabs_urlencode_ref(client):
 
 @pytest.mark.pages
 def test_settings_loads_vendored_mermaid_that_exists_in_the_repo(client):
+    import json
     import re
     resp = client.get("/settings")
     assert resp.status_code == 200
     srcs = re.findall(r'<script src="(/static/[^"?]+mermaid[^"?]*)', resp.text)
     assert len(srcs) == 1 and srcs[0].startswith("/static/vendor/mermaid/")
-    assert (Path(__file__).parent.parent / srcs[0].lstrip("/")).stat().st_size > 0
+    root = Path(__file__).parent.parent
+    assert (root / srcs[0].lstrip("/")).stat().st_size > 0
+    declared = json.loads((root / "package.json").read_text())["dependencies"]["mermaid"]
+    assert srcs[0].endswith(f"/mermaid-{declared}.min.js"), (
+        f"package.json declares mermaid {declared} but Settings loads {srcs[0]}: "
+        "commit the matching dist/mermaid.min.js and update templates/settings.html"
+    )

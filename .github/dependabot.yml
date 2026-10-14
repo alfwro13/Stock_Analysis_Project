@@ -74,3 +74,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # package.json only records the version of each front-end library committed
+  # under static/vendor/; refresh-mermaid.yml commits the matching dist file to
+  # Dependabot's PR (see assets/dependencies.md, "Vendored Mermaid").
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "javascript"
