@@ -100,7 +100,7 @@ and what should I test?" without grepping the whole codebase first.
 | `lxml` | HTML parsing backend, used directly (`account_scraper_engine.py`'s `lxml.html`) and as `trafilatura`'s/`BeautifulSoup`'s parser | Parsing edge cases on malformed HTML |
 | `cssselect` | CSS-selector support for `lxml.html` (Account Price Scraper) | Selector syntax edge cases |
 | `html5lib` | Fallback HTML5 parser (used transitively by `trafilatura`/`BeautifulSoup`) | Rarely invoked directly — low risk |
-| `trafilatura` | Full-text article extraction for the News Feed (`news_feed_engine.py`) | Extraction heuristics changing what counts as "article body" |
+| `trafilatura` | Full-text article extraction for the News Feed (`news_feed_engine.py`); it only parses HTML that `outbound_fetch_helpers.fetch_body()` has already downloaded and never fetches a URL itself | Extraction heuristics changing what counts as "article body" |
 
 ## Charts & templating
 

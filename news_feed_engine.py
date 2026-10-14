@@ -7,8 +7,12 @@ from typing import Dict, Optional
 from config import load_config
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from database import get_connection, get_watchlist_tickers
+from outbound_fetch_helpers import fetch_body
 
 logger = logging.getLogger(__name__)
+
+_ARTICLE_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; QuantamentalNewsFeed/1.0)"}
+_ARTICLE_MAX_REDIRECTS = 2
 
 
 def _build_ticker_source_map() -> Dict[str, str]:
@@ -42,13 +46,10 @@ def _fetch_full_text(url: str) -> str | None:
         return None
     try:
         import trafilatura
-        downloaded = trafilatura.fetch_url(url)
-        if downloaded is None:
-            return None
-        text = trafilatura.extract(downloaded, include_comments=False, include_tables=False)
-        return text
+        html = fetch_body(url, _ARTICLE_HEADERS, max_redirects=_ARTICLE_MAX_REDIRECTS)
+        return trafilatura.extract(html, include_comments=False, include_tables=False)
     except Exception as e:
-        logger.debug(f"trafilatura extraction failed for {url}: {e}")
+        logger.debug("Article body fetch failed for %s: %s", url, e)
         return None
 
 

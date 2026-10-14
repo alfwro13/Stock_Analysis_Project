@@ -6,7 +6,6 @@ import datetime
 import numpy as np
 import pandas as pd
 import requests
-import urllib3
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -17,8 +16,6 @@ from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
 from treasury_bill_engine import parse_tbill_buy_txn_id
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_ticker, sanitize_floats
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +196,6 @@ class GhostfolioXRayClient:
         self.token: str = GHOSTFOLIO_TOKEN
         self.is_configured: bool = bool(self.url and self.token)
         self._session: requests.Session = requests.Session()
-        self._session.verify = False
 
     def authenticate(self) -> bool:
         try:

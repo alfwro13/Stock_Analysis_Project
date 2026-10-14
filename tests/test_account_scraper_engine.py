@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 import account_scraper_engine as scraper
+import outbound_fetch_helpers as fetch_helpers
 from database import create_account, get_price_history
 
 
@@ -24,7 +25,7 @@ PUBLIC_IP = "93.184.216.34"
 
 
 def _resolves_to(*addresses):
-    return patch.object(scraper, "_resolve", return_value=list(addresses))
+    return patch.object(fetch_helpers, "_resolve", return_value=list(addresses))
 
 
 def _allow(*hosts):
@@ -61,7 +62,7 @@ def test_fetch_and_extract_success():
 
 
 def test_fetch_and_extract_http_error():
-    with _resolves_to(PUBLIC_IP), _allow(), patch.object(scraper, "_get_pinned", side_effect=Exception("HTTP 500")):
+    with _resolves_to(PUBLIC_IP), _allow(), patch.object(fetch_helpers, "_get_pinned", side_effect=Exception("HTTP 500")):
         result = scraper.fetch_and_extract("https://example.test/x.html", "#gf-price")
     assert result["status"] == "error"
 
@@ -102,7 +103,7 @@ def test_no_number_error_does_not_echo_page_text():
     "https://user:secret@example.test/x",
 ])
 def test_non_https_or_malformed_url_is_refused_before_any_lookup(url):
-    with patch.object(scraper, "_resolve", side_effect=AssertionError("must not resolve")):
+    with patch.object(fetch_helpers, "_resolve", side_effect=AssertionError("must not resolve")):
         result = scraper.fetch_and_extract(url, "#gf-price")
     assert result["status"] == "error"
 
@@ -113,7 +114,7 @@ def test_non_https_or_malformed_url_is_refused_before_any_lookup(url):
     "::ffff:192.168.1.71",
 ])
 def test_non_public_address_is_refused_and_never_connected_to(address):
-    with _resolves_to(address), _allow(), patch.object(scraper, "_get_pinned") as pinned:
+    with _resolves_to(address), _allow(), patch.object(fetch_helpers, "_get_pinned") as pinned:
         result = scraper.fetch_and_extract("https://scrape.example.test/x.html", "#gf-price")
     assert result["status"] == "error"
     assert "not allowed" in result["message"]
@@ -121,14 +122,14 @@ def test_non_public_address_is_refused_and_never_connected_to(address):
 
 
 def test_hostname_with_one_private_answer_is_refused():
-    with _resolves_to(PUBLIC_IP, "10.0.0.9"), _allow(), patch.object(scraper, "_get_pinned") as pinned:
+    with _resolves_to(PUBLIC_IP, "10.0.0.9"), _allow(), patch.object(fetch_helpers, "_get_pinned") as pinned:
         result = scraper.fetch_and_extract("https://scrape.example.test/x.html", "#gf-price")
     assert result["status"] == "error"
     pinned.assert_not_called()
 
 
 def test_ip_literal_in_url_is_vetted_like_a_name():
-    with _allow(), patch.object(scraper, "_get_pinned") as pinned:
+    with _allow(), patch.object(fetch_helpers, "_get_pinned") as pinned:
         result = scraper.fetch_and_extract("https://127.0.0.1/x.html", "#gf-price")
     assert result["status"] == "error"
     pinned.assert_not_called()
@@ -136,17 +137,17 @@ def test_ip_literal_in_url_is_vetted_like_a_name():
 
 def test_public_host_is_pinned_to_the_vetted_address_with_host_header():
     with _resolves_to(PUBLIC_IP), _allow(), \
-            patch.object(scraper, "_get_pinned", return_value=AVIVA_HTML) as pinned:
+            patch.object(fetch_helpers, "_get_pinned", return_value=AVIVA_HTML) as pinned:
         result = scraper.fetch_and_extract("https://Scrape.Example.test/a/b.html?q=1#frag", "#gf-price")
     assert result["status"] == "success"
-    hostname, port, address, target, headers = pinned.call_args.args
+    hostname, port, address, target, headers, _max_bytes = pinned.call_args.args
     assert (hostname, port, address, target) == ("scrape.example.test", 443, PUBLIC_IP, "/a/b.html?q=1")
     assert headers["Host"] == "scrape.example.test"
 
 
 def test_non_default_port_is_kept_in_host_header():
     with _resolves_to(PUBLIC_IP), _allow(), \
-            patch.object(scraper, "_get_pinned", return_value=AVIVA_HTML) as pinned:
+            patch.object(fetch_helpers, "_get_pinned", return_value=AVIVA_HTML) as pinned:
         scraper.fetch_and_extract("https://scrape.example.test:8443/", "#gf-price")
     assert pinned.call_args.args[1] == 8443
     assert pinned.call_args.args[4]["Host"] == "scrape.example.test:8443"
@@ -161,14 +162,14 @@ def test_non_default_port_is_kept_in_host_header():
 def test_allow_listed_host_may_resolve_to_a_private_address(host, url_host):
     address = "::1" if ":" in host else "192.168.1.71"
     with _resolves_to(address), _allow(host), \
-            patch.object(scraper, "_get_pinned", return_value=AVIVA_HTML) as pinned:
+            patch.object(fetch_helpers, "_get_pinned", return_value=AVIVA_HTML) as pinned:
         result = scraper.fetch_and_extract(f"https://{url_host}:8123/house.html", "#gf-price")
     assert result["status"] == "success"
     assert pinned.call_args.args[2] == address
 
 
 def test_allow_list_matches_the_requested_host_not_the_resolved_address():
-    with _resolves_to("192.168.1.71"), _allow("192.168.1.71"), patch.object(scraper, "_get_pinned") as pinned:
+    with _resolves_to("192.168.1.71"), _allow("192.168.1.71"), patch.object(fetch_helpers, "_get_pinned") as pinned:
         result = scraper.fetch_and_extract("https://evil.example.test/", "#gf-price")
     assert result["status"] == "error"
     pinned.assert_not_called()
@@ -178,13 +179,13 @@ def test_next_address_is_tried_when_a_connection_fails():
     import requests
     calls = []
 
-    def fake(hostname, port, address, target, headers):
+    def fake(hostname, port, address, target, headers, max_bytes):
         calls.append(address)
         if address == "2606:2800::1":
             raise requests.ConnectionError("unreachable")
         return AVIVA_HTML
 
-    with _resolves_to("2606:2800::1", PUBLIC_IP), _allow(), patch.object(scraper, "_get_pinned", side_effect=fake):
+    with _resolves_to("2606:2800::1", PUBLIC_IP), _allow(), patch.object(fetch_helpers, "_get_pinned", side_effect=fake):
         result = scraper.fetch_and_extract("https://scrape.example.test/", "#gf-price")
     assert result["status"] == "success"
     assert calls == ["2606:2800::1", PUBLIC_IP]
@@ -310,8 +311,64 @@ def test_redirect_is_not_followed(trust_test_cert):
     assert len(seen) == 1
 
 
+def _redirecting_handler(routes, seen):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(self.path)
+            status, location, body = routes[self.path]
+            self.send_response(status)
+            if location:
+                self.send_header("Location", location)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+    return Handler
+
+
+def _fetch_local(server, path, **kwargs):
+    with _resolves_to("127.0.0.1"):
+        return fetch_helpers.fetch_body(
+            f"https://scraper.test:{server.port}{path}", {}, allowed_hosts=["scraper.test"], **kwargs,
+        )
+
+
+def test_redirects_are_followed_up_to_the_limit_when_enabled(trust_test_cert):
+    seen = []
+    routes = {"/start": (302, "/hop", b""), "/hop": (301, "/final", b""), "/final": (200, None, b"<p>done</p>")}
+    with _TlsServer(*trust_test_cert, _redirecting_handler(routes, seen)) as server:
+        assert _fetch_local(server, "/start", max_redirects=2) == "<p>done</p>"
+    assert seen == ["/start", "/hop", "/final"]
+
+
+def test_redirect_loop_stops_after_the_limit(trust_test_cert):
+    seen = []
+    routes = {"/loop": (302, "/loop", b"")}
+    with _TlsServer(*trust_test_cert, _redirecting_handler(routes, seen)) as server:
+        with pytest.raises(fetch_helpers.FetchRefused, match="Too many redirects"):
+            _fetch_local(server, "/loop", max_redirects=2)
+    assert len(seen) == 3
+
+
+@pytest.mark.parametrize("location", [
+    "http://scraper.test/plain",
+    "https://internal.test/secret",
+    "https://user:pw@scraper.test/x",
+    None,
+])
+def test_redirect_hop_is_vetted_like_the_first_request(trust_test_cert, location):
+    seen = []
+    routes = {"/start": (302, location, b"")}
+    with _TlsServer(*trust_test_cert, _redirecting_handler(routes, seen)) as server:
+        with pytest.raises(fetch_helpers.FetchRefused):
+            _fetch_local(server, "/start", max_redirects=2)
+    assert seen == ["/start"]
+
+
 def test_oversized_body_is_refused(trust_test_cert):
-    body = b"<div id='gf-price'>1</div>" + b" " * (scraper._MAX_BODY_BYTES + 10)
+    body = b"<div id='gf-price'>1</div>" + b" " * (fetch_helpers.DEFAULT_MAX_BODY_BYTES + 10)
     with _TlsServer(*trust_test_cert, _handler(body=body)) as server:
         result = _scrape_local(server)
     assert result["status"] == "error"

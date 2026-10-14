@@ -7,8 +7,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import requests
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 
@@ -18,12 +16,12 @@ url = GHOSTFOLIO_URL.rstrip("/")
 token = GHOSTFOLIO_TOKEN
 
 # Auth
-auth_resp = requests.post(f"{url}/api/v1/auth/anonymous", json={"accessToken": token}, verify=False, timeout=10)
+auth_resp = requests.post(f"{url}/api/v1/auth/anonymous", json={"accessToken": token}, timeout=10)
 bearer = auth_resp.json().get("authToken")
 headers = {"Authorization": f"Bearer {bearer}"}
 
 # Fetch activities
-resp = requests.get(f"{url}/api/v1/activities", headers=headers, verify=False, timeout=15)
+resp = requests.get(f"{url}/api/v1/activities", headers=headers, timeout=15)
 activities = resp.json().get("activities", [])
 print(f"Total activities: {len(activities)}\n")
 

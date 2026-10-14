@@ -107,7 +107,7 @@ The Quantamental system features an automated configuration engine. You do not n
 
 1. **Bootstrap the System:** Simply start the server for the first time by running `python main.py`. The engine will automatically detect a fresh install and generate a fully structured `config.json` file in your root directory.
 2. **Configure via Web UI:** Open your browser and navigate to **http://localhost:8090**. Go to the **⚙️ Settings** tab.
-3. **Connect Your Portfolio:** Enter your `GHOSTFOLIO_URL` and `API_TOKEN`, then click **"Save & Apply"**. 
+3. **Connect Your Portfolio:** Enter your `GHOSTFOLIO_URL` and `API_TOKEN`, then click **"Save & Apply"**. An `https://` Ghostfolio is checked against its certificate; if it uses a self-signed or private-CA certificate, set `REQUESTS_CA_BUNDLE` in `.env` to that CA's PEM file. Plain `http://` LAN addresses work as before.
 
 *Alternatively, you can manually edit the generated `config.json` file in your code editor.*
 
