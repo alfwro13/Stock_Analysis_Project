@@ -168,9 +168,9 @@ function renderMacroCards(data) {
         }
 
         const cardHTML = `
-            <a href="/index/${encodeURIComponent(index.ticker)}" class="macro-card-link" data-ticker="${index.ticker}"${linkStyle ? ` style="${linkStyle}"` : ''}>
+            <a href="/index/${encodeURIComponent(index.ticker)}" class="macro-card-link" data-ticker="${escapeHtml(index.ticker)}"${linkStyle ? ` style="${linkStyle}"` : ''}>
                 <div class="macro-card ${cardClass} ${staleClass}">
-                    <div class="macro-title ${staleText}">${index.name}</div>
+                    <div class="macro-title ${staleText}">${escapeHtml(index.name)}</div>
                     <div class="macro-price ${staleText}">${formattedPrice}</div>
                     <div class="macro-change ${changeClass} ${staleText}">
                         ${sign}${formattedChange}%

@@ -66,7 +66,7 @@
 
     function chips(arr) {
         if (!arr || !arr.length) return '<span class="wf-pnl-val">—</span>';
-        return '<div class="wf-pnl-chips">' + arr.map(function (a) { return '<span class="wf-chip">' + a + '</span>'; }).join("") + "</div>";
+        return '<div class="wf-pnl-chips">' + arr.map(function (a) { return '<span class="wf-chip">' + escapeHtml(a) + '</span>'; }).join("") + "</div>";
     }
 
     function showPanel(id) {
@@ -74,27 +74,32 @@
         if (!n) return;
         var color = statusColors[n.status] || "#888";
         var rows = [
-            ["Status", '<span class="wf-status-dot" style="background:' + color + '"></span>' + (n.status_reason || n.status)],
-            ["Category", n.category],
-            ["Engine", n.engine],
-            ["Last run", n.last_run || "—"],
-            ["Avg duration", formatDuration(n.avg_duration_sec)],
-            ["Next run", n.next_run || "—"],
+            ["Status", '<span class="wf-status-dot" style="background:' + color + '"></span>' + escapeHtml(n.status_reason || n.status)],
+            ["Category", escapeHtml(n.category)],
+            ["Engine", escapeHtml(n.engine)],
+            ["Last run", escapeHtml(n.last_run || "—")],
+            ["Avg duration", escapeHtml(formatDuration(n.avg_duration_sec))],
+            ["Next run", escapeHtml(n.next_run || "—")],
             ["Produces", chips(n.produces)],
             ["Consumes", chips(n.consumes)],
         ];
-        var html = '<div class="wf-pnl-title">' + n.label + "</div>";
+        var html = '<div class="wf-pnl-title">' + escapeHtml(n.label) + "</div>";
         rows.forEach(function (r) {
             html += '<div class="wf-pnl-row"><span class="wf-pnl-key">' + r[0] + '</span><span class="wf-pnl-val">' + r[1] + "</span></div>";
         });
         if (n.settings_anchor) {
-            html += '<hr class="wf-pnl-divider"><button class="wf-pnl-btn" onclick="wfNavigateToSettings(\'' + n.settings_anchor + '\')">Open in Settings ↗</button>';
+            html += '<hr class="wf-pnl-divider"><button class="wf-pnl-btn" data-anchor="' + escapeHtml(n.settings_anchor) + '">Open in Settings ↗</button>';
         }
         pnlContent.innerHTML = html;
         panel.classList.add("open");
     }
 
     window.wfClosePanel = function () { panel.classList.remove("open"); };
+
+    pnlContent.addEventListener("click", function (e) {
+        var btn = e.target.closest ? e.target.closest(".wf-pnl-btn[data-anchor]") : null;
+        if (btn) wfNavigateToSettings(btn.dataset.anchor);
+    });
 
     window.wfNavigateToSettings = function (anchor) {
         if (!anchor) return;

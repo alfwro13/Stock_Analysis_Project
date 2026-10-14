@@ -1180,3 +1180,18 @@ def test_lifespan_hardens_permissions_before_database_init():
         with TestClient(main.app, raise_server_exceptions=False):
             pass
     assert order == [("harden", config.BASE_DIR), "init_db"]
+
+
+@pytest.mark.config
+def test_safe_http_url_accepts_only_absolute_web_links():
+    """safe_http_url() guards Yahoo's `website` before it becomes an href: a `javascript:` value is clickable, and browsers drop tab/CR/LF before reading the scheme."""
+    from utils import safe_http_url
+    for good in ("https://example.com", "http://example.com/a?b=1", "https://sub.example.co.uk:8443/x"):
+        assert safe_http_url(good) == good
+    assert safe_http_url("  https://example.com  ") == "https://example.com"
+    for bad in (
+        None, "", 5, "javascript:alert(1)", "JavaScript:alert(1)", "java\tscript:alert(1)",
+        "data:text/html,x", "vbscript:x", "//example.com", "example.com", "/path", "https://",
+        "https://exa\nmple.com", "ftp://example.com",
+    ):
+        assert safe_http_url(bad) is None, repr(bad)

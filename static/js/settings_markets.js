@@ -13,10 +13,10 @@ function _regExchangeOptionsHtml(currentValue) {
     // clearly-unrecognized option rather than silently dropping it, so the mistake is visible
     // and the user can pick the correct exchange instead of re-typing a guess.
     if (currentValue && !known.includes(currentValue)) {
-        options.push(`<option value="${currentValue}" selected>${currentValue} (unrecognized — please re-select)</option>`);
+        options.push(`<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)} (unrecognized — please re-select)</option>`);
     }
     known.forEach(ex => {
-        options.push(`<option value="${ex}" ${ex === currentValue ? 'selected' : ''}>${ex}</option>`);
+        options.push(`<option value="${escapeHtml(ex)}" ${ex === currentValue ? 'selected' : ''}>${escapeHtml(ex)}</option>`);
     });
     return options.join('');
 }
@@ -26,11 +26,11 @@ function _regEditFormHtml(row) {
     const p = `reg-edit-${id}`;
     return `
     <div id="reg-edit-form-${id}" style="display:none;margin-top:12px;background:#111;padding:14px;border-radius:6px;">
-        <h6 style="color:#b366ff;margin:0 0 10px;">Edit: ${row.ticker}</h6>
+        <h6 style="color:#b366ff;margin:0 0 10px;">Edit: ${escapeHtml(row.ticker)}</h6>
         <div class="flex-gap-15">
             <div class="form-group flex-1 mb-0">
                 <label>Display Name</label>
-                <input type="text" id="${p}-display-name" value="${(row.display_name || '').replace(/"/g, '&quot;')}">
+                <input type="text" id="${p}-display-name" value="${escapeHtml(row.display_name)}">
             </div>
             <div class="form-group flex-1 mb-0">
                 <label>Region</label>
@@ -54,17 +54,17 @@ function _regEditFormHtml(row) {
             </div>
             <div class="form-group flex-1 mb-0">
                 <label>Currency</label>
-                <input type="text" id="${p}-currency" value="${row.currency || 'USD'}" style="text-transform:uppercase;" maxlength="3">
+                <input type="text" id="${p}-currency" value="${escapeHtml(row.currency || 'USD')}" style="text-transform:uppercase;" maxlength="3">
             </div>
         </div>
         <div class="flex-gap-15 mt-10">
             <div class="form-group flex-1 mb-0">
                 <label>Future Ticker</label>
-                <input type="text" id="${p}-future-ticker" value="${row.future_ticker || ''}" style="text-transform:uppercase;">
+                <input type="text" id="${p}-future-ticker" value="${escapeHtml(row.future_ticker)}" style="text-transform:uppercase;">
             </div>
             <div class="form-group flex-1 mb-0">
                 <label>Future Display Name</label>
-                <input type="text" id="${p}-future-display-name" value="${row.future_display_name || ''}">
+                <input type="text" id="${p}-future-display-name" value="${escapeHtml(row.future_display_name)}">
             </div>
             <div class="form-group mb-0" style="justify-content:flex-end;padding-bottom:2px;">
                 <label>&nbsp;</label>
@@ -83,8 +83,8 @@ function _regEditFormHtml(row) {
             </div>
         </div>
         <div class="flex-gap-15 mt-12">
-            <button type="button" class="btn-save flex-1" style="max-width:140px;" onclick="saveRegistryEdit('${row.ticker}')">Save Changes</button>
-            <button type="button" class="btn-test mt-0" style="background:#333;" onclick="toggleRegistryEditForm('${row.ticker}')">Cancel</button>
+            <button type="button" class="btn-save flex-1" style="max-width:140px;" data-reg-action="save" data-ticker="${escapeHtml(row.ticker)}">Save Changes</button>
+            <button type="button" class="btn-test mt-0" style="background:#333;" data-reg-action="toggle" data-ticker="${escapeHtml(row.ticker)}">Cancel</button>
         </div>
         <div id="reg-edit-status-${id}" class="status-msg-sm mt-8"></div>
     </div>`;
@@ -110,14 +110,14 @@ async function loadRegistryList() {
             <div id="reg-row-${id}" style="background:#1e1e1e;padding:12px;border-radius:5px;margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
                     <div>
-                        <strong style="color:#b366ff;">${row.ticker}</strong>
-                        <span style="color:#ccc;margin-left:8px;">${row.display_name}</span>${disabledBadge}
-                        <span style="color:#666;font-size:12px;margin-left:8px;">${row.region} · ${row.asset_type}${row.future_ticker ? ' · has future' : ''}</span>
+                        <strong style="color:#b366ff;">${escapeHtml(row.ticker)}</strong>
+                        <span style="color:#ccc;margin-left:8px;">${escapeHtml(row.display_name)}</span>${disabledBadge}
+                        <span style="color:#666;font-size:12px;margin-left:8px;">${escapeHtml(row.region)} · ${escapeHtml(row.asset_type)}${row.future_ticker ? ' · has future' : ''}</span>
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <a href="/index/${encodeURIComponent(row.ticker)}" class="btn-test mt-0" style="font-size:11px;padding:4px 10px;color:#fff;text-decoration:none;">View</a>
-                        <button type="button" class="btn-test mt-0" style="font-size:11px;padding:4px 10px;background:#2a3a5a;" onclick="toggleRegistryEditForm('${row.ticker}')">&#9998; Edit</button>
-                        <button type="button" class="btn-danger" style="font-size:11px;padding:4px 10px;" onclick="deleteRegistryTicker('${row.ticker}')">Delete</button>
+                        <button type="button" class="btn-test mt-0" style="font-size:11px;padding:4px 10px;background:#2a3a5a;" data-reg-action="toggle" data-ticker="${escapeHtml(row.ticker)}">&#9998; Edit</button>
+                        <button type="button" class="btn-danger" style="font-size:11px;padding:4px 10px;" data-reg-action="delete" data-ticker="${escapeHtml(row.ticker)}">Delete</button>
                     </div>
                 </div>
                 ${_regEditFormHtml(row)}
@@ -213,5 +213,15 @@ async function deleteRegistryTicker(ticker) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('markets-registry-list')) loadRegistryList();
+    const list = document.getElementById('markets-registry-list');
+    if (!list) return;
+    list.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-reg-action]');
+        if (!btn) return;
+        const ticker = btn.dataset.ticker;
+        if (btn.dataset.regAction === 'toggle') toggleRegistryEditForm(ticker);
+        else if (btn.dataset.regAction === 'save') saveRegistryEdit(ticker);
+        else if (btn.dataset.regAction === 'delete') deleteRegistryTicker(ticker);
+    });
+    loadRegistryList();
 });

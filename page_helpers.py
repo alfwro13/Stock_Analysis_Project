@@ -9,7 +9,7 @@ from config import FUNDAMENTALS_DIR, HISTORICAL_DIR, INTRADAY_DIR, load_config
 from database import get_connection
 from position_sizing import get_position_sizing_config
 from portfolio_service import get_rate_to_base, get_fx_cache_status
-from utils import safe_ticker_filename
+from utils import safe_http_url, safe_ticker_filename
 from fundamentals_helpers import (
     compute_quality_grade,
     is_quality_compounder,
@@ -203,7 +203,7 @@ def _load_fundamentals_extra(ticker: str) -> dict:
             "ex_dividend_date_fmt": ex_div_fmt,
             "average_volume_fmt": _fmt_volume(d.get("averageVolume")),
             "full_time_employees_fmt": f"{employees:,}" if employees else None,
-            "website": d.get("website"),
+            "website": safe_http_url(d.get("website")),
         }
     except Exception:
         return empty
