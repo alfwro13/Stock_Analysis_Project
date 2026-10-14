@@ -403,7 +403,7 @@ const docs = [];
 const mermaidConfigs = [];
 const mermaid = {initialize(config) { mermaidConfigs.push(config); }, render: async () => ({svg: '<svg></svg>'})};
 const context = {
-    window: {mermaid, open: () => ({document: {
+    window: {mermaid, CSS_VERSION: '9.9', open: () => ({document: {
         write(text) { docs.push(text); }, open() {}, close() {}, body: null,
     }})},
     console, URL, location: {origin: 'https://dash.example'},
@@ -431,6 +431,8 @@ load(context, process.argv.slice(1));
     assert.ok(!doc.includes('alert(1)</script>'), 'node data closed the inline script');
     assert.ok(!doc.includes('<!--<'), 'node data opened an HTML comment');
     assert.ok(doc.includes('\\u003c/script>'), 'node data was not unicode-escaped');
+    assert.ok(doc.includes('/static/js/utils.js?v=9.9'), 'graph tab utils.js has no cache-busting version');
+    assert.ok(doc.includes('/static/js/workflow_tab.js?v=9.9'), 'graph tab workflow_tab.js has no cache-busting version');
 })().catch(error => {console.error(error); process.exitCode = 1;});
 """
 
