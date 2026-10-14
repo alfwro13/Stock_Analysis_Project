@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +212,20 @@ def safe_local_path(value: Optional[str]) -> Optional[str]:
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:
         return None
     if _CONTROL_CHARS_RE.search(value):
+        return None
+    return value
+
+
+def safe_http_url(value: Any) -> Optional[str]:
+    """An absolute http(s) URL with a host, or None — the guard for a third-party link (Yahoo `website`) before it becomes an href, where `javascript:` would otherwise be clickable."""
+    if not isinstance(value, str) or _CONTROL_CHARS_RE.search(value):
+        return None
+    value = value.strip()
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return None
+    if parts.scheme not in ("http", "https") or not parts.hostname:
         return None
     return value
 

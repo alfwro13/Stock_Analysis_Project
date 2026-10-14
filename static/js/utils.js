@@ -2,6 +2,15 @@ function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function safeHttpUrl(url) {
+    try {
+        const parsed = new URL(String(url ?? '').trim());
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
+    } catch (e) {
+        return '';
+    }
+}
+
 function escapeRegExp(s) {
     return String(s ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

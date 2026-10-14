@@ -496,7 +496,7 @@ function loadAccounts() {
                 var btn = document.createElement("button");
                 btn.type = "button";
                 btn.className = "mc-account-tile";
-                btn.innerHTML = '<div class="mc-account-tile-name">' + tile.name + "</div>";
+                btn.innerHTML = '<div class="mc-account-tile-name">' + escapeHtml(tile.name) + "</div>";
                 btn.addEventListener("click", function () { _setActiveTile(btn, tile.id); });
                 if (tile.id === wantedId) {
                     btn.classList.add("mc-account-tile--active");

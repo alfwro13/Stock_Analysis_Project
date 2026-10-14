@@ -15,14 +15,14 @@ function relTime(ts) {
 
 function sourceBadge(src) {
     const label = {portfolio: 'Portfolio', watchlist: 'Watchlist', both: 'Both'};
-    return `<span class="art-source-badge art-source-${src}">${label[src] || src}</span>`;
+    return `<span class="art-source-badge art-source-${escapeHtml(src)}">${escapeHtml(label[src] || src)}</span>`;
 }
 
 function sentimentBadge(label, score) {
     if (!label) return '';
     const icon = label === 'positive' ? '▲' : label === 'negative' ? '▼' : '●';
     const pct = score != null ? ` ${Math.round(Math.abs(score) * 100)}%` : '';
-    return `<span class="sent-badge sent-${label}" title="Sentiment: ${label}${pct}">${icon}${pct}</span>`;
+    return `<span class="sent-badge sent-${escapeHtml(label)}" title="Sentiment: ${escapeHtml(label)}${pct}">${icon}${pct}</span>`;
 }
 
 function looksLikeHeading(text) {
@@ -148,8 +148,9 @@ function selectArticle(id) {
         ? `<div class="reader-body">${formatArticleBody(a.full_text, a.ticker)}</div>`
         : `<div class="reader-body summary-fallback">${formatArticleBody(a.summary || 'No summary available.', a.ticker)}<p class="reader-p"><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></p></div>`;
 
-    const headlineHtml = a.url
-        ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" class="reader-headline-link">${escapeHtml(a.headline)}</a>`
+    const articleUrl = safeHttpUrl(a.url);
+    const headlineHtml = articleUrl
+        ? `<a href="${escapeHtml(articleUrl)}" target="_blank" rel="noopener noreferrer" class="reader-headline-link">${escapeHtml(a.headline)}</a>`
         : escapeHtml(a.headline);
     reader.innerHTML = `
         <h2>${headlineHtml}</h2>

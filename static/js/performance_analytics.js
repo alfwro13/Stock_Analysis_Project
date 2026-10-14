@@ -344,7 +344,7 @@ function loadAccounts() {
                 btn.type = "button";
                 btn.className = "mc-account-tile";
                 btn.innerHTML =
-                    '<div class="mc-account-tile-name">' + tile.name + "</div>"
+                    '<div class="mc-account-tile-name">' + escapeHtml(tile.name) + "</div>"
                     + '<div class="mc-account-tile-value">' + _fmt_gbp(tile.value) + "</div>";
                 btn.addEventListener("click", function () { _setActiveTile(btn, tile.id); });
                 if (tile.isTotal) {

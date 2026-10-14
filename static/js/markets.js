@@ -72,13 +72,13 @@ function marketsCardHTML(ticker, displayName, price, changePct, currency, sparkl
     const formattedPrice = prefix + Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formattedChange = Number(changePct).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const staleText = visual.stale ? 'stale-text' : '';
-    const badgeHTML = badgeText ? `<div class="mt-10"><span class="sent-badge sent-neutral">${badgeText}</span></div>` : '';
+    const badgeHTML = badgeText ? `<div class="mt-10"><span class="sent-badge sent-neutral">${escapeHtml(badgeText)}</span></div>` : '';
     const sentimentHTML = sentimentScore !== undefined ? marketsSentimentBadgeHTML(sentimentScore) : '';
 
     return `
-        <a href="/index/${encodeURIComponent(ticker)}" class="macro-card-link" data-ticker="${ticker}">
+        <a href="/index/${encodeURIComponent(ticker)}" class="macro-card-link" data-ticker="${escapeHtml(ticker)}">
             <div class="macro-card ${visual.cardClass}">
-                <div class="macro-title ${staleText}">${displayName}</div>
+                <div class="macro-title ${staleText}">${escapeHtml(displayName)}</div>
                 ${marketsSparklineSVG(sparkline, changePct >= 0)}
                 <div class="macro-price ${staleText}">${formattedPrice}</div>
                 <div class="macro-change ${visual.changeClass} ${staleText}">${sign}${formattedChange}%</div>
@@ -127,7 +127,7 @@ function marketsRegionSectionHTML(region) {
     return `
         <div class="markets-region-section">
             <div class="markets-region-header">
-                <h3>${label}</h3>
+                <h3>${escapeHtml(label)}</h3>
                 ${badgeHTML}
                 ${hideFuturesCheckHTML}
             </div>

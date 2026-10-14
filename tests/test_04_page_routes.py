@@ -2889,3 +2889,260 @@ def test_score_history_filter_tabs_urlencode_ref(client):
     resp = client.get("/score-history?ref=/portfolio%3Fa%3D1%26b%3D2")
     assert resp.status_code == 200
     assert "filter=all&amp;ref=/portfolio%3Fa%3D1%26b%3D2" in resp.text
+
+
+# ── Yahoo links and operator-entered names (SEC 20/27, S5-8, S5-9) ────────────
+
+_S5_8_UTILS_SCRIPT = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const context = {URL};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+assert.equal(context.safeHttpUrl('https://example.com/a'), 'https://example.com/a');
+assert.equal(context.safeHttpUrl(' http://example.com '), 'http://example.com/');
+for (const bad of [
+    'javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'java\tscript:alert(1)', '\x01javascript:alert(1)',
+    'data:text/html,x', 'vbscript:x', '/relative', '//example.com', 'example.com', '', null, undefined,
+]) {
+    assert.equal(context.safeHttpUrl(bad), '', JSON.stringify(bad));
+}
+"""
+
+
+def test_safe_http_url_js_keeps_only_absolute_http_links():
+    _s5_2_run_node(_S5_8_UTILS_SCRIPT, _s5_2_js('utils.js'))
+
+
+@pytest.mark.parametrize("website,expected", [
+    ("https://www.example.com", "https://www.example.com"),
+    ("http://example.com/about", "http://example.com/about"),
+    ("javascript:alert(1)", None),
+    ("JAVASCRIPT:alert(1)", None),
+    ("data:text/html,<script>alert(1)</script>", None),
+    ("//example.com", None),
+    ("example.com", None),
+    ("https://", None),
+    (None, None),
+])
+def test_fundamentals_extra_website_is_a_web_link_or_none(tmp_path, monkeypatch, website, expected):
+    import json
+
+    import page_helpers
+
+    (tmp_path / "ZZWEB.json").write_text(json.dumps({"website": website}))
+    monkeypatch.setattr(page_helpers, "FUNDAMENTALS_DIR", tmp_path)
+    assert page_helpers._load_fundamentals_extra("ZZWEB")["website"] == expected
+
+
+_S5_8_NEWS_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const context = {
+    window: {}, URL, console,
+    document: {
+        getElementById: el, querySelectorAll: () => [],
+        addEventListener(type, fn) { listeners[type] = fn; },
+    },
+};
+load(context, process.argv.slice(1));
+const show = (url, extra = {}) => {
+    vm.runInContext('allArticles = ' + JSON.stringify([{
+        id: 1, url, headline: 'Headline', ticker: 'AAA', source_list: 'portfolio',
+        sentiment_label: 'positive', sentiment_score: 0.5, publisher: 'P', published_at: 1,
+        summary: 'S', body_fetched: 0, ...extra,
+    }]), context);
+    context.selectArticle(1);
+    return els.readerContent.innerHTML;
+};
+assert.ok(show('https://example.com/a').includes('href="https://example.com/a"'));
+for (const bad of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,x', '/relative', '']) {
+    const html = show(bad);
+    assert.ok(!html.includes('<a '), bad + ': ' + html);
+    assert.ok(html.includes('Headline'), html);
+}
+const html = show('https://example.com/', {source_list: payload, sentiment_label: payload});
+assert.ok(!html.includes('<img'), html);
+assert.ok(html.includes('&lt;img'), html);
+"""
+
+
+def test_news_reader_link_needs_http_scheme_and_escapes_badges():
+    _s5_2_run_node(_S5_8_NEWS_SCRIPT, _s5_2_js('utils.js'), _s5_2_js('news.js'))
+
+
+_S5_9_WORKFLOW_MONITOR_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const hostile = '</script><script>alert(1)</script><!--';
+const docs = [];
+const context = {
+    window: {open: () => ({document: {
+        write(text) { docs.push(text); }, open() {}, close() {}, body: null,
+    }})},
+    console, URL, location: {origin: 'https://dash.example'},
+    fetch: async () => ({json: async () => ({status: 'success', conflicts: [], edges: [], nodes: [
+        {id: 'job_1', label: hostile + payload, status: 'green'},
+    ]})}),
+    mermaid: {initialize() {}, render: async () => ({svg: '<svg></svg>'})},
+    document: {getElementById: el, addEventListener() {}},
+};
+load(context, process.argv.slice(1));
+(async () => {
+    context._wfRenderConflicts([{severity: payload, type: payload + '_x', message: payload + ' failed'}]);
+    const conflicts = els['workflow-conflicts'].innerHTML;
+    assert.ok(!conflicts.includes('<img'), conflicts);
+    assert.ok(conflicts.includes('&lt;img'), conflicts);
+
+    const label = context._wfSanitizeLabel(payload + ' Fund #1; A&B');
+    assert.ok(!/[<>&]/.test(label), label);
+    assert.ok(!label.includes('#1;'), label);
+
+    await context.openWorkflowGraphTab();
+    const doc = docs.find(text => text.includes('var _wfNodes'));
+    assert.ok(doc, 'graph tab document was not written');
+    assert.ok(!doc.includes('alert(1)</script>'), 'node data closed the inline script');
+    assert.ok(!doc.includes('<!--<'), 'node data opened an HTML comment');
+    assert.ok(doc.includes('\\u003c/script>'), 'node data was not unicode-escaped');
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+_S5_9_WORKFLOW_TAB_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const opened = [];
+const anchor = "x'\"><img src=x>";
+const context = {
+    addEventListener() {}, open: (...args) => opened.push(args),
+    _wfNodes: [{
+        id: 'n1', label: payload, status: 'green', status_reason: payload, category: payload,
+        engine: payload, last_run: payload, next_run: payload, avg_duration_sec: 5,
+        produces: [payload], consumes: [payload], settings_anchor: anchor,
+    }],
+    setTimeout, clearTimeout, console,
+    document: {getElementById: el},
+};
+context.window = context;
+load(context, process.argv.slice(1));
+(async () => {
+    els['wf-svg-wrap'].handlers.click({target: {closest: () => ({id: 'flowchart-n1-5'})}});
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const html = els['wf-pnl-content'].innerHTML;
+    assert.ok(!html.includes('<img'), html);
+    assert.ok(html.includes('&lt;img'), html);
+    assert.ok(!html.includes('onclick'), html);
+    assert.ok(html.includes('data-anchor="x&#39;&quot;&gt;&lt;img src=x&gt;"'), html);
+    els['wf-pnl-content'].handlers.click({target: {closest: () => ({dataset: {anchor: 'abc'}})}});
+    assert.deepEqual(opened, [['/settings#abc', '_blank']]);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+
+def test_workflow_monitor_escapes_account_names_in_labels_conflicts_and_graph_tab():
+    _s5_2_run_node(_S5_9_WORKFLOW_MONITOR_SCRIPT, _s5_2_js('utils.js'), _s5_2_js('workflow_monitor.js'))
+
+
+def test_workflow_tab_panel_escapes_node_text_and_has_no_inline_handler():
+    _s5_2_run_node(_S5_9_WORKFLOW_TAB_SCRIPT, _s5_2_js('utils.js'), _s5_2_js('workflow_tab.js'))
+
+
+_S5_9_ACCOUNT_TILES_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const tiles = [];
+const context = {
+    window: {addEventListener() {}}, console, setTimeout,
+    document: {
+        getElementById: el, querySelectorAll: () => [], addEventListener() {},
+        createElement: () => ({
+            innerHTML: '', className: '', dataset: {}, classList: {add() {}, remove() {}},
+            addEventListener() {},
+        }),
+    },
+    fetch: async () => ({json: async () => ({
+        status: 'success', total: 3, accounts: [{id: 1, name: payload, value: 3}],
+        candidates: [],
+    })}),
+};
+els['mc-accounts-tiles'] = {appendChild: node => tiles.push(node), classList: {add() {}, remove() {}}};
+els['pt-accounts-tiles'] = els['mc-accounts-tiles'];
+els['po-accounts-tiles'] = els['mc-accounts-tiles'];
+load(context, process.argv.slice(1));
+(async () => {
+    context.loadAccounts();
+    await settle();
+    assert.ok(tiles.length >= 2, 'no account tiles were rendered');
+    for (const tile of tiles) {
+        assert.ok(!tile.innerHTML.includes('<img'), tile.innerHTML);
+    }
+    assert.ok(tiles[0].innerHTML.includes('&lt;img'), tiles[0].innerHTML);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+
+@pytest.mark.parametrize("script_name", ["monte_carlo.js", "performance_analytics.js", "portfolio_optimizer.js"])
+def test_account_tiles_escape_operator_entered_account_names(script_name):
+    _s5_2_run_node(_S5_9_ACCOUNT_TILES_SCRIPT, _s5_2_js('utils.js'), _s5_2_js(script_name))
+
+
+_S5_9_MARKETS_SCRIPT = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const payload = '<img src=x onerror=alert(1)>';
+const context = {
+    window: {innerWidth: 1400}, console,
+    document: {getElementById: () => null, querySelectorAll: () => [], addEventListener() {}},
+    setInterval() {}, fetch: async () => ({}),
+};
+vm.createContext(context);
+for (const file of process.argv.slice(1)) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+const base = {
+    ticker: payload, display_name: payload, name: payload, asset_type: 'Index', price: 1,
+    change_pct: 1, currency: 'USD', sparkline: [], sentiment_score: 0.1, is_positive: true,
+    invert_color: false, stale_data: false, is_stale: false, market_state: 'open',
+};
+const check = (html, label) => {
+    assert.ok(!html.includes('<img'), label + ': ' + html);
+    assert.ok(html.includes('&lt;img'), label + ': ' + html);
+    assert.ok(html.includes('data-ticker="&lt;img'), label + ': ' + html);
+};
+if (context.marketsRegionSectionHTML) {
+    const dual = {...base, region: 'Europe', dual_instrument: {spot: base, future: base}};
+    check(context.marketsRegionSectionHTML({region: payload, state: 'open', tiles: [base, dual]}), 'markets');
+} else {
+    const container = {innerHTML: ''};
+    context.document.getElementById = () => container;
+    context.renderMacroCards([base]);
+    check(container.innerHTML, 'macro cards');
+}
+"""
+
+
+@pytest.mark.parametrize("script_name", ["markets.js", "macro_cards.js"])
+def test_market_cards_escape_registry_names_and_tickers(script_name):
+    _s5_2_run_node(_S5_9_MARKETS_SCRIPT, _s5_2_js('utils.js'), _s5_2_js(script_name))
+
+
+_S5_9_SETTINGS_MARKETS_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const confirmed = [];
+const context = {
+    window: {MARKET_EXCHANGE_LIST: ['NYSE']}, console, setTimeout,
+    confirm: message => { confirmed.push(message); return false; },
+    document: {getElementById: el, addEventListener(type, fn) { listeners[type] = fn; }},
+    fetch: async () => ({json: async () => ({registry: [{
+        ticker: payload, display_name: payload, region: payload, asset_type: payload,
+        exchange: payload, currency: payload, future_ticker: payload, future_display_name: payload,
+        enabled: true,
+    }]})}),
+};
+load(context, process.argv.slice(1));
+(async () => {
+    listeners.DOMContentLoaded();
+    await settle();
+    const html = els['markets-registry-list'].innerHTML;
+    assert.ok(html.includes('&lt;img'), html);
+    assert.ok(!html.includes('<img'), html);
+    assert.ok(!html.includes('onclick'), html);
+    els['markets-registry-list'].handlers.click({target: {closest: () => ({dataset: {regAction: 'delete', ticker: payload}})}});
+    assert.equal(confirmed.length, 1);
+    assert.ok(confirmed[0].includes(payload), confirmed[0]);
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+
+def test_markets_registry_editor_escapes_rows_and_uses_delegated_handlers():
+    _s5_2_run_node(_S5_9_SETTINGS_MARKETS_SCRIPT, _s5_2_js('utils.js'), _s5_2_js('settings_markets.js'))

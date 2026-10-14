@@ -6,7 +6,8 @@ if (window.mermaid) {
 }
 
 function _wfSanitizeLabel(text) {
-    return String(text).replace(/"/g, "'").replace(/[\[\]]/g, "");
+    return String(text).replace(/"/g, "'").replace(/[\[\]]/g, "")
+        .replace(/#/g, "#35;").replace(/&/g, "#38;").replace(/</g, "#60;").replace(/>/g, "#62;");
 }
 
 function _wfBuildMermaid(nodes, edges) {
@@ -35,9 +36,9 @@ function _wfRenderConflicts(conflicts) {
     const order = { critical: 0, warning: 1, info: 2 };
     conflicts.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
     container.innerHTML = conflicts.map(c => `
-        <div class="wf-conflict wf-conflict-${c.severity}">
-            <span class="wf-conflict-type">${c.type.replace(/_/g, " ")}</span>
-            <span class="wf-conflict-msg">${c.message}</span>
+        <div class="wf-conflict wf-conflict-${escapeHtml(c.severity)}">
+            <span class="wf-conflict-type">${escapeHtml(String(c.type).replace(/_/g, " "))}</span>
+            <span class="wf-conflict-msg">${escapeHtml(c.message)}</span>
         </div>`).join("");
 }
 
@@ -76,7 +77,7 @@ async function openWorkflowGraphTab() {
         if (data.status !== "success") throw new Error(data.message || "request failed");
         const def = _wfBuildMermaid(data.nodes || [], data.edges || []);
         const { svg } = await mermaid.render(`wfGraphTab${++_workflowRenderSeq}`, def);
-        const nodeJson = JSON.stringify(data.nodes || []).replace(/<\/script>/gi, "<\\/script>");
+        const nodeJson = JSON.stringify(data.nodes || []).replace(/</g, "\\u003c");
         const base = location.origin;
         const ts = new Date().toLocaleString();
         win.document.open();
