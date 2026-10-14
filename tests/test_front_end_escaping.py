@@ -400,19 +400,22 @@ def test_news_reader_link_needs_http_scheme_and_escapes_badges():
 _S5_9_WORKFLOW_MONITOR_SCRIPT = _S5_2_DOM_PRELUDE + r"""
 const hostile = '</script><script>alert(1)</script><!--';
 const docs = [];
+const mermaidConfigs = [];
+const mermaid = {initialize(config) { mermaidConfigs.push(config); }, render: async () => ({svg: '<svg></svg>'})};
 const context = {
-    window: {open: () => ({document: {
+    window: {mermaid, open: () => ({document: {
         write(text) { docs.push(text); }, open() {}, close() {}, body: null,
     }})},
     console, URL, location: {origin: 'https://dash.example'},
     fetch: async () => ({json: async () => ({status: 'success', conflicts: [], edges: [], nodes: [
         {id: 'job_1', label: hostile + payload, status: 'green'},
     ]})}),
-    mermaid: {initialize() {}, render: async () => ({svg: '<svg></svg>'})},
+    mermaid,
     document: {getElementById: el, addEventListener() {}},
 };
 load(context, process.argv.slice(1));
 (async () => {
+    assert.equal(mermaidConfigs[0].layout, 'dagre', 'Mermaid 12 defaults to elk: right-angle edges, uniform boxes');
     context._wfRenderConflicts([{severity: payload, type: payload + '_x', message: payload + ' failed'}]);
     const conflicts = els['workflow-conflicts'].innerHTML;
     assert.ok(!conflicts.includes('<img'), conflicts);
