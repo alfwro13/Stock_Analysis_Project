@@ -23,12 +23,12 @@ def main() -> None:
     print("This will overwrite the stored password hash in .env.")
     print("Restart the app after completing this step.\n")
 
-    from auth import MIN_PASSWORD_LENGTH, password_policy_error
+    from auth import MIN_PASSWORD_LENGTH as min_length, password_policy_error
 
     while True:
         pw = getpass.getpass("New password: ")
         if password_policy_error(pw):
-            print(f"The password must be at least {MIN_PASSWORD_LENGTH} characters and not a commonly used password. Try again.")
+            print(f"The password must be at least {min_length} characters and not a commonly used password. Try again.")
             continue
         confirm = getpass.getpass("Confirm new password: ")
         if pw != confirm:
