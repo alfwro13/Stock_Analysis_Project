@@ -144,6 +144,7 @@ async function saveSettings(silent = false) {
         "BIND_HOST": document.getElementById('BIND_HOST').value.trim(),
         "COOKIE_SECURE": document.getElementById('COOKIE_SECURE').value,
         "ALLOWED_HOSTS": document.getElementById('ALLOWED_HOSTS').value.split(',').map(s => s.trim()).filter(Boolean),
+        "SCRAPER_ALLOWED_HOSTS": document.getElementById('SCRAPER_ALLOWED_HOSTS').value.split(',').map(s => s.trim()).filter(Boolean),
         "FRAME_ANCESTORS": document.getElementById('FRAME_ANCESTORS').value.split(',').map(s => s.trim()).filter(Boolean),
         "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
         "USER_TIMEZONE": document.getElementById('USER_TIMEZONE').value.trim(),

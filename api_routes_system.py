@@ -422,6 +422,7 @@ class SettingsConfig(BaseModel):
     PORT: Optional[int] = None
     BIND_HOST: Optional[str] = None
     ALLOWED_HOSTS: Optional[List[str]] = None
+    SCRAPER_ALLOWED_HOSTS: Optional[List[str]] = None
     COOKIE_SECURE: Optional[Literal["auto", "true", "false"]] = None
     FRAME_ANCESTORS: Optional[List[str]] = None
     BASE_CURRENCY: Optional[str] = None
@@ -459,6 +460,16 @@ class SettingsConfig(BaseModel):
         for host in v:
             if not re.fullmatch(r"(\*\.)?[A-Za-z0-9.\-]+|\*", host):
                 raise ValueError(f"Invalid host name: {host!r}")
+        return v
+
+    @field_validator("SCRAPER_ALLOWED_HOSTS")
+    @classmethod
+    def _valid_scraper_allowed_hosts(cls, v):
+        if v is None:
+            return v
+        for host in v:
+            if not re.fullmatch(r"[A-Za-z0-9.\-]+|[0-9A-Fa-f:]+", host):
+                raise ValueError(f"Invalid scraper host (exact host names or IP addresses only): {host!r}")
         return v
 
     @field_validator("FRAME_ANCESTORS")

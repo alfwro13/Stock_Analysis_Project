@@ -60,9 +60,19 @@ def test_settings_rejects_invalid_values(client, step_up_headers):
     for body in (
         {"ALLOWED_HOSTS": []},
         {"ALLOWED_HOSTS": ["bad host/x"]},
+        {"SCRAPER_ALLOWED_HOSTS": ["192.168.1.0/24"]},
+        {"SCRAPER_ALLOWED_HOSTS": ["*.lan"]},
+        {"SCRAPER_ALLOWED_HOSTS": ["bad host"]},
         {"FRAME_ANCESTORS": ["https://ok.example.com; script-src *"]},
         {"COOKIE_SECURE": "maybe"},
         {"BIND_HOST": "0.0.0.0; rm"},
     ):
         r = client.post("/api/settings", json=body, headers=step_up_headers)
         assert r.status_code == 422, body
+
+
+def test_scraper_allowed_hosts_accepts_exact_hosts_and_an_empty_list():
+    from api_routes_system import SettingsConfig
+    assert SettingsConfig(SCRAPER_ALLOWED_HOSTS=[]).SCRAPER_ALLOWED_HOSTS == []
+    hosts = ["192.168.1.71", "ha.lan", "fd00::71"]
+    assert SettingsConfig(SCRAPER_ALLOWED_HOSTS=hosts).SCRAPER_ALLOWED_HOSTS == hosts
