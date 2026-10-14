@@ -17,7 +17,7 @@ Jinja2==3.1.6
 python-slugify==8.0.4
 requests==2.34.2
 urllib3>=2.8
-idna>=3.15
+idna>=3.20
 apscheduler==3.11.3
 exchange_calendars==4.13.2
 fake-useragent==2.2.0
