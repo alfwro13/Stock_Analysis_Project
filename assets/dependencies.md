@@ -24,10 +24,13 @@ a package whose files do not match its hash is refused.
   versions. `tests/test_05_config_and_utils.py` fails when the lock does not
   satisfy `requirements.txt` or has an unhashed pin.
 - **Automation:** `.github/workflows/refresh-lock.yml` regenerates the lock when
-  `requirements.txt` changes on `main` and opens a pull request (a pull request
-  opened with the workflow token does not start `tests.yml`; close and reopen it).
-  Dispatched from another branch, for example a Dependabot branch, it commits the
-  new lock to that branch instead.
+  `requirements.txt` changes on `main` and pushes it to a `refresh-lock` branch,
+  with a link in the run summary to open the pull request (the repository setting
+  that lets Actions open pull requests is off on purpose; a pull request you open
+  yourself runs `tests.yml`). Dispatched from another branch, for example a
+  Dependabot branch, it commits the new lock to that branch instead; a push made
+  with the workflow token does not start `tests.yml`, so close and reopen that
+  branch's pull request.
 - **Advisories:** `.github/workflows/pip-audit.yml` runs `pip-audit` against the
   lock every Monday and on demand; it fails the run on any advisory. Fix by
   regenerating with `-P <package>` and merging.
