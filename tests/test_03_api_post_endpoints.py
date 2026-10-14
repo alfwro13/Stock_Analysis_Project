@@ -1179,8 +1179,8 @@ def test_backup_restore_engine_error_returns_500(client, step_up_headers):
 
 
 @pytest.mark.api
-def test_git_pull_flags_requirements_txt_change(client, step_up_headers):
-    """POST /api/system/git-pull must flag requirements_changed when it appears in the pulled diff."""
+def test_git_pull_flags_requirements_lock_change(client, step_up_headers):
+    """POST /api/system/git-pull must flag requirements_changed when requirements.lock appears in the pulled diff."""
     import api_routes_system
 
     def fake_run(cmd, **kwargs):
@@ -1189,7 +1189,7 @@ def test_git_pull_flags_requirements_txt_change(client, step_up_headers):
         if cmd[:2] == ["git", "pull"]:
             return MagicMock(returncode=0, stdout="Updating oldsha..newsha\n", stderr="")
         if cmd[:2] == ["git", "diff"]:
-            return MagicMock(returncode=0, stdout="requirements.txt\nmain.py\n", stderr="")
+            return MagicMock(returncode=0, stdout="requirements.lock\nmain.py\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
     api_routes_system._requirements_changed_pending = False
@@ -1212,7 +1212,7 @@ def test_git_pull_warns_when_scikit_learn_pin_changes(client, step_up_headers):
         if cmd[:2] == ["git", "pull"]:
             return MagicMock(returncode=0, stdout="Updating oldsha..newsha\n", stderr="")
         if cmd[:2] == ["git", "diff"]:
-            return MagicMock(returncode=0, stdout="requirements.txt\n", stderr="")
+            return MagicMock(returncode=0, stdout="requirements.lock\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
     api_routes_system._requirements_changed_pending = False
@@ -1243,7 +1243,7 @@ def test_git_pull_warns_when_scikit_learn_pin_changes(client, step_up_headers):
 
 @pytest.mark.api
 def test_git_pull_does_not_flag_unrelated_changes(client, step_up_headers):
-    """POST /api/system/git-pull must not flag requirements_changed when requirements.txt wasn't touched."""
+    """POST /api/system/git-pull must not flag requirements_changed when requirements.lock wasn't touched; the input file alone changes nothing that is installed."""
     import api_routes_system
 
     def fake_run(cmd, **kwargs):
@@ -1252,7 +1252,7 @@ def test_git_pull_does_not_flag_unrelated_changes(client, step_up_headers):
         if cmd[:2] == ["git", "pull"]:
             return MagicMock(returncode=0, stdout="Updating oldsha..newsha\n", stderr="")
         if cmd[:2] == ["git", "diff"]:
-            return MagicMock(returncode=0, stdout="main.py\n", stderr="")
+            return MagicMock(returncode=0, stdout="main.py\nrequirements.txt\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
     api_routes_system._requirements_changed_pending = False
@@ -1378,11 +1378,11 @@ def _manual_pip_command():
     import shlex
     from config import BASE_DIR
 
-    return shlex.join([sys.executable, "-m", "pip", "install", "-r", str(BASE_DIR / "requirements.txt")])
+    return shlex.join([sys.executable, "-m", "pip", "install", "--require-hashes", "-r", str(BASE_DIR / "requirements.lock")])
 
 
 def test_execute_restart_installs_pip_dependencies_when_pending(restart_env, tmp_path):
-    """execute_restart() must run pip install before signalling shutdown when requirements.txt changed."""
+    """execute_restart() must run pip install before signalling shutdown when requirements.lock changed."""
     from constants import DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 
     restart_env._requirements_changed_pending = True
@@ -1391,7 +1391,7 @@ def test_execute_restart_installs_pip_dependencies_when_pending(restart_env, tmp
     )
 
     args, kwargs = mock_run.call_args
-    assert args[0][:5] == [sys.executable, "-m", "pip", "install", "-r"]
+    assert args[0][:6] == [sys.executable, "-m", "pip", "install", "--require-hashes", "-r"]
     assert "--resume-retries" in args[0]
     assert kwargs["timeout"] == DEPENDENCY_INSTALL_TIMEOUT_SECONDS
     assert kwargs["env"]["TMPDIR"] == str(tmp_path / "pip_tmp")
@@ -1404,7 +1404,7 @@ def test_execute_restart_installs_pip_dependencies_when_pending(restart_env, tmp
 
 
 def test_execute_restart_skips_pip_install_when_not_pending(restart_env):
-    """execute_restart() must not touch pip when nothing is pending and installed packages match requirements.txt."""
+    """execute_restart() must not touch pip when nothing is pending and installed packages match requirements.lock."""
     mock_run, mock_notify, mock_kill = _run_execute_restart(restart_env)
 
     mock_run.assert_not_called()
@@ -1413,8 +1413,8 @@ def test_execute_restart_skips_pip_install_when_not_pending(restart_env):
 
 
 def test_execute_restart_installs_when_packages_drifted_without_pending_flag(restart_env, monkeypatch):
-    """A lost in-memory pull flag must not stop the reinstall while installed packages are below requirements.txt."""
-    monkeypatch.setattr(restart_env, "check_requirements_drift", lambda: ["torch: installed 2.13.0, requirements.txt requires >=2.14.1"])
+    """A lost in-memory pull flag must not stop the reinstall while installed packages differ from requirements.lock."""
+    monkeypatch.setattr(restart_env, "check_requirements_drift", lambda: ["torch: installed 2.13.0, requirements.lock pins ==2.14.1"])
     mock_run, mock_notify, mock_kill = _run_execute_restart(
         restart_env, pip_result=MagicMock(returncode=0, stdout="", stderr=""),
     )
@@ -1510,13 +1510,13 @@ def test_restart_is_refused_while_dependencies_are_installing(client, step_up_he
 
 @pytest.mark.api
 def test_active_jobs_reports_package_drift_and_install_state(client, restart_env, monkeypatch):
-    monkeypatch.setattr(restart_env, "check_requirements_drift", lambda: ["torch: installed 2.13.0, requirements.txt requires >=2.14.1"])
-    restart_env._dependency_install.update(state="failed", command="/venv/bin/python3 -m pip install -r requirements.txt")
+    monkeypatch.setattr(restart_env, "check_requirements_drift", lambda: ["torch: installed 2.13.0, requirements.lock pins ==2.14.1"])
+    restart_env._dependency_install.update(state="failed", command="/venv/bin/python3 -m pip install --require-hashes -r requirements.lock")
 
     body = _json(client.get("/api/system/active-jobs"))
 
     assert body["requirements_changed_pending"] is True
-    assert body["dependency_install"] == {"state": "failed", "command": "/venv/bin/python3 -m pip install -r requirements.txt"}
+    assert body["dependency_install"] == {"state": "failed", "command": "/venv/bin/python3 -m pip install --require-hashes -r requirements.lock"}
 
 
 def test_bg_execute_ml_inference_runs_quantile_scoring_too():

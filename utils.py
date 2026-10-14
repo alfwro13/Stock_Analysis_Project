@@ -62,39 +62,57 @@ def ensure_workflow_assets() -> None:
         logger.warning("Could not fetch Mermaid bundle (%s); Workflow Monitor graph unavailable until fetched.", e)
 
 
+def requirements_lock_path() -> Path:
+    return Path(__file__).resolve().parent / "requirements.lock"
+
+
 def pip_install_command() -> list[str]:
-    """The one requirements reinstall command; interpreter-based, so it works when venv/bin/pip or `activate` still point at a moved venv."""
-    return [sys.executable, "-m", "pip", "install", "-r", str(Path(__file__).resolve().parent / "requirements.txt")]
+    """The one reinstall command; interpreter-based, so it works when venv/bin/pip or `activate` still point at a moved venv."""
+    return [sys.executable, "-m", "pip", "install", "--require-hashes", "-r", str(requirements_lock_path())]
 
 
 def check_requirements_drift(req_path: Optional[str] = None) -> list[str]:
-    """Installed-vs-requirements.txt mismatches; read from disk, so it survives the in-memory pull flag being lost on a restart."""
-    import re
+    """Installed-vs-requirements.lock mismatches; read from disk, so it survives the in-memory pull flag being lost on a restart."""
     import importlib.metadata
+    from packaging.markers import InvalidMarker, Marker
+    from packaging.utils import canonicalize_name
     from packaging.version import Version, InvalidVersion
 
     if req_path is None:
-        req_path = os.path.join(os.path.dirname(__file__), "requirements.txt")
+        req_path = str(requirements_lock_path())
+    file_name = os.path.basename(req_path)
     mismatches: list[str] = []
     try:
         with open(req_path) as f:
             lines = f.readlines()
     except OSError as e:
-        logger.warning("Could not read requirements.txt for drift check: %s", e)
+        logger.warning("Could not read %s for drift check: %s", file_name, e)
         return mismatches
 
+    installed_versions = {}
+    for dist in importlib.metadata.distributions():
+        metadata = dist.metadata
+        if metadata["Name"]:
+            installed_versions[canonicalize_name(metadata["Name"])] = metadata["Version"]
+
     for raw_line in lines:
-        line = raw_line.split("#", 1)[0].strip()
-        if not line:
+        line = raw_line.split("#", 1)[0].strip().rstrip("\\").strip()
+        if not line or line.startswith("-"):
             continue
-        m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(==|>=)?\s*([A-Za-z0-9_.\-]*)$", line)
+        requirement, _, marker = line.partition(";")
+        if marker.strip():
+            try:
+                if not Marker(marker.strip()).evaluate():
+                    continue
+            except InvalidMarker:
+                pass
+        m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(==|>=)?\s*([A-Za-z0-9_.\-]*)$", requirement.strip())
         if not m:
             continue
         name, op, pinned = m.group(1), m.group(2), m.group(3)
-        try:
-            installed = importlib.metadata.version(name)
-        except importlib.metadata.PackageNotFoundError:
-            mismatches.append(f"{name}: not installed (requirements.txt requires '{line}')")
+        installed = installed_versions.get(canonicalize_name(name))
+        if installed is None:
+            mismatches.append(f"{name}: not installed ({file_name} requires '{requirement.strip()}')")
             continue
         if not op or not pinned:
             continue
@@ -103,26 +121,26 @@ def check_requirements_drift(req_path: Optional[str] = None) -> list[str]:
         except InvalidVersion:
             continue
         if op == "==" and installed_v != pinned_v:
-            mismatches.append(f"{name}: installed {installed}, requirements.txt pins =={pinned}")
+            mismatches.append(f"{name}: installed {installed}, {file_name} pins =={pinned}")
         elif op == ">=" and installed_v < pinned_v:
-            mismatches.append(f"{name}: installed {installed}, requirements.txt requires >={pinned}")
+            mismatches.append(f"{name}: installed {installed}, {file_name} requires >={pinned}")
     return mismatches
 
 
 def notify_requirements_drift() -> None:
     """Startup check (main.py lifespan) — logs and sends an in-app/log notification when
-    installed packages disagree with requirements.txt. Detect-only: does not run pip install,
+    installed packages disagree with requirements.lock. Detect-only: does not run pip install,
     to avoid adding a network call and installer run to every boot."""
     mismatches = check_requirements_drift()
     if not mismatches:
         return
     detail = "\n".join(mismatches)
-    logger.warning("requirements.txt drift detected: %s", detail)
+    logger.warning("requirements.lock drift detected: %s", detail)
     from notification_engine import notify
     notify(
         "system_update_status",
         "Warning",
-        "Installed packages don't match requirements.txt:\n" + detail
+        "Installed packages don't match requirements.lock:\n" + detail
         + "\n\nRestart the service from Settings to install them, or run this in a shell on the server "
         "and then restart the service:\n" + shlex.join(pip_install_command()),
         level="warning",

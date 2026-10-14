@@ -1,0 +1,57 @@
+name: Refresh dependency lock
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [requirements.txt]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        run: pip install uv==0.13.1
+
+      - name: Regenerate requirements.lock
+        run: uv pip compile requirements.txt --universal --python-version 3.13 --generate-hashes -o requirements.lock
+
+      - name: Publish the new lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if git diff --quiet -- requirements.lock; then
+            echo "requirements.lock is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            git add requirements.lock
+            git commit -m "Regenerate requirements.lock"
+            git push origin "HEAD:$REF_NAME"
+            echo "Pushed the lock to $REF_NAME. Close and reopen its pull request to start the tests."
+            exit 0
+          fi
+          git checkout -B refresh-lock
+          git add requirements.lock
+          git commit -m "Regenerate requirements.lock"
+          git push --force origin refresh-lock
+          if [ -z "$(gh pr list --head refresh-lock --state open --json number --jq '.[0].number')" ]; then
+            gh pr create --base "$DEFAULT_BRANCH" --head refresh-lock \
+              --title "Regenerate requirements.lock" \
+              --body "requirements.txt changed. Regenerated with the command in the lock header, which keeps every version that still satisfies requirements.txt. Close and reopen this pull request to start the tests."
+          fi

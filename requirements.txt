@@ -14,7 +14,6 @@ pyarrow==26.0.0
 ta==0.11.0
 plotly==7.1.0
 Jinja2==3.1.6
-ghostfolio==0.8.1
 python-slugify==8.0.4
 requests==2.34.2
 urllib3>=2.8
@@ -35,6 +34,5 @@ trafilatura>=2.1.0
 transformers>=5.19.0
 torch>=2.14.1
 hmmlearn>=0.3.3
-shap>=0.45.0
 psutil>=7.2.2
 markdown>=3.11

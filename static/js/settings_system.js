@@ -181,7 +181,7 @@ async function refreshActiveJobs() {
             } else {
                 requirementsBanner.textContent = change
                     ? `⚠️ scikit-learn will change from ${change.from_version} to ${change.to_version}. Dependencies will be reinstalled before restart. After the app starts, affected model retraining will begin automatically, normally within seconds, and run one model family at a time.`
-                    : '⚠️ requirements.txt and the installed packages differ. Dependencies will be reinstalled automatically before the service restarts.';
+                    : '⚠️ requirements.lock and the installed packages differ. Dependencies will be reinstalled automatically before the service restarts.';
             }
         }
         const el = document.getElementById('active-jobs-display');

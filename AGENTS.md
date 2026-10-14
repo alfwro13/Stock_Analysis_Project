@@ -32,7 +32,7 @@ The detailed reference material that used to live in this file now lives in `age
 | `agents/RULES_DATA_CACHING_HELPERS.md` | Rules 3, 15, 16, 17 — you fetch or cache external data, coordinate an on-demand refresh, change FX or historical-data freshness policy, decide which tickers get fetched, compute a value another engine may already compute, or write ANY new utility/calculation function (always read before adding a helper). |
 | `agents/RULE_12_CENTRAL_ENGINES.md` | Rule 12 — you touch time/timezone, Yahoo Finance, scheduling, notifications, persisted scikit-learn models, font sizes, price scraping, backup, Pattern Detection or the market ticker registry; you add or split files; ALWAYS for the POST-TASK AUDIT central-engine compliance check. |
 | `agents/RULE_12_DATA_PITFALLS.md` | Rule 12, continued — you touch daily-bar completeness, live-quote or price freshness, ticker-list filtering before Yahoo calls, `roe`/`debt_to_equity` units, "fill in the actual" backfill loops, or ticker-native vs transaction currency. |
-| `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` | Rules 10, 19, 20 — you add sleeps, retries, locks or blocking calls inside an `async def` route; you add or rename a `Server-Timing` request stage; you touch alert firing, dedup or cooldown logic; you change `requirements.txt` or any dependency. |
+| `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` | Rules 10, 19, 20 — you add sleeps, retries, locks or blocking calls inside an `async def` route; you add or rename a `Server-Timing` request stage; you touch alert firing, dedup or cooldown logic; you change `requirements.txt`, `requirements.lock` or any dependency. |
 | `agents/RULES_FRONTEND_UI.md` | Rules 11, 18 and Settings page structure — you touch any template, page, CSS, JS, Plotly chart, DataTables column or Settings card. |
 | `agents/TIME_AND_TIMEZONE.md` | You touch datetimes, market hours, holidays, `CronTrigger`s, or config schedule windows (`START_TIME`/`END_TIME`). |
 | `agents/TOOLS_AND_REPORTS_MENUS.md` | You add or change a page under `/tools` or `/reports`, or work on any tool listed there (Pattern Detection, Pairs Spread, Monte Carlo, ...). |
@@ -86,7 +86,7 @@ The detailed reference material that used to live in this file now lives in `age
 
 19. **Alert dedup gates must never auto-fire solely because a calendar day rolled over.** → **moved:** `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` — read it before touching any alert firing, dedup or cooldown logic.
 
-20. **Dependency updates are CI-gated, documented, and self-verified at runtime.** → **moved:** `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` — read it before changing `requirements.txt` or any dependency.
+20. **Dependency updates are CI-gated, documented, and self-verified at runtime.** → **moved:** `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md` — read it before changing `requirements.txt`, `requirements.lock` or any dependency.
 
 21. **Persisted scikit-learn estimators use the shared compatibility helper.** Write with `model_compatibility_engine.dump_sklearn_artifact()` and load with `model_compatibility_engine.load_sklearn_artifact(path, retraining_job_id)` so version sidecars, incompatible-load detection, and automatic retraining remain connected. Do not call `joblib.dump()` or `joblib.load()` directly for a persisted estimator. The retraining job ID must match the model family registered by `model_compatibility_engine.scan_model_compatibility()` and `scheduler_engine.start_model_compatibility_guard()`.
 
@@ -214,7 +214,6 @@ Every code change that adds, removes, or significantly alters a feature **must**
 | `ml_ensemble.joblib` | Primary soft-voting classifier (XGBoost + RF) |
 | `production_ensemble*.pkl` | Long/short directional ensembles |
 | `raw_xgb_model*.pkl` | Raw XGBoost base learners |
-| `xgb_explainer*.pkl` | SHAP explainers |
 | `feature_names.json` | Ordered feature list for inference |
 | `feature_stats.joblib` | Cross-sectional z-score stats |
 
