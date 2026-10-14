@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
+# Adding a route here is what lets Home Assistant call it. See assets/api_reference.md, "API key scope".
+API_KEY_ROUTES = frozenset({
+    ("GET", "/api/accounts/portfolio-totals"),
+    ("GET", "/api/accounts/list-with-metrics"),
+    ("GET", "/api/accounts/holdings-list"),
+    ("GET", "/api/accounts/other-accounts-list"),
+    ("POST", "/api/accounts/refresh-now"),
+    ("POST", "/api/accounts/holding-price-limit"),
+    ("GET", "/api/system/market-status"),
+    ("GET", "/api/market-regime/current"),
+    ("GET", "/api/macro-conditions"),
+    ("GET", "/api/markets"),
+})
+
 
 def require_step_up(request: Request):
     session = request.cookies.get(COOKIE_NAME, "")

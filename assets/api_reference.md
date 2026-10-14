@@ -1452,7 +1452,7 @@ The cookie holds a signed token carrying the username, issue time, remember-me f
 
 ### `POST /api/logout-everywhere`
 
-Signs out every browser and device, including the caller's: raises the session epoch, so each issued session token stops verifying, and clears the caller's `session` and `stepup` cookies. Requires a password step-up (see `POST /api/step-up`). `X-API-Key` and embed-token access are not affected.
+Signs out every browser and device, including the caller's: raises the session epoch, so each issued session token stops verifying, and clears the caller's `session` and `stepup` cookies. Requires a password step-up (see `POST /api/step-up`). `X-API-Key` and embed-token access are not affected (the key reaches only the routes in **API key scope**).
 
 **Response**
 
@@ -1462,9 +1462,39 @@ Signs out every browser and device, including the caller's: raises the session e
 
 ---
 
+### API key scope
+
+`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected.
+
+| Method | Path | Used by Home Assistant for |
+|--------|------|----------------------------|
+| `GET` | `/api/accounts/portfolio-totals` | Portfolio total sensors |
+| `GET` | `/api/accounts/list-with-metrics` | Per-Trading-account sensors |
+| `GET` | `/api/accounts/holdings-list` | Per-holding sensors and Low/High Limit numbers |
+| `GET` | `/api/accounts/other-accounts-list` | Pension/House account sensors |
+| `POST` | `/api/accounts/refresh-now` | Refresh Data button |
+| `POST` | `/api/accounts/holding-price-limit` | Setting a holding's Low/High Limit |
+| `GET` | `/api/system/market-status` | Market and system health sensors |
+| `GET` | `/api/market-regime/current` | Market Health sensors (regime) |
+| `GET` | `/api/macro-conditions` | Market Health sensors (yields, auctions, Fear & Greed) |
+| `GET` | `/api/markets` | Markets sensors |
+
+**Adding an endpoint to the Home Assistant integration.** A new call from the integration fails with `403` until every step below is done, in the same change:
+
+1. **Check the route is safe for a bearer key.** It must not return secrets, tokens or credentials and must not be step-up gated. A route that writes must validate its body and should be rate-limited, because a leaked key can call it.
+2. **Add `(METHOD, "/api/...")` to `API_KEY_ROUTES`** in `api_deps.py`. Only exact paths match, so a route with a path parameter needs a change to the matching in `main.py` as well; keep the new route's path parameter-free where possible.
+3. **Add a row to the table above** (the test below fails if a listed route is missing from it). Update the endpoint's own entry in this file if its authentication note says otherwise.
+4. **Update the integration** (`Stock_Analysis_Project_ha_integration/custom_components/stock_analysis_project/api.py`, then `sensor.py`/`number.py`/`binary_sensor.py`, `const.py`, `strings.json` and `translations/en.json`), its tests, its README, and the endpoint list in its `AGENTS.md`. Both repositories change together; a release of the integration that calls a route the deployed app does not list stops that section updating.
+5. **Update the endpoint lists** that name the integration's calls: `agents/SUBSYSTEM_HOME_ASSISTANT.md` and the Cross-Reference section of the integration's `AGENTS.md` (both are operator-approved edits), and `README.md` if user-visible sensors change.
+6. **Run `tests/test_06_auth.py`.** `TestAuthMiddleware` checks that every listed route is a registered route and that this table matches `API_KEY_ROUTES` exactly.
+
+Removing a route from the integration follows the same steps in reverse: drop it from `API_KEY_ROUTES` and the table so the key does not keep access it no longer needs.
+
+---
+
 ### `POST /api/step-up`
 
-Re-enters the dashboard password to unlock the **step-up-gated** routes for 5 minutes. Requires a signed-in browser session; an `X-API-Key` request has no session and is refused with `401`. Rate-limited to 5 requests per minute. A wrong password counts toward the account-wide lockout described under `POST /api/login`.
+Re-enters the dashboard password to unlock the **step-up-gated** routes for 5 minutes. Requires a signed-in browser session; an `X-API-Key` request has no session and is refused with `403` by the API key scope (see **API key scope**). Rate-limited to 5 requests per minute. A wrong password counts toward the account-wide lockout described under `POST /api/login`.
 
 **Request body**
 
@@ -1497,7 +1527,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 Changes the dashboard login password. The current password in the body is the re-authentication, so no step-up is needed; the route is rate-limited to 5 requests per minute, and a wrong current password counts toward the account-wide lockout described under `POST /api/login`. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
 
-The change raises the session epoch, so every other signed-in browser is signed out. A caller that sent a valid session cookie gets a fresh `session` cookie in the response (same username and remember-me setting) and stays signed in; an `X-API-Key` caller receives no cookie.
+The change raises the session epoch, so every other signed-in browser is signed out. A caller that sent a valid session cookie gets a fresh `session` cookie in the response (same username and remember-me setting) and stays signed in. An `X-API-Key` caller is refused with `403` (see **API key scope**).
 
 **Request body**
 
@@ -1536,7 +1566,7 @@ Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, in
 
 Generates a new Embed Token (32-byte hex) and persists it to `.env` as `EMBED_TOKEN`, invalidating the previous one. Requires a password step-up (see `POST /api/step-up`).
 
-The embed token bypasses login only for `GET` requests carrying `?embed=true` on the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) — see the auth middleware in `main.py`. It grants no other access (no other page, no `/api/*` endpoint, no non-GET method), unlike the general-purpose `API_KEY`/`X-API-Key` mechanism.
+The embed token bypasses login only for `GET` requests carrying `?embed=true` on the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) — see the auth middleware in `main.py`. It grants no other access (no other page, no `/api/*` endpoint, no non-GET method), unlike the `API_KEY`/`X-API-Key` mechanism, which is limited to the routes in **API key scope**.
 
 The token is returned only in this response; Settings shows it once and afterwards reports only that a token is set.
 

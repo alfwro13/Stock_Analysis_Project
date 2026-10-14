@@ -48,11 +48,10 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-# ── Auth bypass for tests ─────────────────────────────────────────────────────
-#    The auth middleware accepts requests with a valid X-API-Key header.
-#    Setting API_KEY here (before main.py loads) lets the TestClient pass all
-#    auth checks without a session cookie, which also avoids CSRF validation
-#    (the CSRF middleware only fires when the "session" cookie is present).
+# ── Auth for tests ────────────────────────────────────────────────────────────
+#    The shared `client` fixture signs in with a freshly minted session cookie and
+#    CSRF token on every request. The API key is scoped to the Home Assistant
+#    routes (api_deps.API_KEY_ROUTES), so it is only used by tests of that scope.
 _TEST_API_KEY = "test-api-key-do-not-use-in-production"
 os.environ["API_KEY"] = _TEST_API_KEY
 
@@ -96,6 +95,26 @@ _db_module.init_db()
 from fastapi.testclient import TestClient  # noqa: E402
 
 
+class _SessionTestClient(TestClient):
+    """Signs every request in with a fresh session and CSRF cookie unless the caller sends its own Cookie header."""
+
+    def request(self, method, url, **kwargs):
+        from itsdangerous import URLSafeSerializer
+        from auth import COOKIE_NAME, create_session_token
+        headers = dict(kwargs.get("headers") or {})
+        sent = {name.lower() for name in headers}
+        if "cookie" not in sent:
+            csrf = URLSafeSerializer(_TEST_APP_SECRET, "csrftoken").dumps("test-csrf")
+            cookies = {COOKIE_NAME: create_session_token(_TEST_USERNAME, False), "csrftoken": csrf}
+            cookies.update({c.name: c.value for c in self.cookies.jar if c.name not in cookies})
+            cookies.update(kwargs.pop("cookies", None) or {})
+            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            if "x-csrftoken" not in sent:
+                headers["X-CSRFToken"] = cookies["csrftoken"]
+        kwargs["headers"] = headers
+        return super().request(method, url, **kwargs)
+
+
 @pytest.fixture(autouse=True)
 def _block_real_nextcloud_send():
     """Session-wide safety net: no test should ever be able to dispatch a real Nextcloud Talk
@@ -124,11 +143,10 @@ def client():
         patch("api_routes_system.fetch_and_save_pulse"),
     ):
         import main as _main_module
-        with TestClient(
+        with _SessionTestClient(
             _main_module.app,
             base_url="http://localhost",
             raise_server_exceptions=False,
-            headers={"X-API-Key": _TEST_API_KEY},
         ) as c:
             yield c
 

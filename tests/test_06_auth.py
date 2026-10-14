@@ -20,9 +20,10 @@ Design notes
   Used for login/logout tests so that server-set session cookies can never bleed
   between test cases via the shared cookie jar.
 
-• `client`      — session-scoped, X-API-Key pre-set (from conftest).
-  Used when auth must pass but we are testing a different layer (e.g. step-up,
-  change-password business logic).
+• `client`      — session-scoped, signed in with a fresh session and CSRF cookie on every
+  request (from conftest). Used when auth must pass but we are testing a different layer
+  (e.g. step-up, change-password business logic). It sends no X-API-Key: key tests use
+  `raw_client` with an explicit header.
 """
 
 import os
@@ -258,20 +259,59 @@ class TestAuthMiddleware:
 
     # ── API-key path ──────────────────────────────────────────────────────────
 
-    def test_valid_api_key_grants_access(self, raw_client):
+    def test_valid_api_key_grants_access_to_an_allowed_route(self, raw_client):
         key = os.environ["API_KEY"]
-        resp = raw_client.get("/api/notifications/latest", headers={"X-API-Key": key})
+        resp = raw_client.get("/api/market-regime/current", headers={"X-API-Key": key})
         assert resp.status_code == 200
 
     def test_invalid_api_key_returns_401(self, raw_client):
-        resp = raw_client.get("/api/notifications/latest", headers={"X-API-Key": "wrong-key"})
+        resp = raw_client.get("/api/market-regime/current", headers={"X-API-Key": "wrong-key"})
         assert resp.status_code == 401
 
     def test_api_key_with_env_var_unset_returns_401(self, raw_client, monkeypatch):
         # When API_KEY is not configured, no key value can succeed.
         monkeypatch.delenv("API_KEY", raising=False)
-        resp = raw_client.get("/api/notifications/latest", headers={"X-API-Key": "any-key"})
+        resp = raw_client.get("/api/market-regime/current", headers={"X-API-Key": "any-key"})
         assert resp.status_code == 401
+
+    @pytest.mark.parametrize("method,path", [
+        ("GET", "/api/notifications/latest"),
+        ("GET", "/api/system/checks"),
+        ("GET", "/api/logs/tail"),
+        ("GET", "/settings"),
+        ("GET", "/portfolio"),
+        ("GET", "/"),
+        ("POST", "/api/accounts"),
+        ("POST", "/api/step-up"),
+        ("POST", "/api/settings"),
+        ("POST", "/api/system/restart"),
+        ("POST", "/api/accounts/portfolio-totals"),
+        ("GET", "/api/accounts/refresh-now"),
+        ("DELETE", "/api/accounts/holding-price-limit"),
+    ])
+    def test_valid_api_key_is_refused_outside_the_home_assistant_routes(self, raw_client, method, path):
+        resp = raw_client.request(method, path, headers={"X-API-Key": os.environ["API_KEY"]})
+        assert resp.status_code == 403, path
+
+    def test_session_cookie_still_reaches_routes_the_api_key_cannot(self, client):
+        assert client.get("/api/notifications/latest").status_code == 200
+
+    def test_api_key_routes_are_registered_routes(self):
+        from starlette.routing import Match
+        import main
+        from api_deps import API_KEY_ROUTES
+        for method, path in sorted(API_KEY_ROUTES):
+            scope = {"type": "http", "method": method, "path": path, "root_path": "", "query_string": b"", "headers": []}
+            assert any(r.matches(scope)[0] == Match.FULL for r in main.app.routes), (method, path)
+
+    def test_api_key_routes_match_the_documented_table(self):
+        import re
+        from api_deps import API_KEY_ROUTES
+        doc = (Path(__file__).parent.parent / "assets" / "api_reference.md").read_text()
+        start = doc.index("### API key scope")
+        section = doc[start:doc.index("\n### ", start + 1)]
+        rows = set(re.findall(r"^\| `(GET|POST|PUT|PATCH|DELETE)` \| `([^`]+)` \|", section, re.M))
+        assert rows == set(API_KEY_ROUTES)
 
     # ── Embed-token path ───────────────────────────────────────────────────────
 
@@ -690,9 +730,11 @@ class TestStepUpRoutes:
             resp = client.post("/api/save-account-email", json={"email": "a@b.c"}, headers=step_up_headers)
         assert resp.status_code == 403
 
-    def test_api_key_alone_cannot_step_up(self, client, test_password):
-        resp = client.post("/api/step-up", json={"password": test_password})
-        assert resp.status_code == 401
+    def test_api_key_alone_cannot_step_up(self, raw_client, test_password):
+        resp = raw_client.post(
+            "/api/step-up", json={"password": test_password}, headers={"X-API-Key": os.environ["API_KEY"]}
+        )
+        assert resp.status_code == 403
 
     def test_wrong_password_is_refused_and_sets_no_cookie(self, test_password, auth_cookies):
         with _fresh_client() as c:
@@ -1098,20 +1140,10 @@ class TestSessionEpoch:
             os.environ["DASHBOARD_PASSWORD"] = original
             os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
 
-    def test_change_password_by_api_key_issues_no_session_cookie(self, client, test_password):
-        original = os.environ.get("DASHBOARD_PASSWORD", test_password)
-        try:
-            with patch("dotenv.set_key"):
-                resp = client.post("/api/change-password", json={
-                    "current_password": original,
-                    "new_password": "A-brand-new-passphrase-1",
-                    "confirm_password": "A-brand-new-passphrase-1",
-                })
-            assert resp.status_code == 200
-            assert COOKIE_NAME not in resp.cookies
-        finally:
-            os.environ["DASHBOARD_PASSWORD"] = original
-            os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
+    def test_change_password_is_refused_to_an_api_key(self, raw_client):
+        resp = raw_client.post("/api/change-password", json={}, headers={"X-API-Key": os.environ["API_KEY"]})
+        assert resp.status_code == 403
+        assert COOKIE_NAME not in resp.cookies
 
     def test_logout_everywhere_revokes_every_session_and_clears_cookies(self, step_up_headers, auth_cookies):
         other_device = create_session_token("alice", remember=True)
@@ -1238,15 +1270,17 @@ class TestLoginLockout:
         })
         assert client_blocked.status_code == 429
 
-    def test_step_up_without_a_session_does_not_count(self, client):
-        assert client.post("/api/step-up", json={"password": "wrong-guess"}).status_code == 401
+    def test_step_up_without_a_session_does_not_count(self, raw_client):
+        headers = {"X-API-Key": os.environ["API_KEY"]}
+        assert raw_client.post("/api/step-up", json={"password": "wrong-guess"}, headers=headers).status_code == 403
         assert _throttle_row() is None
 
-    def test_api_key_access_is_not_affected_by_a_lockout(self, client, test_username):
+    def test_api_key_access_is_not_affected_by_a_lockout(self, raw_client, test_username):
         with _fresh_client() as c:
             for _ in range(5):
                 _login(c, test_username, "wrong-guess")
-        assert client.get("/api/notifications/latest").status_code == 200
+        resp = raw_client.get("/api/market-regime/current", headers={"X-API-Key": os.environ["API_KEY"]})
+        assert resp.status_code == 200
 
     def test_failures_are_logged_with_client_and_username_match(self, test_username, caplog):
         with caplog.at_level("WARNING", logger="auth"), _fresh_client() as c:

@@ -20,6 +20,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette_csrf import CSRFMiddleware
 
 from config import ALLOWED_HOSTS, BASE_DIR, BIND_HOST, FRAME_ANCESTORS, PORT, SERVER_URL, load_config
+from api_deps import API_KEY_ROUTES
 from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_token
 from api_routes import limiter
 from database import init_db
@@ -223,13 +224,15 @@ async def auth_middleware(request: Request, call_next):
     if path in _EXEMPT or any(path.startswith(p) for p in _EXEMPT_PREFIXES):
         return await call_next(request)
 
-    # API key authentication (for scripts / curl)
+    # API key: only the routes in API_KEY_ROUTES, so a leaked key cannot read pages or settings
     api_key = request.headers.get("X-API-Key", "")
     if api_key:
         expected = os.environ.get("API_KEY", "")
-        if expected and secrets.compare_digest(api_key.encode(), expected.encode()):
-            return await call_next(request)
-        return JSONResponse({"detail": "Invalid API key"}, status_code=401)
+        if not (expected and secrets.compare_digest(api_key.encode(), expected.encode())):
+            return JSONResponse({"detail": "Invalid API key"}, status_code=401)
+        if (request.method, path) not in API_KEY_ROUTES:
+            return JSONResponse({"detail": "The API key cannot be used on this route"}, status_code=403)
+        return await call_next(request)
 
     # Embed token authentication — GET only, scoped to the embeddable pages, requires embed=true
     is_embed_path = path in _EMBED_PATHS or any(path.startswith(p) for p in _EMBED_PATH_PREFIXES)

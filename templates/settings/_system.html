@@ -743,7 +743,7 @@
 
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">API Key</h4>
-                <p class="settings-desc">Use this key to access the API from scripts or external tools via the <code>X-API-Key</code> header. Generating a new key immediately invalidates the old one.</p>
+                <p class="settings-desc">Use this key for the Home Assistant integration, sent in the <code>X-API-Key</code> header. It works only on the endpoints that integration calls; every other route and page refuses it. Generating a new key immediately invalidates the old one.</p>
                 <p id="ua_api_key_state" class="settings-desc-sm {{ 'text-success' if secrets_set.API_KEY else 'text-warning' }}">{{ 'An API key is set. It is shown only once, when generated — generate a new one to get a value you can copy.' if secrets_set.API_KEY else 'No API key set — generate one below to enable script access.' }}</p>
                 <div id="ua_api_key_once" class="form-group d-none">
                     <label for="ua_api_key">New API key — copy it now, it will not be shown again</label>
