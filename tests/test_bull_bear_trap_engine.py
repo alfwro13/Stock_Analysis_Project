@@ -985,7 +985,7 @@ class TestTrapPhaseHistoryDB:
 
 class TestTrapAccuracyAPIEndpoint:
     def test_trap_accuracy_api_returns_200(self, client):
-        resp = client.get("/api/trap-monitor/accuracy", headers={"X-API-Key": "test-api-key-do-not-use-in-production"})
+        resp = client.get("/api/trap-monitor/accuracy")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"

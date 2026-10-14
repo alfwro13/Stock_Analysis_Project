@@ -153,7 +153,7 @@ To configure email-based self-service password reset:
 
 **Passwords and sessions.** A new password must be at least 12 characters and not a commonly used one. Changing or resetting the password signs out every other browser, and **Settings → User Account → Log Out Everywhere** signs out all of them on demand. Five wrong passwords in a row lock sign-in for 30 seconds, doubling up to 15 minutes; failures are logged and the lockout raises a **Failed Login Alert** notification. API-key access is not affected.
 
-**Sensitive Settings actions ask for your password.** Saving settings or credentials, pulling updates, restarting, restoring a backup and rotating secrets prompt for the dashboard password once; that unlocks them for 5 minutes. Scripts using the API key cannot use these actions.
+**Sensitive Settings actions ask for your password.** Saving settings or credentials, pulling updates, restarting, restoring a backup and rotating secrets prompt for the dashboard password once; that unlocks them for 5 minutes. The API key works only on the endpoints the Home Assistant integration calls; every other route and page refuses it, so it cannot reach these actions or the Settings page.
 3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour, a new request invalidates older links, and the reply never reveals whether the email matched. Link requests are limited to 3 per hour.
 
 If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for the recovery methods, including a console script (`python reset_admin_password.py`). There is no unauthenticated browser reset page.
@@ -223,7 +223,7 @@ By appending a simple URL parameter, the system will automatically hide the top 
 * **Portfolio:** http://localhost:8090/portfolio?embed=true&embed_token=\<your-embed-token\>
 * **Watchlist:** http://localhost:8090/watchlist?embed=true&embed_token=\<your-embed-token\>
 
-The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the general-purpose API Key used by the Native Home Assistant Integration below. Generating a new embed token immediately invalidates the old one. The token is shown only once, when it is generated — copy it then; Settings afterwards shows only that a token is set.
+The embed token only bypasses login for `GET` requests to the embeddable pages (`/portfolio`, `/watchlist`, `/stock/{ticker}`) when `embed=true` is also present — it grants no access to any other page or `/api/*` endpoint, unlike the API Key used by the Native Home Assistant Integration below, which is limited to that integration's own endpoints. Generating a new embed token immediately invalidates the old one. The token is shown only once, when it is generated — copy it then; Settings afterwards shows only that a token is set.
 
 **Example Home Assistant Webpage Card Configuration:**
 ```
