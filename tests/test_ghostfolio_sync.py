@@ -666,6 +666,11 @@ class TestTlsVerificationStaysOn:
 
 class TestRunFullSync:
 
+    @pytest.fixture(autouse=True)
+    def _integration_enabled(self):
+        with patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": True}):
+            yield
+
     def test_integration_disabled_returns_false_without_authenticating(self, monkeypatch):
         """run_full_sync() must skip entirely when GHOSTFOLIO_ENABLED is False."""
         engine = _engine_with_bearer(monkeypatch)
@@ -686,9 +691,12 @@ class TestRunFullSync:
     def test_auth_failure_returns_false(self, monkeypatch):
         """run_full_sync() returns False when authentication fails."""
         engine = _engine_with_bearer(monkeypatch)
-        with patch.object(engine, "authenticate", return_value=False):
+        with patch.object(engine, "authenticate", return_value=False) as mock_auth, \
+             patch.object(engine, "discover_accounts") as mock_discover:
             result = engine.run_full_sync()
         assert result is False
+        mock_auth.assert_called_once()
+        mock_discover.assert_not_called()
 
     def test_success_calls_all_steps_in_order(self, monkeypatch, tmp_path):
         """run_full_sync() must call authenticate → discover_accounts → sync_portfolio."""
