@@ -76,6 +76,7 @@ function chain() {
             if (key === 'DataTable') return cfg => { tableConfig = cfg; return chain(); };
             if (key === 'append') return (...args) => { appended.push(...args); return chain(); };
             if (key === 'ready') return fn => { fn(); return chain(); };
+            if (key === 'ajax') return {url: () => chain()};
             return () => chain();
         },
         apply() { return chain(); },
@@ -84,7 +85,8 @@ function chain() {
 const $ = function () { return chain(); };
 $.fn = {dataTable: {ext: {search: [], errMode: ''}, render: {number: () => () => ''}}};
 const context = {
-    $, Option, URL, URLSearchParams, document: {}, window: {location: {search: ''}},
+    $, Option, URL, URLSearchParams, document: {getElementById: () => ({value: ''})},
+    window: {location: {search: ''}},
 };
 vm.createContext(context);
 for (const file of process.argv.slice(2)) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
@@ -126,12 +128,16 @@ if (spec.url) {
         assert.equal(render(bad, 'display', {}), 'N/A', JSON.stringify(bad));
     }
 }
-const values = [payload, 'Technology'];
-const each = cb => values.forEach(cb);
-const api = {column: () => ({data: () => ({unique: () => ({sort: () => ({each})})})})};
-tableConfig.initComplete.call({api: () => api});
-assert.ok(appended.some(a => a instanceof Option && a.text === payload && a.value === payload));
-assert.ok(!appended.some(a => typeof a === 'string' && a.includes(payload)));
+if (spec.options === false) {
+    assert.equal(tableConfig.initComplete, undefined, 'unexpected initComplete: add its checks');
+} else {
+    const values = [payload, 'Technology'];
+    const each = cb => values.forEach(cb);
+    const api = {column: () => ({data: () => ({unique: () => ({sort: () => ({each})})})})};
+    tableConfig.initComplete.call({api: () => api});
+    assert.ok(appended.some(a => a instanceof Option && a.text === payload && a.value === payload));
+    assert.ok(!appended.some(a => typeof a === 'string' && a.includes(payload)));
+}
 """
 
 
@@ -156,6 +162,14 @@ assert.ok(!appended.some(a => typeof a === 'string' && a.includes(payload)));
     ("relative_strength_leaders.js", {
         "text": ["company_name", "sector", "country"], "links": ["ticker"],
         "currency": ["close_price"], "rowSector": [], "url": False,
+    }),
+    ("mean_reversion.js", {
+        "text": ["company_name", "sector", "country"], "links": ["ticker"],
+        "currency": ["close_price", "sma_200"], "rowSector": [], "url": False, "options": False,
+    }),
+    ("dividend_harvest.js", {
+        "text": ["company_name", "sector", "ex_dividend_date"], "links": ["ticker"],
+        "currency": ["close_price"], "rowSector": [], "url": False, "options": False,
     }),
     ("sector_trends.js", {
         "text": [], "links": ["sector"], "currency": [],

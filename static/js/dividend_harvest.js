@@ -24,9 +24,9 @@ $(document).ready(function() {
         ],
 
         columns: [
-            { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
-            { data: 'company_name' },
-            { data: 'sector' },
+            { data: 'ticker', render: function(data) { return '<a href="/stock/' + escapeHtml(data) + '" class="ticker-link">' + escapeHtml(data) + '</a>'; } },
+            { data: 'company_name', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
+            { data: 'sector', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
             {
                 data: 'close_price',
                 render: function(data, type, row) {
@@ -34,7 +34,7 @@ $(document).ready(function() {
                 }
             },
             { data: 'dividend_yield', render: function(data) { return `<span class="positive-val">${(data * 100).toFixed(2)}%</span>`; } },
-            { data: 'ex_dividend_date' },
+            { data: 'ex_dividend_date', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
             { data: 'composite_score', render: function(data) {
                 if (data == null) return '-';
                 let cssClass = data >= 70 ? 'positive-val' : (data < 40 ? 'negative-val' : '');

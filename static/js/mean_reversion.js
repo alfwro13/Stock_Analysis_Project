@@ -24,10 +24,10 @@ $(document).ready(function() {
         ],
 
         columns: [
-            { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
-            { data: 'company_name' },
-            { data: 'sector' },
-            { data: 'country', render: function(data) { return data || 'US'; } },
+            { data: 'ticker', render: function(data) { return '<a href="/stock/' + escapeHtml(data) + '" class="ticker-link">' + escapeHtml(data) + '</a>'; } },
+            { data: 'company_name', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
+            { data: 'sector', render: function(data, type) { return type === 'display' ? escapeHtml(data) : data; } },
+            { data: 'country', render: function(data, type) { const v = data || 'US'; return type === 'display' ? escapeHtml(v) : v; } },
             {
                 data: 'close_price',
                 render: function(data, type, row) {
