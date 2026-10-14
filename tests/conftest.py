@@ -133,7 +133,6 @@ def client():
     """
     with (
         patch("main.run_yfinance_smoke_test"),
-        patch("utils.ensure_workflow_assets"),
         patch("main.start_scheduler"),
         patch("main.reload_scheduler"),
         patch("main.shutdown_scheduler"),
@@ -181,7 +180,6 @@ def raw_client():
     """
     with (
         patch("main.run_yfinance_smoke_test"),
-        patch("utils.ensure_workflow_assets"),
         patch("main.start_scheduler"),
         patch("main.reload_scheduler"),
         patch("main.shutdown_scheduler"),

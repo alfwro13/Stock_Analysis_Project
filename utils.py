@@ -43,25 +43,6 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _CURRENCY_CODE_RE = re.compile(r"[A-Za-z]{3}")
 _ISO_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
-MERMAID_VERSION = "10.9.1"
-MERMAID_URL = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
-
-
-def ensure_workflow_assets() -> None:
-    """Fetch the vendored Mermaid bundle on first boot; it is gitignored, not committed."""
-    target = os.path.join(os.path.dirname(__file__), "static", "js", "mermaid.min.js")
-    if os.path.exists(target) and os.path.getsize(target) > 0:
-        return
-    try:
-        import urllib.request
-        with urllib.request.urlopen(MERMAID_URL, timeout=15) as resp:
-            data = resp.read()
-        with open(target, "wb") as f:
-            f.write(data)
-        logger.info("Fetched Mermaid %s into static/js/.", MERMAID_VERSION)
-    except Exception as e:
-        logger.warning("Could not fetch Mermaid bundle (%s); Workflow Monitor graph unavailable until fetched.", e)
-
 
 def requirements_lock_path() -> Path:
     return Path(__file__).resolve().parent / "requirements.lock"

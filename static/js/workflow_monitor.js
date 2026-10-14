@@ -55,7 +55,7 @@ async function loadWorkflowMonitor() {
         if (!container) { _workflowLoaded = true; return; }
 
         if (!window.mermaid) {
-            container.innerHTML = '<p class="text-red text-sm">Mermaid library not loaded — the graph bundle has not been fetched yet.</p>';
+            container.innerHTML = '<p class="text-red text-sm">Mermaid library failed to load — reload the page.</p>';
             return;
         }
         const def = _wfBuildMermaid(data.nodes || [], data.edges || []);

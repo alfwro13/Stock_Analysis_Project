@@ -29,12 +29,18 @@ ghostfolio_ha_integration/
 Stock_Analysis_Project_ha_integration/
 
 # Ignore specific files
-static/js/mermaid.min.js
 to_do*.txt
 config.json
 ml_pipeline_results.json
 .env
 *.env
+.env.*
+*.db*
+*.joblib
+*.pkl
+backup_*.tar.gz
+config.tmp
+test_report.html
 audit*.md
 task_prompt.md
 note.md

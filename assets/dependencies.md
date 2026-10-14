@@ -44,6 +44,14 @@ a package whose files do not match its hash is refused.
   regenerating with `-P <package>` and merging.
 - **Python upgrade:** change `--python-version` in the command and regenerate
   once every pinned package publishes wheels for the new interpreter.
+- **CI interpreters:** `tests.yml` runs the full suite on Python 3.13 and 3.14
+  (`fail-fast` off, so one leg failing does not hide the other). Production runs
+  3.13, whose `tarfile` default extraction filter differs from 3.14's, so a
+  restore-safety test could pass on 3.14 alone and fail open there.
+- **GitHub Actions:** every `uses:` in `.github/workflows/` is pinned to a commit
+  SHA with the release tag in a trailing comment. `.github/dependabot.yml` has a
+  `github-actions` ecosystem that proposes new SHAs weekly; review them like any
+  other Dependabot PR. Never replace a SHA with a moving tag such as `@v7`.
 
 Dependabot itself cannot read this file — it has no concept of "usage docs."
 Its own risk controls are configured in `.github/dependabot.yml` (grouping,
@@ -146,6 +154,19 @@ and what should I test?" without grepping the whole codebase first.
   those files are orphaned artifacts of a retired training step. Both packages were
   dropped from `requirements.txt` (and, with them, `numba`, `llvmlite` and `slicer`
   from the lock) in the supply-chain hardening change (SEC 18/27).
+
+## Vendored Mermaid
+
+`static/vendor/mermaid/mermaid-11.17.2.min.js` is the unmodified Mermaid **11.17.2**
+`dist/mermaid.min.js` from the npm package (MIT license), SHA-256
+`581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8`. It is loaded
+only by the Settings page, where `static/js/workflow_monitor.js` draws the Workflow
+Monitor flow-chart. It is committed to git like every other front-end library;
+the application no longer downloads it at startup. To upgrade, download the new
+`dist/mermaid.min.js`, store it under a new versioned filename, update the
+`<script>` in `templates/settings.html`, delete the old file and bump `CSS_VERSION`.
+Then check that the Workflow Monitor graph on Settings renders (nodes, status
+colours, edges).
 
 ## Vendored column reordering
 

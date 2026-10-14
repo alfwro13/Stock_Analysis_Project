@@ -137,8 +137,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing application lifecycle...")
     harden_runtime_permissions(BASE_DIR)
     init_db()
-    from utils import ensure_workflow_assets, notify_requirements_drift
-    ensure_workflow_assets()
+    from utils import notify_requirements_drift
     notify_requirements_drift()
     run_yfinance_smoke_test()
     start_scheduler()

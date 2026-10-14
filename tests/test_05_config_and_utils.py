@@ -1172,7 +1172,6 @@ def test_lifespan_hardens_permissions_before_database_init():
         patch("main.shutdown_scheduler"),
         patch("main.resume_interrupted_scans"),
         patch("main.start_model_compatibility_guard"),
-        patch("utils.ensure_workflow_assets"),
         patch("main.init_db", side_effect=lambda: order.append("init_db")),
         patch("main.harden_runtime_permissions", side_effect=lambda base: order.append(("harden", Path(base)))),
     ):

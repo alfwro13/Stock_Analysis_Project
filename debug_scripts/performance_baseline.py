@@ -116,7 +116,6 @@ def main():
         patch("main.shutdown_scheduler"),
         patch("main.start_model_compatibility_guard"),
         patch("main.resume_interrupted_scans"),
-        patch("utils.ensure_workflow_assets"),
         patch("utils.notify_requirements_drift"),
         patch("api_routes_accounts.fetch_and_save_pulse"),
         patch("yahoo_engine.yf.download", side_effect=RuntimeError("baseline offline")),
