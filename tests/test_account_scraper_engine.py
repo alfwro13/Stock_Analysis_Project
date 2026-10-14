@@ -236,6 +236,7 @@ class _TlsServer:
     def __init__(self, cert, key, handler):
         self.httpd = HTTPServer(("127.0.0.1", 0), handler)
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(cert, key)
         self.httpd.socket = ctx.wrap_socket(self.httpd.socket, server_side=True)
         self.port = self.httpd.server_address[1]
