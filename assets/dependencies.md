@@ -158,8 +158,7 @@ and what should I test?" without grepping the whole codebase first.
 ## Vendored Mermaid
 
 `static/vendor/mermaid/mermaid-12.2.0.min.js` is the unmodified Mermaid **12.2.0**
-`dist/mermaid.min.js` from the npm package (MIT license), SHA-256
-`a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f`. It is loaded
+`dist/mermaid.min.js` from the npm package (MIT license). It is loaded
 only by the Settings page, where `static/js/workflow_monitor.js` draws the Workflow
 Monitor flow-chart. It is committed to git like every other front-end library;
 the application no longer downloads it at startup.
@@ -170,14 +169,26 @@ it, and it has no lockfile. `.github/dependabot.yml` has an `npm` ecosystem, so
 Dependabot opens a weekly PR when Mermaid releases and GitHub raises security
 alerts for Mermaid advisories. That PR only changes the version in `package.json`,
 and `test_settings_loads_vendored_mermaid_that_exists_in_the_repo` fails on it
-until the vendored file matches, which is the reminder to do the steps below.
+until the vendored file matches.
 
-To upgrade (on the Dependabot branch, or by hand if you change `package.json`
-yourself), download `dist/mermaid.min.js` for the new version from jsDelivr and
-compare its SHA-256 with `https://data.jsdelivr.com/v1/packages/npm/mermaid@<version>?structure=flat`.
-Store it as `static/vendor/mermaid/mermaid-<version>.min.js`, update the
-`<script>` in `templates/settings.html`, delete the old file, update the version
-and hash in this section, and bump `CSS_VERSION`.
+**Automation:** `.github/workflows/refresh-mermaid.yml` runs on Dependabot pull
+requests that change `package.json` (and by hand on a branch). It runs
+`npm pack mermaid@<version>`, which checks the tarball against the registry's
+integrity hash, extracts `dist/mermaid.min.js` as
+`static/vendor/mermaid/mermaid-<version>.min.js`, deletes the previous file,
+points the `<script>` in `templates/settings.html` at it, bumps `CSS_VERSION`
+and pushes one commit to the branch; the file's SHA-256 is in the commit message
+and the run summary. It pushes with the same `LOCK_REFRESH_TOKEN` Dependabot
+secret as the lock refresh (see Automation above), because a workflow-token push
+does not start `tests.yml`; dispatched by hand it uses the workflow token, so
+close and reopen the pull request. It refuses to run on `main` and refuses a
+`package.json` version that is not an exact `x.y.z`. The workflow cannot judge
+rendering: **a person must still open Settings and the graph tab before merging.**
+
+To do the same by hand, run `npm pack mermaid@<version>`, extract
+`package/dist/mermaid.min.js`, store it under the versioned name, update the
+`<script>` in `templates/settings.html`, delete the old file and bump
+`CSS_VERSION`.
 Then check that the Workflow Monitor graph on Settings renders (nodes, status
 colours, edges) and that single- and double-click on a node still work in the
 graph tab: `static/js/workflow_tab.js` parses Mermaid's generated node element
