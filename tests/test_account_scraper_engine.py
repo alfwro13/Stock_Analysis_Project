@@ -210,12 +210,10 @@ def test_allowed_headers_are_sent():
     assert fetch.call_args.args[1] == sent
 
 
-def test_validate_config_rejects_http_and_bad_headers():
-    scraper.validate_config("https://example.test/x", {"Cookie": "a=b"})
-    with pytest.raises(scraper.ScrapeRefused):
-        scraper.validate_config("http://example.test/x", None)
-    with pytest.raises(scraper.ScrapeRefused):
-        scraper.validate_config("https://example.test/x", {"Host": "x"})
+def test_config_error_rejects_http_and_bad_headers():
+    assert scraper.config_error("https://example.test/x", {"Cookie": "a=b"}) is None
+    assert "https" in scraper.config_error("http://example.test/x", None)
+    assert "not allowed" in scraper.config_error("https://example.test/x", {"Host": "x"})
 
 
 @pytest.fixture(scope="module")
@@ -237,7 +235,7 @@ def tls_material(tmp_path_factory):
 class _TlsServer:
     def __init__(self, cert, key, handler):
         self.httpd = HTTPServer(("127.0.0.1", 0), handler)
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(cert, key)
         self.httpd.socket = ctx.wrap_socket(self.httpd.socket, server_side=True)
         self.port = self.httpd.server_address[1]

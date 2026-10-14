@@ -18,7 +18,7 @@ from accounts_engine import (
 )
 from account_csv_import_engine import import_csv_activities
 from account_scraper_engine import (
-    ScrapeRefused, import_price_csv, price_as_of, run_scrape_for_account, test_scrape, validate_config, validate_headers,
+    config_error, header_error, import_price_csv, price_as_of, run_scrape_for_account, test_scrape,
 )
 from portfolio_metrics_engine import (
     account_metrics_list, holdings_with_metrics_all_accounts, other_accounts_list,
@@ -1049,13 +1049,12 @@ def api_update_scraper_config(request: Request, account_id: int, body: ScraperCo
         acc, error = _require_scraper_account(account_id)
         if error:
             return error
-        try:
-            if body.scraper_url.strip():
-                validate_config(body.scraper_url, body.scraper_headers)
-            else:
-                validate_headers(body.scraper_headers)
-        except ScrapeRefused as e:
-            return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+        if body.scraper_url.strip():
+            error = config_error(body.scraper_url, body.scraper_headers)
+        else:
+            error = header_error(body.scraper_headers)
+        if error:
+            return JSONResponse(status_code=400, content={"status": "error", "message": error})
         fields = {
             "scraper_url": body.scraper_url.strip(),
             "scraper_selector": body.scraper_selector.strip(),

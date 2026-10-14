@@ -80,28 +80,26 @@ def _parse_https_url(url: str):
         parts = urlsplit((url or "").strip())
         port = parts.port
     except ValueError:
-        raise ScrapeRefused("The URL is not valid.") from None
+        return None, None, "The URL is not valid."
     if parts.scheme != "https":
-        raise ScrapeRefused("Only https:// URLs are allowed.")
+        return None, None, "Only https:// URLs are allowed."
     if not parts.hostname:
-        raise ScrapeRefused("The URL has no host name.")
+        return None, None, "The URL has no host name."
     if parts.username is not None or parts.password is not None:
-        raise ScrapeRefused("Put credentials in an Authorization header, not in the URL.")
-    return parts, port or 443
+        return None, None, "Put credentials in an Authorization header, not in the URL."
+    return parts, port or 443, None
 
 
-def validate_headers(headers: Optional[dict]) -> None:
+def header_error(headers: Optional[dict]) -> Optional[str]:
     for name in headers or {}:
         lowered = str(name).strip().lower()
         if lowered not in _ALLOWED_HEADER_NAMES and not lowered.startswith("accept"):
-            raise ScrapeRefused(
-                f"Header {name!r} is not allowed. Allowed headers: Cookie, Authorization, User-Agent and Accept*."
-            )
+            return f"Header {name!r} is not allowed. Allowed headers: Cookie, Authorization, User-Agent and Accept*."
+    return None
 
 
-def validate_config(url: str, headers: Optional[dict]) -> None:
-    _parse_https_url(url)
-    validate_headers(headers)
+def config_error(url: str, headers: Optional[dict]) -> Optional[str]:
+    return _parse_https_url(url)[2] or header_error(headers)
 
 
 def _get_pinned(hostname: str, port: int, address: str, target: str, headers: dict) -> str:
@@ -124,7 +122,9 @@ def _get_pinned(hostname: str, port: int, address: str, target: str, headers: di
 
 
 def _fetch_body(url: str, headers: dict) -> str:
-    parts, port = _parse_https_url(url)
+    parts, port, error = _parse_https_url(url)
+    if error:
+        raise ScrapeRefused(error)
     host = _normalise_host(parts.hostname)
     addresses = _resolve(host, port)
     allowed = {_normalise_host(h) for h in load_config().get("SCRAPER_ALLOWED_HOSTS") or []}
@@ -163,7 +163,9 @@ def extract_price(html: str, selector: str) -> float:
 
 def fetch_and_extract(url: str, selector: str, headers: Optional[dict] = None) -> dict:
     try:
-        validate_headers(headers)
+        error = header_error(headers)
+        if error:
+            raise ScrapeRefused(error)
         price = extract_price(_fetch_body(url, headers or {}), selector)
         return {"status": "success", "price": price}
     except ValueError as e:
