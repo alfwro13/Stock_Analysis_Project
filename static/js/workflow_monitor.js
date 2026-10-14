@@ -2,7 +2,7 @@ let _workflowLoaded = false;
 let _workflowRenderSeq = 0;
 
 if (window.mermaid) {
-    mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose", flowchart: { useMaxWidth: false } });
+    mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose", layout: "dagre", flowchart: { useMaxWidth: false, wrappingWidth: 200 } });
 }
 
 function _wfSanitizeLabel(text) {
