@@ -230,7 +230,7 @@ $(document).ready(function() {
                 }
             },
             { data: 'expense_ratio', render: function(data, type) { return data ? (type === 'display' ? escapeHtml(data) : data) + '%' : 'N/A'; } },
-            { data: 'freetrade_url', render: function(data) { return data && data !== 'N/A' ? '<a href="' + escapeHtml(data) + '" target="_blank" class="text-accent-purple">KIID Document</a>' : 'N/A'; } }
+            { data: 'freetrade_url', render: function(data) { const href = safeHttpUrl(data); return href ? '<a href="' + escapeHtml(href) + '" target="_blank" class="text-accent-purple">KIID Document</a>' : 'N/A'; } }
         ]
     });
 
