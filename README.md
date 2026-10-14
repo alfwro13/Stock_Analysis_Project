@@ -279,6 +279,7 @@ ExecStart=/home/yourusername/Stock_Analysis_Project/venv/bin/python main.py
 Restart=always  
 RestartSec=5  
 Environment="PYTHONUNBUFFERED=1"
+Environment="HF_HUB_OFFLINE=1"
 
 # Optional - uncomment only if a reverse proxy on a different machine forwards requests to the app (see below)
 # Environment="FORWARDED_ALLOW_IPS=<proxy-ip>"
@@ -287,6 +288,8 @@ Environment="PYTHONUNBUFFERED=1"
 WantedBy=multi-user.target
 ```
 
+
+**`HF_HUB_OFFLINE=1`:** the FinBERT sentiment model is loaded from the local Hugging Face cache at a pinned revision, and this setting stops the app from contacting the Hub on every load. On a fresh install, download the model once with the variable unset (`HF_HUB_OFFLINE=0 venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('ProsusAI/finbert', revision='<NLP_FINBERT_REVISION in constants.py>')"`), run as the service user, before starting the service.
 
 **Optional - `FORWARDED_ALLOW_IPS`:** the app only trusts the client address that a reverse proxy forwards (`X-Forwarded-For`) when the proxy connects from the same machine. Leave the line commented out if Nginx runs on the same machine as the dashboard. If the proxy runs on a different machine, uncomment it and set it to that machine's address (a comma-separated list is accepted); otherwise every visitor appears to come from the proxy, they share one login rate-limit bucket, and real client addresses never reach the logs. Never set it to `*`: any host that can reach the app could then forge its address. Changing it needs `sudo systemctl daemon-reload` and a restart of the service.
 

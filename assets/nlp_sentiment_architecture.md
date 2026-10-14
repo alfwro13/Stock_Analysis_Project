@@ -44,10 +44,18 @@ _MODEL_LOCK = threading.Lock()
 2. Acquire `_MODEL_LOCK`
 3. Re-check (double-checked locking — guards against race on startup)
 4. Inject `HF_TOKEN` from environment (see §4)
-5. Attempt `pipeline(..., local_files_only=True)` — skips all HuggingFace Hub HTTP round-trips if the model is cached
-6. On `OSError` (cache absent), fall back to standard online download — only happens on first run
+5. Attempt `pipeline(..., revision=NLP_FINBERT_REVISION, local_files_only=True)` — loads the pinned snapshot from the local cache
+6. On `OSError` (that snapshot is not cached), fall back to an online download of the same pinned revision — only happens on first run
 
-This means **production restarts incur zero network calls** once the model has been downloaded once.
+**Revision pin (SEC 22/27 · S6-4):** both calls pass `revision=constants.NLP_FINBERT_REVISION`, the `ProsusAI/finbert` `main` commit `4556d13` (`pytorch_model.bin`, loaded with `weights_only` on torch ≥ 2.6). Before the pin, the model was resolved by name, so each load queried the Hub and could pick up `refs/pr/29` (an unmerged convert-bot PR), a revision the model owner never reviewed. Its weights are identical to `main`'s (checked tensor by tensor, 202 of 202). To move to a new revision, change the constant, then pre-download it on each host (below).
+
+**Offline in production:** the systemd unit sets `Environment="HF_HUB_OFFLINE=1"`, so no load contacts the Hub (the `local_files_only` call alone still did, to list the model's discussions and refs). With it set the first-run fallback in step 6 cannot download: on a fresh install, or after changing `NLP_FINBERT_REVISION`, run once with the variable unset, as the service user:
+
+```
+HF_HUB_OFFLINE=0 venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('ProsusAI/finbert', revision='<NLP_FINBERT_REVISION>')"
+```
+
+Until the pinned snapshot is cached the sentiment analyzer is unavailable (`_get_finbert_analyzer()` returns `None` and the scan aborts with an error log).
 
 ### 2.3 Scoring Logic
 
@@ -173,7 +181,7 @@ And the Hub applies stricter rate limits. Providing a token suppresses this and 
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/save-hf-token` | POST | Persist token to `.env`; an empty token keeps the stored one, `CLEAR_HF_TOKEN` clears it |
-| `/api/test-hf-token` | POST | Verify the posted token, or the stored one when none is posted, via `huggingface_hub.whoami()` |
+| `/api/test-hf-token` | POST | Verify the posted token, or the stored one when none is posted, with a direct `GET https://huggingface.co/api/whoami-v2` (`huggingface_hub.whoami()` refuses under `HF_HUB_OFFLINE=1`) |
 
 Both require a password step-up (`POST /api/step-up`).
 
@@ -193,11 +201,11 @@ Yield metrics rely entirely on quantitative rate-of-change math and bypass the N
 
 `tests/test_yahoo_engine.py::TestGetNews` covers the no-traceback log for expected Yahoo/network failures and traceback logging for unexpected exceptions.
 
-`tests/test_huggingface_engine.py` — 34 tests, fully offline (no model loaded, no network, no DB).
+`tests/test_huggingface_engine.py` — 43 tests, fully offline (no model loaded, no network, no DB).
 
 | Class | Tests |
 |---|---|
-| `TestGetFinbertAnalyzer` | Singleton guarantee, `local_files_only` first, OSError fallback, HF_TOKEN injection, failure → `None` |
+| `TestGetFinbertAnalyzer` | Singleton guarantee, `local_files_only` first, OSError fallback, both calls pin `NLP_FINBERT_REVISION`, HF_TOKEN injection, failure → `None` |
 | `TestScoreText` | Positive / negative / neutral mapping, truncation at `NLP_TEXT_TRUNCATE_CHARS` |
 | `TestFetchAndScoreNews` | Empty / null news, `NLP_NEWS_FETCH_LIMIT` cap, blank-item skipping, nested vs flat Yahoo payloads, per-item error resilience |
 | `TestUpdateAllSentiment` | Macro ticker injection, early-exit on no analyzer, UPDATE vs upsert path, connection always closed |

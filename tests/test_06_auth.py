@@ -31,7 +31,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -827,10 +827,20 @@ class TestStepUpRoutes:
 
     def test_test_hf_token_without_value_uses_stored_token(self, client, step_up_headers):
         with patch.dict(os.environ, {"HF_TOKEN": "stored-hf"}), \
-                patch("huggingface_hub.whoami", return_value={"name": "someone"}) as whoami:
+                patch("requests.get", return_value=MagicMock(json=lambda: {"name": "someone"})) as get:
             resp = client.post("/api/test-hf-token", json={}, headers=step_up_headers)
         assert resp.status_code == 200
-        assert whoami.call_args.kwargs["token"] == "stored-hf"
+        assert "someone" in resp.json()["message"]
+        assert get.call_args.kwargs["headers"]["Authorization"] == "Bearer stored-hf"
+
+    def test_test_hf_token_reports_a_rejected_token(self, client, step_up_headers):
+        import requests
+        rejected = MagicMock()
+        rejected.raise_for_status.side_effect = requests.HTTPError("401 Client Error: Unauthorized")
+        with patch("requests.get", return_value=rejected):
+            resp = client.post("/api/test-hf-token", json={"HF_TOKEN": "bad"}, headers=step_up_headers)
+        assert resp.status_code == 400
+        assert "Token verification failed" in resp.json()["detail"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

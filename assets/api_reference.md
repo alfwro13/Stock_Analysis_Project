@@ -2235,7 +2235,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/save-fred-api-key` | Persist FRED API key to `.env` (empty keeps the stored value; `CLEAR_FRED_API_KEY` clears it) |
 | `POST` | `/api/save-ghostfolio-settings` | Persist Ghostfolio URL + token to `.env` (empty token keeps the stored one; `CLEAR_GHOSTFOLIO_TOKEN` clears it) |
 | `POST` | `/api/save-nextcloud-settings` | Persist Nextcloud Talk credentials to `.env` (empty app password or conversation token keeps the stored one; `CLEAR_APP_PASSWORD` / `CLEAR_CONVERSATION_TOKEN` clear them) |
-| `POST` | `/api/test-hf-token` | Verify the posted HuggingFace token, or the stored one when none is posted, via `whoami` |
+| `POST` | `/api/test-hf-token` | Verify the posted HuggingFace token, or the stored one when none is posted, with a direct request to the Hub's `whoami-v2` endpoint (works under `HF_HUB_OFFLINE=1`) |
 | `GET` | `/api/screener-data` | Latest quant signal snapshot (Market Screener) |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
 | `POST` | `/api/market-pulse` | Live pulse for custom tickers |

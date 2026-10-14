@@ -14,7 +14,7 @@ from database import get_connection
 from db_helpers import sentiment_max_age_days
 from config import load_config
 from constants import (
-    NLP_FINBERT_MAX_TOKENS, NLP_TEXT_TRUNCATE_CHARS,
+    NLP_FINBERT_MAX_TOKENS, NLP_FINBERT_REVISION, NLP_TEXT_TRUNCATE_CHARS,
     NLP_NEWS_FETCH_LIMIT, NLP_CB_NEWS_FETCH_LIMIT, NLP_CB_TONE_THRESHOLD,
     NLP_SENTIMENT_MIN_COVERAGE,
 )
@@ -53,11 +53,16 @@ def _get_finbert_analyzer() -> Optional[Any]:
                         _FINBERT_ANALYZER = pipeline(
                             "sentiment-analysis",
                             model="ProsusAI/finbert",
+                            revision=NLP_FINBERT_REVISION,
                             local_files_only=True,
                         )
                     except OSError:
                         logger.info("FinBERT not in local cache; downloading from HuggingFace Hub...")
-                        _FINBERT_ANALYZER = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+                        _FINBERT_ANALYZER = pipeline(
+                            "sentiment-analysis",
+                            model="ProsusAI/finbert",
+                            revision=NLP_FINBERT_REVISION,
+                        )
                 except Exception as e:
                     logger.error("Failed to allocate memory or initialize FinBERT pipeline: %s", e)
                     return None

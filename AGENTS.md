@@ -200,7 +200,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 |---|---|---|
 | Ghostfolio | Live portfolio holdings | `GHOSTFOLIO_URL`, `API_TOKEN` |
 | Yahoo Finance (`yfinance`) | Price, OHLCV, fundamentals | (public, no key) |
-| HuggingFace (`transformers`) | FinBERT NLP sentiment model | `HF_TOKEN` in `.env` (optional, speeds up hub download) |
+| HuggingFace (`transformers`) | FinBERT NLP sentiment model, loaded at the pinned `constants.NLP_FINBERT_REVISION` with `HF_HUB_OFFLINE=1` in the systemd unit; a revision change needs a manual pre-download (see `assets/nlp_sentiment_architecture.md`) | `HF_TOKEN` in `.env` (only used for that download and the Settings token test) |
 | Nextcloud Talk | Push alerts | `NEXTCLOUD_*` keys in `.env` |
 | FRED / BoE / ONS | Macro indicators | (public) |
 | SEC EDGAR | Insider Form 4 filings | (public) |

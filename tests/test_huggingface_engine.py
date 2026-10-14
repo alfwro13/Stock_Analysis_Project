@@ -20,6 +20,7 @@ Coverage:
 """
 
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -38,7 +39,9 @@ from huggingface_engine import (
     run_central_bank_nlp_alert,
     update_all_sentiment,
 )
-from constants import NLP_CB_TONE_THRESHOLD, NLP_NEWS_FETCH_LIMIT, NLP_TEXT_TRUNCATE_CHARS
+from constants import (
+    NLP_CB_TONE_THRESHOLD, NLP_FINBERT_REVISION, NLP_NEWS_FETCH_LIMIT, NLP_TEXT_TRUNCATE_CHARS,
+)
 
 MAX_AGE_DAYS = 3
 
@@ -104,6 +107,20 @@ class TestGetFinbertAnalyzer:
         # Second call must NOT have local_files_only
         second_call_kwargs = p.call_args_list[1][1]
         assert "local_files_only" not in second_call_kwargs
+
+    def test_both_pipeline_calls_pin_the_reviewed_revision(self):
+        def _side_effect(*args, **kwargs):
+            if kwargs.get("local_files_only"):
+                raise OSError("cache miss")
+            return MagicMock()
+
+        with patch("huggingface_engine.pipeline", side_effect=_side_effect) as p:
+            _get_finbert_analyzer()
+
+        assert p.call_count == 2
+        revisions = {c[1].get("revision") for c in p.call_args_list}
+        assert revisions == {NLP_FINBERT_REVISION}
+        assert re.fullmatch(r"[0-9a-f]{40}", NLP_FINBERT_REVISION)
 
     def test_returns_none_when_pipeline_raises(self):
         with patch("huggingface_engine.pipeline", side_effect=RuntimeError("OOM")):

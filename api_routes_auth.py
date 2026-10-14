@@ -405,8 +405,14 @@ def test_hf_token(body: TestHFTokenRequest):
     if not token:
         raise HTTPException(status_code=400, detail="No HuggingFace token provided. Enter a token and try again.")
     try:
-        from huggingface_hub import whoami
-        info = whoami(token=token)
+        import requests
+        resp = requests.get(
+            "https://huggingface.co/api/whoami-v2",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        info = resp.json()
         username = info.get("name") or info.get("fullname") or "unknown"
         return {"status": "ok", "message": f"Token is valid. Authenticated as: {username}"}
     except Exception as e:
