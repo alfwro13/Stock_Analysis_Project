@@ -373,6 +373,13 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 * **Key Columns:** `token_hash` (PK TEXT), `expires_at` (TEXT UTC ISO), `used` (INTEGER 0/1).
 * **Lifecycle:** Tokens expire after 1 hour. Once redeemed, `used` is set to 1 and the token cannot be reused.
 
+#### `login_throttle`
+* **Purpose:** The persisted, account-wide failed-password counter behind the sign-in lockout. A single row (`id = 1`, enforced by a `CHECK`) is shared by `POST /api/login`, `POST /api/step-up` and `POST /api/change-password`, regardless of client address, and survives a restart.
+* **Key Columns:** `id` (PK, always 1), `failed_count` (INTEGER, consecutive failures), `locked_until` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, NULL when not locked), `last_failure_at` (TEXT UTC).
+* **Writes:** `auth.record_login_failure()` increments `failed_count` and, from the 5th consecutive failure, sets `locked_until` to now plus `min(30 s * 2^(count-5), 15 min)`; `auth.clear_login_failures()` zeroes it on a correct password, a password change or reset, and from `reset_admin_password.py`.
+* **Reads:** `auth.login_lockout_remaining()` before each password check.
+* **Not stored here:** the session epoch lives in `.env` (`SESSION_EPOCH`), so the auth middleware needs no query per request.
+
 #### `yahoo_api_stats`
 * **Purpose:** Daily aggregated counters for all `yahoo_connection_boundary` invocations. Used by the Yahoo Finance API Usage card in Settings to show request volume, interface breakdown, rate-limit hits, errors, and yfinance-logged issues over the past 8 days.
 * **Key Columns:** `date` (PK TEXT `YYYY-MM-DD` UTC), `total_calls`, `ipv4_calls`, `ipv6_calls`, `rate_limit_429`, `other_errors`, `yfinance_logged_errors` (all INTEGER, default 0).

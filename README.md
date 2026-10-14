@@ -151,6 +151,8 @@ To configure email-based self-service password reset:
 
 **Stored credentials are write-only in Settings.** The SMTP password, Nextcloud app password and conversation token, Ghostfolio token, FRED key and HuggingFace token are never sent back to the browser: each field shows only whether a value is stored, an empty field keeps it, and a **Clear the stored value on save** checkbox removes it. The API key and embed token are displayed once, when generated. The Account Price Scraper's custom request headers follow the same rule.
 
+**Passwords and sessions.** A new password must be at least 12 characters and not a commonly used one. Changing or resetting the password signs out every other browser, and **Settings → User Account → Log Out Everywhere** signs out all of them on demand. Five wrong passwords in a row lock sign-in for 30 seconds, doubling up to 15 minutes; failures are logged and the lockout raises a **Failed Login Alert** notification. API-key access is not affected.
+
 **Sensitive Settings actions ask for your password.** Saving settings or credentials, pulling updates, restarting, restoring a backup and rotating secrets prompt for the dashboard password once; that unlocks them for 5 minutes. Scripts using the API key cannot use these actions.
 3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour.
 

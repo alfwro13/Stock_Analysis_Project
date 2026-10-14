@@ -1421,9 +1421,50 @@ Returns a single day's Yahoo Finance requests bucketed into 15-minute local-time
 
 ---
 
+### `POST /api/login`
+
+Signs in with the dashboard username and password and sets the `session` cookie. No authentication required; exempt from CSRF. Rate-limited to 10 requests per minute per client address.
+
+**Request body**
+
+```json
+{ "username": "admin", "password": "current-dashboard-password", "remember_me": false }
+```
+
+**Response (success)**
+
+```json
+{ "status": "ok" }
+```
+
+The cookie holds a signed token carrying the username, issue time, remember-me flag and the **session epoch** (`SESSION_EPOCH` in `.env`). It is valid for 24 hours, or 30 days with `remember_me`, and only while its epoch equals the current one: a password change or reset and `POST /api/logout-everywhere` raise the epoch, which signs out every browser at once. A token issued before the epoch existed counts as epoch `0`.
+
+**Account-wide lockout.** Every wrong password counts against one persisted counter (`login_throttle`), shared by this route, `POST /api/step-up` and `POST /api/change-password`, whatever the client address. The first 4 consecutive failures are free; from the 5th the account refuses all three routes, even for the correct password, for 30 s, then 60 s, 120 s and so on, capped at 15 minutes. A correct password, a password change or reset, or `python reset_admin_password.py` clears the counter; the lockout survives a restart. `X-API-Key` access is not affected. Each failure is logged at `WARNING` (route, count, client address, whether the username matched; never the attempted password), and the 5th consecutive failure sends one **Failed Login Alert** through the notification router.
+
+**Error responses**
+
+| Status | Condition |
+|--------|-----------|
+| `401` | Wrong username or password |
+| `429` | Account locked out (detail gives the seconds left; `Retry-After` header set), or more than 10 attempts in a minute |
+
+---
+
+### `POST /api/logout-everywhere`
+
+Signs out every browser and device, including the caller's: raises the session epoch, so each issued session token stops verifying, and clears the caller's `session` and `stepup` cookies. Requires a password step-up (see `POST /api/step-up`). `X-API-Key` and embed-token access are not affected.
+
+**Response**
+
+```json
+{ "status": "ok" }
+```
+
+---
+
 ### `POST /api/step-up`
 
-Re-enters the dashboard password to unlock the **step-up-gated** routes for 5 minutes. Requires a signed-in browser session; an `X-API-Key` request has no session and is refused with `401`. Rate-limited to 5 requests per minute.
+Re-enters the dashboard password to unlock the **step-up-gated** routes for 5 minutes. Requires a signed-in browser session; an `X-API-Key` request has no session and is refused with `401`. Rate-limited to 5 requests per minute. A wrong password counts toward the account-wide lockout described under `POST /api/login`.
 
 **Request body**
 
@@ -1437,24 +1478,26 @@ Re-enters the dashboard password to unlock the **step-up-gated** routes for 5 mi
 { "status": "ok", "expires_in": 300 }
 ```
 
-On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Strict`, `Path=/api`, `Max-Age=300`, and bound to the session cookie it was issued for. A new login, `GET /logout` or rotating the app secret invalidates it. The window is fixed: it does not slide on use.
+On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Strict`, `Path=/api`, `Max-Age=300`, and bound to the session cookie it was issued for. A new login, `GET /logout`, a password change, `POST /api/logout-everywhere` or rotating the app secret invalidates it. The window is fixed: it does not slide on use.
 
 **Error responses**
 
 | Status | Condition |
 |--------|-----------|
 | `401` | No valid session cookie, or incorrect password |
-| `429` | More than 5 attempts in a minute |
+| `429` | More than 5 attempts in a minute, or the account is locked out |
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
 ### `POST /api/change-password`
 
-Changes the dashboard login password. The current password in the body is the re-authentication, so no step-up is needed; the route is rate-limited to 5 requests per minute. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
+Changes the dashboard login password. The current password in the body is the re-authentication, so no step-up is needed; the route is rate-limited to 5 requests per minute, and a wrong current password counts toward the account-wide lockout described under `POST /api/login`. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
+
+The change raises the session epoch, so every other signed-in browser is signed out. A caller that sent a valid session cookie gets a fresh `session` cookie in the response (same username and remember-me setting) and stays signed in; an `X-API-Key` caller receives no cookie.
 
 **Request body**
 
@@ -1466,14 +1509,14 @@ Changes the dashboard login password. The current password in the body is the re
 }
 ```
 
-**Validation:** new password must be ≥ 8 chars and not `"changeme"`.
+**Validation:** the new password must be at least 12 characters and must not be on the common-password list (`tools/common_passwords.txt`, matched case-insensitively). The same rule applies to `POST /api/reset-password`, `POST /api/admin-reset-password` and `python reset_admin_password.py`; it is checked only when a password is set, so an existing shorter password keeps working until it is changed.
 
 **Error responses**
 
 | Status | Condition |
 |--------|-----------|
-| `400` | Wrong current password, mismatched new passwords, too short, or forbidden value |
-| `429` | More than 5 attempts in a minute |
+| `400` | Wrong current password, mismatched new passwords, fewer than 12 characters, or a common password |
+| `429` | More than 5 attempts in a minute, or the account is locked out |
 
 ---
 
@@ -1588,7 +1631,9 @@ Completes a self-service password reset using a valid reset token. No authentica
 
 | Status | Condition |
 |--------|-----------|
-| `400` | Invalid, expired, or already-used token; mismatched passwords; too short; forbidden value |
+| `400` | Invalid, expired, or already-used token; mismatched passwords; fewer than 12 characters; common password |
+
+On success the session epoch is raised (every browser is signed out) and the failed-login lockout is cleared.
 
 ---
 
@@ -1610,7 +1655,9 @@ Admin emergency password reset — bypasses the old password requirement. Only w
 | Status | Condition |
 |--------|-----------|
 | `403` | `FORCE_PASSWORD_RESET` is not enabled in `config.json` |
-| `400` | Mismatched passwords; too short; forbidden value |
+| `400` | Mismatched passwords; fewer than 12 characters; common password |
+
+On success the session epoch is raised (every browser is signed out) and the failed-login lockout is cleared.
 
 ---
 

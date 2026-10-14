@@ -892,6 +892,25 @@ async function rotateAppSecret() {
     }
 }
 
+async function logoutEverywhere() {
+    if (!confirm('This signs out every browser and device, including this one. Continue?')) return;
+    const btn = document.querySelector('button[onclick="logoutEverywhere()"]');
+    btn.disabled = true;
+    setStatus('ua-logout-all-msg', 'info', 'Signing out…');
+    try {
+        const res = await stepUpFetch('/api/logout-everywhere', { method: 'POST' });
+        if (res.ok) {
+            window.location.href = '/login';
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        setStatus('ua-logout-all-msg', 'error', data.detail || 'Failed to sign out everywhere.');
+    } catch (e) {
+        setStatus('ua-logout-all-msg', 'error', 'Network error while signing out.');
+    }
+    btn.disabled = false;
+}
+
 let schedulerRunHistoryTable = null;
 
 async function openSchedulerRunHistory(jobId, label) {
