@@ -4,6 +4,36 @@ Maps every entry in `requirements.txt` to what it's actually used for in this
 codebase and any upgrade-risk notes. Update this file whenever a dependency
 is added, removed, or a major-version upgrade is deliberately taken.
 
+## `requirements.txt` and `requirements.lock`
+
+`requirements.txt` is the hand-edited list of direct dependencies, with the
+pins and floors that matter. `requirements.lock` is generated from it by
+`uv pip compile requirements.txt --universal --python-version 3.13 --generate-hashes -o requirements.lock`
+(the command is also the lock's header). It pins every package, transitive ones
+included, with SHA-256 hashes, and is resolved for CPython 3.13 and newer on
+every platform (environment markers on the lines that apply to one). CI, the
+README install step, the Settings post-pull/restart reinstall
+(`utils.pip_install_command()`) and the startup drift check
+(`utils.check_requirements_drift()`) all use the lock with
+`pip install --require-hashes`, so the packages tested are the packages run, and
+a package whose files do not match its hash is refused.
+
+- **Changing a dependency:** edit `requirements.txt`, then regenerate the lock
+  with the command above and commit both. Regeneration keeps every version that
+  still satisfies `requirements.txt`; add `--upgrade` (or `-P <package>`) to move
+  versions. `tests/test_05_config_and_utils.py` fails when the lock does not
+  satisfy `requirements.txt` or has an unhashed pin.
+- **Automation:** `.github/workflows/refresh-lock.yml` regenerates the lock when
+  `requirements.txt` changes on `main` and opens a pull request (a pull request
+  opened with the workflow token does not start `tests.yml`; close and reopen it).
+  Dispatched from another branch, for example a Dependabot branch, it commits the
+  new lock to that branch instead.
+- **Advisories:** `.github/workflows/pip-audit.yml` runs `pip-audit` against the
+  lock every Monday and on demand; it fails the run on any advisory. Fix by
+  regenerating with `-P <package>` and merging.
+- **Python upgrade:** change `--python-version` in the command and regenerate
+  once every pinned package publishes wheels for the new interpreter.
+
 Dependabot itself cannot read this file — it has no concept of "usage docs."
 Its own risk controls are configured in `.github/dependabot.yml` (grouping,
 labels, schedule). This file exists so a human (or an agent) reviewing a
@@ -22,7 +52,11 @@ and what should I test?" without grepping the whole codebase first.
    direct test coverage (see notes below), do a manual smoke check of the
    feature it powers before merging.
 4. CI (`.github/workflows/tests.yml`) already runs the full suite on every
-   Dependabot PR automatically — check the PR's checks tab first.
+   Dependabot PR automatically — check the PR's checks tab first. CI installs
+   `requirements.lock`, not `requirements.txt`, so a Dependabot PR that only
+   edits `requirements.txt` is tested against the old versions until the lock is
+   regenerated: run **Refresh dependency lock** on the Dependabot branch (it
+   commits the lock there), then close and reopen the PR.
 
 ## Web framework & server
 
@@ -70,7 +104,7 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `apscheduler` | The only sanctioned scheduler per AGENTS.md rule 12 (`scheduler_engine.py`) | `CronTrigger`/job-store API changes — test that scheduled jobs still register (`tests/test_scheduler_engine.py`'s manifest-completeness check) |
-| `pip` | The installer behind the reinstall that runs before a restart when packages are out of date (`api_routes_system.py`) and the startup drift check (`utils.py`). Floor `>=26.2` clears published advisories; the reinstall passes `--resume-retries`, which needs pip 25.1 or newer | Nothing at runtime; the next `pip install -r requirements.txt` upgrades it. A large upgrade (torch pulls several GB of CUDA wheels) is bounded by `constants.DEPENDENCY_INSTALL_TIMEOUT_SECONDS` |
+| `pip` | The installer behind the reinstall that runs before a restart when packages are out of date (`api_routes_system.py`) and the startup drift check (`utils.py`). Floor `>=26.2` clears published advisories; the reinstall passes `--require-hashes` and `--resume-retries`, which needs pip 25.1 or newer | Nothing at runtime; the next `pip install --require-hashes -r requirements.lock` upgrades it. A large upgrade (torch pulls several GB of CUDA wheels) is bounded by `constants.DEPENDENCY_INSTALL_TIMEOUT_SECONDS` |
 | `psutil` | System diagnostics (CPU/memory/disk) surfaced in Settings → System Diagnostics (`ml_training_engine.py`, `system_check_engine.py`) | Platform-specific metric availability |
 
 ## ML / AI
@@ -83,7 +117,7 @@ and what should I test?" without grepping the whole codebase first.
 | `scipy` | Statistical/optimization routines underpinning `scikit-learn`/`hmmlearn` and used directly in risk calculations; `scipy.optimize.minimize(method="SLSQP")` solves the Portfolio Optimizer's Long-Only mode and, through `portfolio_optimizer_engine.long_only_allocations()`, the Strategy Backtester's rolling Steadiest/Best Reward-for-Risk strategies | Rarely breaking on its own; mostly a transitive-compatibility concern with scikit-learn/hmmlearn pins. After an upgrade, run `tests/test_portfolio_optimizer_engine.py` and `tests/test_strategy_backtest_engine.py` — their hand-computed Long-Only answers and look-ahead checks catch SLSQP behaviour changes |
 | `joblib` | Serializes/deserializes every `models/*.joblib` artifact | **Pickle-compatibility risk**: a joblib major upgrade can fail to deserialize models trained under an older version — always retrain (Settings → Machine Learning & AI Engine) after a joblib major-version bump, don't assume old `.joblib` files still load |
 | `transformers` | FinBERT sentiment pipeline (`huggingface_engine.py`) — the only sanctioned NLP path per AGENTS.md rule 4 | `pipeline()` call signature, tokenizer defaults. **Note:** this project's dev venv was already running transformers 5.x before the `>=4.37.0` floor was ever raised in requirements.txt — the declared floor had drifted stale relative to what's actually been running and tested for some time |
-| `torch` | Backend tensor library required by `transformers`'s pipeline; never imported directly by app code | CUDA/CPU wheel selection, not usually an app-code compatibility risk |
+| `torch` | Backend tensor library required by `transformers`'s pipeline; never imported directly by app code. Floor `>=2.14.1` is well above 2.6, the first release that closes the `torch.load` code-execution bug (CVE-2025-32434) | CUDA/CPU wheel selection, not usually an app-code compatibility risk |
 
 ## Testing (dev-only, not shipped)
 
@@ -91,23 +125,14 @@ and what should I test?" without grepping the whole codebase first.
 |---|---|---|
 | `pytest` | Test runner for the whole `tests/` suite | Fixture/marker API changes — would surface immediately as `./run_tests.sh` failing to collect tests |
 
-## Declared but no direct import found (verify before assuming unused)
+## Removed as unused
 
-A static grep for `import <name>` across the codebase (excluding `venv/`)
-found no hit for these two packages. They are **not** removed here since
-removal wasn't in scope for this review and either could be a load-bearing
-indirect dependency this grep missed (e.g. something only unpickled at
-runtime, or exercised on a machine/config this checkout doesn't have) —
-flagging for the operator to confirm before dropping them from
-`requirements.txt`:
-
-- **`ghostfolio`** (the `ghostfolio-py` API client package) — `ghostfolio_sync.py`
-  talks to the Ghostfolio API directly via `requests` + a hand-rolled client,
-  not via this package.
-- **`shap`** — AGENTS.md's ML Models table documents `xgb_explainer*.pkl`
-  artifacts as "SHAP explainers," but no current `.py` file imports `shap`.
-  If those explainer artifacts are still produced by an out-of-repo training
-  step, keep this dependency; if that step was retired, it may be dead.
+- **`ghostfolio`** (the `ghostfolio` PyPI client) — never imported. `ghostfolio_sync.py`
+  talks to the Ghostfolio API with `requests`, so the integration does not need it.
+- **`shap`** — never imported, and nothing loads `models/xgb_explainer*.pkl`;
+  those files are orphaned artifacts of a retired training step. Both packages were
+  dropped from `requirements.txt` (and, with them, `numba`, `llvmlite` and `slicer`
+  from the lock) in the supply-chain hardening change (SEC 18/27).
 
 ## Vendored column reordering
 

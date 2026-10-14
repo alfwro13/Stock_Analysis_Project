@@ -44,7 +44,7 @@ from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from tools.network_engine import GLOBAL_IPV6_STATUS
-from utils import check_requirements_drift, pip_install_command
+from utils import check_requirements_drift, pip_install_command, requirements_lock_path
 from yahoo_engine import yahoo_engine
 from curl_cffi import requests as cffi_requests
 
@@ -1163,17 +1163,17 @@ def api_market_status(background_tasks: BackgroundTasks):
 def git_pull_update():
     global _requirements_changed_pending, _sklearn_change_pending
     try:
-        requirements_path = BASE_DIR / "requirements.txt"
-        old_requirements = requirements_path.read_text()
+        lock_path = requirements_lock_path()
+        old_lock = (lock_path if lock_path.exists() else BASE_DIR / "requirements.txt").read_text()
         old_head = _git_head() or ""
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         if result.returncode != 0:
             return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
         diff = subprocess.run(["git", "diff", "--name-only", old_head, "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
-        requirements_changed = "requirements.txt" in diff.stdout.splitlines()
+        requirements_changed = lock_path.name in diff.stdout.splitlines()
         _requirements_changed_pending = _requirements_changed_pending or requirements_changed
-        old_sklearn = _pinned_requirement_version(old_requirements, "scikit-learn")
-        new_sklearn = _pinned_requirement_version(requirements_path.read_text(), "scikit-learn")
+        old_sklearn = _pinned_requirement_version(old_lock, "scikit-learn")
+        new_sklearn = _pinned_requirement_version(lock_path.read_text(), "scikit-learn")
         sklearn_changed = requirements_changed and old_sklearn != new_sklearn
         if sklearn_changed:
             _sklearn_change_pending = {
@@ -1182,7 +1182,7 @@ def git_pull_update():
             }
         message = f"Update successful. Please restart the service if required.\n\n{result.stdout}"
         if requirements_changed:
-            message += "\n\n⚠️ requirements.txt changed — dependencies will be reinstalled automatically before the next restart."
+            message += "\n\n⚠️ requirements.lock changed — dependencies will be reinstalled automatically before the next restart."
         if sklearn_changed:
             message += (
                 f"\n\n⚠️ scikit-learn changed from {old_sklearn or 'not installed'} "

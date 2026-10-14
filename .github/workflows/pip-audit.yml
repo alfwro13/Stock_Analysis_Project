@@ -1,0 +1,26 @@
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install pip-audit
+        run: pip install pip-audit==2.10.0
+
+      - name: Audit the lock
+        run: pip-audit --disable-pip --require-hashes -r requirements.lock

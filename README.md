@@ -88,7 +88,7 @@ Holding detailed view:
 
 ### **1. Prerequisites**
 
-You must have **Python 3.10 or higher** installed on your system.
+You must have **Python 3.13 or higher** installed on your system.
 
 ### **2. Clone and Install**
 
@@ -98,7 +98,7 @@ git clone https://github.com/alfwro13/Stock_Analysis_Project.git
 cd Stock_Analysis_Project  
 python3 -m venv venv  
 source venv/bin/activate  
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock
 ```
 
 ### **3. Initial Configuration**
@@ -175,11 +175,19 @@ This will run securely in the background. It downloads 2 years of daily data for
 
 ### **5. Keeping Dependencies Updated**
 
-[Dependabot](https://docs.github.com/code-security/dependabot) opens a weekly pull request for any outdated package in `requirements.txt` (`.github/dependabot.yml`). Every pull request — Dependabot's or your own — is automatically checked against the full regression suite by GitHub Actions CI (`.github/workflows/tests.yml`) before it's safe to merge. `assets/dependencies.md` documents what each dependency is actually used for and what to test after a major-version upgrade.
+`requirements.txt` lists the packages the app uses directly. `requirements.lock` is generated from it and pins every package, including each transitive one, with its SHA-256 hashes. The lock is what you install (`pip install --require-hashes -r requirements.lock`), what **Restart Service** installs and what CI tests, so every machine runs exactly the files that were tested and pip refuses any file that does not match. [Dependabot](https://docs.github.com/code-security/dependabot) opens a weekly pull request for any outdated package in `requirements.txt` (`.github/dependabot.yml`). Every pull request — Dependabot's or your own — is automatically checked against the full regression suite by GitHub Actions CI (`.github/workflows/tests.yml`) before it's safe to merge. `assets/dependencies.md` documents what each dependency is actually used for and what to test after a major-version upgrade.
 
-The app itself also checks, on every startup, whether the packages actually installed in your virtual environment still match the pins in `requirements.txt`, and logs/notifies (Settings → Notifications) if they've drifted — for example if `requirements.txt` was updated but `pip install -r requirements.txt` was never re-run. This catches drift regardless of how the server was last restarted.
+When `requirements.txt` changes on `main`, the **Refresh dependency lock** workflow (`.github/workflows/refresh-lock.yml`) regenerates the lock and opens a pull request; close and reopen that pull request once to start its tests. It keeps every version that still satisfies `requirements.txt`, so only what changed moves. To regenerate it yourself, on a machine with [uv](https://docs.astral.sh/uv/):
 
-When packages are out of date, **Restart Service** (Settings → System Updates & Power) installs them first and restarts only when that succeeds. A large upgrade such as PyTorch can take several minutes; the page shows the progress, and a second click does not start a second install. If the installation fails or times out the service is **not** restarted: the Settings warning stays and the notification gives the exact command to run in a shell on the server (`<venv>/bin/python3 -m pip install -r requirements.txt`), after which you restart the service.
+```bash
+uv pip compile requirements.txt --universal --python-version 3.13 --generate-hashes -o requirements.lock
+```
+
+Add `--upgrade` to take the newest allowed version of every package. To drop Python 3.13 or move to a newer Python once its wheels exist, change `--python-version` and run the command again. A weekly **Dependency audit** workflow (`.github/workflows/pip-audit.yml`) checks the lock against published security advisories.
+
+The app itself also checks, on every startup, whether the packages actually installed in your virtual environment still match the pins in `requirements.lock`, and logs/notifies (Settings → Notifications) if they've drifted — for example if the lock was updated but `pip install --require-hashes -r requirements.lock` was never re-run. This catches drift regardless of how the server was last restarted.
+
+When packages are out of date, **Restart Service** (Settings → System Updates & Power) installs them first and restarts only when that succeeds. A large upgrade such as PyTorch can take several minutes; the page shows the progress, and a second click does not start a second install. If the installation fails or times out the service is **not** restarted: the Settings warning stays and the notification gives the exact command to run in a shell on the server (`<venv>/bin/python3 -m pip install --require-hashes -r requirements.lock`), after which you restart the service.
 
 Persisted scikit-learn models carry a version sidecar. After a scikit-learn upgrade, startup rejects incompatible artifacts and queues only their owning training jobs through APScheduler. Affected model families run sequentially, beginning within seconds of startup, while their inference paths remain unavailable until compatible artifacts are written. Settings → System Updates & Power warns about this before restart when Pull Latest from GitHub detects a changed scikit-learn pin.
 

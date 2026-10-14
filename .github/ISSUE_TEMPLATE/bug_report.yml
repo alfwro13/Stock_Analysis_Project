@@ -22,7 +22,7 @@ body:
           required: true
         - label: Searched existing open AND closed issues and this is not a duplicate
           required: true
-        - label: Updated to the latest `main`, run `pip install -r requirements.txt` again, and restarted the app
+        - label: Updated to the latest `main`, run `pip install --require-hashes -r requirements.lock` again, and restarted the app
           required: true
         - label: Checked Settings → Notifications and the System Health banner for related warnings
           required: true
