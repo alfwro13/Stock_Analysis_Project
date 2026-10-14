@@ -1186,7 +1186,7 @@ Requires a password step-up (see `POST /api/step-up`).
 
 **Stored secrets are write-only (SEC 12/27 · S1-2).** `GET /settings` never renders a stored secret: it shows only whether each of the API key, embed token, SMTP password, Nextcloud app password, Nextcloud conversation token, Ghostfolio token, FRED key and HF token is set, and sends `Cache-Control: no-store`. Every secret field in the save endpoints above is optional: an absent, empty or whitespace-only value leaves the stored value unchanged, a non-empty value replaces it, and a `CLEAR_<FIELD>` flag (`CLEAR_FRED_API_KEY`, `CLEAR_HF_TOKEN`, `CLEAR_GHOSTFOLIO_TOKEN`, `CLEAR_APP_PASSWORD`, `CLEAR_CONVERSATION_TOKEN`, and `clear_smtp_pass` on the SMTP endpoint) set to `true` empties it. The URL, host and user-name fields of those endpoints are not secrets and are still always written.
 
-Request-path hardening keys, all applied at the next restart:
+Request-path hardening keys. The first four are applied at the next restart; `SCRAPER_ALLOWED_HOSTS` takes effect on the next scrape:
 
 | Key | Values | Effect |
 |---|---|---|
@@ -1194,6 +1194,7 @@ Request-path hardening keys, all applied at the next restart:
 | `ALLOWED_HOSTS` | Non-empty list of host names (`*.example.com` allowed) | A request whose `Host` header is not listed gets 400. `localhost` and `127.0.0.1` are always accepted. |
 | `COOKIE_SECURE` | `auto` (default), `true`, `false` | `Secure` flag on the session and CSRF cookies; `auto` follows the `SERVER_URL` scheme. |
 | `FRAME_ANCESTORS` | List of `scheme://host[:port]` origins | Extra origins in the CSP `frame-ancestors` directive (`'self'` is always included). |
+| `SCRAPER_ALLOWED_HOSTS` | List of exact host names or IP addresses (no ranges, no wildcards; empty by default) | Hosts the Account Price Scraper may fetch even though they resolve to a private, loopback or link-local address. Any port on a listed host is allowed; the URL must still be `https://`. Settings → Core System & Currencies → Account Price Scraper Allowed Hosts. |
 
 Invalid values are rejected with 422.
 
@@ -1207,6 +1208,7 @@ Invalid values are rejected with 422.
   "ALLOWED_HOSTS": ["stock.example.com", "192.168.1.70"],
   "COOKIE_SECURE": "auto",
   "FRAME_ANCESTORS": ["https://ha.example.com"],
+  "SCRAPER_ALLOWED_HOSTS": ["192.168.1.71"],
   "BASE_CURRENCY": "GBP",
   "YAHOO_IPV6_ADDRESS": "2a00:1450:400f:804::200e",
   "IGNORED_TICKERS": ["GMESTOP"],
@@ -3761,18 +3763,26 @@ Re-importing an export as-is will fail the importer's required-column check, sin
 
 A generic URL + CSS-selector price feed, replicating what Ghostfolio's "manual asset" scraper does — fetches a configured URL, extracts a number via a CSS selector (e.g. `#gf-price`), and records it in `account_price_history`. Typically pointed at a small static HTML file the operator's own external cron job writes (e.g. `<div id="gf-price">123.45</div>`); not limited to that — any URL/selector works. Configured per-account from the Accounts page (tile gear icon / detail page), not the Settings page. All six endpoints below 400 if the account is not `House`/`Pension` (the contribution/fee endpoints further require `Pension` specifically).
 
+**Outbound fetch rules (SEC 17/27 · S3-2).** The scraper is an authenticated outbound fetch, so every request (`scraper/test`, `scraper/run-now` and the daily job) is bound by these rules in `account_scraper_engine`:
+- The URL must be `https://`. A saved `http://` URL is refused when it next runs.
+- The host name is resolved first. A target that resolves to a loopback, private, link-local, CGNAT or multicast address is refused unless its host name or IP is in the `SCRAPER_ALLOWED_HOSTS` Settings key (match is on the requested host, not the resolved address). A name with even one non-public answer is refused.
+- The connection is pinned to the vetted IP (certificate and SNI are still checked against the host name), so a DNS change between the check and the connect cannot redirect it. If an address is unreachable, the next vetted one is tried.
+- Redirects are not followed (a 3xx is an error), and the body is cut off at 2 MB.
+- Custom headers are limited to `Cookie`, `Authorization`, `User-Agent` and `Accept*`; any other name, `Host` included, is refused (400 on save, 422 on test, a warning notification on a scheduled run).
+- Error messages never carry page text or exception detail; that goes to the server log only.
+
 ### `PUT /api/accounts/{id}/scraper-config`
 
 Saves the scraper configuration and (re)registers the account's dynamic scheduled job (`scheduler_jobs.register_account_scraper_job`/`unregister_account_scraper_job`, job id `account_scraper_{id}_job`) accordingly — unregistered first unconditionally, then re-registered only if `scraper_enabled` is true. Rate limit: 30/minute.
 
 **Request body:**
 ```json
-{ "scraper_url": "http://192.168.1.71:8123/house_valuation.html", "scraper_selector": "#gf-price", "scraper_headers": {}, "scrape_time": "02:00", "scraper_enabled": true }
+{ "scraper_url": "https://192.168.1.71:8123/house_valuation.html", "scraper_selector": "#gf-price", "scraper_headers": {}, "scrape_time": "02:00", "scraper_enabled": true }
 ```
 
 `scraper_headers` is optional and write-only: omit it (or send `null`) to keep the stored headers, send an object to replace them, and send `{}` to clear them. The stored value is never returned (`GET /api/accounts` carries `scraper_headers_set` only).
 
-Returns `{"status": "success", "message": "Scraper configuration saved."}`. Returns 404 if the account does not exist; 400 if it is not `House`/`Pension`.
+Returns `{"status": "success", "message": "Scraper configuration saved."}`. Returns 404 if the account does not exist; 400 if it is not `House`/`Pension`, if `scraper_url` is not an `https://` URL, or if `scraper_headers` has a name outside the allowed set. Whether the host is permitted is checked when the scraper runs, not on save.
 
 ---
 
@@ -3782,10 +3792,10 @@ Fetches and extracts using the supplied (not-yet-saved) `url`/`selector`/`header
 
 **Request body:**
 ```json
-{ "url": "http://192.168.1.71:8123/house_valuation.html", "selector": "#gf-price", "headers": {} }
+{ "url": "https://192.168.1.71:8123/house_valuation.html", "selector": "#gf-price", "headers": {} }
 ```
 
-Returns `{"status": "success", "price": 487000.0}`, or 422 with `{"status": "error", "message": "..."}` if the fetch fails or the selector matches nothing/non-numeric text.
+Returns `{"status": "success", "price": 487000.0}`, or 422 with `{"status": "error", "message": "..."}` if the target is refused (not https, address not allowed, disallowed header, redirect, over 2 MB), the fetch fails, or the selector matches nothing/non-numeric text.
 
 ---
 

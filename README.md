@@ -129,6 +129,8 @@ Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**.
 
 **Network & Request Hardening:** Settings → Core System & Currencies also holds Bind Host, Secure Cookies, Allowed Hosts and Embed Frame Ancestors (restart required). The app answers only to the listed host names (`localhost` is always allowed), sends its own security headers (including a Content-Security-Policy whose `frame-ancestors` lists the embed origins), and marks its cookies `Secure` automatically when the Server URL is https.  See the Nginx section below.
 
+**Account Price Scraper Allowed Hosts:** the House/Pension price scraper fetches `https://` pages only and refuses any address on your own network (private, loopback or link-local) by default. To scrape a page you host on the LAN, add its host name or IP under Settings → Core System & Currencies → Account Price Scraper Allowed Hosts (exact entries, comma-separated; any port on a listed host is allowed). It takes effect on the next scrape, with no restart.
+
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless

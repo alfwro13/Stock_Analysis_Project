@@ -1288,20 +1288,15 @@ def test_add_watchlist_item_existing_stock_signals_row_skips_analyze(client):
         conn.close()
 
 
-def _mock_html_resp(text: str):
-    from unittest.mock import MagicMock
-    m = MagicMock()
-    m.status_code = 200
-    m.text = text
-    m.raise_for_status = MagicMock()
-    return m
+def _patch_scraper_body(text: str):
+    return patch("account_scraper_engine._fetch_body", return_value=text)
 
 
 @pytest.mark.api
 def test_scraper_config_endpoints_reject_trading_account(client):
     account_id = _create_account(client)
     resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
-        "scraper_url": "http://example.test/x.html", "scraper_selector": "#gf-price",
+        "scraper_url": "https://example.test/x.html", "scraper_selector": "#gf-price",
     })
     assert resp.status_code == 400
 
@@ -1315,9 +1310,9 @@ def test_scraper_test_endpoint_does_not_persist(client):
     import database as _db
     before = _db.get_price_history(account_id)   # House creation seeds a purchase-value row — not the Test action's concern
 
-    with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">487000</div>')):
+    with _patch_scraper_body('<div id="gf-price">487000</div>'):
         resp = client.post(f"/api/accounts/{account_id}/scraper/test", json={
-            "url": "http://example.test/house.html", "selector": "#gf-price",
+            "url": "https://example.test/house.html", "selector": "#gf-price",
         })
     assert resp.status_code == 200
     assert _json(resp)["price"] == 487000.0
@@ -1330,12 +1325,12 @@ def test_scraper_test_endpoint_does_not_persist(client):
 def test_scraper_save_and_run_now_round_trip(client):
     account_id = _create_account(client, account_type="House")
     resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
-        "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+        "scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price",
         "scrape_time": "03:00", "scraper_enabled": True,
     })
     assert resp.status_code == 200
 
-    with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">512345</div>')):
+    with _patch_scraper_body('<div id="gf-price">512345</div>'):
         resp = client.post(f"/api/accounts/{account_id}/scraper/run-now")
     assert resp.status_code == 200
     assert _json(resp)["price"] == 512345.0
@@ -1351,15 +1346,15 @@ def test_scraper_save_and_run_now_round_trip(client):
     _db.soft_delete_account(account_id)
 
 
-def _headers_sent(mock_get) -> dict:
-    return mock_get.call_args.kwargs["headers"]
+def _headers_sent(mock_fetch) -> dict:
+    return mock_fetch.call_args.args[1]
 
 
 @pytest.mark.api
 def test_scraper_headers_are_write_only_and_kept_when_omitted(client):
     import database as _db
     account_id = _create_account(client, account_type="House")
-    base = {"scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price"}
+    base = {"scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price"}
     try:
         resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
             **base, "scraper_headers": {"Authorization": "Bearer s3cret"},
@@ -1376,23 +1371,61 @@ def test_scraper_headers_are_write_only_and_kept_when_omitted(client):
         assert resp.status_code == 200
         assert _db.get_scraper_headers(account_id) == {"Authorization": "Bearer s3cret"}
 
-        with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">1</div>')) as mock_get:
+        with _patch_scraper_body('<div id="gf-price">1</div>') as mock_fetch:
             assert client.post(f"/api/accounts/{account_id}/scraper/run-now").status_code == 200
-        assert _headers_sent(mock_get)["Authorization"] == "Bearer s3cret"
+        assert _headers_sent(mock_fetch)["Authorization"] == "Bearer s3cret"
 
-        with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">1</div>')) as mock_get:
+        with _patch_scraper_body('<div id="gf-price">1</div>') as mock_fetch:
             resp = client.post(f"/api/accounts/{account_id}/scraper/test", json={
                 "url": base["scraper_url"], "selector": base["scraper_selector"],
             })
         assert resp.status_code == 200
-        assert _headers_sent(mock_get)["Authorization"] == "Bearer s3cret"
+        assert _headers_sent(mock_fetch)["Authorization"] == "Bearer s3cret"
 
-        with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">1</div>')) as mock_get:
+        with _patch_scraper_body('<div id="gf-price">1</div>') as mock_fetch:
             client.post(f"/api/accounts/{account_id}/scraper/test", json={
-                "url": base["scraper_url"], "selector": base["scraper_selector"], "headers": {"X-Other": "1"},
+                "url": base["scraper_url"], "selector": base["scraper_selector"], "headers": {"Accept-Language": "en"},
             })
-        assert "Authorization" not in _headers_sent(mock_get)
-        assert _headers_sent(mock_get)["X-Other"] == "1"
+        assert "Authorization" not in _headers_sent(mock_fetch)
+        assert _headers_sent(mock_fetch)["Accept-Language"] == "en"
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_scraper_config_rejects_http_url_and_disallowed_headers(client):
+    import database as _db
+    account_id = _create_account(client, account_type="House")
+    base = {"scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price"}
+    try:
+        resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
+            **base, "scraper_url": "http://example.test/house.html",
+        })
+        assert resp.status_code == 400
+        assert "https" in _json(resp)["message"]
+
+        resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
+            **base, "scraper_headers": {"Host": "internal.example"},
+        })
+        assert resp.status_code == 400
+        assert "not allowed" in _json(resp)["message"]
+        assert _db.get_account(account_id)["scraper_url"] in (None, "")
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_scraper_test_endpoint_refuses_a_loopback_target_without_connecting(client):
+    import database as _db
+    account_id = _create_account(client, account_type="House")
+    try:
+        with patch("account_scraper_engine._get_pinned") as pinned:
+            resp = client.post(f"/api/accounts/{account_id}/scraper/test", json={
+                "url": "https://127.0.0.1:8090/api/settings", "selector": "#gf-price",
+            })
+        assert resp.status_code == 422
+        assert "not allowed" in _json(resp)["message"]
+        pinned.assert_not_called()
     finally:
         _db.soft_delete_account(account_id)
 
@@ -1401,7 +1434,7 @@ def test_scraper_headers_are_write_only_and_kept_when_omitted(client):
 def test_scraper_headers_empty_object_clears_stored_headers(client):
     import database as _db
     account_id = _create_account(client, account_type="House")
-    base = {"scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price"}
+    base = {"scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price"}
     try:
         client.put(f"/api/accounts/{account_id}/scraper-config", json={**base, "scraper_headers": {"Cookie": "a=b"}})
         client.put(f"/api/accounts/{account_id}/scraper-config", json={**base, "scraper_headers": {}})
@@ -1419,7 +1452,7 @@ def test_account_detail_page_does_not_embed_scraper_headers(client):
     account_id = _create_account(client, account_type="House")
     try:
         client.put(f"/api/accounts/{account_id}/scraper-config", json={
-            "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+            "scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price",
             "scraper_headers": {"Authorization": "Bearer pagesecret"},
         })
         resp = client.get(f"/accounts/{account_id}/house")
@@ -1433,11 +1466,11 @@ def test_account_detail_page_does_not_embed_scraper_headers(client):
 def test_scraper_config_save_with_disabled_unregisters_job(client):
     account_id = _create_account(client, account_type="House")
     client.put(f"/api/accounts/{account_id}/scraper-config", json={
-        "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+        "scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price",
         "scraper_enabled": True,
     })
     resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
-        "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+        "scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price",
         "scraper_enabled": False,
     })
     assert resp.status_code == 200
@@ -1920,7 +1953,7 @@ def test_pension_ticker_label_create_and_update_roundtrip(client):
 def test_list_accounts_includes_scraper_last_status(client):
     account_id = _create_account(client, account_type="House")
     client.put(f"/api/accounts/{account_id}/scraper-config", json={
-        "scraper_url": "http://example.com", "scraper_selector": "#price", "scraper_enabled": True,
+        "scraper_url": "https://example.com", "scraper_selector": "#price", "scraper_enabled": True,
     })
 
     resp = client.get("/api/accounts")

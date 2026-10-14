@@ -68,6 +68,7 @@ DEFAULT_CONFIG = {
     "PORT": 8090,
     "BIND_HOST": "0.0.0.0",
     "ALLOWED_HOSTS": ["stock.awroblew.biz", "ha.awroblew.biz", "192.168.1.70", "localhost", "127.0.0.1"],
+    "SCRAPER_ALLOWED_HOSTS": [],
     "COOKIE_SECURE": "auto",
     "FRAME_ANCESTORS": ["http://192.168.1.71:8123", "https://ha.awroblew.biz"],
     "BASE_CURRENCY": "GBP",

@@ -351,6 +351,10 @@
                 <input type="text" id="ALLOWED_HOSTS" class="form-control" value="{{ config.ALLOWED_HOSTS | join(', ') if config.ALLOWED_HOSTS else '' }}" placeholder="e.g. stock.example.com, 192.168.1.70">
             </div>
             <div class="form-group">
+                <label><abbr title="Exact host names or IP addresses on your own network that the Account Price Scraper may fetch (for example 192.168.1.71). Every other private, loopback or link-local address is refused; any port on a listed host is allowed, and the page must still be https.">Account Price Scraper Allowed Hosts</abbr> <span class="text-muted text-xs">(comma-separated)</span></label>
+                <input type="text" id="SCRAPER_ALLOWED_HOSTS" class="form-control" value="{{ config.SCRAPER_ALLOWED_HOSTS | join(', ') if config.SCRAPER_ALLOWED_HOSTS else '' }}" placeholder="e.g. 192.168.1.71, ha.lan">
+            </div>
+            <div class="form-group">
                 <label><abbr title="Origins allowed to embed the dashboard in an iframe (for example Home Assistant), sent as the frame-ancestors part of the Content-Security-Policy. The dashboard itself is always allowed.">Embed Frame Ancestors</abbr> <span class="text-muted text-xs">(comma-separated origins, restart req.)</span></label>
                 <input type="text" id="FRAME_ANCESTORS" class="form-control" value="{{ config.FRAME_ANCESTORS | join(', ') if config.FRAME_ANCESTORS else '' }}" placeholder="e.g. https://ha.example.com">
             </div>

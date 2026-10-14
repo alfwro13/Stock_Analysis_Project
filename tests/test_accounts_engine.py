@@ -348,17 +348,13 @@ def test_run_account_scraper_job_runner_is_wired():
     """scheduler_jobs._run_account_scraper_job must actually call account_scraper_engine.run_scrape_for_account
     (which persists the scraped price) and then accounts_engine.resnapshot_account — a regression guard for
     the runner's import wiring, not just the engine functions in isolation."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
     import scheduler_jobs
     from database import update_account
     aid = create_account("ScraperJobRunnerWiringAcc", "GBP", account_type="House")
-    update_account(aid, scraper_url="http://example.test/x.html", scraper_selector="#gf-price")
+    update_account(aid, scraper_url="https://example.test/x.html", scraper_selector="#gf-price")
 
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.text = '<div id="gf-price">123456.0</div>'
-    resp.raise_for_status = MagicMock()
-    with patch("requests.get", return_value=resp):
+    with patch("account_scraper_engine._fetch_body", return_value='<div id="gf-price">123456.0</div>'):
         scheduler_jobs._run_account_scraper_job(aid)
 
     from database import get_value_history

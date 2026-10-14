@@ -73,7 +73,7 @@ DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 1800  # a torch upgrade pulls several GB of
 DEPENDENCY_INSTALL_RESUME_RETRIES = 10     # pip --resume-retries: re-attempts for an interrupted wheel download
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.171"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.172"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

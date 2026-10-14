@@ -1,15 +1,20 @@
 # GUI name: "Account Price Scraper". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import csv
 import io
+import ipaddress
 import logging
 import re
+import socket
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import lxml.html
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
 
+from config import load_config
 from database import (
     add_price_history, get_account, get_latest_price, get_price_as_of, get_price_history,
     get_scraper_headers,
@@ -18,6 +23,10 @@ from database import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; QuantamentalAccountScraper/1.0)"}
+_ALLOWED_HEADER_NAMES = frozenset({"cookie", "authorization", "user-agent"})
+_MAX_BODY_BYTES = 2 * 1024 * 1024
+_REQUEST_TIMEOUT_SECONDS = 15
+_MAX_ADDRESS_ATTEMPTS = 3
 _NUMERIC_RE = re.compile(r"-?\d[\d,]*\.?\d*")
 _PENSION_TICKER_RE = re.compile(r"^PENSION-(\d+)$")
 
@@ -33,6 +42,112 @@ def parse_pension_account_id(ticker: Optional[str]) -> Optional[int]:
     return int(match.group(1)) if match else None
 
 
+class ScrapeRefused(ValueError):
+    pass
+
+
+class _PinnedAdapter(HTTPAdapter):
+    def __init__(self, hostname: str):
+        self._hostname = hostname
+        super().__init__()
+
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, server_hostname=self._hostname, assert_hostname=self._hostname, **kwargs)
+
+
+def _normalise_host(value: str) -> str:
+    host = value.strip().strip("[]").rstrip(".").lower()
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return host
+
+
+def _resolve(host: str, port: int) -> list:
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    return list(dict.fromkeys(info[4][0] for info in infos))
+
+
+def _is_public(address: str) -> bool:
+    ip = ipaddress.ip_address(address)
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
+
+
+def _parse_https_url(url: str):
+    try:
+        parts = urlsplit((url or "").strip())
+        port = parts.port
+    except ValueError:
+        return None, None, "The URL is not valid."
+    if parts.scheme != "https":
+        return None, None, "Only https:// URLs are allowed."
+    if not parts.hostname:
+        return None, None, "The URL has no host name."
+    if parts.username is not None or parts.password is not None:
+        return None, None, "Put credentials in an Authorization header, not in the URL."
+    return parts, port or 443, None
+
+
+def header_error(headers: Optional[dict]) -> Optional[str]:
+    for name in headers or {}:
+        lowered = str(name).strip().lower()
+        if lowered not in _ALLOWED_HEADER_NAMES and not lowered.startswith("accept"):
+            return f"Header {name!r} is not allowed. Allowed headers: Cookie, Authorization, User-Agent and Accept*."
+    return None
+
+
+def config_error(url: str, headers: Optional[dict]) -> Optional[str]:
+    return _parse_https_url(url)[2] or header_error(headers)
+
+
+def _get_pinned(hostname: str, port: int, address: str, target: str, headers: dict) -> str:
+    netloc = f"[{address}]" if ":" in address else address
+    with requests.Session() as session:
+        session.mount("https://", _PinnedAdapter(hostname))
+        resp = session.get(
+            f"https://{netloc}:{port}{target}", headers=headers, timeout=_REQUEST_TIMEOUT_SECONDS,
+            allow_redirects=False, stream=True,
+        )
+        if 300 <= resp.status_code < 400:
+            raise ScrapeRefused("The page redirected. Redirects are not followed, so use the final URL.")
+        resp.raise_for_status()
+        body = bytearray()
+        for chunk in resp.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > _MAX_BODY_BYTES:
+                raise ScrapeRefused("The page is larger than 2 MB.")
+        return bytes(body).decode(resp.encoding or "utf-8", errors="replace")
+
+
+def _fetch_body(url: str, headers: dict) -> str:
+    parts, port, error = _parse_https_url(url)
+    if error:
+        raise ScrapeRefused(error)
+    host = _normalise_host(parts.hostname)
+    addresses = _resolve(host, port)
+    allowed = {_normalise_host(h) for h in load_config().get("SCRAPER_ALLOWED_HOSTS") or []}
+    if host not in allowed and not all(_is_public(a) for a in addresses):
+        raise ScrapeRefused(
+            "That address is not allowed. To scrape a page on your own network, add its host to Settings → "
+            "Core System & Currencies → Account Price Scraper Allowed Hosts."
+        )
+    host_header = f"[{host}]" if ":" in host else host
+    request_headers = {
+        **_DEFAULT_HEADERS, **headers,
+        "Host": host_header if port == 443 else f"{host_header}:{port}",
+    }
+    target = urlunsplit(("", "", parts.path or "/", parts.query, ""))
+    last_error = None
+    for address in addresses[:_MAX_ADDRESS_ATTEMPTS]:
+        try:
+            return _get_pinned(host, port, address, target, request_headers)
+        except requests.ConnectionError as e:
+            last_error = e
+    raise last_error
+
+
 def extract_price(html: str, selector: str) -> float:
     tree = lxml.html.fromstring(html)
     matches = tree.cssselect(selector)
@@ -41,15 +156,17 @@ def extract_price(html: str, selector: str) -> float:
     text = matches[0].text_content()
     numeric_match = _NUMERIC_RE.search(text)
     if not numeric_match:
-        raise ValueError(f"Selector {selector!r} matched {text!r}, which contains no number.")
+        logger.warning("Selector %r matched %r, which contains no number.", selector, text[:200])
+        raise ValueError(f"Selector {selector!r} matched an element that contains no number.")
     return float(numeric_match.group(0).replace(",", ""))
 
 
 def fetch_and_extract(url: str, selector: str, headers: Optional[dict] = None) -> dict:
     try:
-        resp = requests.get(url, headers={**_DEFAULT_HEADERS, **(headers or {})}, timeout=15)
-        resp.raise_for_status()
-        price = extract_price(resp.text, selector)
+        error = header_error(headers)
+        if error:
+            raise ScrapeRefused(error)
+        price = extract_price(_fetch_body(url, headers or {}), selector)
         return {"status": "success", "price": price}
     except ValueError as e:
         logger.error("fetch_and_extract failed for %s (%s): %s", url, selector, e)
