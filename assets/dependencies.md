@@ -157,16 +157,18 @@ and what should I test?" without grepping the whole codebase first.
 
 ## Vendored Mermaid
 
-`static/vendor/mermaid/mermaid-11.17.2.min.js` is the unmodified Mermaid **11.17.2**
+`static/vendor/mermaid/mermaid-12.2.0.min.js` is the unmodified Mermaid **12.2.0**
 `dist/mermaid.min.js` from the npm package (MIT license), SHA-256
-`581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8`. It is loaded
+`a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f`. It is loaded
 only by the Settings page, where `static/js/workflow_monitor.js` draws the Workflow
 Monitor flow-chart. It is committed to git like every other front-end library;
 the application no longer downloads it at startup. To upgrade, download the new
 `dist/mermaid.min.js`, store it under a new versioned filename, update the
 `<script>` in `templates/settings.html`, delete the old file and bump `CSS_VERSION`.
 Then check that the Workflow Monitor graph on Settings renders (nodes, status
-colours, edges).
+colours, edges) and that single- and double-click on a node still work in the
+graph tab: `static/js/workflow_tab.js` parses Mermaid's generated node element
+ids (`<diagram id>-flowchart-<job id>-<n>`), which a major upgrade can change.
 
 ## Vendored column reordering
 
