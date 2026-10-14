@@ -2601,3 +2601,13 @@ def test_score_history_filter_tabs_urlencode_ref(client):
     resp = client.get("/score-history?ref=/portfolio%3Fa%3D1%26b%3D2")
     assert resp.status_code == 200
     assert "filter=all&amp;ref=/portfolio%3Fa%3D1%26b%3D2" in resp.text
+
+
+@pytest.mark.pages
+def test_settings_loads_vendored_mermaid_that_exists_in_the_repo(client):
+    import re
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    srcs = re.findall(r'<script src="(/static/[^"?]+mermaid[^"?]*)', resp.text)
+    assert len(srcs) == 1 and srcs[0].startswith("/static/vendor/mermaid/")
+    assert (Path(__file__).parent.parent / srcs[0].lstrip("/")).stat().st_size > 0
