@@ -77,6 +77,7 @@ CSS_VERSION = "5.180"  # bump this whenever styles.css (or any versioned static/
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert
+NLP_FINBERT_REVISION       = "4556d13015211d73dccd3fdd39d39232506f3e43"  # ProsusAI/finbert main; pinned so a Hub-side change never swaps the weights (SEC 22/27)
 NLP_TEXT_TRUNCATE_CHARS    = 5000  # perf guard only — tokeniser truncation=True handles semantic cut
 NLP_NEWS_FETCH_LIMIT       = 15    # headlines scored per ticker in the routine scan
 NLP_CB_NEWS_FETCH_LIMIT    = 20    # headlines scored for central bank NLP alerts
