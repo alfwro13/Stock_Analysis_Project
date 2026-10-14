@@ -126,7 +126,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `settings` (`/settings`, `settings.js`) — Bootstrap grid `.col-12.col-xl-6`, all inputs Bootstrap form classes, uniform `.btn.btn-primary` buttons, Workflow Monitor conflicts-only (graph in new tab), Bubble Radar persist fix
 
 ### Stage 5 — Auth pages (navbar suppressed, centered card layout)
-- ☑ `login` (`/login`) — Bootstrap card, no navbar (`{% block navbar %}{% endblock %}`), `.auth-card-wrapper` CSS · ☑ `change_password` (`/change-password`) — same pattern · ☑ `reset_password` (`/reset-password`) — dual-mode (request/set) via `{% if token %}`; Jinja in script keeps it inline · ☑ `admin_reset_password` (`/admin-reset-password`) — `.alert.alert-warning` replaces custom warning banner
+- ☑ `login` (`/login`) — Bootstrap card, no navbar (`{% block navbar %}{% endblock %}`), `.auth-card-wrapper` CSS · ☑ `change_password` (`/change-password`) — same pattern · ☑ `reset_password` (`/reset-password`) — dual-mode (request/set) via `{% if token %}`; Jinja in script keeps it inline
 
 ### Stage 6 — Cleanup
 - ☑ `trap_monitor` (`/trap-monitor`, `trap_monitor.js`) — Bootstrap grid + custom CSS classes; 570-line IIFE extracted to `static/js/trap_monitor.js`; `d-none` used for JS-toggled situation card; signal cards use `.module-blue` / `.module-salmon` variants; arc-step modifiers converted to CSS classes
