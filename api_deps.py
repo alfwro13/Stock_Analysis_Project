@@ -2,6 +2,7 @@ import logging
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -13,6 +14,11 @@ from auth import (
 logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
+
+
+class FiniteModel(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
 
 # Adding a route here is what lets Home Assistant call it. See assets/api_reference.md, "API key scope".
 API_KEY_ROUTES = frozenset({

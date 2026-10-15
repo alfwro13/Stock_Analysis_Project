@@ -1,6 +1,7 @@
 """Tests for ETF predictor API endpoints."""
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -204,3 +205,25 @@ def test_validate_weight_ok_flag(client):
         "constituents": [{"ticker": "AAPL", "weight": 50.0}],
     })
     assert _json(resp_bad)["weight_ok"] is False
+
+
+@pytest.mark.api
+def test_validate_rejects_more_constituents_than_the_cap_before_any_lookup(client):
+    from constants import ETF_CONSTITUENTS_MAX
+    with patch("api_routes_analysis.yahoo_engine.get_ticker_info") as mock_info:
+        resp = client.post("/api/etf-predictors/validate", json={
+            "etf_ticker": "TST.L",
+            "constituents": [{"ticker": f"T{i}", "weight": 1.0} for i in range(ETF_CONSTITUENTS_MAX + 1)],
+        })
+    assert resp.status_code == 422
+    mock_info.assert_not_called()
+
+
+@pytest.mark.api
+def test_validate_rejects_a_non_finite_weight(client):
+    resp = client.post(
+        "/api/etf-predictors/validate",
+        content='{"etf_ticker": "TST.L", "constituents": [{"ticker": "AAPL", "weight": Infinity}]}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 422

@@ -8,10 +8,11 @@ import numpy as np
 import time_engine
 from fastapi import APIRouter, BackgroundTasks, Path as PathParam, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from api_deps import limiter, _error_500
+from api_deps import FiniteModel, limiter, _error_500
+from constants import ETF_CONSTITUENTS_MAX
 
 from config import HISTORICAL_DIR
 from database import get_connection, get_auction_summary
@@ -962,7 +963,7 @@ def run_market_regime_now(request: Request, background_tasks: BackgroundTasks):
         return _error_500(e)
 
 
-class StressTestRequest(BaseModel):
+class StressTestRequest(FiniteModel):
     account_id: str = "all"
     scenario_id: str
     custom_drop: Optional[float] = None
@@ -1002,7 +1003,7 @@ def run_stress_test(request: Request, body: StressTestRequest):
         return _error_500(e)
 
 
-class EtfConstituentItem(BaseModel):
+class EtfConstituentItem(FiniteModel):
     ticker: str
     weight: float
 
@@ -1010,7 +1011,7 @@ class EtfConstituentItem(BaseModel):
 class EtfPredictorConfigBody(BaseModel):
     name: str
     etf_ticker: str
-    constituents: List[EtfConstituentItem]
+    constituents: List[EtfConstituentItem] = Field(max_length=ETF_CONSTITUENTS_MAX)
     enabled: Optional[bool] = True
     auto_schedule: Optional[bool] = False
     pre_run_time: Optional[str] = "13:30"
@@ -1019,7 +1020,7 @@ class EtfPredictorConfigBody(BaseModel):
 
 class EtfValidateBody(BaseModel):
     etf_ticker: str
-    constituents: List[EtfConstituentItem]
+    constituents: List[EtfConstituentItem] = Field(max_length=ETF_CONSTITUENTS_MAX)
 
 
 def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:

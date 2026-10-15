@@ -465,3 +465,20 @@ def test_pension_ticker_roundtrip():
     assert scraper.parse_pension_account_id("PENSION-42") == 42
     assert scraper.parse_pension_account_id("AAPL") is None
     assert scraper.parse_pension_account_id(None) is None
+
+
+@pytest.mark.db
+def test_import_price_csv_skips_non_finite_prices():
+    aid = create_account("CsvNonFiniteAcc", "GBP", account_type="Pension")
+    csv_text = "date;marketPrice\n2026-01-01;1.5\n2026-01-02;inf\n2026-01-03;nan\n"
+    assert scraper.import_price_csv(aid, csv_text) == {"imported": 1, "skipped": 2}
+    assert [h["price"] for h in get_price_history(aid)] == [1.5]
+
+
+@pytest.mark.db
+def test_import_price_csv_rejects_a_file_over_the_row_cap(monkeypatch):
+    monkeypatch.setattr(scraper, "PRICE_CSV_MAX_ROWS", 2)
+    aid = create_account("CsvRowCapAcc", "GBP", account_type="Pension")
+    csv_text = "date;marketPrice\n2026-01-01;1\n2026-01-02;2\n2026-01-03;3\n"
+    assert scraper.import_price_csv(aid, csv_text) == {"error": "Price CSV has more than 2 rows."}
+    assert get_price_history(aid) == []

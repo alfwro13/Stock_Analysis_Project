@@ -396,3 +396,81 @@ def test_map_cash_row_without_an_exchange_rate_is_skipped(monkeypatch):
                     "Account Currency": "USD", "Total Amount in Account Currency": "50.00"})
     mapped, reason, _ = account_csv_import_engine._map_csv_row(top_up)
     assert mapped is None and reason == "no_fx_rate"
+
+
+_ORDER_FIELDS = {
+    "Title": "Apple", "Type": "ORDER", "Timestamp": "01/02/2021", "Account Currency": "GBP",
+    "Total Amount in Account Currency": "10.00", "Buy / Sell": "BUY", "Ticker": "AAPL",
+    "Price per Share in Account Currency": "5.00", "Stamp Duty": "0", "Quantity": "2",
+    "Instrument Currency": "GBP", "Price per Share": "5.00",
+}
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("field", ["Quantity", "Price per Share"])
+@pytest.mark.parametrize("value", ["inf", "-Infinity", "nan"])
+def test_csv_float_non_finite_cell_raises(field, value):
+    with pytest.raises(account_csv_import_engine._NonFiniteNumber):
+        account_csv_import_engine._map_csv_row(_row({**_ORDER_FIELDS, field: value}))
+
+
+@pytest.mark.db
+def test_map_overflowing_derived_exchange_rate_is_skipped():
+    row = _row({**_ORDER_FIELDS, "Price per Share in Account Currency": "1e308", "Price per Share": "1e-308"})
+    mapped, reason, ticker = account_csv_import_engine._map_csv_row(row)
+    assert mapped is None
+    assert reason == "bad_number"
+    assert ticker == "AAPL"
+
+
+@pytest.mark.db
+def test_import_skips_a_non_finite_row_and_stores_nothing_for_it():
+    aid = create_account("NonFiniteImportAcc", "GBP")
+    csv_text = _csv(
+        "Apple,ORDER,01/02/2021,GBP,10.00,BUY,AAPL,US0378331005,5.00,0.00,Infinity,GBP,10.00,5.00,,,,,,,,,,,,",
+    )
+    with patch.object(account_csv_import_engine, "_ticker_resolvable") as resolvable:
+        result = account_csv_import_engine.import_csv_activities(aid, csv_text)
+
+    resolvable.assert_not_called()
+    assert result["imported"] == 0
+    assert result["skipped_rows"] == [{
+        "date": "01/02/2021", "ticker": "AAPL", "reason": "a number in the row is not finite",
+    }]
+    from database import get_transactions
+    assert get_transactions(aid) == []
+
+
+@pytest.mark.db
+def test_import_rejects_a_csv_over_the_row_cap(monkeypatch):
+    monkeypatch.setattr(account_csv_import_engine, "CSV_IMPORT_MAX_ROWS", 2)
+    aid = create_account("RowCapImportAcc", "GBP")
+    csv_text = _csv(*["Top up,TOP_UP,01/02/2021,GBP,10.00,,,,,,,,,,,,,,,,,,,,,"] * 3)
+    result = account_csv_import_engine.import_csv_activities(aid, csv_text)
+    assert result == {"error": "CSV has more than 2 rows."}
+    from database import get_transactions
+    assert get_transactions(aid) == []
+
+
+@pytest.mark.db
+def test_import_rejects_a_csv_over_the_unique_ticker_cap(monkeypatch):
+    monkeypatch.setattr(account_csv_import_engine, "CSV_IMPORT_MAX_TICKERS", 2)
+    aid = create_account("TickerCapImportAcc", "GBP")
+    rows = [
+        f"{t},ORDER,01/02/2021,GBP,10.00,BUY,{t},,5.00,0.00,2,GBP,10.00,5.00,,,,,,,,,,,,"
+        for t in ("AAA", "BBB", "CCC")
+    ]
+    with patch.object(account_csv_import_engine, "_ticker_resolvable") as resolvable:
+        result = account_csv_import_engine.import_csv_activities(aid, _csv(*rows))
+    resolvable.assert_not_called()
+    assert result == {"error": "CSV has more than 2 different tickers."}
+
+
+@pytest.mark.db
+def test_map_cash_row_with_a_non_finite_amount_raises():
+    row = _row({
+        "Title": "Top up", "Type": "TOP_UP", "Timestamp": "01/02/2021", "Account Currency": "GBP",
+        "Total Amount in Account Currency": "Infinity",
+    })
+    with pytest.raises(account_csv_import_engine._NonFiniteNumber):
+        account_csv_import_engine._map_csv_row(row)

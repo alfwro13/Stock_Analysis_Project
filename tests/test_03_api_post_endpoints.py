@@ -605,6 +605,56 @@ def test_post_options_payoff_call_option(client):
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("field", ["current_price", "strike", "premium"])
+def test_post_options_payoff_rejects_non_finite_number(client, field):
+    values = {"current_price": "150.0", "strike": "155.0", "premium": "3.5"}
+    values[field] = "Infinity"
+    body = (
+        '{"current_price": %s, "legs": [{"type": "call", "strike": %s, "premium": %s, '
+        '"position": "long", "quantity": 1}]}' % (values["current_price"], values["strike"], values["premium"])
+    )
+    resp = client.post("/api/options/payoff", content=body, headers={"Content-Type": "application/json"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.api
+def test_validation_error_response_does_not_echo_the_rejected_input(client):
+    resp = client.post(
+        "/api/options/payoff",
+        content='{"current_price": Infinity, "legs": []}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 422
+    errors = resp.json()["detail"]
+    assert errors and all({"loc", "msg", "type"} <= set(e) and "input" not in e for e in errors)
+
+
+@pytest.mark.api
+def test_post_options_payoff_caps_the_number_of_legs(client):
+    from constants import OPTION_LEGS_MAX
+    leg = {"type": "call", "strike": 155.0, "premium": 3.5, "position": "long", "quantity": 1}
+    ok = client.post("/api/options/payoff", json={"current_price": 150.0, "legs": [leg] * OPTION_LEGS_MAX})
+    too_many = client.post("/api/options/payoff", json={"current_price": 150.0, "legs": [leg] * (OPTION_LEGS_MAX + 1)})
+    assert ok.status_code == 200
+    assert too_many.status_code == 422
+
+
+@pytest.mark.api
+def test_post_options_payoff_is_rate_limited_to_sixty_per_minute(client):
+    from api_deps import limiter
+    limiter.reset()
+    leg = {"type": "call", "strike": 155.0, "premium": 3.5, "position": "long", "quantity": 1}
+    try:
+        codes = [
+            client.post("/api/options/payoff", json={"current_price": 150.0, "legs": [leg]}).status_code
+            for _ in range(61)
+        ]
+    finally:
+        limiter.reset()
+    assert codes == [200] * 60 + [429]
+
+
+@pytest.mark.api
 def test_post_options_payoff_invalid_input(client):
     """POST /api/options/payoff with missing fields must return 422, not 500."""
     resp = client.post("/api/options/payoff", json={"bad": "payload"})
@@ -1687,6 +1737,65 @@ def test_post_ui_preferences_views_persists_portfolio_scope(client):
     mock_update.assert_called_once_with({"UI_PREFERENCES": {
         "PORTFOLIO_VIEWS": [{"name": "My View", "columns": ["ticker", "price", "score"]}],
     }})
+
+
+@pytest.mark.api
+def test_ui_preferences_columns_accept_the_largest_registry_column_list(client):
+    from constants import TABLE_COLUMN_KEYS_MAX
+    from table_columns_helpers import all_columns_for_page
+    assert max(len(all_columns_for_page(p)) for p in ("portfolio", "watchlist")) <= TABLE_COLUMN_KEYS_MAX
+    with patch("api_routes.update_config_atomic"):
+        resp = client.post("/api/ui-preferences/columns", json={
+            "scope": "portfolio", "column_order": ["ticker"] * TABLE_COLUMN_KEYS_MAX,
+        })
+    assert resp.status_code == 200
+
+
+@pytest.mark.api
+def test_ui_preferences_columns_reject_oversize_lists_and_keys(client):
+    from constants import TABLE_COLUMN_KEY_MAX_CHARS, TABLE_COLUMN_KEYS_MAX
+    too_long_list = ["ticker"] * (TABLE_COLUMN_KEYS_MAX + 1)
+    too_long_key = "k" * (TABLE_COLUMN_KEY_MAX_CHARS + 1)
+    with patch("api_routes.update_config_atomic") as mock_update:
+        for body in (
+            {"scope": "portfolio", "hidden_core_columns": too_long_list},
+            {"scope": "portfolio", "shown_optional_columns": too_long_list},
+            {"scope": "portfolio", "column_order": too_long_list},
+            {"scope": "portfolio", "shown_optional_columns": [too_long_key]},
+        ):
+            assert client.post("/api/ui-preferences/columns", json=body).status_code == 422
+    mock_update.assert_not_called()
+
+
+@pytest.mark.api
+def test_ui_preferences_views_reject_oversize_payloads(client):
+    from constants import (
+        TABLE_FILTER_CONDITIONS_MAX, TABLE_FILTER_VALUE_MAX_CHARS, TABLE_VIEW_NAME_MAX_CHARS, TABLE_VIEWS_MAX,
+    )
+    view = {"name": "V", "columns": ["ticker"]}
+    condition = {"key": "price", "operator": "gt", "value": "1"}
+    payloads = [
+        [view] * (TABLE_VIEWS_MAX + 1),
+        [{**view, "name": "n" * (TABLE_VIEW_NAME_MAX_CHARS + 1)}],
+        [{**view, "columns": ["ticker"] * 201}],
+        [{**view, "filter": {"logic": "AND", "conditions": [condition] * (TABLE_FILTER_CONDITIONS_MAX + 1)}}],
+        [{**view, "filter": {"conditions": [{**condition, "value": "9" * (TABLE_FILTER_VALUE_MAX_CHARS + 1)}]}}],
+    ]
+    with patch("api_routes.update_config_atomic") as mock_update:
+        for views in payloads:
+            resp = client.post("/api/ui-preferences/views", json={"scope": "portfolio", "views": views})
+            assert resp.status_code == 422
+    mock_update.assert_not_called()
+
+
+@pytest.mark.api
+def test_ui_preferences_views_accept_the_cap(client):
+    from constants import TABLE_VIEWS_MAX
+    with patch("api_routes.update_config_atomic"):
+        resp = client.post("/api/ui-preferences/views", json={
+            "scope": "portfolio", "views": [{"name": f"V{i}", "columns": ["ticker"]} for i in range(TABLE_VIEWS_MAX)],
+        })
+    assert resp.status_code == 200
 
 
 @pytest.mark.api

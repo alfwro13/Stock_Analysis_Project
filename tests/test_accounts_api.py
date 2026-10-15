@@ -2911,3 +2911,102 @@ def test_fx_rate_endpoint_reports_unavailable_rate(client):
     with patch("api_routes_accounts.fx_rate_on_date", return_value=None):
         resp = client.get("/api/fx-rate", params={"currency": "USD", "date": "2026-01-15"})
     assert _json(resp)["status"] == "error"
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("body_extra", [
+    '"initial_cash": Infinity', '"initial_cash": NaN', '"initial_cash": 1e999',
+])
+def test_create_account_rejects_non_finite_number(client, body_extra):
+    resp = client.post(
+        "/api/accounts",
+        content='{"name": "NonFiniteAcc", "currency": "GBP", ' + body_extra + "}",
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.api
+def test_holding_price_limit_rejects_infinity_and_stores_nothing(client):
+    with patch("api_routes_accounts.set_holding_price_limit") as mock_set:
+        resp = client.post(
+            "/api/accounts/holding-price-limit",
+            content='{"account_id": 1, "ticker": "ZZINF", "low_limit": Infinity}',
+            headers={"Content-Type": "application/json"},
+        )
+    assert resp.status_code == 422
+    mock_set.assert_not_called()
+
+
+@pytest.mark.api
+def test_holding_price_limit_accepts_null_to_clear_a_limit(client):
+    with patch("api_routes_accounts.set_holding_price_limit") as mock_set:
+        resp = client.post("/api/accounts/holding-price-limit", json={
+            "account_id": 1, "ticker": "ZZNULL", "low_limit": None,
+        })
+    assert resp.status_code == 200
+    mock_set.assert_called_once_with(1, "ZZNULL", low_limit=None)
+
+
+@pytest.mark.api
+def test_holding_price_limit_is_rate_limited_to_sixty_per_minute(client):
+    from api_deps import limiter
+    limiter.reset()
+    try:
+        with patch("api_routes_accounts.set_holding_price_limit"):
+            codes = [
+                client.post("/api/accounts/holding-price-limit", json={
+                    "account_id": 1, "ticker": "ZZRATE", "low_limit": 1.0,
+                }).status_code
+                for _ in range(61)
+            ]
+    finally:
+        limiter.reset()
+    assert codes == [200] * 60 + [429]
+
+
+@pytest.mark.api
+def test_import_csv_over_the_size_cap_returns_413_without_parsing(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="CsvTooBigApiAcc")
+    with (
+        patch("api_routes_accounts.CSV_IMPORT_MAX_BYTES", 16),
+        patch("api_routes_accounts.import_csv_activities") as mock_import,
+    ):
+        resp = client.post(
+            f"/api/accounts/{account_id}/import-csv",
+            files={"file": ("activity.csv", b"x" * 17, "text/csv")},
+        )
+    assert resp.status_code == 413
+    assert _json(resp)["status"] == "error"
+    mock_import.assert_not_called()
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_price_history_import_csv_body_over_the_cap_returns_422(client):
+    account_id = _create_account(client, account_type="Pension")
+    from constants import PRICE_CSV_MAX_CHARS
+    resp = client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+        "csv_text": "x" * (PRICE_CSV_MAX_CHARS + 1),
+    })
+    assert resp.status_code == 422
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_price_history_import_csv_over_the_row_cap_returns_422(client):
+    account_id = _create_account(client, account_type="Pension")
+    with patch("account_scraper_engine.PRICE_CSV_MAX_ROWS", 1):
+        resp = client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+            "csv_text": "date;marketPrice\n2026-01-01;1\n2026-01-02;2\n",
+        })
+    assert resp.status_code == 422
+    assert "more than 1 rows" in _json(resp)["message"]
+
+    import database as _db
+    _db.soft_delete_account(account_id)

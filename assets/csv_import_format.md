@@ -43,6 +43,18 @@ not a three-letter code (`GBP`, `USD`, `GBp`, …) is skipped with the reason "c
 3-letter code" before any ticker lookup — the value is stored as the transaction's currency and
 shown in the ledger, so free text is never accepted there.
 
+A numeric cell that parses to `inf`, `-inf` or `nan` (or a derived exchange rate or fee that overflows to
+infinity) skips the row with the reason "a number in the row is not finite"; an unparseable cell still reads
+as `0`. A non-finite value in the ledger would make the account's transaction list and totals fail to
+serialise.
+
+## Size limits
+
+The upload is refused with `413` above 2 MB. The file is refused whole (`422`, nothing imported) above 5,000
+data rows or 200 different `Ticker` values: each unknown ticker costs up to two live Yahoo lookups, so the
+ticker cap bounds the time one import can spend on them. The limits are
+`constants.CSV_IMPORT_MAX_BYTES`, `CSV_IMPORT_MAX_ROWS` and `CSV_IMPORT_MAX_TICKERS`.
+
 ## Recognised row types
 
 - **`TOP_UP`** → recorded as a `Cash` transaction (a deposit into the account).
@@ -111,7 +123,7 @@ Yahoo Finance lookup. If neither resolves it — typically a delisted or mistype
 Every skipped row (other than `INTERNAL_TRANSFER`/blank rows, which are expected and not
 worth reporting) is returned individually in the response's `skipped_rows` list, each entry
 giving the row's `date`, `ticker`, and a human-readable `reason` (unresolved ticker, no
-ticker in file, unparseable date, a currency that is not a 3-letter code, no exchange rate available for a foreign-currency cash row's date, unrecognized row type, already imported, or a database
+ticker in file, unparseable date, a currency that is not a 3-letter code, a non-finite number, no exchange rate available for a foreign-currency cash row's date, unrecognized row type, already imported, or a database
 error) — enough detail to find the exact row in the source file. If any rows were skipped,
 the same detail is also dispatched through `notification_engine.notify()` so it remains
 visible in the in-app Notifications panel after the import modal is closed, rather than only

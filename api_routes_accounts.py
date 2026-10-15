@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import (
@@ -25,8 +25,9 @@ from portfolio_metrics_engine import (
     portfolio_totals, set_holding_price_limit,
 )
 import notification_engine
-from api_deps import limiter, _error_500
+from api_deps import FiniteModel, limiter, _error_500
 from config import load_config
+from constants import CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
 from data_engine import fetch_and_save_single_ticker
 from quant_signals import QuantEngine
 from database import (
@@ -77,7 +78,7 @@ _TXN_TYPES = frozenset({"Buy", "Sell", "Fee", "Dividend", "Interest", "Cash", "T
 _ACCOUNT_TYPES = frozenset({"Trading", "House", "Pension", "Watchlist"})
 
 
-class AccountBody(BaseModel):
+class AccountBody(FiniteModel):
     name: str
     currency: str
     initial_cash: float = 0.0
@@ -89,7 +90,7 @@ class AccountBody(BaseModel):
     pension_ticker_label: Optional[str] = None
 
 
-class TransactionBody(BaseModel):
+class TransactionBody(FiniteModel):
     txn_type: str
     txn_date: str
     ticker: Optional[str] = None
@@ -107,7 +108,7 @@ class TransactionBody(BaseModel):
     price_in_pence: bool = False
 
 
-class ReconcileCashBody(BaseModel):
+class ReconcileCashBody(FiniteModel):
     actual_balance: float
 
 
@@ -133,7 +134,7 @@ class ScraperTestBody(BaseModel):
     headers: Optional[dict] = None
 
 
-class AutoTopupConfigBody(BaseModel):
+class AutoTopupConfigBody(FiniteModel):
     enabled: bool = False
     amount: Optional[float] = None
     frequency: Optional[str] = None
@@ -142,7 +143,7 @@ class AutoTopupConfigBody(BaseModel):
     notes: Optional[str] = None
 
 
-class AutoTopupConfirmBody(BaseModel):
+class AutoTopupConfirmBody(FiniteModel):
     pending_id: int
     amount: float
     txn_date: str
@@ -153,7 +154,7 @@ class BenchmarkTickerBody(BaseModel):
     display_name: str
 
 
-class BenchmarkConfigBody(BaseModel):
+class BenchmarkConfigBody(FiniteModel):
     cpi_target_pct: float = 4.0
     tickers: list[BenchmarkTickerBody] = []
 
@@ -163,30 +164,30 @@ class AutoTopupDismissBody(BaseModel):
 
 
 class PriceCsvImportBody(BaseModel):
-    csv_text: str
+    csv_text: str = Field(max_length=PRICE_CSV_MAX_CHARS)
 
 
-class HoldingPriceLimitBody(BaseModel):
+class HoldingPriceLimitBody(FiniteModel):
     account_id: int
     ticker: str
     low_limit: Optional[float] = None
     high_limit: Optional[float] = None
 
 
-class PensionContributionBody(BaseModel):
+class PensionContributionBody(FiniteModel):
     txn_date: str
     amount: float
     unit_price: Optional[float] = None
 
 
-class PensionFeeBody(BaseModel):
+class PensionFeeBody(FiniteModel):
     txn_date: str
     units_after: Optional[float] = None
     units_removed: Optional[float] = None
     unit_price: Optional[float] = None
 
 
-class TreasuryBillBuyBody(BaseModel):
+class TreasuryBillBuyBody(FiniteModel):
     purchase_date: str
     face_value: float
     purchase_price: float
@@ -200,7 +201,7 @@ class TreasuryBillAutoReinvestBody(BaseModel):
     auto_reinvest: bool
 
 
-class TreasuryBillConfirmYtmBody(BaseModel):
+class TreasuryBillConfirmYtmBody(FiniteModel):
     confirmed_ytm: Optional[float] = None
     face_value: Optional[float] = None
 
@@ -588,7 +589,7 @@ def api_delete_transaction(request: Request, account_id: int, txn_id: int, backg
         return _error_500(e)
 
 
-class TransferBody(BaseModel):
+class TransferBody(FiniteModel):
     to_account_id: int
     amount: float
     txn_date: str
@@ -773,7 +774,12 @@ def api_import_csv(request: Request, account_id: int, background_tasks: Backgrou
         acc = get_account(account_id)
         if acc is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
-        raw = file.file.read()
+        raw = file.file.read(CSV_IMPORT_MAX_BYTES + 1)
+        if len(raw) > CSV_IMPORT_MAX_BYTES:
+            return JSONResponse(status_code=413, content={
+                "status": "error",
+                "message": f"CSV file is larger than {CSV_IMPORT_MAX_BYTES // (1024 * 1024)} MB.",
+            })
         csv_text = raw.decode("utf-8-sig")
         result = import_csv_activities(account_id, csv_text)
         if result.get("error"):
@@ -883,7 +889,8 @@ def api_other_accounts_list():
 
 
 @accounts_router.post("/accounts/holding-price-limit")
-def api_set_holding_price_limit(body: HoldingPriceLimitBody):
+@limiter.limit("60/minute")
+def api_set_holding_price_limit(request: Request, body: HoldingPriceLimitBody):
     try:
         fields = body.model_dump(include={"low_limit", "high_limit"}, exclude_unset=True)
         set_holding_price_limit(body.account_id, body.ticker, **fields)
@@ -1117,6 +1124,8 @@ def api_import_price_csv(request: Request, account_id: int, body: PriceCsvImport
         if error:
             return error
         result = import_price_csv(account_id, body.csv_text)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
         background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={
             "status": "success",

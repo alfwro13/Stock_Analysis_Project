@@ -242,7 +242,7 @@ window.ColumnPicker = (function () {
             });
             html += '<div class="dropdown-divider"></div>' +
                 '<div class="view-save-row">' +
-                '<input type="text" class="form-control form-control-sm view-name-input" placeholder="View name…">' +
+                '<input type="text" class="form-control form-control-sm view-name-input" maxlength="100" placeholder="View name…">' +
                 '<button type="button" class="btn btn-sm btn-outline-primary view-save-btn">Save Current</button>' +
                 '</div>';
             menuEl.innerHTML = html;

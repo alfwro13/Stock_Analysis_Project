@@ -2,12 +2,14 @@ import csv
 import hashlib
 import io
 import logging
+import math
 from datetime import datetime
 from typing import Optional
 
 import accounts_engine
 from accounts_engine import fx_rate_on_date
 from config import BASE_CURRENCY
+from constants import CSV_IMPORT_MAX_ROWS, CSV_IMPORT_MAX_TICKERS
 from database import get_connection
 from db_accounts import add_transaction, get_transactions
 from utils import is_currency_code, normalize_ticker
@@ -46,11 +48,18 @@ _CSV_REQUIRED_COLUMNS = (
 )
 
 
+class _NonFiniteNumber(ValueError):
+    pass
+
+
 def _csv_float(value: Optional[str]) -> float:
     try:
-        return float(value) if value not in (None, "") else 0.0
+        number = float(value) if value not in (None, "") else 0.0
     except ValueError:
         return 0.0
+    if not math.isfinite(number):
+        raise _NonFiniteNumber(value)
+    return number
 
 
 def _csv_date(value: str) -> str:
@@ -154,6 +163,8 @@ def _map_csv_row(row: dict) -> tuple:
         mapped["fee"] *= 100
         mapped["exchange_rate"] *= 0.01
 
+    if not all(math.isfinite(v) for v in mapped.values() if isinstance(v, float)):
+        return None, "bad_number", ticker
     return mapped, None, None
 
 
@@ -184,6 +195,7 @@ _CSV_SKIP_REASON_LABELS = {
     "unknown_type": "unrecognized row type",
     "bad_date": "unparseable date",
     "bad_currency": "currency is not a 3-letter code",
+    "bad_number": "a number in the row is not finite",
     "no_fx_rate": "no exchange rate available for that date",
     "unresolved_ticker": "ticker not found (possibly delisted or mistyped)",
     "duplicate": "already imported",
@@ -202,6 +214,11 @@ def import_csv_activities(account_id: int, csv_text: str) -> dict:
     missing = [c for c in _CSV_REQUIRED_COLUMNS if c not in header]
     if missing:
         return {"error": f"CSV is missing required column(s): {', '.join(missing)}"}
+    rows = list(reader)
+    if len(rows) > CSV_IMPORT_MAX_ROWS:
+        return {"error": f"CSV has more than {CSV_IMPORT_MAX_ROWS} rows."}
+    if len({(r.get("Ticker") or "").strip() for r in rows} - {""}) > CSV_IMPORT_MAX_TICKERS:
+        return {"error": f"CSV has more than {CSV_IMPORT_MAX_TICKERS} different tickers."}
 
     existing_refs = {t["ghostfolio_ref"] for t in get_transactions(account_id) if t["ghostfolio_ref"]}
     ticker_ok: dict[str, bool] = {}
@@ -214,8 +231,11 @@ def import_csv_activities(account_id: int, csv_text: str) -> dict:
     def _skip(reason: str, date: Optional[str], ticker: Optional[str]) -> None:
         skipped_rows.append({"date": date, "ticker": ticker or None, "reason": _CSV_SKIP_REASON_LABELS[reason]})
 
-    for row in reader:
-        mapped, reason, unresolved_key = _map_csv_row(row)
+    for row in rows:
+        try:
+            mapped, reason, unresolved_key = _map_csv_row(row)
+        except _NonFiniteNumber:
+            mapped, reason, unresolved_key = None, "bad_number", None
         if mapped is None:
             if reason == "ignored":
                 ignored += 1
