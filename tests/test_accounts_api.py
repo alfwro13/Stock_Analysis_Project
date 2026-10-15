@@ -24,6 +24,28 @@ def _create_account(client, **overrides) -> int:
     return _json(resp)["id"]
 
 
+def _post_txn(client, account_id, txn_type, ticker, quantity):
+    with patch("api_routes_accounts.resnapshot_account"), patch("api_routes_accounts.update_single_profile"):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": txn_type, "txn_date": "2026-01-15", "ticker": ticker,
+            "currency": "GBP", "quantity": quantity, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": False,
+        })
+    assert resp.status_code == 200, resp.text
+
+
+def _drop_limit_rows(account_id):
+    from database import get_connection
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute("DELETE FROM holding_price_limits WHERE account_id = ?", (account_id,))
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
 @pytest.mark.api
 def test_create_account_returns_id(client):
     resp = client.post("/api/accounts", json={"name": "ISA", "currency": "GBP", "initial_cash": 500.0})
@@ -2736,6 +2758,7 @@ def test_api_other_accounts_list_status_success(client):
 def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitApiAcc")
+    _post_txn(client, account_id, "Buy", "ZZLIMITAPI", 5)
 
     resp1 = client.post("/api/accounts/holding-price-limit", json={
         "account_id": account_id, "ticker": "ZZLIMITAPI", "low_limit": 10.0,
@@ -2754,6 +2777,7 @@ def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
     assert limits["low_limit"] == 10.0
     assert limits["high_limit"] == 20.0
 
+    _drop_limit_rows(account_id)
     import database as _db
     _db.soft_delete_account(account_id)
 
@@ -2940,12 +2964,137 @@ def test_holding_price_limit_rejects_infinity_and_stores_nothing(client):
 
 @pytest.mark.api
 def test_holding_price_limit_accepts_null_to_clear_a_limit(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitNullAcc")
+    _post_txn(client, account_id, "Buy", "ZZNULL", 5)
     with patch("api_routes_accounts.set_holding_price_limit") as mock_set:
         resp = client.post("/api/accounts/holding-price-limit", json={
-            "account_id": 1, "ticker": "ZZNULL", "low_limit": None,
+            "account_id": account_id, "ticker": "ZZNULL", "low_limit": None,
         })
     assert resp.status_code == 200
-    mock_set.assert_called_once_with(1, "ZZNULL", low_limit=None)
+    mock_set.assert_called_once_with(account_id, "ZZNULL", low_limit=None)
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+def _stored_limits(account_id):
+    from db_accounts import get_all_holding_price_limits
+    return {t: v for (a, t), v in get_all_holding_price_limits().items() if a == account_id}
+
+
+@pytest.mark.api
+def test_holding_price_limit_unknown_account_is_404_and_stores_nothing(client):
+    resp = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": 999996, "ticker": "ZZORPHAN", "low_limit": 1.0,
+    })
+    assert resp.status_code == 404
+    assert _json(resp)["message"] == "Account not found."
+    assert _stored_limits(999996) == {}
+
+
+@pytest.mark.api
+def test_holding_price_limit_soft_deleted_account_is_404(client):
+    import database as _db
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitDeletedAcc")
+    _post_txn(client, account_id, "Buy", "ZZDELETED", 5)
+    _db.soft_delete_account(account_id)
+
+    resp = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": "ZZDELETED", "low_limit": 1.0,
+    })
+    assert resp.status_code == 404
+    assert _stored_limits(account_id) == {}
+
+
+@pytest.mark.api
+def test_holding_price_limit_pension_account_is_400(client):
+    import database as _db
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitPensionAcc", account_type="Pension")
+
+    resp = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": f"PENSION-{account_id}", "low_limit": 1.0,
+    })
+    assert resp.status_code == 400
+    assert _stored_limits(account_id) == {}
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_ticker_not_held_is_404_and_stores_nothing(client):
+    import database as _db
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitNotHeldAcc")
+    _post_txn(client, account_id, "Buy", "ZZHELD", 5)
+
+    resp = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": "ZZNOTHELD", "low_limit": 1.0,
+    })
+    assert resp.status_code == 404
+    assert _stored_limits(account_id) == {}
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_fully_sold_position_is_404(client):
+    import database as _db
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitSoldAcc")
+    _post_txn(client, account_id, "Buy", "ZZSOLD", 5)
+    _post_txn(client, account_id, "Sell", "ZZSOLD", 5)
+
+    resp = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": "ZZSOLD", "high_limit": 1.0,
+    })
+    assert resp.status_code == 404
+    assert _stored_limits(account_id) == {}
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_normalises_ticker_before_storing(client):
+    import database as _db
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitCaseAcc")
+    _post_txn(client, account_id, "Buy", "ZZCASE", 5)
+
+    resp = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": "  zzcase ", "low_limit": 7.0,
+    })
+    assert resp.status_code == 200
+    assert _stored_limits(account_id) == {"ZZCASE": {"low_limit": 7.0, "high_limit": None}}
+    _drop_limit_rows(account_id)
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_watchlist_requires_a_watched_ticker(client):
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+    _db.add_watchlist_item(wl_id, "ZZWATCHED", "Watched Co", "USD", "EQUITY", "NYSE")
+    try:
+        resp = client.post("/api/accounts/holding-price-limit", json={
+            "account_id": wl_id, "ticker": "zzwatched", "low_limit": 3.0,
+        })
+        assert resp.status_code == 200
+        assert _stored_limits(wl_id)["ZZWATCHED"]["low_limit"] == 3.0
+
+        resp = client.post("/api/accounts/holding-price-limit", json={
+            "account_id": wl_id, "ticker": "ZZUNWATCHED", "low_limit": 3.0,
+        })
+        assert resp.status_code == 404
+        assert "ZZUNWATCHED" not in _stored_limits(wl_id)
+    finally:
+        _db.remove_watchlist_ticker(wl_id, "ZZWATCHED")
+        from database import get_connection
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM holding_price_limits WHERE account_id = ? AND ticker LIKE 'ZZ%'", (wl_id,))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 @pytest.mark.api
@@ -2953,7 +3102,10 @@ def test_holding_price_limit_is_rate_limited_to_sixty_per_minute(client):
     from api_deps import limiter
     limiter.reset()
     try:
-        with patch("api_routes_accounts.set_holding_price_limit"):
+        with (
+            patch("api_routes_accounts._require_limit_target", return_value=("ZZRATE", None)),
+            patch("api_routes_accounts.set_holding_price_limit"),
+        ):
             codes = [
                 client.post("/api/accounts/holding-price-limit", json={
                     "account_id": 1, "ticker": "ZZRATE", "low_limit": 1.0,
