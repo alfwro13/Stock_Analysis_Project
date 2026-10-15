@@ -921,6 +921,86 @@ class TestImportServerJobGuard:
         add_task.assert_called_once()
 
 
+@pytest.mark.api
+class TestImportServerTickerValidation:
+    """A CSV row whose ticker fails utils.is_valid_ticker() is skipped and counted; padding is stripped, case kept."""
+
+    GOOD = ["ZZIMPVAL.L", "zzimpval-uuid", "ZZIMPVAL^X"]
+    PADDED = " ZZIMPVALPAD.L "
+    BAD = ["ZZ/BAD", "ZZ BAD", "../ZZBAD"]
+
+    @pytest.fixture(autouse=True)
+    def _csv_dir(self, tmp_path, monkeypatch):
+        import api_routes_triggers
+        from api_deps import limiter
+        from database import get_connection
+        limiter.reset()
+        monkeypatch.setattr(api_routes_triggers, "IMPORT_DIR", tmp_path)
+        header = "ticker,company_name,sector,industry,currency,country,exchange\n"
+        rows = "".join(f'"{t}",Co,Technology,Software,GBP,UK,LSE\n' for t in self.GOOD + [self.PADDED] + self.BAD)
+        (tmp_path / "mixed.csv").write_text(header + rows)
+        (tmp_path / "allbad.csv").write_text(header + "".join(f'"{t}",Co,T,S,GBP,UK,LSE\n' for t in self.BAD))
+        yield
+        limiter.reset()
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                "DELETE FROM market_universe WHERE ticker LIKE 'ZZIMPVAL%' OR ticker LIKE 'zzimpval%' OR ticker LIKE '%ZZBAD%'"
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def _stored(self):
+        from database import get_connection
+        conn = None
+        try:
+            conn = get_connection()
+            rows = conn.execute(
+                "SELECT ticker FROM market_universe WHERE ticker LIKE 'ZZIMPVAL%' OR ticker LIKE 'zzimpval%' OR ticker LIKE '%ZZBAD%'"
+            ).fetchall()
+            return {r["ticker"] for r in rows}
+        finally:
+            if conn:
+                conn.close()
+
+    def test_invalid_rows_are_skipped_and_reported(self, client):
+        from scheduler_engine import run_manual_job, run_universe_csv_import_scan
+        with patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+            resp = client.post("/api/universe/import/server", json={"filename": "mixed.csv"})
+        assert resp.status_code == 200
+        data = _json(resp)
+        assert data["status"] == "success"
+        assert f"sideloaded {len(self.GOOD) + 1} assets" in data["message"]
+        assert f"Skipped {len(self.BAD)} row(s) with an invalid ticker" in data["message"]
+        expected = self.GOOD + [self.PADDED.strip()]
+        assert self._stored() == set(expected)
+        assert add_task.call_args.args == (
+            run_manual_job, "universe_csv_import_source", run_universe_csv_import_scan, expected,
+        )
+
+    def test_a_clean_file_has_no_skipped_note(self, client, tmp_path):
+        (tmp_path / "clean.csv").write_text(
+            "ticker,company_name,sector,industry,currency,country,exchange\n"
+            "ZZIMPVAL.L,Co,Technology,Software,GBP,UK,LSE\n"
+        )
+        with patch.object(_StarletteBackgroundTasks, "add_task"):
+            resp = client.post("/api/universe/import/server", json={"filename": "clean.csv"})
+        assert resp.status_code == 200
+        assert "Skipped" not in _json(resp)["message"]
+
+    def test_a_file_of_only_invalid_rows_stores_nothing(self, client):
+        with patch.object(_StarletteBackgroundTasks, "add_task"):
+            resp = client.post("/api/universe/import/server", json={"filename": "allbad.csv"})
+        assert resp.status_code == 200
+        data = _json(resp)
+        assert "sideloaded 0 assets" in data["message"]
+        assert f"Skipped {len(self.BAD)} row(s)" in data["message"]
+        assert self._stored() == set()
+
+
 # ── Intraday Dip Radar ────────────────────────────────────────────────────────
 
 @pytest.mark.api

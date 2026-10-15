@@ -30,6 +30,7 @@ from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
+from utils import INVALID_TICKER_MESSAGE, is_valid_ticker
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
 from ml_training_engine import train_global_ml_model, train_quantile_models
@@ -70,7 +71,7 @@ def log_notification(message_type: str, message_text: str) -> None:
         )
         conn.commit()
     except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
+        logger.error("Failed to log notification: %s", e)
     finally:
         if 'conn' in locals():
             conn.close()
@@ -140,7 +141,7 @@ def bg_init_macro_pipeline():
 
         log_notification("Success", "Macro AI Pipeline successfully initialized and trained.")
     except Exception as e:
-        logger.error(f"Macro AI Pipeline initialization failed: {e}")
+        logger.error("Macro AI Pipeline initialization failed: %s", e)
         log_notification("Error", f"Macro AI Pipeline Initialization failed: {e}")
 
 def bg_run_macro_pipeline():
@@ -163,7 +164,7 @@ def bg_run_macro_pipeline():
 
         log_notification("Success", "Macro AI Pipeline executed successfully.")
     except Exception as e:
-        logger.error(f"Macro AI Pipeline execution failed: {e}")
+        logger.error("Macro AI Pipeline execution failed: %s", e)
         log_notification("Error", f"Macro AI Pipeline execution failed: {e}")
 
 
@@ -424,7 +425,7 @@ def list_importable_csvs():
     try:
         IMPORT_DIR.mkdir(parents=True, exist_ok=True)
         files = [f.name for f in IMPORT_DIR.glob("*.csv")]
-        logger.info(f"Scan found {len(files)} CSV files in {IMPORT_DIR}")
+        logger.info("Scan found %d CSV files in %s", len(files), IMPORT_DIR)
         return JSONResponse(content={"status": "success", "files": files})
     except Exception as e:
         logger.error("Failed to list import directory %s: %s", IMPORT_DIR, e, exc_info=True)
@@ -457,10 +458,15 @@ def import_server_csv(request: Request, body: ImportRequest, background_tasks: B
 
         df = df.dropna(subset=['ticker'])
         records = []
+        skipped = []
         current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         for _, row in df.iterrows():
+            ticker = str(row['ticker']).strip()
+            if not is_valid_ticker(ticker):
+                skipped.append(ticker)
+                continue
             records.append((
-                str(row['ticker']),
+                ticker,
                 str(row['company_name']) if pd.notna(row['company_name']) else 'Unknown',
                 str(row['sector']) if pd.notna(row['sector']) else 'Unclassified',
                 str(row['industry']) if pd.notna(row['industry']) else 'Unclassified',
@@ -485,10 +491,11 @@ def import_server_csv(request: Request, body: ImportRequest, background_tasks: B
         ''', records)
         conn.commit()
         background_tasks.add_task(run_manual_job, "universe_csv_import_source", run_universe_csv_import_scan, [r[0] for r in records])
-        return JSONResponse(content={
-            "status": "success",
-            "message": f"Successfully sideloaded {len(records)} assets from '{body.filename}' into the local Market Universe."
-        })
+        message = f"Successfully sideloaded {len(records)} assets from '{body.filename}' into the local Market Universe."
+        if skipped:
+            logger.warning("Universe CSV import %s skipped %d row(s) with an invalid ticker: %r", body.filename, len(skipped), skipped[:20])
+            message += f" Skipped {len(skipped)} row(s) with an invalid ticker ({INVALID_TICKER_MESSAGE})."
+        return JSONResponse(content={"status": "success", "message": message})
     except Exception as e:
         logger.error("Fatal error executing CSV parser for %s: %s", body.filename, e, exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "Fatal error executing CSV parser. Check server logs for details."})
