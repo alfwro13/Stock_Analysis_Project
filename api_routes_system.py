@@ -24,17 +24,17 @@ from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_ser
 from config import (
     BASE_DIR, DATA_DIR, DB_PATH, FUNDAMENTALS_DIR, HISTORICAL_DIR,
     INTRADAY_DIR, PORTFOLIO_PATH, WATCHLIST_PATH, load_config,
-    update_config_atomic,
+    update_config_atomic, validate_meta_scoring, validate_xray_targets,
 )
 from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
-from log_config import configure_file_logging as _configure_file_logging
+from log_config import configure_file_logging as _configure_file_logging, resolve_log_dir
 from market_pulse import get_cached_pulse_from_db, proxy_tickers_needing_refresh, registry_tickers_needing_refresh, reload_ticker_registry
 from market_pulse_write import fetch_and_save_pulse
 from market_session_helpers import is_exchange_open
 import markets_engine
-from notification_engine import notify
+from notification_engine import notify, validate_routing_map
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
     get_job_run_history, job_label, reload_scheduler, run_xray_risk_cache_job,
@@ -418,6 +418,13 @@ class FileLoggingConfig(FiniteModel):
     ARCHIVE: Optional[bool] = None
     LOG_DIR: Optional[str] = None
 
+    @field_validator("LOG_DIR")
+    @classmethod
+    def _valid_log_dir(cls, v):
+        if v is not None and resolve_log_dir(v) is None:
+            raise ValueError("LOG_DIR must be a relative folder inside the project directory")
+        return v
+
 class SettingsConfig(FiniteModel):
     model_config = {"extra": "forbid"}
 
@@ -450,6 +457,9 @@ class SettingsConfig(FiniteModel):
     FILE_LOGGING: Optional[FileLoggingConfig] = None
 
     _finite_free_form = field_validator("NOTIFICATION_ROUTING", "XRAY_TARGETS", "META_SCORING")(reject_non_finite)
+    _routing_shape = field_validator("NOTIFICATION_ROUTING")(validate_routing_map)
+    _xray_shape = field_validator("XRAY_TARGETS")(validate_xray_targets)
+    _meta_scoring_shape = field_validator("META_SCORING")(validate_meta_scoring)
 
     @field_validator("BIND_HOST")
     @classmethod

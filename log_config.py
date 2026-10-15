@@ -8,6 +8,10 @@ from pathlib import Path
 
 from uvicorn.config import LOGGING_CONFIG
 
+from config import BASE_DIR
+
+logger = logging.getLogger(__name__)
+
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
 _SECRET_QUERY_VALUE = re.compile(r"(?i)\b([a-z0-9_]*(?:api_?key|token))=[^&\s\"']+")
@@ -46,6 +50,28 @@ def uvicorn_log_config() -> dict:
     return cfg
 
 
+DEFAULT_LOG_DIR = "logs"
+
+
+def resolve_log_dir(raw) -> Path | None:
+    """A relative folder under the project root, or None: Settings must not let app.log be written (or read back) anywhere else."""
+    if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
+        return None
+    relative = Path(raw.strip())
+    if relative.is_absolute():
+        return None
+    resolved = (BASE_DIR / relative).resolve()
+    return resolved if resolved.is_relative_to(BASE_DIR.resolve()) else None
+
+
+def effective_log_dir(raw) -> Path:
+    resolved = resolve_log_dir(raw)
+    if resolved is None:
+        logger.warning("FILE_LOGGING.LOG_DIR %r is not a folder inside the project; using %s/.", raw, DEFAULT_LOG_DIR)
+        return resolve_log_dir(DEFAULT_LOG_DIR)
+    return resolved
+
+
 def configure_file_logging(cfg: dict) -> None:
     """Hot-swappable file handler — safe to call repeatedly; removes old handler first."""
     root = logging.getLogger()
@@ -66,7 +92,7 @@ def configure_file_logging(cfg: dict) -> None:
 
     days_to_keep = int(fl.get("DAYS_TO_KEEP", 30))
     archive = bool(fl.get("ARCHIVE", False))
-    log_dir = Path(fl.get("LOG_DIR", "logs"))
+    log_dir = effective_log_dir(fl.get("LOG_DIR", DEFAULT_LOG_DIR))
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_path = log_dir / "app.log"

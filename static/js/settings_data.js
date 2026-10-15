@@ -4,11 +4,11 @@ async function triggerFreetradeSync() {
     btn.disabled = true;
     setBoxStatus('ft-sync-status-msg', 'warning', "⏳ Sync initiated in the background. Resolving ISINs...");
     try {
-        const response = await fetch('/api/trigger-freetrade-sync', { method: 'POST' });
-        if (response.ok) {
+        const job = await postJobTrigger('/api/trigger-freetrade-sync');
+        if (job.ok) {
             setBoxStatus('ft-sync-status-msg', 'success', "✅ Sync initiated successfully.");
         } else {
-            setStatus('ft-sync-status-msg', 'error', "Failed to initiate sync. Server returned an error.");
+            setStatus('ft-sync-status-msg', 'error', job.message || "Failed to initiate sync. Server returned an error.");
         }
     } catch (e) {
         setStatus('ft-sync-status-msg', 'error', "Failed to initiate sync. Check your network or server logs.");
@@ -83,8 +83,8 @@ async function importServerCSV() {
 
 async function triggerIndexScrape() {
     try {
-        await fetch('/api/universe/sync-indices', { method: 'POST' });
-        alert("Index Constituent scraping initiated in background. Check notifications for updates.");
+        const job = await postJobTrigger('/api/universe/sync-indices');
+        alert(job.ok ? "Index Constituent scraping initiated in background. Check notifications for updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Scraper. Network or server error.");
     }
@@ -92,8 +92,8 @@ async function triggerIndexScrape() {
 
 async function triggerFundamentalsProfiler() {
     try {
-        await fetch('/api/universe/sync-profiler', { method: 'POST' });
-        alert("Fundamentals Profiler initiated in background. Check notifications for updates.");
+        const job = await postJobTrigger('/api/universe/sync-profiler');
+        alert(job.ok ? "Fundamentals Profiler initiated in background. Check notifications for updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Profiler. Network or server error.");
     }
@@ -106,8 +106,8 @@ async function triggerUniverseDeepSync() {
         btn.innerText = "▶️ Initiating Sync...";
     }
     try {
-        await fetch('/api/universe/deep-sync', { method: 'POST' });
-        alert("Universe Deep Sync Pipeline initiated in background. Sequencing fundamentals → metadata → technicals → ML inference for the full index universe. Estimated runtime: 30–45 minutes. Check notifications for progress.");
+        const job = await postJobTrigger('/api/universe/deep-sync');
+        alert(job.ok ? "Universe Deep Sync Pipeline initiated in background. Sequencing fundamentals → metadata → technicals → ML inference for the full index universe. Estimated runtime: 30–45 minutes. Check notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Universe Deep Sync. Network or server error.");
     }
@@ -121,8 +121,8 @@ async function triggerUniverseDeepSync() {
 
 async function triggerUniverseUpdate() {
     try {
-        await fetch('/api/trigger-universe-update', { method: 'POST' });
-        alert("Market Universe update initiated in background. Check notifications for progress updates.");
+        const job = await postJobTrigger('/api/trigger-universe-update');
+        alert(job.ok ? "Market Universe update initiated in background. Check notifications for progress updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Universe Update. Network or server error.");
     }
@@ -130,8 +130,8 @@ async function triggerUniverseUpdate() {
 
 async function triggerUniverseQuantScan() {
     try {
-        await fetch('/api/trigger-universe-quant-scan', { method: 'POST' });
-        alert("Full 4K Quant Scan initiated in background. This will take over an hour. Check notifications for progress updates.");
+        const job = await postJobTrigger('/api/trigger-universe-quant-scan');
+        alert(job.ok ? "Full 4K Quant Scan initiated in background. This will take over an hour. Check notifications for progress updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Full Quant Scan. Network or server error.");
     }

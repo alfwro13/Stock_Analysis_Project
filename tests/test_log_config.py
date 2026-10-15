@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import log_config
 from log_config import (
-    LOG_FORMAT, RedactAccessLogFilter, SafeFormatter, configure_file_logging, redact_secrets, uvicorn_log_config,
+    LOG_FORMAT, RedactAccessLogFilter, SafeFormatter, configure_file_logging, effective_log_dir, redact_secrets,
+    resolve_log_dir, uvicorn_log_config,
 )
 
 pytestmark = pytest.mark.config
@@ -17,6 +19,12 @@ pytestmark = pytest.mark.config
 
 def _file_handlers(logger):
     return [h for h in logger.handlers if isinstance(h, logging.handlers.TimedRotatingFileHandler)]
+
+
+@pytest.fixture(autouse=True)
+def project_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(log_config, "BASE_DIR", tmp_path)
+    return tmp_path
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +40,7 @@ def clean_root_handlers():
 
 class TestDisabled:
     def test_no_handler_added_when_disabled(self, tmp_path):
-        cfg = {"FILE_LOGGING": {"ENABLED": False, "LOG_DIR": str(tmp_path / "logs")}}
+        cfg = {"FILE_LOGGING": {"ENABLED": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         assert _file_handlers(logging.getLogger()) == []
 
@@ -42,7 +50,7 @@ class TestDisabled:
 
     def test_existing_handler_removed_when_disabled(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg_on = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg_on = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg_on)
         assert len(_file_handlers(logging.getLogger())) == 1
 
@@ -54,39 +62,39 @@ class TestDisabled:
 class TestEnabled:
     def test_handler_added_when_enabled(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         handlers = _file_handlers(logging.getLogger())
         assert len(handlers) == 1
 
     def test_log_file_created(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         logging.getLogger("test.log_config").info("test message")
         assert (log_dir / "app.log").exists()
 
     def test_level_applied(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "WARNING", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "WARNING", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         handlers = _file_handlers(logging.getLogger())
         assert handlers[0].level == logging.WARNING
 
     def test_invalid_level_falls_back_to_info(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "NONSENSE", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "NONSENSE", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         handlers = _file_handlers(logging.getLogger())
         assert handlers[0].level == logging.INFO
 
     def test_hot_reload_replaces_handler(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg1 = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg1 = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg1)
         handler_1 = _file_handlers(logging.getLogger())[0]
 
-        cfg2 = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "ERROR", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg2 = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "ERROR", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg2)
         handlers = _file_handlers(logging.getLogger())
         assert len(handlers) == 1
@@ -96,7 +104,7 @@ class TestEnabled:
     def test_log_dir_created_if_missing(self, tmp_path):
         log_dir = tmp_path / "nested" / "logs"
         assert not log_dir.exists()
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "nested/logs"}}
         configure_file_logging(cfg)
         assert log_dir.exists()
 
@@ -104,7 +112,7 @@ class TestEnabled:
 class TestArchive:
     def test_archive_sets_namer_and_rotator(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": True, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": True, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         h = _file_handlers(logging.getLogger())[0]
         assert h.namer is not None
@@ -112,7 +120,7 @@ class TestArchive:
 
     def test_archive_namer_appends_gz(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": True, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": True, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         h = _file_handlers(logging.getLogger())[0]
         assert h.namer("app.log.2026-06-07") == "app.log.2026-06-07.gz"
@@ -124,7 +132,7 @@ class TestArchive:
         dest = log_dir / "app.log.2026-06-07.gz"
         source.write_text("hello log")
 
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": True, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": True, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         h = _file_handlers(logging.getLogger())[0]
         h.rotator(str(source), str(dest))
@@ -136,7 +144,7 @@ class TestArchive:
 
     def test_no_archive_leaves_namer_default(self, tmp_path):
         log_dir = tmp_path / "logs"
-        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": str(log_dir)}}
+        cfg = {"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "DAYS_TO_KEEP": 7, "ARCHIVE": False, "LOG_DIR": "logs"}}
         configure_file_logging(cfg)
         h = _file_handlers(logging.getLogger())[0]
         assert not hasattr(h, 'namer') or h.namer is None or h.namer == logging.handlers.BaseRotatingHandler.namer
@@ -171,7 +179,7 @@ class TestSafeFormatter:
 
     def test_file_handler_writes_one_line_per_record(self, tmp_path):
         log_dir = tmp_path / "logs"
-        configure_file_logging({"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "LOG_DIR": str(log_dir)}})
+        configure_file_logging({"FILE_LOGGING": {"ENABLED": True, "LEVEL": "INFO", "LOG_DIR": "logs"}})
         logging.getLogger("test.safe").warning("value=%s", "a\nb")
         for h in logging.getLogger().handlers:
             h.flush()
@@ -212,3 +220,33 @@ class TestUvicornAccessRedaction:
         assert cfg["handlers"]["access"]["filters"] == ["redact_secrets"]
         assert cfg["filters"]["redact_secrets"]["()"] == "log_config.RedactAccessLogFilter"
         logging.config.dictConfig({**cfg, "disable_existing_loggers": False})
+
+
+class TestLogDirIsConfinedToTheProject:
+    @pytest.mark.parametrize("raw", ["logs", "logs/app", "./logs", "a/../logs"])
+    def test_relative_folder_inside_project_is_accepted(self, raw, project_root):
+        assert resolve_log_dir(raw).is_relative_to(project_root.resolve())
+
+    @pytest.mark.parametrize("raw", ["/etc", "/var/log/app", "../outside", "logs/../../outside", "", "   ", None, 5, "bad\x00name"])
+    def test_anything_else_is_refused(self, raw):
+        assert resolve_log_dir(raw) is None
+
+    def test_absolute_path_inside_the_project_is_still_refused(self, project_root):
+        assert resolve_log_dir(str(project_root / "logs")) is None
+
+    def test_symlink_pointing_outside_the_project_is_refused(self, project_root, tmp_path_factory):
+        outside = tmp_path_factory.mktemp("outside")
+        (project_root / "linked").symlink_to(outside, target_is_directory=True)
+        assert resolve_log_dir("linked") is None
+
+    def test_effective_dir_falls_back_to_default_with_a_warning(self, project_root, caplog):
+        with caplog.at_level(logging.WARNING, logger="log_config"):
+            assert effective_log_dir("/etc") == (project_root / "logs").resolve()
+        assert "LOG_DIR" in caplog.text
+
+    def test_configure_file_logging_never_writes_outside_the_project(self, project_root, tmp_path_factory):
+        outside = tmp_path_factory.mktemp("elsewhere")
+        configure_file_logging({"FILE_LOGGING": {"ENABLED": True, "LOG_DIR": str(outside / "logs")}})
+        logging.getLogger("test.confined").warning("hello")
+        assert not (outside / "logs").exists()
+        assert (project_root / "logs" / "app.log").exists()

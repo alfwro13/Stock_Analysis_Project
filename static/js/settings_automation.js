@@ -18,8 +18,8 @@ function requestBrowserNotificationPermission() {
 
 async function triggerQuantScan() {
     try {
-        await fetch('/api/trigger-quant-scan', { method: 'POST' });
-        alert("Portfolio Quant Scan initiated in background. Check notifications for progress updates.");
+        const job = await postJobTrigger('/api/trigger-quant-scan');
+        alert(job.ok ? "Portfolio Quant Scan initiated in background. Check notifications for progress updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Quant Scan. Network or server error.");
     }
@@ -27,8 +27,8 @@ async function triggerQuantScan() {
 
 async function triggerEarningsScan() {
     try {
-        await fetch('/api/trigger-earnings-scan', { method: 'POST' });
-        alert("Earnings Volatility Scan initiated in background. Check notifications for progress updates.");
+        const job = await postJobTrigger('/api/trigger-earnings-scan');
+        alert(job.ok ? "Earnings Volatility Scan initiated in background. Check notifications for progress updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Earnings Scan. Network or server error.");
     }
@@ -36,8 +36,8 @@ async function triggerEarningsScan() {
 
 async function triggerSentimentScan() {
     try {
-        await fetch('/api/trigger-sentiment-scan', { method: 'POST' });
-        alert("Sentiment Scan initiated in background. Check notifications for progress updates.");
+        const job = await postJobTrigger('/api/trigger-sentiment-scan');
+        alert(job.ok ? "Sentiment Scan initiated in background. Check notifications for progress updates." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Sentiment Scan. Network or server error.");
     }
@@ -47,8 +47,8 @@ async function triggerXrayRiskCache() {
     const btn = document.querySelector('button[onclick="triggerXrayRiskCache()"]');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Queued…'; }
     try {
-        await fetch('/api/xray/trigger', { method: 'POST' });
-        alert("X-ray Risk Cache job queued in background.\nThis fetches 1-year returns from Yahoo Finance and may take 30–60 seconds.\nCheck System Notifications for completion.");
+        const job = await postJobTrigger('/api/xray/trigger');
+        alert(job.ok ? "X-ray Risk Cache job queued in background.\nThis fetches 1-year returns from Yahoo Finance and may take 30–60 seconds.\nCheck System Notifications for completion." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to queue X-ray Risk Cache job. Network or server error.");
     } finally {
@@ -60,8 +60,8 @@ async function triggerAccountValueSnapshot() {
     const btn = document.querySelector('button[onclick="triggerAccountValueSnapshot()"]');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Queued…'; }
     try {
-        await fetch('/api/accounts/value-snapshot/trigger', { method: 'POST' });
-        alert("Account Value Snapshot job queued in background. Check System Notifications for completion.");
+        const job = await postJobTrigger('/api/accounts/value-snapshot/trigger');
+        alert(job.ok ? "Account Value Snapshot job queued in background. Check System Notifications for completion." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to queue Account Value Snapshot job. Network or server error.");
     } finally {
@@ -74,8 +74,8 @@ async function triggerMLBackfill() {
     btn.disabled = true;
     btn.innerText = "▶️ Initiating Backfill...";
     try {
-        await fetch('/api/ml/trigger-backfill', { method: 'POST' });
-        alert("ML Historical Backfill initiated in the background. Check system notifications for progress.");
+        const job = await postJobTrigger('/api/ml/trigger-backfill');
+        alert(job.ok ? "ML Historical Backfill initiated in the background. Check system notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate ML Backfill. Network or server error.");
     }
@@ -90,8 +90,8 @@ async function triggerMLTraining() {
     btn.disabled = true;
     btn.innerText = "▶️ Initiating Training...";
     try {
-        await fetch('/api/ml/trigger-training', { method: 'POST' });
-        alert("Global ML Walk-Forward Training initiated in the background. Check system notifications for progress.");
+        const job = await postJobTrigger('/api/ml/trigger-training');
+        alert(job.ok ? "Global ML Walk-Forward Training initiated in the background. Check system notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate ML Training. Network or server error.");
     }
@@ -106,8 +106,8 @@ async function triggerMLInference() {
     btn.disabled = true;
     btn.innerText = "▶️ Initiating Inference...";
     try {
-        await fetch('/api/ml/trigger-inference', { method: 'POST' });
-        alert("Daily ML Inference initiated in the background. Check system notifications for progress.");
+        const job = await postJobTrigger('/api/ml/trigger-inference');
+        alert(job.ok ? "Daily ML Inference initiated in the background. Check system notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate ML Inference. Network or server error.");
     }
@@ -122,8 +122,8 @@ async function triggerAnomalyTraining() {
     btn.disabled = true;
     btn.innerText = "▶️ Training Models...";
     try {
-        await fetch('/api/ml/trigger-anomaly-training', { method: 'POST' });
-        alert("Isolation Forest training initiated in the background. Check system notifications for progress.");
+        const job = await postJobTrigger('/api/ml/trigger-anomaly-training');
+        alert(job.ok ? "Isolation Forest training initiated in the background. Check system notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate anomaly training. Network or server error.");
     }
@@ -138,8 +138,8 @@ async function triggerMacroInit() {
     btn.disabled = true;
     btn.innerText = "⚙️ Initializing Macro Engine...";
     try {
-        await fetch('/api/macro/init-pipeline', { method: 'POST' });
-        alert("Macro AI Pipeline initialized in the background. It will seed the calendar, sync events, and train the models sequentially. Check system notifications for progress. The page will reload once complete to update the button state.");
+        const job = await postJobTrigger('/api/macro/init-pipeline');
+        alert(job.ok ? "Macro AI Pipeline initialized in the background. It will seed the calendar, sync events, and train the models sequentially. Check system notifications for progress. The page will reload once complete to update the button state." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Macro AI Pipeline. Network or server error.");
     }
@@ -154,8 +154,8 @@ async function triggerMacroRun() {
     btn.disabled = true;
     btn.innerText = "▶️ Running Macro Inference...";
     try {
-        await fetch('/api/macro/run-pipeline', { method: 'POST' });
-        alert("Macro AI Run initiated in the background. Check system notifications for progress.");
+        const job = await postJobTrigger('/api/macro/run-pipeline');
+        alert(job.ok ? "Macro AI Run initiated in the background. Check system notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to run Macro AI Pipeline. Network or server error.");
     }

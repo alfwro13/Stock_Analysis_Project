@@ -143,6 +143,53 @@ def test_trigger_endpoint_returns_success(client, endpoint, label):
     )
 
 
+@pytest.mark.api
+@pytest.mark.parametrize("endpoint,label", TRIGGER_ENDPOINTS, ids=[t[1] for t in TRIGGER_ENDPOINTS])
+def test_trigger_endpoint_answers_409_busy_while_the_job_is_running(client, endpoint, label):
+    """A manual trigger for a job that is already running is refused before any task is queued."""
+    with patch("scheduler_engine.is_job_running", return_value=True), \
+         patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+        resp = client.post(endpoint)
+    assert resp.status_code == 409, f"{label}: expected 409, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "busy"
+    assert "already running" in data["message"]
+    add_task.assert_not_called()
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("endpoint", [
+    "/api/ai-contagion/trigger", "/api/trap-monitor/run", "/api/alert-referee/train",
+    "/api/alert-referee/train?engine=Confluence", "/api/bubble-radar/run", "/api/risk-orchestrator/run",
+    "/api/pairs-spread/run", "/api/pattern-detection/run", "/api/sector-relative-momentum/run",
+    "/api/predicted-movers/shortlist/run", "/api/forensic-scores/run-fetch", "/api/forensic-scores/run-score",
+    "/api/xray/trigger", "/api/accounts/value-snapshot/trigger",
+    "/api/accounts/treasury-bills/maturity-sweep/trigger",
+])
+def test_other_trigger_endpoints_answer_409_busy_while_the_job_is_running(client, endpoint):
+    with patch("scheduler_engine.is_job_running", return_value=True), \
+         patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+        resp = client.post(endpoint)
+    assert resp.status_code == 409, f"{endpoint}: expected 409, got {resp.status_code}"
+    assert _json(resp)["status"] == "busy"
+    add_task.assert_not_called()
+
+
+@pytest.mark.api
+def test_every_manual_job_route_checks_the_running_guard():
+    """A route that queues run_manual_job must call job_busy_response in the same function."""
+    import ast
+    unguarded = []
+    for path in sorted(Path(__file__).parent.parent.glob("api_routes*.py")):
+        for fn in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+            if "run_manual_job" in names and "job_busy_response" not in names:
+                unguarded.append(f"{path.name}:{fn.name}")
+    assert unguarded == []
+
+
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.api
@@ -2089,3 +2136,93 @@ def test_yahoo_ipv6_test_hides_unclassified_error_text(client):
         resp = client.post("/api/settings/test-yahoo-ipv6", json={"ipv6_address": "2001:db8::1"})
     assert resp.status_code == 502
     assert "10.0.0.9" not in resp.text and "curl" not in resp.text
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("log_dir", ["/etc", "/var/log/app", "../outside", "logs/../../outside", "", "   "])
+def test_post_settings_rejects_a_log_dir_outside_the_project(client, step_up_headers, log_dir):
+    resp = client.post("/api/settings", json={"FILE_LOGGING": {"LOG_DIR": log_dir}}, headers=step_up_headers)
+    assert resp.status_code == 422, f"{log_dir!r} → {resp.status_code}"
+
+
+@pytest.mark.api
+def test_post_settings_accepts_a_relative_log_dir(client, step_up_headers):
+    import config as _config
+    resp = client.post("/api/settings", json={"FILE_LOGGING": {"ENABLED": False, "LOG_DIR": "logs/archive"}},
+                       headers=step_up_headers)
+    assert resp.status_code == 200, resp.text
+    assert _config.load_config()["FILE_LOGGING"]["LOG_DIR"] == "logs/archive"
+    client.post("/api/settings", json={"FILE_LOGGING": {"LOG_DIR": "logs"}}, headers=step_up_headers)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("routing", [
+    {"not_a_source": {"in_app": True}},
+    {"crash_alert": True},
+    {"crash_alert": ["in_app"]},
+    {"crash_alert": {"in_app": "yes"}},
+    {"crash_alert": {"in_app": 1}},
+    {"crash_alert": {"carrier_pigeon": True}},
+    ["crash_alert"],
+])
+def test_post_settings_rejects_a_malformed_notification_routing(client, step_up_headers, routing):
+    resp = client.post("/api/settings", json={"NOTIFICATION_ROUTING": routing}, headers=step_up_headers)
+    assert resp.status_code == 422, f"{routing!r} → {resp.status_code}"
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("targets", [
+    {"unknown_section": {}},
+    {"sector_targets": ["Technology"]},
+    {"sector_targets": {"Technology": 35}},
+    {"sector_targets": {"Technology": {"max": "35"}}},
+    {"sector_targets": {"Technology": {"max": True}}},
+    {"sector_targets": {"Technology": {"max": 150}}},
+    {"sector_targets": {"Technology": {"max": -1}}},
+    {"sector_targets": {"Technology": {"limit": 10}}},
+    {"sector_targets": {"": {"max": 10}}},
+    {"sector_targets": {"x" * 65: {"max": 10}}},
+    {"concentration_targets": {"hhi_max": 2}},
+    {"concentration_targets": {"max_single_position_pct": 101}},
+    {"concentration_targets": {"made_up_limit": 5}},
+    {"risk_metric_targets": {"sharpe_ratio_min": "high"}},
+    "all",
+])
+def test_post_settings_rejects_malformed_xray_targets(client, step_up_headers, targets):
+    resp = client.post("/api/settings", json={"XRAY_TARGETS": targets}, headers=step_up_headers)
+    assert resp.status_code == 422, f"{targets!r} → {resp.status_code}"
+
+
+@pytest.mark.api
+def test_post_settings_accepts_a_full_ui_shaped_xray_targets_payload(client, step_up_headers):
+    import config as _config
+    payload = {"XRAY_TARGETS": {
+        "market_development": {"Developed Markets": {"min": 80, "max": 95}},
+        "country_concentration": {"United States": {"min": None, "max": 70}},
+        "sector_targets": {"Technology": {"min": None, "max": 35}},
+        "concentration_targets": {"max_single_position_pct": 15, "hhi_max": 0.15},
+        "risk_metric_targets": {"portfolio_beta_min": 0.6, "sharpe_ratio_min": 0.5},
+        "income_targets": {"dividend_yield_min_pct": None},
+    }}
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
+    assert resp.status_code == 200, resp.text
+    assert _config.load_config()["XRAY_TARGETS"]["country_concentration"]["United States"]["max"] == 70
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("scoring", [
+    {"UNKNOWN": {}},
+    {"REGIME_WEIGHTS": ["Bull"]},
+    {"REGIME_WEIGHTS": {"Bear": {"composite_score": 0.5}}},
+    {"REGIME_WEIGHTS": {"Bull": {"composite_score": 1.5}}},
+    {"REGIME_WEIGHTS": {"Bull": {"composite_score": -0.1}}},
+    {"REGIME_WEIGHTS": {"Bull": {"sentiment": 0.5}}},
+    {"REGIME_WEIGHTS": {"Bull": {"composite_score": "0.5"}}},
+    {"REGIME_WEIGHTS": {"Bull": [0.4, 0.3]}},
+    {"CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 2}},
+    {"CRASH_VETO": {"MARKET_STRESS_THRESHOLD": None}},
+    {"CRASH_VETO": 0.75},
+])
+def test_post_settings_rejects_malformed_meta_scoring(client, step_up_headers, scoring):
+    resp = client.post("/api/settings", json={"META_SCORING": scoring}, headers=step_up_headers)
+    assert resp.status_code == 422, f"{scoring!r} → {resp.status_code}"

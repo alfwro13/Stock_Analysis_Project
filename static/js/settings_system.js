@@ -1,14 +1,20 @@
 async function triggerGhostfolioSync() {
     const btn = document.getElementById('syncBtn');
     btn.innerText = "Syncing JSON..."; btn.disabled = true;
-    try { await fetch('/api/sync-ghostfolio', { method: 'POST' }); alert("Sync initiated in the background! Wait a few moments, then hit 'Force Update Analysis'."); } catch (e) { }
+    try {
+        const job = await postJobTrigger('/api/sync-ghostfolio');
+        alert(job.ok ? "Sync initiated in the background! Wait a few moments, then hit 'Force Update Analysis'." : (job.message || "The server did not start the job."));
+    } catch (e) { }
     setTimeout(() => { btn.innerText = "⬇️ Sync Ghostfolio Data"; btn.disabled = false; }, 5000);
 }
 
 async function triggerUpdate() {
     const btn = document.getElementById('updateBtn');
     btn.innerText = "Updating..."; btn.disabled = true;
-    try { await fetch('/api/update', { method: 'POST' }); alert("Analysis initiated in the background! The system is building fresh mathematical models."); } catch (e) { }
+    try {
+        const job = await postJobTrigger('/api/update');
+        alert(job.ok ? "Analysis initiated in the background! The system is building fresh mathematical models." : (job.message || "The server did not start the job."));
+    } catch (e) { }
     setTimeout(() => { btn.innerText = "↻ Force Update Analysis Models"; btn.disabled = false; }, 15000);
 }
 

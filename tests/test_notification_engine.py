@@ -56,6 +56,20 @@ class TestEffectiveRouting:
         r = ne.effective_routing("crash_alert", cfg)
         assert r == {"log_file": True, "in_app": True, "nextcloud_talk": False}
 
+    @pytest.mark.parametrize("bad", [True, "in_app", ["in_app"], 5])
+    def test_non_dict_stored_entry_falls_back_to_default(self, bad):
+        cfg = {"NOTIFICATION_ROUTING": {"crash_alert": bad}}
+        assert ne.effective_routing("crash_alert", cfg) == {"log_file": True, "in_app": True, "nextcloud_talk": True}
+
+    def test_non_dict_routing_block_falls_back_to_default(self):
+        assert ne.effective_routing("crash_alert", {"NOTIFICATION_ROUTING": ["crash_alert"]}) == ne.effective_routing("crash_alert", {})
+
+    def test_notify_still_delivers_when_the_stored_entry_is_malformed(self):
+        cfg = {"NOTIFICATION_ROUTING": {"network_fault": "off"}}
+        with patch("notification_engine.load_config", return_value=cfg):
+            ne.notify("network_fault", "Net", f"still delivered {MARKER}")
+        assert len(_read(MARKER)) == 1
+
     def test_default_dicts_are_not_shared(self):
         a = ne.effective_routing("crash_alert", {})
         a["in_app"] = False

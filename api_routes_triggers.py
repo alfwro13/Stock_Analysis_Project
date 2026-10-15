@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from api_deps import limiter, _error_500, require_step_up
+from api_deps import job_busy_response, limiter, _error_500, require_step_up
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
 from database import get_connection, get_universe_tickers
@@ -172,6 +172,9 @@ def bg_run_macro_pipeline():
 @triggers_router.post("/macro/init-pipeline")
 @limiter.limit("2/minute")
 def trigger_macro_init_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("macro_calendar_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "macro_calendar_job", bg_init_macro_pipeline)
     return JSONResponse(content={
         "status": "success",
@@ -181,6 +184,9 @@ def trigger_macro_init_endpoint(request: Request, background_tasks: BackgroundTa
 @triggers_router.post("/macro/run-pipeline")
 @limiter.limit("2/minute")
 def trigger_macro_run_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("macro_calendar_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "macro_calendar_job", bg_run_macro_pipeline)
     return JSONResponse(content={
         "status": "success",
@@ -192,6 +198,9 @@ def trigger_macro_run_endpoint(request: Request, background_tasks: BackgroundTas
 @limiter.limit("10/minute")
 def trigger_treasury_auction_check_endpoint(request: Request, background_tasks: BackgroundTasks):
     from scheduler_engine import run_treasury_auction_check
+    busy = job_busy_response("macro_auction_job_am")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "macro_auction_job_am", run_treasury_auction_check, "am")
     return JSONResponse(content={
         "status": "success",
@@ -214,6 +223,9 @@ def get_macro_regime_allocation(request: Request):
 @triggers_router.post("/ml/trigger-backfill")
 @limiter.limit("2/minute")
 def trigger_ml_backfill_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("ml_backfill_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "ml_backfill_job", run_historical_backfill)
     return JSONResponse(content={
         "status": "success",
@@ -223,6 +235,9 @@ def trigger_ml_backfill_endpoint(request: Request, background_tasks: BackgroundT
 @triggers_router.post("/ml/trigger-training")
 @limiter.limit("2/minute")
 def trigger_ml_training_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("ml_training_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "ml_training_job", bg_execute_ml_training)
     return JSONResponse(content={
         "status": "success",
@@ -232,6 +247,9 @@ def trigger_ml_training_endpoint(request: Request, background_tasks: BackgroundT
 @triggers_router.post("/ml/trigger-inference")
 @limiter.limit("2/minute")
 def trigger_ml_inference_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("ml_inference_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "ml_inference_job", bg_execute_ml_inference)
     return JSONResponse(content={
         "status": "success",
@@ -241,6 +259,9 @@ def trigger_ml_inference_endpoint(request: Request, background_tasks: Background
 @triggers_router.post("/ml/trigger-anomaly-training")
 @limiter.limit("2/minute")
 def trigger_anomaly_training_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("anomaly_training_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "anomaly_training_job", run_anomaly_training_job)
     return JSONResponse(content={
         "status": "success",
@@ -250,6 +271,9 @@ def trigger_anomaly_training_endpoint(request: Request, background_tasks: Backgr
 @triggers_router.post("/trigger-quant-scan")
 @limiter.limit("10/minute")
 def trigger_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("overnight_quant_scan_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "overnight_quant_scan_job", bg_execute_quant_scan)
     return JSONResponse(content={
         "status": "success",
@@ -259,6 +283,9 @@ def trigger_quant_scan_endpoint(request: Request, background_tasks: BackgroundTa
 @triggers_router.post("/trigger-earnings-scan")
 @limiter.limit("10/minute")
 def trigger_earnings_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("weekend_earnings_vol_scan_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "weekend_earnings_vol_scan_job", bg_execute_earnings_scan)
     return JSONResponse(content={
         "status": "success",
@@ -268,6 +295,9 @@ def trigger_earnings_scan_endpoint(request: Request, background_tasks: Backgroun
 @triggers_router.post("/trigger-universe-update")
 @limiter.limit("10/minute")
 def trigger_universe_update_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("universe_routine_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "universe_routine_job", update_market_universe)
     return JSONResponse(content={
         "status": "success",
@@ -321,6 +351,9 @@ def remove_universe_blacklist(request: Request, body: BlacklistRemoveRequest):
 @triggers_router.post("/universe/sync-indices")
 @limiter.limit("10/minute")
 def trigger_sync_indices_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("index_scraper_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "index_scraper_job", run_index_scraper)
     return JSONResponse(content={
         "status": "success",
@@ -330,6 +363,9 @@ def trigger_sync_indices_endpoint(request: Request, background_tasks: Background
 @triggers_router.post("/universe/sync-profiler")
 @limiter.limit("2/minute")
 def trigger_sync_profiler_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("fundamentals_profiler_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "fundamentals_profiler_job", run_fundamentals_profiler)
     return JSONResponse(content={
         "status": "success",
@@ -347,6 +383,9 @@ def trigger_universe_deep_sync_endpoint(request: Request, background_tasks: Back
     FREETRADE_ONLY_MODE for the Freetrade firewall. Returns immediately
     while the pipeline runs in the background (≈30–45 minutes).
     """
+    busy = job_busy_response("universe_deep_sync_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "universe_deep_sync_job", run_universe_deep_sync_job)
     return JSONResponse(content={
         "status": "success",
@@ -361,6 +400,9 @@ def trigger_universe_deep_sync_endpoint(request: Request, background_tasks: Back
 @triggers_router.post("/trigger-universe-quant-scan")
 @limiter.limit("2/minute")
 def trigger_universe_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("universe_routine_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "universe_routine_job", bg_execute_universe_quant_scan)
     return JSONResponse(content={
         "status": "success",
@@ -370,6 +412,9 @@ def trigger_universe_quant_scan_endpoint(request: Request, background_tasks: Bac
 @triggers_router.post("/trigger-sentiment-scan")
 @limiter.limit("10/minute")
 def trigger_sentiment_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("sentiment_scan_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "sentiment_scan_job", run_sentiment_scan)
     return JSONResponse(content={
         "status": "success",
@@ -452,18 +497,27 @@ def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks)
 @triggers_router.post("/update")
 @limiter.limit("10/minute")
 def trigger_update(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("quant_analysis_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "quant_analysis_job", run_update_pipeline)
     return JSONResponse(content={"status": "success"})
 
 @triggers_router.post("/sync-ghostfolio")
 @limiter.limit("10/minute")
 def trigger_ghostfolio_sync(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("ghostfolio_sync_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "ghostfolio_sync_job", run_ghostfolio_sync)
     return JSONResponse(content={"status": "success"})
 
 @triggers_router.post("/trigger-freetrade-sync")
 @limiter.limit("10/minute")
 def trigger_freetrade_sync_endpoint(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("freetrade_sync_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "freetrade_sync_job", run_freetrade_sync)
     return JSONResponse(content={
         "status": "success",
@@ -473,6 +527,9 @@ def trigger_freetrade_sync_endpoint(request: Request, background_tasks: Backgrou
 @triggers_router.post("/maintenance/run")
 @limiter.limit("5/minute")
 def trigger_maintenance_run(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("maintenance_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "maintenance_job", run_maintenance_engine)
     return JSONResponse(content={"status": "success", "message": "Maintenance job started in the background. Check System Notifications for the summary."})
 
@@ -497,6 +554,9 @@ def bg_execute_backup_run():
 @triggers_router.post("/backup/run")
 @limiter.limit("5/minute")
 def trigger_backup_run(request: Request, background_tasks: BackgroundTasks):
+    busy = job_busy_response("backup_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "backup_job", bg_execute_backup_run)
     return JSONResponse(content={"status": "success", "message": "Backup started in the background. Check System Notifications for the summary."})
 

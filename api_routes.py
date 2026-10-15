@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from api_deps import FiniteModel, limiter, _error_500
+from api_deps import FiniteModel, job_busy_response, limiter, _error_500
 from constants import (
     OPTION_LEGS_MAX, TABLE_COLUMN_KEY_MAX_CHARS, TABLE_COLUMN_KEYS_MAX, TABLE_FILTER_CONDITIONS_MAX,
     TABLE_FILTER_VALUE_MAX_CHARS, TABLE_VIEW_NAME_MAX_CHARS, TABLE_VIEWS_MAX,
@@ -26,7 +26,7 @@ from constants import (
 from pydantic import BaseModel, Field, field_validator
 
 from table_columns_helpers import normalize_column_order
-from log_config import configure_file_logging
+from log_config import configure_file_logging, effective_log_dir
 from config import (
     load_config,
     update_config_atomic,
@@ -763,6 +763,9 @@ def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
     Use this after first setup or after adding new holdings to immediately
     populate the cache without waiting for the scheduled run.
     """
+    busy = job_busy_response("xray_risk_cache_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "xray_risk_cache_job", run_xray_risk_cache_job)
     return JSONResponse(content={
         "status": "queued",
@@ -842,6 +845,9 @@ def get_news_feed(
 
 @api_router.post("/news-feed/run-now")
 def run_news_feed_now(background_tasks: BackgroundTasks):
+    busy = job_busy_response("news_feed_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "news_feed_job", run_news_feed_job)
     return JSONResponse(content={
         "status": "success",
@@ -1096,8 +1102,7 @@ def _active_log_path() -> Path | None:
     fl = cfg.get("FILE_LOGGING", {})
     if not fl.get("ENABLED", False):
         return None
-    log_dir = BASE_DIR / fl.get("LOG_DIR", "logs")
-    p = log_dir / "app.log"
+    p = effective_log_dir(fl.get("LOG_DIR", "logs")) / "app.log"
     return p if p.exists() else None
 
 

@@ -104,10 +104,29 @@ def _default_routing(source: str) -> dict:
 def effective_routing(source: str, config: Optional[dict] = None) -> dict:
     cfg = config if config is not None else load_config()
     default = _default_routing(source)
-    override = (cfg.get("NOTIFICATION_ROUTING") or {}).get(source)
-    if not override:
+    routing = cfg.get("NOTIFICATION_ROUTING")
+    override = routing.get(source) if isinstance(routing, dict) else None
+    if not override or not isinstance(override, dict):
         return default
     return {ch: bool(override.get(ch, default[ch])) for ch in CHANNELS}
+
+
+def validate_routing_map(value) -> dict:
+    """Shape check for the Settings NOTIFICATION_ROUTING block: registered sources only, each a dict of channel booleans."""
+    from scheduler_engine import JOB_GRAPH
+
+    if not isinstance(value, dict):
+        raise ValueError("NOTIFICATION_ROUTING must be an object")
+    known = set(NOTIFICATION_SOURCES) | {SCHEDULER_STATUS_SOURCE}
+    known.update(job_id for job_id, meta in JOB_GRAPH.items() if not meta.get("dynamic"))
+    for source, channels in value.items():
+        if source not in known:
+            raise ValueError(f"Unknown notification source: {str(source)[:64]!r}")
+        if not isinstance(channels, dict) or set(channels) - set(CHANNELS):
+            raise ValueError(f"NOTIFICATION_ROUTING.{source} must be an object with only {', '.join(CHANNELS)}")
+        if not all(isinstance(flag, bool) for flag in channels.values()):
+            raise ValueError(f"NOTIFICATION_ROUTING.{source} channels must be true or false")
+    return value
 
 
 def notify(

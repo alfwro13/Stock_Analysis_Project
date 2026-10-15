@@ -136,7 +136,7 @@ Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**.
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless
 - `DAYS_TO_KEEP` — number of daily rotated files to retain (default 30)
 - `ARCHIVE` — gzip-compress rotated files to save disk space
-- `LOG_DIR` — directory for log files, relative to the project root (default `logs/`)
+- `LOG_DIR` — directory for log files, relative to the project root and kept inside it (default `logs/`); an absolute path or `..` is refused
 
 The active log is always `logs/app.log`. Rotated files are named `app.log.YYYY-MM-DD` (or `.gz` if archive is enabled). Changes take effect immediately without a restart. A line break inside a logged value is written as `\n`, so one record is always one line, and API keys or tokens that appear in a logged URL are masked as `***`.
 

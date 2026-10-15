@@ -50,6 +50,17 @@ API_KEY_ROUTES = frozenset({
 })
 
 
+def job_busy_response(job_id: str):
+    """409 for a manual trigger while the job runs (scheduled or manual); the route returns it before queuing the task."""
+    from scheduler_engine import is_job_running, job_label
+    if not is_job_running(job_id):
+        return None
+    return JSONResponse(status_code=409, content={
+        "status": "busy",
+        "message": f"{job_label(job_id)} is already running. Wait for it to finish, then try again.",
+    })
+
+
 def require_step_up(request: Request):
     session = request.cookies.get(COOKIE_NAME, "")
     step_up = request.cookies.get(STEP_UP_COOKIE_NAME, "")

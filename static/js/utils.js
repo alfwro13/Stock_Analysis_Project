@@ -85,3 +85,9 @@ function formatDuration(seconds) {
     if (minutes) return `${minutes}m ${secs}s`;
     return `${secs}s`;
 }
+
+async function postJobTrigger(url) {
+    const res = await fetch(url, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, message: data.message || '' };
+}
