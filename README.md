@@ -138,7 +138,7 @@ Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**.
 - `ARCHIVE` — gzip-compress rotated files to save disk space
 - `LOG_DIR` — directory for log files, relative to the project root (default `logs/`)
 
-The active log is always `logs/app.log`. Rotated files are named `app.log.YYYY-MM-DD` (or `.gz` if archive is enabled). Changes take effect immediately without a restart.
+The active log is always `logs/app.log`. Rotated files are named `app.log.YYYY-MM-DD` (or `.gz` if archive is enabled). Changes take effect immediately without a restart. A line break inside a logged value is written as `\n`, so one record is always one line, and API keys or tokens that appear in a logged URL are masked as `***`.
 
 Once file logging is enabled, click **📄 Open Log Viewer** in the same Settings panel (or navigate to `/log-viewer` directly) to open a live log viewer in a new browser tab. The viewer displays the last 500 lines on load and then streams new lines in real time (equivalent to `tail -f`); a **Load Full File** button loads the entire active log file on demand. You can filter by severity level (DEBUG / INFO / WARNING / ERROR / CRITICAL) and search across all visible lines — your severity selection is remembered across page reloads.
 

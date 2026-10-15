@@ -150,6 +150,16 @@ class TestFetchFredApi:
         df = fetch_fred_api(session, "WM2NS", START, END, "dummy-key")
         assert df.empty
 
+    def test_error_log_never_contains_the_api_key(self, caplog):
+        url = "https://api.stlouisfed.org/fred/series/observations?series_id=WM2NS&api_key=SECRETKEY&file_type=json"
+        session = MagicMock()
+        session.get.side_effect = requests.exceptions.HTTPError("401 Client Error: Unauthorized for url: " + url)
+        with caplog.at_level("ERROR"):
+            df = fetch_fred_api(session, "WM2NS", START, END, "SECRETKEY")
+        assert df.empty
+        assert "Failed to fetch FRED WM2NS" in caplog.text
+        assert "SECRETKEY" not in caplog.text
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. fetch_boe_data

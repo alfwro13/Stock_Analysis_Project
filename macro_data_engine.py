@@ -11,6 +11,7 @@ from typing import Dict, Optional
 
 from database import get_connection, init_db
 import time_engine
+from log_config import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         return df[[series_id]]
         
     except Exception as e:
-        logger.error("Failed to fetch FRED %s: %s", series_id, e)
+        logger.error("Failed to fetch FRED %s: %s", series_id, redact_secrets(str(e)))
         return pd.DataFrame()
 
 def fetch_boe_data(session: requests.Session, series_code: str, start_date: datetime, end_date: datetime, lag_days: int = 30) -> pd.DataFrame:

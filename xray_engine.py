@@ -19,6 +19,11 @@ from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_t
 
 logger = logging.getLogger(__name__)
 
+
+class XRayScopeUnavailable(RuntimeError):
+    """Carries a fixed, client-safe message; the X-ray route returns only this type's text."""
+
+
 BENCHMARK_SYMBOL = "SWDA.L"   # iShares MSCI World — always fetched independently
 LOOKBACK_DAYS = 252            # 1-year trailing window
 AMBER_THRESHOLD = 0.10         # position weight colouring
@@ -1195,16 +1200,16 @@ def resolve_scope_holdings(account_id: str) -> Tuple[List[Dict], float]:
     if ghost_scope_ids:
         client = GhostfolioXRayClient()
         if not client.is_configured:
-            raise RuntimeError("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")
+            raise XRayScopeUnavailable("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")
         if not client.authenticate():
-            raise RuntimeError("Ghostfolio authentication failed.")
+            raise XRayScopeUnavailable("Ghostfolio authentication failed.")
         ghost_holdings, _ = client.get_holdings(ghost_scope_ids)
 
     builtin_holdings = _builtin_account_holdings(builtin_account_id) if include_builtin else []
 
     holdings = _merge_holdings(ghost_holdings, builtin_holdings)
     if not holdings:
-        raise RuntimeError("No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty).")
+        raise XRayScopeUnavailable("No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty).")
     total_value = sum(h["value"] for h in holdings)
     for h in holdings:
         h["weight"] = h["value"] / total_value if total_value else 0.0

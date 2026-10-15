@@ -836,11 +836,28 @@ class TestStepUpRoutes:
     def test_test_hf_token_reports_a_rejected_token(self, client, step_up_headers):
         import requests
         rejected = MagicMock()
-        rejected.raise_for_status.side_effect = requests.HTTPError("401 Client Error: Unauthorized")
+        rejected.raise_for_status.side_effect = requests.HTTPError("401 Client Error: Unauthorized", response=MagicMock(status_code=401))
         with patch("requests.get", return_value=rejected):
             resp = client.post("/api/test-hf-token", json={"HF_TOKEN": "bad"}, headers=step_up_headers)
         assert resp.status_code == 400
         assert "Token verification failed" in resp.json()["detail"]
+        assert "401 Client Error" not in resp.json()["detail"]
+        assert "rejected" in resp.json()["detail"]
+
+    def test_test_hf_token_hides_connection_error_text(self, client, step_up_headers):
+        import requests
+        with patch("requests.get", side_effect=requests.ConnectionError("internal-proxy.lan:3128 refused")):
+            resp = client.post("/api/test-hf-token", json={"HF_TOKEN": "x"}, headers=step_up_headers)
+        assert resp.status_code == 400
+        assert "internal-proxy" not in resp.json()["detail"]
+
+    def test_send_test_email_hides_smtp_error_text(self, client, step_up_headers):
+        env = {"SMTP_HOST": "mail.lan", "SMTP_PORT": "2525", "ACCOUNT_EMAIL": "me@example.com"}
+        with patch.dict(os.environ, env), \
+                patch("api_routes_auth._smtp_send", side_effect=ConnectionRefusedError("[Errno 111] mail.lan:2525")):
+            resp = client.post("/api/send-test-email", headers=step_up_headers)
+        assert resp.status_code == 500
+        assert "Errno" not in resp.json()["detail"] and "mail.lan" not in resp.json()["detail"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

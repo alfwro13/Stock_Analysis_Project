@@ -26,17 +26,16 @@ from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_
 from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
-from log_config import configure_file_logging
+from log_config import LOG_FORMAT, SafeFormatter, configure_file_logging, uvicorn_log_config
 from utils import _request_stages, harden_runtime_permissions
 
 from api_routes import api_router
 from page_routes import page_router
 from data_engine import run_yfinance_smoke_test
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(SafeFormatter(LOG_FORMAT))
+logging.basicConfig(level=logging.INFO, handlers=[_console_handler])
 logger = logging.getLogger(__name__)
 
 configure_file_logging(load_config())
@@ -309,5 +308,5 @@ app.include_router(page_router)
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting Quantamental Web Server at {SERVER_URL}:{PORT}...")
-    uvicorn.run(app, host=BIND_HOST, port=PORT, timeout_graceful_shutdown=15)
+    logger.info("Starting Quantamental Web Server at %s:%s...", SERVER_URL, PORT)
+    uvicorn.run(app, host=BIND_HOST, port=PORT, timeout_graceful_shutdown=15, log_config=uvicorn_log_config())
