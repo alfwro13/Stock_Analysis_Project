@@ -1302,6 +1302,17 @@ def run_pairs_spread_universe_scan():
         _mark_job_done(job_label("pairs_spread_universe_source"))
 
 
+def run_universe_csv_import_scan(tickers: list[str]) -> None:
+    _mark_job_started(job_label("universe_csv_import_source"))
+    try:
+        run_daily_quant_scan(tickers, scan_type='sideload')
+    except Exception as e:
+        logger.error("Manual Local File Import quant scan failed: %s", e)
+        log_sched_notification("Error", f"Manual Local File Import quant scan failed: {e}")
+    finally:
+        _mark_job_done(job_label("universe_csv_import_source"))
+
+
 def run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"

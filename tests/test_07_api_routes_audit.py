@@ -153,6 +153,13 @@ class TestImportServerPathResolution:
     These tests verify the guard still works end-to-end.
     """
 
+    @pytest.fixture(autouse=True)
+    def _reset_limiter(self):
+        from api_deps import limiter
+        limiter.reset()
+        yield
+        limiter.reset()
+
     def test_dotdot_traversal_is_rejected(self, client):
         resp = client.post("/api/universe/import/server", json={"filename": "../../../etc/passwd.csv"})
         assert resp.status_code == 400

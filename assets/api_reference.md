@@ -77,7 +77,7 @@ Every endpoint that queues a job's run on demand (`run_manual_job`: the Settings
 }
 ```
 
-The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. Three triggers have no scheduled job of their own and use a `non_job` manifest id: `POST /api/pairs-spread/run-universe` (`pairs_spread_universe_source`), `POST /api/pattern-detection/backfill` (`pattern_detection_backfill_source`) and `POST /api/market-regime/run` (`market_regime_hmm_source`). The ETF predictor routes use the predictor's own scheduled ids: `POST /api/etf-predictors/{id}/run` is guarded by `etf_predictor_{id}_pre_job` and `POST /api/etf-predictors/{id}/fill-actuals` by `etf_predictor_{id}_post_job`, so a click is refused while that predictor's scheduled run is in progress; the 404 for an unknown config is answered before the busy check. A run of any of these is written to `scheduler_run_history` (`trigger_source: manual`) and shows in the Active Jobs panel.
+The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. Four triggers have no scheduled job of their own and use a `non_job` manifest id: `POST /api/pairs-spread/run-universe` (`pairs_spread_universe_source`), `POST /api/pattern-detection/backfill` (`pattern_detection_backfill_source`), `POST /api/market-regime/run` (`market_regime_hmm_source`) and `POST /api/universe/import/server` (`universe_csv_import_source`). The ETF predictor routes use the predictor's own scheduled ids: `POST /api/etf-predictors/{id}/run` is guarded by `etf_predictor_{id}_pre_job` and `POST /api/etf-predictors/{id}/fill-actuals` by `etf_predictor_{id}_post_job`, so a click is refused while that predictor's scheduled run is in progress; the 404 for an unknown config is answered before the busy check. A run of any of these is written to `scheduler_run_history` (`trigger_source: manual`) and shows in the Active Jobs panel.
 
 ### Request input limits (SEC 23/27)
 
@@ -996,7 +996,7 @@ Lists CSV files available to import from the server's `tools/data/imports/` dire
 
 ### `POST /api/universe/import/server`
 
-Imports tickers from a CSV file already present on the server into the `market_universe` table. Triggers a quant scan for the imported tickers in the background.
+Imports tickers from a CSV file already present on the server into the `market_universe` table. Triggers a quant scan for the imported tickers in the background as job id `universe_csv_import_source` (label "Manual Local File Import"): the run is written to `scheduler_run_history` (`trigger_source: manual`) and shows in the Active Jobs panel. The id is its own, so a running Universe Update, Full Universe Quant Scan or weekend routine does not block it. Rate limited to 10/minute.
 
 **Required CSV columns:** `ticker`, `company_name`, `sector`, `industry`, `currency`, `country`, `exchange`
 
@@ -1021,8 +1021,10 @@ Imports tickers from a CSV file already present on the server into the `market_u
 
 | Status | Cause |
 |--------|-------|
-| `400` | File is not a `.csv`, or a required column is missing |
+| `400` | File is not a `.csv`, the filename is not a bare name, or a required column is missing |
 | `404` | File not found on the server |
+| `409` | `{"status": "busy"}` — an earlier import's scan is still running; answered after the filename check and before the file is read, so nothing is written to `market_universe` |
+| `429` | Rate limit exceeded (10/minute) |
 | `500` | Parser error |
 
 ---
