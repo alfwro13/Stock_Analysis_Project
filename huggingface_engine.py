@@ -54,6 +54,7 @@ def _get_finbert_analyzer() -> Optional[Any]:
                             "sentiment-analysis",
                             model="ProsusAI/finbert",
                             revision=NLP_FINBERT_REVISION,
+                            model_kwargs={"use_safetensors": True},
                             local_files_only=True,
                         )
                     except OSError:
@@ -62,6 +63,7 @@ def _get_finbert_analyzer() -> Optional[Any]:
                             "sentiment-analysis",
                             model="ProsusAI/finbert",
                             revision=NLP_FINBERT_REVISION,
+                            model_kwargs={"use_safetensors": True},
                         )
                 except Exception as e:
                     logger.error("Failed to allocate memory or initialize FinBERT pipeline: %s", e)
