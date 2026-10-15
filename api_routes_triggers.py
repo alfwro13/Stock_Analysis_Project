@@ -1,4 +1,5 @@
 import logging
+import os
 import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,7 @@ from scheduler_engine import (
     run_fundamentals_profiler, run_universe_deep_sync_job,
     run_xray_risk_cache_job, run_anomaly_training_job, record_job_run,
     run_maintenance_engine, run_manual_job, get_all_job_last_runs,
-    scheduler_quiesced,
+    scheduler_quiesced, run_universe_csv_import_scan,
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import get_backup_status, restore_backup, run_backup
@@ -98,9 +99,6 @@ def bg_execute_universe_quant_scan():
         logger.warning("Universe is empty. Please trigger a Universe Update first.")
         return
     run_daily_quant_scan(tickers, scan_type='universe')
-
-def bg_execute_universe_quant_scan_subset(tickers: List[str]):
-    run_daily_quant_scan(tickers, scan_type='sideload')
 
 def bg_execute_ml_training():
     train_global_ml_model()
@@ -433,18 +431,23 @@ def list_importable_csvs():
         return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to list import directory. Check server logs for details."})
 
 @triggers_router.post("/universe/import/server")
-def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks):
-    if not request.filename.endswith('.csv'):
+@limiter.limit("10/minute")
+def import_server_csv(request: Request, body: ImportRequest, background_tasks: BackgroundTasks):
+    if not body.filename.endswith('.csv'):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
-    if "/" in request.filename or "\\" in request.filename or request.filename in (".", ".."):
+    if "/" in body.filename or "\\" in body.filename or body.filename in (".", ".."):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
-    file_path = (IMPORT_DIR / request.filename).resolve()
-    if not file_path.is_relative_to(IMPORT_DIR.resolve()):
+    import_root = os.path.realpath(IMPORT_DIR)
+    file_path = os.path.realpath(os.path.join(import_root, body.filename))
+    if not file_path.startswith(import_root + os.sep):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
+    busy = job_busy_response("universe_csv_import_source")
+    if busy:
+        return busy
     conn = None
     try:
-        if not file_path.exists():
-            return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{request.filename}' not found on server at {file_path}."})
+        if not os.path.exists(file_path):
+            return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{body.filename}' not found on server at {file_path}."})
 
         df = pd.read_csv(file_path)
         required_cols = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country', 'exchange']
@@ -481,13 +484,13 @@ def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks)
                 last_updated = excluded.last_updated
         ''', records)
         conn.commit()
-        background_tasks.add_task(bg_execute_universe_quant_scan_subset, [r[0] for r in records])
+        background_tasks.add_task(run_manual_job, "universe_csv_import_source", run_universe_csv_import_scan, [r[0] for r in records])
         return JSONResponse(content={
             "status": "success",
-            "message": f"Successfully sideloaded {len(records)} assets from '{request.filename}' into the local Market Universe."
+            "message": f"Successfully sideloaded {len(records)} assets from '{body.filename}' into the local Market Universe."
         })
     except Exception as e:
-        logger.error("Fatal error executing CSV parser for %s: %s", request.filename, e, exc_info=True)
+        logger.error("Fatal error executing CSV parser for %s: %s", body.filename, e, exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "Fatal error executing CSV parser. Check server logs for details."})
     finally:
         if conn:

@@ -823,6 +823,13 @@ def test_no_trigger_endpoint_returns_500(client):
 @pytest.mark.api
 class TestImportServerSecurity:
 
+    @pytest.fixture(autouse=True)
+    def _reset_limiter(self):
+        from api_deps import limiter
+        limiter.reset()
+        yield
+        limiter.reset()
+
     def test_path_traversal_with_dotdot_is_rejected(self, client):
         resp = client.post("/api/universe/import/server", json={"filename": "../../../etc/passwd.csv"})
         assert resp.status_code == 400
@@ -842,6 +849,76 @@ class TestImportServerSecurity:
         # The file won't exist on disk, so we expect 404 (not 400).
         resp = client.post("/api/universe/import/server", json={"filename": "my_universe.csv"})
         assert resp.status_code == 404
+
+
+@pytest.mark.api
+class TestImportServerJobGuard:
+    """The CSV import's quant scan is guarded by its own job id and refused before any DB write while it runs."""
+
+    TICKER = "ZZIMPORTGUARD.L"
+
+    @pytest.fixture(autouse=True)
+    def _csv_dir(self, tmp_path, monkeypatch):
+        import api_routes_triggers
+        from api_deps import limiter
+        from database import get_connection
+        limiter.reset()
+        monkeypatch.setattr(api_routes_triggers, "IMPORT_DIR", tmp_path)
+        (tmp_path / "guard.csv").write_text(
+            "ticker,company_name,sector,industry,currency,country,exchange\n"
+            f"{self.TICKER},Guard Co,Technology,Software,GBP,UK,LSE\n"
+        )
+        yield
+        limiter.reset()
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute("DELETE FROM market_universe WHERE ticker = ?", (self.TICKER,))
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def _universe_row(self):
+        from database import get_connection
+        conn = None
+        try:
+            conn = get_connection()
+            return conn.execute("SELECT ticker FROM market_universe WHERE ticker = ?", (self.TICKER,)).fetchone()
+        finally:
+            if conn:
+                conn.close()
+
+    def test_busy_answers_409_before_any_write_or_queue(self, client):
+        with patch("scheduler_engine.is_job_running", return_value=True), \
+             patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+            resp = client.post("/api/universe/import/server", json={"filename": "guard.csv"})
+        assert resp.status_code == 409
+        data = _json(resp)
+        assert data["status"] == "busy"
+        assert "Manual Local File Import" in data["message"]
+        assert "already running" in data["message"]
+        add_task.assert_not_called()
+        assert self._universe_row() is None
+
+    def test_import_queues_the_scan_under_its_own_job_id(self, client):
+        from scheduler_engine import run_manual_job, run_universe_csv_import_scan
+        with patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+            resp = client.post("/api/universe/import/server", json={"filename": "guard.csv"})
+        assert resp.status_code == 200
+        assert _json(resp)["status"] == "success"
+        add_task.assert_called_once()
+        assert add_task.call_args.args == (
+            run_manual_job, "universe_csv_import_source", run_universe_csv_import_scan, [self.TICKER],
+        )
+        assert self._universe_row() is not None
+
+    def test_a_running_universe_update_does_not_block_the_import(self, client):
+        with patch("scheduler_engine.is_job_running", side_effect=lambda job_id: job_id == "universe_routine_job"), \
+             patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+            resp = client.post("/api/universe/import/server", json={"filename": "guard.csv"})
+        assert resp.status_code == 200
+        add_task.assert_called_once()
 
 
 # ── Intraday Dip Radar ────────────────────────────────────────────────────────

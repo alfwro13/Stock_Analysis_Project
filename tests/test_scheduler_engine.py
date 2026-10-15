@@ -1093,6 +1093,37 @@ class TestFormerlyUntrackedManualTriggers:
         assert row["status"] == "error"
         assert "no result" in row["error_detail"]
 
+    def test_universe_csv_import_is_a_non_job_node_with_the_settings_label(self):
+        node = {n["id"]: n for n in build_workflow_graph()["nodes"]}["universe_csv_import_source"]
+        assert node["label"] == "Manual Local File Import"
+        assert node["status"] == "manual"
+
+    def test_universe_csv_import_runner_is_guarded_named_and_recorded(self):
+        seen = {}
+
+        def _fake_scan(tickers, scan_type="daily"):
+            seen["active"] = dict(get_active_jobs())
+            seen["running"] = is_job_running("universe_csv_import_source")
+            seen["args"] = (list(tickers), scan_type)
+
+        with patch("scheduler_jobs.run_daily_quant_scan", _fake_scan):
+            run_manual_job("universe_csv_import_source", _sched_module.run_universe_csv_import_scan, ["AAA", "BBB"])
+
+        assert "Manual Local File Import" in seen["active"]
+        assert seen["running"] is True
+        assert seen["args"] == (["AAA", "BBB"], "sideload")
+        assert not is_job_running("universe_csv_import_source")
+        row = get_job_run_history("universe_csv_import_source")[0]
+        assert (row["trigger_source"], row["status"]) == ("manual", "success")
+
+    def test_universe_csv_import_runner_failure_is_recorded_as_error(self):
+        with patch("scheduler_jobs.run_daily_quant_scan", side_effect=RuntimeError("scan boom")):
+            run_manual_job("universe_csv_import_source", _sched_module.run_universe_csv_import_scan, ["AAA"])
+        row = get_job_run_history("universe_csv_import_source")[0]
+        assert row["status"] == "error"
+        assert "scan boom" in row["error_detail"]
+        assert not is_job_running("universe_csv_import_source")
+
     def test_etf_run_uses_the_scheduled_pre_job_id_and_name(self):
         seen = {}
 
