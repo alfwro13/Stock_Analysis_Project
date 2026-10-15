@@ -187,7 +187,7 @@ And the Hub applies stricter rate limits. Providing a token suppresses this and 
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/save-hf-token` | POST | Persist token to `.env`; an empty token keeps the stored one, `CLEAR_HF_TOKEN` clears it |
-| `/api/test-hf-token` | POST | Verify the posted token, or the stored one when none is posted, with a direct `GET https://huggingface.co/api/whoami-v2` (`huggingface_hub.whoami()` refuses under `HF_HUB_OFFLINE=1`) |
+| `/api/test-hf-token` | POST | Verify the posted token, or the stored one when none is posted, with a direct `GET https://huggingface.co/api/whoami-v2` (`huggingface_hub.whoami()` refuses under `HF_HUB_OFFLINE=1`); a failure returns one of two fixed texts, never the exception text |
 
 Both require a password step-up (`POST /api/step-up`).
 

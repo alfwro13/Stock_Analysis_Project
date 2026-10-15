@@ -416,7 +416,10 @@ def test_hf_token(body: TestHFTokenRequest):
         username = info.get("name") or info.get("fullname") or "unknown"
         return {"status": "ok", "message": f"Token is valid. Authenticated as: {username}"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Token verification failed: {e}")
+        logger.warning("HuggingFace token test failed: %s", e)
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        reason = "HuggingFace rejected the token." if status in (401, 403) else "HuggingFace could not be reached."
+        raise HTTPException(status_code=400, detail=f"Token verification failed: {reason} See the server log for details.")
 
 
 class ChangeUsernameRequest(BaseModel):
@@ -513,4 +516,4 @@ def send_test_email():
         return {"status": "ok", "message": "Test email sent to %s." % account_email}
     except Exception as e:
         logger.warning("Test email failed: %s", e)
-        raise HTTPException(status_code=500, detail="Send failed: %s" % e)
+        raise HTTPException(status_code=500, detail="Send failed. See the server log for details.")

@@ -763,7 +763,7 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
     test_session = cffi_requests.Session(impersonate="chrome", interface=ipv6_addr)
 
     try:
-        logger.info(f"Executing diagnostic IPv6 socket bind test for {ipv6_addr}...")
+        logger.info("Executing diagnostic IPv6 socket bind test for %s...", ipv6_addr)
 
         original_request = test_session.request
         def timeout_request(*args, **kwargs):
@@ -775,13 +775,13 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
         df = fetch_diagnostic_history(test_session)
 
         if not df.empty:
-            logger.info(f"IPv6 Diagnostic Success: Received data payload via {ipv6_addr}.")
+            logger.info("IPv6 Diagnostic Success: Received data payload via %s.", ipv6_addr)
             return JSONResponse(content={
                 "status": "success",
                 "message": f"Successfully verified stable IPv6 socket connection to Yahoo Finance edge nodes via {ipv6_addr}."
             })
         else:
-            logger.warning(f"IPv6 Diagnostic Warning: Connection succeeded but payload was empty.")
+            logger.warning("IPv6 Diagnostic Warning: Connection succeeded but payload was empty.")
             return JSONResponse(status_code=500, content={
                 "status": "error",
                 "message": "Connection established, but Yahoo Finance returned empty data. The API endpoint may be restricting responses."
@@ -789,7 +789,7 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
 
     except Exception as e:
         error_str = str(e)
-        logger.error(f"IPv6 Diagnostic Exception: {error_str}")
+        logger.error("IPv6 Diagnostic Exception: %s", error_str)
 
         if "Couldn't bind" in error_str or "bind failed" in error_str.lower() or "assign requested address" in error_str.lower():
             msg = f"Socket binding failed. The address '{ipv6_addr}' is not assigned to any physical or virtual local network interface on this server."
@@ -798,7 +798,7 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
         elif "Timeout" in error_str or "timeout" in error_str.lower():
             return JSONResponse(status_code=504, content={"status": "error", "message": "Connection timed out. The IPv6 address may be unroutable, blocked by your firewall, or lacks internet access."})
         else:
-            msg = f"Connection refused or failed during socket negotiation: {error_str}"
+            msg = "Connection to Yahoo Finance failed during socket negotiation. See the server log for details."
 
         return JSONResponse(status_code=502, content={"status": "error", "message": msg})
 
@@ -1129,7 +1129,7 @@ def get_system_metrics():
             "yahoo_cache": yahoo_engine.get_stats(),
         })
     except Exception as e:
-        logger.error(f"Failed to fetch system metrics: {e}")
+        logger.error("Failed to fetch system metrics: %s", e)
         return _error_500(e)
     finally:
         if conn:
@@ -1189,7 +1189,9 @@ def git_pull_update():
         old_head = _git_head() or ""
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         if result.returncode != 0:
-            return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
+            logger.error("git pull failed (exit %s): %s", result.returncode, result.stderr.strip())
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Git pull failed. See the server log for details."})
+        logger.info("git pull: %s", result.stdout.strip())
         diff = subprocess.run(["git", "diff", "--name-only", old_head, "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         requirements_changed = lock_path.name in diff.stdout.splitlines()
         _requirements_changed_pending = _requirements_changed_pending or requirements_changed
@@ -1201,7 +1203,7 @@ def git_pull_update():
                 "from_version": old_sklearn or "not installed",
                 "to_version": new_sklearn or "removed",
             }
-        message = f"Update successful. Please restart the service if required.\n\n{result.stdout}"
+        message = "Update successful. Please restart the service if required."
         if requirements_changed:
             message += "\n\n⚠️ requirements.lock changed — dependencies will be reinstalled automatically before the next restart."
         if sklearn_changed:
@@ -1401,7 +1403,7 @@ def purge_all_notifications():
         conn.commit()
         return JSONResponse(content={"status": "success", "message": "All notifications purged successfully."})
     except Exception as e:
-        logger.error(f"Failed to purge notifications: {e}")
+        logger.error("Failed to purge notifications: %s", e)
         return _error_500(e)
     finally:
         if conn:

@@ -1551,3 +1551,20 @@ def test_fx_status_reads_persisted_fresh_stale_and_missing_quotes(client, monkey
 @pytest.mark.parametrize("currencies", ["../USD", "usd", "USD,", "USD=X", "USD," * 40 + "USD"])
 def test_fx_status_rejects_invalid_currencies(client, currencies):
     assert client.get("/api/fx/status", params={"currencies": currencies}).status_code == 422
+
+
+@pytest.mark.api
+def test_xray_returns_only_the_fixed_scope_message(client):
+    from xray_engine import XRayScopeUnavailable
+    with patch("api_routes.assemble_xray_report", side_effect=XRayScopeUnavailable("No holdings found for this scope.")):
+        resp = client.get("/api/xray?account_id=all")
+    assert resp.status_code == 503
+    assert _json(resp)["error"] == "No holdings found for this scope."
+
+
+@pytest.mark.api
+def test_xray_hides_text_of_any_other_error(client):
+    with patch("api_routes.assemble_xray_report", side_effect=RuntimeError("db at /home/andre/secret.db is locked")):
+        resp = client.get("/api/xray?account_id=all")
+    assert resp.status_code == 500
+    assert "secret.db" not in resp.text

@@ -2039,3 +2039,38 @@ def test_post_intraday_monitor_add_rejects_an_unsafe_ticker(client):
         assert conn.execute("SELECT 1 FROM intraday_monitors WHERE ticker = '../X'").fetchone() is None
     finally:
         conn.close()
+
+
+@pytest.mark.api
+def test_git_pull_failure_does_not_return_git_output(client, step_up_headers):
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
+        return MagicMock(returncode=1, stdout="", stderr="error: Your local changes to /opt/secret/path would be overwritten")
+
+    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+        resp = client.post("/api/system/git-pull", headers=step_up_headers)
+    assert resp.status_code == 500
+    assert "/opt/secret/path" not in resp.text
+
+
+@pytest.mark.api
+def test_git_pull_success_does_not_return_git_output(client, step_up_headers):
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "pull"]:
+            return MagicMock(returncode=0, stdout="Updating abc..def\n secret_file.py | 2 +-\n", stderr="")
+        return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
+
+    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+        resp = client.post("/api/system/git-pull", headers=step_up_headers)
+    assert resp.status_code == 200
+    assert "secret_file.py" not in resp.text
+
+
+@pytest.mark.api
+def test_yahoo_ipv6_test_hides_unclassified_error_text(client):
+    with patch("api_routes_system.cffi_requests.Session"), \
+            patch("yahoo_engine.fetch_diagnostic_history", side_effect=RuntimeError("curl: (35) TLS handshake to 10.0.0.9 failed")):
+        resp = client.post("/api/settings/test-yahoo-ipv6", json={"ipv6_address": "2001:db8::1"})
+    assert resp.status_code == 502
+    assert "10.0.0.9" not in resp.text and "curl" not in resp.text

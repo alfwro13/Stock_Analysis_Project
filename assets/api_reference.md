@@ -1322,7 +1322,7 @@ Tests whether a given IPv6 address can successfully reach Yahoo Finance edge nod
 | Status | Message |
 |--------|---------|
 | `400` | IPv6 address is empty |
-| `502` | Socket binding failed, network unreachable, or connection refused |
+| `502` | Socket binding failed, network unreachable, or connection failed. Each is a fixed message; the underlying curl/socket error is only written to the server log |
 | `504` | Connection timed out |
 
 ---
@@ -1653,7 +1653,7 @@ Saves SMTP mail server configuration to `.env`. Takes effect immediately without
 
 ### `POST /api/send-test-email`
 
-Sends a test email to the configured `ACCOUNT_EMAIL` using the current SMTP settings. Returns `400` if `SMTP_HOST` or `ACCOUNT_EMAIL` is not configured. Returns `500` on SMTP send failure. Requires a password step-up.
+Sends a test email to the configured `ACCOUNT_EMAIL` using the current SMTP settings. Returns `400` if `SMTP_HOST` or `ACCOUNT_EMAIL` is not configured. Returns `500` with the fixed detail `Send failed. See the server log for details.` on any SMTP failure; the exception text is only logged, so the route cannot be used to probe which host and port answer. Requires a password step-up.
 
 ---
 
@@ -1991,7 +1991,7 @@ At-a-glance market/system status for the Home Assistant integration's sensors. `
 
 ### `POST /api/system/git-pull`
 
-Pulls the latest code from the Git remote. Returns the git output. Also diffs the pre-pull and post-pull commits to detect whether `requirements.lock` changed (the hashed lock generated from `requirements.txt`; a change to `requirements.txt` alone installs nothing); if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down. When the pinned scikit-learn version changed, `scikit_learn_changed` is `true`, `scikit_learn_change` contains the old/new versions, and the message warns that affected model retraining begins automatically within seconds of the restarted app starting.
+Pulls the latest code from the Git remote. The git output is written to the server log, never returned: a failed pull answers `500` with the fixed message `Git pull failed. See the server log for details.`. Also diffs the pre-pull and post-pull commits to detect whether `requirements.lock` changed (the hashed lock generated from `requirements.txt`; a change to `requirements.txt` alone installs nothing); if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down. When the pinned scikit-learn version changed, `scikit_learn_changed` is `true`, `scikit_learn_change` contains the old/new versions, and the message warns that affected model retraining begins automatically within seconds of the restarted app starting.
 
 **Requires:** a password step-up (see `POST /api/step-up`).
 
@@ -2002,7 +2002,7 @@ Pulls the latest code from the Git remote. Returns the git output. Also diffs th
 ```json
 {
   "status": "success",
-  "message": "Update successful. Please restart the service if required.\n\nAlready up to date.",
+  "message": "Update successful. Please restart the service if required.",
   "requirements_changed": false,
   "scikit_learn_changed": false,
   "scikit_learn_change": null
@@ -2150,6 +2150,8 @@ Identical to `POST /api/system/restart` except it skips the active-jobs check �
 
 These endpoints expose the active rotating log file (`app.log`) for the in-browser live viewer. Both endpoints require a valid session (same auth as all other routes).
 
+**Log line safety.** `log_config.SafeFormatter` formats the `app.log` handler and the console handler: a CR or LF inside a logged value is written as the two characters `\r` / `\n`, so one record is always one line (tracebacks stay multi-line), and the value of any `api_key=`, `token=` or `embed_token=` query parameter is replaced with `***`, which also covers the URLs `requests` and `urllib3` log themselves. The same masking applies to the request line in uvicorn's access log (`log_config.uvicorn_log_config()`), so the embed token and password-reset token never reach the journal. The reverse proxy's own access log is outside the app; strip the query string there if it must not hold these tokens.
+
 ### `GET /api/logs/tail`
 
 Returns the last N lines of the active log file as a JSON array. Intended for the initial page load of the log viewer.
@@ -2270,7 +2272,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/save-fred-api-key` | Persist FRED API key to `.env` (empty keeps the stored value; `CLEAR_FRED_API_KEY` clears it) |
 | `POST` | `/api/save-ghostfolio-settings` | Persist Ghostfolio URL + token to `.env` (empty token keeps the stored one; `CLEAR_GHOSTFOLIO_TOKEN` clears it) |
 | `POST` | `/api/save-nextcloud-settings` | Persist Nextcloud Talk credentials to `.env` (empty app password or conversation token keeps the stored one; `CLEAR_APP_PASSWORD` / `CLEAR_CONVERSATION_TOKEN` clear them) |
-| `POST` | `/api/test-hf-token` | Verify the posted HuggingFace token, or the stored one when none is posted, with a direct request to the Hub's `whoami-v2` endpoint (works under `HF_HUB_OFFLINE=1`) |
+| `POST` | `/api/test-hf-token` | Verify the posted HuggingFace token, or the stored one when none is posted, with a direct request to the Hub's `whoami-v2` endpoint (works under `HF_HUB_OFFLINE=1`). A failure returns `400` with one of two fixed texts (`HuggingFace rejected the token.` for HTTP 401/403, otherwise `HuggingFace could not be reached.`); the exception text is only logged |
 | `GET` | `/api/screener-data` | Latest quant signal snapshot (Market Screener) |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
 | `POST` | `/api/market-pulse` | Live pulse for custom tickers |
@@ -2939,7 +2941,7 @@ Returns the full X-ray report JSON for the given account scope.
 
 Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness are derived at request time from per-ticker cached daily returns (`xray_returns_cache`), weighted by the current scope's holdings — this works for any scope (Ghostfolio, built-in, or combined). They are `null` with an entry in `data_warnings` only when fewer than 30 overlapping cached trading days exist across the in-scope tickers (e.g. newly-added holdings, before the next nightly risk cache run). Sector and country/continent breakdowns for built-in holdings come from `asset_profiles` as a single 100%-weight bucket per holding (no Ghostfolio-style ETF look-through decomposition).
 
-Returns `503` with `{"error": "..."}` if the resolved scope has no holdings (e.g. Ghostfolio not configured and no built-in Trading accounts exist).
+Returns `503` with `{"error": "..."}` only for the three scope conditions `xray_engine.XRayScopeUnavailable` carries (Ghostfolio not configured, Ghostfolio authentication failed, no holdings in the scope); the text is fixed. Any other failure returns `500` with `Internal error — check server logs.` and the detail goes to the log.
 
 Rate limit: 10/minute.
 
