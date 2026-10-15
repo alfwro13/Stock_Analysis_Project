@@ -1203,7 +1203,8 @@ def git_pull_update():
             return JSONResponse(status_code=500, content={"status": "error", "message": "Git pull failed. See the server log for details."})
         logger.info("git pull: %s", result.stdout.strip())
         diff = subprocess.run(["git", "diff", "--name-only", old_head, "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
-        requirements_changed = lock_path.name in diff.stdout.splitlines()
+        changed_files = diff.stdout.splitlines()
+        requirements_changed = lock_path.name in changed_files
         _requirements_changed_pending = _requirements_changed_pending or requirements_changed
         old_sklearn = _pinned_requirement_version(old_lock, "scikit-learn")
         new_sklearn = _pinned_requirement_version(lock_path.read_text(), "scikit-learn")
@@ -1213,7 +1214,12 @@ def git_pull_update():
                 "from_version": old_sklearn or "not installed",
                 "to_version": new_sklearn or "removed",
             }
-        message = "Update successful. Please restart the service if required."
+        if changed_files:
+            message = f"Update successful. {len(changed_files)} file(s) changed:\n" + "\n".join(changed_files) + "\n\nPlease restart the service if required."
+        elif old_head and _git_head() == old_head:
+            message = "Already up to date."
+        else:
+            message = "Update successful. Please restart the service if required."
         if requirements_changed:
             message += "\n\n⚠️ requirements.lock changed — dependencies will be reinstalled automatically before the next restart."
         if sklearn_changed:
