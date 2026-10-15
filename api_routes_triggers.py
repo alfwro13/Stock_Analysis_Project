@@ -1,4 +1,5 @@
 import logging
+import os
 import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
@@ -436,15 +437,16 @@ def import_server_csv(request: Request, body: ImportRequest, background_tasks: B
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
     if "/" in body.filename or "\\" in body.filename or body.filename in (".", ".."):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
-    file_path = (IMPORT_DIR / body.filename).resolve()
-    if not file_path.is_relative_to(IMPORT_DIR.resolve()):
+    import_root = os.path.realpath(IMPORT_DIR)
+    file_path = os.path.realpath(os.path.join(import_root, body.filename))
+    if not file_path.startswith(import_root + os.sep):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
     busy = job_busy_response("universe_csv_import_source")
     if busy:
         return busy
     conn = None
     try:
-        if not file_path.exists():
+        if not os.path.exists(file_path):
             return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{body.filename}' not found on server at {file_path}."})
 
         df = pd.read_csv(file_path)
