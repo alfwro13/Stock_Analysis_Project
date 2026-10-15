@@ -249,6 +249,41 @@ def test_post_settings_rejects_out_of_range_stable_shortlist_values(client, step
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("literal", ["Infinity", "-Infinity", "NaN", "1e999"])
+@pytest.mark.parametrize("template", [
+    '{"POSITION_SIZING": {"ACCOUNT_VALUE": %s}}',
+    '{"REPORTS_DEFAULTS": {"DIV_MIN_YIELD": %s}}',
+    '{"SCHEDULING": {"SYNC_INDICES": {"FLASH_CRASH_THRESHOLD": %s}}}',
+    '{"SCHEDULING": {"RISK_ORCHESTRATOR": {"WEIGHTS": {"VAR": %s}}}}',
+    '{"NOTIFICATIONS": {"CRASH_ALERTS": {"DROP_PERCENT": %s}}}',
+    '{"NOTIFICATIONS": {"PATTERN_DETECTION_ALERTS": {"HEAD_SHOULDERS": {"NUM_STD": %s}}}}',
+    '{"XRAY_TARGETS": {"concentration_targets": {"max_single_position_pct": %s}}}',
+    '{"META_SCORING": {"REGIME_WEIGHTS": {"bull": [1.0, %s]}}}',
+    '{"NOTIFICATION_ROUTING": {"sentiment": {"weight": %s}}}',
+    '{"FREETRADE_MAPPINGS": {"EXCHANGES": {"XLON": %s}}}',
+    '{"UI_PREFERENCES": {"PORTFOLIO_VIEWS": [{"name": "v", "min": %s}]}}',
+    '{"GHOSTFOLIO_ACCOUNTS": {"discovered": [{"id": "a", "balance": %s}]}}',
+])
+def test_post_settings_rejects_non_finite_numbers(client, step_up_headers, template, literal):
+    """A non-finite number anywhere in the settings body, typed or free-form, is a 422 and never reaches config.json."""
+    headers = {**step_up_headers, "Content-Type": "application/json"}
+    resp = client.post("/api/settings", content=template % literal, headers=headers)
+    assert resp.status_code == 422, f"{template % literal} → {resp.status_code}"
+
+
+@pytest.mark.api
+def test_post_settings_still_accepts_finite_numbers_in_free_form_blocks(client, step_up_headers):
+    import config as _config
+    payload = {"XRAY_TARGETS": {"concentration_targets": {"max_single_position_pct": 22.5}},
+               "POSITION_SIZING": {"ACCOUNT_VALUE": 12345.5}}
+    resp = client.post("/api/settings", json=payload, headers=step_up_headers)
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    saved = _config.load_config()
+    assert saved["XRAY_TARGETS"]["concentration_targets"]["max_single_position_pct"] == 22.5
+    assert saved["POSITION_SIZING"]["ACCOUNT_VALUE"] == 12345.5
+
+
+@pytest.mark.api
 def test_post_settings_with_alert_referee_training_confluence(client, step_up_headers):
     """POST /api/settings with SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE (the Cross-Engine
     Alert Referee's own schedule/mode/threshold block) must persist and round-trip via

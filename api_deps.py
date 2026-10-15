@@ -1,4 +1,5 @@
 import logging
+import math
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -18,6 +19,20 @@ limiter = Limiter(key_func=get_remote_address)
 
 class FiniteModel(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
+
+
+def reject_non_finite(value):
+    """allow_inf_nan only covers float-typed fields; an untyped dict/list field needs this walk."""
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("numbers must be finite")
+    elif isinstance(value, dict):
+        for item in value.values():
+            reject_non_finite(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            reject_non_finite(item)
+    return value
 
 
 # Adding a route here is what lets Home Assistant call it. See assets/api_reference.md, "API key scope".
