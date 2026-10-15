@@ -2016,7 +2016,7 @@ At-a-glance market/system status for the Home Assistant integration's sensors. `
 
 ### `POST /api/system/git-pull`
 
-Pulls the latest code from the Git remote. The git output is written to the server log, never returned: a failed pull answers `500` with the fixed message `Git pull failed. See the server log for details.`. Also diffs the pre-pull and post-pull commits to detect whether `requirements.lock` changed (the hashed lock generated from `requirements.txt`; a change to `requirements.txt` alone installs nothing); if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down. When the pinned scikit-learn version changed, `scikit_learn_changed` is `true`, `scikit_learn_change` contains the old/new versions, and the message warns that affected model retraining begins automatically within seconds of the restarted app starting.
+Pulls the latest code from the Git remote. The raw git output is written to the server log, never returned: a failed pull answers `500` with the fixed message `Git pull failed. See the server log for details.`. The success `message` is built from the diff of the pre-pull and post-pull commits (`git diff --name-only`): it lists the changed repository paths (`Update successful. N file(s) changed:` followed by one path per line), or is `Already up to date.` when the checked-out commit did not move. Also diffs the pre-pull and post-pull commits to detect whether `requirements.lock` changed (the hashed lock generated from `requirements.txt`; a change to `requirements.txt` alone installs nothing); if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down. When the pinned scikit-learn version changed, `scikit_learn_changed` is `true`, `scikit_learn_change` contains the old/new versions, and the message warns that affected model retraining begins automatically within seconds of the restarted app starting.
 
 **Requires:** a password step-up (see `POST /api/step-up`).
 
@@ -2027,7 +2027,7 @@ Pulls the latest code from the Git remote. The git output is written to the serv
 ```json
 {
   "status": "success",
-  "message": "Update successful. Please restart the service if required.",
+  "message": "Update successful. 2 file(s) changed:\nmain.py\nstatic/js/app.js\n\nPlease restart the service if required.",
   "requirements_changed": false,
   "scikit_learn_changed": false,
   "scikit_learn_change": null

@@ -2195,16 +2195,39 @@ def test_git_pull_failure_does_not_return_git_output(client, step_up_headers):
 
 
 @pytest.mark.api
-def test_git_pull_success_does_not_return_git_output(client, step_up_headers):
+def test_git_pull_success_lists_changed_files_without_git_output(client, step_up_headers):
     def fake_run(cmd, **kwargs):
         if cmd[:2] == ["git", "pull"]:
             return MagicMock(returncode=0, stdout="Updating abc..def\n secret_file.py | 2 +-\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return MagicMock(returncode=0, stdout="main.py\nstatic/js/app.js\n", stderr="")
         return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
 
     with patch("api_routes_system.subprocess.run", side_effect=fake_run):
         resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
+    message = _json(resp)["message"]
+    assert "2 file(s) changed" in message
+    assert "main.py\nstatic/js/app.js" in message
     assert "secret_file.py" not in resp.text
+    assert "Updating abc..def" not in resp.text
+
+
+@pytest.mark.api
+def test_git_pull_reports_already_up_to_date_when_head_unchanged(client, step_up_headers):
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "pull"]:
+            return MagicMock(returncode=0, stdout="Already up to date.\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        return MagicMock(returncode=0, stdout="samesha\n", stderr="")
+
+    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+        resp = client.post("/api/system/git-pull", headers=step_up_headers)
+    assert resp.status_code == 200
+    body = _json(resp)
+    assert body["message"] == "Already up to date."
+    assert body["requirements_changed"] is False
 
 
 @pytest.mark.api
