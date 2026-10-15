@@ -2016,3 +2016,26 @@ def test_fx_refresh_base_currency_needs_no_network(client, monkeypatch, currency
     response = client.post("/api/fx/refresh", json={"currency": currency})
     assert response.json()["status"] == "success"
     assert response.json()["quotes"] == []
+
+
+@pytest.mark.api
+def test_post_watchlist_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
+    import database as _db
+    with patch("api_routes.resolve_watchlist_metadata") as mock_meta:
+        resp = client.post("/api/watchlist/add", json={"ticker": "../X"})
+    assert resp.status_code == 422
+    assert "ticker" in _json(resp)["message"]
+    mock_meta.assert_not_called()
+    assert "../X" not in _db.get_watchlist_tickers()
+
+
+@pytest.mark.api
+def test_post_intraday_monitor_add_rejects_an_unsafe_ticker(client):
+    import database as _db
+    resp = client.post("/api/intraday-monitor/add", json={"ticker": "../X"})
+    assert resp.status_code == 422
+    conn = _db.get_connection()
+    try:
+        assert conn.execute("SELECT 1 FROM intraday_monitors WHERE ticker = '../X'").fetchone() is None
+    finally:
+        conn.close()

@@ -6,6 +6,7 @@ from database import get_connection
 from config import BASE_CURRENCY, WATCHLIST_PATH
 import time_engine
 import learn_cards_seed
+from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,9 @@ def _import_legacy_watchlist_json() -> None:
             return
         logger.info("[MIGRATION] Importing %s tickers from watchlist.json into watchlist_items...", len(tickers))
         for ticker in tickers:
+            if not is_valid_ticker(ticker):
+                logger.warning("[MIGRATION] Skipping invalid watchlist.json ticker %r", ticker)
+                continue
             cursor.execute(
                 "SELECT company_name, currency, quote_type FROM stock_signals WHERE ticker = ?", (ticker,)
             )

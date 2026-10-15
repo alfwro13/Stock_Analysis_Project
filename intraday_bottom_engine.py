@@ -12,7 +12,7 @@ from database import get_mutual_fund_tickers
 from market_pulse_write import upsert_live_price
 from market_session_helpers import is_exchange_open, is_quote_settled
 from yahoo_engine import yahoo_engine
-from utils import is_daily_bar_still_forming
+from utils import is_daily_bar_still_forming, safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -265,8 +265,9 @@ class IntradayBottomEngine:
             self._persist_result(result)
 
             try:
-                hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
-                if hist_path.exists():
+                safe_ticker = safe_ticker_filename(ticker)
+                hist_path = HISTORICAL_DIR / f"{safe_ticker}.parquet" if safe_ticker else None
+                if hist_path is not None and hist_path.exists():
                     df_hist = pd.read_parquet(hist_path)
                     df_hist = df_hist[df_hist['Close'].notna()]
                     if not df_hist.empty:

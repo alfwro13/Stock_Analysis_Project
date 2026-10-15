@@ -3162,3 +3162,64 @@ def test_price_history_import_csv_over_the_row_cap_returns_422(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("bad", ["../X", "/X/Y", "../../etc/Z", "<img src=x>", "A B"])
+def test_create_transaction_rejects_an_unsafe_ticker_before_any_yahoo_work(client, bad):
+    account_id = _create_account(client)
+    with patch("api_routes_accounts.update_single_profile") as mock_profile:
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": bad, "currency": "USD",
+            "quantity": 1, "unit_price": 100.0, "exchange_rate": 0.8,
+        })
+    assert resp.status_code == 422
+    assert "ticker" in _json(resp)["message"]
+    mock_profile.assert_not_called()
+
+    import database as _db
+    assert _db.get_transactions(account_id) == []
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_update_transaction_rejects_an_unsafe_ticker(client):
+    account_id = _create_account(client)
+    good = {"txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "MSFT",
+            "currency": "USD", "quantity": 5, "unit_price": 300.0, "exchange_rate": 0.8}
+    with patch("api_routes_accounts.update_single_profile"):
+        txn_id = _json(client.post(f"/api/accounts/{account_id}/transactions", json=good))["id"]
+
+    resp = client.put(f"/api/accounts/{account_id}/transactions/{txn_id}", json={**good, "ticker": "../X"})
+    assert resp.status_code == 422
+    assert "ticker" in _json(resp)["message"]
+
+    import database as _db
+    assert _db.get_transaction(txn_id)["ticker"] == "MSFT"
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_watchlist_items_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+    with patch("api_routes_accounts.resolve_watchlist_metadata") as mock_meta:
+        resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "../X"})
+    assert resp.status_code == 422
+    assert "ticker" in _json(resp)["message"]
+    mock_meta.assert_not_called()
+    assert "../X" not in _db.get_watchlist_tickers()
+
+
+@pytest.mark.api
+def test_pension_benchmark_config_rejects_an_unsafe_ticker_and_keeps_the_saved_list(client):
+    account_id = _create_account(client, account_type="Pension")
+    resp = client.put(f"/api/accounts/{account_id}/benchmark-config", json={
+        "cpi_target_pct": 4.0, "tickers": [{"ticker": "../X", "display_name": "Bad"}],
+    })
+    assert resp.status_code == 422
+    tickers = {t["ticker"] for t in _json(client.get(f"/api/accounts/{account_id}/benchmark-config"))["tickers"]}
+    assert "../X" not in tickers and "URTH" in tickers
+
+    import database as _db
+    _db.soft_delete_account(account_id)

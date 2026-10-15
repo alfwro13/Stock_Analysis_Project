@@ -2043,3 +2043,38 @@ def test_holdings_without_an_fx_rate_are_valued_at_cost_like_unpriced_holdings(m
     assert row["market_value"] == pytest.approx(800.0)
     total, breakdown = accounts_engine._equity_value_with_breakdown(accounts_engine._ledger_for_account(aid)[0])
     assert total == pytest.approx(800.0) and breakdown == {}
+
+
+def _insert_raw_transaction(account_id: int, ticker: str) -> None:
+    """add_transaction() refuses an unsafe ticker, so a row stored before that guard is inserted directly."""
+    from database import get_connection
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO account_transactions
+                   (account_id, txn_type, ticker, currency, txn_date, quantity, unit_price, fee,
+                    exchange_rate, update_cash, price_in_pence)
+               VALUES (?, 'Buy', ?, 'GBP', '2025-01-03', 2, 100, 0, 1.0, 1, 0)""",
+            (account_id, ticker),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+def test_value_history_never_reads_a_parquet_outside_the_history_folder_for_an_unsafe_ticker(monkeypatch, tmp_path):
+    history = tmp_path / "hist"
+    history.mkdir()
+    idx = pd.date_range("2025-01-01", "2025-01-10", freq="D")
+    pd.DataFrame({"Close": [100.0 + i for i in range(len(idx))]}, index=idx).to_parquet(tmp_path / "outside.parquet")
+    monkeypatch.setattr(accounts_engine, "HISTORICAL_DIR", history)
+
+    aid = create_account("UnsafeTickerValueAcc", "GBP", initial_cash=1000.0)
+    _insert_raw_transaction(aid, "../outside")
+
+    result = accounts_engine._value_as_of_date(aid, "2025-01-03")
+    assert result["equity_value"] != 204.0
+    accounts_engine.backfill_value_history(aid)
+    from database import get_value_history
+    assert all(row["equity_value"] != 204.0 for row in get_value_history(aid))

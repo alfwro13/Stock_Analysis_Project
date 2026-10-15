@@ -61,7 +61,7 @@ from news_feed_engine import run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, fetch_and_save_single_ticker, load_or_fetch_intraday_history
 import glossary_learn_engine
-from utils import normalize_ticker, measure_request_stage, is_excluded_from_yahoo_fetch
+from utils import INVALID_TICKER_MESSAGE, normalize_ticker, measure_request_stage, is_excluded_from_yahoo_fetch, is_valid_ticker, safe_ticker_filename
 from page_helpers import intraday_chart_revision
 from cache_refresh_helpers import submit_cache_refresh
 from quant_signals import QuantEngine
@@ -129,6 +129,8 @@ class TickerNoteRequest(BaseModel):
 @api_router.post("/watchlist/add")
 async def api_watchlist_add(req: TickerRequest, background_tasks: BackgroundTasks):
     ticker = normalize_ticker(req.ticker)
+    if not is_valid_ticker(ticker):
+        return JSONResponse(status_code=422, content={"status": "error", "message": INVALID_TICKER_MESSAGE})
     wl = get_watchlist_account()
     if wl is None:
         return JSONResponse(status_code=500, content={"status": "error", "message": "Watchlist account not found."})
@@ -856,6 +858,8 @@ async def intraday_monitor_add(req: DipRadarAddRequest):
     ticker = req.ticker.upper().strip()
     if not ticker:
         raise HTTPException(status_code=400, detail="ticker is required")
+    if not is_valid_ticker(ticker):
+        raise HTTPException(status_code=422, detail=INVALID_TICKER_MESSAGE)
     days = max(1, min(30, req.days or 1))
     today = datetime.now(timezone.utc).date()
     today_str = today.isoformat()
@@ -983,6 +987,9 @@ def _intraday_gap_notice_html(ticker: str) -> str:
 def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     """Return freshly rendered intraday chart HTML for a given ticker."""
     ticker = ticker.upper()
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        raise HTTPException(status_code=404, detail="Unknown ticker")
     s1 = s2 = None
     df_macro = pd.DataFrame()
 
@@ -1004,7 +1011,7 @@ def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,
     delay_min = EXCHANGE_DELAYS.get(currency, 0)
 
     try:
-        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
+        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{safe_ticker}.parquet")
         if not df_macro.empty and len(df_macro) > 1:
             prev_day = df_macro.iloc[-2]
             P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
@@ -1014,7 +1021,7 @@ def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,
         pass
 
     try:
-        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{safe_ticker}_intraday.parquet")
     except FileNotFoundError:
         html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
         return JSONResponse(content={"html": _intraday_gap_notice_html(ticker) + html, "available": False})

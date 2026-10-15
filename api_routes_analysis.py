@@ -22,7 +22,7 @@ from ai_sentiment_engine import AISentimentPromptEngine
 from data_engine import DataEngine
 from sentiment_engine import get_latest_fear_greed
 from scheduler_engine import run_manual_job
-from utils import normalize_ticker, safe_ticker_filename
+from utils import INVALID_TICKER_MESSAGE, is_valid_ticker, normalize_ticker, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -1100,6 +1100,13 @@ def list_etf_predictors(request: Request):
         return _error_500(e)
 
 
+def _invalid_etf_ticker_response(etf_ticker: str, constituents: Optional[List[dict]]) -> Optional[JSONResponse]:
+    tickers = [etf_ticker.upper().strip()] + [c["ticker"] for c in constituents or []]
+    if all(is_valid_ticker(t) for t in tickers):
+        return None
+    return JSONResponse(status_code=422, content={"status": "error", "message": INVALID_TICKER_MESSAGE})
+
+
 @analysis_router.post("/etf-predictors")
 @limiter.limit("10/minute")
 def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
@@ -1111,6 +1118,9 @@ def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
         constituents = _normalise_constituents(body.constituents)
         if not constituents:
             return JSONResponse(status_code=422, content={"status": "error", "message": "Constituent weights must sum to > 0."})
+        invalid = _invalid_etf_ticker_response(body.etf_ticker, constituents)
+        if invalid:
+            return invalid
         config_id = create_etf_predictor_config(
             name=body.name,
             etf_ticker=body.etf_ticker.upper().strip(),
@@ -1144,6 +1154,9 @@ def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorCon
         constituents = _normalise_constituents(body.constituents) if body.constituents else None
         if constituents is not None and not constituents:
             return JSONResponse(status_code=422, content={"status": "error", "message": "Constituent weights must sum to > 0."})
+        invalid = _invalid_etf_ticker_response(body.etf_ticker, constituents)
+        if invalid:
+            return invalid
         fields: dict = {
             "name": body.name,
             "etf_ticker": body.etf_ticker.upper().strip(),

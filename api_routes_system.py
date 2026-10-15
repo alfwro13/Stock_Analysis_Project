@@ -44,7 +44,7 @@ from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from tools.network_engine import GLOBAL_IPV6_STATUS
-from utils import check_requirements_drift, pip_install_command, requirements_lock_path
+from utils import TICKER_FORMAT_RULE, check_requirements_drift, is_valid_ticker, pip_install_command, requirements_lock_path
 from yahoo_engine import yahoo_engine
 from curl_cffi import requests as cffi_requests
 
@@ -677,11 +677,21 @@ def _invalid_exchange_error(exchange: Optional[str]):
     })
 
 
+def _invalid_registry_ticker_error(ticker: str, future_ticker: Optional[str]):
+    for name, value in (("ticker", ticker), ("future_ticker", future_ticker)):
+        if value and not is_valid_ticker(value):
+            return JSONResponse(status_code=422, content={"status": "error", "message": f"{name} {TICKER_FORMAT_RULE}"})
+    return None
+
+
 @system_router.post("/markets/registry")
 def api_markets_registry_create(body: TickerRegistryBody):
     ticker = (body.ticker or "").strip()
     if not ticker:
         return JSONResponse(status_code=422, content={"status": "error", "message": "ticker is required."})
+    ticker_error = _invalid_registry_ticker_error(ticker, body.future_ticker)
+    if ticker_error:
+        return ticker_error
     if get_ticker_registry_row(ticker) is not None:
         return JSONResponse(status_code=409, content={"status": "error", "message": f"{ticker} already exists in the registry."})
     exchange_error = _invalid_exchange_error(body.exchange)
@@ -698,6 +708,9 @@ def api_markets_registry_create(body: TickerRegistryBody):
 def api_markets_registry_update(ticker: str, body: TickerRegistryBody):
     if get_ticker_registry_row(ticker) is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"{ticker} not found in the registry."})
+    ticker_error = _invalid_registry_ticker_error(ticker, body.future_ticker)
+    if ticker_error:
+        return ticker_error
     exchange_error = _invalid_exchange_error(body.exchange)
     if exchange_error:
         return exchange_error

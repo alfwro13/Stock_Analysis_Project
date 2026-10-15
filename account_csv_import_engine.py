@@ -12,7 +12,7 @@ from config import BASE_CURRENCY
 from constants import CSV_IMPORT_MAX_ROWS, CSV_IMPORT_MAX_TICKERS
 from database import get_connection
 from db_accounts import add_transaction, get_transactions
-from utils import is_currency_code, normalize_ticker
+from utils import is_currency_code, is_valid_ticker, normalize_ticker
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,8 @@ def _map_csv_row(row: dict) -> tuple:
     ticker = normalize_ticker(row["Ticker"]) if row.get("Ticker") else None
     if not ticker:
         return None, "no_ticker", "(no ticker)"
+    if not is_valid_ticker(ticker):
+        return None, "bad_ticker", ticker
 
     currency = (row.get("Instrument Currency") or account_currency).strip()
     if not is_currency_code(currency) or not is_currency_code(account_currency):
@@ -192,6 +194,7 @@ def _ticker_resolvable(ticker: str) -> bool:
 
 _CSV_SKIP_REASON_LABELS = {
     "no_ticker": "no ticker in file",
+    "bad_ticker": "ticker is not a valid ticker symbol",
     "unknown_type": "unrecognized row type",
     "bad_date": "unparseable date",
     "bad_currency": "currency is not a 3-letter code",

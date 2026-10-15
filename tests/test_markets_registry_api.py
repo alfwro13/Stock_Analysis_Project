@@ -161,3 +161,26 @@ def test_new_ticker_appears_on_markets_page_without_restart(client):
         assert "^TSTIDX" in tickers
     finally:
         _cleanup("^TSTIDX")
+
+
+@pytest.mark.api
+def test_create_rejects_an_unsafe_ticker_or_future_ticker(client):
+    for body in ({**_SAMPLE_BODY, "ticker": "../X"}, {**_SAMPLE_BODY, "future_ticker": "/X/Y"}):
+        resp = client.post("/api/markets/registry", json=body)
+        assert resp.status_code == 422, body
+        assert "ticker" in _json(resp)["message"]
+    import database as _db
+    assert _db.get_ticker_registry_row("^TSTIDX") is None
+    assert _db.get_ticker_registry_row("../X") is None
+
+
+@pytest.mark.api
+def test_update_rejects_an_unsafe_future_ticker_and_keeps_the_row(client):
+    client.post("/api/markets/registry", json=_SAMPLE_BODY)
+    try:
+        resp = client.put("/api/markets/registry/^TSTIDX", json={**_SAMPLE_BODY, "future_ticker": "../X"})
+        assert resp.status_code == 422
+        import database as _db
+        assert _db.get_ticker_registry_row("^TSTIDX")["future_ticker"] is None
+    finally:
+        _cleanup("^TSTIDX")

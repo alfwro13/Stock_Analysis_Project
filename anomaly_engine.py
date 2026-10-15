@@ -14,7 +14,7 @@ from sklearn.ensemble import IsolationForest
 from config import ANOMALY_MODELS_DIR
 from database import get_connection
 from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
-from utils import clamp_beta
+from utils import clamp_beta, safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,11 @@ def read_trained_at(model_path: Path) -> str | None:
     except (OSError, ValueError):
         return None
     return sidecar.get("trained_at") if isinstance(sidecar, dict) else None
+
+
+def _ticker_file(directory: Path, ticker: str, suffix: str) -> Path | None:
+    safe_ticker = safe_ticker_filename(ticker)
+    return directory / f"{safe_ticker}{suffix}" if safe_ticker else None
 
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -110,7 +115,12 @@ class AnomalyEngine:
     def _discard_model(self, ticker: str) -> None:
         """Delete a ticker's saved model so an untrainable ticker never leaves an outdated artifact behind."""
         self._model_cache.pop(ticker, None)
-        path = self.models_dir / f"{ticker}.joblib"
+        path = _ticker_file(self.models_dir, ticker, ".joblib")
+        if path is not None:
+            self._discard_model_file(path)
+
+    @staticmethod
+    def _discard_model_file(path: Path) -> None:
         path.unlink(missing_ok=True)
         path.with_name(f"{path.name}.sklearn-version").unlink(missing_ok=True)
         _trained_at_path(path).unlink(missing_ok=True)
@@ -121,11 +131,16 @@ class AnomalyEngine:
             in_scope = set(tickers)
             for model_path in self.models_dir.glob("*.joblib"):
                 if model_path.stem not in in_scope:
-                    self._discard_model(model_path.stem)
+                    self._model_cache.pop(model_path.stem, None)
+                    self._discard_model_file(model_path)
                     logger.info("Removed anomaly model for out-of-scope ticker %s", model_path.stem)
         trained, skipped = 0, 0
         for ticker in tickers:
-            path = parquet_dir / f"{ticker}.parquet"
+            path = _ticker_file(parquet_dir, ticker, ".parquet")
+            if path is None:
+                logger.warning("Skipping anomaly training for unsafe ticker %r.", ticker)
+                skipped += 1
+                continue
             if not path.exists():
                 logger.warning("Skipping anomaly training for %s: no Parquet at %s", ticker, path)
                 self._discard_model(ticker)
@@ -181,7 +196,10 @@ class AnomalyEngine:
             self._discard_model(ticker)
             return
 
-        out_path = self.models_dir / f"{ticker}.joblib"
+        out_path = _ticker_file(self.models_dir, ticker, ".joblib")
+        if out_path is None:
+            logger.warning("Skipping %r: unsafe ticker.", ticker)
+            return
         payload = {
             'model': model,
             'score_min': score_min,
@@ -216,11 +234,11 @@ class AnomalyEngine:
 
             scored, skipped = 0, 0
             for ticker in tickers:
-                model_path = self.models_dir / f"{ticker}.joblib"
-                if not model_path.exists():
+                model_path = _ticker_file(self.models_dir, ticker, ".joblib")
+                parquet_path = _ticker_file(parquet_dir, ticker, ".parquet")
+                if model_path is None or parquet_path is None or not model_path.exists():
                     skipped += 1
                     continue
-                parquet_path = parquet_dir / f"{ticker}.parquet"
                 if not parquet_path.exists():
                     skipped += 1
                     continue
@@ -294,8 +312,8 @@ class AnomalyEngine:
         feature_vector order must match train_one():
             [volume_ratio, rsi_14, daily_return_pct, sma50_dist_pct, hist_vol_20, beta]
         """
-        model_path = self.models_dir / f"{ticker}.joblib"
-        if not model_path.exists():
+        model_path = _ticker_file(self.models_dir, ticker, ".joblib")
+        if model_path is None or not model_path.exists():
             logger.debug("No anomaly model for %s — skipping score.", ticker)
             return None
 

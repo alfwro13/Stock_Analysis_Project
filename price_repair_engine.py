@@ -3,7 +3,6 @@ import json
 import logging
 import math
 import os
-import re
 import stat
 import tempfile
 import threading
@@ -15,7 +14,7 @@ from cache_refresh_helpers import request_cache_refresh
 from config import DATA_DIR, HISTORICAL_DIR
 from database import get_connection
 from quant_signals import QuantEngine
-from utils import normalize_ticker
+from utils import normalize_ticker, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 
@@ -31,10 +30,10 @@ class PriceRepairError(ValueError):
 
 
 def _history_path(ticker):
-    ticker = normalize_ticker(ticker)
-    if not re.fullmatch(r"[A-Z0-9^.=_-]+", ticker):
+    safe_ticker = safe_ticker_filename(normalize_ticker(ticker))
+    if not safe_ticker:
         raise PriceRepairError("Invalid ticker.")
-    expected_name = f"{ticker}.parquet"
+    expected_name = f"{safe_ticker}.parquet"
     with os.scandir(HISTORICAL_DIR) as entries:
         for entry in entries:
             if entry.name == expected_name and entry.is_file(follow_symlinks=False):

@@ -379,3 +379,49 @@ class TestBackfillAll:
         parquet_dir = tmp_path / "parquet"
         parquet_dir.mkdir()
         engine.backfill_all([], parquet_dir)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Unsafe ticker — a stored ticker must never reach outside the model/parquet folders
+# ---------------------------------------------------------------------------
+
+class TestUnsafeTicker:
+    def test_unsafe_ticker_never_touches_files_outside_the_models_dir(self, tmp_path):
+        models = tmp_path / "models"
+        models.mkdir()
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        outside = tmp_path / "X.joblib"
+        outside.write_bytes(b"not a model")
+        _make_ohlcv().to_parquet(tmp_path / "X.parquet")
+        engine = _engine(models)
+
+        engine.train_all(["../X"], parquet_dir)
+        engine.train_one("../X", _make_ohlcv(), beta=1.0)
+        engine._discard_model("../X")
+
+        assert engine.score("../X", [1.0] * 6) is None
+        assert outside.read_bytes() == b"not a model"
+        assert list(models.iterdir()) == []
+
+    def test_backfill_all_skips_an_unsafe_ticker(self, tmp_path):
+        models = tmp_path / "models"
+        models.mkdir()
+        _make_ohlcv().to_parquet(tmp_path / "X.parquet")
+        (tmp_path / "X.joblib").write_bytes(b"not a model")
+        engine = _engine(models)
+        with patch("anomaly_engine.load_sklearn_artifact") as load:
+            engine.backfill_all(["../X"], tmp_path / "parquet")
+        load.assert_not_called()
+
+    def test_out_of_scope_cleanup_still_removes_a_model_whose_name_is_not_a_ticker(self, tmp_path):
+        models = tmp_path / "models"
+        models.mkdir()
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        _make_ohlcv().to_parquet(parquet_dir / "AAPL.parquet")
+        stray = models / "not a ticker.joblib"
+        stray.write_bytes(b"stray")
+        _engine(models).train_all(["AAPL"], parquet_dir)
+        assert not stray.exists()
+        assert (models / "AAPL.joblib").exists()

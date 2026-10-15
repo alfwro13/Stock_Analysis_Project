@@ -13,7 +13,7 @@ from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 import markets_engine
-from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, write_parquet_atomic
+from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, safe_ticker_filename, write_parquet_atomic
 from database import get_connection, get_mutual_fund_tickers
 from db_helpers import sentiment_fresh_since
 import accounts_engine
@@ -757,6 +757,10 @@ class IntradayOrchestrator:
         risk_orch_alerts_enabled = self.config.get("NOTIFICATIONS", {}).get("RISK_ORCHESTRATOR_ALERTS", {}).get("ENABLED", False)
 
         for ticker in tickers:
+            safe_ticker = safe_ticker_filename(ticker)
+            if not safe_ticker:
+                logger.warning("Skipping intraday scan for unsafe ticker %r.", ticker)
+                continue
             try:
                 # Robust MultiIndex handling to prevent yfinance stripping bugs when mixing US/UK markets
                 if isinstance(df_bulk.columns, pd.MultiIndex):
@@ -775,7 +779,7 @@ class IntradayOrchestrator:
 
                 if self._seconds_since(df_intraday.index[-1]) > _STALE_SECONDS:
                     df_intraday.index = df_intraday.index.tz_localize(None)
-                    write_parquet_atomic(df_intraday, INTRADAY_DIR / f"{ticker}_intraday.parquet")
+                    write_parquet_atomic(df_intraday, INTRADAY_DIR / f"{safe_ticker}_intraday.parquet")
                     continue
 
                 # Strip TZ before index arithmetic; parquet write deferred until after history validation.
@@ -791,7 +795,7 @@ class IntradayOrchestrator:
                     logger.debug("%s — %s quote not yet settled, skipping this cycle.", ticker, ticker_exchange)
                     continue
 
-                hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
+                hist_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
                 if not hist_path.exists():
                     continue
 
@@ -801,7 +805,7 @@ class IntradayOrchestrator:
                 if df_hist.empty or len(df_hist) < 20:
                     continue
 
-                write_parquet_atomic(df_intraday, INTRADAY_DIR / f"{ticker}_intraday.parquet")
+                write_parquet_atomic(df_intraday, INTRADAY_DIR / f"{safe_ticker}_intraday.parquet")
 
                 last_hist_close = df_hist['Close'].iloc[-1]
                 # A mid-session refresh can leave today's own still-forming bar as the parquet's last row.

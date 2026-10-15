@@ -9,6 +9,7 @@ from config import FUNDAMENTALS_DIR
 from yahoo_engine import yahoo_engine
 from database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,10 @@ _HOLDINGS_REFRESH_DAYS = 30
 
 def _fetch_info(ticker: str) -> dict:
     """Load from local JSON cache first; fall back to live yfinance fetch and cache result."""
-    cache_path = FUNDAMENTALS_DIR / f"{ticker}.json"
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        return {}
+    cache_path = FUNDAMENTALS_DIR / f"{safe_ticker}.json"
     if cache_path.exists():
         try:
             with open(cache_path, 'r') as f:

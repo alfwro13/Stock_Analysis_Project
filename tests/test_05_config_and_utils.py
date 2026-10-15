@@ -353,6 +353,18 @@ def test_safe_ticker_filename_rejects_markup_traversal_and_trailing_newline():
 
 
 @pytest.mark.config
+def test_is_valid_ticker_is_safe_ticker_filename_as_a_predicate_and_keeps_case():
+    """Entry points that store a ticker use one pattern with the path builders; a lowercase
+    Ghostfolio asset UUID is a stored ticker and must pass unchanged."""
+    from utils import is_valid_ticker
+    uuid_ticker = "9a1c1fdc-7d0e-4d3b-8a75-1e2d3c4b5a69"
+    for good in ("AAPL", "BRK-B", "^FTSE", "GC=F", "PENSION-12", "TBILL-7", uuid_ticker):
+        assert is_valid_ticker(good), good
+    for bad in ("", None, 5, "../X", "/X/Y", "../../Z", "A/B", "A B", "AAPL\n", "<b>", "A" * 65):
+        assert not is_valid_ticker(bad), bad
+
+
+@pytest.mark.config
 def test_safe_local_path_accepts_only_same_origin_relative_paths():
     """safe_local_path() backs the score-history Back link and the login redirect: a tab/CR/LF
     is dropped by browsers before URL parsing, so '/<TAB>/host' would become '//host'."""

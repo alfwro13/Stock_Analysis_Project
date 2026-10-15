@@ -24,7 +24,7 @@ from db_accounts import (
 from database import get_connection
 from fx_conversion_helpers import cached_fx_close, fx_level_on
 from portfolio_service import get_rate_to_base
-from utils import normalize_ticker, ignored_tickers_set
+from utils import normalize_ticker, ignored_tickers_set, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -1216,7 +1216,10 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
                 return None
             rate = fx_rate_on_date(holding["currency"], date_str)
             return None if rate is None else (accreted_price(bill, date_str), holding["currency"], rate)
-        parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            return None
+        parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not parquet_path.exists():
             return None
         try:
@@ -1297,7 +1300,10 @@ def backfill_value_history(account_id: int) -> int:
             if bill:
                 tbill_rows[ticker] = bill
             continue
-        parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            continue
+        parquet_path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not parquet_path.exists():
             continue
         try:
