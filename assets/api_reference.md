@@ -4239,6 +4239,16 @@ Sets one holding's low and/or high price alert limit ("Position Targets" — a s
 
 A non-finite `low_limit`/`high_limit` (`Infinity`, `NaN`) is rejected with `422`; `null` clears the limit. The Home Assistant integration never sends a non-finite value: its Low/High Limit number entities are bounded 0–1,000,000 and send `null` for 0. Rate limit: 60/minute.
 
+**Target validation (2026-10-15):** the `(account_id, ticker)` pair must already exist, so no orphan row can be created. `ticker` is trimmed and upper-cased (`utils.normalize_ticker()`) before the lookup and before it is stored.
+
+| Status | Condition |
+|---|---|
+| `404` `Account not found.` | `account_id` is unknown or soft-deleted. |
+| `400` | The account is not a `Trading` or `Watchlist` account (Pension/House have no tickers). |
+| `404` `Ticker is not held in or watched by this account.` | A Trading account has no open position in the ticker (never bought, or fully sold), or the Watchlist account does not contain it. |
+
+The Stock Detail page's Position Targets panel and the Home Assistant Low/High Limit entities only ever send pairs taken from the account's open holdings or the Watchlist, so neither is affected; a request for a position that has since been fully sold now returns `404`.
+
 **Response:** `{ "status": "success" }`.
 
 ---

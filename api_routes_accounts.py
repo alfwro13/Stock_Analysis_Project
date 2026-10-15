@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import (
     _ticker_known, _has_stock_signals_row, account_summary, confirm_autotopup, create_transfer,
-    delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
+    delete_transaction_with_pair, derive_account_holdings, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, held_tickers_lightweight,
     pension_units_as_of, reconcile_cash, record_pension_contribution, record_pension_fee,
     refresh_performance_cache, resnapshot_account, resolve_watchlist_metadata,
@@ -888,12 +888,31 @@ def api_other_accounts_list():
         return _error_500(e)
 
 
+def _require_limit_target(account_id: int, raw_ticker: str):
+    acc = get_account(account_id)
+    if acc is None:
+        return None, JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    if acc["account_type"] not in ("Trading", "Watchlist"):
+        return None, JSONResponse(status_code=400, content={"status": "error", "message": "Position Targets are only available on Trading and Watchlist accounts."})
+    ticker = normalize_ticker(raw_ticker)
+    if acc["account_type"] == "Watchlist":
+        known = any(item["ticker"] == ticker for item in get_watchlist_items(acc["id"]))
+    else:
+        known = ticker in derive_account_holdings(acc["id"])
+    if not known:
+        return None, JSONResponse(status_code=404, content={"status": "error", "message": "Ticker is not held in or watched by this account."})
+    return ticker, None
+
+
 @accounts_router.post("/accounts/holding-price-limit")
 @limiter.limit("60/minute")
 def api_set_holding_price_limit(request: Request, body: HoldingPriceLimitBody):
     try:
+        ticker, error = _require_limit_target(body.account_id, body.ticker)
+        if error:
+            return error
         fields = body.model_dump(include={"low_limit", "high_limit"}, exclude_unset=True)
-        set_holding_price_limit(body.account_id, body.ticker, **fields)
+        set_holding_price_limit(body.account_id, ticker, **fields)
         return JSONResponse(content={"status": "success"})
     except Exception as e:
         logger.error("api_set_holding_price_limit failed: %s", e)
