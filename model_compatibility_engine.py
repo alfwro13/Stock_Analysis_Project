@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import warnings
+from importlib.metadata import version as _package_version
 from pathlib import Path
 from typing import Callable, TypeVar
 
@@ -13,6 +14,9 @@ from sklearn.exceptions import InconsistentVersionWarning
 from config import ANOMALY_MODELS_DIR, BASE_DIR, HISTORICAL_DIR
 
 logger = logging.getLogger(__name__)
+
+xgboost_version = _package_version("xgboost")
+_XGBOOST_OLD_MODEL_MARKER = "older version of XGBoost"
 
 T = TypeVar("T")
 RetrainingCallback = Callable[[str, Path, str], None]
@@ -54,30 +58,51 @@ def _version_path(path: Path) -> Path:
     return path.with_name(f"{path.name}.sklearn-version")
 
 
+def _xgboost_version_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.xgboost-version")
+
+
 def dump_sklearn_artifact(artifact: T, path: Path) -> None:
-    """Persist an estimator and its scikit-learn version for pre-load compatibility checks."""
+    """Persist an estimator with its scikit-learn (and, if it embeds XGBoost, XGBoost) version."""
     joblib.dump(artifact, path)
     _version_path(path).write_text(sklearn_version)
+    xgboost_path = _xgboost_version_path(path)
+    # An uncompressed pickle names every class's module as plain bytes, so this finds XGBoost inside wrappers.
+    if b"xgboost" in path.read_bytes():
+        xgboost_path.write_text(xgboost_version)
+    else:
+        xgboost_path.unlink(missing_ok=True)
 
 
 def load_sklearn_artifact(path: Path, retraining_job_id: str) -> T:
-    """Load a trusted local artifact and reject unsupported cross-version estimators."""
+    """Load a trusted local artifact and reject estimators trained by another scikit-learn or XGBoost version."""
     version_path = _version_path(path) if isinstance(path, Path) else None
     if version_path is not None and version_path.exists():
         original_version = version_path.read_text().strip()
         if original_version != sklearn_version:
-            _report_mismatch(retraining_job_id, path, original_version)
+            _report_mismatch(retraining_job_id, path, f"scikit-learn {original_version}")
             raise ModelVersionMismatch(
                 f"{path} was trained with scikit-learn {original_version}"
             )
+    xgboost_path = _xgboost_version_path(path) if version_path is not None else None
+    if xgboost_path is not None and xgboost_path.exists():
+        original_xgboost = xgboost_path.read_text().strip()
+        if original_xgboost != xgboost_version:
+            _report_mismatch(retraining_job_id, path, f"XGBoost {original_xgboost}")
+            raise ModelVersionMismatch(
+                f"{path} was trained with XGBoost {original_xgboost}"
+            )
 
     try:
-        with warnings.catch_warnings():
+        # XGBoost reports an old pickle through a ctypes log callback, which swallows a raised warning,
+        # so its warning is recorded and inspected after the load instead of promoted to an error.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
             warnings.simplefilter("error", InconsistentVersionWarning)
             artifact = joblib.load(path)
     except InconsistentVersionWarning as warning:
         original_version = warning.original_sklearn_version
-        _report_mismatch(retraining_job_id, path, original_version)
+        _report_mismatch(retraining_job_id, path, f"scikit-learn {original_version}")
         logger.warning(
             "Rejected %s trained with scikit-learn %s; queued %s for retraining",
             path,
@@ -87,6 +112,23 @@ def load_sklearn_artifact(path: Path, retraining_job_id: str) -> T:
         raise ModelVersionMismatch(
             f"{path} was trained with scikit-learn {original_version}"
         ) from warning
+
+    xgboost_stale = False
+    for record in caught:
+        if _XGBOOST_OLD_MODEL_MARKER in str(record.message):
+            xgboost_stale = True
+        else:
+            warnings.warn_explicit(
+                record.message, record.category, record.filename, record.lineno
+            )
+    if xgboost_stale:
+        _report_mismatch(retraining_job_id, path, "an earlier XGBoost release")
+        logger.warning(
+            "Rejected %s trained with an earlier XGBoost release; queued %s for retraining",
+            path,
+            retraining_job_id,
+        )
+        raise ModelVersionMismatch(f"{path} was trained with an earlier XGBoost release")
 
     if version_path is not None and not version_path.exists():
         version_path.write_text(sklearn_version)
