@@ -1000,6 +1000,8 @@ Imports tickers from a CSV file already present on the server into the `market_u
 
 **Required CSV columns:** `ticker`, `company_name`, `sector`, `industry`, `currency`, `country`, `exchange`
 
+Surrounding whitespace in a `ticker` cell is stripped (case is kept). A row whose ticker fails `utils.is_valid_ticker()` (1-64 characters from `A-Z a-z 0-9 ^ . = _ -`) is not stored and not scanned; the success `message` then ends with `Skipped N row(s) with an invalid ticker (...)`, and the first 20 skipped values are written to the log. A file with only invalid rows answers `200` with `sideloaded 0 assets`.
+
 **Request body**
 
 ```json
