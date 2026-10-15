@@ -18,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
-from api_deps import limiter, require_step_up, _error_500
+from api_deps import FiniteModel, limiter, reject_non_finite, require_step_up, _error_500
 from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_server
 
 from config import (
@@ -77,11 +77,13 @@ class TickerRegistryBody(BaseModel):
 class IPv6TestRequest(BaseModel):
     ipv6_address: str
 
-class GhostfolioAccountsConfig(BaseModel):
+class GhostfolioAccountsConfig(FiniteModel):
     discovered: Optional[List[Any]] = None
     active: Optional[List[str]] = None
 
-class UIPreferencesConfig(BaseModel):
+    _finite_discovered = field_validator("discovered")(reject_non_finite)
+
+class UIPreferencesConfig(FiniteModel):
     LIVE_PORTFOLIO: Optional[bool] = None
     LIVE_WATCHLIST: Optional[bool] = None
     LIVE_DETAILS: Optional[bool] = None
@@ -107,13 +109,15 @@ class UIPreferencesConfig(BaseModel):
     FONT_SIZE_H2: Optional[int] = None
     FONT_SIZE_H3: Optional[int] = None
 
-class PositionSizingConfig(BaseModel):
+    _finite_views = field_validator("PORTFOLIO_VIEWS", "WATCHLIST_VIEWS")(reject_non_finite)
+
+class PositionSizingConfig(FiniteModel):
     ACCOUNT_VALUE: Optional[float] = None
     RISK_PCT: Optional[float] = None
     STOP_MULTIPLE: Optional[float] = None
     MIN_RISK_REWARD: Optional[float] = None
 
-class ScheduleItemConfig(BaseModel):
+class ScheduleItemConfig(FiniteModel):
     ENABLED: Optional[bool] = None
     DAYS: Optional[List[str]] = None
     TIME: Optional[str] = None
@@ -193,7 +197,7 @@ class ScheduleItemConfig(BaseModel):
             raise ValueError("RETENTION_COUNT must be between 1 and 365")
         return v
 
-class PatternFamilyScheduleConfig(BaseModel):
+class PatternFamilyScheduleConfig(FiniteModel):
     REGULAR_ENABLED: Optional[bool] = None
     INVERSE_ENABLED: Optional[bool] = None
     TOP_ENABLED: Optional[bool] = None
@@ -213,7 +217,7 @@ class PatternFamilyScheduleConfig(BaseModel):
     ENGULFING_ENABLED: Optional[bool] = None
     PIN_BAR_ENABLED: Optional[bool] = None
 
-class StableShortlistScheduleConfig(BaseModel):
+class StableShortlistScheduleConfig(FiniteModel):
     ENABLED: Optional[bool] = None
     DAYS: Optional[List[str]] = None
     TIME: Optional[str] = None
@@ -224,7 +228,7 @@ class StableShortlistScheduleConfig(BaseModel):
     MAX_SIGNAL_AGE_DAYS: Optional[int] = Field(default=None, ge=1, le=30)
     MIN_QUANT_SCORE: Optional[int] = Field(default=None, ge=0, le=100)
 
-class PatternDetectionScheduleConfig(BaseModel):
+class PatternDetectionScheduleConfig(FiniteModel):
     ENABLED: Optional[bool] = None
     MONITOR_PORTFOLIO: Optional[bool] = None
     MONITOR_WATCHLIST: Optional[bool] = None
@@ -242,12 +246,12 @@ class PatternDetectionScheduleConfig(BaseModel):
     MOMENTUM_DIVERGENCE: Optional[PatternFamilyScheduleConfig] = None
     CANDLESTICK_TRIGGER: Optional[PatternFamilyScheduleConfig] = None
 
-class RiskOrchestratorWeightsConfig(BaseModel):
+class RiskOrchestratorWeightsConfig(FiniteModel):
     VAR: Optional[float] = None
     CORRELATION: Optional[float] = None
     DRAWDOWN: Optional[float] = None
 
-class RiskOrchestratorThresholdsConfig(BaseModel):
+class RiskOrchestratorThresholdsConfig(FiniteModel):
     PHI_YELLOW: Optional[float] = None
     PHI_RED: Optional[float] = None
     VAR_PCT_YELLOW: Optional[float] = None
@@ -257,14 +261,14 @@ class RiskOrchestratorThresholdsConfig(BaseModel):
     DRAWDOWN_PCT_YELLOW: Optional[float] = None
     DRAWDOWN_PCT_RED: Optional[float] = None
 
-class RiskOrchestratorScheduleConfig(BaseModel):
+class RiskOrchestratorScheduleConfig(FiniteModel):
     ENABLED: Optional[bool] = None
     DAYS: Optional[List[str]] = None
     TIME: Optional[str] = None
     WEIGHTS: Optional[RiskOrchestratorWeightsConfig] = None
     THRESHOLDS: Optional[RiskOrchestratorThresholdsConfig] = None
 
-class SchedulingConfig(BaseModel):
+class SchedulingConfig(FiniteModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
     PROFILER_ENGINE: Optional[ScheduleItemConfig] = None
     UNIVERSE_DEEP_SYNC: Optional[ScheduleItemConfig] = None
@@ -301,12 +305,12 @@ class SchedulingConfig(BaseModel):
     RISK_ORCHESTRATOR: Optional[RiskOrchestratorScheduleConfig] = None
     RISK_ORCHESTRATOR_DIGEST: Optional[ScheduleItemConfig] = None
 
-class ReportsDefaultsConfig(BaseModel):
+class ReportsDefaultsConfig(FiniteModel):
     MR_MAX_RSI: Optional[int] = None
     DIV_MIN_YIELD: Optional[float] = None
     DIV_MIN_SCORE: Optional[int] = None
 
-class NotificationItemConfig(BaseModel):
+class NotificationItemConfig(FiniteModel):
     ENABLED: Optional[bool] = None
     TIME: Optional[str] = None
     FREQUENCY: Optional[str] = None
@@ -337,7 +341,7 @@ class NotificationItemConfig(BaseModel):
     PRIOR_TREND_MIN_PCT: Optional[float] = None
     VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
 
-class PatternFamilyAlertConfig(BaseModel):
+class PatternFamilyAlertConfig(FiniteModel):
     PRIOR_TREND_MIN_PCT: Optional[float] = None
     VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
     BALANCE_TOLERANCE_PCT: Optional[float] = None
@@ -370,7 +374,7 @@ class PatternFamilyAlertConfig(BaseModel):
     WICK_MULTIPLIER: Optional[float] = None
     OPPOSITE_WICK_MAX_PCT: Optional[float] = None
 
-class PatternDetectionAlertConfig(BaseModel):
+class PatternDetectionAlertConfig(FiniteModel):
     COOLDOWN_MINUTES: Optional[float] = None
     RETRIGGER_PERCENT: Optional[float] = None
     REARM_PERCENT: Optional[float] = None
@@ -386,7 +390,7 @@ class PatternDetectionAlertConfig(BaseModel):
     MOMENTUM_DIVERGENCE: Optional[PatternFamilyAlertConfig] = None
     CANDLESTICK_TRIGGER: Optional[PatternFamilyAlertConfig] = None
 
-class NotificationsConfig(BaseModel):
+class NotificationsConfig(FiniteModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None
     EARNINGS_ALERTS: Optional[NotificationItemConfig] = None
     INSIDER_TRADING: Optional[NotificationItemConfig] = None
@@ -401,18 +405,20 @@ class NotificationsConfig(BaseModel):
     PATTERN_DETECTION_ALERTS: Optional[PatternDetectionAlertConfig] = None
     RISK_ORCHESTRATOR_ALERTS: Optional[NotificationItemConfig] = None
 
-class FreetradeMappingsConfig(BaseModel):
+class FreetradeMappingsConfig(FiniteModel):
     US_MICS: Optional[List[str]] = None
     EXCHANGES: Optional[dict] = None
 
-class FileLoggingConfig(BaseModel):
+    _finite_exchanges = field_validator("EXCHANGES")(reject_non_finite)
+
+class FileLoggingConfig(FiniteModel):
     ENABLED: Optional[bool] = None
     LEVEL: Optional[str] = None
     DAYS_TO_KEEP: Optional[int] = None
     ARCHIVE: Optional[bool] = None
     LOG_DIR: Optional[str] = None
 
-class SettingsConfig(BaseModel):
+class SettingsConfig(FiniteModel):
     model_config = {"extra": "forbid"}
 
     SERVER_URL: Optional[str] = None
@@ -442,6 +448,8 @@ class SettingsConfig(BaseModel):
     XRAY_TARGETS: Optional[dict] = None
     META_SCORING: Optional[dict] = None
     FILE_LOGGING: Optional[FileLoggingConfig] = None
+
+    _finite_free_form = field_validator("NOTIFICATION_ROUTING", "XRAY_TARGETS", "META_SCORING")(reject_non_finite)
 
     @field_validator("BIND_HOST")
     @classmethod

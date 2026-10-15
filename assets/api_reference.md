@@ -68,7 +68,7 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 
 ### Request input limits (SEC 23/27)
 
-Request models in `api_routes_accounts.py` and `api_routes.py` that carry a float inherit `api_deps.FiniteModel` (`allow_inf_nan=False`): `Infinity`, `-Infinity`, `NaN` and a number that overflows to infinity (`1e999`) are rejected with `422`, so a non-finite price, quantity or limit can never be stored. The size limits below live in `constants.py`; an over-limit request is refused whole, never truncated:
+Request models in `api_routes_accounts.py`, `api_routes.py` and the `POST /api/settings` schema in `api_routes_system.py` that carry a float inherit `api_deps.FiniteModel` (`allow_inf_nan=False`): `Infinity`, `-Infinity`, `NaN` and a number that overflows to infinity (`1e999`) are rejected with `422`, so a non-finite price, quantity or limit can never be stored. The size limits below live in `constants.py`; an over-limit request is refused whole, never truncated:
 
 | Limit | Value | Where |
 |---|---|---|
@@ -1191,7 +1191,11 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
 
 Requires a password step-up (see `POST /api/step-up`).
 
-`SettingsConfig` (`api_routes_system.py`) declares `extra: "forbid"` — any field not in its schema is rejected with a 422. Credentials are **not** part of this schema; they are `.env` secrets saved through their own dedicated endpoints and read back at runtime via `os.environ.get(...)`, never through `POST /api/settings`:
+`SettingsConfig` (`api_routes_system.py`) declares `extra: "forbid"` — any field not in its schema is rejected with a 422. Credentials are **not** part of this schema; they are `.env` secrets saved through their own dedicated endpoints and read back at runtime via `os.environ.get(...)`, never through `POST /api/settings`.
+
+A non-finite number (`Infinity`, `-Infinity`, `NaN`, `1e999`) anywhere in the body is rejected with a 422, so it can never be written to `config.json`. Every nested settings model inherits `api_deps.FiniteModel`, and the untyped blocks (`XRAY_TARGETS`, `META_SCORING`, `NOTIFICATION_ROUTING`, `FREETRADE_MAPPINGS.EXCHANGES`, `GHOSTFOLIO_ACCOUNTS.discovered`, `UI_PREFERENCES.*_VIEWS`) are walked by `api_deps.reject_non_finite`.
+
+The credential endpoints are:
 
 | Credential | Save endpoint | `.env` key(s) |
 |---|---|---|
