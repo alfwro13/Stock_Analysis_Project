@@ -9,6 +9,7 @@ from contextlib import suppress
 from time import perf_counter
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
@@ -192,6 +193,15 @@ async def request_timing_middleware(request: Request, call_next):
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # FastAPI's default handler echoes each rejected `input`; an inf/nan there makes JSONResponse raise, turning the 422 into a 500.
+    detail = [{key: value for key, value in error.items() if key not in ("input", "ctx")} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": detail})
+
+
+app.add_exception_handler(RequestValidationError, _validation_error_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CSRFMiddleware,

@@ -137,6 +137,14 @@ Saving/renaming/deleting a view is a **full-list replacement** via
 the complete updated list, matching `POST /api/ui-preferences/columns`'s existing
 pattern rather than adding separate add/rename/delete endpoints.
 
+**Size limits (SEC 23/27).** Both endpoints write into `config.json`, which every page reads, so
+they refuse oversize input with `422`: at most 20 Views per page, a view name of at most 100
+characters (the View name input carries `maxlength="100"`), 50 filter conditions per view, filter
+`value`/`value2` of at most 200 characters, and at most 200 keys of at most 64 characters in any
+column list. The picker itself sends at most one entry per registry column (about 100 per page),
+so the 200-key limit has roughly 2x headroom; a test fails if the registry outgrows it. The
+constants are `constants.TABLE_*`.
+
 **Applying a view does not introduce a second visibility engine.** `column_picker.js`'s
 `ColumnPicker.applyView(columnKeys, columnOrder)` recomputes the same `hidden_core_columns`/
 `shown_optional_columns` state the individual checkboxes already maintain, applies it

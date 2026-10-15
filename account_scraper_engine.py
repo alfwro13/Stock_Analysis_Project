@@ -2,6 +2,7 @@
 import csv
 import io
 import logging
+import math
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -10,6 +11,7 @@ import lxml.html
 import pandas as pd
 
 from config import load_config
+from constants import PRICE_CSV_MAX_ROWS
 from database import (
     add_price_history, get_account, get_latest_price, get_price_as_of, get_price_history,
     get_scraper_headers,
@@ -111,6 +113,8 @@ def import_price_csv(account_id: int, csv_text: str) -> dict:
         return {"imported": 0, "skipped": 0}
     header = [c.strip().lower() for c in rows[0]]
     data_rows = rows[1:] if header == ["date", "marketprice"] else rows
+    if len(data_rows) > PRICE_CSV_MAX_ROWS:
+        return {"error": f"Price CSV has more than {PRICE_CSV_MAX_ROWS} rows."}
 
     imported = 0
     skipped = 0
@@ -123,6 +127,9 @@ def import_price_csv(account_id: int, csv_text: str) -> dict:
             datetime.strptime(date_str, "%Y-%m-%d")
             price = float(price_str)
         except ValueError:
+            skipped += 1
+            continue
+        if not math.isfinite(price):
             skipped += 1
             continue
         if add_price_history(account_id, date_str, price, source="csv_import"):

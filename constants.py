@@ -72,8 +72,23 @@ SCHEDULER_RUN_HISTORY_LIMIT = 20  # runs kept per job in scheduler_run_history; 
 DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 1800  # a torch upgrade pulls several GB of CUDA wheels; the old 300 s limit killed it mid-download
 DEPENDENCY_INSTALL_RESUME_RETRIES = 10     # pip --resume-retries: re-attempts for an interrupted wheel download
 
+# ── Request input limits (SEC 23/27) ──────────────────────────────────────────
+CSV_IMPORT_MAX_BYTES        = 2 * 1024 * 1024  # transactions CSV upload
+CSV_IMPORT_MAX_ROWS         = 5000             # data rows in one transactions CSV
+CSV_IMPORT_MAX_TICKERS      = 200              # unique tickers in one CSV: each unknown one costs up to 2 live Yahoo lookups
+PRICE_CSV_MAX_CHARS         = 500_000          # price-history CSV body
+PRICE_CSV_MAX_ROWS          = 10_000
+ETF_CONSTITUENTS_MAX        = 50
+OPTION_LEGS_MAX             = 20
+TABLE_VIEWS_MAX             = 20               # saved column-preset Views per page
+TABLE_COLUMN_KEYS_MAX       = 200              # keys in any one column list (registry holds ~100 per page)
+TABLE_COLUMN_KEY_MAX_CHARS  = 64
+TABLE_VIEW_NAME_MAX_CHARS   = 100
+TABLE_FILTER_CONDITIONS_MAX = 50
+TABLE_FILTER_VALUE_MAX_CHARS = 200
+
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.181"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.182"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

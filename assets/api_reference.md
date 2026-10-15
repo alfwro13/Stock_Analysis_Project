@@ -66,6 +66,19 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 }
 ```
 
+### Request input limits (SEC 23/27)
+
+Request models in `api_routes_accounts.py` and `api_routes.py` that carry a float inherit `api_deps.FiniteModel` (`allow_inf_nan=False`): `Infinity`, `-Infinity`, `NaN` and a number that overflows to infinity (`1e999`) are rejected with `422`, so a non-finite price, quantity or limit can never be stored. The size limits below live in `constants.py`; an over-limit request is refused whole, never truncated:
+
+| Limit | Value | Where |
+|---|---|---|
+| Transactions CSV upload | 2 MB (`413`), 5,000 data rows, 200 unique tickers (`422`) | `POST /api/accounts/{id}/import-csv` |
+| Price-history CSV body | 500,000 characters, 10,000 rows (`422`) | `POST /api/accounts/{id}/price-history/import-csv` |
+| Option legs | 20 | `POST /api/options/payoff` |
+| ETF constituents | 50 | `POST /api/etf-predictors`, `PUT /api/etf-predictors/{id}`, `POST /api/etf-predictors/validate` |
+| Saved Views | 20 per page; name 100 characters; 50 filter conditions; filter `key`/`operator` 64 and `value`/`value2` 200 characters | `POST /api/ui-preferences/views` |
+| Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
+
 ### HTTP status codes used
 
 | Code | Meaning |
@@ -73,7 +86,8 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 | `200` | Success |
 | `400` | Bad request — invalid input |
 | `404` | Resource not found |
-| `422` | Validation error — request body failed schema check |
+| `413` | Upload larger than the route allows (`POST /api/accounts/{id}/import-csv`) |
+| `422` | Validation error — request body failed schema check. The `detail` list carries `loc`, `msg` and `type` only; the rejected value is never echoed back (`main._validation_error_handler`) |
 | `500` | Internal server error |
 | `502` | Bad gateway — upstream service (e.g. Yahoo Finance) failed |
 | `504` | Gateway timeout — upstream service timed out |
@@ -1062,7 +1076,8 @@ Calculates a payoff matrix for a multi-leg options strategy at 500 evenly-spaced
 
 | Status | Cause |
 |--------|-------|
-| `422` | Invalid input (e.g. zero quantity, missing fields) |
+| `422` | Invalid input (e.g. zero quantity, missing fields, a non-finite number, more than 20 legs) |
+| `429` | Rate limit exceeded (60/minute) |
 
 ---
 
@@ -3060,7 +3075,7 @@ Validates an ETF ticker and its constituent list against Yahoo Finance. Returns 
 }
 ```
 
-Rate limit: 10/minute.
+Returns `422` if more than 50 constituents are sent (no Yahoo lookup is made) or a weight is not finite. Rate limit: 10/minute.
 
 ---
 
@@ -3738,7 +3753,7 @@ Imports a GIA/broker-style activity export CSV (multipart file upload, field nam
 
 **Request:** `multipart/form-data` with a `file` field (the CSV).
 
-Returns 404 if the account does not exist; 422 if the CSV is missing a required column or is not valid UTF-8.
+Returns 404 if the account does not exist; 413 if the file is larger than 2 MB; 422 if the CSV is missing a required column, is not valid UTF-8, has more than 5,000 data rows or has more than 200 different tickers. A row with a non-finite number (`inf`, `nan`) is skipped and reported with the reason "a number in the row is not finite"; nothing is stored for it.
 
 **Response:**
 ```json
@@ -3829,6 +3844,8 @@ Bulk-imports historical prices from pasted CSV text (semicolon-delimited, header
 ```json
 { "status": "success", "message": "Imported 2 price row(s) (0 skipped).", "imported": 2, "skipped": 0 }
 ```
+
+Returns `422` if `csv_text` is longer than 500,000 characters or has more than 10,000 data rows. A row whose price is `inf`/`nan` is skipped and counted.
 
 ---
 
@@ -4219,6 +4236,8 @@ Sets one holding's low and/or high price alert limit ("Position Targets" — a s
 ```
 
 `low_limit`/`high_limit` are each optional and independently settable — a request that includes only `low_limit` leaves any previously-stored `high_limit` untouched (partial-update semantics via `db_accounts.upsert_holding_price_limit()`'s dynamic-column upsert; a field omitted from the request body is never written, so it can't silently clear a sibling value already set by an earlier request).
+
+A non-finite `low_limit`/`high_limit` (`Infinity`, `NaN`) is rejected with `422`; `null` clears the limit. The Home Assistant integration never sends a non-finite value: its Low/High Limit number entities are bounded 0–1,000,000 and send `null` for 0. Rate limit: 60/minute.
 
 **Response:** `{ "status": "success" }`.
 
