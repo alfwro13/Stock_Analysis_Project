@@ -1206,3 +1206,37 @@ def test_safe_http_url_accepts_only_absolute_web_links():
         "https://exa\nmple.com", "ftp://example.com",
     ):
         assert safe_http_url(bad) is None, repr(bad)
+
+
+class TestSettingsBlockShapeValidators:
+    def test_xray_targets_accept_a_new_band_name_and_a_negative_unbounded_threshold(self):
+        import config
+        value = {
+            "country_concentration": {"Germany": {"min": None, "max": 10}},
+            "risk_metric_targets": {"sharpe_ratio_min": -0.5},
+        }
+        assert config.validate_xray_targets(value) is value
+
+    def test_xray_targets_cap_the_number_of_band_names(self):
+        import config
+        too_many = {f"Country {i}": {"max": 1} for i in range(config.XRAY_BAND_NAMES_MAX + 1)}
+        with pytest.raises(ValueError, match="more than"):
+            config.validate_xray_targets({"country_concentration": too_many})
+
+    def test_xray_targets_reject_non_finite_numbers(self):
+        import config
+        with pytest.raises(ValueError):
+            config.validate_xray_targets({"sector_targets": {"Technology": {"max": float("inf")}}})
+
+    def test_meta_scoring_accepts_the_default_block(self):
+        import config
+        assert config.validate_meta_scoring(config.DEFAULT_CONFIG["META_SCORING"])
+
+    def test_meta_scoring_rejects_nan(self):
+        import config
+        with pytest.raises(ValueError):
+            config.validate_meta_scoring({"CRASH_VETO": {"MARKET_STRESS_THRESHOLD": float("nan")}})
+
+    def test_every_default_xray_target_passes_its_own_validator(self):
+        import config
+        assert config.validate_xray_targets(config.DEFAULT_CONFIG["XRAY_TARGETS"])

@@ -159,8 +159,9 @@
         if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
         fetch('/api/bubble-radar/run', { method: 'POST' })
             .then(r => r.json())
-            .then(() => {
+            .then(data => {
                 if (btn) { btn.disabled = false; btn.textContent = 'Run Scan'; }
+                if (data.status === 'busy') alert(data.message);
                 setTimeout(loadFlagged, 5000);
             })
             .catch(() => { if (btn) { btn.disabled = false; btn.textContent = 'Run Scan'; } });

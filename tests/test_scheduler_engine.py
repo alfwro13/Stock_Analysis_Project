@@ -20,6 +20,7 @@ from scheduler_engine import (
     _mark_job_started,
     _mark_job_done,
     get_active_jobs,
+    is_job_running,
     _with_job_source,
 )
 import scheduler_engine as _sched_module
@@ -874,6 +875,71 @@ class TestManualRunHistory:
         for _ in range(25):
             run_manual_job("limited_job", lambda: None)
         assert len(get_job_run_history("limited_job", limit=100)) == 20
+
+
+class TestManualRunGuard:
+    def _hold(self, job_id, source_runner):
+        started, release = threading.Event(), threading.Event()
+
+        def work():
+            started.set()
+            release.wait(5)
+            return "done"
+
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(value=source_runner(job_id, work)))
+        thread.start()
+        assert started.wait(5)
+        return thread, release, result
+
+    def test_manual_run_is_refused_while_a_manual_run_is_in_progress(self):
+        thread, release, _ = self._hold("guard_manual", lambda jid, fn: run_manual_job(jid, fn))
+        try:
+            assert is_job_running("guard_manual")
+            ran = []
+            assert run_manual_job("guard_manual", lambda: ran.append(1)) is None
+            assert ran == []
+        finally:
+            release.set()
+            thread.join(5)
+        assert not is_job_running("guard_manual")
+        assert len(get_job_run_history("guard_manual")) == 1
+
+    def test_manual_run_is_refused_while_a_scheduled_run_is_in_progress(self):
+        thread, release, _ = self._hold("guard_sched", lambda jid, fn: _with_job_source(jid, fn)())
+        try:
+            assert is_job_running("guard_sched")
+            assert run_manual_job("guard_sched", lambda: "x") is None
+        finally:
+            release.set()
+            thread.join(5)
+
+    def test_scheduled_run_is_not_blocked_by_a_manual_run(self):
+        thread, release, _ = self._hold("guard_sched_2", lambda jid, fn: run_manual_job(jid, fn))
+        try:
+            assert _with_job_source("guard_sched_2", lambda: "ran")() == "ran"
+            assert is_job_running("guard_sched_2")
+        finally:
+            release.set()
+            thread.join(5)
+        assert not is_job_running("guard_sched_2")
+
+    def test_guard_is_released_when_the_job_raises(self):
+        def fail():
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            run_manual_job("guard_fail", fail)
+        assert not is_job_running("guard_fail")
+        assert run_manual_job("guard_fail", lambda: "again") == "again"
+
+    def test_other_jobs_are_unaffected(self):
+        thread, release, _ = self._hold("guard_a", lambda jid, fn: run_manual_job(jid, fn))
+        try:
+            assert run_manual_job("guard_b", lambda: "b") == "b"
+        finally:
+            release.set()
+            thread.join(5)
 
 
 class TestModelRetrainingQueue:

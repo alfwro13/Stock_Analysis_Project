@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from api_deps import FiniteModel, limiter, _error_500
+from api_deps import FiniteModel, job_busy_response, limiter, _error_500
 from constants import ETF_CONSTITUENTS_MAX
 
 from config import HISTORICAL_DIR
@@ -74,6 +74,9 @@ def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers an AI Contagion scan in the background (useful for testing)."""
     try:
         from scheduler_engine import run_ai_contagion_job
+        busy = job_busy_response("ai_contagion_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "ai_contagion_job", run_ai_contagion_job)
         return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
     except Exception as e:
@@ -119,6 +122,9 @@ def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Trap Monitor scan in the background."""
     try:
         from scheduler_engine import run_trap_monitor_job
+        busy = job_busy_response("trap_monitor_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "trap_monitor_job", run_trap_monitor_job)
         return JSONResponse(content={"status": "success", "message": "Trap Monitor scan triggered."})
     except Exception as e:
@@ -191,8 +197,14 @@ def train_alert_referee(request: Request, background_tasks: BackgroundTasks, eng
         from alert_referee_engine import CONFLUENCE_ENGINE
         from scheduler_engine import run_alert_referee_training_job, run_confluence_referee_training_job
         if engine == CONFLUENCE_ENGINE:
+            busy = job_busy_response("confluence_referee_training_job")
+            if busy:
+                return busy
             background_tasks.add_task(run_manual_job, "confluence_referee_training_job", run_confluence_referee_training_job)
             return JSONResponse(content={"status": "success", "message": "Cross-Engine Alert Referee (Confluence) training triggered."})
+        busy = job_busy_response("alert_referee_training_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "alert_referee_training_job", run_alert_referee_training_job)
         return JSONResponse(content={"status": "success", "message": "Alert Confidence Referee training triggered."})
     except Exception as e:
@@ -235,6 +247,9 @@ def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Bubble Radar scan in the background."""
     try:
         from scheduler_engine import run_bubble_radar_job
+        busy = job_busy_response("bubble_radar_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "bubble_radar_job", run_bubble_radar_job)
         return JSONResponse(content={"status": "success", "message": "Bubble Radar scan triggered."})
     except Exception as e:
@@ -248,6 +263,9 @@ def run_risk_orchestrator(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Portfolio Heat Index scan in the background."""
     try:
         from scheduler_engine import run_risk_orchestrator_job
+        busy = job_busy_response("risk_orchestrator_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "risk_orchestrator_job", run_risk_orchestrator_job)
         return JSONResponse(content={"status": "success", "message": "Risk Orchestrator scan triggered."})
     except Exception as e:
@@ -350,6 +368,9 @@ def run_pairs_spread_scan(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Pairs Spread Monitor scan (Portfolio + Watchlist scope) in the background."""
     try:
         from scheduler_engine import run_pairs_spread_monitor_job
+        busy = job_busy_response("pairs_spread_monitor_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "pairs_spread_monitor_job", run_pairs_spread_monitor_job)
         return JSONResponse(content={"status": "success", "message": "Pairs Spread Monitor scan triggered."})
     except Exception as e:
@@ -437,6 +458,9 @@ def run_pattern_detection_scan(request: Request, background_tasks: BackgroundTas
     """Manually triggers a Pattern Detection scan (every registered family) in the background."""
     try:
         from scheduler_engine import run_pattern_detection_job
+        busy = job_busy_response("pattern_detection_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "pattern_detection_job", run_pattern_detection_job)
         return JSONResponse(content={"status": "success", "message": "Pattern Detection scan triggered."})
     except Exception as e:
@@ -555,6 +579,9 @@ def run_sector_relative_momentum_scan(request: Request, background_tasks: Backgr
     """Manually triggers a Sector-Relative Momentum ranking run in the background."""
     try:
         from scheduler_engine import run_sector_relative_momentum_job
+        busy = job_busy_response("sector_relative_momentum_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "sector_relative_momentum_job", run_sector_relative_momentum_job)
         return JSONResponse(content={"status": "success", "message": "Sector-Relative Momentum run triggered."})
     except Exception as e:
@@ -601,6 +628,9 @@ def run_stable_shortlist_scan(request: Request, background_tasks: BackgroundTask
     """Manually triggers a Stable Shortlist run (outcome resolution plus this week's snapshots) in the background."""
     try:
         from scheduler_engine import run_stable_shortlist_job
+        busy = job_busy_response("stable_shortlist_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "stable_shortlist_job", run_stable_shortlist_job)
         return JSONResponse(content={"status": "success", "message": "Stable Shortlist run triggered."})
     except Exception as e:
@@ -689,6 +719,9 @@ def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Quarterly Data Fetch in the background."""
     try:
         from scheduler_engine import run_forensic_quarterly_fetch_job
+        busy = job_busy_response("forensic_quarterly_fetch_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "forensic_quarterly_fetch_job", run_forensic_quarterly_fetch_job)
         return JSONResponse(content={"status": "success", "message": "Forensic Quarterly Data Fetch triggered."})
     except Exception as e:
@@ -702,6 +735,9 @@ def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks)
     """Manually triggers the Forensic Accounting Scores computation in the background."""
     try:
         from scheduler_engine import run_forensic_scores_job
+        busy = job_busy_response("forensic_scores_job")
+        if busy:
+            return busy
         background_tasks.add_task(run_manual_job, "forensic_scores_job", run_forensic_scores_job)
         return JSONResponse(content={"status": "success", "message": "Forensic Accounting Scores triggered."})
     except Exception as e:

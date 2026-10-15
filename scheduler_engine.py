@@ -44,6 +44,7 @@ scheduler.add_job = _tracked_add_job
 
 _active_jobs: dict[str, str] = {}
 _active_job_ids: dict[str, str] = {}
+_running_job_runs: dict[str, int] = {}
 _active_jobs_lock = _threading.Lock()
 _job_execution_context = _threading.local()
 
@@ -62,6 +63,10 @@ def _mark_job_done(name: str) -> None:
 def get_active_jobs() -> dict[str, str]:
     with _active_jobs_lock:
         return dict(_active_jobs)
+
+def is_job_running(job_id: str) -> bool:
+    with _active_jobs_lock:
+        return _running_job_runs.get(job_id, 0) > 0
 
 def get_active_job_average_durations() -> dict[str, float | None]:
     with _active_jobs_lock:
@@ -242,6 +247,13 @@ def _record_job_duration(
 
 
 def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
+    with _active_jobs_lock:
+        already_running = _running_job_runs.get(job_id, 0) > 0
+        if not (already_running and trigger_source == "manual"):
+            _running_job_runs[job_id] = _running_job_runs.get(job_id, 0) + 1
+    if already_running and trigger_source == "manual":
+        logger.warning("Manual run of %s skipped: it is already running.", job_id)
+        return None
     started = datetime.now(timezone.utc)
     previous_context = getattr(_job_execution_context, "current", None)
     context = {"error_detail": None}
@@ -266,6 +278,12 @@ def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
         )
         _job_execution_context.current = previous_context
         clear_job_source()
+        with _active_jobs_lock:
+            remaining = _running_job_runs.get(job_id, 0) - 1
+            if remaining > 0:
+                _running_job_runs[job_id] = remaining
+            else:
+                _running_job_runs.pop(job_id, None)
 
 
 def _on_job_event(event) -> None:

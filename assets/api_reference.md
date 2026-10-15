@@ -66,6 +66,19 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 }
 ```
 
+### Job already running (SEC 26/27 · S2-4)
+
+Every endpoint that queues a scheduled job's run on demand (`run_manual_job`: the Settings **Run Now** buttons and the tool pages' scan buttons) refuses the request with `409` while that job id is already running, whether the running instance was started by the scheduler or by an earlier click. Nothing is queued:
+
+```json
+{
+  "status": "busy",
+  "message": "Portfolio Quant Scan is already running. Wait for it to finish, then try again."
+}
+```
+
+The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. `POST /api/pairs-spread/run-universe`, `POST /api/pattern-detection/backfill`, `POST /api/market-regime/run` and the ETF predictor `run` / `fill-actuals` routes do not go through `run_manual_job` and have no guard yet.
+
 ### Request input limits (SEC 23/27)
 
 Request models in `api_routes_accounts.py`, `api_routes.py` and the `POST /api/settings` schema in `api_routes_system.py` that carry a float inherit `api_deps.FiniteModel` (`allow_inf_nan=False`): `Infinity`, `-Infinity`, `NaN` and a number that overflows to infinity (`1e999`) are rejected with `422`, so a non-finite price, quantity or limit can never be stored. The size limits below live in `constants.py`; an over-limit request is refused whole, never truncated:
@@ -102,6 +115,7 @@ The database writers (`add_transaction`, `update_transaction`, `add_watchlist_it
 | `200` | Success |
 | `400` | Bad request — invalid input |
 | `404` | Resource not found |
+| `409` | Conflict — `status: "busy"`: the job a trigger endpoint would start is already running, or a restore/install is in progress |
 | `413` | Upload larger than the route allows (`POST /api/accounts/{id}/import-csv`) |
 | `422` | Validation error — request body failed schema check. The `detail` list carries `loc`, `msg` and `type` only; the rejected value is never echoed back (`main._validation_error_handler`) |
 | `500` | Internal server error |
@@ -1210,6 +1224,15 @@ Requires a password step-up (see `POST /api/step-up`).
 `SettingsConfig` (`api_routes_system.py`) declares `extra: "forbid"` — any field not in its schema is rejected with a 422. Credentials are **not** part of this schema; they are `.env` secrets saved through their own dedicated endpoints and read back at runtime via `os.environ.get(...)`, never through `POST /api/settings`.
 
 A non-finite number (`Infinity`, `-Infinity`, `NaN`, `1e999`) anywhere in the body is rejected with a 422, so it can never be written to `config.json`. Every nested settings model inherits `api_deps.FiniteModel`, and the untyped blocks (`XRAY_TARGETS`, `META_SCORING`, `NOTIFICATION_ROUTING`, `FREETRADE_MAPPINGS.EXCHANGES`, `GHOSTFOLIO_ACCOUNTS.discovered`, `UI_PREFERENCES.*_VIEWS`) are walked by `api_deps.reject_non_finite`.
+
+**Shapes and paths (SEC 26/27 · S2-6).** The free-form blocks and the log folder are checked at the boundary, so a bad value is a `422` and never reaches `config.json`:
+
+| Field | Rule |
+|---|---|
+| `FILE_LOGGING.LOG_DIR` | A relative folder that resolves inside the project root (`log_config.resolve_log_dir()`). Absolute paths, `..` escapes, symlinks that leave the project and empty values are refused. `configure_file_logging()` and the `/api/logs/*` reader apply the same check to a value already in `config.json` and fall back to `logs/` with a warning |
+| `NOTIFICATION_ROUTING` | Keys must be a registered source (`notification_engine.NOTIFICATION_SOURCES`, a non-dynamic `JOB_GRAPH` job id, or `scheduler_status`); each value an object whose keys are only `log_file`, `in_app`, `nextcloud_talk` and whose values are booleans (`notification_engine.validate_routing_map()`). `effective_routing()` also ignores an already-stored entry that is not an object, so one bad entry cannot stop that source's alerts |
+| `XRAY_TARGETS` | Sections and threshold keys must exist in `config.DEFAULT_CONFIG["XRAY_TARGETS"]`. The band sections (`market_development`, `regional_clusters`, `country_concentration`, `sector_targets`, `asset_class_targets`) take up to 100 entries of 1–64 characters, each `{min, max}` with a number from 0 to 100 or `null`. Threshold keys take a number or `null`: `*_pct` keys 0–100, `hhi_max` 0–1, others any finite number (`config.validate_xray_targets()`) |
+| `META_SCORING` | Only `REGIME_WEIGHTS.{Bull,Chop}.{composite_score,ml_confidence,pattern,trap}` and `CRASH_VETO.MARKET_STRESS_THRESHOLD` (`DEFAULT_CONFIG`'s keys), each a number from 0 to 1 (`config.validate_meta_scoring()`) |
 
 The credential endpoints are:
 

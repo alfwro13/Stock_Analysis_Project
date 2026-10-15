@@ -548,7 +548,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label><abbr title="Directory where log files are written, relative to the project root. Created automatically if it does not exist.">Log directory (relative path)</abbr></label>
+                    <label><abbr title="Directory where log files are written, relative to the project root. It must stay inside the project folder (no absolute paths or ..) and is created automatically.">Log directory (relative path)</abbr></label>
                     <input type="text" id="FILE_LOGGING_LOG_DIR" class="form-control" value="{{ config.FILE_LOGGING.LOG_DIR | default('logs') if config.FILE_LOGGING else 'logs' }}" placeholder="logs">
                 </div>
                 <div class="form-group mt-10">

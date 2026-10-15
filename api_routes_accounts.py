@@ -25,7 +25,7 @@ from portfolio_metrics_engine import (
     portfolio_totals, set_holding_price_limit,
 )
 import notification_engine
-from api_deps import FiniteModel, limiter, _error_500
+from api_deps import FiniteModel, job_busy_response, limiter, _error_500
 from config import load_config
 from constants import CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
 from data_engine import fetch_and_save_single_ticker
@@ -820,6 +820,9 @@ def api_import_csv(request: Request, account_id: int, background_tasks: Backgrou
 
 @accounts_router.post("/accounts/value-snapshot/trigger")
 def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
+    busy = job_busy_response("account_value_snapshot_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "account_value_snapshot_job", run_account_value_snapshot, False)
     return JSONResponse(content={
         "status": "queued",
@@ -829,6 +832,9 @@ def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
 
 @accounts_router.post("/accounts/treasury-bills/maturity-sweep/trigger")
 def api_trigger_treasury_bill_maturity_sweep(background_tasks: BackgroundTasks):
+    busy = job_busy_response("treasury_bill_maturity_sweep_job")
+    if busy:
+        return busy
     background_tasks.add_task(run_manual_job, "treasury_bill_maturity_sweep_job", run_treasury_bill_maturity_sweep)
     return JSONResponse(content={
         "status": "queued",

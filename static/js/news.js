@@ -183,7 +183,12 @@ async function fetchNow() {
     btn.disabled = true;
     btn.textContent = '⏳ Fetching...';
     try {
-        await fetch('/api/news-feed/run-now', { method: 'POST' });
+        const job = await postJobTrigger('/api/news-feed/run-now');
+        if (!job.ok) {
+            btn.textContent = '✗ ' + (job.message || 'Not started');
+            setTimeout(() => { btn.textContent = '▶ Fetch Now'; btn.disabled = false; }, 3000);
+            return;
+        }
         btn.textContent = '✓ Queued';
         setTimeout(() => {
             btn.textContent = '▶ Fetch Now';

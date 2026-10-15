@@ -2,6 +2,7 @@
 import os
 import json
 import copy
+import math
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -618,6 +619,73 @@ DEFAULT_CONFIG = {
         }
     }
 }
+
+XRAY_BAND_NAMES_MAX = 100
+XRAY_BAND_NAME_MAX_CHARS = 64
+
+
+def _check_number(path: str, value, low=None, high=None, nullable=False) -> None:
+    if value is None and nullable:
+        return
+    ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if ok and low is not None and value < low:
+        ok = False
+    if ok and high is not None and value > high:
+        ok = False
+    if not ok:
+        bounds = f" between {low} and {high}" if low is not None and high is not None else ""
+        raise ValueError(f"{path} must be a number{bounds}" + (" or empty" if nullable else ""))
+
+
+def validate_xray_targets(value) -> dict:
+    """Shape check for the Settings XRAY_TARGETS block; the allowed sections and threshold keys come from DEFAULT_CONFIG."""
+    defaults = DEFAULT_CONFIG["XRAY_TARGETS"]
+    if not isinstance(value, dict):
+        raise ValueError("XRAY_TARGETS must be an object")
+    for section, body in value.items():
+        if section not in defaults:
+            raise ValueError(f"Unknown XRAY_TARGETS section: {str(section)[:64]!r}")
+        if not isinstance(body, dict):
+            raise ValueError(f"XRAY_TARGETS.{section} must be an object")
+        if all(isinstance(v, dict) for v in defaults[section].values()):
+            if len(body) > XRAY_BAND_NAMES_MAX:
+                raise ValueError(f"XRAY_TARGETS.{section} has more than {XRAY_BAND_NAMES_MAX} entries")
+            for name, band in body.items():
+                if not isinstance(name, str) or not 0 < len(name) <= XRAY_BAND_NAME_MAX_CHARS:
+                    raise ValueError(f"XRAY_TARGETS.{section} entry names must be 1-{XRAY_BAND_NAME_MAX_CHARS} characters")
+                if not isinstance(band, dict) or set(band) - {"min", "max"}:
+                    raise ValueError(f"XRAY_TARGETS.{section}.{name} must be an object with min and max")
+                for bound, number in band.items():
+                    _check_number(f"XRAY_TARGETS.{section}.{name}.{bound}", number, 0, 100, nullable=True)
+        else:
+            for key, number in body.items():
+                if key not in defaults[section]:
+                    raise ValueError(f"Unknown XRAY_TARGETS.{section} key: {str(key)[:64]!r}")
+                if key == "hhi_max":
+                    low, high = 0, 1
+                elif key.endswith("_pct"):
+                    low, high = 0, 100
+                else:
+                    low = high = None
+                _check_number(f"XRAY_TARGETS.{section}.{key}", number, low, high, nullable=True)
+    return value
+
+
+def validate_meta_scoring(value) -> dict:
+    """Shape check for the Settings META_SCORING block: only DEFAULT_CONFIG's keys, every leaf a 0-1 number."""
+    def walk(node, defaults, path):
+        if not isinstance(node, dict):
+            raise ValueError(f"{path} must be an object")
+        for key, item in node.items():
+            if key not in defaults:
+                raise ValueError(f"Unknown {path} key: {str(key)[:64]!r}")
+            if isinstance(defaults[key], dict):
+                walk(item, defaults[key], f"{path}.{key}")
+            else:
+                _check_number(f"{path}.{key}", item, 0, 1)
+    walk(value, DEFAULT_CONFIG["META_SCORING"], "META_SCORING")
+    return value
+
 
 def _open_private(path):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
