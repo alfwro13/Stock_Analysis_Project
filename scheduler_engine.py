@@ -171,7 +171,7 @@ def queue_model_retraining(job_id: str, artifact_path, original_version: str) ->
         "system_update_status",
         "Warning",
         (
-            f"{job_label(job_id)} was trained with scikit-learn {original_version}. "
+            f"{job_label(job_id)} was trained with {original_version}. "
             "The incompatible artifact will not be used. Retraining is queued to begin "
             "immediately after startup, one model family at a time."
         ),
