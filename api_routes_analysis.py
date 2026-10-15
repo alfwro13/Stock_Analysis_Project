@@ -384,7 +384,10 @@ def run_pairs_spread_universe(request: Request, background_tasks: BackgroundTask
     """Manually triggers an on-demand-only full market-universe Pairs Spread scan in the background. No scheduled equivalent — too expensive to run nightly."""
     try:
         from scheduler_engine import run_pairs_spread_universe_scan
-        background_tasks.add_task(run_pairs_spread_universe_scan)
+        busy = job_busy_response("pairs_spread_universe_source")
+        if busy:
+            return busy
+        background_tasks.add_task(run_manual_job, "pairs_spread_universe_source", run_pairs_spread_universe_scan)
         return JSONResponse(content={"status": "success", "message": "Pairs Spread Monitor universe scan triggered — this can take a minute or two."})
     except Exception as e:
         logger.error("Failed to trigger Pairs Spread Monitor universe scan: %s", e)
@@ -473,8 +476,11 @@ def run_pattern_detection_scan(request: Request, background_tasks: BackgroundTas
 def run_pattern_detection_backfill(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a one-time historical backtest over each monitored ticker's full parquet history — can take several minutes."""
     try:
-        from pattern_detection_engine import backfill_historical_patterns
-        background_tasks.add_task(backfill_historical_patterns)
+        from scheduler_engine import run_pattern_detection_backfill_job
+        busy = job_busy_response("pattern_detection_backfill_source")
+        if busy:
+            return busy
+        background_tasks.add_task(run_manual_job, "pattern_detection_backfill_source", run_pattern_detection_backfill_job)
         return JSONResponse(content={"status": "success", "message": "Pattern Detection historical backfill triggered — this can take several minutes."})
     except Exception as e:
         logger.error("Failed to trigger Pattern Detection historical backfill: %s", e)
@@ -991,8 +997,11 @@ def get_market_regime_full(request: Request):
 def run_market_regime_now(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the HMM price regime calculation in the background."""
     try:
-        from regime_engine import run_price_regime_hmm
-        background_tasks.add_task(run_price_regime_hmm)
+        from scheduler_engine import run_market_regime_hmm_job
+        busy = job_busy_response("market_regime_hmm_source")
+        if busy:
+            return busy
+        background_tasks.add_task(run_manual_job, "market_regime_hmm_source", run_market_regime_hmm_job)
         return JSONResponse(content={"status": "success", "message": "HMM regime calculation triggered."})
     except Exception as e:
         logger.error("market-regime/run failed: %s", e)
@@ -1237,32 +1246,15 @@ def delete_etf_predictor(request: Request, config_id: int):
 def run_etf_predictor(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
         from database import get_etf_predictor_config
+        from scheduler_engine import run_etf_predictor_job
         if get_etf_predictor_config(config_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
 
-        def _bg():
-            try:
-                from etf_predictor_engine import run_prediction
-                from scheduler_engine import log_sched_notification
-                result = run_prediction(config_id)
-                if result.get("status") != "success":
-                    log_sched_notification("Warning", f"ETF predictor [{config_id}] run: {result.get('error')}")
-                else:
-                    ptype = result.get("prediction_type", "next_open")
-                    price = result.get("predicted_price")
-                    chg = result.get("predicted_change_pct")
-                    signal = result.get("signal_source", "")
-                    log_sched_notification(
-                        "Success",
-                        f"ETF predictor [{config_id}] ({ptype}) — "
-                        f"{price} ({chg:+.2f}%) | signal: {signal}" if price and chg is not None else
-                        f"ETF predictor [{config_id}] prediction complete."
-                    )
-            except Exception as exc:
-                from scheduler_engine import log_sched_notification
-                log_sched_notification("Error", f"ETF predictor [{config_id}] run failed: {exc}")
-
-        background_tasks.add_task(_bg)
+        job_id = f"etf_predictor_{config_id}_pre_job"
+        busy = job_busy_response(job_id)
+        if busy:
+            return busy
+        background_tasks.add_task(run_manual_job, job_id, run_etf_predictor_job, config_id, False)
         return JSONResponse(content={"status": "success", "message": f"ETF predictor {config_id} run initiated."})
     except Exception as e:
         logger.error("run_etf_predictor %s failed: %s", config_id, e)
@@ -1274,20 +1266,15 @@ def run_etf_predictor(request: Request, config_id: int, background_tasks: Backgr
 def fill_etf_predictor_actuals(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
         from database import get_etf_predictor_config
+        from scheduler_engine import run_etf_predictor_fill_actuals_job
         if get_etf_predictor_config(config_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
 
-        def _bg():
-            try:
-                from etf_predictor_engine import fill_actuals_for_config
-                fill_actuals_for_config(config_id)
-                from scheduler_engine import log_sched_notification
-                log_sched_notification("Success", f"ETF predictor [{config_id}] actuals filled.")
-            except Exception as exc:
-                from scheduler_engine import log_sched_notification
-                log_sched_notification("Error", f"ETF predictor [{config_id}] fill-actuals failed: {exc}")
-
-        background_tasks.add_task(_bg)
+        job_id = f"etf_predictor_{config_id}_post_job"
+        busy = job_busy_response(job_id)
+        if busy:
+            return busy
+        background_tasks.add_task(run_manual_job, job_id, run_etf_predictor_fill_actuals_job, config_id)
         return JSONResponse(content={"status": "success", "message": f"ETF predictor {config_id} fill-actuals initiated."})
     except Exception as e:
         logger.error("fill_etf_predictor_actuals %s failed: %s", config_id, e)

@@ -23,9 +23,9 @@ The page has a scope toggle, and every scan (scheduled or on-demand) is tagged w
 - **Universe** (`SCOPE_UNIVERSE`) — the full market universe via `db_helpers.get_universe_tickers()`
   (the same `market_universe` table the nightly Quant Scan covers, ~thousands of tickers).
   **On-demand only** — no scheduled job, triggered from the page (`POST /api/pairs-spread/run-universe`
-  → `scheduler_jobs.run_pairs_spread_universe_scan()`, a plain background task, not an
-  APScheduler job). Represented in the Workflow Monitor as the `pairs_spread_universe_source`
-  `non_job` entry, not a schedulable job. **Never fires alerts** — see §4.
+  → `scheduler_jobs.run_pairs_spread_universe_scan()` through `run_manual_job`, not an
+  APScheduler job; a second click while a scan runs is refused with 409). Represented in the
+  Workflow Monitor as the `pairs_spread_universe_source` `non_job` entry, not a schedulable job. **Never fires alerts** — see §4.
 
 `pairs_spread_results.scope` keeps the two scopes' rows from clobbering each other: each scan
 does `DELETE FROM pairs_spread_results WHERE scope = ?` before inserting, and `pair_key` is

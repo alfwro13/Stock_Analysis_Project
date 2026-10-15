@@ -258,3 +258,59 @@ def test_update_etf_predictor_rejects_an_unsafe_ticker_and_keeps_the_config(clie
         assert _db.get_etf_predictor_config(config_id)["etf_ticker"] == "TST.L"
     finally:
         _db.soft_delete_etf_predictor_config(config_id)
+
+
+def _create_config() -> int:
+    import database as _db
+    return _db.create_etf_predictor_config(
+        _SAMPLE_BODY["name"], _SAMPLE_BODY["etf_ticker"], _SAMPLE_BODY["constituents"],
+    )
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("suffix,job_suffix,phase", [("run", "pre", "pre-open"), ("fill-actuals", "post", "post-close")])
+def test_etf_trigger_answers_409_busy_while_its_scheduled_job_runs(client, suffix, job_suffix, phase):
+    from starlette.background import BackgroundTasks
+    import database as _db
+    config_id = _create_config()
+    checked = []
+
+    def _running(job_id):
+        checked.append(job_id)
+        return True
+
+    try:
+        with patch("scheduler_engine.is_job_running", side_effect=_running), \
+             patch.object(BackgroundTasks, "add_task") as add_task:
+            resp = client.post(f"/api/etf-predictors/{config_id}/{suffix}")
+        assert resp.status_code == 409
+        data = _json(resp)
+        assert data["status"] == "busy"
+        assert f"ETF Price Predictor #{config_id} ({phase}) is already running" in data["message"]
+        assert checked == [f"etf_predictor_{config_id}_{job_suffix}_job"]
+        add_task.assert_not_called()
+    finally:
+        _db.soft_delete_etf_predictor_config(config_id)
+
+
+@pytest.mark.api
+def test_etf_run_and_fill_actuals_queue_the_tracked_manual_job(client):
+    from starlette.background import BackgroundTasks
+    import database as _db
+    import scheduler_engine
+    config_id = _create_config()
+    try:
+        with patch.object(BackgroundTasks, "add_task") as add_task:
+            assert client.post(f"/api/etf-predictors/{config_id}/run").status_code == 200
+            assert client.post(f"/api/etf-predictors/{config_id}/fill-actuals").status_code == 200
+        run_call, fill_call = add_task.call_args_list
+        assert run_call.args == (
+            scheduler_engine.run_manual_job, f"etf_predictor_{config_id}_pre_job",
+            scheduler_engine.run_etf_predictor_job, config_id, False,
+        )
+        assert fill_call.args == (
+            scheduler_engine.run_manual_job, f"etf_predictor_{config_id}_post_job",
+            scheduler_engine.run_etf_predictor_fill_actuals_job, config_id,
+        )
+    finally:
+        _db.soft_delete_etf_predictor_config(config_id)

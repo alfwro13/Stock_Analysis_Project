@@ -1038,3 +1038,95 @@ class TestCanonicalJobNames:
             _sched_module.run_ml_training()
         assert "Global Model Training (Walk-Forward)" in captured
         assert "ML Global Training" not in captured
+
+
+class TestFormerlyUntrackedManualTriggers:
+    """Pairs-spread universe, pattern-detection backfill, market-regime run and the ETF predictor run/fill-actuals
+    triggers run through run_manual_job: guarded by a job id, listed in the manifest and written to run history."""
+
+    def test_new_manual_entries_are_non_job_nodes_with_canonical_labels(self):
+        nodes = {n["id"]: n for n in build_workflow_graph()["nodes"]}
+        assert nodes["pattern_detection_backfill_source"]["label"] == "Pattern Detection (historical backfill)"
+        assert nodes["market_regime_hmm_source"]["label"] == "Market Regime (HMM)"
+        for node_id in ("pattern_detection_backfill_source", "market_regime_hmm_source"):
+            assert nodes[node_id]["status"] == "manual"
+
+    def test_dynamic_etf_ids_resolve_to_their_graph_label(self):
+        assert job_label("etf_predictor_7_pre_job") == "ETF Price Predictor #7 (pre-open)"
+        assert job_label("etf_predictor_12_post_job") == "ETF Price Predictor #12 (post-close)"
+
+    def test_backfill_runner_is_guarded_named_and_recorded(self):
+        seen = {}
+
+        def _fake_backfill():
+            seen["active"] = dict(get_active_jobs())
+            seen["running"] = is_job_running("pattern_detection_backfill_source")
+            return 3
+
+        with patch("pattern_detection_engine.backfill_historical_patterns", _fake_backfill):
+            run_manual_job("pattern_detection_backfill_source", _sched_module.run_pattern_detection_backfill_job)
+
+        assert "Pattern Detection (historical backfill)" in seen["active"]
+        assert seen["running"] is True
+        assert not is_job_running("pattern_detection_backfill_source")
+        row = get_job_run_history("pattern_detection_backfill_source")[0]
+        assert (row["trigger_source"], row["status"]) == ("manual", "success")
+
+    def test_backfill_runner_failure_is_recorded_as_error(self):
+        with patch("pattern_detection_engine.backfill_historical_patterns", side_effect=RuntimeError("boom")):
+            run_manual_job("pattern_detection_backfill_source", _sched_module.run_pattern_detection_backfill_job)
+        row = get_job_run_history("pattern_detection_backfill_source")[0]
+        assert row["status"] == "error"
+        assert "boom" in row["error_detail"]
+
+    def test_market_regime_runner_records_success(self):
+        result = {"label": "Bull", "date": "2026-10-14", "state": 0, "probability": 0.9}
+        with patch("regime_engine.run_price_regime_hmm", return_value=result):
+            run_manual_job("market_regime_hmm_source", _sched_module.run_market_regime_hmm_job)
+        row = get_job_run_history("market_regime_hmm_source")[0]
+        assert (row["trigger_source"], row["status"]) == ("manual", "success")
+
+    def test_market_regime_runner_records_an_empty_result_as_error(self):
+        with patch("regime_engine.run_price_regime_hmm", return_value={}):
+            run_manual_job("market_regime_hmm_source", _sched_module.run_market_regime_hmm_job)
+        row = get_job_run_history("market_regime_hmm_source")[0]
+        assert row["status"] == "error"
+        assert "no result" in row["error_detail"]
+
+    def test_etf_run_uses_the_scheduled_pre_job_id_and_name(self):
+        seen = {}
+
+        def _fake_prediction(config_id):
+            seen["active"] = dict(get_active_jobs())
+            seen["running"] = is_job_running("etf_predictor_41_pre_job")
+            return {"status": "success", "predicted_price": 10.0, "predicted_change_pct": 1.0,
+                    "signal_source": "basket", "next_open_date": "2026-10-16", "etf_info": {"name": "TST"}}
+
+        with patch("etf_predictor_engine.run_prediction", _fake_prediction):
+            run_manual_job("etf_predictor_41_pre_job", _sched_module.run_etf_predictor_job, 41, False)
+
+        assert "ETF Price Predictor #41 (pre-open)" in seen["active"]
+        assert seen["running"] is True
+        row = get_job_run_history("etf_predictor_41_pre_job")[0]
+        assert (row["trigger_source"], row["status"]) == ("manual", "success")
+
+    def test_etf_fill_actuals_runner_only_fills_and_uses_the_post_job_id(self):
+        seen = {}
+
+        def _fake_fill(config_id):
+            seen["running"] = is_job_running("etf_predictor_42_post_job")
+
+        with patch("etf_predictor_engine.fill_actuals_for_config", _fake_fill), \
+             patch("etf_predictor_engine.run_prediction") as run_prediction:
+            run_manual_job("etf_predictor_42_post_job", _sched_module.run_etf_predictor_fill_actuals_job, 42)
+
+        run_prediction.assert_not_called()
+        assert seen["running"] is True
+        assert get_job_run_history("etf_predictor_42_post_job")[0]["status"] == "success"
+
+    def test_etf_fill_actuals_failure_is_recorded_as_error(self):
+        with patch("etf_predictor_engine.fill_actuals_for_config", side_effect=RuntimeError("no rows")):
+            run_manual_job("etf_predictor_43_post_job", _sched_module.run_etf_predictor_fill_actuals_job, 43)
+        row = get_job_run_history("etf_predictor_43_post_job")[0]
+        assert row["status"] == "error"
+        assert "no rows" in row["error_detail"]
