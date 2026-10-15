@@ -44,16 +44,22 @@ _MODEL_LOCK = threading.Lock()
 2. Acquire `_MODEL_LOCK`
 3. Re-check (double-checked locking — guards against race on startup)
 4. Inject `HF_TOKEN` from environment (see §4)
-5. Attempt `pipeline(..., revision=NLP_FINBERT_REVISION, local_files_only=True)` — loads the pinned snapshot from the local cache
+5. Attempt `pipeline(..., revision=NLP_FINBERT_REVISION, model_kwargs={"use_safetensors": True}, local_files_only=True)` — loads the pinned snapshot from the local cache
 6. On `OSError` (that snapshot is not cached), fall back to an online download of the same pinned revision — only happens on first run
 
-**Revision pin (SEC 22/27 · S6-4):** both calls pass `revision=constants.NLP_FINBERT_REVISION`, the `ProsusAI/finbert` `main` commit `4556d13` (`pytorch_model.bin`, loaded with `weights_only` on torch ≥ 2.6). Before the pin, the model was resolved by name, so each load queried the Hub and could pick up `refs/pr/29` (an unmerged convert-bot PR), a revision the model owner never reviewed. Its weights are identical to `main`'s (checked tensor by tensor, 202 of 202). To move to a new revision, change the constant, then pre-download it on each host (below).
+**Revision pin (SEC 22/27 · S6-4):** both calls pass `revision=constants.NLP_FINBERT_REVISION`, the `ProsusAI/finbert` `main` commit `0bc2ac1` (2026-10-12), and `model_kwargs={"use_safetensors": True}`, so the weights load from the owner-published `model.safetensors` and a pickle `pytorch_model.bin` is never read. Before the pin, the model was resolved by name, so each load queried the Hub and could pick up `refs/pr/29` (an unmerged convert-bot PR), a revision the model owner never reviewed. To move to a new revision, change the constant, then pre-download it on each host (below).
+
+**Revision history (reviewed 2026-10-15):** the pin moved from `4556d13` (2023-05-23, `pytorch_model.bin` only) to `0bc2ac1` after the owner published `model.safetensors` and new license terms. Verified before the move: `config.json` and the tokenizer files are byte-identical at both revisions; `model.safetensors` (SHA-256 `e5897858…`, the same file the convert-bot PR #29 carried) matches `4556d13`'s `pytorch_model.bin` tensor for tensor, 202 of 202 bit-identical with the same shapes and dtypes, so sentiment scores do not change. `4556d13` remains a valid pin if a rollback is needed (its snapshot needs `pytorch_model.bin`, so also drop `use_safetensors`).
+
+**License:** the model card declares the weights CC BY-NC-SA 4.0 (copyright MIH AI B.V.): non-commercial use only, adaptations shared alike, no warranty or support, and the user is solely responsible for judging whether their use is non-commercial. The training data carries its own terms (Financial PhraseBank CC BY-NC-SA 3.0; Reuters TRC2 under NIST access terms). The repository does not redistribute the weights; the app downloads them from the Hub. The README's Credits section carries the matching notice.
 
 **Offline in production:** the systemd unit sets `Environment="HF_HUB_OFFLINE=1"`, so no load contacts the Hub (the `local_files_only` call alone still did, to list the model's discussions and refs). With it set the first-run fallback in step 6 cannot download: on a fresh install, or after changing `NLP_FINBERT_REVISION`, run once with the variable unset, as the service user:
 
 ```
-HF_HUB_OFFLINE=0 venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('ProsusAI/finbert', revision='<NLP_FINBERT_REVISION>')"
+HF_HUB_OFFLINE=0 venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('ProsusAI/finbert', revision='<NLP_FINBERT_REVISION>', allow_patterns=['*.json', '*.txt', 'model.safetensors'])"
 ```
+
+The filter fetches the five files the load needs (about 420 MB) instead of the whole repository (about 1.75 GB with the flax, tf and pickle weights). Snapshots of earlier revisions in `~/.cache/huggingface/hub/models--ProsusAI--finbert/snapshots/` are not used any more and can be deleted.
 
 Until the pinned snapshot is cached the sentiment analyzer is unavailable (`_get_finbert_analyzer()` returns `None` and the scan aborts with an error log).
 
@@ -205,7 +211,7 @@ Yield metrics rely entirely on quantitative rate-of-change math and bypass the N
 
 | Class | Tests |
 |---|---|
-| `TestGetFinbertAnalyzer` | Singleton guarantee, `local_files_only` first, OSError fallback, both calls pin `NLP_FINBERT_REVISION`, HF_TOKEN injection, failure → `None` |
+| `TestGetFinbertAnalyzer` | Singleton guarantee, `local_files_only` first, OSError fallback, both calls pin `NLP_FINBERT_REVISION` and pass `use_safetensors`, HF_TOKEN injection, failure → `None` |
 | `TestScoreText` | Positive / negative / neutral mapping, truncation at `NLP_TEXT_TRUNCATE_CHARS` |
 | `TestFetchAndScoreNews` | Empty / null news, `NLP_NEWS_FETCH_LIMIT` cap, blank-item skipping, nested vs flat Yahoo payloads, per-item error resilience |
 | `TestUpdateAllSentiment` | Macro ticker injection, early-exit on no analyzer, UPDATE vs upsert path, connection always closed |

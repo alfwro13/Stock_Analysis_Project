@@ -122,6 +122,18 @@ class TestGetFinbertAnalyzer:
         assert revisions == {NLP_FINBERT_REVISION}
         assert re.fullmatch(r"[0-9a-f]{40}", NLP_FINBERT_REVISION)
 
+    def test_both_pipeline_calls_require_safetensors(self):
+        def _side_effect(*args, **kwargs):
+            if kwargs.get("local_files_only"):
+                raise OSError("cache miss")
+            return MagicMock()
+
+        with patch("huggingface_engine.pipeline", side_effect=_side_effect) as p:
+            _get_finbert_analyzer()
+
+        assert p.call_count == 2
+        assert all(c[1].get("model_kwargs") == {"use_safetensors": True} for c in p.call_args_list)
+
     def test_returns_none_when_pipeline_raises(self):
         with patch("huggingface_engine.pipeline", side_effect=RuntimeError("OOM")):
             result = _get_finbert_analyzer()
