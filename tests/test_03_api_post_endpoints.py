@@ -161,7 +161,8 @@ def test_trigger_endpoint_answers_409_busy_while_the_job_is_running(client, endp
 @pytest.mark.parametrize("endpoint", [
     "/api/ai-contagion/trigger", "/api/trap-monitor/run", "/api/alert-referee/train",
     "/api/alert-referee/train?engine=Confluence", "/api/bubble-radar/run", "/api/risk-orchestrator/run",
-    "/api/pairs-spread/run", "/api/pattern-detection/run", "/api/sector-relative-momentum/run",
+    "/api/pairs-spread/run", "/api/pairs-spread/run-universe", "/api/pattern-detection/run",
+    "/api/pattern-detection/backfill", "/api/market-regime/run", "/api/sector-relative-momentum/run",
     "/api/predicted-movers/shortlist/run", "/api/forensic-scores/run-fetch", "/api/forensic-scores/run-score",
     "/api/xray/trigger", "/api/accounts/value-snapshot/trigger",
     "/api/accounts/treasury-bills/maturity-sweep/trigger",

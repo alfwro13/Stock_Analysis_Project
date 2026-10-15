@@ -207,10 +207,14 @@
         btn.disabled = true;
         btn.textContent = 'Running…';
         status.textContent = '';
-        fetch('/api/market-regime/run', { method: 'POST' })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                status.textContent = data.message || 'Triggered.';
+        postJobTrigger('/api/market-regime/run')
+            .then(function (job) {
+                status.textContent = job.message || 'Triggered.';
+                if (!job.ok) {
+                    btn.disabled = false;
+                    btn.textContent = '▶ Run Now';
+                    return;
+                }
                 setTimeout(function () {
                     loadData();
                     btn.disabled = false;

@@ -154,9 +154,7 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
     label = meta["label"]
     consumes = list(meta.get("consumes", []))
     if _DYNAMIC_ETF_RE.match(job_id):
-        cfg_id = job_id.split("_")[2]
-        phase = "pre-open" if job_id.endswith("pre_job") else "post-close"
-        label = f"ETF Price Predictor #{cfg_id} ({phase})"
+        label = job_label(job_id)
     elif _DYNAMIC_ACCOUNT_SCRAPER_RE.match(job_id):
         account_id = int(job_id.split("_")[2])
         acc = get_account(account_id)

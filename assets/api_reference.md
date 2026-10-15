@@ -68,7 +68,7 @@ Trigger endpoints queue heavy work (ML training, data scans, etc.) as background
 
 ### Job already running (SEC 26/27 · S2-4)
 
-Every endpoint that queues a scheduled job's run on demand (`run_manual_job`: the Settings **Run Now** buttons and the tool pages' scan buttons) refuses the request with `409` while that job id is already running, whether the running instance was started by the scheduler or by an earlier click. Nothing is queued:
+Every endpoint that queues a job's run on demand (`run_manual_job`: the Settings **Run Now** buttons and the tool pages' scan, backfill, regime and ETF predictor buttons) refuses the request with `409` while that job id is already running, whether the running instance was started by the scheduler or by an earlier click. Nothing is queued:
 
 ```json
 {
@@ -77,7 +77,7 @@ Every endpoint that queues a scheduled job's run on demand (`run_manual_job`: th
 }
 ```
 
-The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. `POST /api/pairs-spread/run-universe`, `POST /api/pattern-detection/backfill`, `POST /api/market-regime/run` and the ETF predictor `run` / `fill-actuals` routes do not go through `run_manual_job` and have no guard yet.
+The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. Three triggers have no scheduled job of their own and use a `non_job` manifest id: `POST /api/pairs-spread/run-universe` (`pairs_spread_universe_source`), `POST /api/pattern-detection/backfill` (`pattern_detection_backfill_source`) and `POST /api/market-regime/run` (`market_regime_hmm_source`). The ETF predictor routes use the predictor's own scheduled ids: `POST /api/etf-predictors/{id}/run` is guarded by `etf_predictor_{id}_pre_job` and `POST /api/etf-predictors/{id}/fill-actuals` by `etf_predictor_{id}_post_job`, so a click is refused while that predictor's scheduled run is in progress; the 404 for an unknown config is answered before the busy check. A run of any of these is written to `scheduler_run_history` (`trigger_source: manual`) and shows in the Active Jobs panel.
 
 ### Request input limits (SEC 23/27)
 
@@ -2697,7 +2697,7 @@ Returns full Viterbi history, empirical transition matrix, and per-regime return
 
 ### `POST /api/market-regime/run`
 
-Triggers `run_price_regime_hmm()` as a background task. Returns `{"status": "success"}` immediately.
+Triggers `run_price_regime_hmm()` as a background task (job id `market_regime_hmm_source`, label "Market Regime (HMM)"). Returns `{"status": "success"}` immediately, or `409` with `"status": "busy"` while a run is in progress. A run that produces no result is recorded as an error.
 
 ### `GET /api/market-stress`
 
@@ -3130,7 +3130,7 @@ Triggers a prediction run as a background task. Returns immediately; progress vi
 
 **Response:** `{"status": "success", "message": "ETF predictor {id} run initiated."}`
 
-Returns 404 if not found.
+Returns 404 if not found, and 409 `busy` while the predictor's pre-open job (`etf_predictor_{id}_pre_job`) is running.
 
 Rate limit: 5/minute.
 
@@ -3140,7 +3140,7 @@ Rate limit: 5/minute.
 
 Triggers an actuals-fill pass for this config as a background task. Fetches the current ETF price and fills `actual_open` for unresolved prediction rows.
 
-Returns 404 if not found.
+Returns 404 if not found, and 409 `busy` while the predictor's post-close job (`etf_predictor_{id}_post_job`) is running.
 
 Rate limit: 5/minute.
 
@@ -4515,7 +4515,7 @@ Triggers a background Portfolio + Watchlist scan immediately (the same scan the 
 
 ### `POST /api/pairs-spread/run-universe`
 
-Triggers an on-demand-only full market-universe scan in the background — no scheduled equivalent, since this scans the entire `market_universe` ticker set (thousands of tickers) and can take up to a couple of minutes. Never fires alerts (see `assets/pairs_spread_monitor.md` §5). Returns `{"status": "success"}` immediately; results appear in `GET /api/pairs-spread/results?scope=universe` once the scan finishes.
+Triggers an on-demand-only full market-universe scan in the background — no scheduled equivalent, since this scans the entire `market_universe` ticker set (thousands of tickers) and can take up to a couple of minutes. Never fires alerts (see `assets/pairs_spread_monitor.md` §5). Returns `{"status": "success"}` immediately, or `409` `busy` while a universe scan is running (job id `pairs_spread_universe_source`); results appear in `GET /api/pairs-spread/results?scope=universe` once the scan finishes.
 
 ### `GET /api/pairs-spread/chart/{ticker_a}/{ticker_b}`
 
@@ -4818,7 +4818,9 @@ immediately; results appear in `GET /api/pattern-detection/results` within a few
 Triggers a one-time historical backtest over each monitored ticker's full parquet history in the
 background — can take several minutes. Populates `pattern_detection_history` with resolved 14d/30d
 outcomes immediately (since for historical dates the future is already in the parquet), so the
-accuracy panel is populated before relying on live alerts.
+accuracy panel is populated before relying on live alerts. Runs under job id
+`pattern_detection_backfill_source` (label "Pattern Detection (historical backfill)"); answers `409` `busy`
+while a backfill is running.
 
 ### `GET /api/pattern-detection/accuracy`
 

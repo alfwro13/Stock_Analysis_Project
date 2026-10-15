@@ -64,6 +64,8 @@ JOB_GRAPH: dict[str, dict] = {
     # Pairs Spread Monitor's Universe scope — not a scheduled job; an operator-triggered,
     # on-demand-only full market-universe correlation scan (too expensive to run nightly).
     "pairs_spread_universe_source":   {"label": "Pairs Spread Monitor (Universe)",                "category": "manual",      "engine": "pairs_spread_engine.py",        "produces": ["pairs_spread_results"],                                       "consumes": ["historical_parquet", "market_universe", "stock_signals"],           "non_job": True, "settings_anchor": None},
+    "pattern_detection_backfill_source": {"label": "Pattern Detection (historical backfill)",   "category": "manual",      "engine": "pattern_detection_engine.py",   "produces": ["pattern_detection_history"],                                  "consumes": ["historical_parquet", "portfolio"],                                  "non_job": True, "settings_anchor": "tools-card"},
+    "market_regime_hmm_source":       {"label": "Market Regime (HMM)",                            "category": "manual",      "engine": "regime_engine.py",              "produces": ["market_regimes"],                                             "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": None},
     "pattern_detection_job":           {"label": "Pattern Detection",                              "category": "quant",       "engine": "pattern_detection_engine.py",   "produces": ["pattern_detection_results", "pattern_detection_history"],     "consumes": ["historical_parquet", "portfolio"],                                  "settings_anchor": "tools-card"},
     "pattern_detection_accuracy_fill_job": {"label": "Pattern Detection (accuracy fill)",          "category": "quant",       "engine": "pattern_detection_engine.py",   "produces": ["pattern_detection_history"],                                  "consumes": ["pattern_detection_history", "historical_parquet"],                  "settings_anchor": "tools-card"},
     "forensic_quarterly_fetch_job":   {"label": "Forensic Quarterly Data Fetch",                  "category": "quant",       "engine": "fundamentals_helpers.py",       "produces": ["forensic_quarterly_cache"],                                   "consumes": ["portfolio", "yahoo_price_data"],                                    "settings_anchor": "forensic-screener-card"},
@@ -188,10 +190,20 @@ _DYNAMIC_ACCOUNT_SCRAPER_RE = re.compile(r"^account_scraper_\d+_job$")
 _DYNAMIC_ACCOUNT_TOPUP_RE = re.compile(r"^account_autotopup_\d+_job$")
 
 
+def etf_predictor_job_label(job_id: str) -> str:
+    cfg_id = job_id.split("_")[2]
+    phase = "pre-open" if job_id.endswith("pre_job") else "post-close"
+    return f"ETF Price Predictor #{cfg_id} ({phase})"
+
+
 def job_label(job_id: str) -> str:
     """Canonical GUI display name for a job id — the single source of truth for naming."""
     meta = JOB_GRAPH.get(job_id)
-    return meta["label"] if meta else job_id
+    if meta:
+        return meta["label"]
+    if _DYNAMIC_ETF_RE.match(job_id):
+        return etf_predictor_job_label(job_id)
+    return job_id
 
 
 def job_id_for_label(label: str) -> str | None:

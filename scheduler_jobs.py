@@ -1255,6 +1255,34 @@ def run_pattern_detection_accuracy_fill_job():
         record_job_run("pattern_detection_accuracy_fill_job")
 
 
+def run_pattern_detection_backfill_job():
+    from pattern_detection_engine import backfill_historical_patterns
+    _mark_job_started(job_label("pattern_detection_backfill_source"))
+    try:
+        backfill_historical_patterns()
+    except Exception as e:
+        logger.error("Pattern Detection historical backfill failed: %s", e)
+        log_sched_notification("Error", f"Pattern Detection historical backfill failed: {e}")
+    finally:
+        _mark_job_done(job_label("pattern_detection_backfill_source"))
+
+
+def run_market_regime_hmm_job():
+    from regime_engine import run_price_regime_hmm
+    _mark_job_started(job_label("market_regime_hmm_source"))
+    try:
+        result = run_price_regime_hmm()
+        if result:
+            log_sched_notification("Success", f"Market Regime (HMM): {result['label']} as of {result['date']}.")
+        else:
+            log_sched_notification("Error", "Market Regime (HMM) produced no result — see the application log.")
+    except Exception as e:
+        logger.error("Market Regime (HMM) run failed: %s", e)
+        log_sched_notification("Error", f"Market Regime (HMM) run failed: {e}")
+    finally:
+        _mark_job_done(job_label("market_regime_hmm_source"))
+
+
 def run_pairs_spread_universe_scan():
     """On-demand only (no scheduler job, no alerting) — a full market-universe correlation
     scan is too expensive to run automatically every night, and firing alerts off a scan the
@@ -1274,10 +1302,10 @@ def run_pairs_spread_universe_scan():
         _mark_job_done(job_label("pairs_spread_universe_source"))
 
 
-def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
+def run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"
-    job_name = f"ETF Price Predictor #{config_id} ({'post-close' if fill_actuals else 'pre-open'})"
+    job_name = job_label(job_id)
     _mark_job_started(job_name, job_id)
     log_sched_notification("Scheduler", f"Started {job_name} ({job_type})...")
     try:
@@ -1309,6 +1337,21 @@ def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
         record_job_run(job_id)
 
 
+def run_etf_predictor_fill_actuals_job(config_id: int) -> None:
+    job_id = f"etf_predictor_{config_id}_post_job"
+    job_name = job_label(job_id)
+    _mark_job_started(job_name, job_id)
+    try:
+        from etf_predictor_engine import fill_actuals_for_config
+        fill_actuals_for_config(config_id)
+        log_sched_notification("Success", f"ETF predictor [{config_id}] actuals filled.")
+    except Exception as e:
+        logger.error("ETF predictor %s fill-actuals failed: %s", config_id, e)
+        log_sched_notification("Error", f"ETF predictor [{config_id}] fill-actuals failed: {e}")
+    finally:
+        _mark_job_done(job_name)
+
+
 def register_etf_predictor_jobs(config: dict) -> None:
     config_id = config["id"]
     if not config.get("enabled") or config.get("deleted_at"):
@@ -1318,7 +1361,7 @@ def register_etf_predictor_jobs(config: dict) -> None:
     try:
         pre_h, pre_m = map(int, pre_time.split(":"))
         scheduler.add_job(
-            _run_etf_predictor_job,
+            run_etf_predictor_job,
             CronTrigger(day_of_week="mon-fri", hour=pre_h, minute=pre_m, timezone=timezone.utc),
             id=f"etf_predictor_{config_id}_pre_job",
             kwargs={"config_id": config_id, "fill_actuals": False},
@@ -1331,7 +1374,7 @@ def register_etf_predictor_jobs(config: dict) -> None:
     try:
         post_h, post_m = map(int, post_time.split(":"))
         scheduler.add_job(
-            _run_etf_predictor_job,
+            run_etf_predictor_job,
             CronTrigger(day_of_week="mon-fri", hour=post_h, minute=post_m, timezone=timezone.utc),
             id=f"etf_predictor_{config_id}_post_job",
             kwargs={"config_id": config_id, "fill_actuals": True},
