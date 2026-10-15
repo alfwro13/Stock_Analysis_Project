@@ -227,3 +227,34 @@ def test_validate_rejects_a_non_finite_weight(client):
         headers={"Content-Type": "application/json"},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.api
+def test_create_etf_predictor_rejects_an_unsafe_etf_or_constituent_ticker(client):
+    resp = client.post("/api/etf-predictors", json={
+        **_SAMPLE_BODY, "name": "Bad Constituent", "etf_ticker": "../X",
+        "constituents": [{"ticker": "AAPL", "weight": 50.0}, {"ticker": "/X/Y", "weight": 50.0}],
+    })
+    assert resp.status_code == 422
+    assert "ticker" in _json(resp)["message"]
+
+    import database as _db
+    assert "Bad Constituent" not in {c["name"] for c in _db.get_etf_predictor_configs()}
+
+
+@pytest.mark.api
+def test_update_etf_predictor_rejects_an_unsafe_ticker_and_keeps_the_config(client):
+    import database as _db
+    config_id = _db.create_etf_predictor_config(
+        name="Guard Update Test", etf_ticker="TST.L", constituents=[{"ticker": "AAPL", "weight": 1.0}],
+    )
+    try:
+        resp = client.put(f"/api/etf-predictors/{config_id}", json={**_SAMPLE_BODY, "name": "Guard Update Test", "etf_ticker": "../X"})
+        assert resp.status_code == 422
+        resp = client.put(f"/api/etf-predictors/{config_id}", json={
+            **_SAMPLE_BODY, "name": "Guard Update Test", "constituents": [{"ticker": "../Y", "weight": 1.0}],
+        })
+        assert resp.status_code == 422
+        assert _db.get_etf_predictor_config(config_id)["etf_ticker"] == "TST.L"
+    finally:
+        _db.soft_delete_etf_predictor_config(config_id)

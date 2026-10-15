@@ -79,6 +79,22 @@ Request models in `api_routes_accounts.py`, `api_routes.py` and the `POST /api/s
 | Saved Views | 20 per page; name 100 characters; 50 filter conditions; filter `key`/`operator` 64 and `value`/`value2` 200 characters | `POST /api/ui-preferences/views` |
 | Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
 
+### Ticker format (SEC 24/27 · S4-2)
+
+A stored ticker becomes a file name in the per-ticker engines (`data/historical/{ticker}.parquet`, `data/intraday/`, `data/fundamentals/`, `data/anomaly_models/`), so every route that stores one refuses a ticker that fails `utils.is_valid_ticker()` — 1 to 64 characters from `A-Z`, `a-z`, `0-9` and `^ . = _ -`, the same pattern `utils.safe_ticker_filename()` applies to every path. The route's own upper-casing happens first; a stored lowercase Ghostfolio asset UUID ticker is valid and is never re-cased. A refused ticker returns `422` with a message beginning `ticker must be 1-64 characters…` (`future_ticker …` for the registry field of that name), before any Yahoo lookup:
+
+| Route | Field(s) |
+|---|---|
+| `POST /api/accounts/{id}/transactions`, `PUT /api/accounts/{id}/transactions/{txn_id}` | `ticker` |
+| `POST /api/accounts/{id}/import-csv` | `Ticker` column — the row is skipped with reason "ticker is not a valid ticker symbol", not a request error |
+| `POST /api/watchlist/add`, `POST /api/accounts/{id}/watchlist-items` | `ticker` |
+| `PUT /api/accounts/{id}/benchmark-config` | each `tickers[].ticker` |
+| `POST /api/intraday-monitor/add` | `ticker` |
+| `POST /api/markets/registry`, `PUT /api/markets/registry/{ticker}` | `ticker`, `future_ticker` |
+| `POST /api/etf-predictors`, `PUT /api/etf-predictors/{id}` | `etf_ticker`, each `constituents[].ticker` |
+
+The database writers (`add_transaction`, `update_transaction`, `add_watchlist_item`, `replace_benchmark_tickers`, `upsert_ticker_registry_row`, `create_etf_predictor_config`, `update_etf_predictor_config`) refuse the same values, so the CSV importer and the internal writers are covered too.
+
 ### HTTP status codes used
 
 | Code | Meaning |
@@ -3682,13 +3698,13 @@ Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`
 }
 ```
 
-Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`, or if `txn_date` is not a real `YYYY-MM-DD` date or the resolved `currency` / `fee_currency` is not a three-letter code (case kept, so `GBp` is valid) — the message names the field.
+Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`, or if `txn_date` is not a real `YYYY-MM-DD` date, the resolved `currency` / `fee_currency` is not a three-letter code (case kept, so `GBp` is valid) or `ticker` is not a valid ticker (see **Ticker format**) — the message names the field.
 
 ---
 
 ### `PUT /api/accounts/{id}/transactions/{txn_id}`
 
-Updates a transaction. Same body, validation (422 for a malformed `txn_date`, `currency` or `fee_currency`) and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. Rate limit: 30/minute.
+Updates a transaction. Same body, validation (422 for a malformed `txn_date`, `currency`, `fee_currency` or `ticker`) and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. Rate limit: 30/minute.
 
 ---
 

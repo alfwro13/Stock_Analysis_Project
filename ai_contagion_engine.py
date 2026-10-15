@@ -10,6 +10,7 @@ import pandas as pd
 from config import HISTORICAL_DIR
 from market_pulse_write import upsert_live_price
 from market_session_helpers import is_quote_settled
+from utils import safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,10 @@ class AIContagionEngine:
         """Compares current 15-min volume against 20-day historical average.
         Falls back to False if historical parquet is absent (e.g. ETFs not in portfolio store)."""
         try:
-            df_hist = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet", columns=["Volume"])
+            safe_ticker = safe_ticker_filename(ticker)
+            if not safe_ticker:
+                return False
+            df_hist = pd.read_parquet(HISTORICAL_DIR / f"{safe_ticker}.parquet", columns=["Volume"])
             avg_vol = float(df_hist["Volume"].tail(20).mean())
             if avg_vol <= 0 or pd.isna(avg_vol):
                 return False

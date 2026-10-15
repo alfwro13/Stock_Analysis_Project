@@ -11,6 +11,7 @@ import ta
 from config import HISTORICAL_DIR
 from data_engine import load_or_fetch_daily_history
 from database import get_connection, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -554,7 +555,10 @@ def fill_trap_phase_actuals() -> int:
 
     batch: list[tuple[int, int, float, str, int]] = []
     for ticker, rows in by_ticker.items():
-        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            continue
+        path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not path.exists():
             continue
         try:

@@ -310,3 +310,22 @@ def test_get_recent_prediction_errors_only_returns_resolved_rows_for_type():
         conn.commit()
         conn.close()
     _db.soft_delete_etf_predictor_config(cid)
+
+
+@pytest.mark.db
+def test_etf_predictor_config_writers_refuse_an_unsafe_ticker():
+    assert _db.create_etf_predictor_config(
+        name="Unsafe DB ETF", etf_ticker="../X", constituents=[{"ticker": "A", "weight": 1.0}]) is None
+    assert _db.create_etf_predictor_config(
+        name="Unsafe DB Constituent", etf_ticker="OK.L", constituents=[{"ticker": "/X/Y", "weight": 1.0}]) is None
+
+    cid = _db.create_etf_predictor_config(
+        name="Safe DB ETF", etf_ticker="OK.L", constituents=[{"ticker": "A", "weight": 1.0}])
+    try:
+        assert cid is not None
+        assert _db.update_etf_predictor_config(cid, etf_ticker="../X") is False
+        assert _db.update_etf_predictor_config(cid, constituents=[{"ticker": "../Y", "weight": 1.0}]) is False
+        assert _db.get_etf_predictor_config(cid)["etf_ticker"] == "OK.L"
+        assert _db.update_etf_predictor_config(cid, etf_ticker="NEW.L") is True
+    finally:
+        _db.soft_delete_etf_predictor_config(cid)

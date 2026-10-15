@@ -474,3 +474,33 @@ def test_map_cash_row_with_a_non_finite_amount_raises():
     })
     with pytest.raises(account_csv_import_engine._NonFiniteNumber):
         account_csv_import_engine._map_csv_row(row)
+
+
+@pytest.mark.db
+def test_map_row_with_an_unsafe_ticker_is_skipped_before_any_lookup():
+    row = _row({"Title": "Evil", "Type": "ORDER", "Timestamp": "01/02/2021", "Account Currency": "GBP",
+                "Total Amount in Account Currency": "4.41", "Buy / Sell": "BUY", "Ticker": "../../etc/Z",
+                "Price per Share in Account Currency": "1", "Quantity": "1",
+                "Instrument Currency": "GBP", "Price per Share": "1"})
+    mapped, reason, key = account_csv_import_engine._map_csv_row(row)
+    assert mapped is None
+    assert reason == "bad_ticker"
+    assert key == "../../ETC/Z"
+
+
+@pytest.mark.db
+def test_import_skips_an_unsafe_ticker_row_and_stores_nothing_for_it():
+    aid = create_account("BadTickerImportAcc", "GBP")
+    csv_text = _csv(
+        "Evil,ORDER,01/02/2021,GBP,10.00,BUY,../X,GB0000000000,5.00,0.00,2,GBP,10.00,5.00,,,,,,,,,,,,",
+    )
+    with patch.object(account_csv_import_engine, "_ticker_resolvable") as resolvable:
+        result = account_csv_import_engine.import_csv_activities(aid, csv_text)
+
+    resolvable.assert_not_called()
+    assert result["imported"] == 0
+    assert result["skipped_rows"] == [{
+        "date": "01/02/2021", "ticker": "../X", "reason": "ticker is not a valid ticker symbol",
+    }]
+    from database import get_transactions
+    assert get_transactions(aid) == []

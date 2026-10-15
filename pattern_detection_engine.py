@@ -28,6 +28,7 @@ from database import (
 )
 from indicators import compute_rsi, compute_volume_sma
 from notification_engine import notify
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +287,10 @@ def fill_pattern_outcomes() -> int:
 
     batch: list[tuple[int, int, float, str, int]] = []
     for ticker, rows in by_ticker.items():
-        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            continue
+        path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not path.exists():
             continue
         try:
@@ -354,7 +358,10 @@ def backfill_historical_patterns(tickers: Optional[list[str]] = None) -> int:
 
     total_logged = 0
     for ticker in tickers:
-        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        safe_ticker = safe_ticker_filename(ticker)
+        if not safe_ticker:
+            continue
+        path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
         if not path.exists():
             continue
         try:

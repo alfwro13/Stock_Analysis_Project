@@ -288,3 +288,56 @@ def test_update_account_benchmark_cpi_target_pct():
     aid = create_account("PensionCpiTargetAcc", "GBP", account_type="Pension")
     assert update_account(aid, benchmark_cpi_target_pct=6.0) is True
     assert get_account(aid)["benchmark_cpi_target_pct"] == 6.0
+
+
+_UUID_TICKER = "9a1c1fdc-7d0e-4d3b-8a75-1e2d3c4b5a69"
+
+
+@pytest.mark.db
+def test_add_transaction_refuses_an_unsafe_ticker_and_keeps_a_lowercase_uuid():
+    """The ticker becomes a file name in a dozen engines, so the ledger refuses one that is not a
+    plain symbol; a lowercase Ghostfolio asset UUID is stored as it is."""
+    aid = create_account("RefuseBadTickerAcc", "GBP")
+    for bad in ("../X", "/X/Y", "../../Z", "<img src=x>", "A B", "A" * 65):
+        assert add_transaction(aid, "Buy", "2026-01-05", ticker=bad, currency="GBP",
+                               quantity=1, unit_price=10) is None, bad
+    assert get_transactions(aid) == []
+
+    assert add_transaction(aid, "Interest", "2026-01-05", ticker=_UUID_TICKER, currency="GBP",
+                           quantity=1, unit_price=10) is not None
+    assert add_transaction(aid, "Cash", "2026-01-05", ticker=None, unit_price=10) is not None
+    assert add_transaction(aid, "Cash", "2026-01-05", ticker="", unit_price=10) is not None
+    assert [t["ticker"] for t in get_transactions(aid) if t["txn_type"] == "Interest"] == [_UUID_TICKER]
+
+
+@pytest.mark.db
+def test_update_transaction_refuses_an_unsafe_ticker():
+    aid = create_account("RefuseBadTickerUpdateAcc", "GBP")
+    tid = add_transaction(aid, "Buy", "2026-01-05", ticker="ZUPD", currency="GBP", quantity=1, unit_price=10)
+    for bad in ("../X", "/X/Y", "A B"):
+        assert update_transaction(tid, ticker=bad) is False, bad
+    assert get_transaction(tid)["ticker"] == "ZUPD"
+    assert update_transaction(tid, ticker=None) is True
+    assert update_transaction(tid, ticker="ZUPD2") is True
+
+
+@pytest.mark.db
+def test_add_watchlist_item_refuses_an_unsafe_ticker():
+    from database import add_watchlist_item, get_watchlist_account, remove_watchlist_ticker
+
+    wl_id = get_watchlist_account()["id"]
+    for bad in ("../X", "/X/Y", "", "A B"):
+        assert add_watchlist_item(wl_id, bad) is None, bad
+    item_id = add_watchlist_item(wl_id, "ZWLGUARD")
+    try:
+        assert item_id is not None
+    finally:
+        remove_watchlist_ticker(wl_id, "ZWLGUARD")
+
+
+@pytest.mark.db
+def test_replace_benchmark_tickers_refuses_an_unsafe_ticker_and_keeps_the_old_list():
+    aid = create_account("BenchGuardAcc", "GBP", account_type="Pension")
+    assert replace_benchmark_tickers(aid, [{"ticker": "SPY", "display_name": "S&P"}]) is True
+    assert replace_benchmark_tickers(aid, [{"ticker": "../X", "display_name": "Bad"}]) is False
+    assert [t["ticker"] for t in get_benchmark_tickers(aid)] == ["SPY"]

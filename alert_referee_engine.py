@@ -12,6 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 from config import BASE_DIR, HISTORICAL_DIR, load_config
 from database import get_connection
 from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +136,9 @@ def backfill_historical_features() -> dict:
     updates = []
     skipped = 0
     for ticker, ticker_rows in by_ticker.items():
-        path = HISTORICAL_DIR / f"{ticker}.parquet"
-        if not path.exists():
+        safe_ticker = safe_ticker_filename(ticker)
+        path = HISTORICAL_DIR / f"{safe_ticker}.parquet" if safe_ticker else None
+        if path is None or not path.exists():
             skipped += len(ticker_rows)
             continue
         try:

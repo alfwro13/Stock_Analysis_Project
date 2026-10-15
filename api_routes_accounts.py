@@ -65,8 +65,8 @@ from scheduler_engine import (
 )
 from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
 from utils import (
-    has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch, is_iso_date,
-    measure_request_stage, normalize_ticker,
+    INVALID_TICKER_MESSAGE, has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch,
+    is_iso_date, is_valid_ticker, measure_request_stage, normalize_ticker,
 )
 from yahoo_engine import yahoo_engine
 
@@ -229,14 +229,18 @@ def _missing_fx_response(*currencies: Optional[str], txn_date: str) -> JSONRespo
     )
 
 
-def _invalid_input_response(dates: Optional[dict] = None, currencies: Optional[dict] = None) -> Optional[JSONResponse]:
-    """A 422 naming the first date or currency that cannot be stored; a blank currency is skipped because every caller falls back to a default for it."""
+def _invalid_input_response(
+    dates: Optional[dict] = None, currencies: Optional[dict] = None, ticker: Optional[str] = None,
+) -> Optional[JSONResponse]:
+    """A 422 naming the first date, currency or ticker that cannot be stored; a blank currency or ticker is skipped because every caller falls back to a default for it."""
     for name, value in (dates or {}).items():
         if not is_iso_date(value):
             return JSONResponse(status_code=422, content={"status": "error", "message": f"{name} must be a date in YYYY-MM-DD format."})
     for name, value in (currencies or {}).items():
         if value and not is_currency_code(value):
             return JSONResponse(status_code=422, content={"status": "error", "message": f"{name} must be a 3-letter currency code."})
+    if ticker and not is_valid_ticker(ticker):
+        return JSONResponse(status_code=422, content={"status": "error", "message": INVALID_TICKER_MESSAGE})
     return None
 
 
@@ -457,12 +461,13 @@ def api_create_transaction(
                 content={"status": "error", "message": "Use POST /accounts/{id}/transfer to record a transfer."},
             )
         currency = body.currency or acc["currency"]
+        ticker = normalize_ticker(body.ticker) if body.ticker else None
         invalid = _invalid_input_response(
             dates={"txn_date": body.txn_date}, currencies={"currency": currency, "fee_currency": body.fee_currency},
+            ticker=ticker,
         )
         if invalid:
             return invalid
-        ticker = normalize_ticker(body.ticker) if body.ticker else None
         if ticker:
             _ensure_ticker_data(ticker, background_tasks)
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
@@ -528,12 +533,13 @@ def api_update_transaction(
                 content={"status": "error", "message": f"txn_type must be one of: {', '.join(sorted(_TXN_TYPES))}"},
             )
         currency = body.currency or acc["currency"]
+        ticker = normalize_ticker(body.ticker) if body.ticker else None
         invalid = _invalid_input_response(
             dates={"txn_date": body.txn_date}, currencies={"currency": currency, "fee_currency": body.fee_currency},
+            ticker=ticker,
         )
         if invalid:
             return invalid
-        ticker = normalize_ticker(body.ticker) if body.ticker else None
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         if exchange_rate is None:
             return _missing_fx_response(currency, txn_date=body.txn_date)
@@ -716,6 +722,9 @@ def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistIte
         ticker = normalize_ticker(body.ticker)
         if not ticker:
             return JSONResponse(status_code=422, content={"status": "error", "message": "ticker is required."})
+        invalid = _invalid_input_response(ticker=ticker)
+        if invalid:
+            return invalid
         meta = resolve_watchlist_metadata(ticker)
         item_id = add_watchlist_item(
             acc["id"], ticker, meta["company_name"], meta["currency"], meta["quote_type"], meta["exchange"]
@@ -1251,6 +1260,10 @@ def api_update_benchmark_config(request: Request, account_id: int, body: Benchma
             {"ticker": normalize_ticker(t.ticker), "display_name": t.display_name.strip()}
             for t in body.tickers if t.ticker.strip() and t.display_name.strip()
         ]
+        for item in tickers:
+            invalid = _invalid_input_response(ticker=item["ticker"])
+            if invalid:
+                return invalid
         ok = update_account(account_id, benchmark_cpi_target_pct=body.cpi_target_pct)
         ok = replace_benchmark_tickers(account_id, tickers) and ok
         if not ok:

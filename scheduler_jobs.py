@@ -38,6 +38,7 @@ from universe_deep_sync_engine import run_universe_deep_sync
 from universe_engine import update_market_universe
 from xray_engine import run_xray_precompute
 from scheduler_manifest import job_label
+from utils import safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -1499,10 +1500,11 @@ def run_forensic_quarterly_fetch_job():
 
         fetched = skipped = errors = 0
         for ticker in tickers:
-            if ticker in non_equity_tickers:
+            safe_ticker = safe_ticker_filename(ticker)
+            if ticker in non_equity_tickers or not safe_ticker:
                 skipped += 1
                 continue
-            cache_path = FORENSIC_DIR / f"{ticker}.json"
+            cache_path = FORENSIC_DIR / f"{safe_ticker}.json"
             if cache_path.exists():
                 try:
                     age_days = (now_utc.timestamp() - cache_path.stat().st_mtime) / 86400
@@ -1560,7 +1562,10 @@ def run_forensic_scores_job():
         now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         for ticker in tickers:
-            cache_path = FORENSIC_DIR / f"{ticker}.json"
+            safe_ticker = safe_ticker_filename(ticker)
+            if not safe_ticker:
+                continue
+            cache_path = FORENSIC_DIR / f"{safe_ticker}.json"
             if not cache_path.exists():
                 continue
             try:

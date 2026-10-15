@@ -5,6 +5,7 @@ from typing import List, Optional
 from config import load_config
 from constants import NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_connection
+from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -1178,6 +1179,10 @@ def upsert_ticker_registry_row(**fields) -> bool:
     ticker = fields.get("ticker")
     if not ticker:
         logger.error("upsert_ticker_registry_row requires a ticker")
+        return False
+    future_ticker = fields.get("future_ticker")
+    if not is_valid_ticker(ticker) or (future_ticker and not is_valid_ticker(future_ticker)):
+        logger.error("Refused registry row %r: invalid ticker or future_ticker %r", ticker, future_ticker)
         return False
     cols = [c for c in _REGISTRY_COLUMNS if c in fields]
     if "ticker" not in cols:

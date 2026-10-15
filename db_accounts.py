@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 from database import get_connection
-from utils import is_currency_code, is_iso_date
+from utils import is_currency_code, is_iso_date, is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 def _invalid_txn_field(fields: dict) -> Optional[str]:
     if "txn_date" in fields and not is_iso_date(fields["txn_date"]):
         return "txn_date"
+    if fields.get("ticker") and not is_valid_ticker(fields["ticker"]):
+        return "ticker"
     for name in ("currency", "fee_currency"):
         if fields.get(name) is not None and not is_currency_code(fields[name]):
             return name
@@ -230,7 +232,7 @@ def add_transaction(
     linked_txn_id: Optional[int] = None,
     is_adjustment: bool = False,
 ) -> Optional[int]:
-    invalid = _invalid_txn_field({"txn_date": txn_date, "currency": currency, "fee_currency": fee_currency})
+    invalid = _invalid_txn_field({"txn_date": txn_date, "ticker": ticker, "currency": currency, "fee_currency": fee_currency})
     if invalid:
         logger.error("Refused transaction for account %s: invalid %s", account_id, invalid)
         return None
@@ -659,6 +661,9 @@ def add_watchlist_item(
     quote_type: Optional[str] = None,
     exchange: Optional[str] = None,
 ) -> Optional[int]:
+    if not is_valid_ticker(ticker):
+        logger.error("Refused watchlist item for account %s: invalid ticker %r", account_id, ticker)
+        return None
     conn = None
     try:
         conn = get_connection()
@@ -1070,6 +1075,9 @@ def get_benchmark_tickers(account_id: int) -> list:
 def replace_benchmark_tickers(account_id: int, tickers: list) -> bool:
     """Wholesale replace — the edit modal always submits the full list, so delete+reinsert is
     simpler and safer than diffing against the existing rows."""
+    if not all(is_valid_ticker(item["ticker"]) for item in tickers):
+        logger.error("Refused benchmark tickers for account %s: invalid ticker", account_id)
+        return False
     conn = None
     try:
         conn = get_connection()

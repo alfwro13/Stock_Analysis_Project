@@ -188,6 +188,15 @@ def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
     return ticker
 
 
+TICKER_FORMAT_RULE = "must be 1-64 characters from A-Z, a-z, 0-9 and ^ . = _ -"
+INVALID_TICKER_MESSAGE = f"ticker {TICKER_FORMAT_RULE}"
+
+
+def is_valid_ticker(value: Any) -> bool:
+    """The entry-point form of safe_ticker_filename(): one pattern for what may be stored, case kept so lowercase Ghostfolio asset UUIDs pass."""
+    return isinstance(value, str) and safe_ticker_filename(value) is not None
+
+
 def safe_local_path(value: Optional[str]) -> Optional[str]:
     """Same-origin relative path or None — browsers drop tab/CR/LF before parsing a URL, so '/<TAB>/host' must not pass as local."""
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:

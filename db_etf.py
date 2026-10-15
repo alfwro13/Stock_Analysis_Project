@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 
 from database import get_connection
+from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,11 @@ def get_etf_predictor_config(config_id: int) -> Optional[dict]:
             conn.close()
 
 
+def _invalid_etf_tickers(etf_ticker: Optional[str], constituents: Optional[list]) -> bool:
+    tickers = ([etf_ticker] if etf_ticker is not None else []) + [c.get("ticker") for c in constituents or []]
+    return not all(is_valid_ticker(t) for t in tickers)
+
+
 def create_etf_predictor_config(
     name: str,
     etf_ticker: str,
@@ -90,6 +96,9 @@ def create_etf_predictor_config(
     pre_run_time: str = "13:30",
     post_run_time: str = "22:00",
 ) -> Optional[int]:
+    if _invalid_etf_tickers(etf_ticker, constituents):
+        logger.error("Refused ETF predictor config %r: invalid ticker", name)
+        return None
     conn = None
     try:
         conn = get_connection()
@@ -124,6 +133,9 @@ def update_etf_predictor_config(config_id: int, **fields) -> bool:
     unknown = set(fields) - _ALLOWED_ETF_CONFIG_COLUMNS
     if unknown:
         logger.error("update_etf_predictor_config: unknown column(s) rejected: %s", unknown)
+        return False
+    if _invalid_etf_tickers(fields.get("etf_ticker"), fields.get("constituents")):
+        logger.error("Refused update of ETF predictor config %s: invalid ticker", config_id)
         return False
     conn = None
     try:
