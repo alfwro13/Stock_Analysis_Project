@@ -1604,6 +1604,21 @@ def test_active_jobs_reports_package_drift_and_install_state(client, restart_env
     assert body["dependency_install"] == {"state": "failed", "command": "/venv/bin/python3 -m pip install --require-hashes -r requirements.lock"}
 
 
+@pytest.mark.api
+def test_active_jobs_never_serves_pip_output_after_failed_install(client, restart_env):
+    """pip's stderr belongs to the log and the Error notification; the active-jobs poll every session reads carries only state and command."""
+    restart_env._requirements_changed_pending = True
+    _, mock_notify, _ = _run_execute_restart(
+        restart_env, pip_result=MagicMock(returncode=1, stdout="", stderr="ERROR: pip-secret-marker /srv/private/path"),
+    )
+    assert "pip-secret-marker" in mock_notify.call_args[0][2]
+
+    resp = client.get("/api/system/active-jobs")
+
+    assert "pip-secret-marker" not in resp.text
+    assert set(_json(resp)["dependency_install"]) == {"state", "command"}
+
+
 def test_bg_execute_ml_inference_runs_quantile_scoring_too():
     """The manual "Run Inference Now" trigger must match the scheduled ml_inference_job's
     behavior (update_daily_ml_predictions + score_quantile_predictions), not just the first
