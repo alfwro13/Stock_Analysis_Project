@@ -69,7 +69,7 @@ Both tables (`portfolio_heat_index`, `ticker_risk_contribution`) are latest-snap
 no history — matching the style of `xray_correlation_matrix`/`market_pulse_cache`.
 `risk_orchestrator_engine.get_ticker_risk_contributions(limit=None)` is the one reader of the
 per-ticker table (highest `risk_score` first, then ticker); `GET /api/risk-orchestrator/status`
-and the Claude MCP Server's `get_heat_index` tool both read through it.
+and the MCP Server's `get_heat_index` tool both read through it.
 
 ## 4. Visual-only "circuit breaker"
 

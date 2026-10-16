@@ -1,6 +1,6 @@
-# Claude MCP Server
+# MCP Server
 
-A read-only [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language, replacing the copy/paste of `ai_engine.py` prompts. Canonical name (AGENTS.md rule 8): **Claude MCP Server**. Code: `mcp_server.py`; the key check is in `main.py` `auth_middleware`.
+A read-only [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language, replacing the copy/paste of `ai_engine.py` prompts. Canonical name (AGENTS.md rule 8): **MCP Server**. Code: the `mcp_server/` package (layout below); the key check is in `main.py` `auth_middleware`.
 
 It reads only. No tool changes a setting, places a trade or writes data, and none may be added that does (AGENTS.md rule 22). Tools are thin wrappers over existing engine functions; they add no calculations.
 
@@ -56,13 +56,28 @@ CSRF does not interfere: the CSRF middleware only enforces when a `session` cook
 Streamable HTTP in stateless JSON mode: each `POST /mcp` is one JSON-RPC request answered with one JSON body, with no session and no event stream. This suits a read-only tool server and survives app restarts without the client having to reconnect. Consequences: server-initiated messages (sampling, progress streams) are not available, and `GET /mcp` is refused (the SDK would otherwise hold it open forever).
 
 - `/mcp/` (trailing slash) redirects to `/mcp` with `307` after authentication; `/mcp` itself never redirects.
-- Synchronous tool functions run in a worker thread (the SDK uses `anyio.to_thread`), so a slow tool never blocks the event loop (rule 10). `tests/test_mcp_server.py` stalls a tool and checks an unrelated request still answers.
-- The SDK's session manager can run only once per instance, so each app lifespan builds its own (`mcp_server.run()`); several lifespans in one process (the test suite) are safe.
+- Synchronous tool functions run in a worker thread (the SDK uses `anyio.to_thread`), so a slow tool never blocks the event loop (rule 10). `tests/mcp_server/test_transport.py` stalls a tool and checks an unrelated request still answers.
+- The SDK's session manager can run only once per instance, so each app lifespan builds its own (`mcp_server.transport.run()`); several lifespans in one process (the test suite) are safe.
 - SDK: the official `mcp` package, 2.x (`mcp>=2.3,<3`). See `assets/dependencies.md`.
+
+## Code layout
+
+| Path | Holds |
+|---|---|
+| `mcp_server/__init__.py` | Imports every tool and resource module (importing one registers it) and exposes `MCP_PATH`, `auth_failure`, `endpoint` and `run` to `main.py`. |
+| `mcp_server/server.py` | The `MCPServer` instance (`server`), `MCP_PATH` and the read-only tool annotations (`READ_ONLY`). |
+| `mcp_server/auth.py` | The Bearer `MCP_API_KEY` check, `auth_failure()`. |
+| `mcp_server/transport.py` | The POST-only ASGI `endpoint`, the SDK Host/Origin settings and `run()`. |
+| `mcp_server/envelope.py` | `envelope()`, `iso_utc()` and the stale limits. |
+| `mcp_server/scope.py` | The `account` argument: `AccountArg`, `resolve_scope()`, `ACCOUNT_ALL`. |
+| `mcp_server/tools/<tool_name>.py` | One file per tool: its `@server.tool` function, units table and shaping helpers. |
+| `mcp_server/resources/<resource>.py` | One file per resource (`investment_policy.py`). |
+
+A new tool is a new file in `tools/` plus its name in the import line of `tools/__init__.py`; a new resource is the same in `resources/`.
 
 ## Response envelope
 
-Every tool returns the same wrapper (`mcp_server.envelope()`):
+Every tool returns the same wrapper (`mcp_server.envelope.envelope()`):
 
 | Field | Meaning |
 |---|---|
@@ -143,14 +158,14 @@ The policy tells Claude what your rules are, so its analysis and suggestions are
 - **Unreadable.** A file that is not valid UTF-8, or cannot be opened, also answers `POLICY NOT LOADED` (the cause goes to the server log) and Claude is told not to guess.
 - **Read-only.** The resource only reads. It never creates or changes the file, and it writes nothing to the database. The file is read on every request, so an edit shows up on the next read without a restart.
 - **Backed up.** `data/` is inside the Backup & Recovery archive (the Data component, on by default; only `analysis.db` and its sidecars are left out of it), so the policy is backed up and restored with the rest of `data/`. `tests/test_backup_engine.py` pins this.
-- **Workflow Monitor.** Shown as the manual node **Investment Policy** feeding the Claude MCP Server (see below).
+- **Workflow Monitor.** Shown as the manual node **Investment Policy** feeding the MCP Server (see below).
 
 ## Workflow Monitor
 
-The Claude MCP Server is a node on the Workflow Monitor graph (`scheduler_manifest.JOB_GRAPH["claude_mcp_server_source"]`, category `external`, cyan). It produces nothing and consumes the artifacts its tools and resources read, so a disabled or failing upstream job shows as a warning on it. Each new tool or resource adds the artifacts it reads to `consumes` (AGENTS.md rule 13). Unlike other external nodes the monitor now keeps this node's `consumes` (`scheduler_monitor._build_node`).
+The MCP Server is a node on the Workflow Monitor graph (`scheduler_manifest.JOB_GRAPH["claude_mcp_server_source"]`, category `external`, cyan). It produces nothing and consumes the artifacts its tools and resources read, so a disabled or failing upstream job shows as a warning on it. Each new tool or resource adds the artifacts it reads to `consumes` (AGENTS.md rule 13). Unlike other external nodes the monitor now keeps this node's `consumes` (`scheduler_monitor._build_node`).
 
-The investment policy file is hand-written, so it has a manual node of its own, **Investment Policy** (`JOB_GRAPH["investment_policy_source"]`, category `manual`, `non_job`), which produces the `investment_policy` artifact that the Claude MCP Server consumes.
+The investment policy file is hand-written, so it has a manual node of its own, **Investment Policy** (`JOB_GRAPH["investment_policy_source"]`, category `manual`, `non_job`), which produces the `investment_policy` artifact that the MCP Server consumes.
 
 ## Testing
 
-`tests/test_mcp_server.py` covers the auth matrix (no header, wrong key, right key, unset key, Home Assistant key, Bearer on other routes, every HTTP method), host handling, the exact tool list, the envelope (including the per-tool stale limit), `get_accounts` (snapshot, missing snapshot, unpriced Pension, soft-deleted accounts, Ghostfolio rows), the `account` argument (unknown, Pension, soft-deleted, over-long, Ghostfolio), `get_holdings` (cost basis, P/L, allocation, day change, extended hours kept apart, pence quotes, unavailable FX, `as_of`, empty account), `get_xray` (summary, findings, missing risk cache, curated errors, caps), `get_heat_index` (score, contributors and their cap, not computed yet, missing inputs, nightly stale limit), the investment policy resource (listed, key required, missing and empty file, content served as written, byte-order mark, size limit, non-UTF-8 and unreadable file, no caller-supplied path, no write to the file or the database), the read-only guarantee (row counts of every table unchanged after calling every tool), the worker-thread behaviour and the Workflow Monitor entries. `tests/test_portfolio_metrics_engine.py` covers `refresh_missing`; `tests/test_risk_orchestrator_engine.py` covers `get_ticker_risk_contributions()` and the `/api/risk-orchestrator/status` route that shares it.
+The tests live in `tests/mcp_server/`, one file per module of the package (`test_auth.py`, `test_transport.py`, `test_envelope.py`, `test_scope.py`, `test_get_accounts.py`, `test_get_holdings.py`, `test_get_xray.py`, `test_get_heat_index.py`, `test_investment_policy.py`, `test_workflow_entry.py`), with the shared fixtures in `conftest.py` and the JSON-RPC helpers in `helpers.py`. A new tool adds `test_<tool_name>.py`. Together they cover the auth matrix (no header, wrong key, right key, unset key, Home Assistant key, Bearer on other routes, every HTTP method), host handling, the exact tool list, the envelope (including the per-tool stale limit), `get_accounts` (snapshot, missing snapshot, unpriced Pension, soft-deleted accounts, Ghostfolio rows), the `account` argument (unknown, Pension, soft-deleted, over-long, Ghostfolio), `get_holdings` (cost basis, P/L, allocation, day change, extended hours kept apart, pence quotes, unavailable FX, `as_of`, empty account), `get_xray` (summary, findings, missing risk cache, curated errors, caps), `get_heat_index` (score, contributors and their cap, not computed yet, missing inputs, nightly stale limit), the investment policy resource (listed, key required, missing and empty file, content served as written, byte-order mark, size limit, non-UTF-8 and unreadable file, no caller-supplied path, no write to the file or the database), the read-only guarantee (row counts of every table unchanged after calling every tool), the worker-thread behaviour and the Workflow Monitor entries. `tests/test_portfolio_metrics_engine.py` covers `refresh_missing`; `tests/test_risk_orchestrator_engine.py` covers `get_ticker_risk_contributions()` and the `/api/risk-orchestrator/status` route that shares it.

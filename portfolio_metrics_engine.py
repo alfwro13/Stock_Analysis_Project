@@ -252,7 +252,7 @@ def account_metrics_list(refresh_missing: bool = True) -> dict:
     """Per-Trading-account metrics for the Home Assistant per-account sensor set — reads every
     field from the single `account_performance_cache` snapshot (lazily refreshed like the
     live-performance endpoint) so the whole response is consistent as of one point in time.
-    `refresh_missing=False` is for read-only callers (the Claude MCP Server): an account with no
+    `refresh_missing=False` is for read-only callers (the MCP Server): an account with no
     snapshot row yet returns null metrics instead of writing the row."""
     accounts = []
     for acc in _trading_accounts():
