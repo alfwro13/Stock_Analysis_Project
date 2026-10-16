@@ -1573,6 +1573,53 @@ def test_current_price_map_never_returns_extended_hours_price():
 
 
 @pytest.mark.db
+def test_oldest_quote_epoch_is_the_cache_time_when_the_cache_price_is_used():
+    import time
+
+    live_epoch = time.time() - 600
+    _seed_stock_signal("ZZQLIVE", 100.0, "GBP", last_updated=_yesterday_utc_str())
+    _seed_market_pulse("ZZQLIVE", 150.0, live_epoch)
+
+    assert accounts_engine.oldest_quote_epoch(["ZZQLIVE"]) == pytest.approx(live_epoch)
+
+
+@pytest.mark.db
+def test_oldest_quote_epoch_is_the_stock_signals_time_when_the_fallback_price_is_used():
+    from db_helpers import parse_utc_epoch
+
+    stored = "2026-10-01 09:00:00"
+    _seed_stock_signal("ZZQFALL", 100.0, "GBP", last_updated=stored)
+    _seed_market_pulse("ZZQFALL", 150.0, parse_utc_epoch(stored) - 7 * 3600)
+    _seed_stock_signal("ZZQNOCACHE", 100.0, "GBP", last_updated="2026-10-02 09:00:00")
+
+    assert accounts_engine.current_price_map(["ZZQFALL"])["ZZQFALL"][0] == 100.0
+    assert accounts_engine.oldest_quote_epoch(["ZZQFALL"]) == parse_utc_epoch(stored)
+    assert accounts_engine.oldest_quote_epoch(["ZZQNOCACHE"]) == parse_utc_epoch("2026-10-02 09:00:00")
+
+
+@pytest.mark.db
+def test_oldest_quote_epoch_takes_the_oldest_and_ignores_unpriced_and_empty_input():
+    from db_helpers import parse_utc_epoch
+
+    _seed_stock_signal("ZZQOLD", 10.0, "GBP", last_updated="2026-10-01 09:00:00")
+    _seed_stock_signal("ZZQNEW", 10.0, "GBP", last_updated="2026-10-05 09:00:00")
+
+    assert accounts_engine.oldest_quote_epoch(["ZZQNEW", "ZZQOLD"]) == parse_utc_epoch("2026-10-01 09:00:00")
+    assert accounts_engine.oldest_quote_epoch(["ZZQNEW", "ZZQNOSUCH"]) == parse_utc_epoch("2026-10-05 09:00:00")
+    assert accounts_engine.oldest_quote_epoch(["ZZQNOSUCH"]) is None
+    assert accounts_engine.oldest_quote_epoch([]) is None
+
+
+def test_analytic_prices_carry_no_quote_time_and_keep_the_two_item_price_shape():
+    from unittest.mock import patch
+
+    with patch("treasury_bill_engine.current_price_for_ticker", return_value=(99.5, "GBP")), \
+            patch("treasury_bill_engine.parse_tbill_buy_txn_id", return_value=7):
+        assert accounts_engine.oldest_quote_epoch(["TBILL-7"]) is None
+        assert accounts_engine.current_price_map(["TBILL-7"]) == {"TBILL-7": (99.5, "GBP")}
+
+
+@pytest.mark.db
 def test_total_value_is_cash_plus_equity():
     aid = create_account("TotalValueAcc", "GBP", initial_cash=500.0)
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTOTVAL", currency="GBP",

@@ -46,7 +46,7 @@ Only `http://localhost:8090` is documented here. Reaching the endpoint from anot
 | Methods | `POST` only. `GET`, `DELETE` and the rest answer `405` with `Allow: POST` after authentication. |
 | Host and Origin | `TrustedHostMiddleware` and the SDK's own Host/Origin check use the same host list (`ALLOWED_HOSTS` plus `localhost` and `127.0.0.1`). A foreign `Origin` is refused with `403`. |
 | Secrets in logs | The key is never logged. Log lines go through `log_config.SafeFormatter`, which also masks `token=` style query values. |
-| Errors | A tool failure answers with a fixed `Error executing tool <name>`. The exception text stays in the server log (rule 23). |
+| Errors | An unexpected tool failure answers with a fixed `Error executing tool <name>`; the exception text stays in the server log (rule 23). An anticipated failure (unknown `account`, an empty X-ray scope, Ghostfolio not reachable) keeps a curated message after the same prefix, written for the client and never built from an exception. |
 | Rate limiting | None. A 256-bit key cannot be guessed; use the generator above, not a short phrase. |
 
 CSRF does not interfere: the CSRF middleware only enforces when a `session` cookie is present, and an MCP client sends none.
@@ -71,7 +71,7 @@ Every tool returns the same wrapper (`mcp_server.envelope()`):
 | `market_state` | `LSE` and `NYSE` each `open`, `pre`, `post` or `closed` (`market_session_helpers.get_exchange_session_state()`, holiday-aware). |
 | `base_currency` | `BASE_CURRENCY`. Every amount is in it unless a field says otherwise. |
 | `units` | What each field is: amount, fraction or percent, and which currency. |
-| `stale` | `true` when something is `missing`, or when `as_of` is older than 15 minutes (`STALE_AFTER_SECONDS`) while LSE or NYSE is open. Old data with both markets closed is not stale: nothing was due to change. |
+| `stale` | `true` when something is `missing`, or when `as_of` is older than 15 minutes (`STALE_AFTER_SECONDS`) while LSE or NYSE is open. Old data with both markets closed is not stale: nothing was due to change. A tool whose figures come from a nightly job passes a longer limit (`stale_after_seconds`; `get_xray` and `get_heat_index` use 5 days, `NIGHTLY_STALE_AFTER_SECONDS`), so it turns stale only when a nightly run was missed, not all session; Friday evening's run still counts as current on a Tuesday after a bank holiday. |
 | `missing` | Plain-text list of what could not be provided and why. |
 | `data` | The tool's payload. |
 
@@ -82,16 +82,49 @@ A value that is unavailable is `null`, never `0.0` (AGENTS.md). Non-finite numbe
 | Tool | Returns | Reads |
 |---|---|---|
 | `get_accounts` | Every account: Trading (cash, equity value, unrealised and realised P/L, dividend and interest income, 1d/1w/1m/3m/1y gain, MWRR), Pension and House (current value, 1m/YTD/1y performance, price date) and Ghostfolio accounts when enabled (value only). Each row has an `account_type` and a `scope_id`. | `portfolio_metrics_engine.account_metrics_list(refresh_missing=False)`, `other_accounts_list()`, `accounts_engine.list_scope_accounts_with_values()` |
+| `get_holdings(account="all")` | One row per open position per built-in Trading account: shares, native price, cost basis, market value, P/L, allocation within the account, dividends, day change and extended-hours move. | `portfolio_metrics_engine.holdings_with_metrics_all_accounts()` (which calls `accounts_engine.holdings_with_market_value()` per account), `accounts_engine.oldest_quote_epoch()` |
+| `get_xray(account="all")` | The Portfolio X-ray as conclusions: value and cost, concentration (HHI, top-5 and top-10 weight, largest positions), beta, volatility, drawdown, VaR, Sharpe, correlation, sector, continent and currency exposure, breaches of the X-Ray Allocation Targets and the report's own data warnings. | `xray_engine.assemble_xray_report()` |
+| `get_heat_index()` | The Portfolio Heat Index for all accounts combined (0-100 score, tier, VaR, correlation and drawdown inputs, breakdown text) and the five positions with the highest Risk Contribution. | `page_helpers.get_portfolio_heat_row("all")`, `risk_orchestrator_engine.get_ticker_risk_contributions(5)` |
+
+### The `account` argument
+
+`get_holdings` and `get_xray` take `account`: `"all"`, or a `scope_id` exactly as `get_accounts` returns it (`acct:<id>` for a built-in Trading account). `get_xray` also takes the UUID of an active Ghostfolio account; `get_holdings` answers that with a curated "use get_xray" message because the per-position engine covers built-in accounts only. Anything else (a Pension or House account, a soft-deleted or unknown id, a different case such as `ALL`) is refused with `Unknown account. Valid values: ...`, listing the accepted values; the rejected text is not echoed. The argument is capped at 64 characters (`MCP_ACCOUNT_SCOPE_MAX_CHARS`, `constants.py`, request-limits block) and validated before any engine call, because the X-ray engine alone would treat an unrecognised id as "all".
 
 `get_accounts` details:
 
 - **Units.** Amounts are in `base_currency`. `gain_*` fields are amounts over the window excluding deposits and withdrawals, not percentages. `mwrr_pct` and `performance_pct` are percent.
 - **One snapshot.** A Trading row comes from the single `account_performance_cache` snapshot (`snapshot_at`), so its figures are consistent with each other. Cash is taken from that snapshot, not recomputed.
 - **Read-only.** The Home Assistant route fills a missing snapshot row on demand; this tool passes `refresh_missing=False`, so an account with no snapshot yet returns null metrics, appears in `missing`, makes `stale` true, and nothing is written.
-- **`scope_id`.** The id later scope-aware tools will accept (`acct:<id>` for a Trading account, a UUID for a Ghostfolio account). It is `null` for an account with no holdings, and for Pension and House accounts.
+- **`scope_id`.** The id the scope-aware tools accept as `account` (`acct:<id>` for a Trading account, a UUID for a Ghostfolio account). It is `null` for an account with no holdings, and for Pension and House accounts.
 - **FX.** The tool runs inside `portfolio_service.persisted_fx_reads()` like the Home Assistant read endpoints. A Pension or House account with no price history has a `null` `equity_value` and an entry in `missing`.
 - **Known limit.** When an FX rate or price is unavailable the engines value a holding at cost basis (Trading) or `0.0` (a House valuation with no FX rate) instead of returning nothing. The tool cannot tell these apart from a real value without recomputing, so it does not flag them (tracked in `audit/issues_to_fix.md`).
 - **Ghostfolio.** `list_scope_accounts_with_values()` calls the Ghostfolio API when Ghostfolio accounts are enabled; with Ghostfolio off, no network call is made.
+
+`get_holdings` details:
+
+- **Rows.** The same per-(account, ticker) rows the Home Assistant `holdings-list` endpoint serves, cut down to what analysis needs. The same ticker in two accounts is two rows. Positions come only from the built-in Trading accounts (`accounts_engine`, AGENTS.md rule 14); Treasury Bills appear with their analytically accreted price.
+- **Units.** Amounts are in `base_currency`. `market_price` is the instrument's own quote in `market_price_currency`, and `GBp` means pence, exactly as the engines hold it; `market_price_in_base_currency` converts it. `gain_pct` is percent. `allocation_pct` is the share of that row's own account equity, so an account's rows add up to 100; it is not a portfolio-wide weight (use `get_xray` for that). `day_change` is per share in the quote currency and `day_change_pct` a percent, both since the previous regular close.
+- **Extended hours.** `pre_market_change_pct` and `post_market_change_pct` are separate fields and never change `market_price`, `day_change` or the P/L.
+- **FX or price unavailable.** The engines then value the position at cost (`priced_at_cost: true`). The tool turns `market_value`, `gain_value`, `gain_pct` and `allocation_pct` into `null`, keeps `total_investment`, adds a line to `missing` and makes `stale` true, instead of showing a zero gain.
+- **`as_of`.** The oldest market quote behind the prices (`accounts_engine.oldest_quote_epoch()`: the `market_pulse_cache` time where that price is used, else the `stock_signals` time, resolved by the same arbitration as `current_price_map()`). Treasury Bill prices are analytic and carry no quote time. `null` when the account has no positions.
+- **Ghostfolio.** Not covered. With Ghostfolio accounts enabled, `account="all"` says so in `missing`; `get_xray` includes them.
+- **FX.** Runs inside `portfolio_service.persisted_fx_reads()` like `get_accounts`.
+
+`get_xray` details:
+
+- **Conclusions, not the report.** A summary of `xray_engine.assemble_xray_report()`; the holdings table, the correlation matrix and the tooltips are not returned. Every weight is a fraction of invested capital (0.25 = 25%) with cash excluded; `max_drawdown` is a negative fraction; `risk.var_95_1d` is an amount in the base currency.
+- **Exposure.** The top 8 of each: sectors (ETFs looked through), continents (not countries) and recorded currencies. A country appears only as a finding, when a country target is set in the X-Ray Allocation Targets.
+- **Findings.** The targets from Settings that are exceeded or missed, in report order, with the engine's own message; at most 10 are returned and `findings_total` and `targets_checked` give the full counts. `data_warnings` repeats the report's warnings (stale or missing risk cache, uncovered holdings).
+- **Nightly risk figures.** Beta, volatility, VaR, drawdown and correlation come from the nightly risk cache. When it has not run for these holdings they are `null`, each is listed in `missing`, and `as_of` is `null`. Otherwise `as_of` is the cache date at 00:00 UTC (`risk_cache_date`).
+- **Errors.** An empty scope or a Ghostfolio problem (`xray_engine.XRayScopeUnavailable`) is returned as its own curated message; any other failure is the fixed text.
+- **FX.** Runs inside `portfolio_service.persisted_fx_reads()`.
+
+`get_heat_index` details:
+
+- **What it reads.** The `"all"`-scope `portfolio_heat_index` row and the highest rows of `ticker_risk_contribution`, both written by the daily Risk Orchestrator Scan. Nothing is recomputed. `phi_score` is 0-100 (higher is hotter) with a `tier` of GREEN, YELLOW or RED; its three inputs are `var.pct_of_equity` (percent), `max_correlation.value` and `max_drawdown.pct` (percent), each with its own tier. The per-account Heat Index rows are not exposed.
+- **Contributors.** The five positions with the highest `risk_score`, read through `risk_orchestrator_engine.get_ticker_risk_contributions()`, the same reader `GET /api/risk-orchestrator/status` uses. `marginal_var_contribution_pct` is the share of portfolio VaR and `stop_distance_pct` the percent of price above the ATR stop (negative means through it).
+- **Not computed yet.** Before the first scan `heat_index` is `null`, the contributors are empty, `as_of` is `null` and `missing` says why. An input the scan could not compute is `null` and noted in `missing`, because the score counts it as zero risk.
+- **`as_of`.** The older of the two table write times; `computed_at` is the Heat Index row's.
 
 ## Resources
 
@@ -120,4 +153,4 @@ The investment policy file is hand-written, so it has a manual node of its own, 
 
 ## Testing
 
-`tests/test_mcp_server.py` covers the auth matrix (no header, wrong key, right key, unset key, Home Assistant key, Bearer on other routes, every HTTP method), host handling, the exact tool list, the envelope, `get_accounts` (snapshot, missing snapshot, unpriced Pension, soft-deleted accounts, Ghostfolio rows), the investment policy resource (listed, key required, missing and empty file, content served as written, byte-order mark, size limit, non-UTF-8 and unreadable file, no caller-supplied path, no write to the file or the database), the read-only guarantee (row counts of every table unchanged after calling every tool), the worker-thread behaviour and the Workflow Monitor entries. `tests/test_portfolio_metrics_engine.py` covers `refresh_missing`.
+`tests/test_mcp_server.py` covers the auth matrix (no header, wrong key, right key, unset key, Home Assistant key, Bearer on other routes, every HTTP method), host handling, the exact tool list, the envelope (including the per-tool stale limit), `get_accounts` (snapshot, missing snapshot, unpriced Pension, soft-deleted accounts, Ghostfolio rows), the `account` argument (unknown, Pension, soft-deleted, over-long, Ghostfolio), `get_holdings` (cost basis, P/L, allocation, day change, extended hours kept apart, pence quotes, unavailable FX, `as_of`, empty account), `get_xray` (summary, findings, missing risk cache, curated errors, caps), `get_heat_index` (score, contributors and their cap, not computed yet, missing inputs, nightly stale limit), the investment policy resource (listed, key required, missing and empty file, content served as written, byte-order mark, size limit, non-UTF-8 and unreadable file, no caller-supplied path, no write to the file or the database), the read-only guarantee (row counts of every table unchanged after calling every tool), the worker-thread behaviour and the Workflow Monitor entries. `tests/test_portfolio_metrics_engine.py` covers `refresh_missing`; `tests/test_risk_orchestrator_engine.py` covers `get_ticker_risk_contributions()` and the `/api/risk-orchestrator/status` route that shares it.

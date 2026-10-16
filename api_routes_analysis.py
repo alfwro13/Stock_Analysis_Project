@@ -277,6 +277,8 @@ def run_risk_orchestrator(request: Request, background_tasks: BackgroundTasks):
 @limiter.limit("30/minute")
 def get_risk_orchestrator_status(request: Request):
     """Returns every scope's latest Portfolio Heat Index plus all per-ticker risk contributions."""
+    from risk_orchestrator_engine import get_ticker_risk_contributions
+
     conn = None
     try:
         conn = get_connection()
@@ -286,10 +288,7 @@ def get_risk_orchestrator_status(request: Request):
         for s in scopes:
             s["breakdown"] = json.loads(s["breakdown_json"]) if s.get("breakdown_json") else []
             del s["breakdown_json"]
-        tickers = [dict(r) for r in conn.execute(
-            "SELECT * FROM ticker_risk_contribution ORDER BY risk_score DESC"
-        ).fetchall()]
-        return JSONResponse(content={"status": "success", "scopes": scopes, "tickers": tickers})
+        return JSONResponse(content={"status": "success", "scopes": scopes, "tickers": get_ticker_risk_contributions()})
     except Exception as e:
         logger.error("Failed to load Risk Orchestrator status: %s", e)
         return _error_500(e)
