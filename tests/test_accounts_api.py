@@ -1085,6 +1085,40 @@ def test_export_transactions_returns_csv(client):
 
 
 @pytest.mark.api
+def test_export_transactions_hostile_account_name_cannot_alter_the_header(client):
+    from database import update_account, soft_delete_account
+    account_id = _create_account(client, name="HostileExportAcc")
+    try:
+        assert update_account(account_id, name='Evil"; x=y\r\nSet-Cookie: a=b\u00e9' + "z" * 300)
+        resp = client.get(f"/api/accounts/{account_id}/export")
+        assert resp.status_code == 200
+        disposition = resp.headers["content-disposition"]
+        assert "set-cookie" not in resp.headers
+        assert disposition.startswith('attachment; filename="Evil_x_y_Set-Cookie_a_b')
+        assert disposition.count('"') == 2
+        assert "filename*=UTF-8''" in disposition
+        assert len(disposition) < 400
+    finally:
+        soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_account_name_is_capped_on_create_and_update(client):
+    from constants import ACCOUNT_NAME_MAX_CHARS
+    too_long = "n" * (ACCOUNT_NAME_MAX_CHARS + 1)
+    resp = client.post("/api/accounts", json={"name": too_long, "currency": "GBP"})
+    assert resp.status_code == 422
+
+    account_id = _create_account(client, name="n" * ACCOUNT_NAME_MAX_CHARS)
+    try:
+        resp = client.put(f"/api/accounts/{account_id}", json={"name": too_long, "currency": "GBP"})
+        assert resp.status_code == 422
+    finally:
+        import database as _db
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_export_transactions_unknown_account_returns_404(client):
     resp = client.get("/api/accounts/999999/export")
     assert resp.status_code == 404

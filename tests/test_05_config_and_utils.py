@@ -374,6 +374,48 @@ def test_csv_safe_cell_prefixes_formula_starters_and_leaves_numbers_alone():
         assert csv_safe_cell(untouched) == untouched, untouched
 
 
+@pytest.mark.config
+def test_attachment_content_disposition_plain_name_has_no_filename_star():
+    from utils import attachment_content_disposition
+    assert attachment_content_disposition("My ISA", "_transactions.csv") == 'attachment; filename="My_ISA_transactions.csv"'
+
+
+@pytest.mark.config
+def test_attachment_content_disposition_neutralises_header_breaking_characters():
+    from urllib.parse import unquote
+    from utils import attachment_content_disposition
+    hostile = 'a"b;c\r\nSet-Cookie: x=1\x00\u202eevil/..\\z'
+    header = attachment_content_disposition(hostile, "_transactions.csv")
+    assert "\r" not in header and "\n" not in header and "\x00" not in header and "\u202e" not in header
+    ascii_part, _, star_part = header.partition("; filename*=UTF-8''")
+    assert ascii_part.startswith('attachment; filename="') and ascii_part.endswith('_transactions.csv"')
+    assert ascii_part.count('"') == 2 and ";" not in ascii_part[len("attachment;"):]
+    decoded = unquote(star_part)
+    assert not any(ch in decoded for ch in '"\\/;\r\n\x00\u202e')
+    assert decoded.endswith("_transactions.csv")
+
+
+@pytest.mark.config
+def test_attachment_content_disposition_non_ascii_name_uses_rfc5987_and_caps_length():
+    from urllib.parse import unquote
+    from utils import attachment_content_disposition
+    header = attachment_content_disposition("Caf\u00e9 ISA", "_transactions.csv")
+    assert header.startswith('attachment; filename="Caf_ISA_transactions.csv"; filename*=UTF-8\'\'')
+    assert unquote(header.split("filename*=UTF-8''")[1]) == "Caf\u00e9_ISA_transactions.csv"
+    header.encode("latin-1")
+
+    long_header = attachment_content_disposition("x" * 500, "_transactions.csv")
+    assert long_header == 'attachment; filename="' + "x" * 64 + '_transactions.csv"'
+
+
+@pytest.mark.config
+def test_attachment_content_disposition_falls_back_when_nothing_ascii_remains():
+    from utils import attachment_content_disposition
+    assert attachment_content_disposition("\u65e5\u672c", "_transactions.csv").startswith('attachment; filename="download_transactions.csv"; filename*=')
+    assert attachment_content_disposition("...", "_transactions.csv") == 'attachment; filename="download_transactions.csv"'
+    assert attachment_content_disposition(".hidden", "_t.csv") == 'attachment; filename="hidden_t.csv"'
+
+
 def test_safe_local_path_accepts_only_same_origin_relative_paths():
     """safe_local_path() backs the score-history Back link and the login redirect: a tab/CR/LF
     is dropped by browsers before URL parsing, so '/<TAB>/host' would become '//host'."""

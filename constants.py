@@ -78,6 +78,7 @@ CSV_IMPORT_MAX_ROWS         = 5000             # data rows in one transactions C
 CSV_IMPORT_MAX_TICKERS      = 200              # unique tickers in one CSV: each unknown one costs up to 2 live Yahoo lookups
 PRICE_CSV_MAX_CHARS         = 500_000          # price-history CSV body
 PRICE_CSV_MAX_ROWS          = 10_000
+ACCOUNT_NAME_MAX_CHARS      = 100              # AccountBody.name
 ETF_CONSTITUENTS_MAX        = 50
 OPTION_LEGS_MAX             = 20
 TABLE_VIEWS_MAX             = 20               # saved column-preset Views per page

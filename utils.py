@@ -7,13 +7,14 @@ import shlex
 import stat
 import sys
 import tempfile
+import unicodedata
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,9 @@ _SAFE_TICKER_PATH_RE = re.compile(r"[A-Za-z0-9^.=_\-]{1,64}")
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _CURRENCY_CODE_RE = re.compile(r"[A-Za-z]{3}")
 _ISO_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_FILENAME_UNSAFE_RE = re.compile(r'[\s\\/:*?"<>|;]+')
+_FILENAME_ASCII_UNSAFE_RE = re.compile(r"[^A-Za-z0-9.\-]+")
+_FILENAME_STEM_MAX_CHARS = 64
 
 
 def requirements_lock_path() -> Path:
@@ -209,6 +213,18 @@ def csv_safe_cell(value: Any) -> Any:
     if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
         return "'" + value
     return value
+
+
+def attachment_content_disposition(stem: str, suffix: str) -> str:
+    """Download header for a name taken from user text: whitespace, separators, quotes, ';' and control/format characters (CR/LF, bidi overrides) become '_' or vanish, the stem is capped, and a non-ASCII name travels in RFC 5987 `filename*` beside an ASCII `filename`."""
+    cleaned = _FILENAME_UNSAFE_RE.sub("_", str(stem))
+    cleaned = "".join(ch for ch in cleaned if unicodedata.category(ch) not in ("Cc", "Cf"))
+    cleaned = cleaned.lstrip(".")[:_FILENAME_STEM_MAX_CHARS]
+    ascii_stem = _FILENAME_ASCII_UNSAFE_RE.sub("_", cleaned).strip("_") or "download"
+    header = f'attachment; filename="{ascii_stem}{suffix}"'
+    if cleaned and cleaned != ascii_stem:
+        header += f"; filename*=UTF-8''{quote(cleaned + suffix, safe='')}"
+    return header
 
 
 def safe_local_path(value: Optional[str]) -> Optional[str]:
