@@ -2180,6 +2180,23 @@ def test_request_timing_reports_stages_without_query_values(client, caplog):
     assert "embed_token" not in caplog.text
 
 
+def test_request_timing_logs_fast_requests_at_info_only_when_they_have_counts(client, caplog):
+    import logging
+    from utils import count_request_event
+
+    def counted_anchors(tickers, **kwargs):
+        count_request_event("anchor_hit")
+        return {}
+
+    with caplog.at_level(logging.INFO, logger="main"), patch("price_history_helpers.get_period_anchor_closes", counted_anchors):
+        assert client.get("/watchlist").status_code == 200
+        assert client.get("/api/accounts/other-accounts-list").status_code == 200
+    timing = [record for record in caplog.records if "request_timing" in record.getMessage()]
+    assert [record.levelno for record in timing] == [logging.INFO]
+    assert "route=/watchlist" in timing[0].getMessage()
+    assert "counts=anchor_hit:1" in timing[0].getMessage()
+
+
 def test_portfolio_and_watchlist_timing_cover_row_building_stages(client):
     portfolio = client.get("/portfolio").headers["Server-Timing"]
     for stage in ("holdings", "sql", "fx_context", "enrichment", "row_build", "pulse",
