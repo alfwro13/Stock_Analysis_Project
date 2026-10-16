@@ -1149,3 +1149,27 @@ class TestGiltPulse:
         self._run(tmp_path, None)
 
         assert [p["price"] for p in _read_sparkline("UK10YG")] == [pytest.approx(4.35)]
+
+
+class TestExtendedQuoteFromSnapshot:
+    """The one place a Yahoo quote snapshot's pre/post tick is chosen, shared by the pulse writer and the MCP Server."""
+
+    SNAP = {
+        "pre_market_price": 103.0, "pre_market_change": 3.0, "pre_market_change_pct": 3.0,
+        "post_market_price": 99, "post_market_change": None, "post_market_change_pct": -1.0,
+    }
+
+    @pytest.mark.parametrize("state,expected", [
+        ("PRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0}),
+        ("PREPRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0}),
+        ("POST", {"session": "post", "price": 99.0, "change": None, "change_pct": -1.0}),
+        ("POSTPOST", {"session": "post", "price": 99.0, "change": None, "change_pct": -1.0}),
+        ("REGULAR", None), ("CLOSED", None), (None, None),
+    ])
+    def test_session_comes_from_the_market_state_only(self, state, expected):
+        from market_session_helpers import extended_quote_from_snapshot
+        assert extended_quote_from_snapshot({**self.SNAP, "market_state": state}) == expected
+
+    def test_a_missing_tick_for_the_active_session_is_none(self):
+        from market_session_helpers import extended_quote_from_snapshot
+        assert extended_quote_from_snapshot({"market_state": "PRE", "pre_market_price": None, "post_market_price": 99.0}) is None

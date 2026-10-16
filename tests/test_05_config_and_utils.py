@@ -1364,3 +1364,47 @@ def test_count_request_event_counts_inside_a_request_and_ignores_outside_one():
     finally:
         _request_counts.reset(token)
     assert counts == {"anchor_hit": 2, "anchor_miss": 1}
+
+
+class TestCachedFundamentalsExtra:
+    def _dump(self, tmp_path, monkeypatch, name, payload):
+        import json
+
+        import config as _config
+
+        monkeypatch.setattr(_config, "FUNDAMENTALS_DIR", tmp_path)
+        (tmp_path / f"{name}.json").write_text(payload if isinstance(payload, str) else json.dumps(payload))
+
+    def test_reads_raw_numbers_net_cash_and_the_ex_dividend_date(self, tmp_path, monkeypatch):
+        from utils import cached_fundamentals_extra
+        self._dump(tmp_path, monkeypatch, "ZZFX", {
+            "marketCap": 2.5e9, "totalCash": 900, "totalDebt": 400, "financialCurrency": "USD", "exDividendDate": 1781740800,
+            "fullTimeEmployees": 1200, "website": "https://example.com", "payoutRatio": 0.37,
+        })
+        extra = cached_fundamentals_extra("ZZFX")
+        assert (extra["market_cap"], extra["net_cash"], extra["financial_currency"], extra["payout_ratio"]) == (2.5e9, 500, "USD", 0.37)
+        assert (extra["ex_dividend_date"], extra["full_time_employees"], extra["website"]) == ("2026-06-18", 1200, "https://example.com")
+        assert extra["free_cash_flow"] is None and extra["roa"] is None
+
+    def test_net_cash_is_null_when_either_side_is_missing(self, tmp_path, monkeypatch):
+        from utils import cached_fundamentals_extra
+        self._dump(tmp_path, monkeypatch, "ZZFX", {"totalCash": 900})
+        assert cached_fundamentals_extra("ZZFX")["net_cash"] is None
+
+    @pytest.mark.parametrize("ticker", ["ZZNOFILE", "../ZZFX", "", None])
+    def test_missing_or_unsafe_ticker_is_none(self, tmp_path, monkeypatch, ticker):
+        from utils import cached_fundamentals_extra
+        self._dump(tmp_path, monkeypatch, "ZZFX", {"marketCap": 1})
+        assert cached_fundamentals_extra(ticker) is None
+
+    def test_corrupt_dump_is_none(self, tmp_path, monkeypatch):
+        from utils import cached_fundamentals_extra
+        self._dump(tmp_path, monkeypatch, "ZZFX", "{not json")
+        assert cached_fundamentals_extra("ZZFX") is None
+
+    def test_page_formatter_stays_all_null_without_a_dump_and_formats_with_one(self, tmp_path, monkeypatch):
+        import page_helpers
+        self._dump(tmp_path, monkeypatch, "ZZFX", {"marketCap": 2.5e9, "totalCash": 900, "totalDebt": 400, "averageVolume": 6772679, "fullTimeEmployees": 1200})
+        shown = page_helpers._load_fundamentals_extra("ZZFX")
+        assert (shown["market_cap_fmt"], shown["net_cash_fmt"], shown["average_volume_fmt"], shown["full_time_employees_fmt"]) == ("$2.50B", "$500", "6.8M", "1,200")
+        assert all(value is None for value in page_helpers._load_fundamentals_extra("ZZNOFILE").values())

@@ -1,4 +1,5 @@
 # Lightweight helpers with no heavy dependencies — safe to import from any module.
+import json
 import logging
 import math
 import os
@@ -10,7 +11,7 @@ import tempfile
 import unicodedata
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
@@ -291,6 +292,48 @@ def has_cached_fundamentals(ticker: Optional[str]) -> bool:
     if not safe_ticker:
         return False
     return (FUNDAMENTALS_DIR / f"{safe_ticker}.json").exists()
+
+
+def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
+    """Raw numbers from the ticker's `.info` dump under FUNDAMENTALS_DIR, or None when the file is missing, unsafe or unreadable. Money fields are in Yahoo's units: `market_cap` in the quote currency's major unit (GBP for a GBp quote), the rest in `financial_currency`."""
+    from config import FUNDAMENTALS_DIR
+    safe_ticker = safe_ticker_filename(ticker)
+    path = FUNDAMENTALS_DIR / f"{safe_ticker}.json" if safe_ticker else None
+    if path is None or not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        ex_dividend_date = None
+        ex_dividend_ts = d.get("exDividendDate")
+        if ex_dividend_ts:
+            try:
+                ex_dividend_date = datetime.fromtimestamp(ex_dividend_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            except Exception:
+                logger.warning("Could not parse exDividendDate timestamp %s", ex_dividend_ts)
+        total_cash = d.get("totalCash")
+        total_debt = d.get("totalDebt")
+        return {
+            "market_cap": d.get("marketCap"),
+            "trailing_eps": d.get("trailingEps"),
+            "forward_eps": d.get("forwardEps"),
+            "earnings_growth": d.get("earningsGrowth"),
+            "free_cash_flow": d.get("freeCashflow"),
+            "total_debt": total_debt,
+            "total_cash": total_cash,
+            "net_cash": (total_cash - total_debt) if (total_cash is not None and total_debt is not None) else None,
+            "roa": d.get("returnOnAssets"),
+            "quick_ratio": d.get("quickRatio"),
+            "insider_ownership": d.get("heldPercentInsiders"),
+            "payout_ratio": d.get("payoutRatio"),
+            "ex_dividend_date": ex_dividend_date,
+            "average_volume": d.get("averageVolume"),
+            "full_time_employees": d.get("fullTimeEmployees"),
+            "website": d.get("website"),
+            "financial_currency": d.get("financialCurrency"),
+        }
+    except Exception:
+        return None
 
 
 def ignored_tickers_set(config: Optional[dict] = None) -> set:

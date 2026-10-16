@@ -22,6 +22,26 @@ PRE_MARKET_STATES = {"PRE", "PREPRE"}
 POST_MARKET_STATES = {"POST", "POSTPOST"}
 
 
+def extended_quote_from_snapshot(snapshot: dict) -> Optional[dict]:
+    """The pre- or post-market tick of a yahoo_engine.get_quote_snapshot() dict, chosen by Yahoo's own marketState and never the clock; None outside extended hours."""
+    state = snapshot.get("market_state")
+    if state in PRE_MARKET_STATES:
+        session, prefix = "pre", "pre_market"
+    elif state in POST_MARKET_STATES:
+        session, prefix = "post", "post_market"
+    else:
+        return None
+    price = snapshot.get(f"{prefix}_price")
+    if price is None:
+        return None
+    change, change_pct = snapshot.get(f"{prefix}_change"), snapshot.get(f"{prefix}_change_pct")
+    return {
+        "session": session, "price": float(price),
+        "change": None if change is None else float(change),
+        "change_pct": None if change_pct is None else float(change_pct),
+    }
+
+
 def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
     """Market-open check, holiday-vetoed first via time_engine.is_exchange_holiday()
     (exchange_calendars — the one canonical holiday source, checked even for the 8 exchanges

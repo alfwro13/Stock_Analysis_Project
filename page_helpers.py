@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 import time_engine
-from config import FUNDAMENTALS_DIR, HISTORICAL_DIR, INTRADAY_DIR, load_config
+from config import HISTORICAL_DIR, INTRADAY_DIR, load_config
 from database import get_connection
 from position_sizing import get_position_sizing_config
 from portfolio_service import get_rate_to_base, get_fx_cache_status
-from utils import safe_http_url, safe_ticker_filename
+from utils import cached_fundamentals_extra, safe_http_url, safe_ticker_filename
 from fundamentals_helpers import (
     compute_quality_grade,
     is_quality_compounder,
@@ -158,55 +158,34 @@ def _fmt_price(value, currency: Optional[str], decimals: int = 2, with_symbol: b
     return f"{sym}{val:,.{decimals}f}{suffix}"
 
 
-def _load_fundamentals_extra(ticker: str) -> dict:
-    empty: dict = {
-        "market_cap_fmt": None, "trailing_eps": None, "forward_eps": None,
-        "earnings_growth": None, "free_cash_flow_fmt": None, "total_debt_fmt": None,
-        "total_cash_fmt": None, "net_cash_fmt": None, "roa": None, "quick_ratio": None,
-        "insider_ownership": None, "payout_ratio": None, "ex_dividend_date_fmt": None,
-        "average_volume_fmt": None, "full_time_employees_fmt": None, "website": None,
+def _format_fundamentals_extra(raw: dict) -> dict:
+    employees = raw.get("full_time_employees")
+    return {
+        "market_cap_fmt": _fmt_currency(raw.get("market_cap")),
+        "trailing_eps": raw.get("trailing_eps"),
+        "forward_eps": raw.get("forward_eps"),
+        "earnings_growth": raw.get("earnings_growth"),
+        "free_cash_flow_fmt": _fmt_currency(raw.get("free_cash_flow")),
+        "total_debt_fmt": _fmt_currency(raw.get("total_debt")),
+        "total_cash_fmt": _fmt_currency(raw.get("total_cash")),
+        "net_cash_fmt": _fmt_currency(raw.get("net_cash")),
+        "roa": raw.get("roa"),
+        "quick_ratio": raw.get("quick_ratio"),
+        "insider_ownership": raw.get("insider_ownership"),
+        "payout_ratio": raw.get("payout_ratio"),
+        "ex_dividend_date_fmt": raw.get("ex_dividend_date"),
+        "average_volume_fmt": _fmt_volume(raw.get("average_volume")),
+        "full_time_employees_fmt": f"{employees:,}" if employees else None,
+        "website": safe_http_url(raw.get("website")),
     }
-    safe_ticker = safe_ticker_filename(ticker)
-    path = FUNDAMENTALS_DIR / f"{safe_ticker}.json" if safe_ticker else None
-    if path is None or not path.exists():
-        return empty
+
+
+def _load_fundamentals_extra(ticker: str) -> dict:
+    raw = cached_fundamentals_extra(ticker) or {}
     try:
-        with open(path) as f:
-            d = json.load(f)
-
-        ex_div_fmt = None
-        ex_div_ts = d.get("exDividendDate")
-        if ex_div_ts:
-            try:
-                ex_div_fmt = datetime.fromtimestamp(ex_div_ts, tz=timezone.utc).strftime("%Y-%m-%d")
-            except Exception:
-                logger.warning("Could not parse exDividendDate timestamp %s", ex_div_ts)
-
-        total_cash = d.get("totalCash")
-        total_debt = d.get("totalDebt")
-        net_cash = (total_cash - total_debt) if (total_cash is not None and total_debt is not None) else None
-
-        employees = d.get("fullTimeEmployees")
-        return {
-            "market_cap_fmt": _fmt_currency(d.get("marketCap")),
-            "trailing_eps": d.get("trailingEps"),
-            "forward_eps": d.get("forwardEps"),
-            "earnings_growth": d.get("earningsGrowth"),
-            "free_cash_flow_fmt": _fmt_currency(d.get("freeCashflow")),
-            "total_debt_fmt": _fmt_currency(total_debt),
-            "total_cash_fmt": _fmt_currency(total_cash),
-            "net_cash_fmt": _fmt_currency(net_cash),
-            "roa": d.get("returnOnAssets"),
-            "quick_ratio": d.get("quickRatio"),
-            "insider_ownership": d.get("heldPercentInsiders"),
-            "payout_ratio": d.get("payoutRatio"),
-            "ex_dividend_date_fmt": ex_div_fmt,
-            "average_volume_fmt": _fmt_volume(d.get("averageVolume")),
-            "full_time_employees_fmt": f"{employees:,}" if employees else None,
-            "website": safe_http_url(d.get("website")),
-        }
+        return _format_fundamentals_extra(raw)
     except Exception:
-        return empty
+        return _format_fundamentals_extra({})
 
 
 def _utc_str_to_local(s: str) -> str:

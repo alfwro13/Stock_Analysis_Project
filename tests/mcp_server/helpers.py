@@ -4,7 +4,7 @@ from database import get_connection
 
 MCP_KEY = "test-mcp-key-do-not-use-in-production"
 RPC_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime"}
+EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot"}
 
 
 def rpc(client, method, params=None, key=MCP_KEY, headers=None):

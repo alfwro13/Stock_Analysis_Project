@@ -11,6 +11,10 @@ class TestWorkflowEntry:
         assert meta["produces"] == ["investment_policy"] and meta["consumes"] == []
         assert "investment_policy" in JOB_GRAPH["claude_mcp_server_source"]["consumes"]
 
+    def test_ticker_snapshot_artifacts_are_consumed_by_the_server(self):
+        consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
+        assert {"stock_signals", "quant_signals", "market_pulse_cache", "fundamentals", "ml_predictions", "watchlist_items", "yahoo_price_data"} <= consumed
+
     def test_entry_is_an_external_node_with_the_canonical_label(self):
         meta = JOB_GRAPH["claude_mcp_server_source"]
         assert meta["label"] == "MCP Server"

@@ -14,9 +14,8 @@ from db_helpers import upsert_fx_quote
 from gilt_engine import GiltDataService
 from market_pulse import SPARKLINE_MAX_POINTS, get_index_tickers
 from market_session_helpers import (
-    POST_MARKET_STATES,
-    PRE_MARKET_STATES,
     build_registry_exchange_map,
+    extended_quote_from_snapshot,
     is_exchange_open,
     reported_session,
     resolve_ticker_exchange,
@@ -113,10 +112,6 @@ def _maybe_alert_stale_ticker(ticker: str, prior_last_updated: float, now: float
     )
 
 
-def _optional_float(value: Any) -> Optional[float]:
-    return float(value) if value is not None else None
-
-
 def _quote_from_snapshot(snapshot: dict, t_daily: pd.DataFrame) -> _Quote:
     current_price = float(snapshot['regular_price'])
     market_state = snapshot.get('market_state')
@@ -130,18 +125,9 @@ def _quote_from_snapshot(snapshot: dict, t_daily: pd.DataFrame) -> _Quote:
         change_pts = current_price - prev_close
         change_pct = (change_pts / prev_close) * 100.0 if prev_close else 0.0
 
-    extended_session = None
-    extended_fields = (None, None, None)
-    if market_state in PRE_MARKET_STATES and snapshot.get('pre_market_price') is not None:
-        extended_session, prefix = 'pre', 'pre_market'
-    elif market_state in POST_MARKET_STATES and snapshot.get('post_market_price') is not None:
-        extended_session, prefix = 'post', 'post_market'
-    if extended_session:
-        extended_fields = (
-            float(snapshot[f'{prefix}_price']),
-            _optional_float(snapshot.get(f'{prefix}_change')),
-            _optional_float(snapshot.get(f'{prefix}_change_pct')),
-        )
+    extended = extended_quote_from_snapshot(snapshot)
+    extended_session = extended["session"] if extended else None
+    extended_fields = (extended["price"], extended["change"], extended["change_pct"]) if extended else (None, None, None)
 
     return _Quote(current_price, change_pts, change_pct, market_state, *extended_fields, extended_session)
 
