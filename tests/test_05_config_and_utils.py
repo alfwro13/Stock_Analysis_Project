@@ -1408,3 +1408,13 @@ class TestCachedFundamentalsExtra:
         shown = page_helpers._load_fundamentals_extra("ZZFX")
         assert (shown["market_cap_fmt"], shown["net_cash_fmt"], shown["average_volume_fmt"], shown["full_time_employees_fmt"]) == ("$2.50B", "$500", "6.8M", "1,200")
         assert all(value is None for value in page_helpers._load_fundamentals_extra("ZZNOFILE").values())
+
+
+class TestHasCachedFundamentals:
+    def test_true_only_for_a_safe_ticker_whose_dump_exists(self, tmp_path, monkeypatch):
+        import config as _config
+        from utils import has_cached_fundamentals
+        monkeypatch.setattr(_config, "FUNDAMENTALS_DIR", tmp_path)
+        (tmp_path / "ZZHAS.json").write_text("{}")
+        assert has_cached_fundamentals("ZZHAS") is True
+        assert not any(has_cached_fundamentals(t) for t in ("ZZNONE", "../ZZHAS", "", None))
