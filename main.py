@@ -186,7 +186,7 @@ async def request_timing_middleware(request: Request, call_next):
                 + [f"{name};dur={value:.1f}" for name, value in sorted(totals.items())]
             )
         logger.log(
-            logging.INFO if duration_ms >= 1000 else logging.DEBUG,
+            logging.INFO if duration_ms >= 1000 or counts else logging.DEBUG,
             "request_timing route=%s method=%s status=%s duration_ms=%.1f stages_ms=%s counts=%s",
             route_path, request.method, response.status_code if response else 500, duration_ms,
             ",".join(f"{name}:{value:.1f}" for name, value in sorted(totals.items())),
