@@ -445,7 +445,7 @@ class TestEvaluatePretradeCheck:
         assert result["tier"] == TIER_GREEN
 
     def test_reject_with_var_breach_and_convergent_suggestion(self):
-        def _sim(scope, ticker, value):
+        def _sim(scope, ticker, value, read_only=False):
             var_pct = value / 200.0
             corr = min(0.9, value / 10000.0)
             return {
@@ -493,6 +493,26 @@ class TestEvaluatePretradeCheck:
 
         assert result["verdict"] == "reject"
         assert result["suggested_reduced_value"] is None
+
+    def test_read_only_reaches_every_simulation(self):
+        seen = []
+
+        def _sim(scope, ticker, value, read_only=False):
+            seen.append(read_only)
+            return {
+                "var_95_1d": 900.0, "var_pct_of_equity": 4.5, "portfolio_vol": 0.3,
+                "avg_pairwise_correlation": 0.8, "max_pairwise_correlation": 0.8,
+                "portfolio_total_value": 25000.0, "hypothetical_weight": 0.2, "data_warnings": [],
+            }
+
+        with patch("risk_orchestrator_engine.assemble_xray_report",
+                   return_value={"risk_metrics": {"max_drawdown": -0.20}}), \
+             patch("risk_orchestrator_engine.simulate_scope_with_hypothetical_holding", side_effect=_sim):
+            evaluate_pretrade_check("all", "AAPL", 5000.0, config=_ro_config(), read_only=True)
+            assert len(seen) > 1 and all(seen)
+            seen.clear()
+            evaluate_pretrade_check("all", "AAPL", 5000.0, config=_ro_config())
+            assert len(seen) > 1 and not any(seen)
 
     def test_propagates_runtime_error_for_empty_scope(self):
         with patch("risk_orchestrator_engine.assemble_xray_report", side_effect=RuntimeError("no holdings")):

@@ -78,9 +78,9 @@ def _pulse_extended(row: dict) -> Optional[dict]:
     }
 
 
-def _price(ticker: str, currency: Optional[str], missing: list) -> tuple:
-    """(price part, extended-hours part, epoch of the quote): shared cache first, one live Yahoo quote only when no cached price exists."""
-    cached = get_all_cached_pulse().get(ticker)
+def cached_price(ticker: str, currency: Optional[str], pulse: Optional[dict] = None) -> Optional[tuple]:
+    """(price part, extended-hours part, epoch of the quote) from the shared caches, or None when neither holds a price. pulse is a get_all_cached_pulse() result a caller already loaded."""
+    cached = (get_all_cached_pulse() if pulse is None else pulse).get(ticker)
     if cached and cached["price"]:
         epoch = cached["price_as_of"]
         return {
@@ -98,6 +98,14 @@ def _price(ticker: str, currency: Optional[str], missing: list) -> tuple:
             "stale": epoch is not None and time.time() - epoch > NIGHTLY_STALE_AFTER_SECONDS,
             "day_change": None, "day_change_pct": None,
         }, None, epoch
+    return None
+
+
+def _price(ticker: str, currency: Optional[str], missing: list) -> tuple:
+    """(price part, extended-hours part, epoch of the quote): shared cache first, one live Yahoo quote only when no cached price exists."""
+    cached = cached_price(ticker, currency)
+    if cached:
+        return cached
 
     snapshot = None if is_excluded_from_yahoo_fetch(ticker) else yahoo_engine.get_quote_snapshot(ticker)
     if snapshot is None:

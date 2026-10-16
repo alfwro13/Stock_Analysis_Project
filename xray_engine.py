@@ -305,13 +305,13 @@ class GhostfolioXRayClient:
             return {"dividend_yield_pct": 0.0, "dividend_in_base_currency": 0.0}
 
 
-def fetch_close_returns_from_parquet(symbols: List[str], cache_only: bool = False, close_transform=None) -> pd.DataFrame:
-    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet, unless cache_only). `close_transform(symbol, close)` may rescale a close series first (None drops the symbol)."""
+def fetch_close_returns_from_parquet(symbols: List[str], cache_only: bool = False, close_transform=None, read_only: bool = False) -> pd.DataFrame:
+    """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet, unless cache_only; read_only never fetches or queues a refresh). `close_transform(symbol, close)` may rescale a close series first (None drops the symbol)."""
     if not symbols:
         return pd.DataFrame()
     closes: Dict[str, pd.Series] = {}
     for t in symbols:
-        close = load_daily_close(t, cache_only=cache_only, tail=252)
+        close = load_daily_close(t, cache_only=cache_only, read_only=read_only, tail=252)
         if close is not None:
             if close_transform is not None:
                 close = close_transform(t, close)
@@ -604,14 +604,14 @@ def get_scope_return_series(
     return port_rets_series, bench_rets_series, data_warnings
 
 
-def _ticker_return_series(ticker: str) -> Optional[pd.Series]:
+def _ticker_return_series(ticker: str, read_only: bool = False) -> Optional[pd.Series]:
     """A ticker's own daily return series, preferring the cached xray_returns_cache row
     (already populated for every current holding) and falling back to a parquet read for a
     ticker not currently held — the case the pre-trade gatekeeper (Pillar A) exists for."""
     combined, _ = get_scope_returns_matrix([ticker], include_benchmark=False)
     if combined is not None and ticker in combined.columns:
         return combined[ticker]
-    df = fetch_close_returns_from_parquet([ticker])
+    df = fetch_close_returns_from_parquet([ticker], read_only=read_only)
     if ticker in df.columns:
         series = df[ticker].dropna()
         return series if not series.empty else None
@@ -619,7 +619,7 @@ def _ticker_return_series(ticker: str) -> Optional[pd.Series]:
 
 
 def simulate_scope_with_hypothetical_holding(
-    scope: str, ticker: str, additional_value: float
+    scope: str, ticker: str, additional_value: float, read_only: bool = False
 ) -> Dict:
     """Recomputes the VaR/correlation half of assemble_xray_report()'s risk_metrics as if
     `additional_value` (BASE_CURRENCY) of `ticker` were added to `scope` — the pre-trade
@@ -629,6 +629,7 @@ def simulate_scope_with_hypothetical_holding(
     resolve_scope_holdings()); returns var_95_1d/max_pairwise_correlation as None (with a
     data_warnings entry) if `ticker`'s own return series can't be resolved or the scope's
     correlation cache is empty — the caller decides how to treat an inconclusive simulation.
+    read_only: a ticker with no parquet on disk is not fetched (it gets the no-usable-history warning).
     """
     ticker = normalize_ticker(ticker)
     holdings, total_value = resolve_scope_holdings(scope)
@@ -676,7 +677,7 @@ def simulate_scope_with_hypothetical_holding(
             "data_warnings": data_warnings,
         }
 
-    hypo_series = _ticker_return_series(ticker)
+    hypo_series = _ticker_return_series(ticker, read_only=read_only)
     if hypo_series is None or len(hypo_series) < 10:
         data_warnings.append(f"No usable return history for {ticker} (need at least 10 daily observations).")
         return {

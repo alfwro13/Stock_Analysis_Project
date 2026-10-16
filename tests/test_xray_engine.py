@@ -1640,6 +1640,22 @@ class TestSimulateScopeWithHypotheticalHolding:
 
         assert result["var_95_1d"] is not None
 
+    def test_read_only_never_fetches_an_uncached_ticker(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("SimReadOnlyAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+        _seed_risk_cache([(T1, 0.9, 0.20, "2026-06-03")])
+        _seed_corr_matrix([T1], [[1.0]])
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()), \
+             patch("xray_engine.load_daily_close", return_value=None) as load_close:
+            result = simulate_scope_with_hypothetical_holding(f"acct:{aid}", T_HYPO_LIVE, 1000.0, read_only=True)
+
+        assert result["var_95_1d"] is None and result["data_warnings"]
+        assert load_close.call_args.kwargs["read_only"] is True
+
     def test_no_correlation_cache_returns_none_metrics_with_warning(self):
         # xray_correlation_matrix has a single global row (PK on benchmark) that earlier tests
         # in this module may have already seeded — clear it explicitly rather than relying on

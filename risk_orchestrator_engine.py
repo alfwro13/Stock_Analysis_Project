@@ -299,7 +299,7 @@ def get_ticker_risk_contributions(limit: Optional[int] = None) -> list:
 
 def _suggest_reduced_value(
     scope: str, ticker: str, additional_value: float, dd_sub: float,
-    thresholds: dict, weights: dict, target_rank: int, iterations: int = 6,
+    thresholds: dict, weights: dict, target_rank: int, iterations: int = 6, read_only: bool = False,
 ) -> Optional[float]:
     """Binary-searches for the largest addition size whose what-if tier is at or below
     `target_rank` (0=GREEN, 1=YELLOW) — an advisory suggestion only, per Pillar A's design
@@ -310,7 +310,7 @@ def _suggest_reduced_value(
         mid = (lo + hi) / 2
         if mid <= 0:
             break
-        sim = simulate_scope_with_hypothetical_holding(scope, ticker, mid)
+        sim = simulate_scope_with_hypothetical_holding(scope, ticker, mid, read_only=read_only)
         var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
         corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
         phi_score = max(0.0, min(
@@ -383,7 +383,7 @@ def build_daily_digest() -> dict:
 
 
 def evaluate_pretrade_check(
-    scope: str, ticker: str, additional_value: float, config: Optional[dict] = None
+    scope: str, ticker: str, additional_value: float, config: Optional[dict] = None, read_only: bool = False
 ) -> dict:
     """Pillar A pre-trade gatekeeper: advisory approve/warn/reject verdict for adding
     `additional_value` (BASE_CURRENCY) of `ticker` to `scope`, using the exact same
@@ -402,7 +402,7 @@ def evaluate_pretrade_check(
     dd_sub = _sub_score(drawdown_pct, thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"])
     dd_tier = _tier_for(dd_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
 
-    sim = simulate_scope_with_hypothetical_holding(scope, ticker, additional_value)
+    sim = simulate_scope_with_hypothetical_holding(scope, ticker, additional_value, read_only=read_only)
     var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
     corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
     phi_score = round(
@@ -435,7 +435,7 @@ def evaluate_pretrade_check(
     if verdict != "approve" and additional_value > 0:
         target_rank = max(0, _TIER_RANK[tier] - 1)
         suggested_reduced_value = _suggest_reduced_value(
-            scope, ticker, additional_value, dd_sub, thresholds, weights, target_rank
+            scope, ticker, additional_value, dd_sub, thresholds, weights, target_rank, read_only=read_only
         )
 
     return {
@@ -455,5 +455,6 @@ def evaluate_pretrade_check(
         "hypothetical_weight": sim["hypothetical_weight"],
         "new_portfolio_total_value": sim["portfolio_total_value"],
         "suggested_reduced_value": suggested_reduced_value,
+        "risk_cache_date": baseline_report.get("risk_metrics", {}).get("cache_date"),
         "data_warnings": sim["data_warnings"],
     }

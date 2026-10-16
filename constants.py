@@ -88,6 +88,7 @@ MCP_ALERT_TEXT_MAX_CHARS    = 500              # alert message text returned by 
 MCP_NEWS_MAX_ROWS           = 50               # `limit` of get_news
 MCP_NEWS_HEADLINE_MAX_CHARS = 200              # headline returned by get_news (external content)
 MCP_NEWS_SUMMARY_MAX_CHARS  = 400              # summary returned by get_news (external content)
+MCP_PRETRADE_AMOUNT_MAX     = 1_000_000_000_000  # `amount` of pretrade_check, in BASE_CURRENCY; a bound so a typo cannot reach the simulation
 ETF_CONSTITUENTS_MAX        = 50
 OPTION_LEGS_MAX             = 20
 TABLE_VIEWS_MAX             = 20               # saved column-preset Views per page
