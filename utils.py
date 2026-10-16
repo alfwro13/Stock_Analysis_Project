@@ -298,8 +298,11 @@ def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
     """Raw numbers from the ticker's `.info` dump under FUNDAMENTALS_DIR, or None when the file is missing, unsafe or unreadable. Money fields are in Yahoo's units: `market_cap` in the quote currency's major unit (GBP for a GBp quote), the rest in `financial_currency`."""
     from config import FUNDAMENTALS_DIR
     safe_ticker = safe_ticker_filename(ticker)
-    path = FUNDAMENTALS_DIR / f"{safe_ticker}.json" if safe_ticker else None
-    if path is None or not path.exists():
+    if not safe_ticker:
+        return None
+    root = os.path.realpath(FUNDAMENTALS_DIR)
+    path = os.path.realpath(os.path.join(root, f"{safe_ticker}.json"))
+    if not path.startswith(root + os.sep) or not os.path.exists(path):
         return None
     try:
         with open(path) as f:
