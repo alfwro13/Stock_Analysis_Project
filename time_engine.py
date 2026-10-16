@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from datetime import datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional
@@ -259,27 +260,32 @@ def market_window_utc(
 
 _calendar_cache: dict[str, object] = {}
 _uncovered_calendar_warned: set[str] = set()
+_calendar_build_lock = threading.Lock()
 
 
 def _get_exchange_calendar(exchange: str):
     if exchange in _calendar_cache:
         return _calendar_cache[exchange]
-    code = _EXCHANGE_CALENDAR_CODES.get(exchange)
-    if code is None:
-        if exchange not in _uncovered_calendar_warned:
-            logger.warning(
-                "No exchange_calendars mapping for %s; holiday check disabled for it", exchange
-            )
-            _uncovered_calendar_warned.add(exchange)
-        cal = None
-    else:
-        try:
-            cal = xcals.get_calendar(code)
-        except Exception as exc:
-            logger.error("Failed to build exchange_calendars calendar %s for %s: %s", code, exchange, exc)
+    with _calendar_build_lock:
+        # The XKRX build mutates a class-level Series, so concurrent builds corrupt it ("Length of values ... does not match length of index").
+        if exchange in _calendar_cache:
+            return _calendar_cache[exchange]
+        code = _EXCHANGE_CALENDAR_CODES.get(exchange)
+        if code is None:
+            if exchange not in _uncovered_calendar_warned:
+                logger.warning(
+                    "No exchange_calendars mapping for %s; holiday check disabled for it", exchange
+                )
+                _uncovered_calendar_warned.add(exchange)
             cal = None
-    _calendar_cache[exchange] = cal
-    return cal
+        else:
+            try:
+                cal = xcals.get_calendar(code)
+            except Exception as exc:
+                logger.error("Failed to build exchange_calendars calendar %s for %s: %s", code, exchange, exc)
+                cal = None
+        _calendar_cache[exchange] = cal
+        return cal
 
 
 def _session_window_override(exchange: str, local_date):
