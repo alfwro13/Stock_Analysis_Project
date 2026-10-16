@@ -9,7 +9,7 @@ from market_pulse import get_all_cached_pulse
 from utils import ignored_tickers_set, measure_request_stage, time_request_call
 from portfolio_service import get_fx_cache_status
 import table_columns_helpers
-from constants import CSS_VERSION
+from constants import ACCOUNT_NAME_MAX_CHARS, CSS_VERSION
 from page_helpers import (
     _build_position_sizing_context,
     get_unread_count,
@@ -129,6 +129,7 @@ def accounts_page(request: Request):
         context={
             "base_currency": BASE_CURRENCY,
             "account_currencies": ACCOUNT_CURRENCIES,
+            "account_name_max": ACCOUNT_NAME_MAX_CHARS,
             "unread_count": get_unread_count(),
         }
     )

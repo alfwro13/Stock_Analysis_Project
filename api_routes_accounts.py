@@ -27,7 +27,7 @@ from portfolio_metrics_engine import (
 import notification_engine
 from api_deps import FiniteModel, job_busy_response, limiter, _error_500
 from config import load_config
-from constants import CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
+from constants import ACCOUNT_NAME_MAX_CHARS, CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
 from data_engine import fetch_and_save_single_ticker
 from quant_signals import QuantEngine
 from database import (
@@ -65,7 +65,7 @@ from scheduler_engine import (
 )
 from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
 from utils import (
-    INVALID_TICKER_MESSAGE, has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch,
+    INVALID_TICKER_MESSAGE, attachment_content_disposition, has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch,
     is_iso_date, is_valid_ticker, measure_request_stage, normalize_ticker,
 )
 from yahoo_engine import yahoo_engine
@@ -79,7 +79,7 @@ _ACCOUNT_TYPES = frozenset({"Trading", "House", "Pension", "Watchlist"})
 
 
 class AccountBody(FiniteModel):
-    name: str
+    name: str = Field(max_length=ACCOUNT_NAME_MAX_CHARS)
     currency: str
     initial_cash: float = 0.0
     note: Optional[str] = None
@@ -635,11 +635,10 @@ def api_export_transactions(request: Request, account_id: int):
         if acc is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
         csv_text = export_transactions_csv(account_id)
-        filename = f"{acc['name'].replace(' ', '_')}_transactions.csv"
         return Response(
             content=csv_text,
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": attachment_content_disposition(acc["name"], "_transactions.csv")},
         )
     except Exception as e:
         logger.error("api_export_transactions account=%s failed: %s", account_id, e)

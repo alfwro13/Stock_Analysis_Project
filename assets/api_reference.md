@@ -89,6 +89,7 @@ Request models in `api_routes_accounts.py`, `api_routes.py` and the `POST /api/s
 | Price-history CSV body | 500,000 characters, 10,000 rows (`422`) | `POST /api/accounts/{id}/price-history/import-csv` |
 | Option legs | 20 | `POST /api/options/payoff` |
 | ETF constituents | 50 | `POST /api/etf-predictors`, `PUT /api/etf-predictors/{id}`, `POST /api/etf-predictors/validate` |
+| Account name | 100 characters (`422`) | `POST /api/accounts`, `PUT /api/accounts/{id}` |
 | Saved Views | 20 per page; name 100 characters; 50 filter conditions; filter `key`/`operator` 64 and `value`/`value2` 200 characters | `POST /api/ui-preferences/views` |
 | Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
 
@@ -3603,7 +3604,7 @@ Returns all non-deleted accounts. The stored scraper request headers may carry a
 
 ### `POST /api/accounts`
 
-Creates a new account. Returns 422 if `currency` is not a three-letter code or `opened_date` (when given) is not a real `YYYY-MM-DD` date — both feed the ledger's transaction currency and date. Rate limit: 30/minute.
+Creates a new account. Returns 422 if `name` is longer than 100 characters (`constants.ACCOUNT_NAME_MAX_CHARS`), `currency` is not a three-letter code or `opened_date` (when given) is not a real `YYYY-MM-DD` date — the last two feed the ledger's transaction currency and date. Rate limit: 30/minute.
 
 **Request body:**
 ```json
@@ -3616,7 +3617,7 @@ Creates a new account. Returns 422 if `currency` is not a three-letter code or `
 
 ### `PUT /api/accounts/{id}`
 
-Updates an existing account. Same body and 422 validation (`currency`, `opened_date`) as POST. Returns 404 if not found or soft-deleted. **`account_type` is immutable once an account is created — a PUT whose `account_type` differs from the existing value is rejected with 400** (e.g. House -> Pension would expose a `PENSION-{id}` synthetic ticker the ledger never created, or vice versa silently orphan a real one). Rate limit: 30/minute.
+Updates an existing account. Same body and 422 validation (`name` length, `currency`, `opened_date`) as POST. Returns 404 if not found or soft-deleted. **`account_type` is immutable once an account is created — a PUT whose `account_type` differs from the existing value is rejected with 400** (e.g. House -> Pension would expose a `PENSION-{id}` synthetic ticker the ledger never created, or vice versa silently orphan a real one). Rate limit: 30/minute.
 
 ---
 
@@ -3830,7 +3831,7 @@ Re-importing an export as-is will fail the importer's required-column check, sin
 
 Text cells (`Title`, `Account Currency`, `Ticker`, `ISIN`, `Instrument Currency`, `Notes`, `Account Name`) that start with `=`, `+`, `-`, `@`, a tab or a carriage return are written with a leading `'` (`utils.csv_safe_cell`), so Excel and LibreOffice show them as text instead of running them as a formula. Numeric cells are not touched. The importer does not strip that apostrophe.
 
-**Response:** `text/csv` with a `Content-Disposition: attachment` header (browser downloads it directly).
+**Response:** `text/csv` with a `Content-Disposition: attachment` header (browser downloads it directly). The file name is `<account name>_transactions.csv`, built by `utils.attachment_content_disposition()`: whitespace, `\ / : * ? " < > | ;` and control or format characters (CR/LF, bidi overrides) in the account name become `_` or are dropped, leading dots are removed, and the name part is cut to 64 characters, so a name cannot add or alter header parameters. A name that is not plain ASCII is sent twice: an ASCII `filename="…"` fallback and an RFC 5987 `filename*=UTF-8''…` with the original characters percent-encoded. A name with nothing usable left is exported as `download_transactions.csv`.
 
 ---
 
