@@ -115,7 +115,7 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
             "category": "external",
             "engine": meta["engine"],
             "produces": list(meta.get("produces", [])),
-            "consumes": [],
+            "consumes": list(meta.get("consumes", [])),
             "enabled": True,
             "last_run": None,
             "last_status": None,

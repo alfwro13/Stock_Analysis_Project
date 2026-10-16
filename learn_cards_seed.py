@@ -3583,6 +3583,21 @@ CARDS = [
 <p>The <strong>Embed Token</strong> (Settings → User Account) is a dedicated secret, separate from the general-purpose API Key, that lets a <code>GET</code> request to one of those pages skip login when both <code>embed=true</code> and a matching <code>&amp;embed_token=&lt;token&gt;</code> are present in the URL. It grants no other access — it does not work on any other page, on any <code>/api/*</code> endpoint, or on any non-<code>GET</code> request — so a leaked embed URL exposes only the read-only embedded view, not the API Key's full account access. Generating a new token immediately invalidates the old one.</p>
 <p>Clicking a ticker from an embedded Portfolio or Watchlist page carries the token forward automatically, so drilling into a Stock Detail page from an embedded view stays logged in without needing the token typed into that link separately.</p>""",
     },
+    {
+        "term_key": "claude-mcp-server",
+        "section_id": "security-access",
+        "term_title": "Claude MCP Server",
+        "question": "What can a leaked MCP_API_KEY be used for?",
+        "answer": "Only read-only requests to /mcp — it does not work on the Home Assistant API routes, and the Home Assistant API Key does not work on /mcp",
+        "distractors": [
+            "Placing trades and editing account transactions",
+            "Changing dashboard settings through the MCP tools",
+            "Signing in to every page of the dashboard as the operator",
+        ],
+        "explanation": """<p>The <strong>Claude MCP Server</strong> is a read-only endpoint at <code>/mcp</code> that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language through tools such as <code>get_accounts</code>, instead of you copying prompts across. It can only read: it cannot change settings, place trades or write data.</p>
+<p>It has its own secret, <code>MCP_API_KEY</code> in <code>.env</code>, sent as <code>Authorization: Bearer &lt;key&gt;</code>. That key works only on <code>/mcp</code> and the Home Assistant API Key does not, so a leaked key of one cannot be used with the other. While <code>MCP_API_KEY</code> is unset, <code>/mcp</code> refuses every request.</p>
+<p>Every answer states when its data was produced (<code>as_of</code>), whether the LSE and NYSE are open, the units used, and what is stale or missing. A missing value is returned as <code>null</code>, never as zero.</p>""",
+    },
     # --- workflow-monitor ---
     {
         "term_key": "workflow-monitor-term",

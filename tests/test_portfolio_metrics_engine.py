@@ -321,6 +321,26 @@ def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
 
 
 @pytest.mark.db
+def test_account_metrics_list_without_refresh_returns_null_metrics_and_writes_nothing(monkeypatch):
+    from database import get_performance_cache
+
+    aid = create_account("AcctMetricsNoCacheAcc", "GBP", initial_cash=500.0)
+    monkeypatch.setattr(portfolio_metrics_engine, "_trading_accounts", lambda: [accounts_engine.get_account(aid)])
+    assert get_performance_cache(aid) is None
+
+    row = portfolio_metrics_engine.account_metrics_list(refresh_missing=False)["accounts"][0]
+    assert row["account_id"] == aid
+    assert row["name"] == "AcctMetricsNoCacheAcc"
+    assert all(value is None for key, value in row.items() if key not in ("account_id", "name"))
+    assert len(row) == 14
+    assert get_performance_cache(aid) is None
+
+    refreshed = portfolio_metrics_engine.account_metrics_list()["accounts"][0]
+    assert refreshed["cash_balance"] == 500.0
+    assert get_performance_cache(aid) is not None
+
+
+@pytest.mark.db
 def test_account_metrics_list_zero_trading_accounts_returns_empty_list(monkeypatch):
     monkeypatch.setattr(portfolio_metrics_engine, "_trading_accounts", lambda: [])
 

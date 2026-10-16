@@ -32,6 +32,7 @@
 26. [Pairs Spread Monitor](#26-pairs-spread-monitor)
 27. [Pattern Detection](#27-pattern-detection)
 31. [Sector-Relative Momentum](#31-sector-relative-momentum)
+33. [Claude MCP Server](#33-claude-mcp-server)
 
 ---
 
@@ -1531,7 +1532,7 @@ Signs out every browser and device, including the caller's: raises the session e
 
 ### API key scope
 
-`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected.
+`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected. `/mcp` (the Claude MCP Server) is not covered by this scope and never appears in the table: it has its own `Authorization: Bearer <MCP_API_KEY>` credential (see section 33), and an `X-API-Key` sent to it gets `403`.
 
 | Method | Path | Used by Home Assistant for |
 |--------|------|----------------------------|
@@ -5101,6 +5102,32 @@ Query param `strategy` (strategy id). Rate limit 60/minute. `dates`, `weights` (
 ### `DELETE /api/strategy-backtester/runs/{run_id}`
 
 Rate limit 20/minute. Deletes a finished run and its files. A queued or running run cannot be deleted.
+
+---
+
+## 33. Claude MCP Server
+
+A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, does not use the `{ "status": ... }` response convention (it speaks JSON-RPC 2.0) and is **not** part of the **API key scope** table: it has its own credential. Set-up, tools and the response envelope are in `assets/mcp_integration.md`. Code: `mcp_server.py`.
+
+### `POST /mcp`
+
+Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per call (`initialize`, `tools/list`, `tools/call`, ...) with `Content-Type: application/json` and `Accept: application/json, text/event-stream`; the reply is one JSON body.
+
+**Authentication.** `Authorization: Bearer <MCP_API_KEY>`, where `MCP_API_KEY` is a secret in `.env`. `auth_middleware` (`main.py`) checks it for `/mcp` and `/mcp/*` only, in constant time, before any other check.
+
+| Request | Status |
+|---|---|
+| Valid Bearer key | handled by the SDK (`200`, or the SDK's own `400`/`421`/`403` for a bad Content-Type, Host or Origin) |
+| `MCP_API_KEY` unset or empty (fail closed), no `Authorization`, another scheme, or a wrong key | `401 {"detail": "Invalid or missing MCP key"}` with `WWW-Authenticate: Bearer` |
+| Any `X-API-Key` header (the Home Assistant key), with or without a Bearer key | `403 {"detail": "The API key cannot be used on this route"}` |
+| A session cookie alone | `401` (a cookie does not authenticate `/mcp`) |
+| A Bearer MCP key on any route other than `/mcp` | ignored: the route's normal authentication applies (`302` to `/login` for a pages and `/api/*` call without a session) |
+
+`GET`, `DELETE` and every other method on `/mcp` answer `401` without the key and `405` with `Allow: POST` with it. `/mcp/` answers `307` to `/mcp` once authenticated; any other `/mcp/*` path is `404`. The request body is limited by the SDK to 4 MiB.
+
+Tools are read-only (`readOnlyHint`). A failing tool answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned.
+
+Current tools: `get_accounts` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`.
 
 ---
 

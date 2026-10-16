@@ -248,32 +248,35 @@ def portfolio_totals() -> dict:
     return result
 
 
-def account_metrics_list() -> dict:
+def account_metrics_list(refresh_missing: bool = True) -> dict:
     """Per-Trading-account metrics for the Home Assistant per-account sensor set — reads every
     field from the single `account_performance_cache` snapshot (lazily refreshed like the
-    live-performance endpoint) so the whole response is consistent as of one point in time."""
+    live-performance endpoint) so the whole response is consistent as of one point in time.
+    `refresh_missing=False` is for read-only callers (the Claude MCP Server): an account with no
+    snapshot row yet returns null metrics instead of writing the row."""
     accounts = []
     for acc in _trading_accounts():
         account_id = acc["id"]
         cached = get_performance_cache(account_id)
-        if cached is None:
+        if cached is None and refresh_missing:
             refresh_performance_cache(account_id)
             cached = get_performance_cache(account_id)
+        cached = cached or {}
         accounts.append({
             "account_id": account_id,
             "name": acc["name"],
-            "cash_balance": cached["cash_balance"],
-            "equity_value": cached["equity_value"],
-            "unrealized_pnl": cached["unrealized_pnl"],
-            "realized_pnl": cached["realized_pnl"],
-            "dividend_income": cached["dividend_income"],
-            "interest_income": cached["interest_income"],
-            "gain_1d": cached["return_1d"],
-            "gain_1w": cached["return_1w"],
-            "gain_1m": cached["return_1m"],
-            "gain_3m": cached["return_3m"],
-            "gain_1y": cached["return_1y"],
-            "mwrr_pct": cached["mwrr"],
+            "cash_balance": cached.get("cash_balance"),
+            "equity_value": cached.get("equity_value"),
+            "unrealized_pnl": cached.get("unrealized_pnl"),
+            "realized_pnl": cached.get("realized_pnl"),
+            "dividend_income": cached.get("dividend_income"),
+            "interest_income": cached.get("interest_income"),
+            "gain_1d": cached.get("return_1d"),
+            "gain_1w": cached.get("return_1w"),
+            "gain_1m": cached.get("return_1m"),
+            "gain_3m": cached.get("return_3m"),
+            "gain_1y": cached.get("return_1y"),
+            "mwrr_pct": cached.get("mwrr"),
         })
     return {"base_currency": BASE_CURRENCY, "accounts": accounts}
 
