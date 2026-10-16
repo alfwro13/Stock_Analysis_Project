@@ -1445,3 +1445,15 @@ def test_reported_session_applies_only_to_instruments_without_an_exchange_calend
     from market_session_helpers import has_reported_session
 
     assert has_reported_session(ticker) is expected
+
+
+def test_history_columns_argument_limits_the_parquet_read(tmp_path):
+    import pandas as pd
+    from data_engine import load_or_fetch_daily_history
+
+    pd.DataFrame({"Open": [1.0], "Close": [2.0]}, index=pd.to_datetime(["2026-01-01"])).to_parquet(tmp_path / "ZZCOLS.parquet")
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path):
+        frame = load_or_fetch_daily_history("ZZCOLS", read_only=True, columns=["Close"])
+        full = load_or_fetch_daily_history("ZZCOLS", read_only=True)
+    assert list(frame.columns) == ["Close"]
+    assert list(full.columns) == ["Open", "Close"]

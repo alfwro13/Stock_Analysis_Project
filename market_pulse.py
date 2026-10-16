@@ -71,18 +71,21 @@ SPARKLINE_MAX_POINTS = 60
 _DISPLAY_STALE_FLOOR_SECONDS = 300
 
 
-def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool:
+def is_price_fresh(last_updated: float, price: float, refresh_rate: int, market_open: Optional[bool] = None) -> bool:
     """Display-only staleness check ('should the UI grey this out'), not a data-selection gate
     — see accounts_engine.current_price_map() for the latter, which compares timestamps
     directly instead of using an absolute cutoff. A cache row counts as fresh outside market
     hours as long as it has ever been populated; during market hours it must also be within a
     floor of 5 minutes (or 2x the refresh interval if that's larger) — a floor comfortably
     wider than the ~10-minute background scan that actually keeps the cache warm, so normal
-    scan-to-scan gaps and occasional fetch latency don't flip the display to stale every cycle."""
+    scan-to-scan gaps and occasional fetch latency don't flip the display to stale every cycle.
+    A caller checking many rows passes market_open (one is_trading_session() for the whole loop)."""
     has_data = last_updated > 0 and price != 0.0
     if not has_data:
         return False
-    if not is_trading_session():
+    if market_open is None:
+        market_open = is_trading_session()
+    if not market_open:
         return True
     return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
 
@@ -157,6 +160,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
 
     registry_exchange_map = build_registry_exchange_map()
     registry_future_tickers = build_registry_future_tickers()
+    exchange_state_memo: Dict[Any, bool] = {}
     now = time.time()
     stale = []
     for t in tickers:
@@ -165,7 +169,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
             continue
         if now - last_updated_map[t] <= max_age_seconds:
             continue
-        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map, registry_future_tickers=registry_future_tickers):
+        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map, registry_future_tickers=registry_future_tickers, exchange_state_memo=exchange_state_memo):
             stale.append(t)
     return stale
 
@@ -221,9 +225,10 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     config_data = load_config()
     refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
 
+    market_open = is_trading_session()
     cache: Dict[str, Dict[str, Any]] = {}
     for row in rows:
-        is_stale = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
+        is_stale = not is_price_fresh(row['last_updated'], row['price'], refresh_rate, market_open)
         price, used_fallback = resolve_live_price(row['price'], row['last_updated'], row['fallback_price'], row['fallback_last_updated'])
         cache[row['ticker']] = {
             "ticker": row['ticker'],
@@ -363,6 +368,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     registry_future_tickers = build_registry_future_tickers(registry_rows)
 
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
+    market_open = is_trading_session()
+    exchange_state_memo: Dict[Any, bool] = {}
 
     for t in all_tickers:
         registry_row = registry_by_ticker.get(t)
@@ -375,8 +382,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             row = db_map[t]
             age = current_time - row['last_updated']
             has_data = row['last_updated'] > 0 and row['price'] != 0.0
-            is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
-            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers)
+            is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate, market_open)
+            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers, exchange_state_memo)
             needs_refresh: bool = False if not settled else (not has_data or age > int(refresh_rate))
             fallback = fallback_price_map.get(t)
             price, used_fallback = resolve_live_price(row['price'], row['last_updated'], fallback[0] if fallback else None, fallback[1] if fallback else None)

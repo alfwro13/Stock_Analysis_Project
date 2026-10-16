@@ -260,6 +260,7 @@ def is_ticker_quote_settled(
     currency: str = "",
     registry_exchange_map: Optional[Dict[str, str]] = None,
     registry_future_tickers: Optional[set] = None,
+    exchange_state_memo: Optional[Dict[Any, bool]] = None,
 ) -> bool:
     """is_quote_settled() resolved against `ticker`'s own exchange rather than a caller-supplied
     one — the single canonical per-ticker settlement check, shared by every needs_refresh path
@@ -276,7 +277,10 @@ def is_ticker_quote_settled(
     yahoo_engine.get_quote_snapshot()) actually live rather than frozen on last session's cache row
     until the next regular open (found 2026-07-17). This is deliberately narrower than changing
     is_quote_settled() itself, which alert-firing engines (Crash & Moonshot, AI Contagion) also
-    call and must keep its existing regular/premarket-only semantics for."""
+    call and must keep its existing regular/premarket-only semantics for. A caller looping over
+    many tickers passes one `exchange_state_memo` dict for the whole loop: the answer depends only
+    on (exchange, honor_premarket), so each distinct pair reads market_state once instead of
+    opening two SQLite connections per ticker."""
     # FX, futures and rates trade outside any exchange's hours; the window Yahoo reports is the one daily history already uses.
     session = reported_session(ticker)
     if session is not None:
@@ -285,6 +289,10 @@ def is_ticker_quote_settled(
         registry_future_tickers = build_registry_future_tickers()
     honor_premarket = ticker in registry_future_tickers
     exchange = resolve_ticker_exchange(ticker, currency, registry_exchange_map)
-    if is_quote_settled(exchange, include_premarket=honor_premarket):
-        return True
-    return get_exchange_session_state(exchange) in ("pre", "post")
+    memo_key = (exchange, honor_premarket)
+    if exchange_state_memo is not None and memo_key in exchange_state_memo:
+        return exchange_state_memo[memo_key]
+    settled = is_quote_settled(exchange, include_premarket=honor_premarket) or get_exchange_session_state(exchange) in ("pre", "post")
+    if exchange_state_memo is not None:
+        exchange_state_memo[memo_key] = settled
+    return settled

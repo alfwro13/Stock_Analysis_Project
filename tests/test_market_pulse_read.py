@@ -256,6 +256,20 @@ class TestGetAllCachedPulse:
             result = _mp.get_all_cached_pulse()
         assert result[ASSET_TICKER]["is_stale"] is True
 
+    def test_market_hours_evaluated_once_for_all_rows(self):
+        extra = ("_MPR_TEST_ASSET2", "_MPR_TEST_ASSET3")
+        try:
+            for t in (ASSET_TICKER, *extra):
+                _seed_pulse(t, last_updated=time.time() - 3600)
+            config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}
+            with patch("market_pulse.load_config", return_value=config_patch), \
+                 patch("market_pulse.is_trading_session", return_value=True) as session:
+                result = _mp.get_all_cached_pulse()
+            assert all(result[t]["is_stale"] is True for t in (ASSET_TICKER, *extra))
+            session.assert_called_once_with()
+        finally:
+            _clear(*extra)
+
     def test_empty_db_returns_empty_dict(self):
         _clear(ASSET_TICKER)
         result = _mp.get_all_cached_pulse()
@@ -364,6 +378,20 @@ class TestClosedMarketStaleness:
         assert asset is not None
         assert asset["needs_refresh"] is True
         assert asset["is_stale"] is True
+
+    def test_get_cached_pulse_from_db_evaluates_session_and_exchange_state_once(self):
+        tickers = ["_MPR_TEST_ASSET", "_MPR_TEST_ASSET2", "_MPR_TEST_ASSET3"]
+        try:
+            for t in tickers:
+                _seed_pulse(t, last_updated=time.time() - 3600)
+            with patch("market_pulse.is_trading_session", return_value=True) as session, \
+                 patch("market_session_helpers.is_quote_settled", return_value=True) as settled:
+                result = _mp.get_cached_pulse_from_db(tickers, refresh_rate=60)
+            assert [r["needs_refresh"] for r in result["assets"]] == [True, True, True]
+            session.assert_called_once_with()
+            assert settled.call_count == 1
+        finally:
+            _clear(*tickers[1:])
 
     def test_get_all_cached_pulse_not_stale_when_market_closed(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
@@ -521,6 +549,36 @@ class TestIsTickerQuoteSettled:
             assert _ms.is_ticker_quote_settled("ES=F") is True
         mock_settled.assert_called_once_with("NYSE", include_premarket=True)
 
+    def test_memo_reads_exchange_state_once_per_exchange_and_premarket_mode(self):
+        memo = {}
+        exchanges = {"AAPL": "NYSE", "MSFT": "NYSE", "NVDA": "NYSE"}
+        with patch("market_session_helpers.is_quote_settled", return_value=False) as mock_settled, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed") as mock_state:
+            results = [
+                _ms.is_ticker_quote_settled(t, registry_exchange_map=exchanges, registry_future_tickers=set(), exchange_state_memo=memo)
+                for t in exchanges
+            ]
+        assert results == [False, False, False]
+        mock_settled.assert_called_once_with("NYSE", include_premarket=False)
+        mock_state.assert_called_once_with("NYSE")
+        assert memo == {("NYSE", False): False}
+
+    def test_memo_separates_future_ticker_from_its_spot_exchange(self):
+        memo = {}
+        with patch("market_session_helpers.is_quote_settled", side_effect=lambda ex, include_premarket=False: include_premarket), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled("^GSPC", exchange_state_memo=memo) is False
+            assert _ms.is_ticker_quote_settled("ES=F", exchange_state_memo=memo) is True
+            assert _ms.is_ticker_quote_settled("^GSPC", exchange_state_memo=memo) is False
+        assert memo == {("NYSE", False): False, ("NYSE", True): True}
+
+    def test_without_memo_every_call_reads_the_state(self):
+        with patch("market_session_helpers.is_quote_settled", return_value=False) as mock_settled, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            _ms.is_ticker_quote_settled("AAPL")
+            _ms.is_ticker_quote_settled("MSFT")
+        assert mock_settled.call_count == 2
+
     def test_registry_future_tickers_can_be_precomputed(self):
         prebuilt_exchanges = {"ES=F": "NYSE"}
         prebuilt_futures = set()
@@ -645,6 +703,19 @@ class TestRegistryTickersNeedingRefresh:
         with patch("market_session_helpers.is_quote_settled", side_effect=fake_settled):
             assert _mp.registry_tickers_needing_refresh(["^FTSE", "^GSPC"]) == ["^GSPC"]
 
+    def test_settlement_evaluated_once_per_exchange_for_many_stale_rows(self):
+        shared = ("_MPR_REG_A", "_MPR_REG_B", "_MPR_REG_C")
+        try:
+            for t in shared:
+                _seed_pulse(t, last_updated=time.time() - 3600)
+            with patch("market_pulse.build_registry_exchange_map", return_value={t: "LSE" for t in shared}), \
+                 patch("market_session_helpers.is_quote_settled", return_value=True) as mock_settled:
+                stale = _mp.registry_tickers_needing_refresh(list(shared))
+            assert stale == list(shared)
+            mock_settled.assert_called_once_with("LSE", include_premarket=False)
+        finally:
+            _clear(*shared)
+
 
 # ── is_price_fresh (shared helper) ────────────────────────────────────────────
 
@@ -656,6 +727,12 @@ class TestIsPriceFresh:
     def test_fresh_when_market_closed_regardless_of_age(self):
         with patch("market_pulse.is_trading_session", return_value=False):
             assert _mp.is_price_fresh(time.time() - 3600, 100.0, 60) is True
+
+    def test_market_open_argument_replaces_the_session_lookup(self):
+        with patch("market_pulse.is_trading_session", side_effect=AssertionError("must not be called")):
+            assert _mp.is_price_fresh(time.time() - 3600, 100.0, 60, market_open=False) is True
+            assert _mp.is_price_fresh(time.time() - 3600, 100.0, 60, market_open=True) is False
+            assert _mp.is_price_fresh(time.time() - 30, 100.0, 60, market_open=True) is True
 
     def test_fresh_when_market_open_and_within_window(self):
         with patch("market_pulse.is_trading_session", return_value=True):

@@ -16,6 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import time_engine
 from price_history_helpers import (
     _anchor_closes_for_ticker,
     _calendar_offset,
@@ -104,7 +105,7 @@ def test_get_period_anchor_closes_batches_multiple_tickers():
     df_b = _fake_ohlcv("2022-06-01", "2024-07-05")
     fixed_now = datetime(2024, 7, 6, tzinfo=timezone.utc)
 
-    def fake_loader(ticker):
+    def fake_loader(ticker, **kwargs):
         return {"AAA": df_a, "BBB": df_b}.get(ticker)
 
     with patch("price_history_helpers.load_or_fetch_daily_history", side_effect=fake_loader), \
@@ -152,6 +153,42 @@ def test_anchor_cache_reuses_reads_and_returns_independent_results(anchor_files)
         second = _anchor_closes_for_ticker("TEST", today, cache_only=True)
     assert second == expected
     assert read.call_count == 1
+
+
+def test_anchor_miss_reads_only_the_close_column(anchor_files):
+    _fake_ohlcv("2022-06-01", "2024-07-05").to_parquet(anchor_files / "TEST.parquet")
+    with patch("data_engine.pd.read_parquet", wraps=pd.read_parquet) as read:
+        _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)
+    assert read.call_args.kwargs["columns"] == ["Close"]
+
+
+def test_cache_only_anchor_miss_checks_staleness_once_and_does_not_reload_through_the_fetching_loader(anchor_files):
+    _fake_ohlcv("2022-06-01", "2024-07-05").to_parquet(anchor_files / "TEST.parquet")
+    with patch("data_engine.time_engine.last_settled_session_close_utc", wraps=time_engine.last_settled_session_close_utc) as settled:
+        _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)
+    assert settled.call_count == 1
+
+
+def test_cache_only_anchor_miss_still_queues_a_refresh_for_a_stale_file(anchor_files):
+    import os
+    import time
+
+    path = anchor_files / "TEST.parquet"
+    _fake_ohlcv("2022-06-01", "2024-07-05").to_parquet(path)
+    os.utime(path, (time.time() - 30 * 86400, time.time() - 30 * 86400))
+    with patch("cache_refresh_helpers.request_cache_refresh") as queued:
+        anchors = _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)
+    assert anchors["5d"] is not None
+    queued.assert_called_once()
+    assert queued.call_args.args[0] == "daily:TEST"
+
+
+def test_anchor_miss_takes_the_last_close_on_or_before_each_calendar_cutoff(anchor_files):
+    df = _fake_ohlcv("2022-06-01", "2024-07-05")
+    df.to_parquet(anchor_files / "TEST.parquet")
+    anchors = _anchor_closes_for_ticker("TEST", date(2024, 7, 6), cache_only=True)
+    expected = float(df.loc[df.index.date <= date(2024, 6, 6), "Close"].iloc[-1])
+    assert anchors["1m"] == expected
 
 
 def test_anchor_cache_counts_hits_and_misses_for_the_request(anchor_files):
