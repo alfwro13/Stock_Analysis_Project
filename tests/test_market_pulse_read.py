@@ -22,6 +22,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as _db
+from db_helpers import parse_utc_epoch
 import market_pulse as _mp
 import market_pulse_write as _mw
 import market_session_helpers as _ms
@@ -286,6 +287,15 @@ class TestGetAllCachedPulse:
         assert result[ASSET_TICKER]["price"] == 219.05
         assert result[ASSET_TICKER]["change_pct"] is None
         assert result[ASSET_TICKER]["change_pts"] is None
+
+    def test_price_as_of_is_the_time_of_the_price_returned(self):
+        now = time.time()
+        _seed_pulse(ASSET_TICKER, price=297.11, last_updated=now - 60)
+        assert _mp.get_all_cached_pulse()[ASSET_TICKER]["price_as_of"] == now - 60
+        stock_time = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now))
+        _seed_pulse(ASSET_TICKER, price=297.11, last_updated=now - 7 * 86400)
+        _seed_stock_signal(ASSET_TICKER, price=219.05, last_updated=stock_time)
+        assert _mp.get_all_cached_pulse()[ASSET_TICKER]["price_as_of"] == parse_utc_epoch(stock_time)
 
     def test_keeps_live_price_when_stock_signals_not_meaningfully_fresher(self):
         now = time.time()

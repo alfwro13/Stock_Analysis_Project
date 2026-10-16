@@ -1,12 +1,11 @@
-from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from mcp.server.mcpserver.exceptions import ToolError
 
 from portfolio_service import persisted_fx_reads
 from xray_engine import XRayScopeUnavailable, assemble_xray_report
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope
+from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, envelope
 from ..scope import ACCOUNT_ALL, AccountArg, resolve_scope
 from ..server import READ_ONLY, server
 
@@ -27,12 +26,6 @@ _XRAY_UNITS = {
     "findings": "breaches of the X-Ray Allocation Targets set in Settings, first findings_cap of findings_total in report order; targets_checked counts every target evaluated",
     "risk_cache_date": "UTC date of the nightly risk cache the beta, volatility and correlation come from (as_of is that date at 00:00 UTC)",
 }
-
-
-def _xray_as_of(cache_date: Optional[str]) -> Optional[float]:
-    if not cache_date:
-        return None
-    return datetime.strptime(cache_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
 
 
 def _xray_findings(recommendations: dict) -> tuple[int, list]:
@@ -111,6 +104,6 @@ def get_xray(account: AccountArg = ACCOUNT_ALL) -> dict[str, Any]:
         raise ToolError(str(e)) from e
     data, missing = _xray_summary(report)
     return envelope(
-        data, as_of=_xray_as_of(report["risk_metrics"]["cache_date"]), units=_XRAY_UNITS, missing=missing,
+        data, as_of=date_epoch(report["risk_metrics"]["cache_date"]), units=_XRAY_UNITS, missing=missing,
         stale_after_seconds=NIGHTLY_STALE_AFTER_SECONDS,
     )

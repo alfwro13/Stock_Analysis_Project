@@ -15,6 +15,12 @@ def iso_utc(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def date_epoch(day: Optional[str]) -> Optional[float]:
+    if not day:
+        return None
+    return datetime.strptime(day[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+
+
 def envelope(data: Any, *, as_of: Optional[float], units: dict, missing: list, stale_after_seconds: int = STALE_AFTER_SECONDS) -> dict:
     market_state = {exchange: get_exchange_session_state(exchange) for exchange in ENVELOPE_EXCHANGES}
     age_seconds = None if as_of is None else max(0, int(time.time() - as_of))

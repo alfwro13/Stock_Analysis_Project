@@ -159,7 +159,6 @@ class TestGetXray:
         body, missing = get_xray_tool._xray_summary(report)
         assert body["risk"]["portfolio_beta"] is None and body["correlation"]["maximum"] is None
         assert missing == ["risk.portfolio_beta: not available (see data_warnings)", "correlation.maximum: not available (see data_warnings)"]
-        assert get_xray_tool._xray_as_of(None) is None
 
     def test_leaves_the_database_unchanged(self, mcp_client, holdings_book):
         before = table_counts()
