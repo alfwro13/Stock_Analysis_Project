@@ -503,3 +503,127 @@ class TestRunMarketStressIf:
              patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
             result = run_market_stress_if()
         assert isinstance(result["alert"], bool)
+
+
+@pytest.fixture
+def isolated_regime_tables():
+    tables = ("market_regimes", "macro_regimes", "treasury_auction_results")
+    conn = database.get_connection()
+    try:
+        saved = {t: [dict(r) for r in conn.execute(f"SELECT * FROM {t}")] for t in tables}
+        for t in tables:
+            conn.execute(f"DELETE FROM {t}")
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        yield
+    finally:
+        conn = database.get_connection()
+        try:
+            for t in tables:
+                conn.execute(f"DELETE FROM {t}")
+                for row in saved[t]:
+                    conn.execute(f"INSERT INTO {t} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", list(row.values()))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _insert_regime_row(date, **columns):
+    names = ["date", *columns]
+    conn = database.get_connection()
+    try:
+        conn.execute(
+            f"INSERT OR REPLACE INTO market_regimes ({', '.join(names)}) VALUES ({', '.join('?' * len(names))})",
+            [date, *columns.values()],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestCurrentHmmRegime:
+    def test_empty_table(self, isolated_regime_tables):
+        from regime_engine import current_hmm_regime
+        assert current_hmm_regime() == {"current": None, "last_change": None}
+
+    def test_skips_a_newer_row_that_has_no_hmm_state(self, isolated_regime_tables):
+        from regime_engine import current_hmm_regime
+        _insert_regime_row("2026-05-01", price_hmm_state=1, price_hmm_label="Chop", price_hmm_prob=0.7, us_regime_label="Normal", uk_regime_label="Volatile")
+        _insert_regime_row("2026-05-02", market_stress_score=0.3)
+        result = current_hmm_regime()
+        assert result["current"] == {
+            "state": 1, "label": "Chop", "probability": 0.7, "as_of": "2026-05-01",
+            "us_regime_label": "Normal", "uk_regime_label": "Volatile",
+        }
+        assert result["last_change"] is None
+
+    def test_last_change_names_the_first_day_of_the_current_label(self, isolated_regime_tables):
+        from regime_engine import current_hmm_regime
+        for date, state, label in (("2026-05-01", 0, "Bull"), ("2026-05-02", 0, "Bull"), ("2026-05-03", 2, "Crash"), ("2026-05-04", 2, "Crash")):
+            _insert_regime_row(date, price_hmm_state=state, price_hmm_label=label, price_hmm_prob=0.9)
+        assert current_hmm_regime()["last_change"] == {"date": "2026-05-03", "from_label": "Bull", "to_label": "Crash"}
+
+
+class TestMarketStressSnapshot:
+    def test_empty_table(self, isolated_regime_tables):
+        from regime_engine import market_stress_snapshot
+        assert market_stress_snapshot() == {"current": None, "history": []}
+
+    def test_current_and_history_oldest_first(self, isolated_regime_tables):
+        from regime_engine import market_stress_snapshot
+        _insert_regime_row("2026-05-01", market_stress_score=0.11112, market_stress_features='{"vix_level": 14.0}')
+        _insert_regime_row("2026-05-02", market_stress_score=0.55556, market_stress_features='{"vix_level": 21.0}')
+        result = market_stress_snapshot()
+        assert result["current"] == {"score": 0.5556, "features": {"vix_level": 21.0}, "date": "2026-05-02"}
+        assert result["history"] == [{"date": "2026-05-01", "score": 0.1111}, {"date": "2026-05-02", "score": 0.5556}]
+
+    def test_unreadable_features_become_empty(self, isolated_regime_tables):
+        from regime_engine import market_stress_snapshot
+        _insert_regime_row("2026-05-01", market_stress_score=0.2, market_stress_features="not json")
+        assert market_stress_snapshot()["current"]["features"] == {}
+
+
+class TestMacroConditionsSnapshot:
+    HA_FIELDS = {
+        "as_of", "us_threat_level", "uk_threat_level", "us_yield_velocity", "uk_yield_velocity",
+        "tyx_close", "tnx_close", "uk_gilt_close", "dxy_close", "gbpusd_close", "treasury_auction", "fear_greed",
+    }
+
+    def test_keys_are_the_ones_the_route_and_home_assistant_read(self, isolated_regime_tables):
+        from regime_engine import macro_conditions_snapshot
+        with patch("regime_engine.get_latest_fear_greed", return_value={"value": 50.0, "label": "Neutral", "as_of": "2026-05-01"}):
+            result = macro_conditions_snapshot()
+        assert set(result) == self.HA_FIELDS
+        assert result["as_of"] is None and result["treasury_auction"] == {"healthy": None, "recent": []}
+        assert result["fear_greed"]["label"] == "Neutral"
+
+    def test_route_wraps_the_snapshot_with_status_only(self, client, isolated_regime_tables):
+        with patch("regime_engine.get_latest_fear_greed", return_value={"value": None, "label": None, "as_of": None}):
+            body = client.get("/api/macro-conditions").json()
+        assert set(body) == self.HA_FIELDS | {"status"} and body["status"] == "success"
+
+
+class TestRegimeRoutesWrapTheSnapshots:
+    def test_market_regime_current(self, client, isolated_regime_tables):
+        _insert_regime_row("2026-05-01", price_hmm_state=0, price_hmm_label="Bull", price_hmm_prob=0.8)
+        body = client.get("/api/market-regime/current").json()
+        assert set(body) == {"status", "current", "last_change"}
+        assert body["current"]["label"] == "Bull" and body["current"]["us_regime_label"] is None
+
+    def test_market_stress(self, client, isolated_regime_tables):
+        _insert_regime_row("2026-05-01", market_stress_score=0.4, market_stress_features='{"vix_level": 15.0}')
+        body = client.get("/api/market-stress").json()
+        assert set(body) == {"status", "current", "history"}
+        assert body["current"] == {"score": 0.4, "features": {"vix_level": 15.0}, "date": "2026-05-01"}
+        assert body["history"] == [{"date": "2026-05-01", "score": 0.4}]
+
+
+class TestCrashVetoStressThreshold:
+    def test_default_and_configured(self):
+        from regime_engine import crash_veto_stress_threshold
+        with patch("config.load_config", return_value={}):
+            assert crash_veto_stress_threshold() == 0.75
+        with patch("config.load_config", return_value={"META_SCORING": {"CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.6}}}):
+            assert crash_veto_stress_threshold() == 0.6

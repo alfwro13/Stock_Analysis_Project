@@ -453,7 +453,7 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
     quant_signals' own per-date history rather than the latest-only regime_engine/stock_signals
     lookups. Used by the Cross-Engine Alert Referee's historical backfill."""
     from config import load_config
-    from regime_engine import get_latest_regime
+    from regime_engine import crash_veto_stress_threshold, get_latest_regime
 
     tickers = list(dict.fromkeys(tickers))
     results: dict[str, Optional[dict]] = {t: None for t in tickers}
@@ -465,7 +465,7 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
     market_stress_score = regime_row.get("market_stress_score") if regime_row else None
 
     meta_cfg = load_config().get("META_SCORING", {})
-    stress_threshold = meta_cfg.get("CRASH_VETO", {}).get("MARKET_STRESS_THRESHOLD", 0.75)
+    stress_threshold = crash_veto_stress_threshold()
     crash_veto = regime == "Crash" or (market_stress_score is not None and market_stress_score >= stress_threshold)
 
     weights = None

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from mcp_server import envelope as envelope_module
-from mcp_server.envelope import NIGHTLY_STALE_AFTER_SECONDS, STALE_AFTER_SECONDS, envelope
+from mcp_server.envelope import NIGHTLY_STALE_AFTER_SECONDS, STALE_AFTER_SECONDS, date_epoch, envelope
 
 
 class TestEnvelope:
@@ -53,3 +53,9 @@ class TestEnvelope:
         with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"):
             result = envelope({"a": float("nan"), "b": [float("inf")]}, as_of=None, units={}, missing=[])
         assert result["data"] == {"a": None, "b": [None]}
+
+
+class TestDateEpoch:
+    @pytest.mark.parametrize("day, epoch", [("2023-11-14", 1_699_920_000.0), ("2023-11-14 22:13:20", 1_699_920_000.0), (None, None), ("", None)])
+    def test_date_is_midnight_utc(self, day, epoch):
+        assert date_epoch(day) == epoch

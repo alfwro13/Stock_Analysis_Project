@@ -7,9 +7,10 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
-from database import get_connection
+from database import get_connection, get_auction_summary
 from model_compatibility_engine import dump_sklearn_artifact
 from config import HISTORICAL_DIR
+from sentiment_engine import get_latest_fear_greed
 from yahoo_engine import yahoo_engine
 from constants import (
     MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL,
@@ -511,6 +512,135 @@ def get_latest_regime() -> Optional[Dict[str, Any]]:
     finally:
         if conn:
             conn.close()
+
+
+def current_hmm_regime() -> Dict[str, Any]:
+    """Latest HMM regime row that has a state (the newest market_regimes row may hold only a stress score) plus the most recent label change within 60 rows."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob, "
+            "us_regime_label, uk_regime_label "
+            "FROM market_regimes WHERE price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        if not row:
+            return {"current": None, "last_change": None}
+
+        current = {
+            "state": row["price_hmm_state"],
+            "label": row["price_hmm_label"],
+            "probability": row["price_hmm_prob"],
+            "as_of": row["date"],
+            # us/uk_regime_label are the EWMA-turbulence classifier's Normal/Volatile/Crash
+            # labels (calculate_market_regime()) — a different taxonomy than the HMM's
+            # Bull/Chop/Crash above, though both live on this same row/date.
+            "us_regime_label": row["us_regime_label"],
+            "uk_regime_label": row["uk_regime_label"],
+        }
+
+        cursor.execute(
+            "SELECT date, price_hmm_label FROM market_regimes "
+            "WHERE price_hmm_label IS NOT NULL ORDER BY date DESC LIMIT 60"
+        )
+        history = cursor.fetchall()
+        last_change = None
+        current_label = current["label"]
+        for i, h in enumerate(history[1:], 1):
+            if h["price_hmm_label"] != current_label:
+                last_change = {
+                    "date": history[i - 1]["date"],
+                    "from_label": h["price_hmm_label"],
+                    "to_label": current_label,
+                }
+                break
+
+        return {"current": current, "last_change": last_change}
+    finally:
+        if conn:
+            conn.close()
+
+
+def market_stress_snapshot() -> Dict[str, Any]:
+    """Latest Isolation Forest market stress score with its feature values, and up to 30 daily scores oldest first."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT date, market_stress_score, market_stress_features "
+            "FROM market_regimes WHERE market_stress_score IS NOT NULL ORDER BY date DESC LIMIT 30"
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return {"current": None, "history": []}
+
+        latest = rows[0]
+        try:
+            features = json.loads(latest["market_stress_features"] or "{}")
+        except ValueError:
+            features = {}
+
+        current = {
+            "score": round(float(latest["market_stress_score"]), 4),
+            "features": features,
+            "date": latest["date"],
+        }
+        history = [
+            {"date": r["date"], "score": round(float(r["market_stress_score"]), 4)}
+            for r in reversed(rows)
+        ]
+        return {"current": current, "history": history}
+    finally:
+        if conn:
+            conn.close()
+
+
+def crash_veto_stress_threshold() -> float:
+    """Stress score at or above which the Meta Score vetoes every signal (Settings, default 0.75)."""
+    from config import load_config
+    return load_config().get("META_SCORING", {}).get("CRASH_VETO", {}).get("MARKET_STRESS_THRESHOLD", 0.75)
+
+
+def macro_conditions_snapshot() -> Dict[str, Any]:
+    """Latest sovereign-yield threat levels (raw GREEN/YELLOW/RED), Treasury auction health and Fear & Greed."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT date, us_threat_level, uk_threat_level, us_yield_velocity, uk_yield_velocity, "
+            "tyx_close, tnx_close, uk_gilt_close, dxy_close, gbpusd_close "
+            "FROM macro_regimes ORDER BY date DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+    finally:
+        if conn:
+            conn.close()
+
+    auction_rows = get_auction_summary()
+    if not auction_rows:
+        # Distinct from "auctions happened and were all fine" — no data to judge at all.
+        auction_healthy = None
+    else:
+        auction_healthy = not any(r["alert_fired"] for r in auction_rows)
+
+    return {
+        "as_of": row["date"] if row else None,
+        "us_threat_level": row["us_threat_level"] if row else None,
+        "uk_threat_level": row["uk_threat_level"] if row else None,
+        "us_yield_velocity": row["us_yield_velocity"] if row else None,
+        "uk_yield_velocity": row["uk_yield_velocity"] if row else None,
+        "tyx_close": row["tyx_close"] if row else None,
+        "tnx_close": row["tnx_close"] if row else None,
+        "uk_gilt_close": row["uk_gilt_close"] if row else None,
+        "dxy_close": row["dxy_close"] if row else None,
+        "gbpusd_close": row["gbpusd_close"] if row else None,
+        "treasury_auction": {"healthy": auction_healthy, "recent": auction_rows},
+        "fear_greed": get_latest_fear_greed(),
+    }
 
 def calculate_systemic_macro_threat() -> None:
     try:

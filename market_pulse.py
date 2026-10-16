@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from config import load_config
 from database import get_connection, get_ticker_registry
-from db_helpers import resolve_live_price, sentiment_fresh_since
+from db_helpers import parse_utc_epoch, resolve_live_price, sentiment_fresh_since
 from market_session_helpers import (
     MARKET_STATUS_PROXY,
     build_registry_exchange_map,
@@ -238,6 +238,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
             "change_pct": None if used_fallback else row['change_pct'],
             "is_positive": bool(row['is_positive']),
             "is_stale": is_stale,
+            "price_as_of": (parse_utc_epoch(row['fallback_last_updated']) or None) if used_fallback else row['last_updated'],
             "extended_price": row['extended_price'],
             "extended_change_pts": row['extended_change_pts'],
             "extended_change_pct": row['extended_change_pct'],
