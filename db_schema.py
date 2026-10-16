@@ -104,7 +104,7 @@ _MARKET_TICKER_REGISTRY_SEED = [
     ("BZ=F", "Brent Crude", "Commodities_FX", "Commodity", None, "USD", None, None, 1, 1, 3, 1, 4,
      "Brent Crude Oil futures — the global benchmark for oil pricing. Elevated prices raise input costs across the economy and pressure rate-sensitive equities.",
      None),
-    ("UK10YG", "UK 10Y Gilt", "Europe", "Rate", None, "GBP", None, None, 1, 1, 4, 0, 3,
+    ("UK10YG", "UK 10Y Gilt", "Europe", "Rate", "LSE", "GBP", None, None, 1, 1, 4, 0, 3,
      "The UK 10-Year Gilt Yield reflects sovereign borrowing costs and BoE monetary policy expectations. Rising yields compress equity multiples and increase corporate financing costs.",
      "UK_GILT_BASELINE.parquet"),
     ("^GSPC", "US S&P 500", "US", "Index", "NYSE", "USD", "ES=F", "S&P 500 Futures", 0, 1, 5, 1, 0,
@@ -2711,6 +2711,17 @@ def migrate_db(conn, cursor) -> None:
             conn.commit()
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to clear treasury_auction_results: %s", e)
+
+    try:
+        cursor.execute(
+            "UPDATE market_ticker_registry SET exchange = 'LSE', updated_at = CURRENT_TIMESTAMP "
+            "WHERE ticker = 'UK10YG' AND exchange IS NULL"
+        )
+        if cursor.rowcount:
+            logger.info("[MIGRATION] Set the UK10YG registry exchange to LSE...")
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to set the UK10YG registry exchange: %s", e)
 
     try:
         from db_helpers import refresh_job_average_duration

@@ -644,9 +644,10 @@ class TestIsTickerQuoteSettledForReportedSessions:
             assert _ms.is_ticker_quote_settled("GC=F") is False
         exchange_gate.assert_called_once()
 
-    def test_gilt_without_a_session_resolves_to_home_exchange_and_refreshes_after_the_close(self):
-        """UK10YG has no registry exchange and Yahoo lists no session for it, so it follows HOME_EXCHANGE; Yahoo's POST/POSTPOST on ^FTSE keeps it refreshing in the evening (accepted 2026-10-16), CLOSED/PRE freeze it."""
-        with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "LSE"}), \
+    def test_gilt_follows_its_registry_exchange_not_home_exchange(self):
+        """UK10YG is registered on LSE, so a HOME_EXCHANGE of NYSE must not move its refresh hours; Yahoo's POST/POSTPOST on ^FTSE keeps it refreshing in the evening (accepted 2026-10-16), CLOSED/PRE freeze it."""
+        _ms.reset_registry_exchange_cache()
+        with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "NYSE"}), \
              patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate:
             with patch("market_session_helpers.get_exchange_session_state", return_value="post"):
                 assert _ms.is_ticker_quote_settled("UK10YG") is True

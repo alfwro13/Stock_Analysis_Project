@@ -868,6 +868,27 @@ def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results
 
 
 @pytest.mark.db
+def test_migrate_db_sets_the_gilt_registry_exchange_to_lse_only_when_null():
+    conn = _conn()
+    try:
+        assert conn.execute("SELECT exchange FROM market_ticker_registry WHERE ticker = 'UK10YG'").fetchone()["exchange"] == "LSE"
+        cursor = conn.cursor()
+        conn.execute("UPDATE market_ticker_registry SET exchange = NULL WHERE ticker = 'UK10YG'")
+        conn.commit()
+        db_schema.migrate_db(conn, cursor)
+        assert conn.execute("SELECT exchange FROM market_ticker_registry WHERE ticker = 'UK10YG'").fetchone()["exchange"] == "LSE"
+
+        conn.execute("UPDATE market_ticker_registry SET exchange = 'XETRA' WHERE ticker = 'UK10YG'")
+        conn.commit()
+        db_schema.migrate_db(conn, cursor)
+        assert conn.execute("SELECT exchange FROM market_ticker_registry WHERE ticker = 'UK10YG'").fetchone()["exchange"] == "XETRA"
+    finally:
+        conn.execute("UPDATE market_ticker_registry SET exchange = 'LSE' WHERE ticker = 'UK10YG'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
 def test_strategy_backtest_runs_table_exists_with_expected_columns():
     conn = _conn()
     try:
