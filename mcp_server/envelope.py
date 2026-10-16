@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from config import BASE_CURRENCY
+from db_helpers import parse_utc_epoch
 from market_session_helpers import get_exchange_session_state
 from utils import sanitize_floats
 
@@ -13,6 +14,11 @@ NIGHTLY_STALE_AFTER_SECONDS = 5 * 86400  # Friday evening's run must still count
 
 def iso_utc(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def iso_from_stored_utc(stored_utc: Optional[str]) -> Optional[str]:
+    epoch = parse_utc_epoch(stored_utc)
+    return iso_utc(epoch) if epoch else None
 
 
 def date_epoch(day: Optional[str]) -> Optional[float]:

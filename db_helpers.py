@@ -23,6 +23,26 @@ def sentiment_fresh_since() -> str:
     return (datetime.now(timezone.utc) - timedelta(days=sentiment_max_age_days())).strftime("%Y-%m-%d %H:%M:%S")
 
 
+JOB_STATUS_MESSAGE_TYPES = ("Info", "Success", "Scheduler", "Warning", "Error", "Maintenance")
+
+
+def get_recent_alert_notifications(since: str, limit: int) -> list:
+    """Newest-first `system_notifications` rows at or after `since` (UTC `"%Y-%m-%d %H:%M:%S"`) that are alerts, i.e. not job-status rows (their text carries raw exception text); a read failure raises."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            f"""SELECT id, timestamp, message_type, message_text, status FROM system_notifications
+               WHERE timestamp >= ? AND message_type NOT IN ({','.join('?' * len(JOB_STATUS_MESSAGE_TYPES))})
+               ORDER BY timestamp DESC, id DESC LIMIT ?""",
+            (since, *JOB_STATUS_MESSAGE_TYPES, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
 def parse_utc_epoch(stored_utc: Optional[str]) -> float:
     """Parses a `"%Y-%m-%d %H:%M:%S"` UTC timestamp (SQLite storage format) to a Unix epoch."""
     if not stored_utc:
@@ -430,6 +450,17 @@ def log_trap_phase(
     except Exception as e:
         logger.error("log_trap_phase failed for %s on %s: %s", ticker, scan_date, e)
         return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_trap_monitor_results() -> list:
+    """Every `trap_monitor_results` row (one per ticker), newest scan first; a read failure raises, so it never passes for 'no phases'."""
+    conn = None
+    try:
+        conn = get_connection()
+        return [dict(r) for r in conn.execute("SELECT * FROM trap_monitor_results ORDER BY scan_ts DESC").fetchall()]
     finally:
         if conn:
             conn.close()

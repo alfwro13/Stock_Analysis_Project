@@ -650,6 +650,7 @@ def get_recent_evaluations(
     offset: int = 0,
     ticker: Optional[str] = None,
     vetoed: Optional[bool] = None,
+    since_ts: Optional[str] = None,
 ) -> list[dict]:
     conn = None
     try:
@@ -662,6 +663,9 @@ def get_recent_evaluations(
         if vetoed is not None:
             clauses.append("vetoed=?")
             params.append(int(vetoed))
+        if since_ts:
+            clauses.append("scan_ts >= ?")
+            params.append(since_ts)
         params.extend([limit, offset])
         rows = conn.execute(
             f"""SELECT ticker, phase, direction, fire_probability, vetoed, mode, scan_ts

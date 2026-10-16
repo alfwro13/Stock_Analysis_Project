@@ -1259,6 +1259,18 @@ def test_safe_http_url_accepts_only_absolute_web_links():
         assert safe_http_url(bad) is None, repr(bad)
 
 
+@pytest.mark.config
+def test_clean_display_text_makes_third_party_text_one_capped_line():
+    """clean_display_text() is the guard for publisher text handed to an MCP client: no line breaks, control or format characters, a hard length cap, None when nothing is left."""
+    from utils import clean_display_text
+    assert clean_display_text("  a\r\n\tb \x00c\u202ed\u200be  ", 50) == "a b cde"
+    assert clean_display_text("x" * 30, 10) == "x" * 9 + "…"
+    assert clean_display_text("x" * 10, 10) == "x" * 10
+    assert clean_display_text(12, 5) == "12"
+    for empty in (None, "", "   \n\t", "\x00\u200b"):
+        assert clean_display_text(empty, 10) is None
+
+
 class TestSettingsBlockShapeValidators:
     def test_xray_targets_accept_a_new_band_name_and_a_negative_unbounded_threshold(self):
         import config

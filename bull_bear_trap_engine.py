@@ -38,6 +38,8 @@ _PHASE_ORDER = [
     "NEUTRAL",
 ]
 
+ALERT_PHASES = tuple(_PHASE_ORDER[:4])
+
 
 class TrapEngine:
     # Detects Bull Trap / Bear Trap / Capitulation / Wyckoff Accumulation phases from daily Parquet data.

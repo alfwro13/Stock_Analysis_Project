@@ -800,7 +800,7 @@ def run_ai_contagion_job():
 
 
 def run_trap_monitor_job():
-    from bull_bear_trap_engine import TrapEngine
+    from bull_bear_trap_engine import ALERT_PHASES, TrapEngine
     from alert_referee_engine import evaluate_alert, CONFLUENCE_ENGINE
     config = load_config()
     conn = None
@@ -817,7 +817,7 @@ def run_trap_monitor_job():
         # first scan of the day for a given ticker; `_new_trap_history_row` (set by
         # TrapEngine._save_results()) gates this to once per ticker per day rather than every
         # 5-minute intraday scan tick re-evaluating an unchanged (daily-granularity) confluence
-        # state. Independent of the alert_phases filter below — bullish/bearish confluence has
+        # state. Independent of the ALERT_PHASES filter below — bullish/bearish confluence has
         # nothing to do with this ticker's own trap phase.
         referee_readiness = {}
         for row in results:
@@ -835,15 +835,14 @@ def run_trap_monitor_job():
                 )
 
         # Only alert on high-severity phases
-        alert_phases = {"ACTIVE_SELLOFF", "BULL_TRAP_RISK", "CAPITULATION_FORMING", "BEAR_TRAP_RISK"}
         orch = IntradayOrchestrator()
 
-        candidate_tickers = [row["ticker"] for row in results if row.get("phase", "NEUTRAL") in alert_phases]
+        candidate_tickers = [row["ticker"] for row in results if row.get("phase", "NEUTRAL") in ALERT_PHASES]
         currency_map = get_ticker_currency_map(candidate_tickers, conn)
 
         for row in results:
             phase = row.get("phase", "NEUTRAL")
-            if phase not in alert_phases:
+            if phase not in ALERT_PHASES:
                 continue
 
             ticker = row["ticker"]
