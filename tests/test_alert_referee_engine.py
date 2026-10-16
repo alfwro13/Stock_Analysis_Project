@@ -393,6 +393,89 @@ class TestEvaluateAlert:
         assert verdict.vetoed is True
 
 
+class TestLoadModelCache:
+    """load_model() keeps the unpickled bundle between calls (PERF-7: ~119 unpickles per Trap
+    Monitor run allocated enough objects to trigger GC passes that stalled the event loop)."""
+
+    def setup_method(self):
+        are._MODEL_CACHE.clear()
+
+    def teardown_method(self):
+        are._MODEL_CACHE.clear()
+
+    @staticmethod
+    def _write(path, payload):
+        from model_compatibility_engine import dump_sklearn_artifact
+        dump_sklearn_artifact(payload, path)
+
+    def test_repeated_loads_unpickle_once_and_share_the_bundle(self, tmp_path):
+        path = tmp_path / "referee.joblib"
+        self._write(path, {"model": "v1", "feature_cols": ["a"]})
+        with patch.dict(are._MODEL_PATHS, {_ENGINE: path}), \
+             patch("alert_referee_engine.load_sklearn_artifact", wraps=are.load_sklearn_artifact) as loader:
+            first = are.load_model(_ENGINE)
+            second = are.load_model(_ENGINE)
+        assert first is second
+        assert first["model"] == "v1"
+        assert loader.call_count == 1
+
+    def test_retrained_file_is_reloaded(self, tmp_path):
+        path = tmp_path / "referee.joblib"
+        self._write(path, {"model": "v1", "feature_cols": ["a"]})
+        with patch.dict(are._MODEL_PATHS, {_ENGINE: path}):
+            assert are.load_model(_ENGINE)["model"] == "v1"
+            self._write(path, {"model": "v2-retrained", "feature_cols": ["a", "b"]})
+            assert are.load_model(_ENGINE)["model"] == "v2-retrained"
+
+    def test_failed_load_is_not_cached(self, tmp_path):
+        from model_compatibility_engine import ModelVersionMismatch
+        path = tmp_path / "referee.joblib"
+        self._write(path, {"model": "v1", "feature_cols": ["a"]})
+        real_load = are.load_sklearn_artifact
+        with patch.dict(are._MODEL_PATHS, {_ENGINE: path}), \
+             patch("alert_referee_engine.load_sklearn_artifact",
+                   side_effect=[ModelVersionMismatch("old"), real_load(path, "x")]):
+            assert are.load_model(_ENGINE) is None
+            assert are.load_model(_ENGINE)["model"] == "v1"
+
+    def test_removed_file_returns_none_and_drops_the_cached_bundle(self, tmp_path):
+        path = tmp_path / "referee.joblib"
+        self._write(path, {"model": "v1", "feature_cols": ["a"]})
+        with patch.dict(are._MODEL_PATHS, {_ENGINE: path}):
+            assert are.load_model(_ENGINE) is not None
+            path.unlink()
+            assert are.load_model(_ENGINE) is None
+        assert _ENGINE not in are._MODEL_CACHE
+
+
+class TestEvaluateAlertReadinessCache:
+    class _Model:
+        def predict_proba(self, X):
+            return [[0.2, 0.8]]
+
+    def _evaluate_three(self, **kwargs):
+        cfg = {"SCHEDULING": {"ALERT_REFEREE_TRAINING": {"ENABLED": True, "MODE": "shadow"}}}
+        bundle = {"model": self._Model(), "feature_cols": ["a"]}
+        with patch("alert_referee_engine.load_config", return_value=cfg), \
+             patch("alert_referee_engine.load_model", return_value=bundle), \
+             patch("alert_referee_engine._build_feature_row", return_value={"a": 1.0}), \
+             patch("alert_referee_engine._latest_model_id", return_value=1), \
+             patch("alert_referee_engine.log_veto_evaluation"), \
+             patch("alert_referee_engine.readiness_status", return_value={"ready_for_active": False}) as readiness:
+            for ticker in ("AAA", "BBB", "CCC"):
+                are.evaluate_alert(_ENGINE, ticker, "BULL_TRAP_RISK", {}, None, **kwargs)
+        return readiness
+
+    def test_shared_cache_computes_readiness_once(self):
+        cache = {}
+        readiness = self._evaluate_three(readiness_cache=cache)
+        assert readiness.call_count == 1
+        assert cache[_ENGINE] == {"ready_for_active": False}
+
+    def test_without_a_cache_readiness_is_computed_per_call(self):
+        assert self._evaluate_three().call_count == 3
+
+
 class TestGetRefereeSummary:
     def setup_method(self):
         if are._MODEL_PATHS[_ENGINE].exists():

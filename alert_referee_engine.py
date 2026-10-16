@@ -27,6 +27,7 @@ _MODEL_PATHS = {
     TRAP_MONITOR_ENGINE: MODELS_DIR / "alert_referee_trapmonitor.joblib",
     CONFLUENCE_ENGINE: MODELS_DIR / "alert_referee_confluence.joblib",
 }
+_MODEL_CACHE: dict = {}
 
 _CONFIG_KEYS = {
     TRAP_MONITOR_ENGINE: "ALERT_REFEREE_TRAINING",
@@ -540,18 +541,28 @@ def train_referee_model(engine: str = TRAP_MONITOR_ENGINE) -> dict:
 
 def load_model(engine: str = TRAP_MONITOR_ENGINE) -> Optional[dict]:
     path = _model_path(engine)
-    if not path.exists():
+    try:
+        stat = path.stat()
+    except OSError:
+        _MODEL_CACHE.pop(engine, None)
         return None
+    # Unpickling per evaluation allocated enough objects to trigger GC passes that stalled the event loop (PERF-7).
+    stamp = (str(path), stat.st_mtime_ns, stat.st_size)
+    cached = _MODEL_CACHE.get(engine)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
     try:
         job_id = (
             "alert_referee_training_job"
             if engine == TRAP_MONITOR_ENGINE
             else "confluence_referee_training_job"
         )
-        return load_sklearn_artifact(path, job_id)
+        bundle = load_sklearn_artifact(path, job_id)
     except Exception as e:
         logger.error("alert_referee_engine: failed to load model for %s: %s", engine, e)
         return None
+    _MODEL_CACHE[engine] = (stamp, bundle)
+    return bundle
 
 
 def _latest_model_id(conn, engine: str = TRAP_MONITOR_ENGINE) -> Optional[int]:
@@ -589,7 +600,9 @@ def log_veto_evaluation(
         logger.error("alert_referee_engine: failed to log veto evaluation for %s: %s", ticker, e)
 
 
-def evaluate_alert(engine: str, ticker: str, phase: str, row: dict, conn) -> RefereeVerdict:
+def evaluate_alert(
+    engine: str, ticker: str, phase: str, row: dict, conn, readiness_cache: Optional[dict] = None,
+) -> RefereeVerdict:
     cfg = _referee_config(engine)
     if not cfg.get("ENABLED", False):
         return RefereeVerdict(fire_probability=None, vetoed=False, mode="off", model_available=False)
@@ -598,7 +611,12 @@ def evaluate_alert(engine: str, ticker: str, phase: str, row: dict, conn) -> Ref
     if bundle is None:
         return RefereeVerdict(fire_probability=None, vetoed=False, mode=cfg.get("MODE", "shadow"), model_available=False)
 
-    readiness = readiness_status(engine)
+    if readiness_cache is None:
+        readiness = readiness_status(engine)
+    else:
+        readiness = readiness_cache.get(engine)
+        if readiness is None:
+            readiness = readiness_cache[engine] = readiness_status(engine)
     configured_mode = cfg.get("MODE", "shadow")
     effective_mode = configured_mode if readiness["ready_for_active"] else "shadow"
 
