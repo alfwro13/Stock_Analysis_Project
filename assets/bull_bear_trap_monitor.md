@@ -174,6 +174,9 @@ Capitulation: {level} | Wyckoff: {level}
 ### Deduplication
 Uses the existing `alert_state` table with `engine = "TrapMonitor"`. Alert gating is handled by `IntradayOrchestrator._evaluate_alert_gate()` — the same dedup logic used by crash/moonshot alerts, resolved via its own `NOTIFICATIONS.TRAP_MONITOR_ALERTS` config block (see Section 7). A UTC calendar-day rollover no longer re-fires an unchanged alert on its own — an alert only fires again once cooldown has elapsed and the condition has genuinely worsened, or the phase itself changes (a new fingerprint). Since Trap Monitor has no price to compare (its scoring is daily-bar-based, not a live quote), the magnitude check instead uses `ema_distance` — the same signed percentage shown in the alert text — and treats the move as a raw point delta (e.g. -4.5% → -8.0% is a 3.5-point deterioration) rather than a relative percentage change.
 
+### Alert Confidence Referee cost per run
+`run_trap_monitor_job()` consults the referee once for every ticker in an alert phase (about 110 of 180 tickers on a Portfolio plus Watchlist scan), every 30 minutes. `alert_referee_engine.load_model()` therefore keeps the unpickled model in memory, keyed by the model file's path, modification time and size, so a retrain is picked up on the next call and a failed or version-mismatched load is never cached. The runner also passes one `readiness_cache` dict to every `evaluate_alert()` call, so `readiness_status()` runs once per engine per job run. Before this (PERF-7, 2026-10-16) each call unpickled the model (about 190 ms) and the run took 25-45 s on prod, allocating enough objects to trigger garbage-collection passes that stalled the web server's event loop for 100-500 ms each time (`event_loop_lag` warnings with no project frame, clustered inside the :04 and :34 runs).
+
 ---
 
 ## 7. Configuration

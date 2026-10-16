@@ -819,6 +819,7 @@ def run_trap_monitor_job():
         # 5-minute intraday scan tick re-evaluating an unchanged (daily-granularity) confluence
         # state. Independent of the alert_phases filter below — bullish/bearish confluence has
         # nothing to do with this ticker's own trap phase.
+        referee_readiness = {}
         for row in results:
             if row.get("_new_trap_history_row") and row.get("confluence_direction"):
                 evaluate_alert(
@@ -830,6 +831,7 @@ def run_trap_monitor_job():
                         "regime_weighted_score": row.get("regime_weighted_score"),
                     },
                     conn,
+                    readiness_cache=referee_readiness,
                 )
 
         # Only alert on high-severity phases
@@ -855,7 +857,7 @@ def run_trap_monitor_job():
                 logger.debug("TrapMonitor: %s — %s market closed or quote not yet settled, suppressing alert.", ticker, exchange)
                 continue
 
-            verdict = evaluate_alert("TrapMonitor", ticker, phase, row, conn)
+            verdict = evaluate_alert("TrapMonitor", ticker, phase, row, conn, readiness_cache=referee_readiness)
             if verdict.vetoed:
                 logger.info(
                     "TrapMonitor: Alert Confidence Referee vetoed %s (%s), fire probability %.2f.",

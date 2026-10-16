@@ -519,6 +519,23 @@ class TestRunTrapMonitorJobMarketGating:
         mock_evaluate.assert_called_once()
         mock_notify.assert_not_called()
 
+    def test_every_referee_evaluation_in_one_run_shares_one_readiness_cache(self):
+        import scheduler_jobs
+        from alert_referee_engine import RefereeVerdict
+
+        rows = [self._row(t) for t in ("RDY1", "RDY2", "RDY3")]
+        with patch("bull_bear_trap_engine.TrapEngine.run_scan", return_value=rows), \
+             patch("scheduler_jobs.is_quote_settled", return_value=True), \
+             patch("alert_referee_engine.evaluate_alert", return_value=RefereeVerdict(
+                 fire_probability=0.1, vetoed=True, mode="active", model_available=True,
+             )) as mock_evaluate, \
+             patch("scheduler_jobs.notify"):
+            scheduler_jobs.run_trap_monitor_job()
+
+        caches = [call.kwargs["readiness_cache"] for call in mock_evaluate.call_args_list]
+        assert len(caches) == 3
+        assert caches[0] is caches[1] is caches[2]
+
 
 # ── _load_history() — auto-fetch ──────────────────────────────────────────────
 
