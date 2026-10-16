@@ -27,7 +27,7 @@ from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
 from log_config import LOG_FORMAT, SafeFormatter, configure_file_logging, uvicorn_log_config
-from utils import _request_stages, harden_runtime_permissions
+from utils import _request_counts, _request_stages, harden_runtime_permissions
 
 from api_routes import api_router
 from page_routes import page_router
@@ -166,13 +166,16 @@ async def request_timing_middleware(request: Request, call_next):
         return await call_next(request)
     started = perf_counter()
     stages = []
+    counts = {}
     response = None
     token = _request_stages.set(stages)
+    counts_token = _request_counts.set(counts)
     try:
         response = await call_next(request)
         return response
     finally:
         _request_stages.reset(token)
+        _request_counts.reset(counts_token)
         duration_ms = (perf_counter() - started) * 1000
         totals = {}
         for name, elapsed_ms in stages:
@@ -184,9 +187,10 @@ async def request_timing_middleware(request: Request, call_next):
             )
         logger.log(
             logging.INFO if duration_ms >= 1000 else logging.DEBUG,
-            "request_timing route=%s method=%s status=%s duration_ms=%.1f stages_ms=%s",
+            "request_timing route=%s method=%s status=%s duration_ms=%.1f stages_ms=%s counts=%s",
             route_path, request.method, response.status_code if response else 500, duration_ms,
             ",".join(f"{name}:{value:.1f}" for name, value in sorted(totals.items())),
+            ",".join(f"{name}:{value}" for name, value in sorted(counts.items())),
         )
 
 

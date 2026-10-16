@@ -2176,6 +2176,7 @@ def test_request_timing_reports_stages_without_query_values(client, caplog):
     assert "sql;dur=" in timing
     assert "private-marker" not in caplog.text
     assert "route=/portfolio" in caplog.text
+    assert " counts=" in caplog.text
     assert "embed_token" not in caplog.text
 
 

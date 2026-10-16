@@ -16,6 +16,7 @@ import sys
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -1240,3 +1241,76 @@ class TestSettingsBlockShapeValidators:
     def test_every_default_xray_target_passes_its_own_validator(self):
         import config
         assert config.validate_xray_targets(config.DEFAULT_CONFIG["XRAY_TARGETS"])
+
+
+@pytest.fixture
+def private_config(tmp_path):
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"HOME_EXCHANGE": "NYSE"}))
+    _config.SECRETS_PATH = path
+    _config._clear_config_cache()
+    yield _config, path
+    _config.SECRETS_PATH = original_path
+    _config._clear_config_cache()
+
+
+@pytest.mark.config
+def test_load_config_hands_each_caller_an_independent_copy(private_config):
+    """Mutating a returned config (top level or nested) must never reach the next caller."""
+    _config, _ = private_config
+    first = _config.load_config()
+    expected = json.loads(json.dumps(first))
+    first["HOME_EXCHANGE"] = "TAMPERED"
+    first["SCHEDULING"]["TAMPERED"] = True
+    first["IGNORED_TICKERS"].append("TAMPERED")
+    second = _config.load_config()
+    assert json.loads(json.dumps(second)) == expected
+
+
+@pytest.mark.config
+def test_load_config_parses_the_file_once_until_it_changes(private_config):
+    _config, path = private_config
+    with patch.object(_config, "_read_config", wraps=_config._read_config) as read:
+        assert _config.load_config()["HOME_EXCHANGE"] == "NYSE"
+        assert _config.load_config()["HOME_EXCHANGE"] == "NYSE"
+        assert read.call_count == 1
+        path.write_text(json.dumps({"HOME_EXCHANGE": "LSE", "SERVER_URL": "http://changed"}))
+        assert _config.load_config()["HOME_EXCHANGE"] == "LSE"
+        assert read.call_count == 2
+
+
+@pytest.mark.config
+def test_update_config_atomic_clears_the_cache_even_when_the_file_signature_repeats(private_config, monkeypatch):
+    """A same-size rewrite that recycles the inode and mtime tick must not serve the previous config."""
+    _config, _ = private_config
+    monkeypatch.setattr(_config, "_config_signature", lambda: ("fixed",))
+    _config.update_config_atomic({"HOME_EXCHANGE": "NYS"})
+    assert _config.load_config()["HOME_EXCHANGE"] == "NYS"
+    _config.update_config_atomic({"HOME_EXCHANGE": "LSE"})
+    assert _config.load_config()["HOME_EXCHANGE"] == "LSE"
+
+
+@pytest.mark.config
+def test_load_config_does_not_cache_a_failed_read(private_config):
+    _config, path = private_config
+    path.write_text("{this is not valid json}")
+    assert _config.load_config()["HOME_EXCHANGE"] == _config.DEFAULT_CONFIG["HOME_EXCHANGE"]
+    assert _config._config_cache is None
+    path.write_text(json.dumps({"HOME_EXCHANGE": "ASX", "SERVER_URL": "http://fixed"}))
+    assert _config.load_config()["HOME_EXCHANGE"] == "ASX"
+
+
+def test_count_request_event_counts_inside_a_request_and_ignores_outside_one():
+    from utils import _request_counts, count_request_event
+    count_request_event("outside")
+    counts = {}
+    token = _request_counts.set(counts)
+    try:
+        count_request_event("anchor_hit")
+        count_request_event("anchor_hit")
+        count_request_event("anchor_miss")
+    finally:
+        _request_counts.reset(token)
+    assert counts == {"anchor_hit": 2, "anchor_miss": 1}

@@ -3,6 +3,7 @@ import os
 import json
 import copy
 import math
+import pickle
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -693,7 +694,33 @@ def _open_private(path):
     return os.fdopen(fd, 'w')
 
 
+_config_cache = None
+
+
+def _config_signature():
+    try:
+        state = SECRETS_PATH.stat()
+    except OSError:
+        return None
+    return (str(SECRETS_PATH), state.st_ino, state.st_size, state.st_mtime_ns)
+
+
+def _clear_config_cache() -> None:
+    global _config_cache
+    _config_cache = None
+
+
 def load_config() -> dict:
+    # The signature is taken before the read, so a file replaced in between can only leave an entry that the next call re-reads.
+    signature = _config_signature()
+    cached = _config_cache
+    if signature is not None and cached is not None and cached[0] == signature:
+        return pickle.loads(cached[1])
+    return _read_config(signature)
+
+
+def _read_config(signature) -> dict:
+    global _config_cache
     if not SECRETS_PATH.exists():
         print("[INFO] config.json not found. Generating default template...")
         with _open_private(SECRETS_PATH) as f:
@@ -766,6 +793,8 @@ def load_config() -> dict:
             if invalid or performance["FX_MAX_USABLE_SECONDS"] < performance["FX_FRESH_SECONDS"]:
                 print(f"[WARNING] Invalid PERFORMANCE settings in config.json ({', '.join(invalid) or 'FX_MAX_USABLE_SECONDS below FX_FRESH_SECONDS'}). Using PERFORMANCE defaults only.")
                 merged_config["PERFORMANCE"] = copy.deepcopy(DEFAULT_CONFIG["PERFORMANCE"])
+            if signature is not None:
+                _config_cache = (signature, pickle.dumps(merged_config, pickle.HIGHEST_PROTOCOL))
             return merged_config
     except Exception as e:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
@@ -825,6 +854,7 @@ def update_config_atomic(new_data: dict) -> None:
             os.fsync(f.fileno())
 
         os.replace(tmp_path, SECRETS_PATH)
+        _clear_config_cache()
 
     except Exception as e:
         print(f"[ERROR] Atomic config write failed: {e}")
