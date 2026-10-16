@@ -32,6 +32,7 @@ from utils import _request_counts, _request_stages, harden_runtime_permissions
 from api_routes import api_router
 from page_routes import page_router
 from data_engine import run_yfinance_smoke_test
+import mcp_server
 
 _console_handler = logging.StreamHandler()
 _console_handler.setFormatter(SafeFormatter(LOG_FORMAT))
@@ -39,6 +40,8 @@ logging.basicConfig(level=logging.INFO, handlers=[_console_handler])
 logger = logging.getLogger(__name__)
 
 configure_file_logging(load_config())
+
+_TRUSTED_HOSTS = sorted({*ALLOWED_HOSTS, "localhost", "127.0.0.1"})
 
 _TIMED_ROUTES = {
     "/portfolio", "/watchlist", "/stock/{ticker}",
@@ -146,7 +149,8 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=resume_interrupted_scans, daemon=True).start()
     lag_task = asyncio.create_task(_watch_event_loop_lag())
     try:
-        yield
+        async with mcp_server.run(_TRUSTED_HOSTS):
+            yield
     finally:
         lag_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -236,6 +240,10 @@ async def auth_middleware(request: Request, call_next):
     if path in _EXEMPT or any(path.startswith(p) for p in _EXEMPT_PREFIXES):
         return await call_next(request)
 
+    if path == mcp_server.MCP_PATH or path.startswith(mcp_server.MCP_PATH + "/"):
+        rejection = mcp_server.auth_failure(request)
+        return rejection if rejection is not None else await call_next(request)
+
     # API key: only the routes in API_KEY_ROUTES, so a leaked key cannot read pages or settings
     api_key = request.headers.get("X-API-Key", "")
     if api_key:
@@ -274,7 +282,7 @@ async def auth_middleware(request: Request, call_next):
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=sorted({*ALLOWED_HOSTS, "localhost", "127.0.0.1"}),
+    allowed_hosts=_TRUSTED_HOSTS,
 )
 
 _SECURITY_HEADERS = {
@@ -307,6 +315,7 @@ async def security_headers_middleware(request: Request, call_next):
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+app.add_route(mcp_server.MCP_PATH, mcp_server.endpoint, include_in_schema=False)
 app.include_router(api_router)
 app.include_router(page_router)
 

@@ -9,6 +9,9 @@ JOB_GRAPH: dict[str, dict] = {
     # External data sources — not scheduled jobs; rendered with distinct styling in the graph.
     "yahoo_finance_source":           {"label": "Yahoo Finance",                                  "category": "external",    "engine": "yahoo_engine.py",               "produces": ["yahoo_price_data"],                                           "consumes": [],                                                                   "settings_anchor": None},
 
+    # Claude MCP Server (mcp_server.py, mounted at /mcp) — an external client that only reads; the id is a code name, the label is what the operator sees.
+    "claude_mcp_server_source":       {"label": "Claude MCP Server",                              "category": "external",    "engine": "mcp_server.py",                 "produces": [],                                                             "consumes": ["account_performance_cache", "portfolio", "pension_account_data", "house_account_data", "market_pulse_cache"], "settings_anchor": None},
+
     # Built-in Accounts — not scheduled jobs either; the data originates from the operator
     # hand-entering transactions/prices rather than a job run, but it still flows into the
     # same downstream artifacts (e.g. "portfolio") so it must appear on the graph too.
