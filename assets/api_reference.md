@@ -5125,9 +5125,9 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 
 `GET`, `DELETE` and every other method on `/mcp` answer `401` without the key and `405` with `Allow: POST` with it. `/mcp/` answers `307` to `/mcp` once authenticated; any other `/mcp/*` path is `404`. The request body is limited by the SDK to 4 MiB.
 
-Tools are read-only (`readOnlyHint`). A failing tool answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned.
+Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 
-Current tools: `get_accounts` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`.
+Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`.
 
 ---
 

@@ -282,6 +282,21 @@ def get_critical_scopes() -> list:
     return [dict(r) for r in rows]
 
 
+def get_ticker_risk_contributions(limit: Optional[int] = None) -> list:
+    """Latest per-ticker Risk Contribution rows, highest risk_score first; every row unless `limit` is given."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT * FROM ticker_risk_contribution ORDER BY risk_score DESC, ticker LIMIT ?",
+            (-1 if limit is None else limit,),
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    return [dict(r) for r in rows]
+
+
 def _suggest_reduced_value(
     scope: str, ticker: str, additional_value: float, dd_sub: float,
     thresholds: dict, weights: dict, target_rank: int, iterations: int = 6,

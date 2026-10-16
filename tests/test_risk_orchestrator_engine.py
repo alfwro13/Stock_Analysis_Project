@@ -22,6 +22,7 @@ from risk_orchestrator_engine import (
     _sub_score,
     _tier_for,
     get_critical_scopes,
+    get_ticker_risk_contributions,
     _tickers_with_rising_stop,
     build_daily_digest,
     persist_heat_index,
@@ -146,6 +147,62 @@ class TestPersistTickerContributions:
             conn.close()
         assert len(rows) == 1
         assert rows[0]["ticker"] == "BBB"
+
+
+def _contribution(ticker, score):
+    return {"ticker": ticker, "risk_score": score, "risk_tier": "YELLOW", "marginal_var_contribution_pct": 5.0,
+            "max_pairwise_correlation": 0.2, "stop_distance_pct": 10.0}
+
+
+@pytest.fixture
+def contributions_cleanup():
+    yield
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM ticker_risk_contribution")
+        conn.execute("DELETE FROM portfolio_heat_index WHERE scope = 'all'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("contributions_cleanup")
+class TestGetTickerRiskContributions:
+    def test_empty_table_is_an_empty_list(self):
+        persist_ticker_contributions([])
+        assert get_ticker_risk_contributions() == []
+        assert get_ticker_risk_contributions(3) == []
+
+    def test_highest_risk_score_first_with_a_deterministic_tie_break(self):
+        persist_ticker_contributions([_contribution("CCC", 50.0), _contribution("AAA", 50.0), _contribution("BBB", 90.0)])
+        assert [r["ticker"] for r in get_ticker_risk_contributions()] == ["BBB", "AAA", "CCC"]
+
+    def test_limit_keeps_the_hottest_rows(self):
+        persist_ticker_contributions([_contribution(f"T{i}", float(i)) for i in range(10)])
+        assert [r["ticker"] for r in get_ticker_risk_contributions(3)] == ["T9", "T8", "T7"]
+        assert len(get_ticker_risk_contributions()) == 10
+
+    def test_rows_carry_every_stored_column(self):
+        persist_ticker_contributions([_contribution("AAA", 12.5)])
+        row = get_ticker_risk_contributions()[0]
+        assert set(row) == {"ticker", "risk_score", "risk_tier", "marginal_var_contribution_pct",
+                            "max_pairwise_correlation", "stop_distance_pct", "last_updated"}
+
+    def test_status_route_serves_every_ticker_hottest_first_and_the_parsed_scopes(self, client):
+        persist_heat_index({
+            "scope": "all", "scope_label": "All Accounts", "phi_score": 42.5, "tier": "YELLOW", "var_pct_of_equity": 1.0,
+            "var_tier": "GREEN", "max_correlation": 0.6, "correlation_tier": "YELLOW", "drawdown_pct": 3.0,
+            "drawdown_tier": "GREEN", "breakdown_json": '["a", "b"]',
+        })
+        persist_ticker_contributions([_contribution("LOW", 5.0), _contribution("HIGH", 95.0), _contribution("MID", 50.0)])
+        body = client.get("/api/risk-orchestrator/status").json()
+        assert body["status"] == "success"
+        assert [t["ticker"] for t in body["tickers"]] == ["HIGH", "MID", "LOW"]
+        assert set(body["tickers"][0]) == {"ticker", "risk_score", "risk_tier", "marginal_var_contribution_pct",
+                                           "max_pairwise_correlation", "stop_distance_pct", "last_updated"}
+        scope = next(s for s in body["scopes"] if s["scope"] == "all")
+        assert scope["breakdown"] == ["a", "b"] and "breakdown_json" not in scope
 
 
 @pytest.mark.db

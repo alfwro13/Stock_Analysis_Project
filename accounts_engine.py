@@ -13,7 +13,7 @@ import pandas as pd
 import time_engine
 import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
-from db_helpers import resolve_live_price
+from db_helpers import parse_utc_epoch, resolve_live_price
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
@@ -613,6 +613,17 @@ def current_price_map(tickers: list) -> dict:
     Found 2026-07-13: this let a corrupted stock_signals.current_price (see
     utils.is_daily_bar_still_forming's exchange-open fix) silently overwrite a correct, frozen
     market_pulse_cache price every night purely by winning a timestamp race."""
+    return {t: (price, currency) for t, (price, currency, _) in _price_map_with_quote_epochs(tickers).items()}
+
+
+def oldest_quote_epoch(tickers: list) -> Optional[float]:
+    """Unix time of the oldest market quote behind current_price_map() for these tickers; analytic prices (Treasury Bills, Pension) carry no quote time and are skipped."""
+    epochs = [epoch for _, _, epoch in _price_map_with_quote_epochs(tickers).values() if epoch]
+    return min(epochs) if epochs else None
+
+
+def _price_map_with_quote_epochs(tickers: list) -> dict:
+    """current_price_map()'s implementation: ticker -> (price, currency, epoch of the quote the price came from, or None)."""
     if not tickers:
         return {}
     from account_scraper_engine import latest_price, parse_pension_account_id
@@ -625,11 +636,11 @@ def current_price_map(tickers: list) -> dict:
         if pension_id is not None:
             priced = latest_price(pension_id)
             if priced:
-                result[ticker] = priced
+                result[ticker] = (priced[0], priced[1], None)
         elif parse_tbill_buy_txn_id(ticker) is not None:
             priced = current_price_for_ticker(ticker)
             if priced:
-                result[ticker] = priced
+                result[ticker] = (priced[0], priced[1], None)
         else:
             market_tickers.append(ticker)
     if not market_tickers:
@@ -665,14 +676,18 @@ def current_price_map(tickers: list) -> dict:
         )
         for r in cursor.fetchall():
             live = live_prices.get(r["ticker"])
-            price, _ = resolve_live_price(
+            price, used_fallback = resolve_live_price(
                 live[0] if live else None,
                 live[1] if live else None,
                 r["current_price"],
                 r["last_updated"],
                 _STOCK_SIGNALS_OVERRIDE_MIN_GAP_SECONDS,
             )
-            result[r["ticker"]] = (price, r["currency"])
+            if used_fallback:
+                quote_epoch = parse_utc_epoch(r["last_updated"]) or None
+            else:
+                quote_epoch = live[1] if live else None
+            result[r["ticker"]] = (price, r["currency"], quote_epoch)
     except Exception as e:
         logger.error("Failed to load current prices: %s", e)
     finally:
