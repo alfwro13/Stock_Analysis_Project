@@ -1,11 +1,9 @@
 """Tests for universe_engine parsing/filtering and DB-write logic."""
-import os
-import tempfile
-import textwrap
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import database as _db_module
+import universe_engine
 from universe_engine import update_market_universe
 
 
@@ -50,20 +48,13 @@ def _make_otherlisted(rows):
 
 def _patch_ftp_with_content(nasdaq_content, other_content):
     """
-    Context manager: patches _download_ftp_files to write synthetic file content
-    instead of making a real FTP connection.
+    Context manager: patches _download_listings to return synthetic file content
+    instead of making a real network connection.
     """
-    def _fake_download(filenames):
-        for fname, fpath in filenames.items():
-            if fname == "nasdaqlisted":
-                with open(fpath, "w", encoding="utf-8") as f:
-                    f.write(nasdaq_content)
-            else:
-                with open(fpath, "w", encoding="utf-8") as f:
-                    f.write(other_content)
-        return True
-
-    return patch("universe_engine._download_ftp_files", side_effect=_fake_download)
+    return patch(
+        "universe_engine._download_listings",
+        return_value={"nasdaqlisted": nasdaq_content, "otherlisted": other_content},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -230,21 +221,103 @@ class TestExchangeLabel:
         assert row["exchange"] == "NYSE/AMEX"
 
 
-class TestFtpFailure:
-    def test_ftp_failure_posts_error_notification(self):
-        with patch("universe_engine._download_ftp_files", return_value=False):
+class TestDownloadFailure:
+    def test_download_failure_posts_error_notification(self):
+        with patch("universe_engine._download_listings", return_value=None):
             update_market_universe()
         conn = _db_module.get_connection()
         rows = conn.execute(
             "SELECT message_text FROM system_notifications WHERE message_type = 'Error'"
         ).fetchall()
         conn.close()
-        assert any("FTP" in r["message_text"] for r in rows)
+        assert any("download" in r["message_text"] for r in rows)
 
-    def test_ftp_failure_inserts_nothing(self):
-        with patch("universe_engine._download_ftp_files", return_value=False):
+    def test_download_failure_inserts_nothing(self):
+        with patch("universe_engine._download_listings", return_value=None):
             update_market_universe()
         conn = _db_module.get_connection()
         count = conn.execute("SELECT COUNT(*) FROM market_universe WHERE country='US'").fetchone()[0]
         conn.close()
         assert count == 0
+
+
+class TestDownloadSource:
+    def test_https_is_tried_first_and_ftp_is_not_touched(self):
+        listings = {"nasdaqlisted": "n", "otherlisted": "o"}
+        with patch("universe_engine._download_https", return_value=listings) as https, \
+             patch("universe_engine._download_ftp") as ftp:
+            assert universe_engine._download_listings() == listings
+        https.assert_called_once()
+        ftp.assert_not_called()
+
+    def test_https_requests_the_nasdaqtrader_files_without_redirects(self):
+        with patch("universe_engine.fetch_body", return_value="x") as fetch:
+            universe_engine._download_https()
+        urls = [c.args[0] for c in fetch.call_args_list]
+        assert urls == [
+            "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
+            "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
+        ]
+        assert all("max_redirects" not in c.kwargs for c in fetch.call_args_list)
+
+    def test_ftp_is_the_fallback_when_https_fails(self):
+        listings = {"nasdaqlisted": "n", "otherlisted": "o"}
+        with patch("universe_engine._download_https", side_effect=RuntimeError("blocked")), \
+             patch("universe_engine._download_ftp", return_value=listings) as ftp:
+            assert universe_engine._download_listings() == listings
+        ftp.assert_called_once()
+
+    def test_both_sources_failing_returns_none(self):
+        with patch("universe_engine._download_https", side_effect=RuntimeError("blocked")), \
+             patch("universe_engine._download_ftp", side_effect=OSError("timed out")):
+            assert universe_engine._download_listings() is None
+
+    def test_ftp_connection_has_a_timeout_and_returns_decoded_text(self):
+        ftp = MagicMock()
+        ftp.__enter__.return_value = ftp
+        ftp.retrbinary.side_effect = lambda cmd, cb: cb(b"Symbol|Security Name\n")
+        with patch("universe_engine.FTP", return_value=ftp) as ftp_cls:
+            listings = universe_engine._download_ftp()
+        assert ftp_cls.call_args.kwargs["timeout"] == universe_engine._FTP_TIMEOUT_SECONDS
+        assert listings == {"nasdaqlisted": "Symbol|Security Name\n", "otherlisted": "Symbol|Security Name\n"}
+
+
+class TestListingValidation:
+    @pytest.mark.parametrize("symbol", ["AB/C", "AB C", "", "A" * 65, "AB<C"])
+    def test_invalid_symbol_is_skipped(self, symbol):
+        nasdaq = _make_nasdaqlisted([(symbol, "Evil Inc - Common Stock", "N"), ("GOOD", "Good Inc - Common Stock", "N")])
+        with _patch_ftp_with_content(nasdaq, _make_otherlisted([])):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        tickers = [r["ticker"] for r in conn.execute("SELECT ticker FROM market_universe WHERE country='US'")]
+        conn.close()
+        assert tickers == ["GOOD"]
+
+    @pytest.mark.parametrize("name", ["<script>alert(1)</script> Inc", "Bad\x07Bell Inc", "X" * 201])
+    def test_invalid_name_is_skipped(self, name):
+        nasdaq = _make_nasdaqlisted([("EVIL", f"{name} - Common Stock", "N"), ("GOOD", "Good Inc - Common Stock", "N")])
+        with _patch_ftp_with_content(nasdaq, _make_otherlisted([])):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        tickers = [r["ticker"] for r in conn.execute("SELECT ticker FROM market_universe WHERE country='US'")]
+        conn.close()
+        assert tickers == ["GOOD"]
+
+    def test_real_world_names_and_dotted_symbols_pass(self):
+        other = _make_otherlisted([("BRK.B", "Berkshire Hathaway Inc. Class B - Common Stock", "N"),
+                                   ("ATT", "AT&T Inc. (Texas) - Common Stock", "N")])
+        with _patch_ftp_with_content(_make_nasdaqlisted([]), other):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        names = {r["ticker"]: r["company_name"] for r in conn.execute("SELECT ticker, company_name FROM market_universe WHERE country='US'")}
+        conn.close()
+        assert names == {"BRK-B": "Berkshire Hathaway Inc. Class B", "ATT": "AT&T Inc. (Texas)"}
+
+    def test_skipped_rows_are_counted_in_the_success_notification(self):
+        nasdaq = _make_nasdaqlisted([("AB/C", "Evil Inc - Common Stock", "N"), ("GOOD", "Good Inc - Common Stock", "N")])
+        with _patch_ftp_with_content(nasdaq, _make_otherlisted([])):
+            update_market_universe()
+        conn = _db_module.get_connection()
+        rows = conn.execute("SELECT message_text FROM system_notifications WHERE message_type = 'Success'").fetchall()
+        conn.close()
+        assert any("Skipped 1 listings" in r["message_text"] for r in rows)

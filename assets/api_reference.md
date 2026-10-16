@@ -915,7 +915,7 @@ The database reads run in request workers, so a slow status query does not hold 
 
 ### `POST /api/trigger-universe-update`
 
-Refreshes the market universe ticker list — syncs new additions and removals from supported indices.
+Refreshes the market universe ticker list — syncs new additions and removals from supported indices. The US Common Stock list comes from Nasdaq's Symbol Directory (`nasdaqlisted.txt`, `otherlisted.txt`): downloaded over HTTPS through `outbound_fetch_helpers.fetch_body()`, with FTP (30 s timeout) only as a fallback when HTTPS fails. A listing is stored only when its symbol (after the `.` → `-` step) passes `utils.is_valid_ticker()` and its name is 1–200 characters with no control characters, `<` or `>`; any other row is skipped, logged and counted in the success notification.
 
 **Request body:** none  
 **Response:** standard background task response
@@ -3827,6 +3827,8 @@ Exports the account's entire transaction ledger as a downloadable CSV (`accounts
 **Columns:** `Title` (company name, falling back to `Notes` for Cash/Interest rows), `Type` (`Buy`/`Sell` → `ORDER`, `Cash` → `TOP_UP`, `Interest` → `INTEREST_FROM_CASH`, `Dividend` → `DIVIDEND`; `Fee`/`Transfer` have no GIA equivalent and are written as `FEE`/`TRANSFER`, which the importer skips on re-import exactly like `INTERNAL_TRANSFER`), `Timestamp` (`DD/MM/YYYY`, the exact format the importer parses), `Account Currency`, `Total Amount in Account Currency` (`qty × price × fx_rate`), `Buy / Sell` (`BUY`/`SELL`, blank otherwise), `Ticker`, `ISIN`, `Price per Share in Account Currency` (`price × fx_rate`), `Fee` (native currency — also stands in for the import format's separate `Stamp Duty` and `Dividend Withheld Tax Amount` columns, since the ledger doesn't track those separately), `Quantity`, `Instrument Currency`, `Price per Share` (native currency), `Dividend Net Amount` (`Dividend` rows only: `quantity × price − fee`), `FX Rate`, `Position` (`closed` once a ticker has been fully exited — no shares left — blank otherwise, including while still partially held), `Total Amount in Instrument Currency` (`quantity × price`, no FX), `Realized P&L (Account Currency)` (`Sell` rows only, average-cost gain/loss for that sale), `Notes`, `Account Name`, `Transaction ID`.
 
 Re-importing an export as-is will fail the importer's required-column check, since `Stamp Duty`, `FX Fee Amount`, and the four `Dividend *` columns aren't present — the header needs editing first (e.g. renaming `Fee` back to whichever column a row needs). `Fee`/`Transfer`-type rows aren't recognised by the importer at all and would need re-entering via the UI.
+
+Text cells (`Title`, `Account Currency`, `Ticker`, `ISIN`, `Instrument Currency`, `Notes`, `Account Name`) that start with `=`, `+`, `-`, `@`, a tab or a carriage return are written with a leading `'` (`utils.csv_safe_cell`), so Excel and LibreOffice show them as text instead of running them as a formula. Numeric cells are not touched. The importer does not strip that apostrophe.
 
 **Response:** `text/csv` with a `Content-Disposition: attachment` header (browser downloads it directly).
 

@@ -24,7 +24,7 @@ from db_accounts import (
 from database import get_connection
 from fx_conversion_helpers import cached_fx_close, fx_level_on
 from portfolio_service import get_rate_to_base
-from utils import normalize_ticker, ignored_tickers_set, safe_ticker_filename
+from utils import csv_safe_cell, normalize_ticker, ignored_tickers_set, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -287,26 +287,26 @@ def export_transactions_csv(account_id: int) -> str:
         qty_for_total = qty if qty is not None else 1.0
 
         writer.writerow([
-            t["company_name"] or t["notes"] or "",
+            csv_safe_cell(t["company_name"] or t["notes"] or ""),
             _CSV_EXPORT_TYPE_MAP.get(ttype, ttype.upper()),
             datetime.strptime(t["txn_date"], "%Y-%m-%d").strftime("%d/%m/%Y"),
-            acc["currency"],
+            csv_safe_cell(acc["currency"]),
             round(_gross_base(t), 4),
             "BUY" if ttype == "Buy" else ("SELL" if ttype == "Sell" else ""),
-            t["ticker"] or "",
-            t["isin"] or "",
+            csv_safe_cell(t["ticker"] or ""),
+            csv_safe_cell(t["isin"] or ""),
             round(price * fx, 4) if is_share_row and price is not None else "",
             round(fee, 6),
             qty if qty is not None else "",
-            t["currency"] or "",
+            csv_safe_cell(t["currency"] or ""),
             price if is_share_row and price is not None else "",
             round((qty or 0.0) * (price or 0.0) - fee, 4) if ttype == "Dividend" else "",
             fx,
             "closed" if t["ticker"] and t["ticker"] in fully_exited else "",
             round(qty_for_total * (price or 0.0), 4),
             realized_by_txn.get(t["id"], "") if ttype == "Sell" else "",
-            t["notes"] or "",
-            acc["name"],
+            csv_safe_cell(t["notes"] or ""),
+            csv_safe_cell(acc["name"]),
             t["id"],
         ])
     return buf.getvalue()

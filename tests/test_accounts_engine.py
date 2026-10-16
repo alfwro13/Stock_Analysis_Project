@@ -843,6 +843,33 @@ def test_transaction_total_base_handles_pence_and_cash_rows():
 
 
 @pytest.mark.db
+def test_export_transactions_csv_neutralises_formula_cells():
+    import csv
+    import io
+
+    aid = create_account("=HYPERLINK(1)", "GBP")
+    add_transaction(aid, "Buy", "2026-01-01", ticker="ZZEXPFORM", currency="GBP",
+                     company_name="=cmd|' /C calc'!A0", isin="@SUM(1)",
+                     quantity=10, unit_price=100, exchange_rate=1.0, notes="-2+3")
+    add_transaction(aid, "Cash", "2026-01-02", currency="GBP", unit_price=200, notes="+1")
+    add_transaction(aid, "Cash", "2026-01-03", currency="GBP", unit_price=300, notes="\t=1")
+    add_transaction(aid, "Sell", "2026-01-04", ticker="ZZEXPFORM", currency="GBP",
+                     quantity=10, unit_price=40, exchange_rate=1.0)
+
+    rows = list(csv.DictReader(io.StringIO(accounts_engine.export_transactions_csv(aid))))
+    buy = next(r for r in rows if r["Buy / Sell"] == "BUY")
+    assert buy["Title"] == "'=cmd|' /C calc'!A0"
+    assert buy["ISIN"] == "'@SUM(1)"
+    assert buy["Notes"] == "'-2+3"
+    assert buy["Account Name"] == "'=HYPERLINK(1)"
+    assert buy["Ticker"] == "ZZEXPFORM"
+    notes = {r["Notes"] for r in rows if r["Type"] == "TOP_UP"}
+    assert notes == {"'+1", "'\t=1"}
+    sell = next(r for r in rows if r["Buy / Sell"] == "SELL")
+    assert sell["Realized P&L (Account Currency)"] == "-600.0"
+
+
+@pytest.mark.db
 def test_export_transactions_csv_shape_and_position_status():
     import csv
     import io
