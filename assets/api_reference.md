@@ -5107,7 +5107,7 @@ Rate limit 20/minute. Deletes a finished run and its files. A queued or running 
 
 ## 33. Claude MCP Server
 
-A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, does not use the `{ "status": ... }` response convention (it speaks JSON-RPC 2.0) and is **not** part of the **API key scope** table: it has its own credential. Set-up, tools and the response envelope are in `assets/mcp_integration.md`. Code: `mcp_server.py`.
+A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, does not use the `{ "status": ... }` response convention (it speaks JSON-RPC 2.0) and is **not** part of the **API key scope** table: it has its own credential. Set-up, tools, the investment policy resource (`policy://investment-policy`, read with `resources/read`) and the response envelope are in `assets/mcp_integration.md`. Code: `mcp_server.py`.
 
 ### `POST /mcp`
 
