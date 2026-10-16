@@ -196,6 +196,21 @@ class TestResumability:
         conn.close()
         assert row is None
 
+    def test_short_history_tickers_logged_in_one_summary_line(self, caplog):
+        """Short-history tickers produce no per-ticker warning, only one INFO summary naming them all."""
+        import logging
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.load_or_fetch_daily_history", return_value=_fake_ohlcv(n=50)), \
+             patch("quant_engine.time"), caplog.at_level(logging.INFO, logger="quant_engine"):
+            run_daily_quant_scan(["ZZSHORTA", "ZZSHORTB"], scan_type="short_summary_test")
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        summaries = [r for r in caplog.records if "fewer than 200 daily bars" in r.getMessage()]
+        assert len(summaries) == 1
+        assert summaries[0].levelno == logging.INFO
+        assert "2 ticker(s)" in summaries[0].getMessage()
+        assert "ZZSHORTA, ZZSHORTB" in summaries[0].getMessage()
+
 
 class TestMomentumFieldsPersisted:
 

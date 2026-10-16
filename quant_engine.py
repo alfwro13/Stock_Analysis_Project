@@ -66,6 +66,7 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
 
         # Fetched once per scan (not per ticker) — shared source for rel_strength_5d/20d below.
         spy_df = download_spy_benchmark()
+        short_history = []
 
         for i in range(start_idx, total_tickers):
             ticker = ticker_list[i]
@@ -84,7 +85,7 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 df.dropna(subset=['Close', 'Volume'], inplace=True)
 
                 if len(df) < 200:
-                    logger.warning("Insufficient historical data for %s (requires >= 200 days for SMA-200). Skipping.", ticker)
+                    short_history.append(ticker)
                     continue
 
                 latest = compute_quant_indicator_frame(df, spy_df).iloc[-1]
@@ -191,6 +192,10 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
             if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
                 pct = int((processed / total_tickers) * 100)
                 log_notification("Info", f"Quant Scan ({scan_type}) Progress: {pct}% ({processed}/{total_tickers} tickers processed).")
+
+        if short_history:
+            logger.info("Quant scan '%s' skipped %d ticker(s) with fewer than 200 daily bars (SMA-200 needs them): %s",
+                        scan_type, len(short_history), ", ".join(short_history))
 
         cursor.execute("UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ? AND scan_type = ?", (today_str, scan_type))
         conn.commit()

@@ -173,6 +173,42 @@ def _fake_ohlcv(n: int = 260, start: str = "2024-01-01") -> pd.DataFrame:
     )
 
 
+class TestShortHistorySummary:
+
+    def test_short_history_tickers_logged_in_one_summary_line(self, caplog):
+        import logging
+        from ml_backfill_engine import run_historical_backfill
+        with (
+            patch("ml_backfill_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.download_spy_benchmark", return_value=None),
+            patch("ml_backfill_engine.load_or_fetch_daily_history", return_value=_fake_ohlcv(n=100)),
+            patch("ml_backfill_engine.time"),
+            caplog.at_level(logging.INFO, logger="ml_backfill_engine"),
+        ):
+            run_historical_backfill(["ZZSHORTA", "ZZSHORTB"])
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        summaries = [r for r in caplog.records if "wrote no rows for" in r.getMessage()]
+        assert len(summaries) == 1
+        assert summaries[0].levelno == logging.INFO
+        assert "2 ticker(s)" in summaries[0].getMessage()
+        assert "ZZSHORTA, ZZSHORTB" in summaries[0].getMessage()
+
+    def test_no_summary_when_every_ticker_has_enough_history(self, caplog):
+        import logging
+        from ml_backfill_engine import run_historical_backfill
+        with (
+            patch("ml_backfill_engine.sync_ticker_metadata"),
+            patch("ml_backfill_engine.download_spy_benchmark", return_value=_fake_ohlcv(n=260)),
+            patch("ml_backfill_engine.load_or_fetch_daily_history", return_value=_fake_ohlcv(n=260)),
+            patch("ml_backfill_engine.time"),
+            caplog.at_level(logging.INFO, logger="ml_backfill_engine"),
+        ):
+            run_historical_backfill(["ZZBACKFILLRS"])
+
+        assert not [r for r in caplog.records if "wrote no rows for" in r.getMessage()]
+
+
 class TestRelStrengthSurvivesSpyLag:
     """SPY's cached history lagging a ticker's freshly-fetched history by a day used to blank
     rel_strength_5d/20d for that whole row via a blanket dropna() — the exact regression that

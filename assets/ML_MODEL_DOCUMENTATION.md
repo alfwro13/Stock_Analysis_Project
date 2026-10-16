@@ -71,7 +71,7 @@ Up to 350 tickers per training run, composed of:
 2 years of daily OHLCV data per ticker (`period="2y"`).
 
 ### Minimum data requirement
-252 trading days (1 full year) per ticker. Tickers with fewer rows are skipped during backfill. This ensures a valid SMA-200 and a full set of momentum lookbacks.
+252 trading days (1 full year) per ticker. Tickers with fewer rows are skipped during backfill and named together in one INFO line at the end of the run (the Daily Quant Screener does the same for tickers under 200 bars). This ensures a valid SMA-200 and a full set of momentum lookbacks.
 
 ### Stored rows
 After applying the 252-day momentum warmup constraint and `dropna()`:
