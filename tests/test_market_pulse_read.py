@@ -644,6 +644,16 @@ class TestIsTickerQuoteSettledForReportedSessions:
             assert _ms.is_ticker_quote_settled("GC=F") is False
         exchange_gate.assert_called_once()
 
+    def test_gilt_without_a_session_resolves_to_home_exchange_and_refreshes_after_the_close(self):
+        """UK10YG has no registry exchange and Yahoo lists no session for it, so it follows HOME_EXCHANGE; Yahoo's POST/POSTPOST on ^FTSE keeps it refreshing in the evening (accepted 2026-10-16), CLOSED/PRE freeze it."""
+        with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "LSE"}), \
+             patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate:
+            with patch("market_session_helpers.get_exchange_session_state", return_value="post"):
+                assert _ms.is_ticker_quote_settled("UK10YG") is True
+            with patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+                assert _ms.is_ticker_quote_settled("UK10YG") is False
+        assert [call.args for call in exchange_gate.call_args_list] == [("LSE",), ("LSE",)]
+
     def test_registry_exchange_wins_over_a_stored_session(self):
         self._store("^FTSE", "Asia/Tokyo", "23:59")
         with patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate, \
