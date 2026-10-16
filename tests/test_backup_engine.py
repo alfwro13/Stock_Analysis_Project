@@ -267,6 +267,15 @@ class TestRunBackup:
         assert "models/ml_ensemble.joblib" in names
         assert names.count("data/analysis.db") == 1, "DB must appear exactly once, not duplicated by the data/db overlap"
 
+    def test_data_component_archives_the_investment_policy_file(self, app_tree):
+        (app_tree / "data" / "investment_policy.md").write_text("# Policy\n", encoding="utf-8")
+        with patch("backup_engine.load_config", return_value=_cfg(INCLUDE_MODELS=False, INCLUDE_DATABASE=False)):
+            result = backup_engine.run_backup(trigger_type="manual")
+
+        assert result["status"] == "success"
+        with tarfile.open(app_tree / "backups" / result["filename"], "r:gz") as tar:
+            assert "data/investment_policy.md" in tar.getnames()
+
     def test_skips_when_no_components_selected(self, app_tree):
         cfg = _cfg(INCLUDE_DATA=False, INCLUDE_MODELS=False, INCLUDE_DATABASE=False)
         with patch("backup_engine.load_config", return_value=cfg):

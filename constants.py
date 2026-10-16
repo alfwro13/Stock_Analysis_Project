@@ -79,6 +79,7 @@ CSV_IMPORT_MAX_TICKERS      = 200              # unique tickers in one CSV: each
 PRICE_CSV_MAX_CHARS         = 500_000          # price-history CSV body
 PRICE_CSV_MAX_ROWS          = 10_000
 ACCOUNT_NAME_MAX_CHARS      = 100              # AccountBody.name
+INVESTMENT_POLICY_MAX_CHARS = 50_000           # data/investment_policy.md served by the Claude MCP Server; a longer file is refused, not cut
 ETF_CONSTITUENTS_MAX        = 50
 OPTION_LEGS_MAX             = 20
 TABLE_VIEWS_MAX             = 20               # saved column-preset Views per page

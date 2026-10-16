@@ -93,10 +93,31 @@ A value that is unavailable is `null`, never `0.0` (AGENTS.md). Non-finite numbe
 - **Known limit.** When an FX rate or price is unavailable the engines value a holding at cost basis (Trading) or `0.0` (a House valuation with no FX rate) instead of returning nothing. The tool cannot tell these apart from a real value without recomputing, so it does not flag them (tracked in `audit/issues_to_fix.md`).
 - **Ghostfolio.** `list_scope_accounts_with_values()` calls the Ghostfolio API when Ghostfolio accounts are enabled; with Ghostfolio off, no network call is made.
 
+## Resources
+
+| Resource | Returns | Reads |
+|---|---|---|
+| `policy://investment-policy` | The operator's investment policy as Markdown text, exactly as written. | `data/investment_policy.md` |
+
+### Investment policy
+
+The policy tells Claude what your rules are, so its analysis and suggestions are measured against them instead of against guesses. The resource description tells Claude to read it before any analysis and to apply it.
+
+- **Where the file is.** `data/investment_policy.md` (UTF-8; a leading byte-order mark is dropped). You write it by hand for now; a Settings editor is planned (task MCP-13). The path is fixed in code: the resource takes no parameter, so a client cannot ask for another file, and `policy://investment-policy?path=...` or any other URI answers "Unknown resource".
+- **Suggested sections.** Goals and horizon per account; risk tolerance; maximum weight of one position, sector, country and currency; tax wrappers and constraints; a never-do list; profit-taking style; preferred response format. `assets/investment_policy_template.md` holds this outline with placeholders: copy it to `data/investment_policy.md` and replace the placeholders. Do not save it unchanged, because Claude would then read the placeholders as your rules.
+- **Missing or empty file.** The resource answers `POLICY NOT CONFIGURED`, tells Claude to say the policy is missing rather than invent one, and appends that template so Claude can show you what to write. A file holding only whitespace counts as empty.
+- **Too long.** A file over `INVESTMENT_POLICY_MAX_CHARS` (50,000 characters, `constants.py`, request-limits block) is refused whole with `POLICY NOT LOADED` rather than cut, because a cut could drop a never-do rule at the end. A file at exactly the limit is served.
+- **Unreadable.** A file that is not valid UTF-8, or cannot be opened, also answers `POLICY NOT LOADED` (the cause goes to the server log) and Claude is told not to guess.
+- **Read-only.** The resource only reads. It never creates or changes the file, and it writes nothing to the database. The file is read on every request, so an edit shows up on the next read without a restart.
+- **Backed up.** `data/` is inside the Backup & Recovery archive (the Data component, on by default; only `analysis.db` and its sidecars are left out of it), so the policy is backed up and restored with the rest of `data/`. `tests/test_backup_engine.py` pins this.
+- **Workflow Monitor.** Shown as the manual node **Investment Policy** feeding the Claude MCP Server (see below).
+
 ## Workflow Monitor
 
-The Claude MCP Server is a node on the Workflow Monitor graph (`scheduler_manifest.JOB_GRAPH["claude_mcp_server_source"]`, category `external`, cyan). It produces nothing and consumes the artifacts its tools read, so a disabled or failing upstream job shows as a warning on it. Each new tool adds the artifacts it reads to `consumes` (AGENTS.md rule 13). Unlike other external nodes the monitor now keeps this node's `consumes` (`scheduler_monitor._build_node`).
+The Claude MCP Server is a node on the Workflow Monitor graph (`scheduler_manifest.JOB_GRAPH["claude_mcp_server_source"]`, category `external`, cyan). It produces nothing and consumes the artifacts its tools and resources read, so a disabled or failing upstream job shows as a warning on it. Each new tool or resource adds the artifacts it reads to `consumes` (AGENTS.md rule 13). Unlike other external nodes the monitor now keeps this node's `consumes` (`scheduler_monitor._build_node`).
+
+The investment policy file is hand-written, so it has a manual node of its own, **Investment Policy** (`JOB_GRAPH["investment_policy_source"]`, category `manual`, `non_job`), which produces the `investment_policy` artifact that the Claude MCP Server consumes.
 
 ## Testing
 
-`tests/test_mcp_server.py` covers the auth matrix (no header, wrong key, right key, unset key, Home Assistant key, Bearer on other routes, every HTTP method), host handling, the exact tool list, the envelope, `get_accounts` (snapshot, missing snapshot, unpriced Pension, soft-deleted accounts, Ghostfolio rows), the read-only guarantee (row counts of every table unchanged after calling every tool), the worker-thread behaviour and the Workflow Monitor entry. `tests/test_portfolio_metrics_engine.py` covers `refresh_missing`.
+`tests/test_mcp_server.py` covers the auth matrix (no header, wrong key, right key, unset key, Home Assistant key, Bearer on other routes, every HTTP method), host handling, the exact tool list, the envelope, `get_accounts` (snapshot, missing snapshot, unpriced Pension, soft-deleted accounts, Ghostfolio rows), the investment policy resource (listed, key required, missing and empty file, content served as written, byte-order mark, size limit, non-UTF-8 and unreadable file, no caller-supplied path, no write to the file or the database), the read-only guarantee (row counts of every table unchanged after calling every tool), the worker-thread behaviour and the Workflow Monitor entries. `tests/test_portfolio_metrics_engine.py` covers `refresh_missing`.

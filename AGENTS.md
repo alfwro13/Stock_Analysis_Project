@@ -42,6 +42,7 @@ The detailed reference material that used to live in this file now lives in `age
 | `agents/SUBSYSTEM_BACKUP_RECOVERY.md` | You touch Backup & Recovery (`backup_engine.py`). |
 | `agents/SUBSYSTEM_ALERT_REFEREE.md` | You touch the Alert Confidence Referee or the Trap Monitor alert path. |
 | `agents/SUBSYSTEM_HOME_ASSISTANT.md` | You touch any `/api/accounts/*` endpoint, `portfolio_metrics_engine.py`, `account_performance_cache`, `account_value_history_currency`, `holding_price_limits` or `api_deps.API_KEY_ROUTES` — the Home Assistant integration depends on them and a breaking change needs a lockstep integration-side update. Adding or removing an endpoint the integration calls means changing `API_KEY_ROUTES` (see **API key scope** in `assets/api_reference.md`). |
+| `agents/SUBSYSTEM_MCP.md` | You touch `mcp_server.py`, the `/mcp` endpoint or its auth, any MCP tool, prompt or resource, the investment policy file (`data/investment_policy.md`), or the `claude_mcp_server_source` / `investment_policy_source` `JOB_GRAPH` entries. |
 
 ---
 
