@@ -57,7 +57,7 @@ from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
 from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
-from news_feed_engine import run_news_feed_job
+from news_feed_engine import fetch_articles, run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, fetch_and_save_single_ticker, load_or_fetch_intraday_history
 import glossary_learn_engine
@@ -799,48 +799,12 @@ def get_news_feed(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
-    conn = get_connection()
     try:
-        cursor = conn.cursor()
-        if source == "all":
-            cursor.execute(
-                "SELECT COUNT(*) as total FROM news_articles"
-            )
-            total = cursor.fetchone()["total"]
-            cursor.execute(
-                """SELECT id, article_id, ticker, company_name, source_list,
-                          headline, summary, full_text, body_fetched,
-                          url, publisher, published_at, fetched_at,
-                          sentiment_score, sentiment_label
-                   FROM news_articles
-                   ORDER BY published_at DESC
-                   LIMIT ? OFFSET ?""",
-                (limit, offset),
-            )
-        else:
-            cursor.execute(
-                "SELECT COUNT(*) as total FROM news_articles WHERE source_list IN (?, 'both')",
-                (source,),
-            )
-            total = cursor.fetchone()["total"]
-            cursor.execute(
-                """SELECT id, article_id, ticker, company_name, source_list,
-                          headline, summary, full_text, body_fetched,
-                          url, publisher, published_at, fetched_at,
-                          sentiment_score, sentiment_label
-                   FROM news_articles
-                   WHERE source_list IN (?, 'both')
-                   ORDER BY published_at DESC
-                   LIMIT ? OFFSET ?""",
-                (source, limit, offset),
-            )
-        articles = [dict(row) for row in cursor.fetchall()]
+        articles, total = fetch_articles(source=source, limit=limit, offset=offset)
         return JSONResponse(content={"articles": articles, "total": total})
     except Exception as e:
         logger.error("GET /api/news-feed failed: %s", e, exc_info=True)
         return JSONResponse(status_code=500, content={"error": "An internal error occurred. Check server logs for details."})
-    finally:
-        conn.close()
 
 
 @api_router.post("/news-feed/run-now")

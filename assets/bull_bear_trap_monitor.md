@@ -258,7 +258,7 @@ Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and dis
 
 | File | Role |
 |------|------|
-| `bull_bear_trap_engine.py` | `TrapEngine` class: all four detectors, phase derivation, DB persistence; `fill_trap_phase_actuals()` for accuracy resolution |
+| `bull_bear_trap_engine.py` | `TrapEngine` class: all four detectors, phase derivation, DB persistence; `ALERT_PHASES` (the four phases that alert, in severity order); `fill_trap_phase_actuals()` for accuracy resolution |
 | `scheduler_jobs.py` | `run_trap_monitor_job()`, `run_trap_accuracy_fill_job()` runner functions |
 | `scheduler_engine.py` | CronTrigger scheduling blocks in `reload_scheduler()` |
 | `api_routes_analysis.py` | `GET /api/trap-monitor/results`, `POST /api/trap-monitor/run`, `GET /api/trap-monitor/accuracy` |
@@ -268,5 +268,5 @@ Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and dis
 | `templates/settings.html` | Settings card: enable toggle, detector toggles, portfolio checkbox, proxy tickers, notification config |
 | `templates/glossary.html` | Term-box entries: Bull Trap, Bear Trap, Capitulation, Wyckoff Accumulation, Trap Phase History |
 | `db_schema.py` | `trap_monitor_results` and `trap_phase_history` table definitions in `init_db()` |
-| `db_helpers.py` | `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `batch_update_trap_phase_actuals()`, `get_trap_phase_accuracy()` (all re-exported from `database.py`) |
+| `db_helpers.py` | `get_trap_monitor_results()` (the one reader of `trap_monitor_results`, used by the results route and the MCP Server's `get_alerts`), `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `batch_update_trap_phase_actuals()`, `get_trap_phase_accuracy()` (all except `get_trap_monitor_results()`, imported from `db_helpers` directly, re-exported from `database.py`) |
 | `config.py` | `SCHEDULING.TRAP_MONITORS` and `NOTIFICATIONS.TRAP_MONITOR_ALERTS` in `DEFAULT_CONFIG` |

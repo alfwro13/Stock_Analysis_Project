@@ -14,6 +14,39 @@ logger = logging.getLogger(__name__)
 _ARTICLE_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; QuantamentalNewsFeed/1.0)"}
 _ARTICLE_MAX_REDIRECTS = 2
 
+_FEED_COLUMNS = (
+    "id", "article_id", "ticker", "company_name", "source_list", "headline", "summary", "full_text", "body_fetched",
+    "url", "publisher", "published_at", "fetched_at", "sentiment_score", "sentiment_label",
+)
+
+
+def fetch_articles(
+    source: str = "all", ticker: Optional[str] = None, limit: int = 50, offset: int = 0, include_full_text: bool = True,
+) -> tuple[list, int]:
+    """Newest-first `news_articles` rows and the total matching count, for the News Feed page/API (`GET /api/news-feed`) and the MCP Server's `get_news`; `include_full_text=False` never selects the trafilatura body."""
+    columns = [c for c in _FEED_COLUMNS if include_full_text or c != "full_text"]
+    clauses = []
+    params: list = []
+    if source != "all":
+        clauses.append("source_list IN (?, 'both')")
+        params.append(source)
+    if ticker:
+        clauses.append("ticker = ?")
+        params.append(ticker)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    conn = None
+    try:
+        conn = get_connection()
+        total = conn.execute(f"SELECT COUNT(*) AS total FROM news_articles{where}", params).fetchone()["total"]
+        rows = conn.execute(
+            f"SELECT {', '.join(columns)} FROM news_articles{where} ORDER BY published_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+        return [dict(r) for r in rows], total
+    finally:
+        if conn:
+            conn.close()
+
 
 def _build_ticker_source_map() -> Dict[str, str]:
     from accounts_engine import get_combined_holdings

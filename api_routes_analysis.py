@@ -92,12 +92,9 @@ def get_trap_monitor_results(request: Request):
     without a second round-trip."""
     from accounts_engine import get_combined_holdings
     from database import get_watchlist_tickers
-    conn = None
+    from db_helpers import get_trap_monitor_results as read_trap_monitor_results
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM trap_monitor_results ORDER BY scan_ts DESC")
-        rows = [dict(r) for r in cursor.fetchall()]
+        rows = read_trap_monitor_results()
         from bull_bear_trap_engine import _phase_severity
         rows.sort(key=lambda r: _phase_severity(r.get("phase", "NEUTRAL")))
 
@@ -111,9 +108,6 @@ def get_trap_monitor_results(request: Request):
     except Exception as e:
         logger.error("trap-monitor/results failed: %s", e)
         return _error_500(e)
-    finally:
-        if conn:
-            conn.close()
 
 
 @analysis_router.post("/trap-monitor/run")

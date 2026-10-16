@@ -228,6 +228,16 @@ def attachment_content_disposition(stem: str, suffix: str) -> str:
     return header
 
 
+def clean_display_text(value: Any, max_chars: int) -> Optional[str]:
+    """One-line text for a third-party string: whitespace runs (incl. line breaks) become one space, control/format characters (bidi overrides, zero-width) are dropped, and it is cut to `max_chars` with an ellipsis; None when nothing is left."""
+    if value is None:
+        return None
+    cleaned = "".join(ch for ch in " ".join(str(value).split()) if unicodedata.category(ch) not in ("Cc", "Cf")).strip()
+    if not cleaned:
+        return None
+    return cleaned if len(cleaned) <= max_chars else cleaned[:max_chars - 1].rstrip() + "…"
+
+
 def safe_local_path(value: Optional[str]) -> Optional[str]:
     """Same-origin relative path or None — browsers drop tab/CR/LF before parsing a URL, so '/<TAB>/host' must not pass as local."""
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:

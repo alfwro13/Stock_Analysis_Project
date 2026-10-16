@@ -536,6 +536,20 @@ class TestGetRecentEvaluationsFiltering:
         assert first_page[0]["ticker"] == "AAPL" and first_page[0]["phase"] == "ACTIVE_SELLOFF"
 
 
+class TestGetRecentEvaluationsSince:
+    def test_since_ts_keeps_only_rows_at_or_after_the_bound(self):
+        conn = db.get_connection()
+        try:
+            are.log_veto_evaluation(_ENGINE, "OLDX", "BULL_TRAP_RISK", 0.2, True, "shadow", None, conn)
+            conn.execute("UPDATE alert_referee_log SET scan_ts = '2026-01-01 00:00:00' WHERE ticker = 'OLDX'")
+            are.log_veto_evaluation(_ENGINE, "NEWX", "BULL_TRAP_RISK", 0.7, False, "shadow", None, conn)
+            conn.commit()
+        finally:
+            conn.close()
+        assert {r["ticker"] for r in are.get_recent_evaluations(_ENGINE)} == {"OLDX", "NEWX"}
+        assert [r["ticker"] for r in are.get_recent_evaluations(_ENGINE, since_ts="2026-06-01 00:00:00")] == ["NEWX"]
+
+
 class TestRunAlertRefereeTrainingJob:
     def test_runner_completes_with_insufficient_data(self):
         import scheduler_jobs

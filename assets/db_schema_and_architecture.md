@@ -189,6 +189,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Purpose:** In-app notification feed surfaced in the Settings notifications panel.
 * **Key Columns:** `id` (PK autoincrement), `timestamp`, `message_type`, `message_text`, `is_read`, `status`.
 * **Written by:** all notifications now funnel through `notification_engine.notify()`, whose in-app channel writes this table (directly, or via `database.log_notification()`). Whether a given source reaches this table is controlled by `NOTIFICATION_ROUTING`. Deep pipeline-progress messages still call `database.log_notification()` directly (in-app only).
+* **Read by the MCP Server:** `get_alerts` reads the alert rows through `db_helpers.get_recent_alert_notifications(since, limit)`, which leaves out the job-status types `db_helpers.JOB_STATUS_MESSAGE_TYPES` (Info, Success, Scheduler, Warning, Error, Maintenance) because their text carries raw exception text.
 * **Auto-read types:** rows with `message_type` in `Info`/`Success`/`Scheduler` (`database.AUTO_READ_MESSAGE_TYPES`) are inserted with `is_read = 1` — these don't need operator triage, so they never contribute to the unread badge or the `/notifications` page's "unread" card highlight.
 * **Page-level filtering (client-side only):** the `/notifications` page's type filter buttons (`static/js/notifications.js`) are multi-select — clicking more than one (e.g. Crash and Moonshot) shows the union of both — plus an independent "Unread Only" toggle ANDed against the type selection. Both are pure DOM filters over the server-rendered/polled cards (no new query params on `GET /api/notifications/latest`) and persist across reloads via `localStorage` (`notif_active_types`, `notif_unread_only`).
 
@@ -250,6 +251,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 #### `news_articles`
 * **Purpose:** Full-text news articles with FinBERT sentiment scores, deduped by `article_id`.
 * **Key Columns:** `id` (PK autoincrement), `article_id` (UNIQUE), `ticker`, `source_list`, `headline`, `published_at`, `sentiment_score`, `sentiment_label`.
+* **Read by:** `news_feed_engine.fetch_articles()` — `GET /api/news-feed` (full row, including the trafilatura `full_text`) and the MCP Server's `get_news` (`include_full_text=False`, so the body is never selected).
 
 #### `smgb_predictions`
 * **Purpose:** Orphaned table (retained for data preservation). Was used by the removed SMGB.L Morning Price Predictor (`smgb_predictor.py`). No code reads or writes to this table anymore.
@@ -271,6 +273,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Purpose:** Latest Trap Monitor scan result per ticker — one row per ticker, upserted on each scan. Powers `/trap-monitor` live table.
 * **Key Columns:** `ticker` (PK), `phase` (lifecycle phase label), `bull_trap_level`, `bull_trap_vol_ratio`, `bear_trap_level`, `cap_level`, `cap_vol_zscore`, `wyckoff_level`, `wyckoff_bb_width`, `ema_distance`, `rsi`, `scan_ts`. Notes for each signal stored in `*_notes` text columns.
 * **Phase values:** `ACTIVE_SELLOFF` | `BULL_TRAP_RISK` | `CAPITULATION_FORMING` | `BEAR_TRAP_RISK` | `ACCUMULATION` | `CAUTION` | `NEUTRAL`.
+* **Read by:** `db_helpers.get_trap_monitor_results()` — `GET /api/trap-monitor/results` and the MCP Server's `get_alerts` (which keeps the phases in `bull_bear_trap_engine.ALERT_PHASES`, the set `run_trap_monitor_job()` alerts on).
 
 #### `trap_phase_history`
 * **Purpose:** Append-only log of trap phase assignments per ticker per day, used to evaluate prediction accuracy retroactively and — as of July 2026 — as the training set for the Alert Confidence Referee (see below). One row per (ticker, scan_date) — the first scan of each day is kept.
@@ -290,6 +293,7 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 * **Key Columns:** `id` (PK autoincrement), `engine` (`TrapMonitor` | `Confluence`), `ticker`, `phase` (the Trap Monitor phase label — NULL for `Confluence` rows), `direction` (the Confluence engine's bullish/bearish call — NULL for `TrapMonitor` rows; a dedicated column rather than overloading `phase`, since the two concepts differ per engine), `fire_probability` (the calibrated model's confidence the signal is a genuine hit), `vetoed` (0/1 — whether the model recommended a veto, regardless of mode), `mode` (`shadow` | `active` — the effective mode at evaluation time), `model_id` (the `alert_referee_models.id` used, no enforced FK), `scan_ts` (UTC ISO).
 * **Written by:** `alert_referee_engine.log_veto_evaluation()`, called from `alert_referee_engine.evaluate_alert()` on every Trap Monitor phase call the referee is consulted on, and — since the Cross-Engine Alert Referee shipped — on every ticker whose confluence direction is (re)computed on the first `trap_monitor_job` scan of the day (see `pattern_detection_history` below for why `pattern_detection_job`'s own scan doesn't independently trigger a second evaluation).
 * **Index:** `idx_alert_referee_log_engine_ticker` on `(engine, ticker)`.
+* **Read by:** `alert_referee_engine.get_recent_evaluations()` (optional `since_ts` lower bound on `scan_ts`) — the Settings log, `GET /api/alert-referee/log` and the MCP Server's `get_alerts`.
 
 #### `pattern_detection_results`
 * **Purpose:** Latest Pattern Detection scan result per ticker **per pattern family** — one row per `(ticker, pattern_family)` pair, upserted on each scan, so a ticker can carry a confirmed Double Top and a forming Head & Shoulders simultaneously without either overwriting the other. Powers `/pattern-detection` live table. Head & Shoulders' pre-existing `head_shoulders_results` table was folded into this generic table (see Migration note below); the old table is kept in the schema as an inert historical artifact and is never written to again.

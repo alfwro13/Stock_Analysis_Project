@@ -4,7 +4,7 @@ from db_helpers import parse_utc_epoch
 from page_helpers import get_portfolio_heat_row
 from risk_orchestrator_engine import get_ticker_risk_contributions
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_utc
+from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_from_stored_utc
 from ..scope import ACCOUNT_ALL
 from ..server import READ_ONLY, server
 
@@ -43,7 +43,7 @@ def get_heat_index() -> dict[str, Any]:
             "max_correlation": {"value": row["max_correlation"], "tier": row["correlation_tier"]},
             "max_drawdown": {"pct": row["drawdown_pct"], "tier": row["drawdown_tier"]},
             "breakdown": row["breakdown"],
-            "computed_at": iso_utc(computed_epoch) if (computed_epoch := parse_utc_epoch(row["last_updated"])) else None,
+            "computed_at": iso_from_stored_utc(row["last_updated"]),
         }
         if not contributors:
             missing.append("No per-position Risk Contribution rows exist yet")

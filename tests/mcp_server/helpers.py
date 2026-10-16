@@ -1,10 +1,11 @@
 import re
+from contextlib import contextmanager
 
 from database import get_connection
 
 MCP_KEY = "test-mcp-key-do-not-use-in-production"
 RPC_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot"}
+EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot", "get_alerts", "get_news"}
 
 
 def rpc(client, method, params=None, key=MCP_KEY, headers=None):
@@ -48,3 +49,27 @@ def error_text(response):
     result = response.json()["result"]
     assert result["isError"] is True, result
     return re.sub(r"^Error executing tool \w+: ", "", result["content"][0]["text"])
+
+
+@contextmanager
+def emptied_tables(*tables):
+    conn = get_connection()
+    try:
+        saved = {t: [dict(r) for r in conn.execute(f"SELECT * FROM {t}")] for t in tables}
+        for t in tables:
+            conn.execute(f"DELETE FROM {t}")
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        yield
+    finally:
+        conn = get_connection()
+        try:
+            for t in tables:
+                conn.execute(f"DELETE FROM {t}")
+                for row in saved[t]:
+                    conn.execute(f"INSERT INTO {t} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", list(row.values()))
+            conn.commit()
+        finally:
+            conn.close()

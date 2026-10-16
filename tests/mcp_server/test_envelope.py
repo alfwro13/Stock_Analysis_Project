@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from mcp_server import envelope as envelope_module
-from mcp_server.envelope import NIGHTLY_STALE_AFTER_SECONDS, STALE_AFTER_SECONDS, date_epoch, envelope
+from mcp_server.envelope import NIGHTLY_STALE_AFTER_SECONDS, STALE_AFTER_SECONDS, date_epoch, envelope, iso_from_stored_utc
 
 
 class TestEnvelope:
@@ -59,3 +59,9 @@ class TestDateEpoch:
     @pytest.mark.parametrize("day, epoch", [("2023-11-14", 1_699_920_000.0), ("2023-11-14 22:13:20", 1_699_920_000.0), (None, None), ("", None)])
     def test_date_is_midnight_utc(self, day, epoch):
         assert date_epoch(day) == epoch
+
+
+class TestIsoFromStoredUtc:
+    @pytest.mark.parametrize("stored, iso", [("2023-11-14 22:13:20", "2023-11-14T22:13:20Z"), (None, None), ("", None), ("not a date", None)])
+    def test_stored_utc_string_becomes_iso_or_null(self, stored, iso):
+        assert iso_from_stored_utc(stored) == iso

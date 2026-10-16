@@ -15,6 +15,13 @@ class TestWorkflowEntry:
         consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
         assert {"stock_signals", "quant_signals", "market_pulse_cache", "fundamentals", "ml_predictions", "watchlist_items", "yahoo_price_data"} <= consumed
 
+    def test_alert_and_news_artifacts_are_consumed_and_produced_by_the_alert_jobs(self):
+        consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
+        assert {"system_notifications", "trap_monitor_results", "alert_referee_log", "news_articles"} <= consumed
+        assert {"trap_monitor_results", "alert_referee_log", "system_notifications"} <= set(JOB_GRAPH["trap_monitor_job"]["produces"])
+        assert "system_notifications" in JOB_GRAPH["intraday_orchestrator_job"]["produces"]
+        assert "news_articles" in JOB_GRAPH["news_feed_job"]["produces"]
+
     def test_entry_is_an_external_node_with_the_canonical_label(self):
         meta = JOB_GRAPH["claude_mcp_server_source"]
         assert meta["label"] == "MCP Server"
