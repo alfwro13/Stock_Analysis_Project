@@ -103,5 +103,6 @@ class TestReadOnlyGuarantee:
         before = table_counts()
         tools = rpc(mcp_client, "tools/list").json()["result"]["tools"]
         for tool in tools:
-            tool_data(call(mcp_client, tool["name"]))
+            arguments = {"ticker": "ZZMCP"} if "ticker" in tool["inputSchema"].get("properties", {}) else {}
+            tool_data(call(mcp_client, tool["name"], arguments))
         assert table_counts() == before

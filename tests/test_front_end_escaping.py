@@ -356,10 +356,11 @@ def test_safe_http_url_js_keeps_only_absolute_http_links():
 def test_fundamentals_extra_website_is_a_web_link_or_none(tmp_path, monkeypatch, website, expected):
     import json
 
+    import config
     import page_helpers
 
     (tmp_path / "ZZWEB.json").write_text(json.dumps({"website": website}))
-    monkeypatch.setattr(page_helpers, "FUNDAMENTALS_DIR", tmp_path)
+    monkeypatch.setattr(config, "FUNDAMENTALS_DIR", tmp_path)
     assert page_helpers._load_fundamentals_extra("ZZWEB")["website"] == expected
 
 

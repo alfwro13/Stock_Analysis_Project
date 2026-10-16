@@ -9,6 +9,9 @@ from page_helpers import compute_badge_tags, get_pattern_tags_by_ticker
 
 logger = logging.getLogger(__name__)
 
+QUANT_ONLY_SIGNAL = "UNIVERSE SCAN ONLY"
+UNKNOWN_SIGNAL = "UNKNOWN"
+
 
 def _quant_only_stock(ticker, q_data):
     company_name = q_data.get("company_name") or ticker
@@ -24,7 +27,7 @@ def _quant_only_stock(ticker, q_data):
         "quote_type": q_data.get("quote_type") or "EQUITY",
         "currency": q_data.get("currency") or "USD",
         "current_price": c_price,
-        "overall_signal": "UNIVERSE SCAN ONLY",
+        "overall_signal": QUANT_ONLY_SIGNAL,
         "composite_score": "N/A",
         "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
         "business_summary": q_data.get("business_summary"),
@@ -96,6 +99,7 @@ def _quant_only_stock(ticker, q_data):
         "kc_exit_signal": q_data.get("kc_exit_signal"),
         "price_q10": q_data.get("price_q10"),
         "price_q90": q_data.get("price_q90"),
+        "quant_date": q_data.get("date"),
     }
 
 def _unknown_stock(ticker):
@@ -107,7 +111,7 @@ def _unknown_stock(ticker):
         "quote_type": "UNKNOWN",
         "currency": "USD",
         "current_price": 0.0,
-        "overall_signal": "UNKNOWN",
+        "overall_signal": UNKNOWN_SIGNAL,
         "composite_score": "N/A",
         "educational_notes": "Data not found. Asset may not be tracked.",
         "business_summary": None,
@@ -156,6 +160,7 @@ def _unknown_stock(ticker):
         "vp_entry_zone": None, "vp_exit_zone": None,
         "kc_z_score": None, "kc_entry_signal": None, "kc_exit_signal": None,
         "price_q10": None, "price_q90": None,
+        "quant_date": None,
     }
 
 
@@ -183,7 +188,7 @@ def load_stock_row(ticker):
                    q.sma_50, q.sma_200,
                    q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
                    q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
-                   q.anomaly_score, q.close_price as quant_close_price,
+                   q.anomaly_score, q.close_price as quant_close_price, q.date AS quant_date,
                    q.vp_poc, q.vp_val, q.vp_vah, q.vp_entry_zone, q.vp_exit_zone,
                    q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
                    q.price_q10, q.price_q90,
