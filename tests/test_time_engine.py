@@ -301,6 +301,30 @@ class TestIsExchangeHoliday:
                 assert is_exchange_holiday(None) is False
 
 
+class TestConcurrentCalendarBuild:
+    def test_krx_calendar_builds_under_concurrent_first_use(self):
+        """XKRX mutates a class-level Series while building; unlocked concurrent first use corrupted it (prod 2026-10-06..13)."""
+        import threading
+        previous = time_engine._calendar_cache.pop("KRX", None)
+        results = []
+        try:
+            threads = [
+                threading.Thread(target=lambda: results.append(time_engine._get_exchange_calendar("KRX")))
+                for _ in range(8)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            assert len(results) == 8
+            assert all(r is not None for r in results)
+            assert len({id(r) for r in results}) == 1
+        finally:
+            time_engine._calendar_cache.pop("KRX", None)
+            if previous is not None:
+                time_engine._calendar_cache["KRX"] = previous
+
+
 class TestExchangeHadSession:
     def test_ordinary_weekday_had_a_session(self):
         assert time_engine.exchange_had_session("LSE", datetime(2026, 3, 4).date()) is True
