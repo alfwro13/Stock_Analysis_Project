@@ -230,7 +230,10 @@ class TestHostHandling:
         settings = mcp_server._transport_security(["a.example", "10.0.0.5"])
         assert settings.enable_dns_rebinding_protection is True
         assert set(settings.allowed_hosts) == {"a.example", "10.0.0.5", "a.example:*", "10.0.0.5:*"}
-        assert "https://a.example" in settings.allowed_origins and "http://10.0.0.5:*" in settings.allowed_origins
+        assert set(settings.allowed_origins) == {
+            f"{scheme}://{host}{port}"
+            for host in ("a.example", "10.0.0.5") for scheme in ("http", "https") for port in ("", ":*")
+        }
 
 
 class TestTransport:
