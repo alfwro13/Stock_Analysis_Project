@@ -159,7 +159,7 @@ def quant_history_records(ticker: str, df: pd.DataFrame, spy_df: Optional[pd.Dat
     df = df.dropna(subset=['Close', 'Volume', 'High', 'Low'])
 
     if len(df) < 252:
-        logger.warning("Skipping %s: insufficient data (%d rows < 252).", ticker, len(df))
+        logger.debug("Skipping %s: insufficient data (%d rows < 252).", ticker, len(df))
         return []
 
     indicators = compute_quant_indicator_frame(df, spy_df)[list(QUANT_HISTORY_COLUMNS)].dropna()
@@ -229,6 +229,7 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
 
         total_inserted = 0
         total_tickers  = len(tickers)
+        short_history = []
 
         for i in range(start_idx, total_tickers):
             ticker = tickers[i]
@@ -244,6 +245,7 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
 
                 records = quant_history_records(ticker, df, spy_df)
                 if not records:
+                    short_history.append(ticker)
                     continue
 
                 cursor.executemany(_QUANT_HISTORY_UPSERT, records)
@@ -266,6 +268,10 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
             if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
                 pct = int((processed / total_tickers) * 100)
                 log_notification("Info", f"ML Historical Backfill Progress: {pct}% ({processed}/{total_tickers} tickers processed).")
+
+        if short_history:
+            logger.info("ML Backfill wrote no rows for %d ticker(s) (fewer than 252 usable daily bars, or no complete indicator row): %s",
+                        len(short_history), ", ".join(short_history))
 
         cursor.execute(
             "UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_type = 'ml_backfill' AND status = 'IN_PROGRESS'"
