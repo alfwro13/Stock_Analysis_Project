@@ -599,13 +599,13 @@ class TestIsTickerQuoteSettledForReportedSessions:
         _ms._instrument_sessions.clear()
 
     @staticmethod
-    def _at(hour, minute=0):
+    def _at(hour, minute=0, day=9):
         from datetime import datetime, timezone
 
         class _Fake(datetime):
             @classmethod
             def now(cls, tz=None):
-                moment = datetime(2026, 10, 9, hour, minute, tzinfo=timezone.utc)
+                moment = datetime(2026, 10, day, hour, minute, tzinfo=timezone.utc)
                 return moment.astimezone(tz) if tz else moment
 
         return patch("time_engine.datetime", _Fake)
@@ -629,6 +629,22 @@ class TestIsTickerQuoteSettledForReportedSessions:
                 assert _ms.is_ticker_quote_settled("^TNX") is True
             with self._at(19, 30):
                 assert _ms.is_ticker_quote_settled("^TNX") is False
+
+    @pytest.mark.parametrize("ticker,tz,end", [
+        ("^TNX", "America/Chicago", "14:00"),
+        ("^TYX", "America/Chicago", "14:00"),
+        ("GBPUSD=X", "Europe/London", "23:59"),
+        ("GC=F", "America/New_York", "23:59"),
+        ("ES=F", "America/New_York", "23:59"),
+    ])
+    def test_reported_session_ticker_is_settled_on_a_saturday_by_decision(self, ticker, tz, end):
+        """Accepted 2026-10-16: the stored window carries no weekday or holiday, so Saturday 10:00 UTC still counts as settled."""
+        self._store(ticker, tz, end)
+        with self._at(10, day=10), \
+             patch("market_session_helpers.is_quote_settled", return_value=False) as exchange_gate, \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"):
+            assert _ms.is_ticker_quote_settled(ticker) is True
+        exchange_gate.assert_not_called()
 
     def test_index_future_ignores_the_spot_exchange_once_its_session_is_known(self):
         self._store("ES=F", "America/New_York", "23:59")

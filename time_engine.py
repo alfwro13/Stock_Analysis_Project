@@ -380,7 +380,7 @@ def local_hm_from_epoch(epoch: float, tz_name: str) -> str:
 
 
 def reported_window_open(tz_name: str, regular_end: str) -> bool:
-    """True while the local time of day in *tz_name* has not passed *regular_end*; Yahoo's reported start is not stored, so the window is judged by its end alone."""
+    """True while the local time of day in *tz_name* has not passed *regular_end*; the start, weekends and holidays are not modelled, so these tickers count as open all weekend (accepted 2026-10-16: an extra refresh of an unchanged price, never a wrong one)."""
     return datetime.now(timezone.utc).astimezone(ZoneInfo(tz_name)).time() <= _parse_hm(regular_end)
 
 
