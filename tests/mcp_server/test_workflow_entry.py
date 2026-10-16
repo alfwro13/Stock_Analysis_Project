@@ -22,6 +22,10 @@ class TestWorkflowEntry:
         assert "system_notifications" in JOB_GRAPH["intraday_orchestrator_job"]["produces"]
         assert "news_articles" in JOB_GRAPH["news_feed_job"]["produces"]
 
+    def test_watchlist_and_pretrade_artifacts_are_consumed_by_the_server(self):
+        consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
+        assert {"pattern_detection_results", "pattern_detection_history", "trap_phase_history", "score_history", "earnings_volatility_history", "historical_parquet", "xray_caches"} <= consumed
+
     def test_entry_is_an_external_node_with_the_canonical_label(self):
         meta = JOB_GRAPH["claude_mcp_server_source"]
         assert meta["label"] == "MCP Server"

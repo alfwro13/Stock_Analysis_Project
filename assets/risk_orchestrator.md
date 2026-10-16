@@ -116,7 +116,9 @@ no smaller size helps (e.g. the breach is driven by `Drawdown`, which doesn't mo
 position's size). Like the PHI Red badge, the verdict is **advisory only**: this app has no trade
 execution to actually block a purchase.
 
-**Audit trail.** Every check call is logged to `pretrade_check_log` (ticker, scope, proposed
+**Second caller.** The MCP Server's `pretrade_check` tool calls `evaluate_pretrade_check(..., read_only=True)` directly and never logs: the log write lives in the route, not the engine. `read_only` reaches `simulate_scope_with_hypothetical_holding()` and stops the price-history loader from fetching or queueing a refresh for a ticker with no parquet on disk (it then gets the no-usable-history warning); the route keeps the default `read_only=False`. The result also carries `risk_cache_date`, the date of the X-ray risk cache the baseline report read.
+
+**Audit trail.** Every check call from the route is logged to `pretrade_check_log` (ticker, scope, proposed
 value, verdict, breached constraint, PHI score, VaR%, max correlation, suggested reduced value,
 timestamp) — append-only, since the same ticker can be checked many times a day as the user
 adjusts size on the panel, unlike the snapshot-only `portfolio_heat_index`/`ticker_risk_contribution`

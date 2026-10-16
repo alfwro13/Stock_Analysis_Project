@@ -23,6 +23,22 @@ _HEAT_UNITS = {
 _HEAT_INPUTS = (("var_pct_of_equity", "VaR"), ("max_correlation", "correlation"), ("drawdown_pct", "drawdown"))
 
 
+def heat_summary(row: dict) -> tuple:
+    """(heat index part, missing lines) for a portfolio_heat_index row."""
+    missing = [
+        f"Heat Index {label} input is not available, so the score counts it as zero risk"
+        for key, label in _HEAT_INPUTS if row[key] is None
+    ]
+    return {
+        "phi_score": row["phi_score"], "tier": row["tier"],
+        "var": {"pct_of_equity": row["var_pct_of_equity"], "tier": row["var_tier"]},
+        "max_correlation": {"value": row["max_correlation"], "tier": row["correlation_tier"]},
+        "max_drawdown": {"pct": row["drawdown_pct"], "tier": row["drawdown_tier"]},
+        "breakdown": row["breakdown"],
+        "computed_at": iso_from_stored_utc(row["last_updated"]),
+    }, missing
+
+
 @server.tool(name="get_heat_index", annotations=READ_ONLY)
 def get_heat_index() -> dict[str, Any]:
     """Portfolio Heat Index for all accounts combined (0-100 risk score, Green/Yellow/Red tier, its VaR, correlation and drawdown inputs) and the five positions with the highest Risk Contribution."""
@@ -33,18 +49,7 @@ def get_heat_index() -> dict[str, Any]:
     if row is None:
         missing.append("Portfolio Heat Index has not been computed yet (the Risk Orchestrator Scan has not run, or the portfolio is empty)")
     else:
-        missing += [
-            f"Heat Index {label} input is not available, so the score counts it as zero risk"
-            for key, label in _HEAT_INPUTS if row[key] is None
-        ]
-        heat = {
-            "phi_score": row["phi_score"], "tier": row["tier"],
-            "var": {"pct_of_equity": row["var_pct_of_equity"], "tier": row["var_tier"]},
-            "max_correlation": {"value": row["max_correlation"], "tier": row["correlation_tier"]},
-            "max_drawdown": {"pct": row["drawdown_pct"], "tier": row["drawdown_tier"]},
-            "breakdown": row["breakdown"],
-            "computed_at": iso_from_stored_utc(row["last_updated"]),
-        }
+        heat, missing = heat_summary(row)
         if not contributors:
             missing.append("No per-position Risk Contribution rows exist yet")
     epochs = [e for e in (parse_utc_epoch(r["last_updated"]) for r in [*([row] if row else []), *contributors]) if e]

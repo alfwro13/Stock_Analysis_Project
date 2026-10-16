@@ -4938,6 +4938,7 @@ app has no trade execution, the verdict can never actually block a purchase — 
     "drawdown_pct": 3.0, "drawdown_tier": "GREEN",
     "hypothetical_weight": 0.08, "new_portfolio_total_value": 25000.0,
     "suggested_reduced_value": 900.0,
+    "risk_cache_date": "2026-10-15",
     "data_warnings": []
   }
 }
@@ -4948,7 +4949,7 @@ app has no trade execution, the verdict can never actually block a purchase — 
 back to the worst YELLOW one when nothing is RED, or `null` on approve. `suggested_reduced_value`
 is a binary-searched smaller `value` that resolves to a better tier, or `null` when the verdict is
 already `approve`, or when reducing size doesn't change the tier (e.g. the constraint is driven by
-`Drawdown`, which doesn't scale with this position's size). Returns `400` (not `500`) if the scope
+`Drawdown`, which doesn't scale with this position's size). `risk_cache_date` is the date of the nightly X-ray risk cache the check read (`null` when none exists); the MCP Server's `pretrade_check` tool uses it as its `as_of`. Returns `400` (not `500`) if the scope
 has no holdings or Ghostfolio is configured but unreachable.
 
 ### Watchlist FX status and refresh
@@ -5127,7 +5128,7 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 
 Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 
-Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`.
+Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index`, `get_market_regime`, `get_ticker_snapshot`, `get_alerts`, `get_news`, `get_watchlist`, `pretrade_check` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`.
 
 ---
 
