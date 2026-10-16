@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple
 import pandas as pd
 
 from data_engine import daily_history_cache_revision, load_or_fetch_daily_history
-from utils import is_synthetic_ticker
+from utils import count_request_event, is_synthetic_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,9 @@ def _anchor_closes_for_ticker(ticker: str, today: date, *, cache_only: bool = Fa
         cached = _anchor_cache.pop(ticker, None)
         if revision is not None and cached is not None and cached[:2] == (today, revision):
             _anchor_cache[ticker] = cached
+            count_request_event("anchor_hit")
             return dict(cached[2])
+    count_request_event("anchor_miss")
     df = load_or_fetch_daily_history(ticker, cache_only=True) if cache_only else load_or_fetch_daily_history(ticker)
     if df is None or df.empty:
         return anchors

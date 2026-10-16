@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 logger = logging.getLogger(__name__)
 
 _request_stages: ContextVar[list[tuple[str, float]] | None] = ContextVar("request_stages", default=None)
+_request_counts: ContextVar[dict[str, int] | None] = ContextVar("request_counts", default=None)
 
 
 @contextmanager
@@ -31,6 +32,12 @@ def measure_request_stage(name: str):
         yield
     finally:
         stages.append((name, (perf_counter() - started) * 1000))
+
+
+def count_request_event(name: str) -> None:
+    counts = _request_counts.get()
+    if counts is not None:
+        counts[name] = counts.get(name, 0) + 1
 
 
 def time_request_call(stage_name: str, function, *args, **kwargs):

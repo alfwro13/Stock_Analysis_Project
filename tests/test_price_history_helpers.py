@@ -154,6 +154,22 @@ def test_anchor_cache_reuses_reads_and_returns_independent_results(anchor_files)
     assert read.call_count == 1
 
 
+def test_anchor_cache_counts_hits_and_misses_for_the_request(anchor_files):
+    from utils import _request_counts
+
+    _fake_ohlcv("2022-06-01", "2024-07-05").to_parquet(anchor_files / "TEST.parquet")
+    today = date(2024, 7, 6)
+    counts = {}
+    token = _request_counts.set(counts)
+    try:
+        for _ in range(3):
+            _anchor_closes_for_ticker("TEST", today, cache_only=True)
+        _anchor_closes_for_ticker("TBILL-606", today, cache_only=True)
+    finally:
+        _request_counts.reset(token)
+    assert counts == {"anchor_miss": 1, "anchor_hit": 2}
+
+
 def test_anchor_cache_invalidates_on_replace_edit_delete_and_recreate(anchor_files):
     df = _fake_ohlcv("2022-06-01", "2024-07-05")
     path = anchor_files / "TEST.parquet"
