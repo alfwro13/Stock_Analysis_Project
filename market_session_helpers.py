@@ -292,7 +292,7 @@ def is_ticker_quote_settled(
     memo_key = (exchange, honor_premarket)
     if exchange_state_memo is not None and memo_key in exchange_state_memo:
         return exchange_state_memo[memo_key]
-    # UK10YG resolves to HOME_EXCHANGE here, so it also refreshes in LSE POST/POSTPOST hours; accepted, gilts trade OTC after the close.
+    # UK10YG (registry exchange LSE) also refreshes in LSE POST/POSTPOST hours; accepted, gilts trade OTC after the close.
     settled = is_quote_settled(exchange, include_premarket=honor_premarket) or get_exchange_session_state(exchange) in ("pre", "post")
     if exchange_state_memo is not None:
         exchange_state_memo[memo_key] = settled
