@@ -282,27 +282,30 @@ def write_parquet_atomic(df: Any, path: Any) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def has_cached_fundamentals(ticker: Optional[str]) -> bool:
-    """Whether this ticker's raw Yahoo `.info` dump exists under FUNDAMENTALS_DIR. Presence in
-    `asset_profiles` does not imply it — the universe scrape writes profiles without ever fetching
-    the dump — so anything that would otherwise analyze the ticker with an empty `info` (and fall
-    back on 'USD'/'EQUITY'/'Unknown' defaults) must gate on this, not on the profile row."""
-    from config import FUNDAMENTALS_DIR
-    safe_ticker = safe_ticker_filename(ticker)
-    if not safe_ticker:
-        return False
-    return (FUNDAMENTALS_DIR / f"{safe_ticker}.json").exists()
-
-
-def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
-    """Raw numbers from the ticker's `.info` dump under FUNDAMENTALS_DIR, or None when the file is missing, unsafe or unreadable. Money fields are in Yahoo's units: `market_cap` in the quote currency's major unit (GBP for a GBp quote), the rest in `financial_currency`."""
+def _fundamentals_dump_path(ticker: Optional[str]) -> Optional[str]:
+    """The ticker's `.info` dump path when it is a safe file name that stays inside FUNDAMENTALS_DIR (realpath containment, the form CodeQL's path analysis accepts), else None."""
     from config import FUNDAMENTALS_DIR
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
         return None
     root = os.path.realpath(FUNDAMENTALS_DIR)
     path = os.path.realpath(os.path.join(root, f"{safe_ticker}.json"))
-    if not path.startswith(root + os.sep) or not os.path.exists(path):
+    return path if path.startswith(root + os.sep) else None
+
+
+def has_cached_fundamentals(ticker: Optional[str]) -> bool:
+    """Whether this ticker's raw Yahoo `.info` dump exists under FUNDAMENTALS_DIR. Presence in
+    `asset_profiles` does not imply it — the universe scrape writes profiles without ever fetching
+    the dump — so anything that would otherwise analyze the ticker with an empty `info` (and fall
+    back on 'USD'/'EQUITY'/'Unknown' defaults) must gate on this, not on the profile row."""
+    path = _fundamentals_dump_path(ticker)
+    return path is not None and os.path.exists(path)
+
+
+def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
+    """Raw numbers from the ticker's `.info` dump under FUNDAMENTALS_DIR, or None when the file is missing, unsafe or unreadable. Money fields are in Yahoo's units: `market_cap` in the quote currency's major unit (GBP for a GBp quote), the rest in `financial_currency`."""
+    path = _fundamentals_dump_path(ticker)
+    if path is None or not os.path.exists(path):
         return None
     try:
         with open(path) as f:
