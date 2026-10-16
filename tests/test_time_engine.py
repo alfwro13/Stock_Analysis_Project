@@ -692,6 +692,17 @@ class TestReportedSession:
         with patch("time_engine.datetime", _fake_datetime(now)):
             assert reported_window_open(tz, end) is expected
 
+    @pytest.mark.parametrize("now,tz,end", [
+        (datetime(2026, 10, 10, 10, 0, tzinfo=timezone.utc), "America/Chicago", "14:00"),
+        (datetime(2026, 10, 10, 10, 0, tzinfo=timezone.utc), "Europe/London", "23:59"),
+        (datetime(2026, 10, 10, 10, 0, tzinfo=timezone.utc), "America/New_York", "23:59"),
+        (datetime(2026, 10, 11, 10, 0, tzinfo=timezone.utc), "America/Chicago", "14:00"),
+    ], ids=["rates-saturday", "fx-saturday", "futures-saturday", "rates-sunday"])
+    def test_window_is_open_all_weekend_by_decision(self, now, tz, end):
+        """Accepted 2026-10-16: the stored session carries no weekday or holiday, so the weekend refresh of an unchanged price is pinned, not a bug; a veto needs an instrument-kind signal because FX and futures reopen Sunday evening."""
+        with patch("time_engine.datetime", _fake_datetime(now)):
+            assert reported_window_open(tz, end) is True
+
     @pytest.mark.parametrize("now,tz,end,expected", [
         (datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", datetime(2026, 10, 8, 19, 0, tzinfo=timezone.utc)),
         (datetime(2026, 10, 9, 19, 30, tzinfo=timezone.utc), "America/Chicago", "14:00", datetime(2026, 10, 9, 19, 0, tzinfo=timezone.utc)),
