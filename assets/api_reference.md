@@ -32,7 +32,7 @@
 26. [Pairs Spread Monitor](#26-pairs-spread-monitor)
 27. [Pattern Detection](#27-pattern-detection)
 31. [Sector-Relative Momentum](#31-sector-relative-momentum)
-33. [Claude MCP Server](#33-claude-mcp-server)
+33. [MCP Server](#33-mcp-server)
 
 ---
 
@@ -1532,7 +1532,7 @@ Signs out every browser and device, including the caller's: raises the session e
 
 ### API key scope
 
-`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected. `/mcp` (the Claude MCP Server) is not covered by this scope and never appears in the table: it has its own `Authorization: Bearer <MCP_API_KEY>` credential (see section 33), and an `X-API-Key` sent to it gets `403`.
+`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected. `/mcp` (the MCP Server) is not covered by this scope and never appears in the table: it has its own `Authorization: Bearer <MCP_API_KEY>` credential (see section 33), and an `X-API-Key` sent to it gets `403`.
 
 | Method | Path | Used by Home Assistant for |
 |--------|------|----------------------------|
@@ -5105,9 +5105,9 @@ Rate limit 20/minute. Deletes a finished run and its files. A queued or running 
 
 ---
 
-## 33. Claude MCP Server
+## 33. MCP Server
 
-A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, does not use the `{ "status": ... }` response convention (it speaks JSON-RPC 2.0) and is **not** part of the **API key scope** table: it has its own credential. Set-up, tools, the investment policy resource (`policy://investment-policy`, read with `resources/read`) and the response envelope are in `assets/mcp_integration.md`. Code: `mcp_server.py`.
+A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, does not use the `{ "status": ... }` response convention (it speaks JSON-RPC 2.0) and is **not** part of the **API key scope** table: it has its own credential. Set-up, tools, the investment policy resource (`policy://investment-policy`, read with `resources/read`) and the response envelope are in `assets/mcp_integration.md`. Code: the `mcp_server/` package.
 
 ### `POST /mcp`
 
