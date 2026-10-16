@@ -71,7 +71,7 @@
                     <h4 class="settings-panel-header text-orange">📁 Legacy File Sideloading &amp; Nasdaq Sync</h4>
                     <div class="checkbox-group mb-10">
                         <input type="checkbox" id="UNIVERSE_ENGINE_ENABLED" {% if u_engine.ENABLED %}checked{% endif %}>
-                        <label for="UNIVERSE_ENGINE_ENABLED">Auto-sync Nasdaq <abbr title="File Transfer Protocol — Nasdaq publishes its full ticker list via FTP daily.">FTP</abbr> Universe</label>
+                        <label for="UNIVERSE_ENGINE_ENABLED">Auto-sync <abbr title="Nasdaq publishes its full US ticker list daily. It is downloaded over HTTPS, with FTP as a fallback.">Nasdaq Symbol Directory</abbr> Universe</label>
                     </div>
                     <div class="flex-gap-15 mb-15 flex-wrap">
                         <label><input type="checkbox" class="universe-day" value="mon" {% if 'mon' in u_days %}checked{% endif %}> Mon</label>

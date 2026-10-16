@@ -366,6 +366,14 @@ def test_is_valid_ticker_is_safe_ticker_filename_as_a_predicate_and_keeps_case()
 
 
 @pytest.mark.config
+def test_csv_safe_cell_prefixes_formula_starters_and_leaves_numbers_alone():
+    from utils import csv_safe_cell
+    for text in ("=1+1", "+1", "-1", "@SUM(A1)", "\t=1", "\r=1"):
+        assert csv_safe_cell(text) == "'" + text, text
+    for untouched in ("AAPL", "", "a=b", "'=1", " =1", -600.0, 0, None):
+        assert csv_safe_cell(untouched) == untouched, untouched
+
+
 def test_safe_local_path_accepts_only_same_origin_relative_paths():
     """safe_local_path() backs the score-history Back link and the login redirect: a tab/CR/LF
     is dropped by browsers before URL parsing, so '/<TAB>/host' would become '//host'."""

@@ -204,6 +204,13 @@ def is_valid_ticker(value: Any) -> bool:
     return isinstance(value, str) and safe_ticker_filename(value) is not None
 
 
+def csv_safe_cell(value: Any) -> Any:
+    """Text that starts with = + - @ TAB or CR runs as a formula in Excel/LibreOffice, so it gets a leading apostrophe; numbers and None pass through."""
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + value
+    return value
+
+
 def safe_local_path(value: Optional[str]) -> Optional[str]:
     """Same-origin relative path or None — browsers drop tab/CR/LF before parsing a URL, so '/<TAB>/host' must not pass as local."""
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:
