@@ -323,8 +323,8 @@ def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
     return (path, state.st_dev, state.st_ino, state.st_size, state.st_mtime_ns, state.st_ctime_ns)
 
 
-def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_only: bool = False) -> Optional[pd.DataFrame]:
-    """read_only returns what is on disk and never fetches or queues a refresh: for batch readers over a universe-wide ticker set, whose inputs a scheduled step refreshes."""
+def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_only: bool = False, columns: Optional[list] = None) -> Optional[pd.DataFrame]:
+    """read_only returns what is on disk and never fetches or queues a refresh: for batch readers over a universe-wide ticker set, whose inputs a scheduled step refreshes. columns limits the parquet read; a fetch on a missing file still returns every column."""
     from cache_refresh_helpers import submit_cache_refresh
 
     safe_ticker = safe_ticker_filename(ticker)
@@ -339,7 +339,7 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_o
     df = None
     if os.path.exists(path):
         try:
-            df = pd.read_parquet(path)
+            df = pd.read_parquet(path, columns=columns)
         except Exception as e:
             logger.error("Failed to read historical parquet for %s: %s", ticker, e)
     if read_only:

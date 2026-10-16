@@ -1847,6 +1847,26 @@ def test_tickers_needing_refresh_bootstraps_missing_ticker_even_when_market_clos
 
 
 @pytest.mark.db
+def test_tickers_needing_refresh_evaluates_settlement_once_per_exchange(monkeypatch):
+    import time
+
+    calls = []
+    monkeypatch.setattr(accounts_engine.market_session_helpers, "get_exchange_session_state", lambda exchange: "open")
+
+    def settled(exchange, include_premarket=False):
+        calls.append((exchange, include_premarket))
+        return True
+
+    monkeypatch.setattr(accounts_engine.market_session_helpers, "is_quote_settled", settled)
+    tickers = ["ZZMEMOA", "ZZMEMOB", "ZZMEMOC"]
+    for ticker in tickers:
+        _seed_market_pulse(ticker, 100.0, time.time() - 3600)
+
+    assert accounts_engine.tickers_needing_refresh(tickers, 60) == tickers
+    assert len(calls) == 1
+
+
+@pytest.mark.db
 def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(monkeypatch):
     import time
 

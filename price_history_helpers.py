@@ -54,7 +54,8 @@ def _anchor_closes_for_ticker(ticker: str, today: date, *, cache_only: bool = Fa
             count_request_event("anchor_hit")
             return dict(cached[2])
     count_request_event("anchor_miss")
-    df = load_or_fetch_daily_history(ticker, cache_only=True) if cache_only else load_or_fetch_daily_history(ticker)
+    # cache_only: the revision call above already queued the refresh for a missing or stale file.
+    df = load_or_fetch_daily_history(ticker, read_only=True, columns=["Close"]) if cache_only else load_or_fetch_daily_history(ticker, columns=["Close"])
     if df is None or df.empty:
         return anchors
 
@@ -62,9 +63,9 @@ def _anchor_closes_for_ticker(ticker: str, today: date, *, cache_only: bool = Fa
     if len(close) >= 6:
         anchors["5d"] = float(close.iloc[-6])
 
-    cutoffs = _anchor_cutoffs(today)
-    for key, cutoff in cutoffs.items():
-        matching = close[close.index.date <= cutoff]
+    dates = close.index.date
+    for key, cutoff in _anchor_cutoffs(today).items():
+        matching = close[dates <= cutoff]
         if not matching.empty:
             anchors[key] = float(matching.iloc[-1])
 
