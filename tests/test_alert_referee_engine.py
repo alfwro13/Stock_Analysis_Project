@@ -9,6 +9,7 @@ Covers:
   • scheduler_jobs.run_alert_referee_training_job() — runner-level wiring
 """
 
+import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -548,6 +549,18 @@ class TestGetRecentEvaluationsSince:
             conn.close()
         assert {r["ticker"] for r in are.get_recent_evaluations(_ENGINE)} == {"OLDX", "NEWX"}
         assert [r["ticker"] for r in are.get_recent_evaluations(_ENGINE, since_ts="2026-06-01 00:00:00")] == ["NEWX"]
+
+
+class TestReadFailureRaises:
+    def test_get_recent_evaluations_raises_on_a_database_error(self):
+        with patch("alert_referee_engine.get_connection", side_effect=sqlite3.OperationalError("disk I/O error")):
+            with pytest.raises(sqlite3.OperationalError):
+                are.get_recent_evaluations(_ENGINE)
+
+    def test_get_referee_summary_raises_on_a_database_error(self):
+        with patch("alert_referee_engine.get_connection", side_effect=sqlite3.OperationalError("disk I/O error")):
+            with pytest.raises(sqlite3.OperationalError):
+                are.get_referee_summary(_ENGINE)
 
 
 class TestRunAlertRefereeTrainingJob:

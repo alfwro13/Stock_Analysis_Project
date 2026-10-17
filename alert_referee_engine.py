@@ -652,6 +652,7 @@ def get_recent_evaluations(
     vetoed: Optional[bool] = None,
     since_ts: Optional[str] = None,
 ) -> list[dict]:
+    """Newest-first `alert_referee_log` rows of one engine; a read failure raises, so it never passes for 'no evaluations'."""
     conn = None
     try:
         conn = get_connection()
@@ -674,15 +675,13 @@ def get_recent_evaluations(
             params,
         ).fetchall()
         return [dict(r) for r in rows]
-    except Exception as e:
-        logger.error("get_recent_evaluations failed for %s: %s", engine, e)
-        return []
     finally:
         if conn:
             conn.close()
 
 
 def get_referee_summary(engine: str = TRAP_MONITOR_ENGINE) -> dict:
+    """Readiness, latest model and log counts of one engine; a read failure raises, so zero counts are never a failed read."""
     cfg = _referee_config(engine)
     conn = None
     try:
@@ -696,9 +695,6 @@ def get_referee_summary(engine: str = TRAP_MONITOR_ENGINE) -> dict:
         ).fetchone()
         log_total = log_row["total"] or 0
         log_vetoed = log_row["vetoed_count"] or 0
-    except Exception as e:
-        logger.error("get_referee_summary failed for %s: %s", engine, e)
-        latest_model, log_total, log_vetoed = None, 0, 0
     finally:
         if conn:
             conn.close()

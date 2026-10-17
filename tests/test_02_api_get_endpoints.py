@@ -1529,6 +1529,19 @@ def test_get_learn_overview_returns_200(client):
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("path", ["/api/alert-referee/log", "/api/alert-referee/status"])
+def test_alert_referee_read_failure_is_a_fixed_500_not_an_empty_result(client, path):
+    import sqlite3
+    from unittest.mock import patch
+
+    with patch("alert_referee_engine.get_connection", side_effect=sqlite3.OperationalError("disk I/O error at /secret/path")):
+        resp = client.get(path)
+    assert resp.status_code == 500
+    assert resp.json()["status"] == "error"
+    assert "secret" not in resp.text
+
+
+@pytest.mark.api
 def test_alert_referee_log_filters_by_ticker_and_vetoed(client):
     """GET /api/alert-referee/log must honor ticker/vetoed query params and report has_more."""
     import alert_referee_engine as are

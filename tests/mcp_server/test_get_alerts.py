@@ -1,9 +1,11 @@
 """get_alerts tool: alert-only notifications, Trap Monitor phases, Referee confidence, day and row caps, empty log, read-only."""
+import sqlite3
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
-from alert_referee_engine import CONFLUENCE_ENGINE, TRAP_MONITOR_ENGINE, log_veto_evaluation
+from alert_referee_engine import CONFLUENCE_ENGINE, TRAP_MONITOR_ENGINE, get_recent_evaluations as real_get_recent_evaluations, log_veto_evaluation
 from constants import MCP_ALERT_TEXT_MAX_CHARS, MCP_ALERTS_MAX_DAYS, MCP_ALERTS_MAX_ROWS
 from database import get_connection
 from notification_engine import ALERT_MESSAGE_TYPES
@@ -187,6 +189,26 @@ class TestGetAlerts:
         data = self._alerts(mcp_client)["data"]
         assert data["notifications"] == {"rows": [], "truncated": False}
         assert data["referee"][TRAP_MONITOR_ENGINE] == {"rows": [], "truncated": False}
+
+    def test_a_failed_referee_read_is_missing_not_an_empty_list(self, mcp_client, alert_tables):
+        _notify("Crash", "ZZAL1 crashed", _ago(minutes=5))
+        _trap("ZZAL1", "ACTIVE_SELLOFF", _ago(minutes=1))
+        _referee(CONFLUENCE_ENGINE, "ZZAL2", "bullish", 0.55, False, "shadow", _ago(minutes=1), direction="bullish")
+
+        def fail_for_trap_monitor(engine, **kwargs):
+            if engine == TRAP_MONITOR_ENGINE:
+                raise sqlite3.OperationalError("database is locked")
+            return real_get_recent_evaluations(engine, **kwargs)
+
+        with patch("mcp_server.tools.get_alerts.get_recent_evaluations", side_effect=fail_for_trap_monitor):
+            data = self._alerts(mcp_client)
+        assert data["data"]["referee"][TRAP_MONITOR_ENGINE] is None
+        assert [r["ticker"] for r in data["data"]["referee"][CONFLUENCE_ENGINE]["rows"]] == ["ZZAL2"]
+        assert data["missing"] == [f"Alert Confidence Referee log for {TRAP_MONITOR_ENGINE} could not be read"]
+        assert data["stale"] is True
+        assert "locked" not in str(data)
+        assert [n["text"] for n in data["data"]["notifications"]["rows"]] == ["ZZAL1 crashed"]
+        assert [r["ticker"] for r in data["data"]["trap_monitor"]["rows"]] == ["ZZAL1"]
 
     def test_reading_changes_nothing_and_leaves_alert_state_alone(self, mcp_client, alert_tables):
         _notify("Crash", "ZZAL1", _ago(minutes=1))

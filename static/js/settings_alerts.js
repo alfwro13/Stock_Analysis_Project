@@ -314,7 +314,8 @@ function loadAlertRefereeLog(reset, engineName) {
     fetch('/api/alert-referee/log?' + params.toString())
         .then(r => r.json())
         .then(data => {
-            const rows = (data.status === 'success' && data.results) ? data.results : [];
+            if (data.status !== 'success') throw new Error('referee log read failed');
+            const rows = data.results || [];
             if (reset) tbody.innerHTML = '';
             if (rows.length === 0 && _refLogOffset[engine] === 0) {
                 emptyEl.hidden = false;
@@ -324,10 +325,14 @@ function loadAlertRefereeLog(reset, engineName) {
             emptyEl.hidden = true;
             tbody.insertAdjacentHTML('beforeend', rows.map(_refLogRowHtml).join(''));
             _refLogOffset[engine] += rows.length;
-            moreBtn.hidden = !(data.status === 'success' && data.has_more);
+            moreBtn.hidden = !data.has_more;
         })
         .catch(() => {
-            if (reset) tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load shadow log.</td></tr>';
+            if (reset) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load shadow log.</td></tr>';
+                emptyEl.hidden = true;
+                moreBtn.hidden = true;
+            }
         });
 }
 
