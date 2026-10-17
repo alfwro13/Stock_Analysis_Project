@@ -1677,7 +1677,7 @@ Turns the MCP Server on or off by writing `MCP_SERVER_ENABLED` to `config.json` 
 
 ### `GET /api/investment-policy`
 
-Returns the investment policy the MCP Server shows to Claude (`data/investment_policy.md`), for the Settings → Investment Policy editor. Session required; the API key and the MCP key are refused. When the file is missing or blank, `text` is the suggested template (`assets/investment_policy_template.md`) and `configured` is `false`; when it exists but cannot be served (longer than `max_chars`, not valid UTF-8, unreadable), `text` is also the template and `load_error` says why (the next save replaces the file).
+Returns the investment policy the MCP Server shows to Claude (`data/investment_policy.md`), for the Settings → MCP Investment Policy editor. Session required; the API key and the MCP key are refused. When the file is missing or blank, `text` is the suggested template (`assets/investment_policy_template.md`) and `configured` is `false`; when it exists but cannot be served (longer than `max_chars`, not valid UTF-8, unreadable), `text` is also the template and `load_error` says why (the next save replaces the file).
 
 ```json
 { "status": "success", "configured": true, "text": "# My policy\n...", "load_error": null, "max_chars": 50000 }

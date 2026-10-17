@@ -1,4 +1,4 @@
-"""Workflow Monitor nodes for the MCP Server and the Investment Policy input."""
+"""Workflow Monitor nodes for the MCP Server and the MCP Investment Policy input."""
 from scheduler_manifest import JOB_GRAPH
 from scheduler_monitor import _build_node, _derive_edges
 
@@ -6,7 +6,7 @@ from scheduler_monitor import _build_node, _derive_edges
 class TestWorkflowEntry:
     def test_policy_is_a_manual_input_that_the_server_consumes(self):
         meta = JOB_GRAPH["investment_policy_source"]
-        assert meta["label"] == "Investment Policy"
+        assert meta["label"] == "MCP Investment Policy"
         assert meta["category"] == "manual" and meta["non_job"] is True
         assert meta["produces"] == ["investment_policy"] and meta["consumes"] == []
         assert "investment_policy" in JOB_GRAPH["claude_mcp_server_source"]["consumes"]
