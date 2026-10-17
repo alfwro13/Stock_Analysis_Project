@@ -6,12 +6,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from api_deps import enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
+from api_deps import FiniteModel, enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
 from config import BASE_DIR, load_config, update_config_atomic
-from constants import MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
+from constants import INVESTMENT_POLICY_MAX_CHARS, MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
 from database import get_connection
 from mcp_server import keys as mcp_keys
-from utils import clean_display_text
+from mcp_server.resources import investment_policy
+from utils import clean_display_text, write_text_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,36 @@ def set_mcp_server_enabled(request: Request, body: McpServerToggle):
         require_step_up(request)
     update_config_atomic({"MCP_SERVER_ENABLED": body.enabled})
     return {"status": "success", "enabled": body.enabled}
+
+
+@auth_router.get("/investment-policy")
+def get_investment_policy():
+    text, load_error = investment_policy.load_policy_file()
+    configured = text is not None
+    return {
+        "status": "success",
+        "configured": configured,
+        "text": text if configured else investment_policy.policy_template(),
+        "load_error": load_error,
+        "max_chars": INVESTMENT_POLICY_MAX_CHARS,
+    }
+
+
+class InvestmentPolicyBody(FiniteModel):
+    text: str = Field(max_length=INVESTMENT_POLICY_MAX_CHARS)
+
+
+@auth_router.put("/investment-policy")
+@limiter.limit("10/minute")
+def save_investment_policy(request: Request, body: InvestmentPolicyBody):
+    try:
+        write_text_atomic(investment_policy.POLICY_PATH, body.text)
+    except UnicodeEncodeError:
+        raise HTTPException(status_code=422, detail="The policy text contains characters that cannot be saved.")
+    except OSError as e:
+        return _error_500(e)
+    logger.info("Investment policy saved (%d characters)", len(body.text))
+    return {"status": "success", "configured": bool(body.text.strip()), "length": len(body.text)}
 
 
 class ChangePasswordRequest(BaseModel):

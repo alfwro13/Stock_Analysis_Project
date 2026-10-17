@@ -92,6 +92,7 @@ Request models in `api_routes_accounts.py`, `api_routes.py` and the `POST /api/s
 | ETF constituents | 50 | `POST /api/etf-predictors`, `PUT /api/etf-predictors/{id}`, `POST /api/etf-predictors/validate` |
 | Account name | 100 characters (`422`) | `POST /api/accounts`, `PUT /api/accounts/{id}` |
 | Saved Views | 20 per page; name 100 characters; 50 filter conditions; filter `key`/`operator` 64 and `value`/`value2` 200 characters | `POST /api/ui-preferences/views` |
+| Investment policy text | 50,000 characters (`INVESTMENT_POLICY_MAX_CHARS`, `422`); the MCP Server refuses a longer file on disk too | `PUT /api/investment-policy` |
 | Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
 
 ### Ticker format (SEC 24/27 · S4-2)
@@ -1670,6 +1671,26 @@ Turns the MCP Server on or off by writing `MCP_SERVER_ENABLED` to `config.json` 
 
 ```json
 { "status": "success", "enabled": true }
+```
+
+---
+
+### `GET /api/investment-policy`
+
+Returns the investment policy the MCP Server shows to Claude (`data/investment_policy.md`), for the Settings → Investment Policy editor. Session required; the API key and the MCP key are refused. When the file is missing or blank, `text` is the suggested template (`assets/investment_policy_template.md`) and `configured` is `false`; when it exists but cannot be served (longer than `max_chars`, not valid UTF-8, unreadable), `text` is also the template and `load_error` says why (the next save replaces the file).
+
+```json
+{ "status": "success", "configured": true, "text": "# My policy\n...", "load_error": null, "max_chars": 50000 }
+```
+
+---
+
+### `PUT /api/investment-policy`
+
+Replaces the whole policy file, atomically (temporary file in `data/`, then replace), at the fixed path the MCP Server reads; Claude sees the new text on its next request. Body `{ "text": "..." }`; `text` is required, a string of at most `INVESTMENT_POLICY_MAX_CHARS` (50,000) characters, and a longer or non-string value is refused whole with `422` (see "Request input limits"). Text that cannot be encoded as UTF-8 is `422` and the file is untouched. Blank text empties the file (`configured: false`). Session cookie and CSRF token required; **no password step-up** (operator decision, 2026-10-17); `X-API-Key` and the MCP key are refused. Limited to 10 requests per minute. A write failure answers the fixed `500` message and keeps the previous file.
+
+```json
+{ "status": "success", "configured": true, "length": 1234 }
 ```
 
 ---
