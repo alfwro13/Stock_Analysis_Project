@@ -58,7 +58,7 @@ computed". The scan still stores the row, so the page can say which input is mis
 never raises a PHI Critical or Correlation Spike alert and never shows the "Risk Paused" badge; the
 widgets, the report page and the Daily Rollup show "unavailable". The Risk Orchestrator Scan
 notification counts such scopes separately. `_phi_and_tier()` is the one weighted-sum-and-tier
-function, shared with the pre-trade check (§6).
+function, shared with the pre-trade check and its reduced-size search (§6), so a suggested size is tiered on the same 2-dp rounded score as the verdict.
 
 ## 3. Ticker Risk Contribution
 

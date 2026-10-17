@@ -718,6 +718,27 @@ class TestEvaluatePretradeCheck:
         assert result["verdict"] == "reject"
         assert result["suggested_reduced_value"] is None
 
+    def test_suggestion_uses_the_rounded_score_the_verdict_uses(self):
+        # 1.5999% VaR scores 39.9975 unrounded (GREEN) but 40.0 rounded (YELLOW): the verdict would
+        # still warn at that size, so it must not be offered as a size that resolves the warning.
+        def _sim(scope, ticker, value, read_only=False):
+            var_pct = 1.7 if value > 500.0 else 1.5999
+            return {
+                "var_95_1d": var_pct, "var_pct_of_equity": var_pct, "portfolio_vol": 0.1,
+                "avg_pairwise_correlation": 0.0, "max_pairwise_correlation": 0.0,
+                "portfolio_total_value": 20000.0 + value, "hypothetical_weight": 0.05, "data_warnings": [],
+            }
+
+        config = _ro_config()
+        config["SCHEDULING"]["RISK_ORCHESTRATOR"]["WEIGHTS"] = {"VAR": 1.0, "CORRELATION": 0.0, "DRAWDOWN": 0.0}
+        with patch("risk_orchestrator_engine.assemble_xray_report",
+                   return_value={"risk_metrics": {"max_drawdown": 0.0}}), \
+             patch("risk_orchestrator_engine.simulate_scope_with_hypothetical_holding", side_effect=_sim):
+            result = evaluate_pretrade_check("all", "AAPL", 1000.0, config=config)
+
+        assert result["verdict"] == "warn"
+        assert result["suggested_reduced_value"] is None
+
     def test_read_only_reaches_every_simulation(self):
         seen = []
 

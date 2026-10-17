@@ -332,10 +332,7 @@ def _suggest_reduced_value(
         sim = simulate_scope_with_hypothetical_holding(scope, ticker, mid, read_only=read_only)
         var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
         corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
-        phi_score = max(0.0, min(
-            weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 100.0
-        ))
-        tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+        _, tier = _phi_and_tier(var_sub, corr_sub, dd_sub, weights, thresholds)
         if _TIER_RANK[tier] <= target_rank:
             best = mid
             lo = mid
