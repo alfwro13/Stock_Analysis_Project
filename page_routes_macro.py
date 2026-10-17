@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
-from db_helpers import sentiment_fresh_since
+from db_helpers import get_upcoming_macro_events, sentiment_fresh_since
 from database import get_connection, get_auction_summary, get_ticker_registry_row, get_ticker_registry_row_by_future
 from macro_data_engine import get_uk_cpi_yoy_series, get_nominal_gdp_yoy_series, yield_gdp_link
 from regime_engine import get_latest_regime
@@ -206,26 +206,10 @@ def market_sentiment_page(request: Request):
         horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
         now_str = start_of_day.strftime('%Y-%m-%d %H:%M:%S')
 
-        cursor.execute("""
-            SELECT * FROM macro_calendar
-            WHERE event_date BETWEEN ? AND ?
-            ORDER BY event_date ASC
-        """, (now_str, horizon_48h))
-        urgent_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
-
-        cursor.execute("""
-            SELECT * FROM macro_calendar
-            WHERE currency = 'USD' AND event_date BETWEEN ? AND ?
-            ORDER BY event_date ASC
-        """, (now_str, horizon_7d))
-        us_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
-
-        cursor.execute("""
-            SELECT * FROM macro_calendar
-            WHERE currency = 'GBP' AND event_date BETWEEN ? AND ?
-            ORDER BY event_date ASC
-        """, (now_str, horizon_7d))
-        uk_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
+        week_events = enrich_macro_events(get_upcoming_macro_events(now_str, horizon_7d)["events"])
+        urgent_events = [e for e in week_events if e['event_date'] <= horizon_48h]
+        us_events = [e for e in week_events if e['currency'] == 'USD']
+        uk_events = [e for e in week_events if e['currency'] == 'GBP']
 
         cb_nlp_latest = None
         cb_row = cursor.execute(

@@ -10,7 +10,7 @@ import ta
 
 from config import HISTORICAL_DIR
 from database import get_connection
-from db_helpers import sentiment_fresh_since
+from db_helpers import get_upcoming_macro_events, sentiment_fresh_since
 from portfolio_service import get_rate_to_base
 from time_engine import now_local
 from regime_engine import get_latest_regime
@@ -151,7 +151,7 @@ class AIPromptEngine:
         }
 
         if df_path is None or not df_path.exists():
-            logger.info(f"[AI ENGINE] No Parquet history for {ticker}; technical trajectory unavailable.")
+            logger.info("[AI ENGINE] No Parquet history for %s; technical trajectory unavailable.", ticker)
             return metrics
 
         try:
@@ -235,7 +235,7 @@ class AIPromptEngine:
                 metrics["volume_contraction_ratio"] = f"{ratio:.2f}x ({tag})"
 
         except Exception as e:
-            logger.error(f"[AI ENGINE] Failed to parse technical trajectory for {ticker}: {e}")
+            logger.error("[AI ENGINE] Failed to parse technical trajectory for %s: %s", ticker, e)
 
         return metrics
 
@@ -273,7 +273,7 @@ class AIPromptEngine:
                     factors["rel_strength_5d"] = self._fmt_pct(r.get('rel_strength_5d'))
                     factors["rel_strength_20d"] = self._fmt_pct(r.get('rel_strength_20d'))
         except Exception as e:
-            logger.error(f"[AI ENGINE] Failed to fetch momentum factor stack for {ticker}: {e}")
+            logger.error("[AI ENGINE] Failed to fetch momentum factor stack for %s: %s", ticker, e)
 
         return factors
 
@@ -296,7 +296,7 @@ class AIPromptEngine:
                     f"(Turbulence {self._fmt_float(regime.get('uk_turbulence'))})"
                 )
         except Exception as e:
-            logger.warning(f"[AI ENGINE] Could not load volatility regime: {e}")
+            logger.warning("[AI ENGINE] Could not load volatility regime: %s", e)
 
         # --- Systemic yield threat + DXY (macro_regimes) ---
         try:
@@ -318,31 +318,23 @@ class AIPromptEngine:
                         f"GBP/USD: {self._fmt_float(m.get('gbpusd_close'), 4)}"
                     )
 
-                # --- 7-day Tier-1 event radar (macro_calendar) ---
-                now = datetime.now(timezone.utc)
-                now_str = now.strftime('%Y-%m-%d %H:%M:%S')
-                horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
-                cursor.execute("""
-                    SELECT event_date, currency, impact, event_name, forecast_val, previous_val
-                    FROM macro_calendar
-                    WHERE event_date BETWEEN ? AND ?
-                      AND impact = 'High'
-                    ORDER BY event_date ASC
-                    LIMIT 12
-                """, (now_str, horizon_7d))
-                events = cursor.fetchall()
-                if events:
-                    lines.append("Upcoming Tier-1 Macro Events (7-Day Radar):")
-                    for ev in events:
-                        e = dict(ev)
-                        fc = self._fmt_float(e.get('forecast_val'))
-                        prev = self._fmt_float(e.get('previous_val'))
-                        lines.append(
-                            f"  - [{e.get('event_date')}] {e.get('currency')} "
-                            f"{e.get('event_name')} (Est: {fc} | Prev: {prev})"
-                        )
+            # --- 7-day Tier-1 event radar (macro_calendar) ---
+            now = datetime.now(timezone.utc)
+            window = get_upcoming_macro_events(
+                now.strftime('%Y-%m-%d %H:%M:%S'), (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            )
+            events = [e for e in window["events"] if e["impact"] == 'High'][:12]
+            if events:
+                lines.append("Upcoming Tier-1 Macro Events (7-Day Radar):")
+                for e in events:
+                    fc = self._fmt_float(e.get('forecast_val'))
+                    prev = self._fmt_float(e.get('previous_val'))
+                    lines.append(
+                        f"  - [{e.get('event_date')}] {e.get('currency')} "
+                        f"{e.get('event_name')} (Est: {fc} | Prev: {prev})"
+                    )
         except Exception as e:
-            logger.error(f"[AI ENGINE] Failed to assemble macro context: {e}")
+            logger.error("[AI ENGINE] Failed to assemble macro context: %s", e)
 
         if not lines:
             return "Macro regime data unavailable."
@@ -381,7 +373,7 @@ class AIPromptEngine:
             return "\n".join(lines)
 
         except Exception as e:
-            logger.error(f"[AI ENGINE] Failed to build sector peer context for {ticker}: {e}")
+            logger.error("[AI ENGINE] Failed to build sector peer context for %s: %s", ticker, e)
             return "Sector peer comparison unavailable."
 
     def _get_options_volatility(self, ticker: str) -> str:
@@ -432,7 +424,7 @@ class AIPromptEngine:
                 f"Data as of: {last_updated or 'N/A'}{staleness_note}"
             )
         except Exception as e:
-            logger.error(f"[AI ENGINE] Failed to fetch options volatility for {ticker}: {e}")
+            logger.error("[AI ENGINE] Failed to fetch options volatility for %s: %s", ticker, e)
             return "Earnings volatility data unavailable."
 
     def _get_xray_context(self, ticker: str) -> str:
@@ -508,7 +500,7 @@ class AIPromptEngine:
                     )
 
         except Exception as e:
-            logger.warning(f"[AI ENGINE] Could not load X-ray context for {ticker}: {e}")
+            logger.warning("[AI ENGINE] Could not load X-ray context for %s: %s", ticker, e)
 
         if not lines:
             return "X-ray portfolio risk data not yet computed for this ticker."
@@ -545,7 +537,7 @@ class AIPromptEngine:
         """
         cache_key = self._cache_key(ticker, mode)
         if cache_key in self._prompt_cache:
-            logger.debug(f"[AI ENGINE] Cache hit for {ticker}/{mode}")
+            logger.debug("[AI ENGINE] Cache hit for %s/%s", ticker, mode)
             return self._prompt_cache[cache_key]
 
         # 1. Fetch Core Database Record & Advanced Metrics
@@ -565,10 +557,10 @@ class AIPromptEngine:
                 """, (sentiment_fresh_since(), ticker))
                 stock_row = cursor.fetchone()
         except Exception as e:
-            logger.error(f"[AI ENGINE] Core record query failed for {ticker}: {e}")
+            logger.error("[AI ENGINE] Core record query failed for %s: %s", ticker, e)
 
         if not stock_row:
-            logger.warning(f"[AI ENGINE] No stock_signals record found for {ticker}; cannot build prompt.")
+            logger.warning("[AI ENGINE] No stock_signals record found for %s; cannot build prompt.", ticker)
             return None
 
         stock_data: Dict[str, Any] = dict(stock_row)
@@ -798,7 +790,7 @@ Based on the current technical extensions (RSI/MACD trajectory, MAs), the option
 {context_payload}
 """
         else:
-            logger.warning(f"[AI ENGINE] Unknown analysis mode '{mode}'; falling back to generic prompt.")
+            logger.warning("[AI ENGINE] Unknown analysis mode '%s'; falling back to generic prompt.", mode)
             prompt_wrapper = f"""
 You are an elite-level Stock Market Analyst. Review the following data and provide an institutional-grade assessment.
 
