@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
@@ -12,6 +13,8 @@ from utils import clean_display_text
 from ..envelope import envelope, iso_from_stored_utc
 from ..server import READ_ONLY, server
 
+logger = logging.getLogger(__name__)
+
 DaysArg = Annotated[int, Field(ge=1, le=MCP_ALERTS_MAX_DAYS)]
 
 TRAP_SCAN_STALE_AFTER_SECONDS = 3600  # the Market Trap & Recovery Monitor scans every 30 minutes by default
@@ -21,7 +24,7 @@ _UNITS = {
     "at/last_scan_at": "UTC time, YYYY-MM-DDTHH:MM:SSZ",
     "notifications": "alerts the dashboard raised, from the in-app notification log; type is the alert family (Crash, Moonshot, TrapMonitor, Earnings, ...). Only registered alert families are listed; job-status and system messages are left out. status is the log's delivery flag; text is cut to a fixed length. Only alerts routed to the in-app channel appear",
     "trap_monitor": "the current phase of each ticker whose latest Market Trap & Recovery Monitor scan is inside the window and in an alert phase (ACTIVE_SELLOFF, BULL_TRAP_RISK, CAPITULATION_FORMING, BEAR_TRAP_RISK), most severe first. One row per ticker (the latest scan only, not a history). ema_distance_pct is the signed percent of price from the 20-day EMA; rsi is 0-100",
-    "referee": "Alert Confidence Referee log per engine, newest first. fire_probability is 0-1 (calibrated confidence that the signal is worth alerting on). would_veto is true when it fell below the veto threshold: in mode 'shadow' the alert was still sent, in mode 'active' it was suppressed. phase is the trap phase (TrapMonitor) or the bullish/bearish direction (Confluence)",
+    "referee": "Alert Confidence Referee log per engine, newest first. fire_probability is 0-1 (calibrated confidence that the signal is worth alerting on). would_veto is true when it fell below the veto threshold: in mode 'shadow' the alert was still sent, in mode 'active' it was suppressed. phase is the trap phase (TrapMonitor) or the bullish/bearish direction (Confluence). An engine whose log could not be read is null and named in missing",
 }
 
 
@@ -63,15 +66,22 @@ def _trap_monitor(since: str, missing: list) -> tuple:
     return {"last_scan_at": iso_from_stored_utc(last_scan), **_limited(rows)}, parse_utc_epoch(last_scan) or None
 
 
-def _referee(since: str) -> dict:
+def _referee(since: str, missing: list) -> dict:
     parts = {}
     for engine in (TRAP_MONITOR_ENGINE, CONFLUENCE_ENGINE):
+        try:
+            evaluations = get_recent_evaluations(engine, limit=MCP_ALERTS_MAX_ROWS + 1, since_ts=since)
+        except Exception as e:
+            logger.error("get_alerts referee read failed for %s: %s", engine, e)
+            missing.append(f"Alert Confidence Referee log for {engine} could not be read")
+            parts[engine] = None
+            continue
         rows = [
             {
                 "ticker": r["ticker"], "phase": r["phase"] or r["direction"], "fire_probability": r["fire_probability"],
                 "would_veto": bool(r["vetoed"]), "mode": r["mode"], "at": iso_from_stored_utc(r["scan_ts"]),
             }
-            for r in get_recent_evaluations(engine, limit=MCP_ALERTS_MAX_ROWS + 1, since_ts=since)
+            for r in evaluations
         ]
         parts[engine] = _limited(rows)
     return parts
@@ -84,6 +94,6 @@ def get_alerts(days: DaysArg = 7) -> dict[str, Any]:
     missing: list[str] = []
     trap, last_scan_epoch = _trap_monitor(since, missing)
     return envelope(
-        {"days": days, "since": iso_from_stored_utc(since), "notifications": _notifications(since), "trap_monitor": trap, "referee": _referee(since)},
+        {"days": days, "since": iso_from_stored_utc(since), "notifications": _notifications(since), "trap_monitor": trap, "referee": _referee(since, missing)},
         as_of=last_scan_epoch, units=_UNITS, missing=missing, stale_after_seconds=TRAP_SCAN_STALE_AFTER_SECONDS,
     )
