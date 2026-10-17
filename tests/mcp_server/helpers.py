@@ -73,3 +73,22 @@ def emptied_tables(*tables):
             conn.commit()
         finally:
             conn.close()
+
+
+EXPECTED_PROMPTS = {"review_portfolio", "pre_trade_review"}
+
+
+def get_prompt(client, name, arguments=None, **kwargs):
+    return rpc(client, "prompts/get", {"name": name, "arguments": arguments or {}}, **kwargs)
+
+
+def prompt_text(response):
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert len(result["messages"]) == 1 and result["messages"][0]["role"] == "user"
+    return result["messages"][0]["content"]["text"]
+
+
+def prompt_error(response):
+    assert response.status_code == 200, response.text
+    return response.json()["error"]["message"]
