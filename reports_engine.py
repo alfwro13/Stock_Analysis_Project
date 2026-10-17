@@ -1,7 +1,7 @@
 import logging
-from datetime import datetime, timezone
 from typing import List, Dict, Any
 from database import get_connection
+from utils import is_iso_date
 from fundamentals_helpers import (
     QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,
     QUALITY_COMPOUNDER_MIN_GROWTH, QUALITY_COMPOUNDER_MIN_CURRENT_RATIO, QUALITY_COMPOUNDER_MIN_SCORE,
@@ -213,27 +213,7 @@ def get_dividend_harvest_setups(
         cursor.execute(query, (min_yield, min_score))
         rows = cursor.fetchall()
 
-        results = []
-        for row in rows:
-            row_dict = dict(row)
-            ex_date_raw = row_dict['ex_dividend_date']
-            parsed_date = None
-            try:
-                ts = float(ex_date_raw)
-                # Ensure it is a valid, modern timestamp (post-2000)
-                if ts > 946684800:
-                    parsed_date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
-            except (ValueError, TypeError):
-                # Already a date string from the DB — validate it is ISO-formatted
-                if isinstance(ex_date_raw, str) and len(ex_date_raw) == 10:
-                    parsed_date = ex_date_raw
-
-            if parsed_date is None:
-                # Drop rows whose date cannot be normalised to YYYY-MM-DD
-                continue
-
-            row_dict['ex_dividend_date'] = parsed_date
-            results.append(row_dict)
+        results = [dict(row) for row in rows if is_iso_date(row['ex_dividend_date'])]
 
         # Sort ascending so the soonest ex-div date is first (most actionable)
         return sorted(results, key=lambda x: x['ex_dividend_date'])
