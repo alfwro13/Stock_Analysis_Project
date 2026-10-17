@@ -5,7 +5,7 @@ from database import get_connection
 
 MCP_KEY = "test-mcp-key-do-not-use-in-production"
 RPC_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot", "get_alerts", "get_news", "get_watchlist", "pretrade_check"}
+EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot", "get_alerts", "get_news", "get_watchlist", "pretrade_check", "get_calendar"}
 
 
 def rpc(client, method, params=None, key=MCP_KEY, headers=None):
@@ -75,10 +75,10 @@ def emptied_tables(*tables):
             conn.close()
 
 
-V1_PROMPTS = {"review_portfolio", "pre_trade_review"}
+TOOL_PROMPTS = {"review_portfolio", "pre_trade_review", "whats_coming_up"}
 AI_ENGINE_PROMPTS = {"devils_advocate", "risk_reward_audit", "quantamental_deep_dive", "earnings_strategy"}
 REGIME_PROMPTS = {"regime_plain_english_briefing", "regime_what_happens_next", "regime_how_should_i_position", "regime_red_flags_check"}
-EXPECTED_PROMPTS = V1_PROMPTS | AI_ENGINE_PROMPTS | REGIME_PROMPTS
+EXPECTED_PROMPTS = TOOL_PROMPTS | AI_ENGINE_PROMPTS | REGIME_PROMPTS
 
 
 def get_prompt(client, name, arguments=None, **kwargs):

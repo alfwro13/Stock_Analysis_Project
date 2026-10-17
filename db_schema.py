@@ -2260,6 +2260,20 @@ def migrate_db(conn, cursor) -> None:
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create idx_macro_event_date: %s", e)
 
+    # stock_signals.ex_dividend_date: the Quant Scan stored Yahoo's raw epoch while the Universe Fundamentals sync stored YYYY-MM-DD
+    try:
+        cursor.execute("""
+            UPDATE stock_signals
+            SET ex_dividend_date = strftime('%Y-%m-%d', CAST(ex_dividend_date AS REAL), 'unixepoch')
+            WHERE ex_dividend_date GLOB '[0-9]*'
+              AND ex_dividend_date NOT LIKE '____-__-__'
+              AND CAST(ex_dividend_date AS REAL) > 946684800
+        """)
+        if cursor.rowcount:
+            logger.info("[MIGRATION] Converted %d stock_signals.ex_dividend_date epoch values to YYYY-MM-DD.", cursor.rowcount)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to normalise stock_signals.ex_dividend_date: %s", e)
+
     # smgb_predictions: add prediction_type column + composite unique (target_date, prediction_type)
     try:
         cursor.execute("PRAGMA table_info(smgb_predictions)")

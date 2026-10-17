@@ -15,7 +15,7 @@ from fundamentals_helpers import calculate_peter_lynch_peg
 from pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import safe_ticker_filename
+from utils import epoch_to_iso_date, safe_ticker_filename
 from constants import (
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
@@ -582,7 +582,7 @@ class QuantEngine:
                 if dividend_yield > 1.0:
                     dividend_yield /= 100.0
 
-            ex_dividend_date = info.get('exDividendDate', None)
+            ex_dividend_date = epoch_to_iso_date(info.get('exDividendDate'))
             target_price = info.get('targetMeanPrice', None)
             analyst_rating = (info.get('recommendationKey') or 'None').upper()
             

@@ -292,6 +292,47 @@ def get_next_earnings_dates(tickers: List[str]) -> dict:
             conn.close()
 
 
+def get_ex_dividend_dates(tickers: List[str]) -> dict:
+    """{ticker: {"company_name", "ex_dividend_date", "last_updated"}} from stock_signals for `tickers`; the date is Yahoo's latest or next ex-dividend date as YYYY-MM-DD, so it can be in the past."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, company_name, ex_dividend_date, last_updated FROM stock_signals WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+        return {
+            row["ticker"]: {"company_name": row["company_name"], "ex_dividend_date": row["ex_dividend_date"], "last_updated": row["last_updated"]}
+            for row in rows
+        }
+    except Exception as e:
+        logger.error("Failed to fetch ex-dividend dates: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_upcoming_macro_events(start: str, end: str) -> dict:
+    """{"events": macro_calendar rows with event_date in [start, end] (UTC "%Y-%m-%d %H:%M:%S"), oldest first, "latest_event_date": newest event_date stored or None}; the feed behind the table only lists the current week."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT event_date, currency, impact, event_name, forecast_val, previous_val, actual_val, "
+            "ai_consensus_miss_prob, ai_volatility_warning FROM macro_calendar WHERE event_date BETWEEN ? AND ? ORDER BY event_date ASC",
+            (start, end),
+        ).fetchall()
+        latest = conn.execute("SELECT MAX(event_date) FROM macro_calendar").fetchone()[0]
+        return {"events": [dict(row) for row in rows], "latest_event_date": latest}
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_ticker_currency_map(tickers: List[str], conn) -> dict:
     """{ticker: currency} from stock_signals for `tickers`, using a caller-supplied connection
     (e.g. a job's already-open conn). Raw currency as stored (GBp/GBP not normalized) — callers

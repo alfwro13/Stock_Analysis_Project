@@ -277,6 +277,19 @@ def is_iso_date(value: Any) -> bool:
     return True
 
 
+def epoch_to_iso_date(value: Any) -> Optional[str]:
+    """UTC YYYY-MM-DD for a Yahoo epoch-seconds date field (exDividendDate); an ISO date passes through, anything else is None."""
+    if is_iso_date(value):
+        return value
+    try:
+        seconds = float(value)
+        if seconds <= 0:
+            return None
+        return datetime.fromtimestamp(seconds, tz=timezone.utc).strftime("%Y-%m-%d")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
 def write_parquet_atomic(df: Any, path: Any) -> None:
     """Atomic replace, so a reader never meets a half-written file; the temp name never ends in .parquet, so a crash cannot leave a file that looks like a ticker."""
     path = Path(path)
@@ -336,13 +349,7 @@ def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
     try:
         with open(path) as f:
             d = json.load(f)
-        ex_dividend_date = None
-        ex_dividend_ts = d.get("exDividendDate")
-        if ex_dividend_ts:
-            try:
-                ex_dividend_date = datetime.fromtimestamp(ex_dividend_ts, tz=timezone.utc).strftime("%Y-%m-%d")
-            except Exception:
-                logger.warning("Could not parse exDividendDate timestamp %s", ex_dividend_ts)
+        ex_dividend_date = epoch_to_iso_date(d.get("exDividendDate"))
         total_cash = d.get("totalCash")
         total_debt = d.get("totalDebt")
         return {
