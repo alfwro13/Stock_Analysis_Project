@@ -85,6 +85,7 @@ DEFAULT_CONFIG = {
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
     "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
     "GHOSTFOLIO_ENABLED": False,
+    "MCP_SERVER_ENABLED": False,
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
         "active": []

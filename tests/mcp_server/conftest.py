@@ -11,6 +11,7 @@ from .helpers import ACCOUNT_TABLES, MCP_KEY
 @pytest.fixture(autouse=True)
 def _mcp_key(monkeypatch):
     monkeypatch.setenv("MCP_API_KEY", MCP_KEY)
+    monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": True})
 
 
 @pytest.fixture
