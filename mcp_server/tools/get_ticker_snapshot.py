@@ -15,7 +15,7 @@ from page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
 from utils import INVALID_TICKER_MESSAGE, cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector, is_valid_ticker
 from yahoo_engine import yahoo_engine
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, envelope, iso_utc
+from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_utc
 from ..server import READ_ONLY, server
 
 TickerArg = Annotated[str, Field(max_length=MCP_TICKER_MAX_CHARS)]
@@ -57,11 +57,6 @@ def _resolve(ticker: str) -> tuple:
         "Unknown ticker. get_ticker_snapshot serves tickers the dashboard already tracks: "
         "a Portfolio or Watchlist holding, or a stock in its universe scan."
     )
-
-
-def _part(epoch: Optional[float], payload: dict) -> dict:
-    stale = epoch is not None and time.time() - epoch > NIGHTLY_STALE_AFTER_SECONDS
-    return {"as_of": None if epoch is None else iso_utc(epoch), "stale": stale, **payload}
 
 
 def _oldest(*epochs) -> Optional[float]:
@@ -209,8 +204,8 @@ def get_ticker_snapshot(ticker: TickerArg) -> dict[str, Any]:
     trend = technicals = ml = valuation = fundamentals = forensic = None
     if in_universe:
         technical_epoch = _oldest(signals_epoch if covered else None, quant_epoch)
-        trend = _part(technical_epoch, _trend(row))
-        technicals = _part(technical_epoch, _technicals(row, covered))
+        trend = dated_part(technical_epoch, _trend(row))
+        technicals = dated_part(technical_epoch, _technicals(row, covered))
         ml = {
             "as_of": None, "stale": False, "confidence": row["ml_confidence_score"],
             "price_q10": row["price_q10"], "price_q90": row["price_q90"],
@@ -221,8 +216,8 @@ def get_ticker_snapshot(ticker: TickerArg) -> dict[str, Any]:
     else:
         missing.append("No stock_signals or quant_signals data yet: trend, technicals, valuation, fundamentals, forensic scores, ML values and earnings are null")
     if covered:
-        valuation = _part(signals_epoch, _valuation(row))
-        fundamentals = _part(signals_epoch, _fundamentals(row))
+        valuation = dated_part(signals_epoch, _valuation(row))
+        fundamentals = dated_part(signals_epoch, _fundamentals(row))
         forensic_epoch = parse_utc_epoch(row["forensic_last_updated"]) or None
         forensic = {
             "as_of": None if forensic_epoch is None else iso_utc(forensic_epoch), "stale": False,

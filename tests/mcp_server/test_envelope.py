@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from mcp_server import envelope as envelope_module
-from mcp_server.envelope import NIGHTLY_STALE_AFTER_SECONDS, STALE_AFTER_SECONDS, date_epoch, envelope, iso_from_stored_utc
+from mcp_server.envelope import NIGHTLY_STALE_AFTER_SECONDS, STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_from_stored_utc
 
 
 class TestEnvelope:
@@ -65,3 +65,32 @@ class TestIsoFromStoredUtc:
     @pytest.mark.parametrize("stored, iso", [("2023-11-14 22:13:20", "2023-11-14T22:13:20Z"), (None, None), ("", None), ("not a date", None)])
     def test_stored_utc_string_becomes_iso_or_null(self, stored, iso):
         assert iso_from_stored_utc(stored) == iso
+
+
+class TestDatedPart:
+    NOW = 2_000_000_000.0
+
+    def part(self, age, **kwargs):
+        with patch("mcp_server.envelope.time.time", return_value=self.NOW):
+            return dated_part(self.NOW - age, {"x": 1}, **kwargs)
+
+    def test_as_of_is_iso_of_the_epoch_and_payload_follows(self):
+        result = self.part(10)
+        assert result == {"as_of": "2033-05-18T03:33:10Z", "stale": False, "x": 1}
+        assert list(result) == ["as_of", "stale", "x"]
+
+    @pytest.mark.parametrize("age, stale", [(NIGHTLY_STALE_AFTER_SECONDS - 1, False), (NIGHTLY_STALE_AFTER_SECONDS + 1, True)])
+    def test_stale_after_defaults_to_the_nightly_limit(self, age, stale):
+        assert self.part(age)["stale"] is stale
+
+    def test_stale_after_can_be_narrowed(self):
+        assert self.part(3 * 86400, stale_after=2 * 86400)["stale"] is True
+
+    def test_as_of_can_be_the_raw_data_date(self):
+        assert self.part(10, as_of="2033-05-18")["as_of"] == "2033-05-18"
+
+    def test_part_that_does_not_age_is_never_stale(self):
+        assert self.part(100 * 86400, ages=False)["stale"] is False
+
+    def test_no_epoch_is_null_and_not_stale_by_age(self):
+        assert dated_part(None, {"x": 1}) == {"as_of": None, "stale": False, "x": 1}

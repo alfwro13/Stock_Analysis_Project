@@ -1,10 +1,9 @@
-import time
 from typing import Any
 
 from market_pulse import get_all_cached_pulse, get_pulse_index_tickers
 from regime_engine import crash_veto_stress_threshold, current_hmm_regime, macro_conditions_snapshot, market_stress_snapshot
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, envelope, iso_utc
+from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_utc
 from ..server import READ_ONLY, server
 
 _REGIME_UNITS = {
@@ -33,12 +32,6 @@ _MISSING_FEAR_GREED = "Fear & Greed has not been fetched yet (the Market Sentime
 _NO_TILES = "No Market Pulse tile has a cached quote yet"
 
 
-def _dated_part(day, payload, *, ages=True):
-    epoch = date_epoch(day)
-    stale = ages and epoch is not None and time.time() - epoch > NIGHTLY_STALE_AFTER_SECONDS
-    return {"as_of": day, "stale": stale, **payload}, epoch
-
-
 def _regime_part(missing, epochs):
     hmm = current_hmm_regime()
     current = hmm["current"]
@@ -48,13 +41,13 @@ def _regime_part(missing, epochs):
     for key, label in (("us_regime_label", "US"), ("uk_regime_label", "UK")):
         if current[key] is None:
             missing.append(f"{label} turbulence class is not available for {current['as_of']}")
-    part, epoch = _dated_part(current["as_of"], {
+    epoch = date_epoch(current["as_of"])
+    epochs.append(epoch)
+    return dated_part(epoch, {
         "label": current["label"], "probability": current["probability"],
         "turbulence_class": {"us": current["us_regime_label"], "uk": current["uk_regime_label"]},
         "last_change": hmm["last_change"],
-    })
-    epochs.append(epoch)
-    return part
+    }, as_of=current["as_of"])
 
 
 def _stress_part(missing, epochs):
@@ -62,11 +55,11 @@ def _stress_part(missing, epochs):
     if current is None:
         missing.append(_MISSING_STRESS)
         return None
-    part, epoch = _dated_part(current["date"], {
-        "score": current["score"], "crash_veto_threshold": crash_veto_stress_threshold(), "features": current["features"],
-    })
+    epoch = date_epoch(current["date"])
     epochs.append(epoch)
-    return part
+    return dated_part(epoch, {
+        "score": current["score"], "crash_veto_threshold": crash_veto_stress_threshold(), "features": current["features"],
+    }, as_of=current["date"])
 
 
 def _macro_parts(macro, missing, epochs):
@@ -74,21 +67,22 @@ def _macro_parts(macro, missing, epochs):
         missing.append(_MISSING_MACRO)
         threat = None
     else:
-        threat, epoch = _dated_part(macro["as_of"], {
+        epoch = date_epoch(macro["as_of"])
+        epochs.append(epoch)
+        threat = dated_part(epoch, {
             "us": {"threat_level": macro["us_threat_level"], "yield_velocity_bps": macro["us_yield_velocity"],
                    "yield_pct": {"10y": macro["tnx_close"], "30y": macro["tyx_close"]}},
             "uk": {"threat_level": macro["uk_threat_level"], "yield_velocity_bps": macro["uk_yield_velocity"],
                    "yield_pct": macro["uk_gilt_close"]},
-        })
-        epochs.append(epoch)
+        }, as_of=macro["as_of"])
 
     auctions = macro["treasury_auction"]
     if auctions["healthy"] is None:
         missing.append(_MISSING_AUCTIONS)
         treasury = None
     else:
-        treasury, _ = _dated_part(
-            auctions["recent"][0]["auction_date"], {"healthy": auctions["healthy"], "recent": auctions["recent"]}, ages=False,
+        treasury = dated_part(
+            None, {"healthy": auctions["healthy"], "recent": auctions["recent"]}, as_of=auctions["recent"][0]["auction_date"], ages=False,
         )
 
     fear_greed = macro["fear_greed"]
@@ -96,8 +90,9 @@ def _macro_parts(macro, missing, epochs):
         missing.append(_MISSING_FEAR_GREED)
         sentiment = None
     else:
-        sentiment, epoch = _dated_part(fear_greed["as_of"], {"value": fear_greed["value"], "label": fear_greed["label"]})
+        epoch = date_epoch(fear_greed["as_of"])
         epochs.append(epoch)
+        sentiment = dated_part(epoch, {"value": fear_greed["value"], "label": fear_greed["label"]}, as_of=fear_greed["as_of"])
     return threat, treasury, sentiment
 
 
