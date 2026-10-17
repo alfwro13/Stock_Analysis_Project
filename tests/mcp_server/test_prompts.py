@@ -5,11 +5,12 @@ import pytest
 
 from mcp_server.prompts.shared import DATA_GAPS_SECTION, GROUND_RULES
 
-from .helpers import EXPECTED_PROMPTS, EXPECTED_TOOLS, V1_PROMPTS, get_prompt, prompt_text, rpc, table_counts
+from .helpers import EXPECTED_PROMPTS, EXPECTED_TOOLS, TOOL_PROMPTS, get_prompt, prompt_text, rpc, table_counts
 
 RENDER_ARGUMENTS = {
     "review_portfolio": [{}, {"account": "all"}],
     "pre_trade_review": [{"ticker": "AAPL", "side": "buy", "amount": "5000"}, {"ticker": "AAPL", "side": "sell"}],
+    "whats_coming_up": [{}, {"days": "14", "account": "all"}],
 }
 TOOL_NAME = re.compile(r"\b(get_[a-z_]+|pretrade_check)\(")
 
@@ -26,11 +27,13 @@ class TestPromptList:
     def test_titles_are_the_canonical_names(self, mcp_client):
         titles = {p["name"]: p["title"] for p in _listed(mcp_client)}
         assert titles["review_portfolio"] == "Review my portfolio" and titles["pre_trade_review"] == "Pre-trade check"
+        assert titles["whats_coming_up"] == "What's coming up?"
 
     def test_argument_requirements(self, mcp_client):
         required = {p["name"]: {a["name"]: a["required"] for a in p.get("arguments", [])} for p in _listed(mcp_client)}
         assert required["review_portfolio"] == {"account": False}
         assert required["pre_trade_review"] == {"ticker": True, "side": True, "amount": False, "account": False}
+        assert required["whats_coming_up"] == {"days": False, "account": False}
 
     def test_every_argument_is_described(self, mcp_client):
         for prompt in _listed(mcp_client):
@@ -46,7 +49,7 @@ class TestPromptList:
         assert "error" in get_prompt(mcp_client, "explain_alert").json()
 
 
-@pytest.mark.parametrize("name", sorted(V1_PROMPTS))
+@pytest.mark.parametrize("name", sorted(TOOL_PROMPTS))
 class TestEveryPrompt:
     def _rendered(self, client, name):
         return [prompt_text(get_prompt(client, name, arguments)) for arguments in RENDER_ARGUMENTS[name]]

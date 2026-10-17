@@ -869,6 +869,29 @@ def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results
 
 
 @pytest.mark.db
+def test_migrate_db_converts_epoch_ex_dividend_dates_to_iso_and_leaves_the_rest():
+    conn = _conn()
+    tickers = ("ZZEXD1", "ZZEXD2", "ZZEXD3", "ZZEXD4", "ZZEXD5")
+    try:
+        for ticker, value in zip(tickers, ("1788220800", "1788220800.0", "2026-09-01", "Unknown", None)):
+            conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, ex_dividend_date) VALUES (?, ?)", (ticker, value))
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, ex_dividend_date) VALUES ('ZZEXD6', 1788220800)")
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+        stored = {r["ticker"]: r["ex_dividend_date"] for r in conn.execute("SELECT ticker, ex_dividend_date FROM stock_signals WHERE ticker LIKE 'ZZEXD%'")}
+        assert stored == {
+            "ZZEXD1": "2026-09-01", "ZZEXD2": "2026-09-01", "ZZEXD3": "2026-09-01",
+            "ZZEXD4": "Unknown", "ZZEXD5": None, "ZZEXD6": "2026-09-01",
+        }
+    finally:
+        conn.execute("DELETE FROM stock_signals WHERE ticker LIKE 'ZZEXD%'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
 def test_migrate_db_sets_the_gilt_registry_exchange_to_lse_only_when_null():
     conn = _conn()
     try:

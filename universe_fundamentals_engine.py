@@ -9,7 +9,7 @@ from config import FUNDAMENTALS_DIR
 from yahoo_engine import yahoo_engine
 from database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
-from utils import safe_ticker_filename
+from utils import epoch_to_iso_date, safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -219,13 +219,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     if dividend_yield is not None and currency in ('GBp', 'GBP') and dividend_yield > 0.15:
         dividend_yield /= 100.0
 
-    ex_div_ts = info.get('exDividendDate')
-    ex_dividend_date = None
-    if ex_div_ts:
-        try:
-            ex_dividend_date = datetime.fromtimestamp(float(ex_div_ts), tz=timezone.utc).strftime('%Y-%m-%d')
-        except Exception:
-            ex_dividend_date = str(ex_div_ts) if len(str(ex_div_ts)) == 10 else None
+    ex_dividend_date = epoch_to_iso_date(info.get('exDividendDate'))
 
     target_price          = info.get('targetMeanPrice')
     analyst_rating        = (info.get('recommendationKey') or 'none').upper()

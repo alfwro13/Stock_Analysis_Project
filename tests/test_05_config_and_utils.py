@@ -456,6 +456,19 @@ def test_is_iso_date_accepts_only_real_zero_padded_calendar_dates():
 
 
 @pytest.mark.config
+def test_epoch_to_iso_date_converts_yahoo_epochs_and_passes_iso_dates_through():
+    """epoch_to_iso_date() turns Yahoo's epoch-seconds exDividendDate (int, float or digit string)
+    into a UTC YYYY-MM-DD, keeps an ISO date, and answers None for anything else."""
+    from utils import epoch_to_iso_date
+    assert epoch_to_iso_date(1788220800) == "2026-09-01"
+    assert epoch_to_iso_date(1788220800.0) == "2026-09-01"
+    assert epoch_to_iso_date("1788220800") == "2026-09-01"
+    assert epoch_to_iso_date("2026-09-01") == "2026-09-01"
+    for bad in (None, "", "Unknown", "garbage", 0, -5, "2026-13-40", 1e30, float("nan")):
+        assert epoch_to_iso_date(bad) is None, repr(bad)
+
+
+@pytest.mark.config
 def test_ignored_tickers_set_normalizes_and_uses_supplied_config():
     """ignored_tickers_set() must uppercase/strip entries and honor an explicitly-passed config
     dict rather than always reloading from disk — callers that already hold a loaded config
