@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -8,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from config import BASE_DIR
-from utils import sanitize_floats
+from utils import sanitize_floats, write_text_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +22,7 @@ QUANTILE_Q90_PATH   = MODELS_DIR / "quantile_q90.joblib"
 
 def save_feature_stats(stats: Dict[str, Any], path: Path) -> None:
     """JSON, not a pickle: the Home Assistant poll reads this file, and a missing measurement stays null."""
-    tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(json.dumps(sanitize_floats(stats)))
-    os.replace(tmp, path)
+    write_text_atomic(path, json.dumps(sanitize_floats(stats)))
 
 
 def load_feature_stats(path: Path) -> Optional[Dict[str, Any]]:

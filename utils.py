@@ -292,6 +292,22 @@ def write_parquet_atomic(df: Any, path: Any) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def write_text_atomic(path: Any, text: str) -> None:
+    """Atomic UTF-8 replace, so a reader never meets a half-written file; raises UnicodeEncodeError on a lone surrogate before touching `path`."""
+    path = Path(path)
+    data = text.encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(data)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def _fundamentals_dump_path(ticker: Optional[str]) -> Optional[str]:
     """The ticker's `.info` dump path when it is a safe file name that stays inside FUNDAMENTALS_DIR (realpath containment, the form CodeQL's path analysis accepts), else None."""
     from config import FUNDAMENTALS_DIR

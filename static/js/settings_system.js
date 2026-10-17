@@ -180,6 +180,53 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMcpKeys();
 });
 
+function updatePolicyCharCount() {
+    document.getElementById('policy-char-count').textContent = document.getElementById('investment_policy_text').value.length;
+}
+
+async function loadInvestmentPolicy() {
+    const box = document.getElementById('investment_policy_text');
+    setStatus('policy-load-msg', 'info', 'Loading…');
+    const res = await fetch('/api/investment-policy');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        setStatus('policy-load-msg', 'error', 'Could not load the policy.');
+        return;
+    }
+    box.value = data.text;
+    updatePolicyCharCount();
+    document.getElementById('policy-save-msg').textContent = '';
+    const loadMsg = document.getElementById('policy-load-msg');
+    if (data.load_error) {
+        setStatus('policy-load-msg', 'warning', data.load_error + ' Saving replaces it.');
+    } else if (!data.configured) {
+        setStatus('policy-load-msg', 'warning', 'No policy saved yet. The text below is the suggested template: replace the placeholders with your own rules before saving, or Claude will read them as yours.');
+    } else {
+        loadMsg.textContent = '';
+        loadMsg.className = '';
+    }
+}
+
+async function saveInvestmentPolicy() {
+    const text = document.getElementById('investment_policy_text').value;
+    setStatus('policy-save-msg', 'info', 'Saving…');
+    const res = await fetch('/api/investment-policy', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        await loadInvestmentPolicy();
+        setStatus('policy-save-msg', 'success', data.configured ? 'Policy saved. Claude reads it on its next request.' : 'The policy is empty, so Claude is told it is not configured.');
+    } else {
+        setStatus('policy-save-msg', 'error', typeof data.detail === 'string' ? data.detail : 'Failed to save the policy. Check that it is within the character limit.');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const box = document.getElementById('investment_policy_text');
+    if (!box) return;
+    box.addEventListener('input', updatePolicyCharCount);
+    loadInvestmentPolicy();
+});
+
 async function generateEmbedToken() {
     if (!confirm('Generate a new embed token? The current token will stop working immediately.')) return;
     setStatus('ua-embedtoken-msg', 'info', 'Generating…');
