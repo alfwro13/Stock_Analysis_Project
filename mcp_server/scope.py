@@ -6,6 +6,7 @@ from pydantic import Field
 from config import load_config
 from constants import MCP_ACCOUNT_SCOPE_MAX_CHARS
 from db_accounts import get_accounts as get_db_accounts
+from utils import INVALID_TICKER_MESSAGE, is_valid_ticker
 
 ACCOUNT_ALL = "all"
 
@@ -27,3 +28,10 @@ def resolve_scope(account: str, *, allow_ghostfolio: bool) -> str:
         raise ToolError("get_holdings has no per-position metrics for Ghostfolio accounts; use get_xray for them.")
     valid = [ACCOUNT_ALL, *trading, *(ghostfolio if allow_ghostfolio else [])]
     raise ToolError("Unknown account. Valid values: " + ", ".join(valid) + " (the scope_id values from get_accounts).")
+
+
+def valid_ticker(ticker: str) -> str:
+    stripped = ticker.strip()
+    if not is_valid_ticker(stripped):
+        raise ToolError("Invalid ticker: " + INVALID_TICKER_MESSAGE)
+    return stripped
