@@ -15,12 +15,24 @@ class TestWorkflowEntry:
         consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
         assert {"stock_signals", "quant_signals", "market_pulse_cache", "fundamentals", "ml_predictions", "watchlist_items", "yahoo_price_data"} <= consumed
 
-    def test_alert_and_news_artifacts_are_consumed_and_produced_by_the_alert_jobs(self):
+    def test_alert_and_news_artifacts_are_consumed_and_produced_by_their_nodes(self):
         consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
         assert {"system_notifications", "trap_monitor_results", "alert_referee_log", "news_articles"} <= consumed
-        assert {"trap_monitor_results", "alert_referee_log", "system_notifications"} <= set(JOB_GRAPH["trap_monitor_job"]["produces"])
-        assert "system_notifications" in JOB_GRAPH["intraday_orchestrator_job"]["produces"]
+        assert {"trap_monitor_results", "alert_referee_log"} <= set(JOB_GRAPH["trap_monitor_job"]["produces"])
         assert "news_articles" in JOB_GRAPH["news_feed_job"]["produces"]
+
+    def test_notification_log_has_one_producer_node_and_no_job_declares_it(self):
+        meta = JOB_GRAPH["notifications_source"]
+        assert meta["label"] == "Notifications"
+        assert meta["category"] == "manual" and meta["non_job"] is True
+        assert meta["produces"] == ["system_notifications"] and meta["consumes"] == []
+        producers = [job_id for job_id, other in JOB_GRAPH.items() if "system_notifications" in other["produces"]]
+        assert producers == ["notifications_source"]
+
+    def test_graph_draws_one_edge_from_the_notification_log_to_the_server(self):
+        nodes = [_build_node(job_id, meta, None, {}) for job_id, meta in JOB_GRAPH.items() if not meta.get("dynamic")]
+        edges = [e for e in _derive_edges(nodes) if e["via"] == "system_notifications"]
+        assert edges == [{"from": "notifications_source", "to": "claude_mcp_server_source", "via": "system_notifications"}]
 
     def test_watchlist_and_pretrade_artifacts_are_consumed_by_the_server(self):
         consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
