@@ -67,7 +67,7 @@ Streamable HTTP in stateless JSON mode: each `POST /mcp` is one JSON-RPC request
 | `mcp_server/keys.py` | Create, list, delete and match the named keys; an in-memory hash cache and the throttled last-used write. |
 | `db_mcp_keys.py` | The SQL for the `mcp_api_keys` table. |
 | `mcp_server/transport.py` | The POST-only ASGI `endpoint`, the SDK Host/Origin settings and `run()`. |
-| `mcp_server/envelope.py` | `envelope()`, `iso_utc()`, `iso_from_stored_utc()` (a stored `YYYY-MM-DD HH:MM:SS` UTC string as ISO, `null` when empty or unparseable), `date_epoch()` (a `YYYY-MM-DD` data date as 00:00 UTC) and the stale limits. |
+| `mcp_server/envelope.py` | `envelope()`, `iso_utc()`, `iso_from_stored_utc()` (a stored `YYYY-MM-DD HH:MM:SS` UTC string as ISO, `null` when empty or unparseable), `date_epoch()` (a `YYYY-MM-DD` data date as 00:00 UTC), `dated_part()` (the one builder of a tool part's `{as_of, stale, ...}`: `as_of` is the ISO time of the epoch, or the raw data date when passed as `as_of=`; stale after `stale_after`, 5 days by default, never when `ages=False`) and the stale limits. |
 | `mcp_server/scope.py` | The `account` argument: `AccountArg`, `resolve_scope()`, `ACCOUNT_ALL`. |
 | `mcp_server/tools/<tool_name>.py` | One file per tool: its `@server.tool` function, units table and shaping helpers. |
 | `mcp_server/resources/<resource>.py` | One file per resource (`investment_policy.py`). |

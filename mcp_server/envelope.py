@@ -27,6 +27,13 @@ def date_epoch(day: Optional[str]) -> Optional[float]:
     return datetime.strptime(day[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
 
 
+def dated_part(epoch: Optional[float], payload: dict, *, as_of: Optional[str] = None, stale_after: int = NIGHTLY_STALE_AFTER_SECONDS, ages: bool = True) -> dict:
+    if as_of is None and epoch is not None:
+        as_of = iso_utc(epoch)
+    stale = ages and epoch is not None and time.time() - epoch > stale_after
+    return {"as_of": as_of, "stale": stale, **payload}
+
+
 def envelope(data: Any, *, as_of: Optional[float], units: dict, missing: list, stale_after_seconds: int = STALE_AFTER_SECONDS) -> dict:
     market_state = {exchange: get_exchange_session_state(exchange) for exchange in ENVELOPE_EXCHANGES}
     age_seconds = None if as_of is None else max(0, int(time.time() - as_of))

@@ -12,7 +12,7 @@ from db_helpers import (
 from scheduler_engine import get_all_job_last_runs
 from utils import is_iso_date
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_from_stored_utc, iso_utc
+from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, dated_part, envelope, iso_from_stored_utc, iso_utc
 from ..server import READ_ONLY, server
 
 DaysArg = Annotated[int, Field(ge=1, le=MCP_CALENDAR_MAX_DAYS)]
@@ -54,8 +54,7 @@ def _ticker_dates(readings: dict, field: str, lists: dict, updated: dict, today:
 
 def _part(epochs: list, rows: list, stale_after: int) -> dict:
     known = [e for e in epochs if e is not None]
-    as_of = min(known) if known else None
-    return {"as_of": None if as_of is None else iso_utc(as_of), "stale": as_of is not None and time.time() - as_of > stale_after, **_limited(rows)}
+    return dated_part(min(known) if known else None, _limited(rows), stale_after=stale_after)
 
 
 def _macro(start: str, end: str, last_day: str, missing: list) -> tuple:
