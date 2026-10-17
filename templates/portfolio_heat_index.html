@@ -110,6 +110,7 @@
         <tbody>
             <tr class="text-success"><td><strong>Green</strong></td><td>This holding (or your whole portfolio) is behaving normally on all three fronts — no single thing stands out as a risk concentration right now.</td></tr>
             <tr class="text-warning"><td><strong>Yellow</strong></td><td>At least one of the three things above is elevated. Not an emergency, but worth a glance before adding more to this position or a similar one.</td></tr>
+            <tr class="text-muted"><td><strong>Unavailable</strong></td><td>One of the three inputs could not be calculated (for example a single-holding account has no correlation between holdings, or a price history is missing), so no score is shown rather than a reading that would silently treat the missing input as zero risk.</td></tr>
             <tr class="text-danger"><td><strong>Red</strong></td><td>One or more of the three things above is stretched. This is the holding (or the portfolio-wide combination of holdings) doing the most to drive your overall risk reading right now.</td></tr>
         </tbody>
     </table>

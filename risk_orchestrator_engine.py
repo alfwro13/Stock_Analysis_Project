@@ -57,6 +57,20 @@ def _weights(config: dict) -> dict:
     })
 
 
+def _unavailable_inputs(*labelled_values: tuple) -> list:
+    return [label for label, value in labelled_values if value is None]
+
+
+def _phi_and_tier(var_sub: float, corr_sub: float, dd_sub: float, weights: dict, thresholds: dict) -> tuple:
+    phi_score = round(weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 2)
+    phi_score = max(0.0, min(phi_score, 100.0))
+    return phi_score, _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+
+
+def _tier_when_available(value: Optional[float], sub_score: float, thresholds: dict) -> Optional[str]:
+    return _tier_for(sub_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if value is not None else None
+
+
 def compute_portfolio_heat(scope: str, scope_label: str, config: Optional[dict] = None) -> Optional[dict]:
     """Derives a 0-100 Portfolio Heat Index for `scope` from its X-ray VaR/correlation/drawdown."""
     config = config or load_config()
@@ -81,20 +95,21 @@ def compute_portfolio_heat(scope: str, scope_label: str, config: Optional[dict] 
     corr_sub = _sub_score(max_correlation, thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
     dd_sub = _sub_score(drawdown_pct, thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"])
 
-    phi_score = round(
-        weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 2
-    )
-    phi_score = max(0.0, min(phi_score, 100.0))
-    tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
-    var_tier = _tier_for(var_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
-    correlation_tier = _tier_for(corr_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
-    drawdown_tier = _tier_for(dd_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+    unavailable = _unavailable_inputs(("VaR", var_pct_of_equity), ("correlation", max_correlation), ("drawdown", drawdown_pct))
+    phi_score = tier = None
+    if not unavailable:
+        phi_score, tier = _phi_and_tier(var_sub, corr_sub, dd_sub, weights, thresholds)
+    var_tier = _tier_when_available(var_pct_of_equity, var_sub, thresholds)
+    correlation_tier = _tier_when_available(max_correlation, corr_sub, thresholds)
+    drawdown_tier = _tier_when_available(drawdown_pct, dd_sub, thresholds)
 
     breakdown = [
         f"VaR (95%, 1d): {var_pct_of_equity}% of equity ({var_tier})" if var_pct_of_equity is not None else "VaR: not available",
         f"Max pairwise correlation: {max_correlation} ({correlation_tier})" if max_correlation is not None else "Max correlation: not available",
         f"Max drawdown: {drawdown_pct}% ({drawdown_tier})" if drawdown_pct is not None else "Max drawdown: not available",
     ]
+    if unavailable:
+        breakdown.insert(0, f"Score unavailable: {', '.join(unavailable)} could not be computed")
 
     return {
         "scope": scope,
@@ -120,6 +135,7 @@ def compute_ticker_risk_contributions(all_scope_result: dict, config: Optional[d
     if not holdings:
         return []
 
+    weights = _weights(config)
     tickers = [h["symbol"] for h in holdings]
     conn = None
     price_map = {}
@@ -161,14 +177,11 @@ def compute_ticker_risk_contributions(all_scope_result: dict, config: Optional[d
         stop_sub = _sub_score(
             (thresholds["DRAWDOWN_PCT_RED"] - stop_distance_pct) if stop_distance_pct is not None else None,
             thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"],
-        ) if stop_distance_pct is not None else 0.0
-
-        weights = _weights(config)
-        risk_score = round(
-            weights["VAR"] * mrc_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * stop_sub, 2
         )
-        risk_score = max(0.0, min(risk_score, 100.0))
-        tier = _tier_for(risk_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+
+        risk_score = tier = None
+        if not _unavailable_inputs(("VaR", mrc_pct), ("correlation", max_corr), ("stop", stop_distance_pct)):
+            risk_score, tier = _phi_and_tier(mrc_sub, corr_sub, stop_sub, weights, thresholds)
 
         out.append({
             "ticker": ticker,
@@ -244,11 +257,13 @@ def run_scan() -> dict:
     config = load_config()
     scopes_computed = 0
     scopes_skipped = 0
+    scopes_unavailable = 0
 
     all_result = compute_portfolio_heat(SCOPE_ALL, "All Accounts", config)
     if all_result:
         persist_heat_index(all_result)
         scopes_computed += 1
+        scopes_unavailable += all_result["phi_score"] is None
         contributions = compute_ticker_risk_contributions(all_result, config)
         persist_ticker_contributions(contributions)
     else:
@@ -261,10 +276,14 @@ def run_scan() -> dict:
         if result:
             persist_heat_index(result)
             scopes_computed += 1
+            scopes_unavailable += result["phi_score"] is None
         else:
             scopes_skipped += 1
 
-    return {"scopes_computed": scopes_computed, "scopes_skipped": scopes_skipped, "tickers_scored": len(contributions)}
+    return {
+        "scopes_computed": scopes_computed, "scopes_skipped": scopes_skipped, "scopes_unavailable": scopes_unavailable,
+        "tickers_scored": sum(c["risk_score"] is not None for c in contributions),
+    }
 
 
 def get_critical_scopes() -> list:
@@ -369,7 +388,8 @@ def build_daily_digest() -> dict:
     lines = ["**Risk Orchestrator — Daily Rollup**", "", "**Portfolio Heat Index**"]
     for row in phi_rows:
         var_part = f", VaR {row['var_pct_of_equity']}% of equity" if row["var_pct_of_equity"] is not None else ""
-        lines.append(f"- {row['scope_label']}: {row['phi_score']} ({row['tier']}){var_part}")
+        score_part = f"{row['phi_score']} ({row['tier']})" if row["phi_score"] is not None else "unavailable (an input is missing)"
+        lines.append(f"- {row['scope_label']}: {score_part}{var_part}")
 
     lines.append("")
     if rising_stops:
@@ -400,29 +420,21 @@ def evaluate_pretrade_check(
     baseline_drawdown_raw = baseline_report.get("risk_metrics", {}).get("max_drawdown")
     drawdown_pct = round(abs(baseline_drawdown_raw) * 100, 3) if baseline_drawdown_raw is not None else None
     dd_sub = _sub_score(drawdown_pct, thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"])
-    dd_tier = _tier_for(dd_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if drawdown_pct is not None else None
+    dd_tier = _tier_when_available(drawdown_pct, dd_sub, thresholds)
 
     sim = simulate_scope_with_hypothetical_holding(scope, ticker, additional_value, read_only=read_only)
     var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
     corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
-    var_tier = _tier_for(var_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if sim["var_pct_of_equity"] is not None else None
-    correlation_tier = (
-        _tier_for(corr_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if sim["max_pairwise_correlation"] is not None else None
-    )
+    var_tier = _tier_when_available(sim["var_pct_of_equity"], var_sub, thresholds)
+    correlation_tier = _tier_when_available(sim["max_pairwise_correlation"], corr_sub, thresholds)
     # _sub_score(None) is 0, so a missing input would read as zero risk and approve: withhold the verdict instead
-    unavailable_inputs = [
-        label for label, value in (
-            ("VaR", sim["var_pct_of_equity"]), ("correlation", sim["max_pairwise_correlation"]), ("drawdown", drawdown_pct)
-        ) if value is None
-    ]
+    unavailable_inputs = _unavailable_inputs(
+        ("VaR", sim["var_pct_of_equity"]), ("correlation", sim["max_pairwise_correlation"]), ("drawdown", drawdown_pct)
+    )
 
     phi_score = tier = verdict = breached_constraint = suggested_reduced_value = None
     if not unavailable_inputs:
-        phi_score = round(
-            weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 2
-        )
-        phi_score = max(0.0, min(phi_score, 100.0))
-        tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+        phi_score, tier = _phi_and_tier(var_sub, corr_sub, dd_sub, weights, thresholds)
 
         if tier == TIER_RED:
             verdict = "reject"

@@ -232,11 +232,11 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 
 #### `portfolio_heat_index`
 * **Purpose:** Latest Portfolio Heat Index (PHI) — one row per account scope (`"all"` or `"acct:{id}"`, matching `xray_engine.resolve_scope_holdings()`'s scope convention). Computed daily by `risk_orchestrator_engine.run_scan()`.
-* **Key Columns:** `scope` (PK), `scope_label`, `phi_score`, `tier`, `var_pct_of_equity`, `var_tier`, `max_correlation`, `correlation_tier`, `drawdown_pct`, `drawdown_tier`, `breakdown_json`, `last_updated`.
+* **Key Columns:** `scope` (PK), `scope_label`, `phi_score`, `tier`, `var_pct_of_equity`, `var_tier`, `max_correlation`, `correlation_tier`, `drawdown_pct`, `drawdown_tier`, `breakdown_json`, `last_updated`. `phi_score` and `tier` are `NULL` when any of the three inputs is unavailable (the matching value and `*_tier` are `NULL` too); an input is never scored as zero. `migrate_db()` rebuilds tables created with those columns `NOT NULL` and clears scores an earlier scan computed from a missing input.
 
 #### `ticker_risk_contribution`
 * **Purpose:** Latest per-ticker Risk Contribution tier for the `"all"` scope combined portfolio — backs the Portfolio page's "Heat Index" column and the Stock Detail "Risk Contribution" row. Fully replaced on each `risk_orchestrator_job` run.
-* **Key Columns:** `ticker` (PK), `risk_score`, `risk_tier`, `marginal_var_contribution_pct`, `max_pairwise_correlation`, `stop_distance_pct`, `last_updated`.
+* **Key Columns:** `ticker` (PK), `risk_score`, `risk_tier`, `marginal_var_contribution_pct`, `max_pairwise_correlation`, `stop_distance_pct`, `last_updated`. `risk_score` and `risk_tier` are `NULL` when any of the three inputs is missing.
 
 #### `pretrade_check_log`
 * **Purpose:** Append-only audit trail of every Pre-Trade Gatekeeper (Pillar A) what-if check run from the Stock Detail Position Sizing panel (`GET /api/risk-orchestrator/pretrade-check`). Not a snapshot table like the two above — a verdict can be produced many times a day for the same ticker as the user adjusts size, so it's keyed on an autoincrement id rather than `(ticker, scope)`. See `assets/risk_orchestrator.md` §6.

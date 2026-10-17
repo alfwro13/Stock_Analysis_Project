@@ -281,6 +281,36 @@ def _import_legacy_watchlist_json() -> None:
             conn.close()
 
 
+_PORTFOLIO_HEAT_INDEX_DDL = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        scope TEXT PRIMARY KEY,
+        scope_label TEXT NOT NULL,
+        phi_score REAL,
+        tier TEXT,
+        var_pct_of_equity REAL,
+        var_tier TEXT,
+        max_correlation REAL,
+        correlation_tier TEXT,
+        drawdown_pct REAL,
+        drawdown_tier TEXT,
+        breakdown_json TEXT,
+        last_updated TEXT NOT NULL
+    )
+"""
+
+_TICKER_RISK_CONTRIBUTION_DDL = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        ticker TEXT PRIMARY KEY,
+        risk_score REAL,
+        risk_tier TEXT,
+        marginal_var_contribution_pct REAL,
+        max_pairwise_correlation REAL,
+        stop_distance_pct REAL,
+        last_updated TEXT NOT NULL
+    )
+"""
+
+
 def init_db() -> None:
     conn = None
     try:
@@ -764,36 +794,11 @@ def init_db() -> None:
 
         # Portfolio Heat Index (PHI) — one row per account scope ("all" or "acct:{id}"),
         # matching xray_engine.resolve_scope_holdings()'s scope convention.
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS portfolio_heat_index (
-                scope TEXT PRIMARY KEY,
-                scope_label TEXT NOT NULL,
-                phi_score REAL NOT NULL,
-                tier TEXT NOT NULL,
-                var_pct_of_equity REAL,
-                var_tier TEXT,
-                max_correlation REAL,
-                correlation_tier TEXT,
-                drawdown_pct REAL,
-                drawdown_tier TEXT,
-                breakdown_json TEXT,
-                last_updated TEXT NOT NULL
-            )
-        ''')
+        cursor.execute(_PORTFOLIO_HEAT_INDEX_DDL.format(table="portfolio_heat_index"))
 
         # Per-ticker Risk Contribution tier for the "all" scope combined portfolio —
         # backs the Portfolio page's "Heat Index" column.
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ticker_risk_contribution (
-                ticker TEXT PRIMARY KEY,
-                risk_score REAL NOT NULL,
-                risk_tier TEXT NOT NULL,
-                marginal_var_contribution_pct REAL,
-                max_pairwise_correlation REAL,
-                stop_distance_pct REAL,
-                last_updated TEXT NOT NULL
-            )
-        ''')
+        cursor.execute(_TICKER_RISK_CONTRIBUTION_DDL.format(table="ticker_risk_contribution"))
 
         # Pre-Trade Gatekeeper (Pillar A) — append-only audit trail of every what-if check run
         # from the Stock Detail Position Sizing panel. Not a snapshot table like the two above:
@@ -2746,6 +2751,37 @@ def migrate_db(conn, cursor) -> None:
             conn.commit()
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to set the UK10YG registry exchange: %s", e)
+
+    # Heat Index score/tier are NULL when an input is unavailable; rebuild tables created with NOT NULL on them
+    # and clear scores an earlier scan computed from a missing input (it counted that input as zero risk).
+    for table, ddl, score_col, tier_col, input_cols in (
+        ("portfolio_heat_index", _PORTFOLIO_HEAT_INDEX_DDL, "phi_score", "tier",
+         ("var_pct_of_equity", "max_correlation", "drawdown_pct")),
+        ("ticker_risk_contribution", _TICKER_RISK_CONTRIBUTION_DDL, "risk_score", "risk_tier",
+         ("marginal_var_contribution_pct", "max_pairwise_correlation", "stop_distance_pct")),
+    ):
+        try:
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = cursor.fetchall()
+            if any(col['name'] == score_col and col['notnull'] for col in columns):
+                logger.info("[MIGRATION] Rebuilding %s with a nullable %s/%s...", table, score_col, tier_col)
+                names = ", ".join(col['name'] for col in columns)
+                cursor.execute(ddl.format(table=f"{table}_new"))
+                cursor.execute(f"INSERT INTO {table}_new ({names}) SELECT {names} FROM {table}")
+                cursor.execute(f"DROP TABLE {table}")
+                cursor.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+            missing_input = " OR ".join(f"{col} IS NULL" for col in input_cols)
+            cursor.execute(f"UPDATE {table} SET {score_col} = NULL, {tier_col} = NULL WHERE {score_col} IS NOT NULL AND ({missing_input})")
+            if cursor.rowcount:
+                logger.info("[MIGRATION] Cleared %d %s score(s) computed with an input missing.", cursor.rowcount, table)
+            if table == "portfolio_heat_index":
+                for value_col, sub_tier_col in (
+                    ("var_pct_of_equity", "var_tier"), ("max_correlation", "correlation_tier"), ("drawdown_pct", "drawdown_tier"),
+                ):
+                    cursor.execute(f"UPDATE {table} SET {sub_tier_col} = NULL WHERE {value_col} IS NULL AND {sub_tier_col} IS NOT NULL")
+            conn.commit()
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] %s nullable score migration failed: %s", table, e)
 
     try:
         from db_helpers import refresh_job_average_duration

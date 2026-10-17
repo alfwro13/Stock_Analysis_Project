@@ -53,6 +53,7 @@
                     <li><strong>Green (&lt; 40):</strong> Risk is within normal bounds across all three inputs.</li>
                     <li><strong>Yellow (40–75):</strong> At least one input is elevated — worth a closer look before adding more risk.</li>
                     <li><strong>Red (&gt; 75):</strong> Risk is stretched. New BUY-flavored signals are flagged with a "Risk Paused" warning badge across the Portfolio, Watchlist, and Stock Detail pages until the reading cools — a visual warning only, since this app never executes trades automatically.</li>
+                    <li><strong>Unavailable:</strong> One of the three inputs could not be calculated, so no score or tier is shown and no "Risk Paused" badge or Red alert is raised — a missing input is never counted as zero risk.</li>
                 </ul>
                 <p>A dedicated Risk Orchestrator scan computes and stores the PHI for every scope daily; see the <a href="/portfolio-heat-index">Portfolio Heat Index report</a> for the full per-scope breakdown.</p>
             </div>

@@ -571,10 +571,12 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .risk-summary-red { border-left-color: #ff4d4d; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(77,0,0,0.5) 100%); }
 .risk-summary-yellow { border-left-color: #ffaa00; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(51,43,0,0.5) 100%); }
 .risk-summary-green { border-left-color: #00ff00; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(0,51,17,0.5) 100%); }
+.risk-summary-unavailable { border-left-color: #888; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(60,60,60,0.5) 100%); }
 .risk-summary-header { margin-top: 0; margin-bottom: 8px; font-size: var(--font-size-body); font-weight: 600; }
 .risk-summary-header.red { color: #ff4d4d; }
 .risk-summary-header.yellow { color: #ffaa00; }
 .risk-summary-header.green { color: #00ff00; }
+.risk-summary-header.unavailable { color: #aaa; }
 .risk-summary-body { flex: 1; }
 .risk-summary-text { margin: 0; font-size: var(--font-size-body); color: #ccc; }
 .sentiment-widgets { column-count: 1; column-gap: 20px; margin-bottom: 25px; }

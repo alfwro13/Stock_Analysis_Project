@@ -50,6 +50,16 @@ at 100 beyond Red — `risk_orchestrator_engine._sub_score()`). The PHI is the c
 sum of the three sub-scores (default 40% VaR / 30% correlation / 30% drawdown), clamped 0-100,
 then bucketed into GREEN/YELLOW/RED against configurable PHI thresholds (default 40/75).
 
+**Missing inputs.** `_sub_score(None)` is 0, so an input that could not be computed (a single-holding
+scope has no pairwise correlation; a short price history leaves no drawdown or VaR) must not be
+scored: `compute_portfolio_heat()` then stores `phi_score` and `tier` as `NULL`, the tier of each
+missing input as `NULL`, and starts `breakdown_json` with "Score unavailable: ... could not be
+computed". The scan still stores the row, so the page can say which input is missing. A `NULL` tier
+never raises a PHI Critical or Correlation Spike alert and never shows the "Risk Paused" badge; the
+widgets, the report page and the Daily Rollup show "unavailable". The Risk Orchestrator Scan
+notification counts such scopes separately. `_phi_and_tier()` is the one weighted-sum-and-tier
+function, shared with the pre-trade check (§6).
+
 ## 3. Ticker Risk Contribution
 
 For every ticker held in the `"all"` scope, `compute_ticker_risk_contributions()` derives the
@@ -64,6 +74,11 @@ same three-input, same-formula tier using ticker-level inputs instead of portfol
 - **Stop distance** — `(current_price - stock_signals.atr_stop_loss) / current_price`, a new,
   cheap calculation; a smaller (or negative) distance is riskier, so it's inverted before
   normalizing against the drawdown thresholds.
+
+A ticker whose marginal VaR share, correlation or stop distance is missing (no ATR stop, or too
+little history for a correlation) gets `risk_score` and `risk_tier` `NULL`, shown as N/A on the
+Portfolio "Heat Index" column, the Stock Detail row and the report table, for the same reason as
+the scope PHI above.
 
 Both tables (`portfolio_heat_index`, `ticker_risk_contribution`) are latest-snapshot only —
 no history — matching the style of `xray_correlation_matrix`/`market_pulse_cache`.

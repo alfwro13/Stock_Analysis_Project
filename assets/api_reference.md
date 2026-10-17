@@ -4956,6 +4956,10 @@ Triggers an immediate background Risk Orchestrator scan across every eligible sc
 ### `GET /api/risk-orchestrator/status`
 
 Returns every scope's latest Portfolio Heat Index row plus all per-ticker Risk Contribution rows.
+`phi_score` and `tier` are `null` when the scope's VaR, correlation or drawdown input could not be
+computed (the matching `*_tier` and value are `null` too, and `breakdown` starts with a "Score
+unavailable" line); `risk_score` and `risk_tier` are `null` when a ticker's VaR share, correlation or
+stop distance is missing. Rows with a `null` score sort last.
 
 **Response**
 

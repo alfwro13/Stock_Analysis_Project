@@ -8,6 +8,7 @@ Covers:
   • scheduler_jobs.run_risk_orchestrator_job() — runner-level wiring
 """
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -21,6 +22,8 @@ from database import get_connection
 from risk_orchestrator_engine import (
     _sub_score,
     _tier_for,
+    compute_portfolio_heat,
+    compute_ticker_risk_contributions,
     get_critical_scopes,
     get_ticker_risk_contributions,
     _tickers_with_rising_stop,
@@ -292,7 +295,7 @@ class TestFireRiskOrchestratorCriticalAlerts:
 class TestRunRiskOrchestratorJobRunner:
     def test_calls_engine_run_scan_and_notifies_success(self):
         with patch("risk_orchestrator_engine.run_scan",
-                   return_value={"scopes_computed": 2, "scopes_skipped": 0, "tickers_scored": 5}) as mock_scan, \
+                   return_value={"scopes_computed": 2, "scopes_skipped": 0, "scopes_unavailable": 0, "tickers_scored": 5}) as mock_scan, \
              patch("scheduler_jobs.log_sched_notification") as mock_notify, \
              patch("scheduler_jobs._mark_job_started"), \
              patch("scheduler_jobs._mark_job_done"), \
@@ -302,6 +305,18 @@ class TestRunRiskOrchestratorJobRunner:
         mock_scan.assert_called_once_with()
         success_calls = [c for c in mock_notify.call_args_list if c.args[0] == "Success"]
         assert len(success_calls) == 1
+
+    def test_reports_scopes_without_a_score_apart_from_scored_ones(self):
+        with patch("risk_orchestrator_engine.run_scan", return_value={
+                 "scopes_computed": 3, "scopes_skipped": 0, "scopes_unavailable": 1, "tickers_scored": 5}), \
+             patch("scheduler_jobs.log_sched_notification") as mock_notify, \
+             patch("scheduler_jobs._mark_job_started"), \
+             patch("scheduler_jobs._mark_job_done"), \
+             patch("scheduler_jobs.record_job_run"):
+            scheduler_jobs.run_risk_orchestrator_job()
+
+        text = next(c.args[1] for c in mock_notify.call_args_list if c.args[0] == "Success")
+        assert "2 scope(s) scored" in text and "1 scope(s) have no score" in text
 
     def test_logs_error_on_failure(self):
         with patch("risk_orchestrator_engine.run_scan", side_effect=Exception("boom")), \
@@ -386,6 +401,22 @@ class TestBuildDailyDigest:
         assert "AAA: 100.0 → 105.0" in digest["message"]
 
 
+    def test_scope_without_a_score_reads_unavailable(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM portfolio_heat_index")
+            conn.execute(
+                "INSERT INTO portfolio_heat_index (scope, scope_label, phi_score, tier, var_pct_of_equity, last_updated) "
+                "VALUES ('all', 'All Accounts', NULL, NULL, 2.1, '2026-07-21 19:15:00')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        message = build_daily_digest()["message"]
+        assert "All Accounts: unavailable (an input is missing), VaR 2.1% of equity" in message
+        assert "None" not in message
+
+
 class TestRunRiskOrchestratorDigestJobRunner:
     def test_dispatches_notification_when_message_present(self):
         with patch("risk_orchestrator_engine.build_daily_digest",
@@ -421,6 +452,171 @@ class TestRunRiskOrchestratorDigestJobRunner:
 
         error_calls = [c for c in mock_log.call_args_list if c.args[0] == "Error"]
         assert len(error_calls) == 1
+
+
+_RISK_METRICS = {"var_95_1d": 100.0, "max_pairwise_correlation": 0.3, "max_drawdown": -0.02}
+
+
+class TestComputePortfolioHeat:
+    def _heat(self, **overrides):
+        report = {"risk_metrics": {**_RISK_METRICS, **overrides}, "portfolio_total_value": 10000.0, "holdings": []}
+        with patch("risk_orchestrator_engine.assemble_xray_report", return_value=report):
+            return compute_portfolio_heat("all", "All Accounts", _ro_config())
+
+    def test_all_inputs_present_scores_and_tiers_every_input(self):
+        result = self._heat()
+        assert result["tier"] == TIER_GREEN and result["phi_score"] is not None
+        assert result["var_tier"] == result["correlation_tier"] == result["drawdown_tier"] == TIER_GREEN
+        assert not any("unavailable" in line for line in json.loads(result["breakdown_json"]))
+
+    @pytest.mark.parametrize("overrides, missing, absent_tier", [
+        ({"var_95_1d": None}, "VaR", "var_tier"),
+        ({"max_pairwise_correlation": None}, "correlation", "correlation_tier"),
+        ({"max_drawdown": None}, "drawdown", "drawdown_tier"),
+    ])
+    def test_missing_input_withholds_score_and_tier_instead_of_reading_green(self, overrides, missing, absent_tier):
+        result = self._heat(**overrides)
+        assert result["phi_score"] is None and result["tier"] is None
+        assert result[absent_tier] is None
+        breakdown = json.loads(result["breakdown_json"])
+        assert breakdown[0] == f"Score unavailable: {missing} could not be computed"
+        assert any("not available" in line for line in breakdown)
+
+    def test_every_input_missing_names_all_three(self):
+        result = self._heat(var_95_1d=None, max_pairwise_correlation=None, max_drawdown=None)
+        assert json.loads(result["breakdown_json"])[0] == "Score unavailable: VaR, correlation, drawdown could not be computed"
+
+    def test_a_red_input_with_another_missing_still_has_no_tier(self):
+        result = self._heat(max_pairwise_correlation=0.95, max_drawdown=None)
+        assert result["correlation_tier"] == TIER_RED
+        assert result["tier"] is None
+
+
+@pytest.mark.db
+class TestComputeTickerRiskContributions:
+    def _contributions(self, holdings, stock_signals):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker IN ('ZRO1', 'ZRO2')")
+            for ticker, price, stop in stock_signals:
+                conn.execute(
+                    "INSERT INTO stock_signals (ticker, current_price, atr_stop_loss) VALUES (?, ?, ?)", (ticker, price, stop)
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        try:
+            return {r["ticker"]: r for r in compute_ticker_risk_contributions({"holdings": holdings}, _ro_config())}
+        finally:
+            conn = get_connection()
+            try:
+                conn.execute("DELETE FROM stock_signals WHERE ticker IN ('ZRO1', 'ZRO2')")
+                conn.commit()
+            finally:
+                conn.close()
+
+    def test_ticker_without_an_atr_stop_has_no_score_while_a_complete_one_does(self):
+        holdings = [
+            {"symbol": "ZRO1", "marginal_risk_contribution": 1.0, "max_pairwise_correlation": 0.3},
+            {"symbol": "ZRO2", "marginal_risk_contribution": 1.0, "max_pairwise_correlation": 0.3},
+        ]
+        rows = self._contributions(holdings, [("ZRO1", 100.0, 90.0), ("ZRO2", 100.0, None)])
+        assert rows["ZRO1"]["risk_score"] is not None and rows["ZRO1"]["risk_tier"] is not None
+        assert rows["ZRO2"]["stop_distance_pct"] is None
+        assert rows["ZRO2"]["risk_score"] is None and rows["ZRO2"]["risk_tier"] is None
+
+    def test_ticker_without_a_correlation_has_no_score(self):
+        holdings = [{"symbol": "ZRO1", "marginal_risk_contribution": 1.0, "max_pairwise_correlation": None}]
+        assert self._contributions(holdings, [("ZRO1", 100.0, 90.0)])["ZRO1"]["risk_tier"] is None
+
+
+@pytest.mark.db
+class TestUnavailableScoresRoundTrip:
+    def test_null_score_and_tier_persist_and_sort_after_scored_rows(self):
+        persist_ticker_contributions([
+            {"ticker": "ZRN1", "risk_score": None, "risk_tier": None, "marginal_var_contribution_pct": None,
+             "max_pairwise_correlation": None, "stop_distance_pct": None},
+            {"ticker": "ZRN2", "risk_score": 5.0, "risk_tier": "GREEN", "marginal_var_contribution_pct": 1.0,
+             "max_pairwise_correlation": 0.1, "stop_distance_pct": 9.0},
+        ])
+        assert [r["ticker"] for r in get_ticker_risk_contributions()][:2] == ["ZRN2", "ZRN1"]
+        persist_ticker_contributions([])
+
+    def test_scan_stores_the_unavailable_scope_and_counts_it(self):
+        report = {"risk_metrics": {**_RISK_METRICS, "max_pairwise_correlation": None}, "portfolio_total_value": 10000.0,
+                  "holdings": []}
+        with patch("risk_orchestrator_engine.assemble_xray_report", return_value=report), \
+             patch("accounts_engine.list_scope_accounts_with_values", return_value=([], 0.0)):
+            result = run_scan()
+        assert result["scopes_computed"] == 1 and result["scopes_unavailable"] == 1
+        row = next(r for r in get_critical_scopes() if r["scope"] == "all")
+        assert row["phi_score"] is None and row["tier"] is None and row["correlation_tier"] is None
+
+    def test_an_unavailable_scope_raises_no_critical_alert(self):
+        scope = {"scope": "all", "scope_label": "All Accounts", "phi_score": None, "tier": None,
+                 "max_correlation": None, "correlation_tier": None}
+        with patch("scheduler_jobs.load_config", return_value={"NOTIFICATIONS": {"RISK_ORCHESTRATOR_ALERTS": {"ENABLED": True}}}), \
+             patch("scheduler_jobs.notify") as mock_notify:
+            scheduler_jobs._fire_risk_orchestrator_critical_alerts([scope])
+        mock_notify.assert_not_called()
+
+    def test_migration_makes_the_score_nullable_and_clears_scores_computed_from_a_missing_input(self):
+        from db_schema import migrate_db
+        conn = get_connection()
+        try:
+            conn.execute("DROP TABLE portfolio_heat_index")
+            conn.execute("DROP TABLE ticker_risk_contribution")
+            conn.execute(
+                "CREATE TABLE portfolio_heat_index (scope TEXT PRIMARY KEY, scope_label TEXT NOT NULL, phi_score REAL NOT NULL, "
+                "tier TEXT NOT NULL, var_pct_of_equity REAL, var_tier TEXT, max_correlation REAL, correlation_tier TEXT, "
+                "drawdown_pct REAL, drawdown_tier TEXT, breakdown_json TEXT, last_updated TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE ticker_risk_contribution (ticker TEXT PRIMARY KEY, risk_score REAL NOT NULL, risk_tier TEXT NOT NULL, "
+                "marginal_var_contribution_pct REAL, max_pairwise_correlation REAL, stop_distance_pct REAL, last_updated TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO portfolio_heat_index VALUES ('all', 'All Accounts', 12.0, 'GREEN', 1.0, 'GREEN', NULL, 'GREEN', "
+                "2.0, 'GREEN', '[]', '2026-10-16 19:15:00')"
+            )
+            conn.execute(
+                "INSERT INTO portfolio_heat_index VALUES ('acct:1', 'Complete', 30.0, 'GREEN', 1.0, 'GREEN', 0.2, 'GREEN', "
+                "2.0, 'GREEN', '[]', '2026-10-16 19:15:00')"
+            )
+            conn.execute("INSERT INTO ticker_risk_contribution VALUES ('ZRM1', 8.0, 'GREEN', 1.0, 0.2, NULL, '2026-10-16 19:15:00')")
+            conn.commit()
+            migrate_db(conn, conn.cursor())
+            notnull = {t: {c["name"]: c["notnull"] for c in conn.execute(f"PRAGMA table_info({t})")}
+                       for t in ("portfolio_heat_index", "ticker_risk_contribution")}
+            heat = {r["scope"]: r for r in conn.execute("SELECT * FROM portfolio_heat_index")}
+            ticker = conn.execute("SELECT * FROM ticker_risk_contribution WHERE ticker = 'ZRM1'").fetchone()
+        finally:
+            conn.close()
+            persist_ticker_contributions([])
+        assert not notnull["portfolio_heat_index"]["phi_score"] and not notnull["portfolio_heat_index"]["tier"]
+        assert not notnull["ticker_risk_contribution"]["risk_score"] and not notnull["ticker_risk_contribution"]["risk_tier"]
+        assert heat["all"]["phi_score"] is None and heat["all"]["tier"] is None
+        assert heat["all"]["correlation_tier"] is None and heat["all"]["var_tier"] == "GREEN"
+        assert (heat["acct:1"]["phi_score"], heat["acct:1"]["tier"]) == (30.0, "GREEN")
+        assert ticker["risk_score"] is None and ticker["risk_tier"] is None
+
+    def test_portfolio_page_shows_an_unavailable_heat_index_not_a_green_score(self, client):
+        persist_heat_index({
+            "scope": "all", "scope_label": "All Accounts", "phi_score": None, "tier": None, "var_pct_of_equity": 1.0,
+            "var_tier": TIER_GREEN, "max_correlation": None, "correlation_tier": None, "drawdown_pct": 2.0,
+            "drawdown_tier": TIER_GREEN, "breakdown_json": json.dumps(["Score unavailable: correlation could not be computed"]),
+        })
+        try:
+            html = client.get("/portfolio").text
+        finally:
+            conn = get_connection()
+            try:
+                conn.execute("DELETE FROM portfolio_heat_index WHERE scope = 'all'")
+                conn.commit()
+            finally:
+                conn.close()
+        assert "Score unavailable: correlation could not be computed" in html
+        assert "risk-summary-unavailable" in html and "None/100" not in html
 
 
 class TestEvaluatePretradeCheck:

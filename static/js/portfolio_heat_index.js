@@ -1,18 +1,21 @@
 function _phiTierClass(tier) {
     if (tier === 'RED') return 'risk-summary-red';
     if (tier === 'YELLOW') return 'risk-summary-yellow';
+    if (!tier) return 'risk-summary-unavailable';
     return 'risk-summary-green';
 }
 
 function _phiTierIcon(tier) {
     if (tier === 'RED') return '🚨';
     if (tier === 'YELLOW') return '⚠️';
+    if (!tier) return '❔';
     return '✅';
 }
 
 function _phiMetricClass(tier) {
     if (tier === 'RED') return 'metric-poor';
     if (tier === 'YELLOW') return 'metric-neutral';
+    if (!tier) return 'metric-neutral';
     return 'metric-excellent';
 }
 
@@ -24,7 +27,7 @@ function _phiRenderScopes(scopes) {
     }
     el.innerHTML = scopes.map(s => `
         <div class="sentiment-widget risk-summary-row ${_phiTierClass(s.tier)}">
-            <h3 class="risk-summary-header ${s.tier.toLowerCase()}">${_phiTierIcon(s.tier)} ${escapeHtml(s.scope_label)}: ${s.phi_score}/100</h3>
+            <h3 class="risk-summary-header ${s.tier ? s.tier.toLowerCase() : 'unavailable'}">${_phiTierIcon(s.tier)} ${escapeHtml(s.scope_label)}: ${s.phi_score != null ? s.phi_score + '/100' : 'unavailable'}</h3>
             <p class="risk-summary-text">
                 ${(s.breakdown || []).map(line => escapeHtml(line)).join('<br>')}
                 <br><span class="text-muted text-xs">Last updated: ${escapeHtml(s.last_updated)}</span>
@@ -42,8 +45,8 @@ function _phiRenderTickers(tickers) {
     tbody.innerHTML = tickers.map(t => `
         <tr>
             <td><a href="/stock/${encodeURIComponent(t.ticker)}">${escapeHtml(t.ticker)}</a></td>
-            <td class="${_phiMetricClass(t.risk_tier)}">${escapeHtml(t.risk_tier)}</td>
-            <td>${t.risk_score}</td>
+            <td class="${_phiMetricClass(t.risk_tier)}">${t.risk_tier ? escapeHtml(t.risk_tier) : 'N/A'}</td>
+            <td>${t.risk_score != null ? t.risk_score : 'N/A'}</td>
             <td>${t.marginal_var_contribution_pct != null ? t.marginal_var_contribution_pct + '%' : 'N/A'}</td>
             <td>${t.max_pairwise_correlation != null ? t.max_pairwise_correlation : 'N/A'}</td>
             <td>${t.stop_distance_pct != null ? t.stop_distance_pct + '%' : 'N/A'}</td>
