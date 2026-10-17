@@ -21,37 +21,39 @@ SCHEDULER_STATUS_SOURCE = "scheduler_status"
 _LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
 
 # Alert/briefing sources: each carries its canonical label and parent job_id (for grouping
-# in the Settings panel) plus per-channel default routing.
+# in the Settings panel) plus per-channel default routing. `alert_type` is the message_type
+# the source's rows carry; only those types are served to MCP clients, so a source without
+# one (job-status text carries raw exception text, rule 23) never reaches them.
 NOTIFICATION_SOURCES: dict[str, dict] = {
-    "crash_alert":           {"label": "Crash Alert",                  "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
-    "moonshot_alert":        {"label": "Moonshot Alert",               "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
-    "anomaly_alert":         {"label": "Anomaly Alert",                "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
-    "macro_yield_alert":     {"label": "Macro Yield Surge Alert",      "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
-    "holding_limit_alert":   {"label": "Position Target Reached",      "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
-    "risk_orchestrator_stop_breach": {"label": "Risk Orchestrator — Stop Breach",   "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
-    "risk_orchestrator_phi_critical": {"label": "Risk Orchestrator — PHI Critical", "job_id": "risk_orchestrator_job",     "default": dict(_ON)},
-    "risk_orchestrator_correlation_spike": {"label": "Risk Orchestrator — Correlation Spike", "job_id": "risk_orchestrator_job", "default": dict(_ON)},
-    "hmm_regime_alert":      {"label": "Market Regime Change (HMM)",   "job_id": "quant_analysis_job",        "default": dict(_NO_TALK)},
-    "market_stress_alert":   {"label": "Market Stress Alert",          "job_id": "quant_analysis_job",        "default": dict(_NO_TALK)},
-    "ai_contagion_alert":    {"label": "AI Sector Contagion Alert",    "job_id": "ai_contagion_job",          "default": dict(_NO_TALK)},
-    "trap_monitor_alert":    {"label": "Market Trap & Recovery Alert", "job_id": "trap_monitor_job",          "default": dict(_NO_TALK)},
+    "crash_alert":           {"label": "Crash Alert",                  "job_id": "intraday_orchestrator_job", "alert_type": "Crash", "default": dict(_ON)},
+    "moonshot_alert":        {"label": "Moonshot Alert",               "job_id": "intraday_orchestrator_job", "alert_type": "Moonshot", "default": dict(_ON)},
+    "anomaly_alert":         {"label": "Anomaly Alert",                "job_id": "intraday_orchestrator_job", "alert_type": "Anomaly", "default": dict(_ON)},
+    "macro_yield_alert":     {"label": "Macro Yield Surge Alert",      "job_id": "intraday_orchestrator_job", "alert_type": "Macro", "default": dict(_ON)},
+    "holding_limit_alert":   {"label": "Position Target Reached",      "job_id": "intraday_orchestrator_job", "alert_type": "HoldingLimit", "default": dict(_ON)},
+    "risk_orchestrator_stop_breach": {"label": "Risk Orchestrator — Stop Breach",   "job_id": "intraday_orchestrator_job", "alert_type": "AtrStopBreach", "default": dict(_ON)},
+    "risk_orchestrator_phi_critical": {"label": "Risk Orchestrator — PHI Critical", "job_id": "risk_orchestrator_job",     "alert_type": "PhiCritical", "default": dict(_ON)},
+    "risk_orchestrator_correlation_spike": {"label": "Risk Orchestrator — Correlation Spike", "job_id": "risk_orchestrator_job", "alert_type": "CorrelationSpike", "default": dict(_ON)},
+    "hmm_regime_alert":      {"label": "Market Regime Change (HMM)",   "job_id": "quant_analysis_job",        "alert_type": "HMM Regime", "default": dict(_NO_TALK)},
+    "market_stress_alert":   {"label": "Market Stress Alert",          "job_id": "quant_analysis_job",        "alert_type": "Market Stress", "default": dict(_NO_TALK)},
+    "ai_contagion_alert":    {"label": "AI Sector Contagion Alert",    "job_id": "ai_contagion_job",          "alert_type": "AIContagion", "default": dict(_NO_TALK)},
+    "trap_monitor_alert":    {"label": "Market Trap & Recovery Alert", "job_id": "trap_monitor_job",          "alert_type": "TrapMonitor", "default": dict(_NO_TALK)},
     "bubble_radar_alert":    {"label": "Bubble Radar Alert",           "job_id": "bubble_radar_job",          "default": dict(_NO_TALK)},
-    "pairs_spread_alert":    {"label": "Pairs Spread Monitor Alert",   "job_id": "pairs_spread_monitor_job",  "default": dict(_NO_TALK)},
-    "pattern_detection_alert": {"label": "Pattern Detection Alert",     "job_id": "pattern_detection_job",   "default": dict(_NO_TALK)},
-    "dip_radar_alert":       {"label": "Dip Radar — Bottom Detected",  "job_id": "intraday_dip_scan_job",     "default": dict(_NO_TALK)},
-    "earnings_alert":        {"label": "Portfolio Earnings Alert",     "job_id": "earnings_alert_job",        "default": dict(_ON)},
-    "insider_alert":         {"label": "Insider Trading Alert",        "job_id": "insider_alert_job",         "default": dict(_ON)},
-    "cb_nlp_alert":          {"label": "Central Bank NLP Alert",       "job_id": "cb_nlp_alert_job",          "default": dict(_ON)},
+    "pairs_spread_alert":    {"label": "Pairs Spread Monitor Alert",   "job_id": "pairs_spread_monitor_job",  "alert_type": "PairsSpreadMonitor", "default": dict(_NO_TALK)},
+    "pattern_detection_alert": {"label": "Pattern Detection Alert",     "job_id": "pattern_detection_job",   "alert_type": "PatternDetector", "default": dict(_NO_TALK)},
+    "dip_radar_alert":       {"label": "Dip Radar — Bottom Detected",  "job_id": "intraday_dip_scan_job",     "alert_type": "DipRadar", "default": dict(_NO_TALK)},
+    "earnings_alert":        {"label": "Portfolio Earnings Alert",     "job_id": "earnings_alert_job",        "alert_type": "Earnings", "default": dict(_ON)},
+    "insider_alert":         {"label": "Insider Trading Alert",        "job_id": "insider_alert_job",         "alert_type": "Insider", "default": dict(_ON)},
+    "cb_nlp_alert":          {"label": "Central Bank NLP Alert",       "job_id": "cb_nlp_alert_job",          "alert_type": "Macro NLP", "default": dict(_ON)},
     "network_fault":         {"label": "Network Fault Alert",          "job_id": None,                        "default": dict(_NO_TALK)},
     "forensic_fetch_status": {"label": "Forensic Quarterly Data Fetch", "job_id": "forensic_quarterly_fetch_job", "default": dict(_NO_TALK)},
-    "forensic_alert":          {"label": "Forensic Accounting Alert",       "job_id": "forensic_scores_job",    "default": dict(_ON)},
+    "forensic_alert":          {"label": "Forensic Accounting Alert",       "job_id": "forensic_scores_job",    "alert_type": "Forensic Alert", "default": dict(_ON)},
     "etf_predictor":           {"label": "ETF Predictor",                   "job_id": None,                     "default": dict(_NO_TALK)},
-    "treasury_auction_alert":  {"label": "Sovereign Debt Auction Alert",    "job_id": "macro_auction_job_am",   "default": dict(_ON)},
+    "treasury_auction_alert":  {"label": "Sovereign Debt Auction Alert",    "job_id": "macro_auction_job_am",   "alert_type": "Auction Weakness", "default": dict(_ON)},
     "accounts_csv_import":     {"label": "Accounts CSV Import",             "job_id": None,                     "default": dict(_NO_TALK)},
     "backup_status":           {"label": "Automated Backup",                "job_id": "backup_job",             "default": dict(_NO_TALK)},
     "account_value_snapshot_status": {"label": "Account Value Snapshot",    "job_id": "account_value_snapshot_job", "default": dict(_NO_TALK)},
     "treasury_bill_maturity_status": {"label": "Treasury Bill Maturity Sweep", "job_id": "treasury_bill_maturity_sweep_job", "default": dict(_NO_TALK)},
-    "treasury_bill_reminder":        {"label": "Treasury Bill Reinvest Reminder", "job_id": "treasury_bill_maturity_sweep_job", "default": dict(_ON)},
+    "treasury_bill_reminder":        {"label": "Treasury Bill Reinvest Reminder", "job_id": "treasury_bill_maturity_sweep_job", "alert_type": "Reminder", "default": dict(_ON)},
     "account_autotopup_status": {"label": "Account Auto Top-up",            "job_id": None,                     "default": dict(_ON)},
     "system_update_status":    {"label": "System Updates & Power",          "job_id": None,                     "default": dict(_NO_TALK)},
     "ha_refresh_now_status":   {"label": "Home Assistant Refresh Now",      "job_id": None,                     "default": dict(_NO_TALK)},
@@ -62,6 +64,8 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "sentiment_scan_degraded": {"label": "NLP Sentiment Scan Degraded",    "job_id": "sentiment_scan_job",     "default": dict(_ON)},
     "failed_login_alert":      {"label": "Failed Login Alert",              "job_id": None,                     "default": dict(_ON)},
 }
+
+ALERT_MESSAGE_TYPES = tuple(meta["alert_type"] for meta in NOTIFICATION_SOURCES.values() if "alert_type" in meta)
 
 CATEGORY_LABELS = {
     "data": "Data Ingestion",

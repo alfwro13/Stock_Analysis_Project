@@ -6,12 +6,13 @@ import pytest
 from alert_referee_engine import CONFLUENCE_ENGINE, TRAP_MONITOR_ENGINE, log_veto_evaluation
 from constants import MCP_ALERT_TEXT_MAX_CHARS, MCP_ALERTS_MAX_DAYS, MCP_ALERTS_MAX_ROWS
 from database import get_connection
-from db_helpers import JOB_STATUS_MESSAGE_TYPES
+from notification_engine import ALERT_MESSAGE_TYPES
 
 from .helpers import call, emptied_tables, rpc, table_counts, tool_data
 
 _STAMP = "%Y-%m-%d %H:%M:%S"
 _TABLES = ("system_notifications", "trap_monitor_results", "alert_referee_log")
+NOT_ALERT_TYPES = ("Info", "Success", "Scheduler", "Warning", "Error", "Maintenance", "Network Fault", "CSV Import — Skipped Rows")
 
 
 def _ago(**delta):
@@ -76,13 +77,23 @@ class TestGetAlerts:
         _notify("Crash", "**ZZAL1** crashed", _ago(days=2))
         _notify("TrapMonitor", "**ZZAL2** — Phase: BULL TRAP RISK", _ago(hours=1), status="sent")
         _notify("Moonshot", "too old to count", _ago(days=9))
-        for index, status_type in enumerate(JOB_STATUS_MESSAGE_TYPES):
+        for index, status_type in enumerate(NOT_ALERT_TYPES):
             _notify(status_type, f"job status {index}: Traceback (most recent call last)", _ago(minutes=index + 1))
         rows = self._alerts(mcp_client)["data"]["notifications"]["rows"]
         assert [r["type"] for r in rows] == ["TrapMonitor", "Crash"]
         assert rows[0]["text"] == "**ZZAL2** — Phase: BULL TRAP RISK" and rows[0]["status"] == "sent"
         assert rows[0]["at"].endswith("Z")
         assert "Traceback" not in str(rows)
+
+    def test_every_registered_alert_type_is_returned(self, mcp_client, alert_tables):
+        for index, alert_type in enumerate(ALERT_MESSAGE_TYPES):
+            _notify(alert_type, f"alert {index}", _ago(minutes=index))
+        part = self._alerts(mcp_client)["data"]["notifications"]
+        assert {r["type"] for r in part["rows"]} == set(ALERT_MESSAGE_TYPES) and part["truncated"] is False
+
+    def test_a_new_unregistered_type_is_hidden_until_registered(self, mcp_client, alert_tables):
+        _notify("BrandNewStatus", "raw Traceback (most recent call last)", _ago(minutes=1))
+        assert self._alerts(mcp_client)["data"]["notifications"]["rows"] == []
 
     def test_days_widens_and_narrows_the_window(self, mcp_client, alert_tables):
         _notify("Crash", "old", _ago(days=9))
