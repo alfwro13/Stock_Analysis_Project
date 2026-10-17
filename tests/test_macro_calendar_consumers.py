@@ -1,9 +1,10 @@
 """
 tests/test_macro_calendar_consumers.py  ── MACRO CALENDAR READERS
 
-Covers the two consumers that read upcoming events through db_helpers.get_upcoming_macro_events():
+Covers the consumers that read upcoming events through db_helpers.get_upcoming_macro_events():
   • ai_engine's 7-day Tier-1 radar: High impact only, soonest first, at most 12 rows, window [now, now + 7d]
   • the Market Sentiment page: urgent (48h, every currency), US and UK lists from one 7-day read
+  • the Market Sentiment prompts: per-currency list in [now, now + 7d], highest surprise probability first (NULL last), at most 5
 """
 
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,7 @@ import pytest
 
 import page_routes_macro
 from ai_engine import AIPromptEngine
+from ai_sentiment_engine import AISentimentPromptEngine
 from database import get_connection
 
 _STAMP = "%Y-%m-%d %H:%M:%S"
@@ -127,3 +129,36 @@ class TestMarketSentimentPage:
     def test_an_empty_calendar_yields_empty_lists(self, client, calendar):
         context = self._context(client)
         assert context["urgent_events"] == [] and context["us_events"] == [] and context["uk_events"] == []
+
+
+class TestSentimentPromptEvents:
+    def test_each_currency_gets_its_own_events_highest_miss_probability_first(self, calendar):
+        _seed([
+            {"when": _at(days=1), "name": "ZZ Low USD", "miss": 0.2},
+            {"when": _at(days=2), "name": "ZZ High USD", "miss": 0.9},
+            {"when": _at(days=3), "name": "ZZ Unscored USD"},
+            {"when": _at(days=4), "name": "ZZ Mid USD", "miss": 0.5},
+            {"when": _at(days=1), "name": "ZZ Only GBP", "currency": "GBP", "miss": 0.1},
+            {"when": _at(days=9), "name": "ZZ Beyond Window", "miss": 0.99},
+            {"when": _at(hours=-3), "name": "ZZ Already Past", "miss": 0.99},
+        ])
+        engine = AISentimentPromptEngine()
+        assert [e["event_name"] for e in engine._upcoming_events("USD")] == [
+            "ZZ High USD", "ZZ Mid USD", "ZZ Low USD", "ZZ Unscored USD",
+        ]
+        assert [e["event_name"] for e in engine._upcoming_events("GBP")] == ["ZZ Only GBP"]
+
+    def test_keeps_the_five_highest_and_includes_every_impact_level(self, calendar):
+        _seed([{"when": _at(hours=1 + n), "name": f"ZZ Event {n}", "miss": n / 10, "impact": "Low" if n == 9 else "High"} for n in range(10)])
+        names = [e["event_name"] for e in AISentimentPromptEngine()._upcoming_events("USD")]
+        assert names == [f"ZZ Event {n}" for n in (9, 8, 7, 6, 5)]
+
+    def test_prompt_data_carries_the_events(self, calendar):
+        _seed([{"when": _at(days=1), "name": "ZZ Prompt USD", "miss": 0.4}, {"when": _at(days=1), "name": "ZZ Prompt GBP", "currency": "GBP"}])
+        engine = AISentimentPromptEngine()
+        assert [e["event_name"] for e in engine._gather_us_data()["us_events"]] == ["ZZ Prompt USD"]
+        assert [e["event_name"] for e in engine._gather_uk_data()["uk_events"]] == ["ZZ Prompt GBP"]
+
+    def test_a_failed_read_leaves_an_empty_list(self):
+        with patch("ai_sentiment_engine.get_upcoming_macro_events", side_effect=RuntimeError("db down")):
+            assert AISentimentPromptEngine()._upcoming_events("USD") == []

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from database import get_connection
+from db_helpers import get_upcoming_macro_events
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,19 @@ class AISentimentPromptEngine:
         except (TypeError, ValueError):
             return "N/A"
 
+    def _upcoming_events(self, currency: str) -> list:
+        try:
+            now = datetime.now(timezone.utc)
+            window = get_upcoming_macro_events(
+                now.strftime("%Y-%m-%d %H:%M:%S"), (now + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+            )
+        except Exception as e:
+            logger.error("ai_sentiment_engine: macro_calendar (%s) query failed: %s", currency, e)
+            return []
+        events = [e for e in window["events"] if e["currency"] == currency]
+        events.sort(key=lambda e: (e["ai_consensus_miss_prob"] is None, -(e["ai_consensus_miss_prob"] or 0.0)))
+        return events[:5]
+
     def _gather_us_data(self) -> dict:
         data: dict = {}
         with self._db() as cur:
@@ -149,21 +163,7 @@ class AISentimentPromptEngine:
             except Exception as e:
                 logger.error("ai_sentiment_engine: macro_regimes (US) query failed: %s", e)
 
-            try:
-                cutoff = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                cur.execute(
-                    "SELECT event_name, event_date, forecast_val, previous_val, "
-                    "ai_consensus_miss_prob, ai_volatility_warning "
-                    "FROM macro_calendar "
-                    "WHERE currency='USD' AND is_event_passed=0 AND event_date BETWEEN ? AND ? "
-                    "ORDER BY ai_consensus_miss_prob DESC LIMIT 5",
-                    (now_str, cutoff),
-                )
-                data["us_events"] = [dict(r) for r in cur.fetchall()]
-            except Exception as e:
-                logger.error("ai_sentiment_engine: macro_calendar (USD) query failed: %s", e)
-                data["us_events"] = []
+            data["us_events"] = self._upcoming_events("USD")
 
             try:
                 cur.execute(
@@ -226,21 +226,7 @@ class AISentimentPromptEngine:
             except Exception as e:
                 logger.error("ai_sentiment_engine: macro_regimes (UK) query failed: %s", e)
 
-            try:
-                cutoff = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                cur.execute(
-                    "SELECT event_name, event_date, forecast_val, previous_val, "
-                    "ai_consensus_miss_prob, ai_volatility_warning "
-                    "FROM macro_calendar "
-                    "WHERE currency='GBP' AND is_event_passed=0 AND event_date BETWEEN ? AND ? "
-                    "ORDER BY ai_consensus_miss_prob DESC LIMIT 5",
-                    (now_str, cutoff),
-                )
-                data["uk_events"] = [dict(r) for r in cur.fetchall()]
-            except Exception as e:
-                logger.error("ai_sentiment_engine: macro_calendar (GBP) query failed: %s", e)
-                data["uk_events"] = []
+            data["uk_events"] = self._upcoming_events("GBP")
 
         return data
 
