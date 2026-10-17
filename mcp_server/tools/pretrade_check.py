@@ -9,11 +9,11 @@ from db_helpers import parse_utc_epoch
 from page_helpers import get_portfolio_heat_row
 from portfolio_service import persisted_fx_reads
 from risk_orchestrator_engine import evaluate_pretrade_check
-from utils import INVALID_TICKER_MESSAGE, is_valid_ticker, normalize_ticker
+from utils import normalize_ticker
 from xray_engine import XRayScopeUnavailable
 
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, envelope
-from ..scope import ACCOUNT_ALL, AccountArg, resolve_scope
+from ..scope import ACCOUNT_ALL, AccountArg, resolve_scope, valid_ticker
 from ..server import READ_ONLY, server
 from .get_heat_index import heat_summary
 from .get_ticker_snapshot import TickerArg
@@ -89,10 +89,7 @@ def pretrade_check(
     ticker: TickerArg, side: Literal["buy", "sell"], amount: Optional[AmountArg] = None, account: AccountArg = ACCOUNT_ALL,
 ) -> dict[str, Any]:
     """Advisory what-if for adding amount (in the base currency) of ticker to account ("all" or a scope_id from get_accounts): approve, warn or reject from the Portfolio Heat Index tier after the addition, with the VaR, correlation and drawdown behind it and a smaller size that would help. side buy requires amount; side sell gives no verdict, only the account's current Heat Index. Nothing is stored and no data is fetched: a ticker without cached price history gets no verdict."""
-    stripped = ticker.strip()
-    if not is_valid_ticker(stripped):
-        raise ToolError("Invalid ticker: " + INVALID_TICKER_MESSAGE)
-    ticker = normalize_ticker(stripped)
+    ticker = normalize_ticker(valid_ticker(ticker))
     scope = resolve_scope(account, allow_ghostfolio=True)
     if side == "sell":
         return _sell_context(ticker, scope)

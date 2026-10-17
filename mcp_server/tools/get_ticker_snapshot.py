@@ -12,10 +12,11 @@ from db_helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import get_all_cached_pulse
 from market_session_helpers import extended_quote_from_snapshot
 from page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
-from utils import INVALID_TICKER_MESSAGE, cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector, is_valid_ticker
+from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector
 from yahoo_engine import yahoo_engine
 
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_utc
+from ..scope import valid_ticker
 from ..server import READ_ONLY, server
 
 TickerArg = Annotated[str, Field(max_length=MCP_TICKER_MAX_CHARS)]
@@ -42,9 +43,7 @@ _UNITS = {
 
 
 def _resolve(ticker: str) -> tuple:
-    stripped = ticker.strip()
-    if not is_valid_ticker(stripped):
-        raise ToolError("Invalid ticker: " + INVALID_TICKER_MESSAGE)
+    stripped = valid_ticker(ticker)
     holdings = get_combined_holdings()
     watchlist = set(get_watchlist_tickers())
     for candidate in dict.fromkeys((stripped, stripped.upper())):

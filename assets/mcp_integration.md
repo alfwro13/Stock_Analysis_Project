@@ -161,7 +161,7 @@ A value that is unavailable is `null`, never `0.0` (AGENTS.md). Non-finite numbe
 
 ### The `ticker` argument
 
-`get_ticker_snapshot` takes one `ticker`. It is trimmed, checked with `utils.is_valid_ticker()` (1-64 characters from `A-Z a-z 0-9 ^ . = _ -`; capped by `MCP_TICKER_MAX_CHARS`, `constants.py`, request-limits block) and looked up as typed, then upper-cased. A malformed value is refused with `Invalid ticker: ...` before any lookup. A ticker the dashboard does not track is refused with `Unknown ticker. get_ticker_snapshot serves tickers the dashboard already tracks...`; the rejected text is not echoed.
+`get_ticker_snapshot` takes one `ticker`. It is trimmed and checked by `mcp_server.scope.valid_ticker()` (the one check also used by `get_news`, `pretrade_check` and the prompts; it wraps `utils.is_valid_ticker()`, 1-64 characters from `A-Z a-z 0-9 ^ . = _ -`; capped by `MCP_TICKER_MAX_CHARS`, `constants.py`, request-limits block) and looked up as typed, then upper-cased. A malformed value is refused with `Invalid ticker: ...` before any lookup. A ticker the dashboard does not track is refused with `Unknown ticker. get_ticker_snapshot serves tickers the dashboard already tracks...`; the rejected text is not echoed.
 
 `get_ticker_snapshot` details:
 

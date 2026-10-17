@@ -2,10 +2,10 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.shared.exceptions import MCPError
 from mcp_types import INVALID_PARAMS
 
-from utils import INVALID_TICKER_MESSAGE, is_valid_ticker, normalize_ticker
+from utils import normalize_ticker
 
 from ..resources.investment_policy import POLICY_URI
-from ..scope import ACCOUNT_ALL, resolve_scope
+from ..scope import ACCOUNT_ALL, resolve_scope, valid_ticker as checked_ticker
 
 GROUND_RULES = (
     "Ground rules:\n"
@@ -42,10 +42,10 @@ def valid_scope(account: str) -> str:
 
 
 def valid_ticker(ticker: str) -> str:
-    stripped = ticker.strip()
-    if not is_valid_ticker(stripped):
-        raise MCPError(INVALID_PARAMS, "Invalid ticker: " + INVALID_TICKER_MESSAGE)
-    return normalize_ticker(stripped)
+    try:
+        return normalize_ticker(checked_ticker(ticker))
+    except ToolError as e:
+        raise MCPError(INVALID_PARAMS, str(e)) from e
 
 
 def scope_text(scope: str) -> str:

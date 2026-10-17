@@ -1,10 +1,13 @@
-"""The account argument shared by get_holdings and get_xray."""
+"""The account argument shared by get_holdings and get_xray, and the ticker check shared by every ticker-taking tool and prompt."""
 from unittest.mock import patch
 
 import pytest
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.shared.exceptions import MCPError
 
 import constants
 from mcp_server import scope
+from mcp_server.prompts.shared import valid_ticker as prompt_ticker
 from xray_engine import XRayScopeUnavailable
 
 from .helpers import call, error_text
@@ -45,3 +48,20 @@ class TestAccountArgument:
             with patch("mcp_server.tools.get_xray.assemble_xray_report", side_effect=XRayScopeUnavailable("Ghostfolio authentication failed.")) as xray:
                 assert error_text(call(mcp_client, "get_xray", {"account": "gf-uuid-1"})) == "Ghostfolio authentication failed."
             xray.assert_called_once_with("gf-uuid-1")
+
+
+class TestTickerArgument:
+    @pytest.mark.parametrize("typed", ["AAPL", "  AAPL  ", "aapl", "BP.L", "gf-uuid-1"])
+    def test_a_valid_ticker_is_trimmed_and_keeps_its_case(self, typed):
+        assert scope.valid_ticker(typed) == typed.strip()
+
+    @pytest.mark.parametrize("bad", ["", "   ", "../etc/passwd", "AAA BBB", "A;B", "AAPL\nX", "ü"])
+    def test_a_malformed_ticker_is_refused_without_echo(self, bad):
+        with pytest.raises(ToolError, match="^Invalid ticker: ") as raised:
+            scope.valid_ticker(bad)
+        assert bad.strip() == "" or bad.strip() not in str(raised.value)
+
+    def test_the_prompt_check_upper_cases_and_raises_an_invalid_params_error(self):
+        assert prompt_ticker("  bp.l ") == "BP.L"
+        with pytest.raises(MCPError, match="^Invalid ticker: "):
+            prompt_ticker("A;B")
