@@ -82,7 +82,7 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 #### `macro_calendar`
 * **Purpose:** Tracks Tier-1 economic events, their ground-truth effects on the SPY, and AI-predicted volatility warnings.
 * **Key Columns:** `event_id` (PK), `event_date`, `event_name`, `forecast_val`, `previous_val`, `actual_val`, `post_event_spy_gap`, `ai_volatility_warning`, `ai_consensus_miss_prob`.
-* **Read by the MCP Server:** `get_calendar` reads the upcoming rows through `db_helpers.get_upcoming_macro_events(start, end)`. The feed behind the Macroeconomic Automation Schedulers (Calendar) job lists the current week only, so the table rarely holds events further ahead; `ai_volatility_warning` defaults to `0.0` and is meaningful only where `ai_consensus_miss_prob` is not NULL.
+* **Upcoming events have one reader:** `db_helpers.get_upcoming_macro_events(start, end)` returns the rows in a UTC window plus the newest stored date. The MCP Server's `get_calendar`, the AI prompt's 7-day Tier-1 radar (`ai_engine`, High impact only, 12 rows) and the Market Sentiment page (urgent 48 h, US and UK lists, from one 7-day read) all call it and filter by impact or currency in Python. `ai_sentiment_engine` still has its own per-currency SELECTs. The feed behind the Macroeconomic Automation Schedulers (Calendar) job lists the current week only, so the table rarely holds events further ahead; `ai_volatility_warning` defaults to `0.0` and is meaningful only where `ai_consensus_miss_prob` is not NULL.
 
 #### `macro_indicators`
 * **Purpose:** A structural economic datastore integrating FRED, BoE, and ONS metrics (M2 Supply, Jobless Claims, Yield Curve, CPI, Fed Funds Rate, real yield, nominal GDP growth).
