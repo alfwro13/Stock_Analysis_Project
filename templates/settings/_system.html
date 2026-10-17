@@ -813,17 +813,23 @@
             </div>
 
             <div class="settings-panel mt-20">
-                <h4 class="settings-panel-header text-blue">MCP Key</h4>
-                <p class="settings-desc">Generating a new key immediately invalidates the old one, so reconnect every client with the new value.</p>
-                <p id="mcp_api_key_state" class="settings-desc-sm {{ 'text-success' if secrets_set.MCP_API_KEY else 'text-warning' }}">{{ 'An MCP key is set. It is shown only once, when generated — generate a new one to get a value you can copy.' if secrets_set.MCP_API_KEY else 'No MCP key set — generate one below. Until then every request is refused.' }}</p>
-                <div id="mcp_api_key_once" class="form-group d-none">
-                    <label for="mcp_api_key">New MCP key — copy it now, it will not be shown again</label>
+                <h4 class="settings-panel-header text-blue">MCP Keys</h4>
+                <p class="settings-desc">Give each client its own key, for example one per computer, so you can delete a single one without breaking the others. A key is shown only once, when you create it; deleting it stops that client immediately. Until at least one key exists every request is refused.</p>
+                <div id="mcp_key_once" class="form-group d-none">
+                    <label for="mcp_new_key">New MCP key — copy it now, it will not be shown again</label>
                     <div class="flex-gap-10">
-                        <input type="text" id="mcp_api_key" class="form-control font-monospace flex-1" readonly>
-                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_api_key', this)">📋 Copy</button>
+                        <input type="text" id="mcp_new_key" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_new_key', this)">📋 Copy</button>
                     </div>
                 </div>
-                <button type="button" class="btn btn-primary mt-0" onclick="generateMcpKey()">🔄 {{ 'Rotate MCP Key' if secrets_set.MCP_API_KEY else 'Generate MCP Key' }}</button>
+                <table class="table table-hover w-100">
+                    <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+                    <tbody id="mcp-keys-body"><tr><td colspan="4" class="text-muted">Loading…</td></tr></tbody>
+                </table>
+                <div class="flex-gap-10">
+                    <input type="text" id="mcp_key_name" class="form-control flex-1" maxlength="{{ mcp_key_name_max }}" placeholder="Key name, e.g. dev box 1" aria-label="MCP key name">
+                    <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="createMcpKey()">➕ Create Key</button>
+                </div>
                 <div id="mcp-key-msg"></div>
             </div>
         </details>

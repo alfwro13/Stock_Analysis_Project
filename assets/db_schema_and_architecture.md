@@ -387,6 +387,12 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 * **Reads:** `auth.login_lockout_remaining()` before each password check.
 * **Not stored here:** the session epoch lives in `.env` (`SESSION_EPOCH`), so the auth middleware needs no query per request.
 
+#### `mcp_api_keys`
+* **Purpose:** The named keys that authenticate the MCP Server (`/mcp`). One row per client, so a single key can be deleted without breaking the others.
+* **Key Columns:** `id` (PK AUTOINCREMENT), `name` (TEXT, UNIQUE, case-insensitive), `key_hash` (TEXT UNIQUE, SHA-256 hex of the key; the key itself is never stored), `created_at` and `last_used_at` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, `last_used_at` NULL until first use).
+* **Writes:** `mcp_server.keys.create_key()` / `delete_key()` through `db_mcp_keys.py`; `record_use()` writes `last_used_at` at most once per minute per key, on a worker thread.
+* **Reads:** `mcp_server.keys` caches the hashes in memory and drops the cache on every create or delete, so authenticating a request needs no query.
+
 #### `yahoo_api_stats`
 * **Purpose:** Daily aggregated counters for all `yahoo_connection_boundary` invocations. Used by the Yahoo Finance API Usage card in Settings to show request volume, interface breakdown, rate-limit hits, errors, and yfinance-logged issues over the past 8 days.
 * **Key Columns:** `date` (PK TEXT `YYYY-MM-DD` UTC), `total_calls`, `ipv4_calls`, `ipv6_calls`, `rate_limit_429`, `other_errors`, `yfinance_logged_errors` (all INTEGER, default 0).

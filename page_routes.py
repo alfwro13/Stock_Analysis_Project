@@ -28,7 +28,7 @@ from visuals_ai import (
     create_ai_contagion_correlation_heatmap,
 )
 from fx_drag_engine import portfolio_lifetime_fx_breakdown
-from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
+from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, MCP_KEY_NAME_MAX_CHARS
 from page_helpers import get_unread_count, _utc_str_to_local
 from page_routes_etf import page_router_etf
 from page_routes_macro import page_router_macro
@@ -86,11 +86,12 @@ def settings_page(request: Request):
             "auction_pm_input": auction_pm_input,
             "exchange_list": sorted(time_engine.EXCHANGE_HOURS.keys()),
             "unread_count": get_unread_count(),
+            "mcp_key_name_max": MCP_KEY_NAME_MAX_CHARS,
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "secrets_set": {
                 name: bool(os.environ.get(name))
                 for name in (
-                    "API_KEY", "EMBED_TOKEN", "MCP_API_KEY", "NEXTCLOUD_APP_PASSWORD", "NEXTCLOUD_CONVERSATION_TOKEN",
+                    "API_KEY", "EMBED_TOKEN", "NEXTCLOUD_APP_PASSWORD", "NEXTCLOUD_CONVERSATION_TOKEN",
                     "GHOSTFOLIO_TOKEN", "FRED_API_KEY", "HF_TOKEN", "SMTP_PASS",
                 )
             },

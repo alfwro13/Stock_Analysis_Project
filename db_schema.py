@@ -1402,6 +1402,16 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_api_keys (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                key_hash     TEXT NOT NULL UNIQUE,
+                created_at   TEXT NOT NULL,
+                last_used_at TEXT
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS yahoo_api_stats (
                 date                  TEXT PRIMARY KEY,
                 total_calls           INTEGER NOT NULL DEFAULT 0,

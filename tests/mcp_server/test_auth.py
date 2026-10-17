@@ -1,4 +1,4 @@
-"""Bearer MCP_API_KEY check on /mcp: key matrix, scoping away from the other credentials, logging."""
+"""Bearer MCP key check on /mcp: key matrix, scoping away from the other credentials, logging."""
 import logging
 import os
 
@@ -35,13 +35,15 @@ class TestAuth:
         assert response.status_code == 401
 
     @pytest.mark.parametrize("presented", [MCP_KEY, "", "anything"])
-    def test_unset_key_fails_closed(self, mcp_client, monkeypatch, presented):
-        monkeypatch.delenv("MCP_API_KEY")
+    def test_no_keys_fails_closed(self, mcp_client, no_mcp_keys, presented):
         assert rpc(mcp_client, "tools/list", key=presented).status_code == 401
 
-    def test_empty_key_fails_closed(self, mcp_client, monkeypatch):
-        monkeypatch.setenv("MCP_API_KEY", "")
+    def test_empty_key_fails_closed(self, mcp_client):
         assert rpc(mcp_client, "tools/list", key="").status_code == 401
+
+    def test_env_variable_no_longer_authenticates(self, mcp_client, no_mcp_keys, monkeypatch):
+        monkeypatch.setenv("MCP_API_KEY", "legacy-env-key")
+        assert rpc(mcp_client, "tools/list", key="legacy-env-key").status_code == 401
 
     def test_home_assistant_key_is_403(self, mcp_client):
         response = rpc(mcp_client, "tools/list", key=None, headers={"X-API-Key": os.environ["API_KEY"]})
@@ -109,9 +111,8 @@ class TestAuth:
         assert "wrong-key-value-123" not in caplog.text
         assert os.environ["API_KEY"] not in caplog.text
 
-    def test_refusing_because_the_key_is_unset_is_logged_without_a_secret(self, mcp_client, monkeypatch, caplog):
-        monkeypatch.delenv("MCP_API_KEY")
+    def test_refusing_because_no_key_exists_is_logged_without_a_secret(self, mcp_client, no_mcp_keys, caplog):
         with caplog.at_level(logging.WARNING, logger="mcp_server"):
             rpc(mcp_client, "tools/list", key="whatever-secret-attempt")
-        assert "MCP_API_KEY is not set" in caplog.text
+        assert "no MCP key exists" in caplog.text
         assert "whatever-secret-attempt" not in caplog.text

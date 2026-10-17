@@ -79,6 +79,9 @@ CSV_IMPORT_MAX_TICKERS      = 200              # unique tickers in one CSV: each
 PRICE_CSV_MAX_CHARS         = 500_000          # price-history CSV body
 PRICE_CSV_MAX_ROWS          = 10_000
 ACCOUNT_NAME_MAX_CHARS      = 100              # AccountBody.name
+MCP_KEY_NAME_MAX_CHARS    = 60               # name of an MCP Server key (McpKeyBody.name)
+MCP_KEYS_MAX                = 20               # MCP Server keys that can exist at once
+MCP_KEY_LAST_USED_WRITE_SECONDS = 60           # an MCP key's last-used time is written at most this often
 INVESTMENT_POLICY_MAX_CHARS = 50_000           # data/investment_policy.md served by the MCP Server; a longer file is refused, not cut
 MCP_ACCOUNT_SCOPE_MAX_CHARS = 64               # `account` argument of the MCP Server tools ("all", "acct:N" or a Ghostfolio UUID)
 MCP_TICKER_MAX_CHARS        = 64               # `ticker` argument of the MCP Server tools (same bound as utils.safe_ticker_filename)
@@ -99,7 +102,7 @@ TABLE_FILTER_CONDITIONS_MAX = 50
 TABLE_FILTER_VALUE_MAX_CHARS = 200
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.185"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.186"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

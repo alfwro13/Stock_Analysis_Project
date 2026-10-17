@@ -1532,7 +1532,7 @@ Signs out every browser and device, including the caller's: raises the session e
 
 ### API key scope
 
-`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected. `/mcp` (the MCP Server) is not covered by this scope and never appears in the table: it has its own `Authorization: Bearer <MCP_API_KEY>` credential (see section 33), and an `X-API-Key` sent to it gets `403`.
+`X-API-Key` is accepted on exactly the routes in `API_KEY_ROUTES` (`api_deps.py`) and nowhere else: the Home Assistant integration is its only caller. A valid key on any other route, HTML page or method gets `403 {"detail": "The API key cannot be used on this route"}`; a wrong or unset key gets `401`. The check runs in `auth_middleware` (`main.py`), before the session check, and matches the HTTP method and the exact path. Step-up-gated routes, `/settings` and every other page need a signed-in session. `/rss/*` is public and is not affected. `/mcp` (the MCP Server) is not covered by this scope and never appears in the table: it has its own `Authorization: Bearer <key>` credential (a named MCP key) (see section 33), and an `X-API-Key` sent to it gets `403`.
 
 | Method | Path | Used by Home Assistant for |
 |--------|------|----------------------------|
@@ -1587,7 +1587,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/generate-mcp-key`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
@@ -1630,14 +1630,34 @@ Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, in
 
 ---
 
-### `POST /api/generate-mcp-key`
+### `GET /api/mcp-keys`
 
-Generates a new MCP Server key (32-byte hex) and persists it to `.env` as `MCP_API_KEY`, invalidating the previous one immediately. Requires a password step-up (see `POST /api/step-up`); an `X-API-Key` or MCP Bearer request has no session and cannot call it. The key is returned only in this response; Settings → MCP Server shows it once and afterwards reports only that a key is set. Limited to 5 requests per minute.
-
-**Response**
+Lists the MCP Server keys (session required; the API key and the MCP key are refused). Never returns a key or its hash.
 
 ```json
-{ "mcp_api_key": "<64-char-hex>" }
+{ "status": "success", "keys": [ { "id": 1, "name": "dev box 1", "created_at": "2026-10-17 10:05 BST", "last_used_at": null } ] }
+```
+
+Times are in the display timezone; `last_used_at` is `null` until the key is first used.
+
+---
+
+### `POST /api/mcp-keys`
+
+Creates a named MCP Server key (32-byte hex). Requires a password step-up (see `POST /api/step-up`). Body `{ "name": "dev box 1" }` (1-60 characters; whitespace is collapsed and control characters removed). Only the SHA-256 hash is stored, so the key is returned in this response and never again. Limited to 10 requests per minute. `409` when the name already exists (ignoring case) or 20 keys exist; `400`/`422` for an empty or over-long name.
+
+```json
+{ "status": "success", "id": 1, "name": "dev box 1", "key": "<64-char-hex>" }
+```
+
+---
+
+### `DELETE /api/mcp-keys/{key_id}`
+
+Deletes one MCP Server key; the client using it is refused from the next request and other keys are unaffected. Requires a password step-up. `404` for an unknown id. Limited to 20 requests per minute.
+
+```json
+{ "status": "success" }
 ```
 
 ---
@@ -5138,13 +5158,13 @@ A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, 
 
 Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per call (`initialize`, `tools/list`, `tools/call`, ...) with `Content-Type: application/json` and `Accept: application/json, text/event-stream`; the reply is one JSON body.
 
-**Authentication.** `Authorization: Bearer <MCP_API_KEY>`, where `MCP_API_KEY` is a secret in `.env`. `auth_middleware` (`main.py`) checks it for `/mcp` and `/mcp/*` only, in constant time, before any other check.
+**Authentication.** `Authorization: Bearer <key>`, where the key is one of the named MCP keys created in Settings → MCP Server (stored as hashes in `mcp_api_keys`). `auth_middleware` (`main.py`) checks it for `/mcp` and `/mcp/*` only, in constant time, before any other check.
 
 | Request | Status |
 |---|---|
 | Valid Bearer key | handled by the SDK (`200`, or the SDK's own `400`/`421`/`403` for a bad Content-Type, Host or Origin) |
 | MCP Server disabled in Settings (`MCP_SERVER_ENABLED` false, the default) | `503 {"detail": "The MCP Server is disabled"}`, checked before the key, so the reply does not depend on what was sent |
-| `MCP_API_KEY` unset or empty (fail closed), no `Authorization`, another scheme, or a wrong key | `401 {"detail": "Invalid or missing MCP key"}` with `WWW-Authenticate: Bearer` |
+| No MCP key exists yet (fail closed), no `Authorization`, another scheme, or a wrong key | `401 {"detail": "Invalid or missing MCP key"}` with `WWW-Authenticate: Bearer` |
 | Any `X-API-Key` header (the Home Assistant key), with or without a Bearer key | `403 {"detail": "The API key cannot be used on this route"}` |
 | A session cookie alone | `401` (a cookie does not authenticate `/mcp`) |
 | A Bearer MCP key on any route other than `/mcp` | ignored: the route's normal authentication applies (`302` to `/login` for a pages and `/api/*` call without a session) |

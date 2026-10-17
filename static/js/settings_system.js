@@ -121,22 +121,63 @@ async function toggleMcpServer(box) {
     }
 }
 
-async function generateMcpKey() {
-    if (!confirm('Generate a new MCP key? The current key will stop working immediately.')) return;
-    setStatus('mcp-key-msg', 'info', 'Generating…');
-    const res = await stepUpFetch('/api/generate-mcp-key', { method: 'POST' });
+async function loadMcpKeys() {
+    const body = document.getElementById('mcp-keys-body');
+    const res = await fetch('/api/mcp-keys');
+    if (!res.ok) {
+        body.innerHTML = '<tr><td colspan="4" class="text-muted">Could not load the keys.</td></tr>';
+        return;
+    }
+    const keys = (await res.json()).keys;
+    if (!keys.length) {
+        body.innerHTML = '<tr><td colspan="4" class="text-warning">No MCP keys yet — create one below.</td></tr>';
+        return;
+    }
+    body.innerHTML = keys.map(k => `<tr><td>${escapeHtml(k.name)}</td><td>${escapeHtml(k.created_at)}</td><td>${escapeHtml(k.last_used_at || 'Never')}</td>`
+        + `<td><button type="button" class="btn btn-danger mt-0" data-key-id="${escapeHtml(String(k.id))}" data-key-name="${escapeHtml(k.name)}">🗑️ Delete</button></td></tr>`).join('');
+}
+
+async function createMcpKey() {
+    const input = document.getElementById('mcp_key_name');
+    const name = input.value.trim();
+    if (!name) { setStatus('mcp-key-msg', 'error', 'Enter a name for the key.'); return; }
+    setStatus('mcp-key-msg', 'info', 'Creating…');
+    const res = await stepUpFetch('/api/mcp-keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-        showGeneratedSecret('mcp_api_key', data.mcp_api_key);
-        setStatus('mcp-key-msg', 'success', 'New MCP key generated and saved. Copy it now — it will not be shown again.');
+        document.getElementById('mcp_new_key').value = data.key;
+        document.getElementById('mcp_key_once').classList.remove('d-none');
+        input.value = '';
+        setStatus('mcp-key-msg', 'success', 'Key created. Copy it now — it will not be shown again.');
+        loadMcpKeys();
     } else {
-        setStatus('mcp-key-msg', 'error', data.detail || 'Failed to generate key.');
+        setStatus('mcp-key-msg', 'error', typeof data.detail === 'string' ? data.detail : 'Failed to create the key.');
+    }
+}
+
+async function deleteMcpKey(id, name) {
+    if (!confirm(`Delete the MCP key "${name}"? Any client using it stops working immediately.`)) return;
+    setStatus('mcp-key-msg', 'info', 'Deleting…');
+    const res = await stepUpFetch('/api/mcp-keys/' + encodeURIComponent(id), { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-key-msg', 'success', 'Key deleted.');
+        loadMcpKeys();
+    } else {
+        setStatus('mcp-key-msg', 'error', typeof data.detail === 'string' ? data.detail : 'Failed to delete the key.');
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const url = document.getElementById('mcp_endpoint_url');
     if (url) url.textContent = window.location.origin + '/mcp';
+    const keysBody = document.getElementById('mcp-keys-body');
+    if (!keysBody) return;
+    keysBody.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-key-id]');
+        if (btn) deleteMcpKey(btn.dataset.keyId, btn.dataset.keyName);
+    });
+    loadMcpKeys();
 });
 
 async function generateEmbedToken() {

@@ -3,15 +3,38 @@ import time
 import pytest
 
 import accounts_engine
+import db_mcp_keys
 from database import add_transaction, create_account, get_connection
 
-from .helpers import ACCOUNT_TABLES, MCP_KEY
+from .helpers import ACCOUNT_TABLES, MCP_KEY, emptied_tables
+
+
+class _InlineExecutor:
+    def submit(self, fn, *args):
+        fn(*args)
 
 
 @pytest.fixture(autouse=True)
 def _mcp_key(monkeypatch):
-    monkeypatch.setenv("MCP_API_KEY", MCP_KEY)
+    from mcp_server import keys
     monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": True})
+    monkeypatch.setattr(keys, "_executor", _InlineExecutor())
+    key_id = db_mcp_keys.add_key("Test key", keys.hash_key(MCP_KEY), "2026-10-01 09:00:00")
+    keys.invalidate()
+    try:
+        yield
+    finally:
+        db_mcp_keys.delete_key(key_id)
+        keys.invalidate()
+
+
+@pytest.fixture
+def no_mcp_keys():
+    from mcp_server import keys
+    with emptied_tables("mcp_api_keys"):
+        keys.invalidate()
+        yield
+    keys.invalidate()
 
 
 @pytest.fixture
