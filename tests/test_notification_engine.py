@@ -193,6 +193,33 @@ class TestRegistryIntegrity:
             if meta["job_id"] is not None:
                 assert meta["job_id"] in JOB_GRAPH, f"{key} parent job {meta['job_id']} not in JOB_GRAPH"
 
+    def test_alert_message_types_are_unique_and_never_a_job_status_type(self):
+        status_types = {"Info", "Success", "Scheduler", "Warning", "Error", "Maintenance"}
+        assert ne.ALERT_MESSAGE_TYPES
+        assert len(set(ne.ALERT_MESSAGE_TYPES)) == len(ne.ALERT_MESSAGE_TYPES)
+        assert not status_types & set(ne.ALERT_MESSAGE_TYPES)
+
+    def test_network_fault_is_not_an_mcp_alert_type_because_its_text_is_a_stack_trace(self):
+        assert "Network Fault" not in ne.ALERT_MESSAGE_TYPES
+        assert "alert_type" not in ne.NOTIFICATION_SOURCES["network_fault"]
+
+    def test_intraday_alert_engines_map_to_their_registered_alert_type(self):
+        from intraday_orchestrator import _ALERT_SOURCES
+        for engine, source in _ALERT_SOURCES.items():
+            assert ne.NOTIFICATION_SOURCES[source]["alert_type"] == engine
+
+    def test_notify_calls_with_a_registered_alert_source_use_its_alert_type(self):
+        import re
+        pattern = re.compile(r'\bnotify\(\s*"(\w+)",\s*"([^"]+)"')
+        root = Path(__file__).parent.parent
+        mismatches = []
+        for path in [*root.glob("*.py"), *(root / "tools").glob("*.py")]:
+            for source, message_type in pattern.findall(path.read_text(encoding="utf-8")):
+                alert_type = ne.NOTIFICATION_SOURCES.get(source, {}).get("alert_type")
+                if alert_type and message_type != alert_type:
+                    mismatches.append(f"{path.name}: {source} -> {message_type!r}, registry says {alert_type!r}")
+        assert not mismatches
+
     def test_panel_lists_every_job_status_source_with_canonical_label(self):
         from scheduler_engine import JOB_GRAPH, job_label
         panel = ne.build_routing_panel({})

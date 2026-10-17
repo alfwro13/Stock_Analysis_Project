@@ -23,19 +23,18 @@ def sentiment_fresh_since() -> str:
     return (datetime.now(timezone.utc) - timedelta(days=sentiment_max_age_days())).strftime("%Y-%m-%d %H:%M:%S")
 
 
-JOB_STATUS_MESSAGE_TYPES = ("Info", "Success", "Scheduler", "Warning", "Error", "Maintenance")
-
-
 def get_recent_alert_notifications(since: str, limit: int) -> list:
-    """Newest-first `system_notifications` rows at or after `since` (UTC `"%Y-%m-%d %H:%M:%S"`) that are alerts, i.e. not job-status rows (their text carries raw exception text); a read failure raises."""
+    """Newest-first `system_notifications` rows at or after `since` (UTC `"%Y-%m-%d %H:%M:%S"`) whose type is in `notification_engine.ALERT_MESSAGE_TYPES`, so job-status rows (raw exception text) never match; a read failure raises."""
+    from notification_engine import ALERT_MESSAGE_TYPES  # deferred: notification_engine imports database, which imports this module
+
     conn = None
     try:
         conn = get_connection()
         rows = conn.execute(
             f"""SELECT id, timestamp, message_type, message_text, status FROM system_notifications
-               WHERE timestamp >= ? AND message_type NOT IN ({','.join('?' * len(JOB_STATUS_MESSAGE_TYPES))})
+               WHERE timestamp >= ? AND message_type IN ({','.join('?' * len(ALERT_MESSAGE_TYPES))})
                ORDER BY timestamp DESC, id DESC LIMIT ?""",
-            (since, *JOB_STATUS_MESSAGE_TYPES, limit),
+            (since, *ALERT_MESSAGE_TYPES, limit),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
