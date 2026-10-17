@@ -1,11 +1,11 @@
-"""MCP prompts: the exact prompt list, auth, the shared structure (policy first, untrusted news, data gaps), and that every tool a prompt names exists."""
+"""MCP prompts: the exact prompt list, auth, and for the tool-driven prompts the shared structure (policy first, untrusted news, data gaps) and that every tool they name exists."""
 import re
 
 import pytest
 
 from mcp_server.prompts.shared import DATA_GAPS_SECTION, GROUND_RULES
 
-from .helpers import EXPECTED_PROMPTS, EXPECTED_TOOLS, get_prompt, prompt_text, rpc, table_counts
+from .helpers import EXPECTED_PROMPTS, EXPECTED_TOOLS, V1_PROMPTS, get_prompt, prompt_text, rpc, table_counts
 
 RENDER_ARGUMENTS = {
     "review_portfolio": [{}, {"account": "all"}],
@@ -19,23 +19,22 @@ def _listed(client):
 
 
 class TestPromptList:
-    def test_the_list_is_exactly_the_two_v1_prompts(self, mcp_client):
+    def test_the_list_is_exactly_the_expected_prompts(self, mcp_client):
         assert {p["name"] for p in _listed(mcp_client)} == EXPECTED_PROMPTS
-        assert len(_listed(mcp_client)) == 2
+        assert len(_listed(mcp_client)) == len(EXPECTED_PROMPTS)
 
     def test_titles_are_the_canonical_names(self, mcp_client):
-        assert {p["name"]: p["title"] for p in _listed(mcp_client)} == {
-            "review_portfolio": "Review my portfolio", "pre_trade_review": "Pre-trade check",
-        }
+        titles = {p["name"]: p["title"] for p in _listed(mcp_client)}
+        assert titles["review_portfolio"] == "Review my portfolio" and titles["pre_trade_review"] == "Pre-trade check"
 
     def test_argument_requirements(self, mcp_client):
-        required = {p["name"]: {a["name"]: a["required"] for a in p["arguments"]} for p in _listed(mcp_client)}
+        required = {p["name"]: {a["name"]: a["required"] for a in p.get("arguments", [])} for p in _listed(mcp_client)}
         assert required["review_portfolio"] == {"account": False}
         assert required["pre_trade_review"] == {"ticker": True, "side": True, "amount": False, "account": False}
 
     def test_every_argument_is_described(self, mcp_client):
         for prompt in _listed(mcp_client):
-            for argument in prompt["arguments"]:
+            for argument in prompt.get("arguments", []):
                 assert argument["description"]
 
     def test_listing_and_rendering_need_the_mcp_key(self, mcp_client):
@@ -47,7 +46,7 @@ class TestPromptList:
         assert "error" in get_prompt(mcp_client, "explain_alert").json()
 
 
-@pytest.mark.parametrize("name", sorted(EXPECTED_PROMPTS))
+@pytest.mark.parametrize("name", sorted(V1_PROMPTS))
 class TestEveryPrompt:
     def _rendered(self, client, name):
         return [prompt_text(get_prompt(client, name, arguments)) for arguments in RENDER_ARGUMENTS[name]]

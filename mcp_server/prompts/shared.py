@@ -24,12 +24,13 @@ DATA_GAPS_SECTION = (
 )
 
 
-def policy_step() -> str:
+def policy_step(keep_sections: bool = True) -> str:
+    sections = " (every section listed below must still appear)" if keep_sections else ""
     return (
         f"Read the resource {POLICY_URI} first, before any tool. If it starts with POLICY NOT CONFIGURED or POLICY NOT LOADED, "
         "say so at the top of your answer, do not invent goals, limits or rules, and mark every limit comparison \"no policy\". "
         "Otherwise apply its goals, limits, tax constraints and never-do list throughout, and use the format in its "
-        "\"preferred response format\" section for the answer (every section listed below must still appear)."
+        f"\"preferred response format\" section for the answer{sections}."
     )
 
 
@@ -51,3 +52,13 @@ def scope_text(scope: str) -> str:
     if scope == ACCOUNT_ALL:
         return "all built-in Trading accounts"
     return f"the account {scope}"
+
+
+def dashboard_analysis_message(app_prompt: str) -> str:
+    return (
+        f"{policy_step(keep_sections=False)}\n\n"
+        "This is analysis for me to decide on. You cannot trade or change anything, so never say that you did. "
+        "A value shown as N/A, unavailable or unknown in the data below is unavailable, never zero.\n\n"
+        "My dashboard's own request and data follow.\n\n"
+        f"{app_prompt}"
+    )

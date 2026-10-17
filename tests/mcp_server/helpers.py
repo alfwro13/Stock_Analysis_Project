@@ -75,7 +75,10 @@ def emptied_tables(*tables):
             conn.close()
 
 
-EXPECTED_PROMPTS = {"review_portfolio", "pre_trade_review"}
+V1_PROMPTS = {"review_portfolio", "pre_trade_review"}
+AI_ENGINE_PROMPTS = {"devils_advocate", "risk_reward_audit", "quantamental_deep_dive", "earnings_strategy"}
+REGIME_PROMPTS = {"regime_plain_english_briefing", "regime_what_happens_next", "regime_how_should_i_position", "regime_red_flags_check"}
+EXPECTED_PROMPTS = V1_PROMPTS | AI_ENGINE_PROMPTS | REGIME_PROMPTS
 
 
 def get_prompt(client, name, arguments=None, **kwargs):
