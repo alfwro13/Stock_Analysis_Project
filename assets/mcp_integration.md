@@ -8,24 +8,14 @@ Build order, decisions and the task list live in `audit/MCP_implementation_plan.
 
 ## Setup
 
-1. In **Settings → MCP Server**, tick **Enable the MCP Server** (it is off by default; the password prompt appears) and press **Generate MCP Key**. The key is shown once: copy it into your client. Pressing the button again rotates the key and the old one stops working at once; there is no restart.
+1. In **Settings → MCP Server**, tick **Enable the MCP Server** (it is off by default; the password prompt appears), type a name such as `dev box 1` and press **Create Key**. The key is shown once: copy it into your client. Create one key per computer; delete a single key when that computer should lose access, and the others keep working. Until at least one key exists, every `/mcp` request is refused (fail closed).
 
-   To set the key by hand instead, generate one and put it in `.env` (not `config.json`), then restart the app:
-
-   ```bash
-   python -c "import secrets; print(secrets.token_hex(32))"
-   ```
-
-   ```
-   MCP_API_KEY=<the 64 hex characters>
-   ```
-
-   The app never generates this key at first boot. Until it is set, every `/mcp` request is refused (fail closed).
+   An `MCP_API_KEY` line left in `.env` from an earlier version is ignored; remove it.
 
 2. Connect Claude Code (`claude mcp add` syntax verified against Claude Code 2.1.220):
 
    ```bash
-   claude mcp add --transport http stock-dashboard http://localhost:8090/mcp --header "Authorization: Bearer <MCP_API_KEY>"
+   claude mcp add --transport http stock-dashboard http://localhost:8090/mcp --header "Authorization: Bearer <MCP key>"
    ```
 
    The default scope (`local`) stores the header in your own Claude Code config. Do not use `--scope project`: that writes `.mcp.json` into the repository with the key in it. In a shared `.mcp.json` use `"Authorization": "Bearer ${MCP_API_KEY}"` so the key stays in the environment.
@@ -38,10 +28,10 @@ Only `http://localhost:8090` is documented here. Reaching the endpoint from anot
 
 | Property | Behaviour |
 |---|---|
-| Credential | `MCP_API_KEY` from `.env`, sent as `Authorization: Bearer <key>`. Compared in constant time. |
+| Credential | A named key created in Settings, sent as `Authorization: Bearer <key>`. Only the SHA-256 hash is stored (table `mcp_api_keys`); the key is 256 bits of randomness, so a fast hash is enough. The presented key is hashed and compared in constant time against every stored hash. |
 | Scope | `/mcp` only. The key never authenticates any other route or page. |
 | Disabled | The Settings toggle (`MCP_SERVER_ENABLED` in `config.json`, default off) is checked first: while it is off every `/mcp` request answers `503` whatever it carries. Turning it on needs a password step-up; turning it off does not. |
-| Unset key | Every `/mcp` request answers `401` (fail closed). The log records that the key is unset, never a presented value. |
+| No key | While no key exists every `/mcp` request answers `401` (fail closed). The log records that no key exists, never a presented value. |
 | Missing or wrong key | `401` with `WWW-Authenticate: Bearer`. The same reply for unset, missing and wrong, so it does not tell a caller which. |
 | Home Assistant `X-API-Key` | `403` on `/mcp`, even next to a valid Bearer key. `/mcp` is not in `api_deps.API_KEY_ROUTES` and must never be added. |
 | Session cookie | Does not authenticate `/mcp`. |
@@ -56,7 +46,7 @@ CSRF does not interfere: the CSRF middleware only enforces when a `session` cook
 
 ## Settings card
 
-**Settings → MCP Server** (System settings, after User Account) shows whether the server is enabled, the endpoint URL (built in the browser from the address you opened Settings on), and whether a key is set. The stored key is never displayed. Two routes back it, both described in `assets/api_reference.md`: `POST /api/mcp-server/enabled` (step-up only when enabling) and `POST /api/generate-mcp-key` (step-up; writes `MCP_API_KEY` to `.env` and returns the key once). Rotating invalidates the old key on the next request. Tests: `tests/mcp_server/test_settings_card.py`.
+**Settings → MCP Server** (System settings, after User Account) shows whether the server is enabled, the endpoint URL (built in the browser from the address you opened Settings on) and a table of keys with their name, created time and last-used time (each shown once, when created; a key is never displayed again). Routes, all in `assets/api_reference.md`: `POST /api/mcp-server/enabled` (step-up only when enabling), `GET /api/mcp-keys`, `POST /api/mcp-keys` (step-up; returns the key once) and `DELETE /api/mcp-keys/{id}` (step-up). Names are unique ignoring case, at most 60 characters; at most 20 keys exist at once. Creating or deleting a key takes effect on the next request. Last-used is written at most once a minute per key, off the event loop. Tests: `tests/mcp_server/test_settings_card.py`.
 
 ## Transport
 
@@ -73,7 +63,9 @@ Streamable HTTP in stateless JSON mode: each `POST /mcp` is one JSON-RPC request
 |---|---|
 | `mcp_server/__init__.py` | Imports every tool, prompt and resource module (importing one registers it) and exposes `MCP_PATH`, `auth_failure`, `endpoint` and `run` to `main.py`. |
 | `mcp_server/server.py` | The `MCPServer` instance (`server`), `MCP_PATH` and the read-only tool annotations (`READ_ONLY`). |
-| `mcp_server/auth.py` | The Bearer `MCP_API_KEY` check, `auth_failure()`. |
+| `mcp_server/auth.py` | The enable check and the Bearer key check, `auth_failure()`. |
+| `mcp_server/keys.py` | Create, list, delete and match the named keys; an in-memory hash cache and the throttled last-used write. |
+| `db_mcp_keys.py` | The SQL for the `mcp_api_keys` table. |
 | `mcp_server/transport.py` | The POST-only ASGI `endpoint`, the SDK Host/Origin settings and `run()`. |
 | `mcp_server/envelope.py` | `envelope()`, `iso_utc()`, `iso_from_stored_utc()` (a stored `YYYY-MM-DD HH:MM:SS` UTC string as ISO, `null` when empty or unparseable), `date_epoch()` (a `YYYY-MM-DD` data date as 00:00 UTC) and the stale limits. |
 | `mcp_server/scope.py` | The `account` argument: `AccountArg`, `resolve_scope()`, `ACCOUNT_ALL`. |

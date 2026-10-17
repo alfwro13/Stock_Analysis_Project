@@ -4,11 +4,14 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api_deps import enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
 from config import BASE_DIR, load_config, update_config_atomic
+from constants import MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
 from database import get_connection
+from mcp_server import keys as mcp_keys
+from utils import clean_display_text
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +113,36 @@ def generate_embed_token():
     return {"embed_token": _generate_env_secret("EMBED_TOKEN")}
 
 
-@auth_router.post("/generate-mcp-key", dependencies=[Depends(require_step_up)])
-@limiter.limit("5/minute")
-def generate_mcp_key(request: Request):
-    return {"mcp_api_key": _generate_env_secret("MCP_API_KEY")}
+class McpKeyBody(BaseModel):
+    name: str = Field(min_length=1, max_length=MCP_KEY_NAME_MAX_CHARS)
+
+
+@auth_router.get("/mcp-keys")
+def list_mcp_keys():
+    return {"status": "success", "keys": mcp_keys.list_keys()}
+
+
+@auth_router.post("/mcp-keys", dependencies=[Depends(require_step_up)])
+@limiter.limit("10/minute")
+def create_mcp_key(request: Request, body: McpKeyBody):
+    name = clean_display_text(body.name, MCP_KEY_NAME_MAX_CHARS)
+    if not name:
+        raise HTTPException(status_code=400, detail="Enter a name for the key.")
+    try:
+        created = mcp_keys.create_key(name)
+    except mcp_keys.KeyLimitReached:
+        raise HTTPException(status_code=409, detail=f"At most {MCP_KEYS_MAX} MCP keys can exist. Delete one first.")
+    except mcp_keys.DuplicateKeyName:
+        raise HTTPException(status_code=409, detail="A key with that name already exists.")
+    return {"status": "success", **created}
+
+
+@auth_router.delete("/mcp-keys/{key_id}", dependencies=[Depends(require_step_up)])
+@limiter.limit("20/minute")
+def delete_mcp_key(request: Request, key_id: int):
+    if not mcp_keys.delete_key(key_id):
+        raise HTTPException(status_code=404, detail="No such MCP key.")
+    return {"status": "success"}
 
 
 class McpServerToggle(BaseModel):
