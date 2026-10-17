@@ -22,7 +22,25 @@ Build order, decisions and the task list live in `audit/MCP_implementation_plan.
 
 3. Check it: `claude mcp list` should show `stock-dashboard` as connected, and `/mcp` inside Claude Code lists the tools. A wrong or missing key shows as an authentication failure.
 
-Only `http://localhost:8090` is documented here. Reaching the endpoint from another machine (LAN, reverse proxy, Claude Desktop, claude.ai) is out of scope for now (tasks MCP-14 and MCP-15). The bearer key must not travel over plain `http` beyond the machine running the app.
+4. Claude Desktop (draft, not tested against a live Desktop install; syntax from the `mcp-remote` README): Desktop starts local programs from `claude_desktop_config.json` (Settings → Developer → Edit Config; macOS `~/Library/Application Support/Claude/`, Windows `%APPDATA%\Claude\`), so it reaches `/mcp` through the `mcp-remote` bridge, which needs Node.js (`npx`):
+
+   ```json
+   {
+     "mcpServers": {
+       "stock-dashboard": {
+         "command": "npx",
+         "args": ["mcp-remote", "https://<your-dashboard-host>/mcp", "--header", "Authorization:${AUTH_HEADER}"],
+         "env": { "AUTH_HEADER": "Bearer <MCP key>" }
+       }
+     }
+   }
+   ```
+
+   The header has no space after the colon and the key sits in `env` because Claude Desktop on Windows does not escape spaces in `args`. Restart Desktop afterwards. The host must be reachable from that computer and be in `ALLOWED_HOSTS`; `http://localhost:8090/mcp` suits a Desktop on the dashboard machine. `mcp-remote` accepts plain `http` beyond localhost only with `--allow-http` (trusted private networks).
+
+5. The "Dash" instruction. Claude uses a connector only when it decides to, so the Glossary (MCP Server section) offers a standing instruction to paste into Claude Code's `~/.claude/CLAUDE.md`, or into Claude Desktop / claude.ai personal preferences or Project instructions: a message starting with `Dash`, `Dash:` or `Dash-` (any capitalisation) is answered with the `stock-dashboard` tools, reading `policy://investment-policy` first, quoting `as_of`, treating `null` as unavailable and never guessing. It assumes the connector is named `stock-dashboard`. The text lives in `templates/glossary/_mcp_server.html`.
+
+The bearer key must not travel over plain `http` beyond the machine running the app. The dashboard's LAN/proxy address for Claude Desktop (task MCP-14) and claude.ai / mobile access (task MCP-15, needs OAuth) are not settled; claude.ai and the mobile apps cannot reach the endpoint yet.
 
 ## Security model
 
