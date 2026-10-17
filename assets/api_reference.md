@@ -1587,7 +1587,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/generate-mcp-key`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
@@ -1626,6 +1626,30 @@ Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, in
 
 ```json
 { "api_key": "<64-char-hex>" }
+```
+
+---
+
+### `POST /api/generate-mcp-key`
+
+Generates a new MCP Server key (32-byte hex) and persists it to `.env` as `MCP_API_KEY`, invalidating the previous one immediately. Requires a password step-up (see `POST /api/step-up`); an `X-API-Key` or MCP Bearer request has no session and cannot call it. The key is returned only in this response; Settings → MCP Server shows it once and afterwards reports only that a key is set. Limited to 5 requests per minute.
+
+**Response**
+
+```json
+{ "mcp_api_key": "<64-char-hex>" }
+```
+
+---
+
+### `POST /api/mcp-server/enabled`
+
+Turns the MCP Server on or off by writing `MCP_SERVER_ENABLED` to `config.json` (default `false`). Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); disabling does not, because closing the endpoint is the safe direction. Takes effect on the next `/mcp` request, with no restart. Limited to 10 requests per minute.
+
+**Response**
+
+```json
+{ "status": "success", "enabled": true }
 ```
 
 ---
@@ -5119,6 +5143,7 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 | Request | Status |
 |---|---|
 | Valid Bearer key | handled by the SDK (`200`, or the SDK's own `400`/`421`/`403` for a bad Content-Type, Host or Origin) |
+| MCP Server disabled in Settings (`MCP_SERVER_ENABLED` false, the default) | `503 {"detail": "The MCP Server is disabled"}`, checked before the key, so the reply does not depend on what was sent |
 | `MCP_API_KEY` unset or empty (fail closed), no `Authorization`, another scheme, or a wrong key | `401 {"detail": "Invalid or missing MCP key"}` with `WWW-Authenticate: Bearer` |
 | Any `X-API-Key` header (the Home Assistant key), with or without a Bearer key | `403 {"detail": "The API key cannot be used on this route"}` |
 | A session cookie alone | `401` (a cookie does not authenticate `/mcp`) |

@@ -90,7 +90,7 @@ def settings_page(request: Request):
             "secrets_set": {
                 name: bool(os.environ.get(name))
                 for name in (
-                    "API_KEY", "EMBED_TOKEN", "NEXTCLOUD_APP_PASSWORD", "NEXTCLOUD_CONVERSATION_TOKEN",
+                    "API_KEY", "EMBED_TOKEN", "MCP_API_KEY", "NEXTCLOUD_APP_PASSWORD", "NEXTCLOUD_CONVERSATION_TOKEN",
                     "GHOSTFOLIO_TOKEN", "FRED_API_KEY", "HF_TOKEN", "SMTP_PASS",
                 )
             },

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api_deps import enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
-from config import BASE_DIR, load_config
+from config import BASE_DIR, load_config, update_config_atomic
 from database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -91,24 +91,42 @@ def _secret_update(value: str, clear: bool) -> Optional[str]:
     return value if value.strip() else None
 
 
-@auth_router.post("/generate-api-key", dependencies=[Depends(require_step_up)])
-def generate_api_key():
+def _generate_env_secret(name: str) -> str:
     import secrets as _secrets
     from dotenv import set_key
-    new_key = _secrets.token_hex(32)
-    set_key(str(BASE_DIR / ".env"), "API_KEY", new_key)
-    os.environ["API_KEY"] = new_key
-    return {"api_key": new_key}
+    value = _secrets.token_hex(32)
+    set_key(str(BASE_DIR / ".env"), name, value)
+    os.environ[name] = value
+    return value
+
+
+@auth_router.post("/generate-api-key", dependencies=[Depends(require_step_up)])
+def generate_api_key():
+    return {"api_key": _generate_env_secret("API_KEY")}
 
 
 @auth_router.post("/generate-embed-token", dependencies=[Depends(require_step_up)])
 def generate_embed_token():
-    import secrets as _secrets
-    from dotenv import set_key
-    new_token = _secrets.token_hex(32)
-    set_key(str(BASE_DIR / ".env"), "EMBED_TOKEN", new_token)
-    os.environ["EMBED_TOKEN"] = new_token
-    return {"embed_token": new_token}
+    return {"embed_token": _generate_env_secret("EMBED_TOKEN")}
+
+
+@auth_router.post("/generate-mcp-key", dependencies=[Depends(require_step_up)])
+@limiter.limit("5/minute")
+def generate_mcp_key(request: Request):
+    return {"mcp_api_key": _generate_env_secret("MCP_API_KEY")}
+
+
+class McpServerToggle(BaseModel):
+    enabled: bool
+
+
+@auth_router.post("/mcp-server/enabled")
+@limiter.limit("10/minute")
+def set_mcp_server_enabled(request: Request, body: McpServerToggle):
+    if body.enabled:
+        require_step_up(request)
+    update_config_atomic({"MCP_SERVER_ENABLED": body.enabled})
+    return {"status": "success", "enabled": body.enabled}
 
 
 class ChangePasswordRequest(BaseModel):

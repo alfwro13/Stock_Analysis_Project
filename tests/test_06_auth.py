@@ -624,6 +624,7 @@ _GATED_ROUTES = [
     "/api/backup/restore",
     "/api/generate-api-key",
     "/api/generate-embed-token",
+    "/api/generate-mcp-key",
     "/api/save-account-email",
     "/api/save-nextcloud-settings",
     "/api/test-nextcloud-message",

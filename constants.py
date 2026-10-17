@@ -99,7 +99,7 @@ TABLE_FILTER_CONDITIONS_MAX = 50
 TABLE_FILTER_VALUE_MAX_CHARS = 200
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.184"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.185"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

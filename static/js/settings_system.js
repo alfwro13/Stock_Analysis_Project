@@ -107,6 +107,38 @@ async function generateApiKey() {
     }
 }
 
+async function toggleMcpServer(box) {
+    const enabled = box.checked;
+    setStatus('mcp-enabled-msg', 'info', 'Saving…');
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) };
+    const res = enabled ? await stepUpFetch('/api/mcp-server/enabled', options) : await fetch('/api/mcp-server/enabled', options);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-enabled-msg', 'success', enabled ? 'MCP Server enabled.' : 'MCP Server disabled. Requests to /mcp are refused.');
+    } else {
+        box.checked = !enabled;
+        setStatus('mcp-enabled-msg', 'error', data.detail || 'Failed to save.');
+    }
+}
+
+async function generateMcpKey() {
+    if (!confirm('Generate a new MCP key? The current key will stop working immediately.')) return;
+    setStatus('mcp-key-msg', 'info', 'Generating…');
+    const res = await stepUpFetch('/api/generate-mcp-key', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        showGeneratedSecret('mcp_api_key', data.mcp_api_key);
+        setStatus('mcp-key-msg', 'success', 'New MCP key generated and saved. Copy it now — it will not be shown again.');
+    } else {
+        setStatus('mcp-key-msg', 'error', data.detail || 'Failed to generate key.');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const url = document.getElementById('mcp_endpoint_url');
+    if (url) url.textContent = window.location.origin + '/mcp';
+});
+
 async function generateEmbedToken() {
     if (!confirm('Generate a new embed token? The current token will stop working immediately.')) return;
     setStatus('ua-embedtoken-msg', 'info', 'Generating…');
