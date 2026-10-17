@@ -2,13 +2,12 @@
 Tests for reports_engine.py.
 
 Focus on Python-side logic that the SQL cannot enforce:
-  - get_dividend_harvest_setups: ex-div date parsing (Unix ts, ISO string, bad value)
-    and ascending sort by date.
+  - get_dividend_harvest_setups: rows whose ex-div date is not a real YYYY-MM-DD are dropped
+    and the rest sort ascending by date.
   - get_mean_reversion_setups: min_sma_distance in-Python filter.
   - Empty-DB guard paths for all public functions.
 """
 import pytest
-from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
 import database
@@ -54,7 +53,7 @@ def _seed_stock_signal(conn, ticker, div_yield=0.04, ex_date="2026-09-01",
 
 
 class TestDividendHarvestDateParsing:
-    """Unit tests for the ex-dividend date normalisation logic."""
+    """Unit tests for the ex-dividend date filter."""
 
     def _fake_row(self, ex_date_raw, div_yield=0.05, score=65):
         return {
@@ -76,29 +75,20 @@ class TestDividendHarvestDateParsing:
         with patch("reports_engine.get_connection", return_value=mock_conn):
             return get_dividend_harvest_setups(min_yield=0.0, min_score=0)
 
-    def test_unix_timestamp_parsed_to_iso_date(self):
-        ts = datetime(2026, 9, 15, tzinfo=timezone.utc).timestamp()
-        rows = [self._fake_row(str(ts))]
-        result = self._run_with_rows(rows)
-        assert len(result) == 1
-        assert result[0]["ex_dividend_date"] == "2026-09-15"
-
     def test_iso_string_passthrough(self):
         rows = [self._fake_row("2026-09-15")]
         result = self._run_with_rows(rows)
         assert len(result) == 1
         assert result[0]["ex_dividend_date"] == "2026-09-15"
 
-    def test_unparseable_date_drops_row(self):
-        rows = [self._fake_row("bad-date")]
-        result = self._run_with_rows(rows)
-        assert result == []
+    @pytest.mark.parametrize("bad", ["bad-date", "1788220800", "946684799", "2026-13-45", "2026-9-1", 1788220800])
+    def test_value_that_is_not_an_iso_date_drops_row(self, bad):
+        assert self._run_with_rows([self._fake_row(bad)]) == []
 
-    def test_pre_2000_timestamp_drops_row(self):
-        # 946684799 = 1999-12-31 23:59:59 UTC — below the post-2000 guard
-        rows = [self._fake_row("946684799")]
+    def test_only_the_non_iso_rows_are_dropped(self):
+        rows = [self._fake_row("2026-10-01"), self._fake_row("1788220800"), self._fake_row("2026-09-01")]
         result = self._run_with_rows(rows)
-        assert result == []
+        assert [r["ex_dividend_date"] for r in result] == ["2026-09-01", "2026-10-01"]
 
     def test_results_sorted_ascending_by_ex_date(self):
         rows = [
