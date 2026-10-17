@@ -5128,7 +5128,7 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 
 Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 
-Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index`, `get_market_regime`, `get_ticker_snapshot`, `get_alerts`, `get_news`, `get_watchlist`, `pretrade_check` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`.
+Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index`, `get_market_regime`, `get_ticker_snapshot`, `get_alerts`, `get_news`, `get_watchlist`, `pretrade_check` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`. Current prompts (`prompts/list`, `prompts/get`): `review_portfolio` and `pre_trade_review`; they use the same Bearer key and return one text message that names the resource and tools to use (see `assets/mcp_integration.md`).
 
 ---
 
