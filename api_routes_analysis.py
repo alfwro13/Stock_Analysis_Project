@@ -316,7 +316,8 @@ def get_risk_orchestrator_pretrade_check(
 
     log_pretrade_check(
         ticker=ticker, scope=scope, proposed_value=result["proposed_value"],
-        verdict=result["verdict"], breached_constraint=result["breached_constraint"],
+        verdict=result["verdict"] or "unavailable",  # the column is NOT NULL
+        breached_constraint=result["breached_constraint"],
         phi_score=result["phi_score"], var_pct_of_equity=result["var_pct_of_equity"],
         max_correlation=result["max_correlation"],
         suggested_reduced_value=result["suggested_reduced_value"],

@@ -837,6 +837,40 @@ def test_pretrade_check_returns_200_and_logs_verdict(client):
 
 
 @pytest.mark.api
+def test_pretrade_check_without_verdict_returns_null_and_logs_unavailable(client):
+    """A check whose input could not be computed passes the null verdict on and logs it as 'unavailable'."""
+    fake_result = {
+        "scope": "all", "ticker": "ZZNV", "proposed_value": 1000.0, "verdict": None,
+        "breached_constraint": None, "phi_score": None, "tier": None,
+        "var_pct_of_equity": None, "var_tier": None, "max_correlation": None,
+        "correlation_tier": None, "drawdown_pct": 1.0, "drawdown_tier": "GREEN",
+        "hypothetical_weight": None, "new_portfolio_total_value": 21000.0,
+        "suggested_reduced_value": None, "unavailable_inputs": ["VaR", "correlation"],
+        "data_warnings": ["No usable return history for ZZNV (need at least 10 daily observations)."],
+    }
+    with patch("risk_orchestrator_engine.evaluate_pretrade_check", return_value=fake_result):
+        resp = client.get("/api/risk-orchestrator/pretrade-check?ticker=ZZNV&value=1000&scope=all")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["check"]["verdict"] is None and data["check"]["unavailable_inputs"] == ["VaR", "correlation"]
+
+    import database
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM pretrade_check_log WHERE ticker='ZZNV' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        assert row["verdict"] == "unavailable"
+        assert row["phi_score"] is None
+    finally:
+        conn.execute("DELETE FROM pretrade_check_log WHERE ticker='ZZNV'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.api
 def test_pretrade_check_missing_params_returns_422(client):
     """GET /api/risk-orchestrator/pretrade-check without required query params must 422, not 500."""
     resp = client.get("/api/risk-orchestrator/pretrade-check")

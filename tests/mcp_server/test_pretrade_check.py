@@ -14,7 +14,7 @@ _CHECK = {
     "phi_score": 52.5, "tier": "YELLOW", "var_pct_of_equity": 1.8, "var_tier": "GREEN", "max_correlation": 0.82,
     "correlation_tier": "YELLOW", "drawdown_pct": 6.1, "drawdown_tier": "GREEN", "hypothetical_weight": 0.05,
     "new_portfolio_total_value": 21000.0, "suggested_reduced_value": 400.0, "risk_cache_date": "2026-10-15",
-    "data_warnings": [],
+    "unavailable_inputs": [], "data_warnings": [],
 }
 _HEAT_ROW = {
     "scope": "all", "scope_label": "All Accounts", "phi_score": 62.5, "tier": "YELLOW",
@@ -80,9 +80,9 @@ class TestBuy:
 
     def test_missing_inputs_give_no_verdict_instead_of_an_approval(self, mcp_client):
         inconclusive = {
-            **_CHECK, "verdict": "approve", "tier": "GREEN", "phi_score": 0.0, "breached_constraint": None,
-            "var_pct_of_equity": None, "max_correlation": None, "var_tier": "GREEN", "correlation_tier": "GREEN",
-            "suggested_reduced_value": None, "hypothetical_weight": None,
+            **_CHECK, "verdict": None, "tier": None, "phi_score": None, "breached_constraint": None,
+            "var_pct_of_equity": None, "max_correlation": None, "var_tier": None, "correlation_tier": None,
+            "suggested_reduced_value": None, "hypothetical_weight": None, "unavailable_inputs": ["VaR", "correlation"],
             "data_warnings": ["No usable return history for ZZPT (need at least 10 daily observations)."],
         }
         with patch.object(pretrade_tool, "evaluate_pretrade_check", return_value=inconclusive):
@@ -97,9 +97,14 @@ class TestBuy:
         assert any(line.startswith("No verdict") and "VaR, correlation" in line for line in data["missing"])
 
     def test_missing_drawdown_alone_also_withholds_the_verdict(self, mcp_client):
-        with patch.object(pretrade_tool, "evaluate_pretrade_check", return_value={**_CHECK, "drawdown_pct": None}):
+        no_drawdown = {
+            **_CHECK, "verdict": None, "tier": None, "phi_score": None, "breached_constraint": None,
+            "suggested_reduced_value": None, "drawdown_pct": None, "drawdown_tier": None, "unavailable_inputs": ["drawdown"],
+        }
+        with patch.object(pretrade_tool, "evaluate_pretrade_check", return_value=no_drawdown):
             data = tool_data(_check(mcp_client))
         assert data["data"]["verdict"] is None and data["data"]["max_drawdown"] == {"pct": None, "tier": None}
+        assert any(line.startswith("No verdict") and "drawdown" in line for line in data["missing"])
 
     def test_stale_risk_cache_is_flagged_while_a_market_is_open(self, mcp_client):
         with patch.object(pretrade_tool, "evaluate_pretrade_check", return_value={**_CHECK, "risk_cache_date": "2020-01-01"}), \

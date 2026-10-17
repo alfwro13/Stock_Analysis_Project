@@ -5004,12 +5004,17 @@ app has no trade execution, the verdict can never actually block a purchase — 
     "hypothetical_weight": 0.08, "new_portfolio_total_value": 25000.0,
     "suggested_reduced_value": 900.0,
     "risk_cache_date": "2026-10-15",
+    "unavailable_inputs": [],
     "data_warnings": []
   }
 }
 ```
 
 `verdict` is one of `approve` / `warn` / `reject`, mirroring the PHI tier (`GREEN`/`YELLOW`/`RED`).
+When the VaR, correlation or drawdown input could not be computed (a missing input would score as zero
+risk), `verdict`, `tier`, `phi_score`, `breached_constraint` and `suggested_reduced_value` are `null`,
+the tier of each missing input is `null`, `unavailable_inputs` lists the missing inputs
+(`"VaR"`, `"correlation"`, `"drawdown"`) and `data_warnings` says why; the call is logged with verdict `unavailable`.
 `breached_constraint` names the worst RED sub-metric (`VaR`, `Correlation`, or `Drawdown`), falling
 back to the worst YELLOW one when nothing is RED, or `null` on approve. `suggested_reduced_value`
 is a binary-searched smaller `value` that resolves to a better tier, or `null` when the verdict is

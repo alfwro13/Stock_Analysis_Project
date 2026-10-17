@@ -443,6 +443,34 @@ class TestEvaluatePretradeCheck:
         assert result["breached_constraint"] is None
         assert result["suggested_reduced_value"] is None
         assert result["tier"] == TIER_GREEN
+        assert result["unavailable_inputs"] == []
+
+    @pytest.mark.parametrize("drawdown, var_pct, corr, missing", [
+        (-0.01, None, 0.1, ["VaR"]),
+        (-0.01, 0.5, None, ["correlation"]),
+        (None, 0.5, 0.1, ["drawdown"]),
+        (None, None, None, ["VaR", "correlation", "drawdown"]),
+    ])
+    def test_missing_input_gives_no_verdict_instead_of_approve(self, drawdown, var_pct, corr, missing):
+        risk_metrics = {"max_drawdown": drawdown} if drawdown is not None else {}
+        sim = {
+            "var_95_1d": None, "var_pct_of_equity": var_pct, "portfolio_vol": None,
+            "avg_pairwise_correlation": corr, "max_pairwise_correlation": corr,
+            "portfolio_total_value": 20000.0, "hypothetical_weight": 0.05,
+            "data_warnings": ["No usable return history for AAPL (need at least 10 daily observations)."],
+        }
+        with patch("risk_orchestrator_engine.assemble_xray_report", return_value={"risk_metrics": risk_metrics}), \
+             patch("risk_orchestrator_engine.simulate_scope_with_hypothetical_holding", return_value=sim) as simulate:
+            result = evaluate_pretrade_check("all", "AAPL", 1000.0, config=_ro_config())
+
+        assert result["unavailable_inputs"] == missing
+        for key in ("verdict", "tier", "phi_score", "breached_constraint", "suggested_reduced_value"):
+            assert result[key] is None
+        assert (result["var_tier"] is None) == (var_pct is None)
+        assert (result["correlation_tier"] is None) == (corr is None)
+        assert (result["drawdown_tier"] is None) == (drawdown is None)
+        assert result["data_warnings"]
+        assert simulate.call_count == 1
 
     def test_reject_with_var_breach_and_convergent_suggestion(self):
         def _sim(scope, ticker, value, read_only=False):
