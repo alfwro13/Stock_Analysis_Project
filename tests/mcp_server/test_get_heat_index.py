@@ -85,11 +85,22 @@ class TestGetHeatIndex:
 
     def test_unavailable_input_is_flagged_not_shown_as_zero(self, mcp_client, heat_tables):
         from risk_orchestrator_engine import persist_heat_index, persist_ticker_contributions
-        persist_heat_index({**_HEAT_ROW, "var_pct_of_equity": None, "var_tier": "GREEN"})
+        persist_heat_index({**_HEAT_ROW, "phi_score": None, "tier": None, "var_pct_of_equity": None, "var_tier": None})
         persist_ticker_contributions([_contribution("ZZH1", 10.0)])
         data = self._heat(mcp_client)
-        assert data["data"]["heat_index"]["var"]["pct_of_equity"] is None
-        assert data["missing"] == ["Heat Index VaR input is not available, so the score counts it as zero risk"]
+        heat = data["data"]["heat_index"]
+        assert heat["var"] == {"pct_of_equity": None, "tier": None}
+        assert (heat["phi_score"], heat["tier"]) == (None, None)
+        assert data["missing"] == ["Heat Index VaR input is not available, so the score and tier are withheld"]
+
+    def test_contributor_without_a_score_is_flagged_and_listed_last(self, mcp_client, heat_tables):
+        from risk_orchestrator_engine import persist_heat_index, persist_ticker_contributions
+        persist_heat_index(dict(_HEAT_ROW))
+        persist_ticker_contributions([_contribution("ZZH1", None, None), _contribution("ZZH2", 10.0, "GREEN")])
+        data = self._heat(mcp_client)
+        assert [c["ticker"] for c in data["data"]["top_risk_contributors"]] == ["ZZH2", "ZZH1"]
+        assert data["data"]["top_risk_contributors"][1]["risk_score"] is None
+        assert any("no Risk Contribution score" in item for item in data["missing"])
 
     def test_score_without_contributors_is_marked(self, mcp_client, heat_tables):
         from risk_orchestrator_engine import persist_heat_index

@@ -11,11 +11,11 @@ from ..server import READ_ONLY, server
 HEAT_TOP_CONTRIBUTORS = 5
 
 _HEAT_UNITS = {
-    "phi_score": "0-100 composite of VaR, correlation and drawdown (higher is hotter); tier GREEN below 40, YELLOW 40-75, RED 75 and above by default (Settings)",
+    "phi_score": "0-100 composite of VaR, correlation and drawdown (higher is hotter), null when an input is unavailable; tier GREEN below 40, YELLOW 40-75, RED 75 and above by default (Settings)",
     "var.pct_of_equity": "percent: 1-day 95% VaR as a share of portfolio equity",
     "max_correlation.value": "-1 to 1: highest pairwise correlation between two holdings",
     "max_drawdown.pct": "percent, absolute value of the worst peak-to-trough fall",
-    "top_risk_contributors.risk_score": "0-100 per-position score from the same three inputs, tier by the same thresholds",
+    "top_risk_contributors.risk_score": "0-100 per-position score from the same three inputs, tier by the same thresholds; null when an input is unavailable",
     "top_risk_contributors.marginal_var_contribution_pct": "percent of the portfolio's VaR that comes from this position",
     "top_risk_contributors.stop_distance_pct": "percent of price above the ATR stop-loss; negative means the price is through the stop",
     "computed_at": "UTC time of the Risk Orchestrator Scan that wrote the figures (daily on weekdays)",
@@ -26,7 +26,7 @@ _HEAT_INPUTS = (("var_pct_of_equity", "VaR"), ("max_correlation", "correlation")
 def heat_summary(row: dict) -> tuple:
     """(heat index part, missing lines) for a portfolio_heat_index row."""
     missing = [
-        f"Heat Index {label} input is not available, so the score counts it as zero risk"
+        f"Heat Index {label} input is not available, so the score and tier are withheld"
         for key, label in _HEAT_INPUTS if row[key] is None
     ]
     return {
@@ -52,6 +52,8 @@ def get_heat_index() -> dict[str, Any]:
         heat, missing = heat_summary(row)
         if not contributors:
             missing.append("No per-position Risk Contribution rows exist yet")
+        elif any(c["risk_score"] is None for c in contributors):
+            missing.append("Some positions have no Risk Contribution score because an input (VaR share, correlation or stop distance) is not available")
     epochs = [e for e in (parse_utc_epoch(r["last_updated"]) for r in [*([row] if row else []), *contributors]) if e]
     return envelope(
         {

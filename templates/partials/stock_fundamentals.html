@@ -60,8 +60,10 @@
         <div class="data-row">
             <span class="data-label"><abbr title="This ticker's contribution to overall portfolio risk — marginal VaR share, correlation with other holdings, and distance from its ATR stop-loss.">Risk Contribution:</abbr></span>
             <span class="data-value">
+                {% if ticker_risk.risk_tier %}
                 {% set rc_class = 'metric-poor' if ticker_risk.risk_tier == 'RED' else ('metric-neutral' if ticker_risk.risk_tier == 'YELLOW' else 'metric-excellent') %}
                 <span class="{{ rc_class }}">{{ ticker_risk.risk_tier | capitalize }} ({{ ticker_risk.risk_score }}/100)</span>
+                {% else %}N/A{% endif %}
             </span>
         </div>
         {% endif %}

@@ -1017,10 +1017,14 @@ def run_risk_orchestrator_job():
     try:
         log_sched_notification("Scheduler", "Started Risk Orchestrator Scan...")
         result = run_scan()
+        unavailable_note = (
+            f" {result['scopes_unavailable']} scope(s) have no score because an input is unavailable."
+            if result["scopes_unavailable"] else ""
+        )
         log_sched_notification(
             "Success",
-            f"Risk Orchestrator Scan complete — {result['scopes_computed']} scope(s) scored, "
-            f"{result['tickers_scored']} ticker(s) rated.",
+            f"Risk Orchestrator Scan complete — {result['scopes_computed'] - result['scopes_unavailable']} scope(s) scored, "
+            f"{result['tickers_scored']} ticker(s) rated.{unavailable_note}",
         )
         _fire_risk_orchestrator_critical_alerts(get_critical_scopes())
     except Exception as e:
