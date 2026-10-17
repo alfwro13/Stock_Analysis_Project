@@ -400,43 +400,48 @@ def evaluate_pretrade_check(
     baseline_drawdown_raw = baseline_report.get("risk_metrics", {}).get("max_drawdown")
     drawdown_pct = round(abs(baseline_drawdown_raw) * 100, 3) if baseline_drawdown_raw is not None else None
     dd_sub = _sub_score(drawdown_pct, thresholds["DRAWDOWN_PCT_YELLOW"], thresholds["DRAWDOWN_PCT_RED"])
-    dd_tier = _tier_for(dd_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+    dd_tier = _tier_for(dd_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if drawdown_pct is not None else None
 
     sim = simulate_scope_with_hypothetical_holding(scope, ticker, additional_value, read_only=read_only)
     var_sub = _sub_score(sim["var_pct_of_equity"], thresholds["VAR_PCT_YELLOW"], thresholds["VAR_PCT_RED"])
     corr_sub = _sub_score(sim["max_pairwise_correlation"], thresholds["MAX_CORR_YELLOW"], thresholds["MAX_CORR_RED"])
-    phi_score = round(
-        weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 2
+    var_tier = _tier_for(var_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if sim["var_pct_of_equity"] is not None else None
+    correlation_tier = (
+        _tier_for(corr_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"]) if sim["max_pairwise_correlation"] is not None else None
     )
-    phi_score = max(0.0, min(phi_score, 100.0))
-    tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
-    var_tier = _tier_for(var_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
-    correlation_tier = _tier_for(corr_sub, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
+    # _sub_score(None) is 0, so a missing input would read as zero risk and approve: withhold the verdict instead
+    unavailable_inputs = [
+        label for label, value in (
+            ("VaR", sim["var_pct_of_equity"]), ("correlation", sim["max_pairwise_correlation"]), ("drawdown", drawdown_pct)
+        ) if value is None
+    ]
 
-    if tier == TIER_RED:
-        verdict = "reject"
-    elif tier == TIER_YELLOW:
-        verdict = "warn"
-    else:
-        verdict = "approve"
+    phi_score = tier = verdict = breached_constraint = suggested_reduced_value = None
+    if not unavailable_inputs:
+        phi_score = round(
+            weights["VAR"] * var_sub + weights["CORRELATION"] * corr_sub + weights["DRAWDOWN"] * dd_sub, 2
+        )
+        phi_score = max(0.0, min(phi_score, 100.0))
+        tier = _tier_for(phi_score, thresholds["PHI_YELLOW"], thresholds["PHI_RED"])
 
-    breached_constraint = None
-    for label, sub_tier in (("VaR", var_tier), ("Correlation", correlation_tier), ("Drawdown", dd_tier)):
-        if sub_tier == TIER_RED:
-            breached_constraint = label
-            break
-    if breached_constraint is None:
-        for label, sub_tier in (("VaR", var_tier), ("Correlation", correlation_tier), ("Drawdown", dd_tier)):
-            if sub_tier == TIER_YELLOW:
-                breached_constraint = label
+        if tier == TIER_RED:
+            verdict = "reject"
+        elif tier == TIER_YELLOW:
+            verdict = "warn"
+        else:
+            verdict = "approve"
+
+        sub_tiers = (("VaR", var_tier), ("Correlation", correlation_tier), ("Drawdown", dd_tier))
+        for wanted in (TIER_RED, TIER_YELLOW):
+            breached_constraint = next((label for label, sub_tier in sub_tiers if sub_tier == wanted), None)
+            if breached_constraint:
                 break
 
-    suggested_reduced_value = None
-    if verdict != "approve" and additional_value > 0:
-        target_rank = max(0, _TIER_RANK[tier] - 1)
-        suggested_reduced_value = _suggest_reduced_value(
-            scope, ticker, additional_value, dd_sub, thresholds, weights, target_rank, read_only=read_only
-        )
+        if verdict != "approve" and additional_value > 0:
+            target_rank = max(0, _TIER_RANK[tier] - 1)
+            suggested_reduced_value = _suggest_reduced_value(
+                scope, ticker, additional_value, dd_sub, thresholds, weights, target_rank, read_only=read_only
+            )
 
     return {
         "scope": scope,
@@ -456,5 +461,6 @@ def evaluate_pretrade_check(
         "new_portfolio_total_value": sim["portfolio_total_value"],
         "suggested_reduced_value": suggested_reduced_value,
         "risk_cache_date": baseline_report.get("risk_metrics", {}).get("cache_date"),
+        "unavailable_inputs": unavailable_inputs,
         "data_warnings": sim["data_warnings"],
     }

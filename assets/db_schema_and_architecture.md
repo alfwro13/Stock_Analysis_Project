@@ -240,7 +240,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 
 #### `pretrade_check_log`
 * **Purpose:** Append-only audit trail of every Pre-Trade Gatekeeper (Pillar A) what-if check run from the Stock Detail Position Sizing panel (`GET /api/risk-orchestrator/pretrade-check`). Not a snapshot table like the two above — a verdict can be produced many times a day for the same ticker as the user adjusts size, so it's keyed on an autoincrement id rather than `(ticker, scope)`. See `assets/risk_orchestrator.md` §6.
-* **Key Columns:** `id` (PK autoincrement), `ticker`, `scope`, `proposed_value`, `verdict`, `breached_constraint`, `phi_score`, `var_pct_of_equity`, `max_correlation`, `suggested_reduced_value`, `created_at`.
+* **Key Columns:** `id` (PK autoincrement), `ticker`, `scope`, `proposed_value`, `verdict`, `breached_constraint`, `phi_score`, `var_pct_of_equity`, `max_correlation`, `suggested_reduced_value`, `created_at`. `verdict` is `approve`, `warn`, `reject`, or `unavailable` when an input could not be computed.
 
 #### `atr_stop_history`
 * **Purpose:** Daily snapshot of `stock_signals.atr_stop_loss` per ticker, written alongside that column's own upsert in `quant_signals.py` so the Risk Orchestrator Digest (C1) can answer "did this ticker's stop move up since the last rollup" without depending on a previous digest run having actually succeeded — `stock_signals.atr_stop_loss` itself is latest-value-only. See `assets/risk_orchestrator.md` §7.

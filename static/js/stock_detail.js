@@ -652,6 +652,21 @@
     var _pretradeVerdictLabel = { approve: "Approve", warn: "Warn", reject: "Reject" };
 
     function renderPretradeVerdict(check, verdictEl, detailRow, detailEl) {
+        if (check.verdict == null) {
+            verdictEl.textContent = "No verdict";
+            verdictEl.className = "ps-value";
+            if (detailRow && detailEl) {
+                const reasons = [];
+                if (check.unavailable_inputs && check.unavailable_inputs.length) {
+                    reasons.push("could not compute " + check.unavailable_inputs.join(", "));
+                }
+                (check.data_warnings || []).forEach(function (w) { reasons.push(w); });
+                detailEl.textContent = reasons.join(" — ") || "Risk inputs unavailable.";
+                detailRow.classList.remove("d-none");
+            }
+            return;
+        }
+
         const cls = _pretradeVerdictClass[check.verdict] || "";
         verdictEl.textContent = _pretradeVerdictLabel[check.verdict] || check.verdict;
         verdictEl.className = "ps-value " + cls;

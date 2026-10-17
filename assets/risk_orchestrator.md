@@ -113,14 +113,14 @@ sub-metric (falling back to the worst YELLOW one if nothing is RED). On `warn`/`
 search (`risk_orchestrator_engine._suggest_reduced_value()`, ≤6 iterations) finds the largest
 smaller `value` that resolves to a better tier, returned as `suggested_reduced_value` — `null` when
 no smaller size helps (e.g. the breach is driven by `Drawdown`, which doesn't move with this
-position's size). Like the PHI Red badge, the verdict is **advisory only**: this app has no trade
+position's size). **No verdict from missing inputs.** `_sub_score(None)` is 0, so a VaR, correlation or drawdown input that could not be computed would read as zero risk and give `approve`. In that case `evaluate_pretrade_check()` returns `verdict`, `tier`, `phi_score`, `breached_constraint` and `suggested_reduced_value` as `null`, the tier of each missing input as `null`, and `unavailable_inputs` naming the missing ones (`data_warnings` still says why). The route passes this on and logs the row with verdict `unavailable`; the Stock Detail panel shows "No verdict" with the missing inputs as its reason; the MCP tool reads the same fields. Like the PHI Red badge, the verdict is **advisory only**: this app has no trade
 execution to actually block a purchase.
 
 **Second caller.** The MCP Server's `pretrade_check` tool calls `evaluate_pretrade_check(..., read_only=True)` directly and never logs: the log write lives in the route, not the engine. `read_only` reaches `simulate_scope_with_hypothetical_holding()` and stops the price-history loader from fetching or queueing a refresh for a ticker with no parquet on disk (it then gets the no-usable-history warning); the route keeps the default `read_only=False`. The result also carries `risk_cache_date`, the date of the X-ray risk cache the baseline report read.
 
 **Audit trail.** Every check call from the route is logged to `pretrade_check_log` (ticker, scope, proposed
 value, verdict, breached constraint, PHI score, VaR%, max correlation, suggested reduced value,
-timestamp) — append-only, since the same ticker can be checked many times a day as the user
+timestamp; verdict `unavailable` when no verdict could be computed) — append-only, since the same ticker can be checked many times a day as the user
 adjusts size on the panel, unlike the snapshot-only `portfolio_heat_index`/`ticker_risk_contribution`
 tables above.
 

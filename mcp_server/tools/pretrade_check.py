@@ -36,7 +36,6 @@ _SELL_NOTE = (
     "pretrade_check only models adding a position, so it gives no verdict for a sale. "
     "The account's current Portfolio Heat Index is returned for context."
 )
-_INPUTS = (("VaR", "var_pct_of_equity"), ("correlation", "max_correlation"), ("drawdown", "drawdown_pct"))
 
 
 def _sell_context(ticker: str, scope: str) -> dict[str, Any]:
@@ -60,26 +59,24 @@ def _buy_check(ticker: str, scope: str, amount: float) -> dict[str, Any]:
             check = evaluate_pretrade_check(scope, ticker, amount, read_only=True)
     except XRayScopeUnavailable as e:
         raise ToolError(str(e)) from e
-    unavailable = [label for label, key in _INPUTS if check[key] is None]
     missing = list(check["data_warnings"])
-    decided = not unavailable
-    if not decided:
+    if check["unavailable_inputs"]:
         missing.append(
-            "No verdict: the " + ", ".join(unavailable) + " input could not be computed, and the Heat Index would count it as zero risk"
+            "No verdict: the " + ", ".join(check["unavailable_inputs"]) + " input could not be computed, and the Heat Index would count it as zero risk"
         )
     return envelope(
         {
             "side": "buy", "ticker": ticker, "account": scope, "proposed_value": check["proposed_value"],
-            "verdict": check["verdict"] if decided else None,
-            "tier": check["tier"] if decided else None,
-            "phi_score": check["phi_score"] if decided else None,
-            "breached_constraint": check["breached_constraint"] if decided else None,
-            "var": {"pct_of_equity": check["var_pct_of_equity"], "tier": check["var_tier"] if check["var_pct_of_equity"] is not None else None},
-            "max_correlation": {"value": check["max_correlation"], "tier": check["correlation_tier"] if check["max_correlation"] is not None else None},
-            "max_drawdown": {"pct": check["drawdown_pct"], "tier": check["drawdown_tier"] if check["drawdown_pct"] is not None else None},
+            "verdict": check["verdict"],
+            "tier": check["tier"],
+            "phi_score": check["phi_score"],
+            "breached_constraint": check["breached_constraint"],
+            "var": {"pct_of_equity": check["var_pct_of_equity"], "tier": check["var_tier"]},
+            "max_correlation": {"value": check["max_correlation"], "tier": check["correlation_tier"]},
+            "max_drawdown": {"pct": check["drawdown_pct"], "tier": check["drawdown_tier"]},
             "hypothetical_weight": check["hypothetical_weight"],
             "new_portfolio_total_value": check["new_portfolio_total_value"],
-            "suggested_reduced_value": check["suggested_reduced_value"] if decided else None,
+            "suggested_reduced_value": check["suggested_reduced_value"],
             "risk_cache_date": check["risk_cache_date"],
         },
         as_of=date_epoch(check["risk_cache_date"]), units=_UNITS, missing=missing,
