@@ -1,0 +1,472 @@
+            <div class="settings-panel border-left-cyan" id="pattern-detection-card">
+                <h4 class="settings-panel-header text-cyan">&#128200; Pattern Detection</h4>
+                <p class="settings-desc">
+                    Scans your portfolio and watchlist once per day for chart patterns using rolling-window swing detection
+                    plus volume confirmation, RSI divergence, and a required prior trend. Covers
+                    <abbr title="A topping reversal pattern: three swing highs where the middle (head) is taller than the two outer shoulders.">Head &amp; Shoulders</abbr> /
+                    <abbr title="The bullish mirror image: three swing lows where the middle (head) is lower than the two outer shoulders.">Inverse Head &amp; Shoulders</abbr>,
+                    <abbr title="Two peaks of near-equal height separated by one qualifying trough.">Double Top</abbr> /
+                    <abbr title="The bullish mirror image: two troughs of near-equal depth separated by one qualifying peak.">Double Bottom</abbr>,
+                    <abbr title="A sharp directional move (the pole) followed by a brief, mildly counter-sloped consolidation channel before the trend resumes.">Bull Flag</abbr> /
+                    <abbr title="The bearish mirror image of a Bull Flag.">Bear Flag</abbr>,
+                    <abbr title="Same pole prerequisite as a Flag, but the consolidation is a micro symmetrical triangle (converging resistance/support) rather than a parallel channel.">Bull Pennant</abbr> /
+                    <abbr title="The bearish mirror image of a Bull Pennant.">Bear Pennant</abbr>,
+                    <abbr title="A flat resistance level with a rising support line, breaking out upward.">Ascending Triangle</abbr> /
+                    <abbr title="The bearish mirror image: a flat support level with a falling resistance line, breaking out downward.">Descending Triangle</abbr> /
+                    <abbr title="A falling resistance line and a rising support line converging together — directionally neutral until price closes decisively past either line.">Symmetrical Triangle</abbr>,
+                    <abbr title="Both resistance and support slope upward, but support rises faster, forcing convergence — a bearish exhaustion signal, confirming on a close below the rising support line.">Rising Wedge</abbr> /
+                    <abbr title="The bullish mirror image: both lines slope downward, but resistance falls faster, confirming on a close above the falling resistance line.">Falling Wedge</abbr>,
+                    <abbr title="Bollinger Bands (20-day SMA +/- 2 standard deviations) contracting fully inside the Keltner Channel (20-day EMA +/- 1.5x ATR) — a volatility compression that often precedes an explosive directional move.">Volatility Squeeze</abbr>,
+                    <abbr title="A bar whose True Range is the smallest of the trailing 4 (NR4) or 7 (NR7) bars and which is also a strict inside bar vs. the prior bar — a micro-contraction often preceding a sharp breakout.">NR4 / NR7 Narrow Range</abbr>,
+                    <abbr title="Price stretched more than a configurable Z-score threshold away from its 200-day SMA (measured against the distance series' own trailing mean/std) — a mean-reversion exhaustion setup.">Parabolic Stretch</abbr>,
+                    <abbr title="Price makes a new high/low while RSI fails to confirm it with a new high/low of its own — a leading sign that momentum is fading even as price keeps pushing.">Bullish / Bearish Divergence</abbr>, and
+                    <abbr title="1-2 bar execution triggers (Bullish/Bearish Engulfing, Hammer/Shooting Star) that only qualify near a price extreme — below the lower Bollinger Band or RSI oversold/overbought — used to confirm a reversal rather than as structural analysis on their own.">Micro-Structure Candlestick Triggers</abbr>.
+                    Results appear at the <a href="/pattern-detection" class="text-cyan">Pattern Detection tools page</a>.
+                </p>
+
+                {% set pd_sched = config.SCHEDULING.PATTERN_DETECTION if config.SCHEDULING.PATTERN_DETECTION else {} %}
+                {% set pd_cfg = config.NOTIFICATIONS.PATTERN_DETECTION_ALERTS if config.NOTIFICATIONS.PATTERN_DETECTION_ALERTS else {} %}
+                {% set pd_hs_sched = pd_sched.HEAD_SHOULDERS if pd_sched.HEAD_SHOULDERS else {} %}
+                {% set pd_dtb_sched = pd_sched.DOUBLE_TOP_BOTTOM if pd_sched.DOUBLE_TOP_BOTTOM else {} %}
+                {% set pd_flag_sched = pd_sched.FLAG if pd_sched.FLAG else {} %}
+                {% set pd_pennant_sched = pd_sched.PENNANT if pd_sched.PENNANT else {} %}
+                {% set pd_tri_sched = pd_sched.TRIANGLE if pd_sched.TRIANGLE else {} %}
+                {% set pd_wedge_sched = pd_sched.WEDGE if pd_sched.WEDGE else {} %}
+                {% set pd_vs_sched = pd_sched.VOLATILITY_SQUEEZE if pd_sched.VOLATILITY_SQUEEZE else {} %}
+                {% set pd_nr_sched = pd_sched.NARROW_RANGE if pd_sched.NARROW_RANGE else {} %}
+                {% set pd_ps_sched = pd_sched.PARABOLIC_STRETCH if pd_sched.PARABOLIC_STRETCH else {} %}
+                {% set pd_md_sched = pd_sched.MOMENTUM_DIVERGENCE if pd_sched.MOMENTUM_DIVERGENCE else {} %}
+                {% set pd_ct_sched = pd_sched.CANDLESTICK_TRIGGER if pd_sched.CANDLESTICK_TRIGGER else {} %}
+                {% set pd_hs_cfg = pd_cfg.HEAD_SHOULDERS if pd_cfg.HEAD_SHOULDERS else {} %}
+                {% set pd_dtb_cfg = pd_cfg.DOUBLE_TOP_BOTTOM if pd_cfg.DOUBLE_TOP_BOTTOM else {} %}
+                {% set pd_flag_cfg = pd_cfg.FLAG if pd_cfg.FLAG else {} %}
+                {% set pd_pennant_cfg = pd_cfg.PENNANT if pd_cfg.PENNANT else {} %}
+                {% set pd_tri_cfg = pd_cfg.TRIANGLE if pd_cfg.TRIANGLE else {} %}
+                {% set pd_wedge_cfg = pd_cfg.WEDGE if pd_cfg.WEDGE else {} %}
+                {% set pd_vs_cfg = pd_cfg.VOLATILITY_SQUEEZE if pd_cfg.VOLATILITY_SQUEEZE else {} %}
+                {% set pd_nr_cfg = pd_cfg.NARROW_RANGE if pd_cfg.NARROW_RANGE else {} %}
+                {% set pd_ps_cfg = pd_cfg.PARABOLIC_STRETCH if pd_cfg.PARABOLIC_STRETCH else {} %}
+                {% set pd_md_cfg = pd_cfg.MOMENTUM_DIVERGENCE if pd_cfg.MOMENTUM_DIVERGENCE else {} %}
+                {% set pd_ct_cfg = pd_cfg.CANDLESTICK_TRIGGER if pd_cfg.CANDLESTICK_TRIGGER else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_ENABLED" {% if pd_sched.ENABLED %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_ENABLED">Enable post-market scan</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Active Days</label>
+                        <select id="PATTERN_DETECTION_FREQ" class="form-select">
+                            {% set joined = pd_sched.DAYS | join(',') if pd_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                            <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
+                            <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Scan Time <span class="text-muted text-xs">(local tz)</span></label>
+                        <input type="time" id="PATTERN_DETECTION_TIME" class="form-control" value="{{ pd_sched.TIME | default('22:20') }}">
+                    </div>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PORTFOLIO" {% if pd_sched.MONITOR_PORTFOLIO | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PORTFOLIO">Monitor Portfolio Tickers</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_WATCHLIST" {% if pd_sched.MONITOR_WATCHLIST %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_WATCHLIST">Monitor Watchlist Tickers</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Alert cooldown (min)</label>
+                        <input type="number" id="PATTERN_DETECTION_COOLDOWN" class="form-control" value="{{ pd_cfg.COOLDOWN_MINUTES | default(120) }}" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Retrigger % move</label>
+                        <input type="number" id="PATTERN_DETECTION_RETRIGGER" class="form-control" value="{{ pd_cfg.RETRIGGER_PERCENT | default(3.0) }}" step="0.1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Re-arm % recovery</label>
+                        <input type="number" id="PATTERN_DETECTION_REARM" class="form-control" value="{{ pd_cfg.REARM_PERCENT | default(5.0) }}" step="0.1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Head &amp; Shoulders</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_HS_REGULAR" {% if pd_hs_sched.REGULAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_HS_REGULAR">Detect Head &amp; Shoulders (topping)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_HS_INVERSE" {% if pd_hs_sched.INVERSE_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_HS_INVERSE">Detect Inverse Head &amp; Shoulders (bottoming)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum absolute prior price move required before the left shoulder (uptrend for a regular pattern, downtrend for an inverse pattern) for a candidate to be accepted.">Prior trend minimum %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_HS_PRIOR_TREND" class="form-control" value="{{ pd_hs_cfg.PRIOR_TREND_MIN_PCT | default(8.0) }}" step="0.5" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_HS_VOLUME_MULT" class="form-control" value="{{ pd_hs_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Double Top / Double Bottom</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_DTB_TOP" {% if pd_dtb_sched.TOP_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_DTB_TOP">Detect Double Top (topping)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_DTB_BOTTOM" {% if pd_dtb_sched.BOTTOM_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_DTB_BOTTOM">Detect Double Bottom (bottoming)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum absolute prior price move required before the pattern's first peak/trough for a candidate to be accepted.">Prior trend minimum %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_PRIOR_TREND" class="form-control" value="{{ pd_dtb_cfg.PRIOR_TREND_MIN_PCT | default(8.0) }}" step="0.5" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_VOLUME_MULT" class="form-control" value="{{ pd_dtb_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum % difference allowed between the two peaks (or two troughs) for them to count as a matching pair.">Balance tolerance %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_BALANCE_TOL" class="form-control" value="{{ pd_dtb_cfg.BALANCE_TOLERANCE_PCT | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum % separation required between the middle trough/peak and the average of the two outer extremes, so a real pull-back is required.">Min separation %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_DTB_MIN_SEP" class="form-control" value="{{ pd_dtb_cfg.MIN_SEPARATION_PCT | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Bull Flag / Bear Flag</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_FLAG_BULL" {% if pd_flag_sched.BULL_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_FLAG_BULL">Detect Bull Flag (continuation up)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_FLAG_BEAR" {% if pd_flag_sched.BEAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_FLAG_BEAR">Detect Bear Flag (continuation down)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The flagpole's N-day return must exceed this many standard deviations of daily volatility (time-scaled by the square root of N) to count as a genuinely sharp move.">Sigma multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_SIGMA_MULT" class="form-control" value="{{ pd_flag_cfg.SIGMA_MULTIPLIER | default(1.5) }}" step="0.1" min="0.5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days the flagpole move is measured over.">Flagpole lookback (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_POLE_DAYS" class="form-control" value="{{ pd_flag_cfg.FLAGPOLE_LOOKBACK_DAYS | default(10) }}" step="1" min="3">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days of daily returns used to estimate normal volatility, taken immediately before the flagpole so the pole itself never inflates its own threshold.">Volatility window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_SIGMA_WINDOW" class="form-control" value="{{ pd_flag_cfg.SIGMA_WINDOW_DAYS | default(20) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum allowed %/day slope on either channel line — keeps the consolidation a genuine 'slight' pause rather than a steep reversal.">Max channel slope %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_MAX_SLOPE" class="form-control" value="{{ pd_flag_cfg.MAX_CHANNEL_SLOPE_PCT | default(0.75) }}" step="0.05" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum consolidation length in trading days.">Min consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_MIN_CONSOL" class="form-control" value="{{ pd_flag_cfg.MIN_CONSOLIDATION_DAYS | default(7) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum consolidation length in trading days.">Max consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_MAX_CONSOL" class="form-control" value="{{ pd_flag_cfg.MAX_CONSOLIDATION_DAYS | default(15) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum allowed difference (in %/day) between the upper and lower channel lines' slopes for them to count as parallel.">Parallel tolerance %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_FLAG_PARALLEL_TOL" class="form-control" value="{{ pd_flag_cfg.PARALLEL_TOLERANCE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Bull Pennant / Bear Pennant</h5>
+                <p class="text-muted text-xs mb-10">Shares the pole prerequisite and sigma/lookback settings above (Flag) — the consolidation itself is a short converging micro-triangle rather than a parallel channel.</p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PENNANT_BULL" {% if pd_pennant_sched.BULL_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PENNANT_BULL">Detect Bull Pennant (continuation up)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PENNANT_BEAR" {% if pd_pennant_sched.BEAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PENNANT_BEAR">Detect Bear Pennant (continuation down)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The flagpole's N-day return must exceed this many standard deviations of daily volatility (time-scaled by the square root of N) to count as a genuinely sharp move.">Sigma multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_SIGMA_MULT" class="form-control" value="{{ pd_pennant_cfg.SIGMA_MULTIPLIER | default(1.5) }}" step="0.1" min="0.5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days the flagpole move is measured over.">Flagpole lookback (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_POLE_DAYS" class="form-control" value="{{ pd_pennant_cfg.FLAGPOLE_LOOKBACK_DAYS | default(10) }}" step="1" min="3">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of trading days of daily returns used to estimate normal volatility, taken immediately before the flagpole so the pole itself never inflates its own threshold.">Volatility window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_SIGMA_WINDOW" class="form-control" value="{{ pd_pennant_cfg.SIGMA_WINDOW_DAYS | default(20) }}" step="1" min="5">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day slope (in either direction) for both the resistance and support regression lines to count as a genuine converging triangle rather than noise.">Min slope %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_MIN_SLOPE" class="form-control" value="{{ pd_pennant_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum consolidation length in trading days.">Min consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_MIN_CONSOL" class="form-control" value="{{ pd_pennant_cfg.MIN_CONSOLIDATION_DAYS | default(5) }}" step="1" min="3">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum consolidation length in trading days.">Max consolidation (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PENNANT_MAX_CONSOL" class="form-control" value="{{ pd_pennant_cfg.MAX_CONSOLIDATION_DAYS | default(12) }}" step="1" min="5">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Ascending / Descending Triangle</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_ASC" {% if pd_tri_sched.ASCENDING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_ASC">Detect Ascending Triangle (breakout up)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_DESC" {% if pd_tri_sched.DESCENDING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_DESC">Detect Descending Triangle (breakout down)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trailing lookback window (trading days) searched for a triangle's swing highs/lows.">Window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_TRI_WINDOW" class="form-control" value="{{ pd_tri_cfg.WINDOW_DAYS | default(40) }}" step="5" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Maximum allowed %/day slope (in either direction) for a side's regression line to count as 'flat'.">Flat-side slope epsilon %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_TRI_FLAT_EPS" class="form-control" value="{{ pd_tri_cfg.FLAT_SLOPE_EPSILON_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day slope (in the pattern's direction) for the sloped side's regression line to count as a real trend, not noise.">Min sloped-side %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_TRI_MIN_SLOPE" class="form-control" value="{{ pd_tri_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Symmetrical Triangle</h5>
+                <p class="text-muted text-xs mb-10">Shares the Window and Min sloped-side %/day settings above — both lines are tested against the same threshold. Direction is unknown while forming; these toggles gate which confirmed breakout direction gets reported.</p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_SYM_BULLISH" {% if pd_tri_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_SYM_BULLISH">Report bullish breakouts (upside)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_TRI_SYM_BEARISH" {% if pd_tri_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_TRI_SYM_BEARISH">Report bearish breakouts (downside)</label>
+                </div>
+
+                <h5 class="text-cyan mt-10">Rising Wedge / Falling Wedge</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_WEDGE_RISING" {% if pd_wedge_sched.RISING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_WEDGE_RISING">Detect Rising Wedge (breakout down)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_WEDGE_FALLING" {% if pd_wedge_sched.FALLING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_WEDGE_FALLING">Detect Falling Wedge (breakout up)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trailing lookback window (trading days) searched for a wedge's swing highs/lows.">Window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_WEDGE_WINDOW" class="form-control" value="{{ pd_wedge_cfg.WINDOW_DAYS | default(40) }}" step="5" min="15">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day slope (in the wedge's direction) for both the resistance and support regression lines, so both sides are genuinely trending rather than one being flat (a Triangle) or noise.">Min slope %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_WEDGE_MIN_SLOPE" class="form-control" value="{{ pd_wedge_cfg.MIN_SLOPE_PCT | default(0.15) }}" step="0.05" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum required %/day gap between the support and resistance slopes for the two lines to count as genuinely converging (a wedge) rather than parallel (a Flag channel).">Min convergence gap %/day</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_WEDGE_CONVERGENCE" class="form-control" value="{{ pd_wedge_cfg.MIN_CONVERGENCE_DIFF_PCT | default(0.1) }}" step="0.05" min="0">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Volatility Squeeze (Bollinger / Keltner)</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_VS_BULLISH" {% if pd_vs_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_VS_BULLISH">Report bullish breakouts</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_VS_BEARISH" {% if pd_vs_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_VS_BEARISH">Report bearish breakouts</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Rolling window (trading days) used for both the Bollinger Bands and the Keltner Channel.">Window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_WINDOW" class="form-control" value="{{ pd_vs_cfg.WINDOW_DAYS | default(20) }}" step="1" min="10">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of standard deviations for the Bollinger Bands.">Bollinger std devs</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_NUM_STD" class="form-control" value="{{ pd_vs_cfg.NUM_STD | default(2.0) }}" step="0.1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="ATR multiplier for the Keltner Channel.">Keltner ATR multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_KC_MULT" class="form-control" value="{{ pd_vs_cfg.KC_MULTIPLIER | default(1.5) }}" step="0.1" min="0.5">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum consecutive trading days the Bollinger Bands must sit fully inside the Keltner Channel to count as a qualifying squeeze.">Min squeeze length (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_MIN_SQUEEZE_DAYS" class="form-control" value="{{ pd_vs_cfg.MIN_SQUEEZE_DAYS | default(6) }}" step="1" min="2">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="How many trading days after the squeeze releases a decisive close outside the Bollinger Band still counts as that squeeze's breakout.">Breakout lookahead (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_VS_BREAKOUT_LOOKAHEAD" class="form-control" value="{{ pd_vs_cfg.BREAKOUT_LOOKAHEAD_DAYS | default(5) }}" step="1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">NR4 / NR7 Narrow Range (Inside Bar Breakout)</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_NR4" {% if pd_nr_sched.NR4_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_NR4">Detect NR4 (smallest range of trailing 4 bars)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_NR7" {% if pd_nr_sched.NR7_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_NR7">Detect NR7 (smallest range of trailing 7 bars)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_BULLISH" {% if pd_nr_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_BULLISH">Report bullish breakouts</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_NR_BEARISH" {% if pd_nr_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_NR_BEARISH">Report bearish breakouts</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="How many trading days after the narrow bar a decisive close beyond its own high/low still counts as that bar's breakout.">Breakout lookahead (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_NR_BREAKOUT_LOOKAHEAD" class="form-control" value="{{ pd_nr_cfg.BREAKOUT_LOOKAHEAD_DAYS | default(5) }}" step="1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_NR_VOLUME_MULT" class="form-control" value="{{ pd_nr_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Parabolic Stretch (Rubber Band)</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PS_OVERBOUGHT" {% if pd_ps_sched.OVERBOUGHT_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PS_OVERBOUGHT">Detect overbought stretch (reversion down)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_PS_OVERSOLD" {% if pd_ps_sched.OVERSOLD_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_PS_OVERSOLD">Detect oversold stretch (reversion up)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="The moving average distance is measured against.">SMA window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_SMA_WINDOW" class="form-control" value="{{ pd_ps_cfg.SMA_WINDOW | default(200) }}" step="10" min="50">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trailing window used to compute the distance-from-SMA series' own mean and standard deviation for the Z-score.">Z-score window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_Z_WINDOW" class="form-control" value="{{ pd_ps_cfg.Z_WINDOW_DAYS | default(252) }}" step="10" min="60">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Absolute Z-score of the distance-from-SMA series that counts as 'stretched'.">Stretch Z-score threshold</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_Z_THRESHOLD" class="form-control" value="{{ pd_ps_cfg.Z_THRESHOLD | default(3.0) }}" step="0.1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="The Z-score must retrace back under this absolute value, with price also moving back toward the mean, to confirm the reversion.">Confirm Z-score threshold</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_CONFIRM_Z" class="form-control" value="{{ pd_ps_cfg.CONFIRM_Z_THRESHOLD | default(2.0) }}" step="0.1" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="How many trading days after the stretch bar a confirmed retracement still counts as that stretch's resolution.">Breakout lookahead (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_BREAKOUT_LOOKAHEAD" class="form-control" value="{{ pd_ps_cfg.BREAKOUT_LOOKAHEAD_DAYS | default(10) }}" step="1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Volume on the stretch bar must exceed its 20-day average by at least this multiplier to count as a climax-volume confirmation.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_PS_VOLUME_MULT" class="form-control" value="{{ pd_ps_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Bullish / Bearish Divergence</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_MD_BULLISH" {% if pd_md_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_MD_BULLISH">Detect Bullish Divergence (lower low, higher RSI low)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_MD_BEARISH" {% if pd_md_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_MD_BEARISH">Detect Bearish Divergence (higher high, lower RSI high)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum % by which the second price extreme must exceed (or undershoot) the first for it to count as a genuinely new extreme, not noise.">Min price change %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_MD_MIN_PRICE" class="form-control" value="{{ pd_md_cfg.MIN_PRICE_CHANGE_PCT | default(1.0) }}" step="0.1" min="0">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Minimum RSI point gap required between the two extremes, in the diverging direction, for it to count as a genuine divergence rather than noise.">Min RSI gap (points)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_MD_MIN_RSI_GAP" class="form-control" value="{{ pd_md_cfg.MIN_RSI_GAP | default(3.0) }}" step="0.5" min="0">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Breakout-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_MD_VOLUME_MULT" class="form-control" value="{{ pd_md_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <h5 class="text-cyan mt-10">Micro-Structure Candlestick Triggers</h5>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_CT_ENGULFING" {% if pd_ct_sched.ENGULFING_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_CT_ENGULFING">Detect Bullish / Bearish Engulfing</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_CT_PIN_BAR" {% if pd_ct_sched.PIN_BAR_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_CT_PIN_BAR">Detect Hammer / Shooting Star Pin Bars</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_CT_BULLISH" {% if pd_ct_sched.BULLISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_CT_BULLISH">Report bullish triggers (Bullish Engulfing / Hammer)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PATTERN_DETECTION_CT_BEARISH" {% if pd_ct_sched.BEARISH_ENABLED | default(true) %}checked{% endif %}>
+                    <label for="PATTERN_DETECTION_CT_BEARISH">Report bearish triggers (Bearish Engulfing / Shooting Star)</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="A bullish trigger only qualifies while RSI is at or below this value (or price is below the lower Bollinger Band) — otherwise the candle shape alone is treated as noise, not a reversal signal.">RSI oversold threshold</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_RSI_OVERSOLD" class="form-control" value="{{ pd_ct_cfg.RSI_OVERSOLD | default(30.0) }}" step="1" min="1" max="49">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="A bearish trigger only qualifies while RSI is at or above this value (or price is above the upper Bollinger Band).">RSI overbought threshold</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_RSI_OVERBOUGHT" class="form-control" value="{{ pd_ct_cfg.RSI_OVERBOUGHT | default(70.0) }}" step="1" min="51" max="99">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Rolling window (trading days) used for the Bollinger Bands context check.">Bollinger window (days)</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_BB_WINDOW" class="form-control" value="{{ pd_ct_cfg.BB_WINDOW_DAYS | default(20) }}" step="1" min="10">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of standard deviations for the Bollinger Bands context check.">Bollinger std devs</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_BB_NUM_STD" class="form-control" value="{{ pd_ct_cfg.BB_NUM_STD | default(2.0) }}" step="0.1" min="1">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label><abbr title="A pin bar's rejection wick must be at least this many times the size of its real body.">Wick multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_WICK_MULT" class="form-control" value="{{ pd_ct_cfg.WICK_MULTIPLIER | default(2.0) }}" step="0.1" min="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="The wick opposite the rejection wick must be no larger than this fraction of the bar's total range to count as negligible.">Opposite wick max %</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_OPP_WICK_MAX" class="form-control" value="{{ pd_ct_cfg.OPPOSITE_WICK_MAX_PCT | default(0.2) }}" step="0.05" min="0" max="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Trigger-day volume must exceed its 20-day average by at least this multiplier to count as volume-confirmed.">Volume confirm multiplier</abbr></label>
+                        <input type="number" id="PATTERN_DETECTION_CT_VOLUME_MULT" class="form-control" value="{{ pd_ct_cfg.VOLUME_CONFIRM_MULTIPLIER | default(1.5) }}" step="0.1" min="1">
+                    </div>
+                </div>
+
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerPatternDetectionScan()">&#9654; Run Scan Now</button>
+                    <button type="button" class="btn btn-outline-secondary mt-0" onclick="triggerPatternDetectionBackfill()">&#9654; Backfill Historical Data</button>
+                </div>
+                <div id="pattern-detection-msg" class="mt-10"></div>
+            </div>

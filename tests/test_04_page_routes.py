@@ -123,7 +123,10 @@ def test_settings_inline_handlers_resolve_to_loaded_scripts(client):
     resp = client.get("/settings")
     assert resp.status_code == 200
     for card_id in ("diagnostics-panel", "backup-recovery-card", "core-system-card", "ghostfolio-integration-card",
-                    "mcp-server-card", "investment-policy-card", "tools-card", "workflow-monitor-card"):
+                    "mcp-server-card", "investment-policy-card", "tools-card", "workflow-monitor-card",
+                    "etf-predictors-section", "bubble-radar-settings-section", "pairs-spread-monitor-card",
+                    "sector-relative-momentum-card", "stable-shortlist-card", "pattern-detection-card",
+                    "forensic-screener-card"):
         assert f'id="{card_id}"' in resp.text
     scripts = re.findall(r'<script src="/static/js/([\w.]+\.js)', resp.text)
     for name in ("settings_system.js", "settings_account.js", "settings_backup.js"):
