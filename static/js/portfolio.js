@@ -548,6 +548,14 @@ function _renderXray(data, macroData) {
         + (hasFX ? '<div class="xray-chart-box"><div class="xray-chart-label">' + _abbr('FX / Currency Exposure', tips.fx_exposure) + '</div><div id="xray-c-fx" class="xray-chart-el"></div></div>' : '')
         + '</div></div>';
 
+    var hasCountries = data.country_allocation && data.country_allocation.length > 0;
+    if (hasCountries) {
+        html += '<div class="xray-section">'
+            + '<h3 class="xray-section-title">' + _abbr('Country Exposure', tips.country_exposure) + ' <span class="xray-badge">look-through</span></h3>'
+            + '<div id="xray-c-country" class="xray-chart-el"></div>'
+            + '</div>';
+    }
+
     html += '<div class="xray-section">'
         + '<h3 class="xray-section-title">Position Concentration</h3>'
         + '<div id="xray-c-concentration" class="xray-chart-el"></div>'
@@ -658,6 +666,7 @@ function _renderXray(data, macroData) {
     if (hasFX) {
         _plotDonut('xray-c-fx', data.fx_exposure.map(function (e) { return { name: e.currency, weight: e.weight }; }), 'Currency');
     }
+    if (hasCountries) { _plotCountries('xray-c-country', data.country_allocation); }
     _plotConcentration('xray-c-concentration', data.holdings, conc);
     if (mrcHoldings.length >= 2) { _plotMRC('xray-c-mrc', data.holdings); }
     if (cm.tickers && cm.tickers.length >= 2) { _plotCorrHeatmap('xray-c-corr', cm); }
@@ -691,6 +700,33 @@ function _plotDonut(elId, alloc, centerText) {
         showlegend: true,
         legend: { font: { size: 11, color: '#aaa' }, orientation: 'h', y: -0.15, x: 0.5, xanchor: 'center' },
         annotations: [{ text: centerText, showarrow: false, font: { color: '#888', size: 11 } }]
+    }), _PC);
+}
+
+var _COUNTRY_BARS_MAX = 15;
+
+function _plotCountries(elId, alloc) {
+    var top = alloc.slice(0, _COUNTRY_BARS_MAX);
+    if (alloc.length > _COUNTRY_BARS_MAX) {
+        var rest = alloc.slice(_COUNTRY_BARS_MAX).reduce(function (sum, c) { return sum + c.weight; }, 0);
+        top = top.concat([{ name: 'Other countries', weight: rest }]);
+    }
+    var labels = top.map(function (c) { return c.name; }).reverse();
+    var values = top.map(function (c) { return c.weight * 100; }).reverse();
+    var maxV   = Math.max.apply(null, values);
+    Plotly.newPlot(elId, [{
+        type: 'bar', orientation: 'h',
+        x: values, y: labels,
+        marker: { color: labels.map(function (l) { return l === 'Unknown' ? '#888' : '#4da6ff'; }) },
+        text: values.map(function (v) { return v.toFixed(1) + '%'; }),
+        textposition: 'outside',
+        hovertemplate: '<b>%{y}</b>: %{x:.1f}%<extra></extra>',
+        cliponaxis: false
+    }], _baseLayout({
+        height: Math.max(260, top.length * 28 + 80),
+        margin: { t: 10, r: 70, b: 40, l: 80 },
+        xaxis: { color: '#888', tickformat: '.0f', ticksuffix: '%', range: [0, Math.min(maxV * 1.25, 100)] },
+        yaxis: { color: '#aaa', automargin: true }
     }), _PC);
 }
 
