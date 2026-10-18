@@ -665,6 +665,17 @@ class TestBuildWorkflowGraph:
             assert nodes[node_id]["status"] == "manual"
             assert nodes[node_id]["enabled"] is True
 
+    def test_position_targets_node_feeds_the_intraday_scan_and_the_mcp_server(self):
+        graph = build_workflow_graph()
+        node = next(n for n in graph["nodes"] if n["id"] == "position_targets_source")
+        assert node["label"] == "Position Targets"
+        assert node["status"] == "manual"
+        assert node["produces"] == ["holding_price_limits"]
+        pairs = {(e["from"], e["to"], e["via"]) for e in graph["edges"]}
+        assert ("position_targets_source", "intraday_orchestrator_job", "holding_price_limits") in pairs
+        assert ("position_targets_source", "claude_mcp_server_source", "holding_price_limits") in pairs
+        assert ("trading_accounts_node", "position_targets_source", "portfolio") in pairs
+
     @pytest.mark.db
     def test_pension_scraper_job_labelled_and_linked_to_pension_node(self):
         from database import create_account, update_account
