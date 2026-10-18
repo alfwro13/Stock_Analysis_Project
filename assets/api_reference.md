@@ -2011,7 +2011,7 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
       "mtime": "2026-05-25 09:15:00",
       "size_mb": 18.4
     },
-    "feature_count": 32,
+    "feature_count": 21,
     "macro_hmm_outputs": 850,
     "macro_rf_outputs": 120
   },

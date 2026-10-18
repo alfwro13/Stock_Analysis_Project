@@ -1019,7 +1019,7 @@ def get_system_metrics():
         from ml_features import FEATURE_STATS_PATH, load_feature_stats
         f_stats = load_feature_stats(FEATURE_STATS_PATH)
         if f_stats is not None:
-            feature_count = len(f_stats)
+            feature_count = len(f_stats["features"])
             train_universe_size = int(f_stats["_meta"].get("train_universe_size") or 0)
 
         inference_coverage = get_cnt("""

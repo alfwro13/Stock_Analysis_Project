@@ -110,6 +110,18 @@ class TestAnomalyDatetimeComparison:
         assert resp.status_code == 200
         assert _json(resp)["ml"]["anomaly_stale_count"] == 0
 
+    def test_feature_count_counts_features_not_top_level_keys(self, client):
+        from ml_features import save_feature_stats
+        moments = {"mean": 0.0, "std": 1.0}
+        stats = {"_meta": {"train_universe_size": 100}, "features": {"a": moments, "b": moments, "c": moments}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "feature_stats.json"
+            save_feature_stats(stats, path)
+            with patch("ml_features.FEATURE_STATS_PATH", path):
+                resp = client.get("/api/system/metrics")
+        assert resp.status_code == 200
+        assert _json(resp)["ml"]["feature_count"] == 3
+
     def test_stale_naive_model_counted_as_stale(self, client):
         """A model with a naive trained_at more than 7 days ago must be counted as stale."""
         stale_ts = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%S")
