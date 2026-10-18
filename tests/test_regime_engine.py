@@ -194,6 +194,83 @@ class TestMacroThreatVelocityRules:
         assert abs(row["us_yield_velocity"] - 20.0) < 0.5
 
 
+class TestMacroThreatFailedFetches:
+    """A failed fetch is stored as NULL, never as 0.0 or as a substitute taken from another series."""
+
+    _EMPTY = pd.DataFrame()
+
+    def _run(self, empty=(), gilt_closes=None, gilt_dates=None, tnx=(4.30, 4.29)):
+        tnx_df = _make_tnx_df(*tnx)
+        flat = pd.DataFrame({"Close": [3.5] * len(tnx_df)}, index=tnx_df.index)
+        dfs = {"^TYX": flat, "^TNX": tnx_df, "DX-Y.NYB": flat, "GBPUSD=X": flat}
+        for ticker in empty:
+            dfs[ticker] = self._EMPTY
+        history_dir = Path(tempfile.mkdtemp())
+        if gilt_closes is not None:
+            index = pd.DatetimeIndex(gilt_dates if gilt_dates is not None else tnx_df.index[-len(gilt_closes):])
+            pd.DataFrame({"Close": gilt_closes}, index=index).to_parquet(history_dir / "UK_GILT_BASELINE.parquet")
+        with (
+            patch("regime_engine.yahoo_engine.get_price_history", return_value=dfs),
+            patch("regime_engine.HISTORICAL_DIR", new=history_dir),
+        ):
+            calculate_systemic_macro_threat()
+        return self._row(tnx_df.index[-1].strftime("%Y-%m-%d"))
+
+    @staticmethod
+    def _row(date):
+        conn = database.get_connection()
+        try:
+            row = conn.execute("SELECT * FROM macro_regimes WHERE date=?", (date,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def test_failed_dollar_sterling_and_30y_fetches_are_null(self, isolated_regime_tables):
+        row = self._run(empty=("^TYX", "DX-Y.NYB", "GBPUSD=X"))
+        assert row["tyx_close"] is None
+        assert row["dxy_close"] is None
+        assert row["gbpusd_close"] is None
+        assert row["tnx_close"] == 4.3 and row["us_threat_level"] == "YELLOW"
+
+    def test_successful_fetches_are_stored(self, isolated_regime_tables):
+        row = self._run()
+        assert (row["tyx_close"], row["dxy_close"], row["gbpusd_close"]) == (3.5, 3.5, 3.5)
+
+    def test_missing_gilt_file_leaves_the_uk_side_null_and_the_us_side_computed(self, isolated_regime_tables):
+        row = self._run()
+        assert row["uk_gilt_close"] is None
+        assert row["uk_yield_velocity"] is None
+        assert row["uk_threat_level"] is None
+        assert row["us_threat_level"] == "YELLOW"
+
+    def test_gilt_file_with_a_value_four_days_back_is_scored(self, isolated_regime_tables):
+        row = self._run(gilt_closes=[4.0] * 9 + [4.6])
+        assert row["uk_gilt_close"] == 4.6
+        assert row["uk_threat_level"] == "RED"
+        assert abs(row["uk_yield_velocity"] - 60.0) < 0.5
+
+    def test_gilt_file_without_a_value_four_days_back_leaves_the_uk_side_null(self, isolated_regime_tables):
+        row = self._run(gilt_closes=[4.0, 4.6])
+        assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
+        assert row["us_threat_level"] == "YELLOW"
+
+    def test_gilt_file_with_only_weekend_rows_leaves_the_uk_side_null(self, isolated_regime_tables):
+        row = self._run(gilt_closes=[4.0, 4.6], gilt_dates=["2025-06-07", "2025-06-08"])
+        assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
+        assert row["us_threat_level"] == "YELLOW"
+
+    def test_failed_rerun_keeps_the_good_values_stored_for_the_same_date(self, isolated_regime_tables):
+        good = self._run(gilt_closes=[4.0] * 9 + [4.6])
+        rerun = self._run(empty=("^TYX", "DX-Y.NYB", "GBPUSD=X"))
+        for column in ("tyx_close", "dxy_close", "gbpusd_close", "uk_gilt_close", "uk_yield_velocity", "uk_threat_level"):
+            assert rerun[column] == good[column] and rerun[column] is not None
+
+    def test_successful_rerun_replaces_the_stored_values(self, isolated_regime_tables):
+        self._run(gilt_closes=[4.0] * 9 + [4.6])
+        rerun = self._run(gilt_closes=[4.0] * 10)
+        assert rerun["uk_gilt_close"] == 4.0 and rerun["uk_threat_level"] == "GREEN"
+
+
 class TestClassifyRegime:
     """Unit tests for the pure _classify_regime() function — no DB needed."""
 
@@ -598,6 +675,20 @@ class TestMacroConditionsSnapshot:
         assert set(result) == self.HA_FIELDS
         assert result["as_of"] is None and result["treasury_auction"] == {"healthy": None, "recent": []}
         assert result["fear_greed"]["label"] == "Neutral"
+
+    def test_unavailable_closes_come_through_as_null(self, isolated_regime_tables):
+        from regime_engine import macro_conditions_snapshot
+        conn = database.get_connection()
+        try:
+            conn.execute("INSERT INTO macro_regimes (date, tnx_close, us_threat_level, us_yield_velocity) VALUES ('2026-05-01', 4.3, 'YELLOW', 18.5)")
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("regime_engine.get_latest_fear_greed", return_value={"value": None, "label": None, "as_of": None}):
+            result = macro_conditions_snapshot()
+        assert result["tnx_close"] == 4.3 and result["us_threat_level"] == "YELLOW"
+        for key in ("tyx_close", "dxy_close", "gbpusd_close", "uk_gilt_close", "uk_yield_velocity", "uk_threat_level"):
+            assert result[key] is None
 
     def test_route_wraps_the_snapshot_with_status_only(self, client, isolated_regime_tables):
         with patch("regime_engine.get_latest_fear_greed", return_value={"value": None, "label": None, "as_of": None}):

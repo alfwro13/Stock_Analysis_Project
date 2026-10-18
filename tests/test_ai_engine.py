@@ -161,6 +161,32 @@ class TestFormatters:
 # 2. _describe_series_trajectory
 # ─────────────────────────────────────────────────────────────────────────────
 
+class TestMacroContextUnavailableUkThreat:
+    def test_null_uk_threat_level_reads_na_not_none(self):
+        import database
+        conn = database.get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO macro_regimes (date, tnx_close, us_threat_level, us_yield_velocity) "
+                "VALUES ('2999-12-31', 4.3, 'YELLOW', 18.5)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        try:
+            text = ENGINE._get_macro_context()
+        finally:
+            conn = database.get_connection()
+            try:
+                conn.execute("DELETE FROM macro_regimes WHERE date = '2999-12-31'")
+                conn.commit()
+            finally:
+                conn.close()
+        assert "UK Yield Threat: N/A (Gilt N/A%" in text
+        assert "US Dollar Index (DXY): N/A | GBP/USD: N/A" in text
+        assert "None" not in text
+
+
 class TestTrajectory:
     def test_rising_direction(self):
         s = pd.Series([10.0, 20.0, 30.0, 40.0, 50.0])

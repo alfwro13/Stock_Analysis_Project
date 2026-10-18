@@ -642,6 +642,34 @@ def macro_conditions_snapshot() -> Dict[str, Any]:
         "fear_greed": get_latest_fear_greed(),
     }
 
+
+def _last_close(df: pd.DataFrame) -> Optional[float]:
+    return float(df['Close'].iloc[-1]) if not df.empty else None
+
+
+def _round_or_none(value: Optional[float], digits: int) -> Optional[float]:
+    return None if value is None else round(value, digits)
+
+
+def _gilt_readings() -> tuple[Optional[float], Optional[float]]:
+    """Latest UK gilt yield and the one 4+ days earlier from the baseline file; (None, None) when either is unavailable."""
+    gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
+    if not gilt_path.exists():
+        logger.warning("UK Gilt Baseline Parquet missing. UK yield threat not computed.")
+        return None, None
+    gilt_df = pd.read_parquet(gilt_path)
+    # Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
+    gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
+    if gilt_df.empty:
+        logger.warning("UK Gilt Baseline Parquet has no weekday rows. UK yield threat not computed.")
+        return None, None
+    past_rows = gilt_df[gilt_df.index <= gilt_df.index[-1] - pd.Timedelta(days=4)]
+    if past_rows.empty:
+        logger.warning("UK Gilt Baseline Parquet has no value 4+ days back. UK yield threat not computed.")
+        return None, None
+    return float(gilt_df['Close'].iloc[-1]), float(past_rows['Close'].iloc[-1])
+
+
 def calculate_systemic_macro_threat() -> None:
     try:
         # pull 10 days to survive weekends and holidays
@@ -663,25 +691,16 @@ def calculate_systemic_macro_threat() -> None:
         tnx_past_rows = tnx[tnx.index <= target_past]
         past_tnx = float(tnx_past_rows['Close'].iloc[-1]) if not tnx_past_rows.empty else curr_tnx
 
-        curr_tyx = float(tyx['Close'].iloc[-1]) if not tyx.empty else curr_tnx
-        curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
-        curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
+        curr_tyx = _last_close(tyx)
+        curr_dxy = _last_close(dxy)
+        curr_gbpusd = _last_close(gbpusd)
+        curr_gilt, past_gilt = _gilt_readings()
 
-        uk_gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
-        if uk_gilt_path.exists():
-            gilt_df = pd.read_parquet(uk_gilt_path)
-            # Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
-            gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
-            curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tnx
-            target_past_gilt = gilt_df.index[-1] - pd.Timedelta(days=4)
-            gilt_past_rows = gilt_df[gilt_df.index <= target_past_gilt]
-            past_gilt = float(gilt_past_rows['Close'].iloc[-1]) if not gilt_past_rows.empty else curr_tnx
-        else:
-            logger.warning("UK Gilt Baseline Parquet missing. Falling back to TNX equivalence.")
-            curr_gilt, past_gilt = curr_tnx, past_tnx
+        unavailable = [name for name, value in (("^TYX", curr_tyx), ("DX-Y.NYB", curr_dxy), ("GBPUSD=X", curr_gbpusd)) if value is None]
+        if unavailable:
+            logger.warning("Macro threat: no data for %s; storing NULL.", ", ".join(unavailable))
 
         us_velocity_bps = (curr_tnx - past_tnx) * 100.0
-        gilt_velocity_bps = (curr_gilt - past_gilt) * 100.0
 
         # calibrated to post-2022 rate environment: 30bps/3-day or 4.75% = RED, 15bps or 4.25% = YELLOW
         if us_velocity_bps >= 30.0 or curr_tnx >= 4.75:
@@ -692,12 +711,16 @@ def calculate_systemic_macro_threat() -> None:
             us_threat_level = "GREEN"
 
         # calibrated to higher UK gilt premiums: 30bps/3-day or 5.0% = RED, 15bps or 4.5% = YELLOW
-        if gilt_velocity_bps >= 30.0 or curr_gilt >= 5.0:
-            uk_threat_level = "RED"
-        elif gilt_velocity_bps >= 15.0 or curr_gilt >= 4.5:
-            uk_threat_level = "YELLOW"
+        if curr_gilt is None:
+            gilt_velocity_bps = uk_threat_level = None
         else:
-            uk_threat_level = "GREEN"
+            gilt_velocity_bps = (curr_gilt - past_gilt) * 100.0
+            if gilt_velocity_bps >= 30.0 or curr_gilt >= 5.0:
+                uk_threat_level = "RED"
+            elif gilt_velocity_bps >= 15.0 or curr_gilt >= 4.5:
+                uk_threat_level = "YELLOW"
+            else:
+                uk_threat_level = "GREEN"
 
         latest_date = tnx.index[-1].strftime('%Y-%m-%d')
 
@@ -705,26 +728,38 @@ def calculate_systemic_macro_threat() -> None:
         try:
             conn = get_connection()
             cursor = conn.cursor()
+            # COALESCE: a rerun whose fetch failed must not erase the good value an earlier run stored for the same date
             cursor.execute('''
-                INSERT OR REPLACE INTO macro_regimes
+                INSERT INTO macro_regimes
                 (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close,
                  us_yield_velocity, us_threat_level, uk_yield_velocity, uk_threat_level)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    tyx_close = COALESCE(excluded.tyx_close, tyx_close),
+                    tnx_close = excluded.tnx_close,
+                    dxy_close = COALESCE(excluded.dxy_close, dxy_close),
+                    uk_gilt_close = COALESCE(excluded.uk_gilt_close, uk_gilt_close),
+                    gbpusd_close = COALESCE(excluded.gbpusd_close, gbpusd_close),
+                    us_yield_velocity = excluded.us_yield_velocity,
+                    us_threat_level = excluded.us_threat_level,
+                    uk_yield_velocity = COALESCE(excluded.uk_yield_velocity, uk_yield_velocity),
+                    uk_threat_level = COALESCE(excluded.uk_threat_level, uk_threat_level)
             ''', (
                 latest_date,
-                round(curr_tyx, 3),
+                _round_or_none(curr_tyx, 3),
                 round(curr_tnx, 3),
-                round(curr_dxy, 3),
-                round(curr_gilt, 3),
-                round(curr_gbpusd, 4),
+                _round_or_none(curr_dxy, 3),
+                _round_or_none(curr_gilt, 3),
+                _round_or_none(curr_gbpusd, 4),
                 round(us_velocity_bps, 2),
                 us_threat_level,
-                round(gilt_velocity_bps, 2),
+                _round_or_none(gilt_velocity_bps, 2),
                 uk_threat_level
             ))
             conn.commit()
-            logger.info("Macro Risk Evaluated | US: %s (Vel: %+.2f bps, Lvl: %.2f%%) | UK: %s (Vel: %+.2f bps, Lvl: %.2f%%)",
-                        us_threat_level, us_velocity_bps, curr_tnx, uk_threat_level, gilt_velocity_bps, curr_gilt)
+            uk_summary = "n/a" if curr_gilt is None else "%s (Vel: %+.2f bps, Lvl: %.2f%%)" % (uk_threat_level, gilt_velocity_bps, curr_gilt)
+            logger.info("Macro Risk Evaluated | US: %s (Vel: %+.2f bps, Lvl: %.2f%%) | UK: %s",
+                        us_threat_level, us_velocity_bps, curr_tnx, uk_summary)
         except Exception as e:
             if conn:
                 conn.rollback()

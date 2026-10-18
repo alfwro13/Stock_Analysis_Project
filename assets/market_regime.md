@@ -104,7 +104,7 @@ The system maintains this context completely hands-free via the APScheduler back
 
 1.  **Overnight Collection (Every Trading Day at 01:00):**
     
-    `run_overnight_quant_scan()` triggers `calculate_market_regime()` and `calculate_systemic_macro_threat()` to download freshest underlying ticks, solve the math matrices, and run an idempotent upsert (`INSERT OR REPLACE`) into SQLite.
+    `run_overnight_quant_scan()` triggers `calculate_market_regime()` and `calculate_systemic_macro_threat()` to download freshest underlying ticks, solve the math matrices, and run an idempotent upsert into SQLite (a failed fetch is stored as `NULL`, and a rerun never erases a good value already stored for the same date).
     
 2.  **Jinja Visual Pre-Rendering:**
     
