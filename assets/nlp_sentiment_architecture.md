@@ -13,7 +13,7 @@ The subsystem is split across two modules with distinct responsibilities:
 
 This separation ensures the model singleton, HuggingFace credentials, and NLP I/O are isolated from the charting and visualisation layer.
 
-Every Plotly chart on `/market-sentiment` (the five built in `sentiment_engine.py`, the seven macro charts and the two Yield vs Nominal GDP charts in `visuals.py`) takes its layout from `visuals.apply_sentiment_chart_layout()`: centred title, legend below the plot, `margin.b` 70, y-axis automargin and one desktop height (`SENTIMENT_CHART_HEIGHT`, 420). `static/js/market_sentiment.js` relayouts them to 400 px under 768 px wide (AGENTS.md rule 18).
+Every Plotly chart on `/market-sentiment` (the five built in `sentiment_engine.py`, the seven macro charts and the two Yield vs Nominal GDP charts in `visuals_macro.py`) takes its layout from `visuals_macro.apply_sentiment_chart_layout()`: centred title, legend below the plot, `margin.b` 70, y-axis automargin and one desktop height (`SENTIMENT_CHART_HEIGHT`, 420). `static/js/market_sentiment.js` relayouts them to 400 px under 768 px wide (AGENTS.md rule 18).
 
 ---
 

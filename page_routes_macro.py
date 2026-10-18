@@ -34,6 +34,8 @@ from visuals import (
     create_reading_line_chart,
     intraday_market_tz,
     EXCHANGE_DELAYS,
+)
+from visuals_macro import (
     create_us_liquidity_chart,
     create_us_credit_chart,
     create_uk_liquidity_chart,
