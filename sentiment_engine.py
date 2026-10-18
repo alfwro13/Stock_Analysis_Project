@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 import plotly.graph_objects as go
 from yahoo_engine import yahoo_engine
 from plotly.subplots import make_subplots
-from visuals import apply_sentiment_chart_layout
+from visuals_macro import apply_sentiment_chart_layout
 
 # Critical for headless Linux servers: Use 'Agg' backend so matplotlib doesn't crash
 import matplotlib
