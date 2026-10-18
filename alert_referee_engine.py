@@ -360,20 +360,19 @@ def _confluence_readiness_counts(conn) -> dict:
 
 
 def training_sample_count(engine: str = TRAP_MONITOR_ENGINE) -> int:
+    """Resolved training rows of one engine; a read failure raises, so a zero count is never a failed read."""
     conn = None
     try:
         conn = get_connection()
         counts = _confluence_readiness_counts(conn) if engine == CONFLUENCE_ENGINE else _trap_readiness_counts(conn)
         return counts["current"]
-    except Exception as e:
-        logger.error("training_sample_count failed for %s: %s", engine, e)
-        return 0
     finally:
         if conn:
             conn.close()
 
 
 def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
+    """Sample counts and Active-mode readiness of one engine; a read failure raises, so a zero count is never a failed read."""
     cfg = _referee_config(engine)
     target = int(cfg.get("MIN_TRAINING_SAMPLES", 200))
     conn = None
@@ -382,9 +381,6 @@ def readiness_status(engine: str = TRAP_MONITOR_ENGINE) -> dict:
         counts = _confluence_readiness_counts(conn) if engine == CONFLUENCE_ENGINE else _trap_readiness_counts(conn)
         current, earliest, latest = counts["current"], counts["earliest"], counts["latest"]
         pending, backfill_available = counts["pending"], counts["backfill_available"]
-    except Exception as e:
-        logger.error("readiness_status failed for %s: %s", engine, e)
-        current, earliest, latest, pending, backfill_available = 0, None, None, 0, 0
     finally:
         if conn:
             conn.close()
@@ -611,12 +607,16 @@ def evaluate_alert(
     if bundle is None:
         return RefereeVerdict(fire_probability=None, vetoed=False, mode=cfg.get("MODE", "shadow"), model_available=False)
 
-    if readiness_cache is None:
-        readiness = readiness_status(engine)
-    else:
-        readiness = readiness_cache.get(engine)
-        if readiness is None:
-            readiness = readiness_cache[engine] = readiness_status(engine)
+    try:
+        if readiness_cache is None:
+            readiness = readiness_status(engine)
+        else:
+            readiness = readiness_cache.get(engine)
+            if readiness is None:
+                readiness = readiness_cache[engine] = readiness_status(engine)
+    except Exception as e:
+        logger.error("alert_referee_engine: readiness read failed for %s, skipping the referee: %s", engine, e)
+        return RefereeVerdict(fire_probability=None, vetoed=False, mode=cfg.get("MODE", "shadow"), model_available=False)
     configured_mode = cfg.get("MODE", "shadow")
     effective_mode = configured_mode if readiness["ready_for_active"] else "shadow"
 

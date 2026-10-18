@@ -2629,7 +2629,7 @@ Searchable, filterable, paginated slice of the Alert Confidence Referee shadow-m
 
 `has_more` indicates whether another page exists at `offset + limit`.
 
-A database error reading the log answers `500` with the fixed error message (not an empty `results`), and the Settings modal then shows "Failed to load shadow log."; `GET /api/alert-referee/status` does the same instead of returning zero counts.
+A database error reading the log answers `500` with the fixed error message (not an empty `results`), and the Settings modal then shows "Failed to load shadow log."; `GET /api/alert-referee/status` does the same instead of returning zero counts, including when only the readiness count query fails (`readiness_status()` and `training_sample_count()` raise on a database error rather than reporting 0 resolved samples).
 
 ### `POST /api/alert-referee/train`
 
