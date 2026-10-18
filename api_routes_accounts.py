@@ -21,8 +21,8 @@ from account_scraper_engine import (
     config_error, header_error, import_price_csv, price_as_of, run_scrape_for_account, test_scrape,
 )
 from portfolio_metrics_engine import (
-    account_metrics_list, holdings_with_metrics_all_accounts, other_accounts_list,
-    portfolio_totals, set_holding_price_limit,
+    account_metrics_list, cached_portfolio_totals, holdings_with_metrics_all_accounts,
+    invalidate_portfolio_totals_cache, other_accounts_list, set_holding_price_limit,
 )
 import notification_engine
 from api_deps import FiniteModel, job_busy_response, limiter, _error_500
@@ -860,7 +860,7 @@ def api_portfolio_totals(background_tasks: BackgroundTasks):
     try:
         maybe_trigger_price_refresh(background_tasks)
         with persisted_fx_reads(), measure_request_stage("metrics"):
-            result = portfolio_totals()
+            result = cached_portfolio_totals()
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_portfolio_totals failed: %s", e)
@@ -977,6 +977,7 @@ async def api_refresh_now(background_tasks: BackgroundTasks):
         await run_in_threadpool(_run_refresh_now, tickers)
     except Exception as e:
         return _error_500(e)
+    invalidate_portfolio_totals_cache()
     background_tasks.add_task(_refresh_markets_registry)
     return JSONResponse(content={"status": "success", "message": "Refresh complete."})
 

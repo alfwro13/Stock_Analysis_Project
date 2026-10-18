@@ -1,11 +1,25 @@
 import json
 import logging
+import threading
 from typing import Optional
 
 from database import get_connection
 from utils import is_currency_code, is_iso_date, is_valid_ticker
 
 logger = logging.getLogger(__name__)
+
+_ledger_revision = 0
+_ledger_revision_lock = threading.Lock()
+
+
+def ledger_revision() -> int:
+    return _ledger_revision
+
+
+def _bump_ledger_revision() -> None:
+    global _ledger_revision
+    with _ledger_revision_lock:
+        _ledger_revision += 1
 
 
 def _invalid_txn_field(fields: dict) -> Optional[str]:
@@ -111,6 +125,7 @@ def create_account(
                     (account_id, ticker, display_name, sort_order)
                 )
         conn.commit()
+        _bump_ledger_revision()
         return account_id
     except Exception as e:
         logger.error("Failed to create account: %s", e)
@@ -149,6 +164,7 @@ def update_account(account_id: int, **fields) -> bool:
             values
         )
         conn.commit()
+        _bump_ledger_revision()
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to update account %s: %s", account_id, e)
@@ -168,6 +184,7 @@ def soft_delete_account(account_id: int) -> bool:
             (account_id,)
         )
         conn.commit()
+        _bump_ledger_revision()
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to soft-delete account %s: %s", account_id, e)
@@ -252,6 +269,7 @@ def add_transaction(
              1 if is_adjustment else 0)
         )
         conn.commit()
+        _bump_ledger_revision()
         return cursor.lastrowid
     except Exception as e:
         logger.error("Failed to add transaction to account %s: %s", account_id, e)
@@ -294,6 +312,7 @@ def update_transaction(txn_id: int, **fields) -> bool:
             values
         )
         conn.commit()
+        _bump_ledger_revision()
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to update transaction %s: %s", txn_id, e)
@@ -310,6 +329,7 @@ def delete_transaction(txn_id: int) -> bool:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM account_transactions WHERE id = ?", (txn_id,))
         conn.commit()
+        _bump_ledger_revision()
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to delete transaction %s: %s", txn_id, e)
@@ -343,6 +363,7 @@ def upsert_value_snapshot(
             (account_id, snapshot_date, total_value, cash_value, equity_value, net_contributions)
         )
         conn.commit()
+        _bump_ledger_revision()
     except Exception as e:
         logger.error("Failed to upsert value snapshot for account %s: %s", account_id, e)
     finally:
@@ -391,6 +412,7 @@ def upsert_value_snapshot_currency(
             (account_id, snapshot_date, currency, native_value, base_value, fx_rate)
         )
         conn.commit()
+        _bump_ledger_revision()
     except Exception as e:
         logger.error("Failed to upsert currency value snapshot for account %s: %s", account_id, e)
     finally:
@@ -875,6 +897,7 @@ def create_treasury_bill(
              1 if ytm_confirmed else 0)
         )
         conn.commit()
+        _bump_ledger_revision()
         return cursor.lastrowid
     except Exception as e:
         logger.error("Failed to create treasury bill for account %s: %s", account_id, e)
@@ -998,6 +1021,7 @@ def delete_treasury_bill(bill_id: int) -> bool:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM treasury_bills WHERE id = ?", (bill_id,))
         conn.commit()
+        _bump_ledger_revision()
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to delete treasury bill %s: %s", bill_id, e)
@@ -1046,6 +1070,7 @@ def confirm_treasury_bill_ytm(bill_id: int, face_value: float, indicative_ytm: O
             (face_value, indicative_ytm, bill_id)
         )
         conn.commit()
+        _bump_ledger_revision()
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to confirm YTM for treasury bill %s: %s", bill_id, e)

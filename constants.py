@@ -72,6 +72,8 @@ SCHEDULER_RUN_HISTORY_LIMIT = 20  # runs kept per job in scheduler_run_history; 
 DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 1800  # a torch upgrade pulls several GB of CUDA wheels; the old 300 s limit killed it mid-download
 DEPENDENCY_INSTALL_RESUME_RETRIES = 10     # pip --resume-retries: re-attempts for an interrupted wheel download
 
+PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS = 600  # GET /api/accounts/portfolio-totals reuses its answer this long at most, even when no input changed
+
 # ── Request input limits (SEC 23/27) ──────────────────────────────────────────
 CSV_IMPORT_MAX_BYTES        = 2 * 1024 * 1024  # transactions CSV upload
 CSV_IMPORT_MAX_ROWS         = 5000             # data rows in one transactions CSV

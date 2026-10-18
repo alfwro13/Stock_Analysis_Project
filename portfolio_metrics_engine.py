@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -8,10 +9,12 @@ from accounts_engine import (
     holdings_with_market_value, refresh_performance_cache, scraped_price_performance, total_value,
 )
 from config import BASE_CURRENCY
+from constants import PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS
 from database import get_connection
 from db_accounts import (
     get_accounts, get_all_holding_price_limits, get_performance_cache, get_price_history,
-    get_transactions, get_value_history, get_value_history_currency, upsert_holding_price_limit,
+    get_transactions, get_value_history, get_value_history_currency, ledger_revision,
+    upsert_holding_price_limit,
 )
 from portfolio_service import get_rate_to_base
 from treasury_bill_engine import daily_accretion_change, get_treasury_bill_by_ticker, parse_tbill_buy_txn_id
@@ -246,6 +249,62 @@ def portfolio_totals() -> dict:
     result["twr_pct"] = portfolio_twr_ex_fx(account_ids)
     result["twr_fx_pct"] = portfolio_twr_fx(account_ids)
     return result
+
+
+_HELD_TRADING_TICKERS_SQL = (
+    "SELECT DISTINCT t.ticker FROM account_transactions t JOIN accounts a ON a.id = t.account_id "
+    "WHERE a.account_type = 'Trading' AND a.deleted_at IS NULL AND t.ticker IS NOT NULL"
+)
+
+_totals_cache_lock = threading.Lock()
+_totals_cache: Optional[tuple] = None
+
+
+def _totals_price_fingerprint() -> Optional[tuple]:
+    """Newest write time of every price and FX quote portfolio_totals() can read; None when it cannot be read."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*), MAX(last_updated) FROM market_pulse_cache WHERE ticker IN ({_HELD_TRADING_TICKERS_SQL})")
+        pulse = tuple(cursor.fetchone())
+        cursor.execute(f"SELECT COUNT(*), MAX(last_updated) FROM stock_signals WHERE ticker IN ({_HELD_TRADING_TICKERS_SQL})")
+        signals = tuple(cursor.fetchone())
+        cursor.execute("SELECT MAX(fx_updated_at) FROM market_pulse_cache")
+        fx = cursor.fetchone()[0]
+        return pulse, signals, fx
+    except Exception as e:
+        logger.error("Failed to read the portfolio totals cache fingerprint: %s", e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def cached_portfolio_totals() -> dict:
+    """portfolio_totals() reused while no ledger write, price or FX quote has landed since it was computed (at most PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS)."""
+    global _totals_cache
+    revision = ledger_revision()
+    fingerprint = _totals_price_fingerprint()
+    if fingerprint is None:
+        return portfolio_totals()
+    key = (revision, datetime.now(timezone.utc).date().isoformat(), fingerprint)
+    started = time.monotonic()
+    with _totals_cache_lock:
+        cached = _totals_cache
+    if cached and cached[0] == key and started - cached[1] < PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS:
+        return cached[2]
+    result = portfolio_totals()
+    if result["account_count"]:
+        with _totals_cache_lock:
+            _totals_cache = (key, started, result)
+    return result
+
+
+def invalidate_portfolio_totals_cache() -> None:
+    global _totals_cache
+    with _totals_cache_lock:
+        _totals_cache = None
 
 
 def account_metrics_list(refresh_missing: bool = True) -> dict:
