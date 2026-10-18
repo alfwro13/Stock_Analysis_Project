@@ -32,6 +32,29 @@ class TestGetAccounts:
         assert row["snapshot_at"].endswith("Z")
         assert data["as_of"] is not None
 
+    def test_account_with_a_holding_valued_at_cost_nulls_the_dependent_figures_and_is_marked_missing(self, mcp_client, seeded_accounts):
+        from database import add_transaction
+        import accounts_engine
+        account_id = seeded_accounts["snapshot"]
+        add_transaction(account_id, "Buy", "2026-01-06", ticker="ZZMCPNOPRICE", currency="GBP", quantity=5, unit_price=100, exchange_rate=1.0)
+        accounts_engine.refresh_performance_cache(account_id)
+        cached = get_performance_cache(account_id)
+        assert cached["priced_at_cost_count"] == 1
+        data, rows = self._rows(mcp_client)
+        row = rows[account_id]
+        assert row["priced_at_cost_count"] == 1
+        for field in ("equity_value", "unrealized_pnl", "gain_1d", "gain_1w", "gain_1m", "gain_3m", "gain_1y", "mwrr_pct"):
+            assert row[field] is None, field
+        assert row["cash_balance"] == cached["cash_balance"]
+        assert any(f"account {account_id}:" in item and "valued at cost" in item for item in data["missing"])
+        assert data["stale"] is True
+
+    def test_fully_priced_account_keeps_its_figures(self, mcp_client, seeded_accounts):
+        _, rows = self._rows(mcp_client)
+        row = rows[seeded_accounts["snapshot"]]
+        assert row["priced_at_cost_count"] == 0
+        assert row["equity_value"] == 1200.0
+
     def test_account_without_a_snapshot_is_null_and_marked_missing_and_nothing_is_written(self, mcp_client, seeded_accounts):
         account_id = seeded_accounts["no_snapshot"]
         assert get_performance_cache(account_id) is None

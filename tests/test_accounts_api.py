@@ -2715,6 +2715,7 @@ def test_accounts_list_with_metrics_happy_path_with_trading_account(client):
         "account_id", "name", "cash_balance", "equity_value", "unrealized_pnl",
         "realized_pnl", "dividend_income", "interest_income",
         "gain_1d", "gain_1w", "gain_1m", "gain_3m", "gain_1y", "mwrr_pct",
+        "priced_at_cost_count",
     ):
         assert key in row, f"Missing '{key}' in list-with-metrics account row: {row}"
 

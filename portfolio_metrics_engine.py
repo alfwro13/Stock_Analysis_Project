@@ -277,6 +277,7 @@ def account_metrics_list(refresh_missing: bool = True) -> dict:
             "gain_3m": cached.get("return_3m"),
             "gain_1y": cached.get("return_1y"),
             "mwrr_pct": cached.get("mwrr"),
+            "priced_at_cost_count": cached.get("priced_at_cost_count"),
         })
     return {"base_currency": BASE_CURRENCY, "accounts": accounts}
 

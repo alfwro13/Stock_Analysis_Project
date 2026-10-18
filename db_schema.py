@@ -1565,7 +1565,8 @@ def init_db() -> None:
                 realized_pnl    REAL,
                 dividend_income REAL,
                 interest_income REAL,
-                last_updated    REAL
+                last_updated    REAL,
+                priced_at_cost_count INTEGER
             )
         ''')
 
@@ -1908,6 +1909,7 @@ def migrate_db(conn, cursor) -> None:
         ('realized_pnl', "ALTER TABLE account_performance_cache ADD COLUMN realized_pnl REAL"),
         ('dividend_income', "ALTER TABLE account_performance_cache ADD COLUMN dividend_income REAL"),
         ('interest_income', "ALTER TABLE account_performance_cache ADD COLUMN interest_income REAL"),
+        ('priced_at_cost_count', "ALTER TABLE account_performance_cache ADD COLUMN priced_at_cost_count INTEGER"),
     ):
         if col not in existing_performance_cache_columns:
             try:

@@ -947,9 +947,10 @@ def total_value(account_id: int) -> Optional[float]:
     return round(cash + equity, 2)
 
 
-def unrealized_pnl(account_id: int) -> float:
+def unrealized_pnl(account_id: int, rows: Optional[list] = None) -> float:
     """Live equity value minus cost basis of currently-open holdings."""
-    rows = holdings_with_market_value(account_id)
+    if rows is None:
+        rows = holdings_with_market_value(account_id)
     return round(sum(r["market_value"] - r["total_investment"] for r in rows), 2)
 
 
@@ -1062,12 +1063,14 @@ def refresh_performance_cache(account_id: int) -> None:
     a stale cached figure with a live one."""
     summary = account_summary(account_id)
     returns = period_returns(account_id)
+    holdings = holdings_with_market_value(account_id)
     upsert_performance_cache(
         account_id,
         total_value=total_value(account_id),
         equity_value=summary["equity_value"],
         cash_balance=cash_balance(account_id),
-        unrealized_pnl=unrealized_pnl(account_id),
+        unrealized_pnl=unrealized_pnl(account_id, holdings),
+        priced_at_cost_count=sum(1 for h in holdings if h["priced_at_cost"]),
         return_1d=returns["1d"], return_1w=returns["1w"], return_1m=returns["1m"],
         return_3m=returns["3m"], return_6m=returns["6m"], return_1y=returns["1y"],
         mwrr=money_weighted_return(account_id),

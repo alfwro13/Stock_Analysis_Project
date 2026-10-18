@@ -318,6 +318,7 @@ def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
     assert row["realized_pnl"] == cached["realized_pnl"] == summary["realized_pnl"]
     assert row["dividend_income"] == cached["dividend_income"] == summary["dividend"] == 15.0
     assert row["interest_income"] == cached["interest_income"] == summary["interest"] == 7.0
+    assert row["priced_at_cost_count"] == cached["priced_at_cost_count"] == 0
 
 
 @pytest.mark.db
@@ -332,7 +333,7 @@ def test_account_metrics_list_without_refresh_returns_null_metrics_and_writes_no
     assert row["account_id"] == aid
     assert row["name"] == "AcctMetricsNoCacheAcc"
     assert all(value is None for key, value in row.items() if key not in ("account_id", "name"))
-    assert len(row) == 14
+    assert len(row) == 15
     assert get_performance_cache(aid) is None
 
     refreshed = portfolio_metrics_engine.account_metrics_list()["accounts"][0]
