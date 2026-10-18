@@ -200,7 +200,17 @@ def safe_ticker_filename(ticker: Optional[str]) -> Optional[str]:
     return ticker
 
 
-TICKER_FORMAT_RULE = "must be 1-64 characters from A-Z, a-z, 0-9 and ^ . = _ -"
+def contained_ticker_path(directory: Any, ticker: Optional[str], suffix: str) -> Optional[str]:
+    """Real path of `{ticker}{suffix}` when the ticker is a safe file name and the path stays inside `directory` (realpath containment, the form CodeQL's path analysis accepts), else None."""
+    safe_ticker = safe_ticker_filename(ticker)
+    if not safe_ticker:
+        return None
+    root = os.path.realpath(directory)
+    path = os.path.realpath(os.path.join(root, f"{safe_ticker}{suffix}"))
+    return path if path.startswith(root + os.sep) else None
+
+
+TICKER_FORMAT_RULE ="must be 1-64 characters from A-Z, a-z, 0-9 and ^ . = _ -"
 INVALID_TICKER_MESSAGE = f"ticker {TICKER_FORMAT_RULE}"
 
 
@@ -324,12 +334,7 @@ def write_text_atomic(path: Any, text: str) -> None:
 def _fundamentals_dump_path(ticker: Optional[str]) -> Optional[str]:
     """The ticker's `.info` dump path when it is a safe file name that stays inside FUNDAMENTALS_DIR (realpath containment, the form CodeQL's path analysis accepts), else None."""
     from config import FUNDAMENTALS_DIR
-    safe_ticker = safe_ticker_filename(ticker)
-    if not safe_ticker:
-        return None
-    root = os.path.realpath(FUNDAMENTALS_DIR)
-    path = os.path.realpath(os.path.join(root, f"{safe_ticker}.json"))
-    return path if path.startswith(root + os.sep) else None
+    return contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
 
 
 def has_cached_fundamentals(ticker: Optional[str]) -> bool:

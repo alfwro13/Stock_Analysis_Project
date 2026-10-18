@@ -15,7 +15,7 @@ from fundamentals_helpers import calculate_peter_lynch_peg
 from pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import epoch_to_iso_date, safe_ticker_filename
+from utils import contained_ticker_path, epoch_to_iso_date
 from constants import (
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
@@ -183,24 +183,14 @@ class QuantEngine:
             self.conn.close()
 
     def load_parquet(self, ticker: str) -> Optional[pd.DataFrame]:
-        safe_ticker = safe_ticker_filename(ticker)
-        if not safe_ticker:
-            return None
-        history_root = os.path.realpath(HISTORICAL_DIR)
-        filepath = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
-        if not filepath.startswith(history_root + os.sep):
-            return None
-        if not os.path.exists(filepath):
+        filepath = contained_ticker_path(HISTORICAL_DIR, ticker, ".parquet")
+        if filepath is None or not os.path.exists(filepath):
             return None
         return pd.read_parquet(filepath)
 
     def load_fundamentals(self, ticker: str) -> dict:
-        safe_ticker = safe_ticker_filename(ticker)
-        if not safe_ticker:
-            return {}
-        fundamentals_root = os.path.realpath(FUNDAMENTALS_DIR)
-        filepath = os.path.realpath(os.path.join(fundamentals_root, f"{safe_ticker}.json"))
-        if not filepath.startswith(fundamentals_root + os.sep):
+        filepath = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
+        if filepath is None:
             return {}
         if not os.path.exists(filepath):
             return self._fundamentals_from_profile(ticker)
