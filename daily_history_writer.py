@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 SESSION_REFRESH_SECONDS = 30 * 86400
 SESSION_RETRY_SECONDS = 3600
+HISTORY_YEARS = 2
 
 _session_lookup_failed: Dict[str, float] = {}
 
@@ -81,6 +82,23 @@ def prepare_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.Da
     return apply_saved_repairs(ticker, df)
 
 
+def write_daily_history(df: pd.DataFrame, path) -> pd.DataFrame:
+    """Yahoo answers with a symbol's last bar alone once its listing is gone or damaged (found 2026-10-16: replacing the file erased 475-508 stored bars for 23 tickers); when the answer fails to cover at least as many stored in-window bars as it carries, the stored bars are kept and the answer is merged in. Returns the frame written."""
+    try:
+        stored = pd.read_parquet(path)
+    except (OSError, ValueError):
+        stored = None
+    if stored is not None and not stored.empty and not df.empty:
+        window_start = df.index[-1] - pd.DateOffset(years=HISTORY_YEARS)
+        uncovered = len(stored[(stored.index >= window_start) & (stored.index < df.index[0])])
+        if uncovered >= len(df):
+            merged = pd.concat([stored[~stored.index.isin(df.index)], df]).sort_index()
+            df = merged[merged.index >= merged.index[-1] - pd.DateOffset(years=HISTORY_YEARS)]
+            logger.info("Kept %s stored daily bars for %s: Yahoo returned only its newest bar(s).", uncovered, os.path.basename(path)[:-len(".parquet")])
+    write_parquet_atomic(df, path)
+    return df
+
+
 def persist_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.DataFrame]) -> bool:
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
@@ -94,7 +112,7 @@ def persist_daily_history(ticker: str, df: pd.DataFrame, df_live: Optional[pd.Da
     df = prepare_daily_history(ticker, df, df_live, drop_missing_volume=True)
     if df.empty:
         return False
-    write_parquet_atomic(df, path)
+    write_daily_history(df, path)
     return True
 
 
@@ -120,5 +138,4 @@ def fetch_daily_history(ticker: str, *, force_refresh=False):
     df = prepare_daily_history(ticker, df, None)
     if df.empty:
         return None
-    write_parquet_atomic(df, path)
-    return df
+    return write_daily_history(df, path)
