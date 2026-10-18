@@ -45,7 +45,7 @@ class TestAccountArgument:
         with patch("mcp_server.scope.load_config", return_value=config):
             assert "Ghostfolio" in error_text(call(mcp_client, "get_holdings", {"account": "gf-uuid-1"}))
             assert error_text(call(mcp_client, "get_holdings", {"account": "gf-uuid-2"})).startswith("Unknown account")
-            with patch("mcp_server.tools.get_xray.assemble_xray_report", side_effect=XRayScopeUnavailable("Ghostfolio authentication failed.")) as xray:
+            with patch("mcp_server.tools.get_xray.assemble_xray_report", side_effect=XRayScopeUnavailable("ghostfolio_auth_failed")) as xray:
                 assert error_text(call(mcp_client, "get_xray", {"account": "gf-uuid-1"})) == "Ghostfolio authentication failed."
             xray.assert_called_once_with("gf-uuid-1")
 

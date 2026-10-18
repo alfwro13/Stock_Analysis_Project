@@ -1603,10 +1603,10 @@ def test_fx_status_rejects_invalid_currencies(client, currencies):
 @pytest.mark.api
 def test_xray_returns_only_the_fixed_scope_message(client):
     from xray_engine import XRayScopeUnavailable
-    with patch("api_routes.assemble_xray_report", side_effect=XRayScopeUnavailable("No holdings found for this scope.")):
+    with patch("api_routes.assemble_xray_report", side_effect=XRayScopeUnavailable("no_holdings")):
         resp = client.get("/api/xray?account_id=all")
     assert resp.status_code == 503
-    assert _json(resp)["error"] == "No holdings found for this scope."
+    assert _json(resp)["error"] == "No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty)."
 
 
 @pytest.mark.api

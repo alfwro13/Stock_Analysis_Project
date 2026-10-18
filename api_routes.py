@@ -46,7 +46,7 @@ from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, 
 from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
-from xray_engine import XRayScopeUnavailable, assemble_xray_report
+from xray_engine import XRAY_SCOPE_MESSAGES, XRayScopeUnavailable, assemble_xray_report
 from performance_analytics_engine import assemble_performance_report
 from fx_drag_engine import portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from market_pulse_write import fetch_and_save_pulse
@@ -750,7 +750,7 @@ def get_xray_report(request: Request, account_id: str = "all"):
         return JSONResponse(content=report)
     except XRayScopeUnavailable as e:
         logger.warning('X-ray report failed for account_id=%r: %s', account_id, e)
-        return JSONResponse(status_code=503, content={"error": str(e)})
+        return JSONResponse(status_code=503, content={"error": XRAY_SCOPE_MESSAGES[e.code]})
     except Exception as e:
         logger.error('X-ray report unexpected error: %s', e, exc_info=True)
         return JSONResponse(status_code=500, content={"error": "Internal error — check server logs."})

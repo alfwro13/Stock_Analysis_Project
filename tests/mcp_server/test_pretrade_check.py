@@ -113,7 +113,7 @@ class TestBuy:
         assert data["stale"] is True
 
     def test_empty_scope_is_a_curated_error(self, mcp_client):
-        with patch.object(pretrade_tool, "evaluate_pretrade_check", side_effect=XRayScopeUnavailable("No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty).")):
+        with patch.object(pretrade_tool, "evaluate_pretrade_check", side_effect=XRayScopeUnavailable("no_holdings")):
             assert error_text(_check(mcp_client)).startswith("No holdings found for this scope")
 
     def test_unexpected_engine_failure_does_not_leak_its_text(self, mcp_client):
