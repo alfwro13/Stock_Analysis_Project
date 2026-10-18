@@ -114,7 +114,7 @@ class TestGetXray:
         assert text == "No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty)."
 
     def test_scope_unavailable_maps_to_its_own_curated_text(self, mcp_client):
-        with patch("mcp_server.tools.get_xray.assemble_xray_report", side_effect=XRayScopeUnavailable("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")):
+        with patch("mcp_server.tools.get_xray.assemble_xray_report", side_effect=XRayScopeUnavailable("ghostfolio_not_configured")):
             text = error_text(call(mcp_client, "get_xray"))
         assert text == "Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN)."
 

@@ -1707,3 +1707,12 @@ class TestGhostfolioXRayClientTls:
              patch("xray_engine.GHOSTFOLIO_TOKEN", "tok"):
             client = GhostfolioXRayClient()
         assert client._session.verify is True
+
+
+def test_scope_unavailable_text_comes_from_the_fixed_message_table():
+    from xray_engine import XRAY_SCOPE_MESSAGES, XRayScopeUnavailable
+    for code, message in XRAY_SCOPE_MESSAGES.items():
+        error = XRayScopeUnavailable(code)
+        assert error.code == code and str(error) == message
+    with pytest.raises(KeyError):
+        XRayScopeUnavailable("free text is not a code")
