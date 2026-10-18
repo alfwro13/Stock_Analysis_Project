@@ -34,7 +34,7 @@
     function flagBadges(r) {
         const badges = [];
         if (r.flag_piotroski) badges.push('<span class="badge bg-danger me-1">F&lt;4</span>');
-        if (r.flag_altman)    badges.push('<span class="badge bg-danger me-1">Z&lt;1.81</span>');
+        if (r.flag_altman)    badges.push('<span class="badge bg-danger me-1">Z&lt;1.1</span>');
         if (r.flag_beneish)   badges.push('<span class="badge bg-warning text-dark me-1">M&gt;-1.78</span>');
         return badges.length ? badges.join('') : '<span class="text-success small">&#10003; Clean</span>';
     }

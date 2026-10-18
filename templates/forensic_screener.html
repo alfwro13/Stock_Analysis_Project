@@ -57,7 +57,7 @@
             <th>Company</th>
             <th>Sector</th>
             <th><abbr title="Piotroski F-Score (0–9): evaluates profitability, leverage, liquidity, and operating efficiency. Score &lt; 4 flags fundamental decay.">F-Score</abbr></th>
-            <th><abbr title="Altman Z' Score: &gt;2.6 safe, 1.1–2.6 grey zone, &lt;1.81 distress. Predicts bankruptcy risk.">Altman Z</abbr></th>
+            <th><abbr title="Altman Z' Score: &gt;2.6 safe, 1.1–2.6 grey zone, &lt;1.1 distress. Predicts bankruptcy risk.">Altman Z</abbr></th>
             <th><abbr title="Beneish M-Score: M &gt; −1.78 may indicate earnings manipulation. Requires 2 years of financial statements.">Beneish M</abbr></th>
             <th>Flags</th>
             <th>Last Updated</th>
@@ -130,7 +130,7 @@
                             <tr class="text-danger"><td>Distress</td><td>&lt; 1.1</td><td>Statistically similar to companies that filed for bankruptcy within 2 years</td></tr>
                         </tbody>
                     </table>
-                    <p class="small text-muted mt-2 mb-0">The alert threshold is &lt; 1.81 (entry into the lower half of the grey zone). N/A is common for UK and German-listed stocks where book equity data is not returned by yfinance.</p>
+                    <p class="small text-muted mt-2 mb-0">The Z&lt;1.1 flag and the monthly alert fire only in the distress zone. N/A is common for UK and German-listed stocks where book equity data is not returned by yfinance.</p>
                 </div>
             </div>
         </div>
@@ -178,7 +178,7 @@
             </p>
             <div class="d-flex flex-wrap gap-2">
                 <span><span class="badge bg-danger">F&lt;4</span> — Piotroski below 4: fundamental decay across multiple criteria.</span>
-                <span><span class="badge bg-danger">Z&lt;1.81</span> — Altman in or below the grey zone: elevated insolvency probability.</span>
+                <span><span class="badge bg-danger">Z&lt;1.1</span> — Altman in the distress zone: financials statistically similar to companies that later went bankrupt.</span>
                 <span><span class="badge bg-warning text-dark">M&gt;-1.78</span> — Beneish above the manipulation threshold: statistical earnings quality concern.</span>
                 <span><span class="text-success">✓ Clean</span> — No thresholds breached on the current annual data.</span>
             </div>

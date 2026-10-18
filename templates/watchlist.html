@@ -166,7 +166,7 @@ window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
             <th data-col-key="earnings">Earnings</th>
             <th data-col-key="score">Score</th>
             <th data-col-key="piotroski"><abbr title="Piotroski F-Score (0-9): count of accounting-quality tests passed. Below 4 signals financial distress.">Piotroski</abbr></th>
-            <th data-col-key="altman_z"><abbr title="Altman Z-Score: bankruptcy-risk model. Below 1.81 signals distress risk.">Altman Z</abbr></th>
+            <th data-col-key="altman_z"><abbr title="Altman Z-Score: bankruptcy-risk model. Below {{ altman_z_distress }} signals distress risk.">Altman Z</abbr></th>
             <th data-col-key="beneish_m"><abbr title="Beneish M-Score: earnings-manipulation likelihood. Above -1.78 signals possible manipulation.">Beneish M</abbr></th>
             <th data-col-key="low_target"><abbr title="Position Targets: the buy-side alert price set on this ticker's Watchlist row (Stock Detail page).">Low Target</abbr></th>
             <th data-col-key="high_target"><abbr title="Position Targets: the sell-side alert price set on this ticker's Watchlist row (Stock Detail page).">High Target</abbr></th>
@@ -296,7 +296,7 @@ window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
             </td>
             <td data-sort="{{ item.altman_z_score if item.altman_z_score is not none else -999 }}" class="num-cell">
                 {% if item.altman_z_score is not none %}
-                    <span class="{{ 'metric-poor' if item.altman_z_score < 1.81 else 'metric-excellent' }}">{{ "{:,.2f}".format(item.altman_z_score) }}</span>
+                    <span class="{{ 'metric-poor' if item.altman_z_score < altman_z_distress else 'metric-excellent' }}">{{ "{:,.2f}".format(item.altman_z_score) }}</span>
                 {% else %}N/A{% endif %}
             </td>
             <td data-sort="{{ item.beneish_m_score if item.beneish_m_score is not none else -999 }}" class="num-cell">

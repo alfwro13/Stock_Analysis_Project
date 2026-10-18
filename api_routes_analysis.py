@@ -20,6 +20,7 @@ from ai_engine import AIPromptEngine
 from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from data_engine import DataEngine
+from fundamentals_helpers import ALTMAN_Z_DISTRESS
 from regime_engine import current_hmm_regime, macro_conditions_snapshot, market_stress_snapshot
 from scheduler_engine import run_manual_job
 from utils import INVALID_TICKER_MESSAGE, is_valid_ticker, normalize_ticker, safe_ticker_filename
@@ -700,7 +701,7 @@ def get_forensic_scores(request: Request):
                     ) if r['forensic_last_updated'] else None
                 ),
                 "flag_piotroski":       f is not None and f < 4,
-                "flag_altman":          z is not None and z < 1.81,
+                "flag_altman":          z is not None and z < ALTMAN_Z_DISTRESS,
                 "flag_beneish":         m is not None and m > -1.78,
                 "source":               source,
             })

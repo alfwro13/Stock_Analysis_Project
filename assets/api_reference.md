@@ -3304,7 +3304,7 @@ Returns the latest forensic scores for all portfolio and watchlist tickers.
 }
 ```
 
-Flag thresholds: `flag_piotroski` = true when score < 4; `flag_altman` = true when Z < 1.81; `flag_beneish` = true when M > −1.78.
+Flag thresholds: `flag_piotroski` = true when score < 4; `flag_altman` = true when Z' < 1.1 (the distress zone); `flag_beneish` = true when M > −1.78.
 
 ---
 

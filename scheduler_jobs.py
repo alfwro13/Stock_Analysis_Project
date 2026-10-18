@@ -1606,7 +1606,9 @@ def run_forensic_scores_job():
     import json
     import pandas as pd
     from config import FORENSIC_DIR
-    from fundamentals_helpers import calculate_piotroski_f_score, calculate_altman_z_score, calculate_beneish_m_score
+    from fundamentals_helpers import (
+        ALTMAN_Z_DISTRESS, calculate_piotroski_f_score, calculate_altman_z_score, calculate_beneish_m_score,
+    )
     from universe_fundamentals_engine import _fetch_info
     _mark_job_started(job_label("forensic_scores_job"))
     try:
@@ -1681,12 +1683,11 @@ def run_forensic_scores_job():
                         f"across profitability, leverage, or efficiency metrics. "
                         f"A score under 4 historically precedes fundamental decline."
                     )
-                if altman is not None and altman < 1.81:
-                    zone = "distress zone (< 1.1)" if altman < 1.1 else "grey zone (1.1–1.81)"
+                if altman is not None and altman < ALTMAN_Z_DISTRESS:
                     flag_lines.append(
-                        f"  • Altman Z-Score: {altman:.2f} — in the {zone}. "
-                        f"This bankruptcy-prediction model flags elevated insolvency risk. "
-                        f"Scores below 1.81 require monitoring; below 1.1 indicate acute distress."
+                        f"  • Altman Z-Score: {altman:.2f} — in the distress zone (< {ALTMAN_Z_DISTRESS}). "
+                        f"This bankruptcy-prediction model flags a financial profile statistically similar "
+                        f"to companies that later failed."
                     )
                 if beneish is not None and beneish > -1.78:
                     flag_lines.append(
