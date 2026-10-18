@@ -612,3 +612,185 @@ def test_portfolio_gain_fx_decomposition_skips_a_holding_with_no_fx_rate(monkeyp
                      quantity=10, unit_price=100, exchange_rate=0.80)
     monkeypatch.setattr(portfolio_metrics_engine, "get_rate_to_base", lambda currency: None)
     assert portfolio_metrics_engine.portfolio_gain_fx_decomposition([aid]) == (0.0, 0.0)
+
+
+@pytest.fixture
+def counted_totals(monkeypatch):
+    """Replaces the uncached portfolio_totals() with a counting stub so cache hits are observable."""
+    calls = []
+
+    def stub():
+        calls.append(1)
+        return {"account_count": 1, "current_value": float(len(calls))}
+
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+    monkeypatch.setattr(portfolio_metrics_engine, "portfolio_totals", stub)
+    yield calls
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+
+
+def _delete_pulse_rows(*tickers):
+    conn = None
+    try:
+        conn = get_connection()
+        conn.executemany("DELETE FROM market_pulse_cache WHERE ticker = ?", [(t,) for t in tickers])
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_reuses_the_answer_while_nothing_changed(counted_totals):
+    first = portfolio_metrics_engine.cached_portfolio_totals()
+    second = portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(counted_totals) == 1
+    assert second == first
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_recomputes_after_a_ledger_write(counted_totals):
+    aid = create_account("TotalsCacheLedgerAcc", "GBP")
+    portfolio_metrics_engine.cached_portfolio_totals()
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTCLEDGER", currency="GBP",
+                    quantity=1, unit_price=10, exchange_rate=1.0)
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(counted_totals) == 2
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_recomputes_after_a_held_ticker_price_or_fx_quote_lands(counted_totals):
+    import time
+    from db_helpers import upsert_fx_quote
+
+    _seed_stock_signal("ZZTCPRICE", 10.0, "GBP", "2026-01-05 10:00:00")
+    aid = create_account("TotalsCachePriceAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTCPRICE", currency="GBP",
+                    quantity=1, unit_price=10, exchange_rate=1.0)
+    try:
+        portfolio_metrics_engine.cached_portfolio_totals()
+        portfolio_metrics_engine.cached_portfolio_totals()
+        assert len(counted_totals) == 1
+
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                "INSERT OR REPLACE INTO market_pulse_cache (ticker, price, last_updated) VALUES (?, ?, ?)",
+                ("ZZTCPRICE", 11.0, time.time()),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+        portfolio_metrics_engine.cached_portfolio_totals()
+        assert len(counted_totals) == 2
+
+        upsert_fx_quote("ZZTCFX=X", 0.8, time.time())
+        portfolio_metrics_engine.cached_portfolio_totals()
+        assert len(counted_totals) == 3
+    finally:
+        _delete_pulse_rows("ZZTCPRICE", "ZZTCFX=X")
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_ignores_prices_of_tickers_nobody_holds(counted_totals):
+    import time
+
+    portfolio_metrics_engine.cached_portfolio_totals()
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache (ticker, price, last_updated) VALUES (?, ?, ?)",
+            ("ZZTCUNHELD", 5.0, time.time()),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    try:
+        portfolio_metrics_engine.cached_portfolio_totals()
+        assert len(counted_totals) == 1
+    finally:
+        _delete_pulse_rows("ZZTCUNHELD")
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_expires_after_the_max_age(counted_totals, monkeypatch):
+    portfolio_metrics_engine.cached_portfolio_totals()
+    monkeypatch.setattr(portfolio_metrics_engine, "PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS", 0)
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(counted_totals) == 2
+
+
+@pytest.mark.db
+def test_invalidate_portfolio_totals_cache_forces_a_recompute(counted_totals):
+    portfolio_metrics_engine.cached_portfolio_totals()
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(counted_totals) == 2
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_does_not_cache_a_zero_account_answer(monkeypatch):
+    calls = []
+
+    def stub():
+        calls.append(1)
+        return {"account_count": 0}
+
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+    monkeypatch.setattr(portfolio_metrics_engine, "portfolio_totals", stub)
+    portfolio_metrics_engine.cached_portfolio_totals()
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(calls) == 2
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_bypasses_the_cache_when_the_fingerprint_is_unreadable(counted_totals, monkeypatch):
+    monkeypatch.setattr(portfolio_metrics_engine, "_totals_price_fingerprint", lambda: None)
+    portfolio_metrics_engine.cached_portfolio_totals()
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(counted_totals) == 2
+
+
+@pytest.mark.db
+def test_every_ledger_writer_bumps_the_ledger_revision():
+    import db_accounts
+
+    def bumped(action):
+        before = db_accounts.ledger_revision()
+        action()
+        return db_accounts.ledger_revision() > before
+
+    aid = None
+
+    def make_account():
+        nonlocal aid
+        aid = db_accounts.create_account("LedgerRevisionAcc", "GBP")
+
+    assert bumped(make_account)
+    txn_id = None
+
+    def add():
+        nonlocal txn_id
+        txn_id = db_accounts.add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLEDREV", currency="GBP",
+                                             quantity=1, unit_price=10, exchange_rate=1.0)
+
+    assert bumped(add)
+    assert bumped(lambda: db_accounts.update_transaction(txn_id, quantity=2))
+    assert bumped(lambda: db_accounts.update_account(aid, initial_cash=5.0))
+    assert bumped(lambda: db_accounts.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0))
+    assert bumped(lambda: db_accounts.upsert_value_snapshot_currency(aid, "2026-01-05", "GBP", 1.0, 1.0, 1.0))
+    bill_id = None
+
+    def make_bill():
+        nonlocal bill_id
+        bill_id = db_accounts.create_treasury_bill(aid, txn_id, "TBILL-LEDREV", 100.0, 99.0, "2026-01-05", "2026-04-05")
+
+    assert bumped(make_bill)
+    assert bumped(lambda: db_accounts.confirm_treasury_bill_ytm(bill_id, 101.0, 4.0))
+    assert bumped(lambda: db_accounts.delete_treasury_bill(bill_id))
+    assert bumped(lambda: db_accounts.delete_transaction(txn_id))
+    assert bumped(lambda: db_accounts.soft_delete_account(aid))

@@ -3258,3 +3258,31 @@ def test_pension_benchmark_config_rejects_an_unsafe_ticker_and_keeps_the_saved_l
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_portfolio_totals_route_reuses_its_answer_until_refresh_now(client):
+    import database as _db
+    import portfolio_metrics_engine
+
+    calls = []
+
+    def stub():
+        calls.append(1)
+        return {"account_count": 1, "current_value": float(len(calls))}
+
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+    try:
+        with patch("portfolio_metrics_engine.portfolio_totals", stub):
+            first = _json(client.get("/api/accounts/portfolio-totals"))
+            second = _json(client.get("/api/accounts/portfolio-totals"))
+            assert len(calls) == 1
+            assert second == first
+
+            with patch("api_routes_accounts.fetch_and_save_pulse"):
+                assert client.post("/api/accounts/refresh-now").status_code == 200
+            third = _json(client.get("/api/accounts/portfolio-totals"))
+            assert len(calls) == 2
+            assert third["current_value"] == 2.0
+    finally:
+        portfolio_metrics_engine.invalidate_portfolio_totals_cache()

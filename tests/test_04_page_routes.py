@@ -2383,7 +2383,7 @@ def _stub_connection(rows=None, row=None):
     [
         ("post", "/api/intraday-chart/refresh", "api_routes.yahoo_engine.get_intraday", {}),
         ("get", "/portfolio", "price_history_helpers.get_period_anchor_closes", {}),
-        ("get", "/api/accounts/portfolio-totals", "api_routes_accounts.portfolio_totals", {}),
+        ("get", "/api/accounts/portfolio-totals", "api_routes_accounts.cached_portfolio_totals", {}),
         ("get", "/api/markets", "markets_engine.assemble_markets_payload", {"regions": []}),
         ("get", "/api/system/market-status", "system_check_engine.run_system_checks", []),
         ("get", "/api/universe/profiler-status", "api_routes_triggers.get_profiler_queue_breakdown", {"pending_count": 3}),
