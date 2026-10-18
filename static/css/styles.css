@@ -8,6 +8,7 @@
    pages do not load Bootstrap and are unaffected by this block.
    ============================================================================ */
 :root {
+  --glossary-sticky-top: 170px;
   --font-size-nav: 16px;
   --font-size-table: 14px;
   --font-size-dt-table: 12px;
@@ -309,8 +310,8 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .tn-note-updated { font-style: italic; color: #888; }
 /* Glossary Hub Enhancements */
 .glossary-wrapper { display: grid; grid-template-columns: 280px 1fr; gap: 30px; margin-top: 20px; align-items: flex-start; }
-.glossary-sidebar { position: sticky; top: 170px; max-height: calc(100vh - 190px); overflow-y: auto; background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-.glossary-sidebar h3 { font-size: var(--font-size-h3); margin-bottom: 15px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+.glossary-section, .doc-section-divider { scroll-margin-top: var(--glossary-sticky-top); }
+.glossary-sidebar { position: sticky; top: var(--glossary-sticky-top); max-height: calc(100vh - var(--glossary-sticky-top) - 20px); overflow-y: auto; background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 .sidebar-link { display: block; padding: 10px 0; color: #4da6ff; font-size: var(--font-size-nav); border-bottom: 1px solid #333; transition: color 0.2s; }
 .sidebar-link:hover { color: #00ffcc; text-decoration: none; }
 .sidebar-link:last-child { border-bottom: none; }
