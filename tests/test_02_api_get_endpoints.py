@@ -1639,6 +1639,16 @@ def test_xray_returns_only_the_fixed_scope_message(client):
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("account_id", ["typo", "acct:abc", "acct:999999"])
+def test_xray_refuses_unknown_account_with_404(client, account_id):
+    resp = client.get("/api/xray", params={"account_id": account_id})
+    assert resp.status_code == 404
+    body = _json(resp)
+    assert body["error"].startswith("Unknown account scope")
+    assert account_id not in resp.text
+
+
+@pytest.mark.api
 def test_xray_hides_text_of_any_other_error(client):
     with patch("api_routes.assemble_xray_report", side_effect=RuntimeError("db at /home/andre/secret.db is locked")):
         resp = client.get("/api/xray?account_id=all")

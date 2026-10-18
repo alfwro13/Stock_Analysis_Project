@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
 from database import create_account, add_transaction
+from db_accounts import soft_delete_account
 from xray_engine import (
     XRayRiskComputer,
     GhostfolioXRayClient,
@@ -1639,6 +1640,36 @@ class TestResolveScopeHoldings:
         with patch("xray_engine.load_config", return_value=_builtin_config()):
             with pytest.raises(RuntimeError, match="No holdings found"):
                 resolve_scope_holdings(f"acct:{aid}")
+
+    @pytest.mark.parametrize("scope", ["", "ALL", "typo", "acct:", "acct:abc", "acct:-1", "acct:1.5", "acct:١", "acct:999999", "gf:nope"])
+    def test_unrecognised_scope_is_refused_not_treated_as_all(self, scope):
+        from xray_engine import XRayScopeUnavailable
+        with patch("xray_engine.load_config", return_value=_builtin_config()), \
+             patch("xray_engine._builtin_account_holdings") as builtin:
+            with pytest.raises(XRayScopeUnavailable) as excinfo:
+                resolve_scope_holdings(scope)
+        assert excinfo.value.code == "unknown_scope"
+        builtin.assert_not_called()
+
+    def test_soft_deleted_account_scope_is_refused(self):
+        from xray_engine import XRayScopeUnavailable
+        aid = create_account("ResolveScopeDeletedAcc", "GBP")
+        soft_delete_account(aid)
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            with pytest.raises(XRayScopeUnavailable) as excinfo:
+                resolve_scope_holdings(f"acct:{aid}")
+        assert excinfo.value.code == "unknown_scope"
+
+    def test_active_ghostfolio_id_is_a_known_scope(self):
+        config = {**_builtin_config(), "GHOSTFOLIO_ACCOUNTS": {"active": ["gf-uuid-1"], "discovered": []}}
+        with patch("xray_engine.load_config", return_value=config), \
+             patch("xray_engine.GhostfolioXRayClient") as client_cls:
+            client_cls.return_value.is_configured = True
+            client_cls.return_value.authenticate.return_value = True
+            client_cls.return_value.get_holdings.return_value = ([], 0.0)
+            with pytest.raises(RuntimeError, match="No holdings found"):
+                resolve_scope_holdings("gf-uuid-1")
+        client_cls.return_value.get_holdings.assert_called_once_with(["gf-uuid-1"])
 
     def test_max_drawdown_and_calmar_populate_without_ghostfolio(self):
         # Regression guard: max-drawdown/Calmar used to come from a Ghostfolio-only live

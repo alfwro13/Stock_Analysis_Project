@@ -12,6 +12,7 @@ from urllib.parse import quote
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, load_config
 from price_history_helpers import load_daily_close
 from database import get_connection
+from db_accounts import get_account
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
 from treasury_bill_engine import parse_tbill_buy_txn_id
@@ -24,6 +25,7 @@ XRAY_SCOPE_MESSAGES = {
     "ghostfolio_not_configured": "Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).",
     "ghostfolio_auth_failed": "Ghostfolio authentication failed.",
     "no_holdings": "No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty).",
+    "unknown_scope": "Unknown account scope. Use 'all', an active Ghostfolio account id or 'acct:<id>' of a built-in account.",
 }
 
 
@@ -1202,15 +1204,16 @@ def _merge_holdings(primary: List[Dict], secondary: List[Dict]) -> List[Dict]:
 
 def _classify_scope(account_id: str, active_ids: List[str]) -> Tuple[List[str], Optional[int], bool]:
     # Returns (ghost_scope_ids, builtin_account_id, include_builtin) for the given account_id.
-    if account_id.startswith("acct:"):
-        return [], int(account_id.split(":", 1)[1]), True
-    if account_id in active_ids:
-        return [account_id], None, False
-    # "all" (or an unrecognised id, preserving the previous fallback-to-global behaviour) —
-    # combine every configured source, mirroring accounts_engine.get_combined_holdings().
     # GHOSTFOLIO_ACCOUNTS.active is only ever populated when Ghostfolio is configured and
     # enabled (set via Settings → Ghostfolio discovery), so no separate enabled check is needed.
-    return active_ids, None, True
+    if account_id == "all":
+        return active_ids, None, True
+    if account_id in active_ids:
+        return [account_id], None, False
+    suffix = account_id[len("acct:"):] if account_id.startswith("acct:") else ""
+    if suffix.isascii() and suffix.isdecimal() and get_account(int(suffix)):
+        return [], int(suffix), True
+    raise XRayScopeUnavailable("unknown_scope")
 
 
 def resolve_scope_holdings(account_id: str) -> Tuple[List[Dict], float]:
@@ -1218,8 +1221,8 @@ def resolve_scope_holdings(account_id: str) -> Tuple[List[Dict], float]:
 
     account_id: "all" = every configured source; a Ghostfolio UUID = that account only;
     "acct:{id}" = that one built-in Trading account only (db_accounts namespacing convention).
-    Returns (holdings with "weight" populated, total_value). Raises RuntimeError if the
-    resolved scope has no holdings, or if Ghostfolio is in scope but unreachable.
+    Returns (holdings with "weight" populated, total_value). Raises XRayScopeUnavailable if the
+    id is not a known scope, the resolved scope has no holdings, or Ghostfolio is in scope but unreachable.
     """
     config = load_config()
     active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])

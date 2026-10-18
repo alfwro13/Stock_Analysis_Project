@@ -1285,9 +1285,7 @@ def test_monte_carlo_rejects_nonpositive_portfolio_value(client):
 def test_portfolio_optimizer_run_returns_200_for_empty_scope(client):
     """POST /api/portfolio-optimizer/run must return 200 with status=error (not a 500) for a
     freshly created account with zero holdings — mirrors optimize_portfolio()'s
-    RuntimeError-to-error-status contract. An unrecognised account_id falls back to the "all"
-    scope (accounts_engine._classify_scope), so a genuinely empty scope must be a real,
-    holdings-free account id, not an arbitrary string."""
+    RuntimeError-to-error-status contract for a real, holdings-free account id."""
     import database as _db
 
     account_id = _db.create_account("POA Empty Test", "GBP")
