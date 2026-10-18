@@ -32,6 +32,9 @@ def _fake_report(**overrides):
         "concentration": {"hhi": 0.1, "top5_weight": 0.5, "top10_weight": 0.9},
         "sector_allocation": [{"name": f"S{i}", "weight": 0.05} for i in range(12)],
         "geographic_allocation": [{"name": "Europe", "weight": 1.0}],
+        "country_allocation": [
+            {"name": f"Country {i}", "code": f"C{i}", "continent": "Europe", "weight": 0.1} for i in range(12)
+        ],
         "fx_exposure": [{"currency": "GBP", "weight": 1.0}],
         "risk_metrics": {
             "portfolio_beta": 1.1, "annualized_vol": 0.2, "max_drawdown": -0.1, "var_95_1d": 20.0, "sharpe_ratio": 0.5,
@@ -78,6 +81,7 @@ class TestGetXray:
         assert concentration["top5_weight"] == pytest.approx(1.0, abs=1e-4)
         assert body["currency_exposure"] == [{"currency": "GBP", "weight": 1.0}]
         assert body["geographic_exposure"] and body["sector_exposure"]
+        assert body["country_exposure"] and set(body["country_exposure"][0]) == {"name", "code", "weight"}
         assert "holdings" not in body and "correlation_matrix" not in body
 
     def test_target_breaches_become_findings(self, mcp_client, holdings_book):
@@ -152,6 +156,20 @@ class TestGetXray:
         assert [f["target"] for f in body["findings"]][:2] == ["S0", "S1"]
         assert all(f["status"] in ("exceeds", "below") for f in body["findings"])
         assert body["data_warnings"] == ["one warning"]
+
+    def test_country_exposure_is_capped_and_carries_only_name_code_weight(self):
+        body, _ = get_xray_tool._xray_summary(_fake_report())
+        assert len(body["country_exposure"]) == get_xray_tool.XRAY_TOP_EXPOSURES
+        assert body["country_exposure"][0] == {"name": "Country 0", "code": "C0", "weight": 0.1}
+
+    def test_unknown_country_share_is_listed_as_missing(self):
+        report = _fake_report(country_allocation=[
+            {"name": "Germany", "code": "DE", "continent": "Europe", "weight": 0.75},
+            {"name": "Unknown", "code": "", "continent": "Other", "weight": 0.25},
+        ])
+        body, missing = get_xray_tool._xray_summary(report)
+        assert missing == ["country_exposure.Unknown: 25.0% of invested capital has no known country"]
+        assert [c["name"] for c in body["country_exposure"]] == ["Germany", "Unknown"]
 
     def test_null_risk_metrics_are_listed_as_missing(self):
         report = _fake_report()

@@ -3312,7 +3312,7 @@ CARDS = [
             "By evenly splitting the fund's weight across every country in its benchmark index",
         ],
         "explanation": """<p>An ETF or mutual fund has no single sector or country — it's a basket of dozens or hundreds of underlying holdings. Yahoo Finance does provide a complete <strong>sector weightings</strong> breakdown for most funds (e.g. an S&amp;P 500 ETF might be 38% Technology, 12% Financial Services, and so on), which X-ray blends directly into the Sector Exposure chart instead of lumping the whole holding into "Unclassified".</p>
-<p>Yahoo has no equivalent country/region breakdown for funds, so <strong>Geographic Exposure</strong> is instead approximated from the fund's own <strong>top 10 holdings</strong>: each underlying stock's known country is looked up, and the resolvable subset's weights are rescaled to sum to 100% of the fund's weight — e.g. if only 4 of the top 10 holdings have a known country, covering 60% of the fund's weight, that 60% is scaled up to represent the full 100%. This is a directional estimate, not an exact figure, and is most reliable for concentrated funds where the top 10 holdings represent most of the fund's value.</p>""",
+<p>Yahoo has no equivalent country/region breakdown for funds, so <strong>Geographic Exposure</strong> and <strong>Country Exposure</strong> are instead approximated from the fund's own <strong>top 10 holdings</strong>: each underlying stock's known country is looked up, and the resolvable subset's weights are rescaled to sum to 100% of the fund's weight — e.g. if only 4 of the top 10 holdings have a known country, covering 60% of the fund's weight, that 60% is scaled up to represent the full 100%. This is a directional estimate, not an exact figure, and is most reliable for concentrated funds where the top 10 holdings represent most of the fund's value. Geographic Exposure groups the same split by continent; Country Exposure lists each country, and any holding whose country is unknown appears as <strong>Unknown</strong> so the percentages still add up to 100%.</p>""",
     },
     {
         "term_key": "auto-top-up-trading",
@@ -3616,7 +3616,7 @@ CARDS = [
 <ul>
     <li><code>get_accounts</code> — every account (Trading, Pension, House, and Ghostfolio when enabled) with value, profit and loss, income and performance.</li>
     <li><code>get_holdings</code> — each open position per Trading account: shares, price, cost, market value, gain, share of the account and today's move.</li>
-    <li><code>get_xray</code> — the Portfolio X-ray as conclusions: concentration, beta, volatility, drawdown, VaR, sector, continent and currency exposure, and breaches of your allocation targets.</li>
+    <li><code>get_xray</code> — the Portfolio X-ray as conclusions: concentration, beta, volatility, drawdown, VaR, sector, continent, country and currency exposure, and breaches of your allocation targets.</li>
     <li><code>get_heat_index</code> — the Portfolio Heat Index (0–100 score and tier) and the five positions contributing most to the risk.</li>
     <li><code>get_market_regime</code> — market-wide context: Market Regime (HMM), Market Stress, US and UK yield threat levels, Treasury auction health, Fear &amp; Greed and the Market Pulse tiles.</li>
     <li><code>get_ticker_snapshot</code> — one ticker the dashboard tracks: price, trend, technicals, valuation, fundamentals, forensic scores, ML confidence, Position Targets and next earnings.</li>

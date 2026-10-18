@@ -26,7 +26,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 
 **Risk & Portfolio Diagnostics**
 * **Institutional Tail-Risk Management** — 1-day Historical-Simulation VaR and CVaR at 95% confidence.
-* **Portfolio X-ray** — in-page risk report: beta, volatility, drawdown, VaR, concentration, sector/geographic exposure.
+* **Portfolio X-ray** — in-page risk report: beta, volatility, drawdown, VaR, concentration, sector, continent and country exposure.
 * **Portfolio Heat Index (Risk Orchestrator)** — single 0–100 traffic-light risk score per account (withheld, and shown as unavailable, when an input cannot be calculated rather than counted as zero risk), plus a per-ticker Risk Contribution tier and a Pre-Trade Check.
 * **Historical Stress Tester** — simulates the portfolio through GFC 2008, Dot-com 2000, COVID-19, and the 2022 inflation shock.
 * **Market Regime (HMM + Market Stress IF)** — Gaussian HMM Bull/Chop/Crash classifier plus an Isolation Forest market-stress score.

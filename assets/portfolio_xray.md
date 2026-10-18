@@ -42,13 +42,15 @@ Six scannable single-number cards, each with a `?` tooltip explaining the metric
 | **HHI Score** | Herfindahl-Hirschman Index — portfolio concentration score from 0 to 1. Below 0.15 = well diversified; above 0.25 = concentrated. | Amber > 0.15 · Red > 0.25 |
 | **Top-5 Weight** | Percentage of the portfolio held in the five largest positions. | Amber > 35% · Red > 50% |
 
-### Row 2 — Allocation Overview (Three Donut Charts)
+### Row 2 — Allocation Overview (Donut Charts)
 
 | Chart | What it shows |
 |---|---|
 | **Instrument Type** | Direct equity vs ETF vs commodity — what you actually hold, at face value. |
 | **True Sector Exposure** | ETFs are decomposed into their underlying sector weights (look-through). A global ETF that is 30% Technology contributes 30% of *its portfolio weight* to the Technology slice. Labelled **look-through** to make it unambiguous. |
 | **Geographic Exposure** | Regional breakdown by continent, also look-through via Ghostfolio's `countries[]` data. |
+
+Below the donuts, a **Country Exposure** horizontal bar chart lists the 15 largest countries (the rest are summed as *Other countries*) from the same look-through data. A holding with no known country appears as an *Unknown* bar, so the bars add up to 100% of invested capital. The report carries it as `country_allocation` (`[{name, code, continent, weight}]`, descending); `_country_allocation()` is the one aggregation, shared with the *Country Concentration* targets.
 
 ### Row 3 — Position Concentration
 

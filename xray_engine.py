@@ -101,6 +101,23 @@ _COUNTRY_NAME_TO_CODE_CONTINENT: Dict[str, Tuple[str, str]] = {
 def _country_code_continent(country_name: Optional[str]) -> Tuple[str, str]:
     return _COUNTRY_NAME_TO_CODE_CONTINENT.get(country_name or "", ("", "Other"))
 
+
+def _country_allocation(holdings: List[Dict]) -> List[Dict]:
+    """Look-through weight per country name (fraction of invested capital); a missing name is "Unknown" so the weights still sum to 100%."""
+    totals: Dict[str, Dict] = {}
+    for h in holdings:
+        for country in h.get("countries") or []:
+            name = country.get("name") or "Unknown"
+            entry = totals.setdefault(
+                name, {"name": name, "code": "", "continent": country.get("continent") or "Unknown", "weight": 0.0}
+            )
+            entry["code"] = entry["code"] or (country.get("code") or "").upper()
+            entry["weight"] += float(country.get("weight") or 0) * h["weight"]
+    return sorted(
+        [{**e, "weight": round(e["weight"], 4)} for e in totals.values()],
+        key=lambda x: x["weight"], reverse=True,
+    )
+
 # Serialised into the API response so the frontend never hard-codes tooltip definitions.
 XRAY_TOOLTIPS: Dict[str, str] = {
     "beta": (
@@ -155,6 +172,11 @@ XRAY_TOOLTIPS: Dict[str, str] = {
     "instrument_type": (
         "Instrument Type: top-level split by what you directly hold — equities, ETFs, "
         "commodities, etc. See 'True Sector Exposure' for the look-through of what ETFs contain."
+    ),
+    "country_exposure": (
+        "Country Exposure: invested capital by country. A built-in holding counts fully toward the "
+        "country Yahoo lists for the company; an ETF or fund is split by the countries of its top-10 "
+        "holdings, rescaled to 100%. Holdings without a known country appear as 'Unknown'."
     ),
     "weights_note": "All percentages = % of invested capital (cash excluded).",
     "benchmark": (
@@ -852,13 +874,11 @@ def _generate_xray_recommendations(
     dev_weight = 0.0
     em_weight = 0.0
     regional: Dict[str, float] = {}
-    country_totals: Dict[str, float] = {}
 
     for h in holdings:
         h_weight = h.get("weight", 0.0)
         for country in h.get("countries") or []:
             code = (country.get("code") or "").upper()
-            name = country.get("name") or ""
             continent = country.get("continent") or ""
             c_weight = float(country.get("weight") or 0.0) * h_weight
 
@@ -880,10 +900,6 @@ def _generate_xray_recommendations(
             if code in _EMERGING_MARKET_CODES:
                 regional["Emerging Markets"] = regional.get("Emerging Markets", 0.0) + c_weight
 
-            # Country concentration
-            if name:
-                country_totals[name] = country_totals.get(name, 0.0) + c_weight
-
     md_targets = targets.get("market_development", {})
     for label, weight in [("Developed Markets", dev_weight * 100), ("Emerging Markets", em_weight * 100)]:
         t = md_targets.get(label, {})
@@ -900,6 +916,7 @@ def _generate_xray_recommendations(
     result["regional_clusters"].sort(key=lambda x: x["current_value"], reverse=True)
 
     cc_targets = targets.get("country_concentration", {})
+    country_totals = {c["name"]: c["weight"] for c in _country_allocation(holdings)}
     for country_name, t in cc_targets.items():
         weight = country_totals.get(country_name, 0.0) * 100
         item = _rec_item(country_name, weight, t.get("min"), t.get("max"))
@@ -1277,6 +1294,8 @@ def assemble_xray_report(account_id: str) -> Dict:
         key=lambda x: x["weight"], reverse=True,
     )
 
+    country_allocation = _country_allocation(holdings)
+
     risk_cache: Dict[str, Dict] = {}
     corr_tickers: List[str] = []
     corr_matrix: List[List[float]] = []
@@ -1605,6 +1624,7 @@ def assemble_xray_report(account_id: str) -> Dict:
         "sector_allocation": sector_allocation,
         "asset_class_allocation": asset_class_allocation,
         "geographic_allocation": geographic_allocation,
+        "country_allocation": country_allocation,
         "risk_metrics": {
             "portfolio_beta": portfolio_beta,
             "annualized_vol": portfolio_vol,

@@ -33,6 +33,7 @@ from xray_engine import (
     native_max_drawdown,
     annualized_return,
     get_scope_return_series,
+    _country_allocation,
     _generate_xray_recommendations,
     assemble_xray_report,
     resolve_scope_holdings,
@@ -724,6 +725,41 @@ def _call_recs(holdings=None, sector_alloc=None, asset_alloc=None,
         income=income or {},
         targets=targets or {},
     )
+
+
+class TestCountryAllocation:
+    """_country_allocation: the one look-through country aggregation behind the report and the country targets."""
+
+    def test_sums_a_country_across_holdings_weighted_by_position(self):
+        holdings = _rec_holdings([
+            {"weight": 0.5, "countries": [{"code": "us", "name": "United States", "continent": "North America", "weight": 1.0}]},
+            {"weight": 0.5, "countries": [
+                {"code": "US", "name": "United States", "continent": "North America", "weight": 0.5},
+                {"code": "GB", "name": "United Kingdom", "continent": "Europe", "weight": 0.5},
+            ]},
+        ])
+        result = _country_allocation(holdings)
+        assert [(c["name"], c["code"], c["weight"]) for c in result] == [
+            ("United States", "US", 0.75), ("United Kingdom", "GB", 0.25),
+        ]
+
+    def test_missing_name_is_unknown_and_weights_still_sum_to_one(self):
+        holdings = _rec_holdings([
+            {"weight": 0.4, "countries": [{"code": "", "name": "", "continent": "", "weight": 1.0}]},
+            {"weight": 0.6, "countries": [{"code": "DE", "name": "Germany", "continent": "Europe", "weight": 1.0}]},
+        ])
+        result = _country_allocation(holdings)
+        assert {c["name"]: c["weight"] for c in result} == {"Germany": 0.6, "Unknown": 0.4}
+        assert sum(c["weight"] for c in result) == pytest.approx(1.0)
+
+    def test_country_target_uses_the_same_totals(self):
+        holdings = _rec_holdings([
+            {"weight": 1.0, "countries": [{"code": "US", "name": "United States", "continent": "North America", "weight": 0.7}]},
+        ])
+        recs = _call_recs(holdings=holdings, targets={"country_concentration": {"United States": {"min": None, "max": 30.0}}})
+        item = recs["country_concentration"][0]
+        assert item["current_value"] == pytest.approx(70.0)
+        assert item["status"] == "exceeds"
 
 
 class TestRecItemStatuses:
@@ -1434,6 +1470,46 @@ class TestFundSectorGeoLookThrough:
         assert "Other" not in regions
         assert regions["North America"] == pytest.approx(0.6, abs=0.01)
         assert regions["Europe"] == pytest.approx(0.4, abs=0.01)
+
+    def test_etf_top_holdings_countries_appear_in_country_allocation(self):
+        ticker = "XRAY_ETF_CTRY"
+        _seed_fund_signal(
+            ticker, 100.0, "GBP", "ETF",
+            top_holdings=json.dumps([
+                {"symbol": "XRAY_CTRY_US", "name": "US Co", "weight": 0.6},
+                {"symbol": "XRAY_CTRY_UK", "name": "UK Co", "weight": 0.4},
+            ]),
+        )
+        _seed_asset_profile("XRAY_CTRY_US", "Technology", "United States")
+        _seed_asset_profile("XRAY_CTRY_UK", "Financials", "United Kingdom")
+        aid = create_account("XrayCountryAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        countries = {c["name"]: c for c in result["country_allocation"]}
+        assert countries["United States"]["weight"] == pytest.approx(0.6, abs=0.01)
+        assert countries["United States"]["code"] == "US"
+        assert countries["United States"]["continent"] == "North America"
+        assert countries["United Kingdom"]["weight"] == pytest.approx(0.4, abs=0.01)
+        assert [c["name"] for c in result["country_allocation"]][0] == "United States"
+
+    def test_holding_without_a_country_is_an_unknown_country(self):
+        ticker = "XRAY_NOCTRY"
+        _seed_stock_signal(ticker, 100.0, "GBP")
+        _seed_asset_profile(ticker, "Technology", None)
+        aid = create_account("XrayNoCountryAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        assert result["country_allocation"] == [
+            {"name": "Unknown", "code": "", "continent": "Other", "weight": pytest.approx(1.0, abs=0.001)}
+        ]
 
     def test_etf_top_holdings_partial_coverage_rescaled_to_full_weight(self):
         """Only 1 of 2 top holdings has a resolvable country — its weight must be rescaled to

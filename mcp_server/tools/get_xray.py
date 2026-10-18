@@ -21,7 +21,8 @@ _XRAY_UNITS = {
     "risk.var_95_1d": "BASE_CURRENCY: parametric 1-day 95% Value at Risk",
     "risk.portfolio_beta": "versus the benchmark named in risk.benchmark over the trailing year of trading days",
     "correlation": "-1 to 1, from the cached pairwise matrix",
-    "geographic_exposure": "by continent (look-through), not by country; per-country figures appear only as findings when a country target is set",
+    "geographic_exposure": "by continent (look-through); see country_exposure for countries",
+    "country_exposure": "by country (look-through): a stock counts fully toward its Yahoo country, an ETF or fund is split by the countries of its top-10 holdings rescaled to 100%; 'Unknown' is invested capital with no known country; code is ISO 3166-1 alpha-2 ('' when not mapped)",
     "currency_exposure": "weight by the currency each position is recorded in",
     "findings": "breaches of the X-Ray Allocation Targets set in Settings, first findings_cap of findings_total in report order; targets_checked counts every target evaluated",
     "risk_cache_date": "UTC date of the nightly risk cache the beta, volatility and correlation come from (as_of is that date at 00:00 UTC)",
@@ -61,6 +62,9 @@ def _xray_summary(report: dict) -> tuple[dict, list]:
         for label, key in (("average", "avg_pairwise_correlation"), ("maximum", "max_pairwise_correlation"))
         if risk[key] is None
     ]
+    unknown_country = next((c["weight"] for c in report["country_allocation"] if c["name"] == "Unknown"), 0.0)
+    if unknown_country > 0:
+        missing.append(f"country_exposure.Unknown: {unknown_country:.1%} of invested capital has no known country")
     data = {
         "scope_id": report["account_id"],
         "portfolio_total_value": report["portfolio_total_value"],
@@ -83,6 +87,9 @@ def _xray_summary(report: dict) -> tuple[dict, list]:
         },
         "sector_exposure": report["sector_allocation"][:XRAY_TOP_EXPOSURES],
         "geographic_exposure": report["geographic_allocation"][:XRAY_TOP_EXPOSURES],
+        "country_exposure": [
+            {key: c[key] for key in ("name", "code", "weight")} for c in report["country_allocation"][:XRAY_TOP_EXPOSURES]
+        ],
         "currency_exposure": report["fx_exposure"][:XRAY_TOP_EXPOSURES],
         "targets_checked": checked,
         "findings_total": len(findings),
@@ -95,7 +102,7 @@ def _xray_summary(report: dict) -> tuple[dict, list]:
 
 @server.tool(name="get_xray", annotations=READ_ONLY)
 def get_xray(account: AccountArg = ACCOUNT_ALL) -> dict[str, Any]:
-    """Portfolio X-ray summary: concentration, beta, volatility, drawdown, VaR, correlation, sector, continent and currency exposure and breaches of the X-Ray Allocation Targets; account is "all" or a scope_id from get_accounts."""
+    """Portfolio X-ray summary: concentration, beta, volatility, drawdown, VaR, correlation, sector, continent, country and currency exposure and breaches of the X-Ray Allocation Targets; account is "all" or a scope_id from get_accounts."""
     scope = resolve_scope(account, allow_ghostfolio=True)
     try:
         with persisted_fx_reads():
