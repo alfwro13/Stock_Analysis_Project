@@ -657,9 +657,13 @@ def _gilt_readings() -> tuple[Optional[float], Optional[float]]:
     if not gilt_path.exists():
         logger.warning("UK Gilt Baseline Parquet missing. UK yield threat not computed.")
         return None, None
-    gilt_df = pd.read_parquet(gilt_path)
-    # Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
-    gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
+    try:
+        gilt_df = pd.read_parquet(gilt_path, columns=['Close'])
+        # Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
+        gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
+    except Exception as e:
+        logger.warning("UK Gilt Baseline Parquet unreadable: %s. UK yield threat not computed.", e)
+        return None, None
     if gilt_df.empty:
         logger.warning("UK Gilt Baseline Parquet has no weekday rows. UK yield threat not computed.")
         return None, None
@@ -689,7 +693,7 @@ def calculate_systemic_macro_threat() -> None:
         # iloc[-4] is fragile across holidays; use date lookback instead
         target_past = tnx.index[-1] - pd.Timedelta(days=4)
         tnx_past_rows = tnx[tnx.index <= target_past]
-        past_tnx = float(tnx_past_rows['Close'].iloc[-1]) if not tnx_past_rows.empty else curr_tnx
+        past_tnx = float(tnx_past_rows['Close'].iloc[-1]) if not tnx_past_rows.empty else None
 
         curr_tyx = _last_close(tyx)
         curr_dxy = _last_close(dxy)
@@ -700,15 +704,18 @@ def calculate_systemic_macro_threat() -> None:
         if unavailable:
             logger.warning("Macro threat: no data for %s; storing NULL.", ", ".join(unavailable))
 
-        us_velocity_bps = (curr_tnx - past_tnx) * 100.0
-
         # calibrated to post-2022 rate environment: 30bps/3-day or 4.75% = RED, 15bps or 4.25% = YELLOW
-        if us_velocity_bps >= 30.0 or curr_tnx >= 4.75:
-            us_threat_level = "RED"
-        elif us_velocity_bps >= 15.0 or curr_tnx >= 4.25:
-            us_threat_level = "YELLOW"
+        if past_tnx is None:
+            logger.warning("Macro threat: ^TNX has no value 4+ days back. US yield threat not computed.")
+            us_velocity_bps = us_threat_level = None
         else:
-            us_threat_level = "GREEN"
+            us_velocity_bps = (curr_tnx - past_tnx) * 100.0
+            if us_velocity_bps >= 30.0 or curr_tnx >= 4.75:
+                us_threat_level = "RED"
+            elif us_velocity_bps >= 15.0 or curr_tnx >= 4.25:
+                us_threat_level = "YELLOW"
+            else:
+                us_threat_level = "GREEN"
 
         # calibrated to higher UK gilt premiums: 30bps/3-day or 5.0% = RED, 15bps or 4.5% = YELLOW
         if curr_gilt is None:
@@ -740,8 +747,8 @@ def calculate_systemic_macro_threat() -> None:
                     dxy_close = COALESCE(excluded.dxy_close, dxy_close),
                     uk_gilt_close = COALESCE(excluded.uk_gilt_close, uk_gilt_close),
                     gbpusd_close = COALESCE(excluded.gbpusd_close, gbpusd_close),
-                    us_yield_velocity = excluded.us_yield_velocity,
-                    us_threat_level = excluded.us_threat_level,
+                    us_yield_velocity = COALESCE(excluded.us_yield_velocity, us_yield_velocity),
+                    us_threat_level = COALESCE(excluded.us_threat_level, us_threat_level),
                     uk_yield_velocity = COALESCE(excluded.uk_yield_velocity, uk_yield_velocity),
                     uk_threat_level = COALESCE(excluded.uk_threat_level, uk_threat_level)
             ''', (
@@ -751,15 +758,15 @@ def calculate_systemic_macro_threat() -> None:
                 _round_or_none(curr_dxy, 3),
                 _round_or_none(curr_gilt, 3),
                 _round_or_none(curr_gbpusd, 4),
-                round(us_velocity_bps, 2),
+                _round_or_none(us_velocity_bps, 2),
                 us_threat_level,
                 _round_or_none(gilt_velocity_bps, 2),
                 uk_threat_level
             ))
             conn.commit()
+            us_summary = "n/a" if us_velocity_bps is None else "%s (Vel: %+.2f bps, Lvl: %.2f%%)" % (us_threat_level, us_velocity_bps, curr_tnx)
             uk_summary = "n/a" if curr_gilt is None else "%s (Vel: %+.2f bps, Lvl: %.2f%%)" % (uk_threat_level, gilt_velocity_bps, curr_gilt)
-            logger.info("Macro Risk Evaluated | US: %s (Vel: %+.2f bps, Lvl: %.2f%%) | UK: %s",
-                        us_threat_level, us_velocity_bps, curr_tnx, uk_summary)
+            logger.info("Macro Risk Evaluated | US: %s | UK: %s", us_summary, uk_summary)
         except Exception as e:
             if conn:
                 conn.rollback()

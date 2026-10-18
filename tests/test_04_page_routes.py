@@ -359,6 +359,22 @@ def test_portfolio_shows_the_uk_gilt_box_as_unavailable_when_the_threat_level_is
 
 
 @pytest.mark.pages
+def test_portfolio_shows_the_us_treasury_box_as_unavailable_when_the_threat_level_is_null(client, seeded_macro_regime):
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.execute("UPDATE macro_regimes SET us_threat_level=NULL, us_yield_velocity=NULL WHERE date='2999-12-31'")
+        conn.commit()
+    finally:
+        conn.close()
+    resp = client.get("/portfolio")
+    assert resp.status_code == 200
+    assert "US 10Y Treasury: N/A" in resp.text
+    assert "US yields are stable or falling" not in resp.text
+    assert "UK yields are stable or falling" in resp.text
+
+
+@pytest.mark.pages
 def test_earnings_volatility_page_loads(client):
     """GET /earnings-volatility must load the earnings volatility scanner."""
     _assert_page_ok(client, "/earnings-volatility", label="Earnings Volatility")
