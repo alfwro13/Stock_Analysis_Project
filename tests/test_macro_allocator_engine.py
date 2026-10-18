@@ -287,3 +287,41 @@ class TestGetPortfolioAssetClassWeightsBuiltinFallback:
         assert error is None
         assert weights["equities"] == 0.0
         assert weights["cash"] == 100.0
+
+
+def test_portfolio_macro_strip_shows_missing_threat_level_in_neutral_colour():
+    """A NULL threat level renders a grey dash, never the green used for GREEN."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required for the Portfolio macro strip check")
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const start = source.indexOf('function _renderMacroSection(');
+const end = source.indexOf('\n}\n', start) + 2;
+const context = {localStorage: {getItem: () => null}, window: {}};
+vm.createContext(context);
+vm.runInContext(source.slice(start, end), context);
+const render = (us, uk) => context._renderMacroSection({
+    status: 'ok', regime_label: 'Risk-On', us_threat_level: us, uk_threat_level: uk,
+    key_signals: {}, ideal_allocation: {}, regime_ranges: {}, regime_history: [],
+}, {}).html;
+const ukPart = html => html.split('UK yield threat:')[1].split('</span>')[0];
+const usPart = html => html.split('US yield threat:')[1].split('</span>')[0];
+const missing = render('GREEN', null);
+assert.ok(ukPart(missing).includes('color:#aaa'), ukPart(missing));
+assert.ok(!ukPart(missing).includes('#00ffcc'), ukPart(missing));
+assert.ok(usPart(missing).includes('color:#00ffcc'), usPart(missing));
+const known = render('RED', 'YELLOW');
+assert.ok(usPart(known).includes('color:#ff4444'));
+assert.ok(ukPart(known).includes('color:#ffcc00'));
+"""
+    js = Path(__file__).resolve().parents[1] / "static/js/portfolio.js"
+    result = subprocess.run([node, "-e", script, str(js)], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
