@@ -346,7 +346,7 @@ function _renderMacroSection(macroData, xrayData) {
     var history = macroData.regime_history || [];
 
     var fN = function (v, dp) { return (v == null) ? '—' : parseFloat(v).toFixed(dp !== undefined ? dp : 2); };
-    var threatColor = function (lvl) { return lvl === 'RED' ? '#ff4444' : lvl === 'YELLOW' ? '#ffcc00' : '#00ffcc'; };
+    var threatColor = function (lvl) { return lvl === 'RED' ? '#ff4444' : lvl === 'YELLOW' ? '#ffcc00' : lvl === 'GREEN' ? '#00ffcc' : '#aaa'; };
 
     var html = '<div class="xray-section">'
         + '<h3 class="xray-section-title">&#127759; Macro Regime &amp; Portfolio Alignment</h3>';
