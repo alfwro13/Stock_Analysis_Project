@@ -411,6 +411,19 @@ class TestLoginEndpoint:
             "The cookie value must be a properly signed HMAC token"
         )
 
+    @pytest.mark.parametrize("remember", [False, True])
+    def test_session_claims_carry_the_configured_username_and_remember_flag(self, test_username, test_password, remember):
+        from auth import session_claims
+        with _fresh_client() as c:
+            resp = c.post("/api/login", json={
+                "username": test_username,
+                "password": test_password,
+                "remember_me": remember,
+            })
+        claims = session_claims(resp.cookies.get(COOKIE_NAME, "").strip('"'))
+        assert claims["u"] == test_username
+        assert claims["r"] is remember
+
     def test_wrong_username_returns_401(self, test_password):
         with _fresh_client() as c:
             resp = c.post("/api/login", json={
