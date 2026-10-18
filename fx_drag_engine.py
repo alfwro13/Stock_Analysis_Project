@@ -10,7 +10,7 @@ from database import get_connection
 from db_accounts import get_accounts, get_transactions
 from fx_conversion_helpers import cached_fx_close, fx_level_on
 from portfolio_service import fx_pair
-from utils import safe_ticker_filename
+from utils import contained_ticker_path
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,7 @@ def _ytd_days() -> int:
 
 
 def _history_parquet_path(ticker: str) -> str | None:
-    safe_ticker = safe_ticker_filename(ticker)
-    if not safe_ticker:
-        return None
-    history_root = os.path.realpath(HISTORICAL_DIR)
-    parquet_path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
-    if not parquet_path.startswith(history_root + os.sep):
-        return None
-    return parquet_path
+    return contained_ticker_path(HISTORICAL_DIR, ticker, ".parquet")
 
 
 def compute_fx_breakdown(ticker: str, period_days: int) -> dict | None:

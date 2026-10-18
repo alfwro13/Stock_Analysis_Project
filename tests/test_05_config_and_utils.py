@@ -1443,3 +1443,23 @@ class TestHasCachedFundamentals:
         (tmp_path / "ZZHAS.json").write_text("{}")
         assert has_cached_fundamentals("ZZHAS") is True
         assert not any(has_cached_fundamentals(t) for t in ("ZZNONE", "../ZZHAS", "", None))
+
+
+class TestContainedTickerPath:
+    def test_returns_the_real_path_for_a_safe_ticker(self, tmp_path):
+        from utils import contained_ticker_path
+        assert contained_ticker_path(tmp_path, "ZZSAFE", ".parquet") == str(tmp_path.resolve() / "ZZSAFE.parquet")
+
+    def test_refuses_unsafe_tickers(self, tmp_path):
+        from utils import contained_ticker_path
+        assert not any(contained_ticker_path(tmp_path, t, ".parquet") for t in ("../ZZX", "A/B", "", None, "A" * 65))
+
+    def test_refuses_a_symlink_that_leaves_the_directory(self, tmp_path):
+        from utils import contained_ticker_path
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "ZZLINK.parquet").write_text("x")
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "ZZLINK.parquet").symlink_to(outside / "ZZLINK.parquet")
+        assert contained_ticker_path(root, "ZZLINK", ".parquet") is None
