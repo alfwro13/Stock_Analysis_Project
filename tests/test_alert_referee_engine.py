@@ -563,6 +563,51 @@ class TestReadFailureRaises:
                 are.get_referee_summary(_ENGINE)
 
 
+class TestReadinessReadFailure:
+    _FAIL = sqlite3.OperationalError("disk I/O error")
+
+    def test_readiness_status_raises_on_a_database_error(self):
+        with patch("alert_referee_engine.get_connection", side_effect=self._FAIL):
+            with pytest.raises(sqlite3.OperationalError):
+                are.readiness_status(_ENGINE)
+
+    def test_training_sample_count_raises_on_a_database_error(self):
+        with patch("alert_referee_engine.get_connection", side_effect=self._FAIL):
+            with pytest.raises(sqlite3.OperationalError):
+                are.training_sample_count(_ENGINE)
+
+    def test_summary_raises_when_only_the_readiness_read_fails(self):
+        with patch("alert_referee_engine._trap_readiness_counts", side_effect=self._FAIL):
+            with pytest.raises(sqlite3.OperationalError):
+                are.get_referee_summary(_ENGINE)
+
+    def _evaluate_with_failed_readiness(self, cfg_mode, cache):
+        cfg = {"SCHEDULING": {"ALERT_REFEREE_TRAINING": {"ENABLED": True, "MODE": cfg_mode, "VETO_THRESHOLD": 0.9}}}
+
+        class _Model:
+            def predict_proba(self, X):
+                return [[0.9, 0.1]]
+
+        bundle = {"model": _Model(), "feature_cols": ["a"]}
+        with patch("alert_referee_engine.load_config", return_value=cfg), \
+             patch("alert_referee_engine.load_model", return_value=bundle), \
+             patch("alert_referee_engine._build_feature_row", return_value={"a": 1.0}), \
+             patch("alert_referee_engine.log_veto_evaluation") as log_eval, \
+             patch("alert_referee_engine._trap_readiness_counts", side_effect=self._FAIL):
+            verdict = are.evaluate_alert(_ENGINE, "AAPL", "BULL_TRAP_RISK", {}, None, readiness_cache=cache)
+        return verdict, log_eval
+
+    def test_evaluate_alert_skips_the_referee_instead_of_raising(self):
+        cache = {}
+        verdict, log_eval = self._evaluate_with_failed_readiness("active", cache)
+        assert verdict.vetoed is False
+        assert verdict.fire_probability is None
+        assert verdict.model_available is False
+        assert verdict.mode == "active"
+        log_eval.assert_not_called()
+        assert cache == {}
+
+
 class TestRunAlertRefereeTrainingJob:
     def test_runner_completes_with_insufficient_data(self):
         import scheduler_jobs
