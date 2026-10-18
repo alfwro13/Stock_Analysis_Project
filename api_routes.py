@@ -736,7 +736,7 @@ def get_xray_report(request: Request, account_id: str = "all"):
     Returns the full Portfolio X-ray report JSON for the given account scope.
     account_id: "all" for every configured source (Ghostfolio + built-in Trading accounts,
     combined); a Ghostfolio account UUID for that Ghostfolio account only; or "acct:{id}"
-    for one built-in Trading account only.
+    for one built-in Trading account only. Any other id answers 404.
 
     Combines live Ghostfolio holdings/allocations and/or built-in account holdings with
     SQLite-cached risk stats (beta, vol, correlation, VaR). The cache is populated by the
@@ -750,7 +750,8 @@ def get_xray_report(request: Request, account_id: str = "all"):
         return JSONResponse(content=report)
     except XRayScopeUnavailable as e:
         logger.warning('X-ray report failed for account_id=%r: %s', account_id, e)
-        return JSONResponse(status_code=503, content={"error": XRAY_SCOPE_MESSAGES[e.code]})
+        status = 404 if e.code == "unknown_scope" else 503
+        return JSONResponse(status_code=status, content={"error": XRAY_SCOPE_MESSAGES[e.code]})
     except Exception as e:
         logger.error('X-ray report unexpected error: %s', e, exc_info=True)
         return JSONResponse(status_code=500, content={"error": "Internal error — check server logs."})
