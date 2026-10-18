@@ -900,6 +900,25 @@ def test_stock_detail_etf_predictor_button_hidden_when_not_configured(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_held_ticker_without_a_price_still_shows_position_targets_box(client):
+    """A held ticker with no stock_signals price has no "Your Position" box (its P&L math needs a
+    price) but the Position Targets box needs none, so it must still list the holding account."""
+    import database as _db
+
+    account_id = _db.create_account("Unpriced Held Account", "GBP", initial_cash=0.0)
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="ZZUNPRICED", currency="GBP",
+                        quantity=3, unit_price=10, exchange_rate=1.0)
+    try:
+        resp = client.get("/stock/ZZUNPRICED", follow_redirects=True)
+        assert resp.status_code < 500
+        assert "Position Targets" in resp.text
+        assert "Unpriced Held Account" in resp.text
+        assert "Your Position (Global Aggregation)" not in resp.text
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
 def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
     """A ticker with no built-in-account holding but present on the Watchlist has no
     "Your Position" box (portfolio_math is None), but must still get a standalone

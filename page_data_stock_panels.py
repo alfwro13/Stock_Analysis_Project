@@ -6,6 +6,7 @@ import pandas as pd
 import time_engine
 from config import HISTORICAL_DIR, INTRADAY_DIR
 from database import get_connection
+from db_accounts import get_holding_price_limits_for_ticker
 from utils import measure_request_stage, safe_ticker_filename
 from visuals import (
     create_macro_chart,
@@ -36,11 +37,9 @@ def earnings_timing(stock_data, ticker):
 
 
 def position_targets(ticker, stock_data, user_asset, is_in_watchlist):
-    from accounts_engine import current_price_map
+    from accounts_engine import current_price_map, position_target_accounts
 
     portfolio_math = None
-    target_accounts = []
-    holding_price_limits = {}
     if user_asset and stock_data.get('current_price'):
         priced = current_price_map([ticker]).get(ticker)
         live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
@@ -68,28 +67,11 @@ def position_targets(ticker, stock_data, user_asset, is_in_watchlist):
                 acc_m["name"] = acc.get("name", "Unknown Account")
                 account_maths.append(acc_m)
 
-            acc_raw_id = acc.get("id", "")
-            if isinstance(acc_raw_id, str) and acc_raw_id.startswith("acct:"):
-                target_accounts.append({
-                    "account_id": int(acc_raw_id[len("acct:"):]),
-                    "name": acc.get("name", "Unknown Account"),
-                })
-
         if global_math:
             portfolio_math = {"global": global_math, "accounts": account_maths}
 
-    if is_in_watchlist:
-        from db_accounts import get_watchlist_account
-        watchlist_account = get_watchlist_account()
-        if watchlist_account:
-            target_accounts.append({
-                "account_id": watchlist_account["id"],
-                "name": "Watchlist",
-            })
-
-    if target_accounts:
-        from db_accounts import get_holding_price_limits_for_ticker
-        holding_price_limits = get_holding_price_limits_for_ticker(ticker)
+    target_accounts = position_target_accounts(user_asset, is_in_watchlist)
+    holding_price_limits = get_holding_price_limits_for_ticker(ticker) if target_accounts else {}
 
     return portfolio_math, target_accounts, holding_price_limits
 
