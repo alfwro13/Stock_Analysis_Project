@@ -61,8 +61,9 @@ def login(request: Request, body: LoginRequest, response: Response):
     record_password_attempt(request, "login", valid_user and valid_pass, known_user=valid_user)
     if not (valid_user and valid_pass):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
-    token = create_session_token(body.username, body.remember_me)
-    response.set_cookie(value=token, **cookie_kwargs(body.remember_me))
+    remember = True if body.remember_me else False
+    token = create_session_token(os.environ.get("DASHBOARD_USERNAME", ""), remember)
+    response.set_cookie(value=token, **cookie_kwargs(remember))
     return {"status": "ok"}
 
 
