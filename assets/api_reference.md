@@ -4229,11 +4229,14 @@ Like `portfolio-totals` above, this endpoint also self-triggers a background liv
       "gain_1m": 310.20,
       "gain_3m": 890.15,
       "gain_1y": 2140.00,
-      "mwrr_pct": 18.4
+      "mwrr_pct": 18.4,
+      "priced_at_cost_count": 0
     }
   ]
 }
 ```
+
+`priced_at_cost_count` is the number of the account's holdings that had no usable price or FX rate in the cached snapshot and were valued at cost basis (`null` for a snapshot written before the column existed). The values themselves are unchanged by it; the MCP Server's `get_accounts` uses it to null the figures that include the stand-in.
 
 `gain_1d`/`gain_1w`/`gain_1m`/`gain_3m`/`gain_1y` are `period_returns()`'s currency gain/loss over each window, excluding the effect of deposits/withdrawals during the period. `mwrr_pct` is `money_weighted_return()` — a since-inception Modified Dietz approximation of IRR, `null` if the account has no contribution history yet.
 

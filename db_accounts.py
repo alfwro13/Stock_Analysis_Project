@@ -420,6 +420,7 @@ _PERFORMANCE_CACHE_COLUMNS = (
     "total_value", "equity_value", "cash_balance", "unrealized_pnl",
     "return_1d", "return_1w", "return_1m", "return_3m", "return_6m", "return_1y",
     "mwrr", "realized_pnl", "dividend_income", "interest_income", "last_updated",
+    "priced_at_cost_count",
 )
 
 

@@ -16,8 +16,14 @@ _ACCOUNT_UNITS = {
     "performance_pct": "percent over 1m / ytd / 1y from the scraped price history (Pension and House only)",
     "snapshot_at": "UTC time of the performance snapshot the Trading row was read from",
     "price_as_of": "date of the latest scraped price (Pension and House only)",
+    "priced_at_cost_count": "Trading only: holdings with no usable price or FX rate, valued at cost; when above 0 equity_value, unrealized_pnl, gain_* and mwrr_pct are null",
     "scope_id": "account id accepted by scope-aware tools; null when the account has no holdings",
 }
+
+
+_COST_BASIS_DEPENDENT = (
+    "equity_value", "unrealized_pnl", "gain_1d", "gain_1w", "gain_1m", "gain_3m", "gain_1y", "mwrr_pct",
+)
 
 
 @server.tool(name="get_accounts", annotations=READ_ONLY)
@@ -40,6 +46,10 @@ def get_accounts() -> dict[str, Any]:
             missing.append(f"account {account_id}: performance snapshot not computed yet")
         else:
             snapshot_times.append(snapshot_at)
+        unpriced = metrics.get("priced_at_cost_count")
+        if unpriced:
+            metrics = {**metrics, **dict.fromkeys(_COST_BASIS_DEPENDENT)}
+            missing.append(f"account {account_id}: {unpriced} holding(s) have no usable price or FX rate and are valued at cost, so equity, P/L, period gains and MWRR are unavailable")
         scope_id = f"acct:{account_id}"
         rows.append({
             **metrics,

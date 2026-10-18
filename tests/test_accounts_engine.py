@@ -1816,6 +1816,23 @@ def test_refresh_performance_cache_writes_a_row_get_performance_cache_returns():
     assert cached["realized_pnl"] == summary["realized_pnl"]
     assert cached["dividend_income"] == summary["dividend"]
     assert cached["interest_income"] == summary["interest"]
+    assert cached["priced_at_cost_count"] == 0
+
+
+@pytest.mark.db
+def test_refresh_performance_cache_counts_holdings_valued_at_cost():
+    from database import get_performance_cache
+
+    aid = create_account("CacheAtCostAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCACHEPRICED", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCACHENOPRICE", currency="GBP",
+                    quantity=5, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZCACHEPRICED", 120.0, "GBP")
+
+    accounts_engine.refresh_performance_cache(aid)
+
+    assert get_performance_cache(aid)["priced_at_cost_count"] == 1
 
 
 @pytest.mark.db
