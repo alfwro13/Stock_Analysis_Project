@@ -12,7 +12,7 @@ from database import (
     get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers,
     get_stock_signal_tickers,
 )
-from daily_history_writer import fetch_daily_history, history_exchange, persist_daily_history, prepare_daily_history
+from daily_history_writer import fetch_daily_history, history_exchange, persist_daily_history, prepare_daily_history, write_daily_history
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 from market_session_helpers import reported_session
@@ -105,7 +105,7 @@ class DataEngine:
                         continue
                     df = prepare_daily_history(ticker, df, None)
                     if not df.empty:
-                        write_parquet_atomic(df, HISTORICAL_DIR / f"{name}.parquet")
+                        write_daily_history(df, HISTORICAL_DIR / f"{name}.parquet")
                 logger.info("All Market and Intermarket Baselines secured successfully.")
 
         except Exception as e:
@@ -257,7 +257,7 @@ class DataEngine:
                 self._strip_tz(df_daily)
                 df_daily = prepare_daily_history(ticker, df_daily, df_live)
                 if not df_daily.empty:
-                    write_parquet_atomic(df_daily, history_path)
+                    write_daily_history(df_daily, history_path)
                     persisted = True
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}

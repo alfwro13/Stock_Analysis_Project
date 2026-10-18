@@ -79,9 +79,9 @@ def _run_baseline_fetch(tmp_path, frames):
 def test_market_baseline_is_cleaned_and_written_atomically(tmp_path):
     import pandas as pd
 
-    import data_engine
+    import daily_history_writer
 
-    with patch("data_engine.write_parquet_atomic", wraps=data_engine.write_parquet_atomic) as writer:
+    with patch("daily_history_writer.write_parquet_atomic", wraps=daily_history_writer.write_parquet_atomic) as writer:
         _run_baseline_fetch(tmp_path, {"^FTSE": _baseline_frame()})
     assert writer.call_args.args[1] == tmp_path / "FTSE_BASELINE.parquet"
     saved = pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet")
@@ -1457,3 +1457,178 @@ def test_history_columns_argument_limits_the_parquet_read(tmp_path):
         full = load_or_fetch_daily_history("ZZCOLS", read_only=True)
     assert list(frame.columns) == ["Close"]
     assert list(full.columns) == ["Open", "Close"]
+
+
+# ── stored history survives a collapsed Yahoo answer ──────────────────────────
+
+def _stored_history(tmp_path, ticker="ZZKEEP", periods=300, start="2025-01-01", close=100.0):
+    import pandas as pd
+
+    dates = pd.bdate_range(start, periods=periods)
+    frame = _ohlcv(dates, [close + i for i in range(periods)])
+    frame.to_parquet(tmp_path / f"{ticker}.parquet")
+    return frame
+
+
+def test_write_daily_history_merges_a_single_newer_bar_into_the_stored_history(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    stored = _stored_history(tmp_path)
+    newest = _ohlcv(["2026-06-01"], [500.0])
+    written = write_daily_history(newest, tmp_path / "ZZKEEP.parquet")
+
+    saved = pd.read_parquet(tmp_path / "ZZKEEP.parquet")
+    assert len(saved) == len(stored) + 1
+    assert saved.index[-1] == pd.Timestamp("2026-06-01")
+    assert saved["Close"].iloc[-2] == stored["Close"].iloc[-1]
+    pd.testing.assert_frame_equal(saved, written)
+
+
+def test_write_daily_history_keeps_accumulating_when_yahoo_keeps_returning_one_bar(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    pd.DataFrame({"Close": [10.0]}, index=pd.to_datetime(["2026-10-15"])).to_parquet(tmp_path / "ZZNEW.parquet")
+    write_daily_history(pd.DataFrame({"Close": [11.0]}, index=pd.to_datetime(["2026-10-16"])), tmp_path / "ZZNEW.parquet")
+    write_daily_history(pd.DataFrame({"Close": [12.0]}, index=pd.to_datetime(["2026-10-19"])), tmp_path / "ZZNEW.parquet")
+
+    assert pd.read_parquet(tmp_path / "ZZNEW.parquet")["Close"].tolist() == [10.0, 11.0, 12.0]
+
+
+def test_write_daily_history_is_idempotent_when_the_same_last_bar_comes_back(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    stored = _stored_history(tmp_path)
+    last = stored.iloc[[-1]].assign(Close=999.0)
+    write_daily_history(last, tmp_path / "ZZKEEP.parquet")
+    write_daily_history(last, tmp_path / "ZZKEEP.parquet")
+
+    saved = pd.read_parquet(tmp_path / "ZZKEEP.parquet")
+    assert len(saved) == len(stored)
+    assert saved["Close"].iloc[-1] == 999.0
+    assert saved.index.is_unique and saved.index.is_monotonic_increasing
+
+
+def test_write_daily_history_replaces_the_file_with_a_full_answer(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    stored = _stored_history(tmp_path, periods=300)
+    fresh = _ohlcv(stored.index.append(pd.DatetimeIndex(["2026-03-02"])), [1.0 + i for i in range(301)])
+    write_daily_history(fresh, tmp_path / "ZZKEEP.parquet")
+
+    saved = pd.read_parquet(tmp_path / "ZZKEEP.parquet")
+    assert len(saved) == 301
+    assert saved["Close"].iloc[0] == 1.0
+
+
+def test_write_daily_history_lets_a_rolling_window_drop_bars_older_than_two_years(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    stored = _stored_history(tmp_path, periods=520, start="2024-01-01")
+    window = stored[stored.index >= stored.index[-1] - pd.DateOffset(years=2)].iloc[10:]
+    write_daily_history(window, tmp_path / "ZZKEEP.parquet")
+
+    assert len(pd.read_parquet(tmp_path / "ZZKEEP.parquet")) == len(window)
+
+
+def test_write_daily_history_writes_when_nothing_is_stored_or_the_stored_file_is_unreadable(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    first = _ohlcv(["2026-01-05"], [5.0])
+    write_daily_history(first, tmp_path / "ZZFIRST.parquet")
+    assert pd.read_parquet(tmp_path / "ZZFIRST.parquet")["Close"].tolist() == [5.0]
+
+    (tmp_path / "ZZBAD.parquet").write_bytes(b"not a parquet file")
+    write_daily_history(first, tmp_path / "ZZBAD.parquet")
+    assert pd.read_parquet(tmp_path / "ZZBAD.parquet")["Close"].tolist() == [5.0]
+
+
+def test_write_daily_history_trims_the_merged_history_to_two_years(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    stored = _stored_history(tmp_path, periods=520, start="2024-01-01")
+    newest = _ohlcv([stored.index[-1] + pd.Timedelta(days=3)], [900.0])
+    write_daily_history(newest, tmp_path / "ZZKEEP.parquet")
+
+    saved = pd.read_parquet(tmp_path / "ZZKEEP.parquet")
+    assert saved.index[0] >= saved.index[-1] - pd.DateOffset(years=2)
+    assert saved["Close"].iloc[-1] == 900.0
+
+
+def test_write_daily_history_aligns_datetime_resolutions_between_stored_and_new_bars(tmp_path):
+    import pandas as pd
+    from daily_history_writer import write_daily_history
+
+    stored = _stored_history(tmp_path)
+    stored.index = stored.index.astype("datetime64[ms]")
+    stored.to_parquet(tmp_path / "ZZKEEP.parquet")
+    newest = _ohlcv(pd.DatetimeIndex(["2026-06-01"]).astype("datetime64[ns]"), [500.0])
+    write_daily_history(newest, tmp_path / "ZZKEEP.parquet")
+
+    saved = pd.read_parquet(tmp_path / "ZZKEEP.parquet")
+    assert len(saved) == len(stored) + 1
+    assert saved.index.is_unique
+
+
+def test_bulk_download_keeps_stored_history_when_yahoo_returns_the_newest_bar_only(tmp_path):
+    import pandas as pd
+    from data_engine import DataEngine
+
+    stored = _stored_history(tmp_path)
+    newest = _ohlcv(["2026-06-01"], [500.0])
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZKEEP": newest}), \
+         patch("time_engine.is_market_open", return_value=False):
+        DataEngine.__new__(DataEngine).bulk_download_historical([], universe=["ZZKEEP"])
+
+    assert len(pd.read_parquet(tmp_path / "ZZKEEP.parquet")) == len(stored) + 1
+
+
+def test_navigation_refresh_returns_and_keeps_the_merged_history(tmp_path):
+    import pandas as pd
+    from daily_history_writer import fetch_daily_history
+
+    stored = _stored_history(tmp_path)
+    newest = _ohlcv(["2026-06-01"], [500.0])
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZKEEP": newest}), \
+         patch("time_engine.is_market_open", return_value=False):
+        fetched = fetch_daily_history("ZZKEEP", force_refresh=True)
+
+    assert len(fetched) == len(stored) + 1
+    pd.testing.assert_frame_equal(pd.read_parquet(tmp_path / "ZZKEEP.parquet"), fetched)
+
+
+def test_single_ticker_refresh_keeps_stored_history_when_yahoo_returns_the_newest_bar_only(tmp_path):
+    import pandas as pd
+    from data_engine import DataEngine
+
+    stored = _stored_history(tmp_path)
+    newest = _ohlcv(["2026-06-01"], [500.0])
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.INTRADAY_DIR", tmp_path), patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
+        patch("data_engine.get_mutual_fund_tickers", return_value=set()),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={}),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"ZZKEEP": newest}),
+        patch("data_engine.yahoo_engine.get_ticker_info", return_value={}),
+        patch("data_engine.time_engine.is_market_open", return_value=False),
+    ):
+        assert DataEngine.__new__(DataEngine).fetch_and_save_data("ZZKEEP") is True
+
+    assert len(pd.read_parquet(tmp_path / "ZZKEEP.parquet")) == len(stored) + 1
+
+
+def test_market_baseline_keeps_stored_history_when_yahoo_returns_the_newest_bar_only(tmp_path):
+    import pandas as pd
+
+    stored = _stored_history(tmp_path, ticker="FTSE_BASELINE")
+    _run_baseline_fetch(tmp_path, {"^FTSE": _ohlcv(["2026-06-01"], [500.0])})
+
+    assert len(pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet")) == len(stored) + 1
