@@ -17,7 +17,7 @@ from db_helpers import parse_utc_epoch, resolve_live_price
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
-    get_value_history, get_watchlist_items, resolve_pending_topup, update_account,
+    get_value_history, get_watchlist_account, get_watchlist_items, resolve_pending_topup, update_account,
     update_transaction, upsert_performance_cache, upsert_value_snapshot,
     upsert_value_snapshot_currency,
 )
@@ -446,6 +446,25 @@ def get_combined_holdings() -> dict:
             combined[ticker] = entry
 
     return combined
+
+
+def position_target_accounts(user_asset: Optional[dict], on_watchlist: bool) -> list:
+    """Ghostfolio-only holdings have no acct: id, so they get no row."""
+    rows = []
+    for account in (user_asset or {}).get("accounts", []):
+        scope_id = account.get("id")
+        if isinstance(scope_id, str) and scope_id.startswith("acct:"):
+            rows.append({
+                "account_id": int(scope_id[len("acct:"):]), "account_type": "Trading", "scope_id": scope_id,
+                "name": account.get("name", "Unknown Account"), "shares": account.get("shares"),
+            })
+    watchlist = get_watchlist_account() if on_watchlist else None
+    if watchlist:
+        rows.append({
+            "account_id": watchlist["id"], "account_type": "Watchlist", "scope_id": None,
+            "name": watchlist["name"], "shares": None,
+        })
+    return rows
 
 
 def _merge_into(base: dict, extra: dict) -> None:

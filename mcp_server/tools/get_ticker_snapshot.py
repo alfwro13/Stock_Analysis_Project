@@ -4,10 +4,10 @@ from typing import Annotated, Any, Optional
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
-from accounts_engine import current_price_map, get_combined_holdings, native_currencies, oldest_quote_epoch
+from accounts_engine import current_price_map, get_combined_holdings, native_currencies, oldest_quote_epoch, position_target_accounts
 from constants import MCP_TICKER_MAX_CHARS
 from database import get_watchlist_tickers
-from db_accounts import get_holding_price_limits_for_ticker, get_watchlist_account
+from db_accounts import get_holding_price_limits_for_ticker
 from db_helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import get_all_cached_pulse
 from market_session_helpers import extended_quote_from_snapshot
@@ -121,21 +121,13 @@ def _position_targets(ticker: str, asset: Optional[dict], watched: bool) -> list
         found = limits.get(account_id) or {}
         return {"low_limit": found.get("low_limit"), "high_limit": found.get("high_limit")}
 
-    rows = []
-    for account in (asset or {}).get("accounts", []):
-        scope_id = account.get("id")
-        if isinstance(scope_id, str) and scope_id.startswith("acct:"):
-            rows.append({
-                "account_type": "Trading", "scope_id": scope_id, "account_name": account.get("name"),
-                "shares": account.get("shares"), **limits_of(int(scope_id[len("acct:"):])),
-            })
-    watchlist = get_watchlist_account() if watched else None
-    if watchlist:
-        rows.append({
-            "account_type": "Watchlist", "scope_id": None, "account_name": watchlist.get("name"),
-            "shares": None, **limits_of(watchlist["id"]),
-        })
-    return rows
+    return [
+        {
+            "account_type": row["account_type"], "scope_id": row["scope_id"], "account_name": row["name"],
+            "shares": row["shares"], **limits_of(row["account_id"]),
+        }
+        for row in position_target_accounts(asset, watched)
+    ]
 
 
 def _flag(value) -> Optional[bool]:

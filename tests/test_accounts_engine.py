@@ -2189,3 +2189,24 @@ def test_value_history_never_reads_a_parquet_outside_the_history_folder_for_an_u
     accounts_engine.backfill_value_history(aid)
     from database import get_value_history
     assert all(row["equity_value"] != 204.0 for row in get_value_history(aid))
+
+
+@pytest.mark.db
+def test_position_target_accounts_lists_trading_accounts_then_the_watchlist():
+    from db_accounts import get_watchlist_account
+    asset = {"accounts": [
+        {"id": "acct:7", "name": "Main", "shares": 4.0},
+        {"id": "gf-uuid", "name": "Ghostfolio only", "shares": 1.0},
+    ]}
+    watchlist = get_watchlist_account()
+
+    rows = accounts_engine.position_target_accounts(asset, True)
+
+    assert rows == [
+        {"account_id": 7, "account_type": "Trading", "scope_id": "acct:7", "name": "Main", "shares": 4.0},
+        {"account_id": watchlist["id"], "account_type": "Watchlist", "scope_id": None, "name": watchlist["name"], "shares": None},
+    ]
+    assert accounts_engine.position_target_accounts(asset, False) == rows[:1]
+    assert accounts_engine.position_target_accounts(None, False) == []
+    assert [r["account_type"] for r in accounts_engine.position_target_accounts(None, True)] == ["Watchlist"]
+
