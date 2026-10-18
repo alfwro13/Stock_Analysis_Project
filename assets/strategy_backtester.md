@@ -4,7 +4,7 @@ The Strategy Backtester replays simple allocation rules over the daily prices th
 
 Page route: `GET /strategy-backtester` (Tools hub card)
 Engines: `strategy_backtest_engine.py` (pure simulation), `strategy_backtest_strategies.py` (allocation rules), `strategy_backtest_data.py` (baskets, currency, price history), `strategy_backtest_runs.py` (run lifecycle and storage), `strategy_backtest_reads.py` (saved-run list, result payload, allocation history)
-Front end: `templates/strategy_backtester.html`, `static/js/strategy_backtester.js` (basket, rules, run), `static/js/strategy_backtester_results.js` (results, charts, saved runs)
+Front end: `templates/strategy_backtester.html`, `static/js/strategy_backtester.js` (state, helpers, rules, explanations, Optimizer hand-off prefill, run and polling), `static/js/strategy_backtester_basket.js` (accounts, shortlists, candidate lists, extended-history preparation), `static/js/strategy_backtester_results.js` (results, charts, saved runs)
 DB table: `strategy_backtest_runs`
 Files: `data/strategy_backtests/<run_id>/` (run results), `data/backtest_history/` (extended price history)
 Endpoints: `/api/strategy-backtester/*` (see `assets/api_reference.md` §32), router `api_routes_backtester.py`
