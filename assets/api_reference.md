@@ -837,6 +837,11 @@ is served from an in-memory cache refreshed by the same background cycle that bu
 Greed chart on `/market-sentiment` (`sentiment_engine.get_latest_fear_greed()`) — `null` until that
 cycle has run at least once since the last restart.
 
+`tyx_close`, `dxy_close` and `gbpusd_close` are `null` when the nightly macro fetch returned nothing
+for them, and `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are `null` when the UK gilt
+baseline was unavailable (the writer stores `NULL`, never `0.0` or a Treasury-based substitute). Treat
+`null` as unavailable. The keys themselves are unchanged.
+
 **Response:**
 ```json
 {

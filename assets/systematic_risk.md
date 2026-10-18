@@ -24,7 +24,9 @@ Runs once per day (as part of the `market_regime_job`, alongside `calculate_mark
 
 **US side** is derived from **`^TNX` (the 10-Year US Treasury Note), not `^TYX` (the 30-Year Bond)**. `^TYX` is still fetched and stored (`tyx_close`) for display/reference, but it does not feed the threat classification.
 
-**UK side** is derived from the scraped `UK_GILT_BASELINE.parquet` series (10Y Gilt, via `gilt_engine.py`), falling back to `^TNX`'s own value if the baseline parquet is missing.
+**UK side** is derived from the scraped `UK_GILT_BASELINE.parquet` series (10Y Gilt, via `gilt_engine.py`), with no fallback: when the baseline parquet is missing, has no weekday rows, or has no value 4+ days back, `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are stored as `NULL` (the UK threat level is never derived from `^TNX`).
+
+**Failed fetches are `NULL`, never a placeholder.** When Yahoo returns nothing for `^TYX`, `DX-Y.NYB` or `GBPUSD=X`, `tyx_close`, `dxy_close` and `gbpusd_close` are stored as `NULL` (not `0.0`, and `tyx_close` is not copied from `^TNX`). The row is an upsert: a rerun on the same date whose fetch failed keeps the good value an earlier run stored for that date, and a successful rerun replaces it. Readers treat `NULL` as unavailable: the risk summary shows the UK box as "N/A", the AI prompts print "N/A", and `GET /api/macro-conditions` / the MCP `get_market_regime` tool return `null`.
 
 For each side, the engine computes a 3-trading-day yield velocity in **basis points**, using a date-based lookback (not a fixed `iloc[-4]` offset) so it survives weekends/holidays:
 
@@ -91,9 +93,9 @@ CREATE TABLE IF NOT EXISTS macro_regimes (
     date TEXT PRIMARY KEY,
     tyx_close REAL,              -- US 30Y Treasury close yield (display/reference only — not used in threat classification)
     tnx_close REAL,              -- US 10Y Treasury close yield (drives us_threat_level)
-    dxy_close REAL,              -- US Dollar Index close
-    uk_gilt_close REAL,          -- UK 10Y Gilt close yield (drives uk_threat_level)
-    gbpusd_close REAL,           -- GBP/USD exchange rate
+    dxy_close REAL,              -- US Dollar Index close (NULL when the fetch failed)
+    uk_gilt_close REAL,          -- UK 10Y Gilt close yield (drives uk_threat_level; NULL when the gilt baseline is unavailable)
+    gbpusd_close REAL,           -- GBP/USD exchange rate (NULL when the fetch failed)
     us_yield_velocity REAL,      -- 3-day US yield rate of change, in basis points
     us_threat_level TEXT,        -- GREEN, YELLOW, or RED
     uk_yield_velocity REAL,      -- 3-day UK gilt rate of change, in basis points

@@ -17,6 +17,8 @@ _REGIME_UNITS = {
     "macro_threat.*.threat_level": "GREEN, YELLOW or RED from 3-day yield velocity and yield level; US uses the 10Y (^TNX), UK the gilt",
     "macro_threat.*.yield_velocity_bps": "basis points: yield change over about 3 days",
     "macro_threat.*.yield_pct": "percent: the sovereign yield behind the level (us 10Y, us 30Y, uk gilt)",
+    "macro_threat.us.dollar_index": "index points: the US Dollar Index (DXY); context only, it does not feed the threat level",
+    "macro_threat.uk.gbp_usd": "US dollars per pound (GBP/USD); context only, it does not feed the threat level",
     "treasury_auctions.healthy": "false when any of the recent auctions fired a weak-demand alert; null when there were no auctions in the last 30 days (not the same as healthy)",
     "treasury_auctions.recent": "up to the 6 latest auctions of the last 30 days; bid_to_cover is a ratio, tail_bp basis points",
     "fear_greed.value": "0-100: CNN-style Fear & Greed index. Extreme Fear below 25, Fear below 45, Neutral below 56, Greed below 76, Extreme Greed otherwise",
@@ -69,11 +71,17 @@ def _macro_parts(macro, missing, epochs):
     else:
         epoch = date_epoch(macro["as_of"])
         epochs.append(epoch)
+        for value, label in (
+            (macro["tyx_close"], "US 30Y yield"), (macro["dxy_close"], "US Dollar Index (DXY)"),
+            (macro["uk_threat_level"], "UK gilt yield and threat level"), (macro["gbpusd_close"], "GBP/USD"),
+        ):
+            if value is None:
+                missing.append(f"{label} is not available for {macro['as_of']}")
         threat = dated_part(epoch, {
             "us": {"threat_level": macro["us_threat_level"], "yield_velocity_bps": macro["us_yield_velocity"],
-                   "yield_pct": {"10y": macro["tnx_close"], "30y": macro["tyx_close"]}},
+                   "yield_pct": {"10y": macro["tnx_close"], "30y": macro["tyx_close"]}, "dollar_index": macro["dxy_close"]},
             "uk": {"threat_level": macro["uk_threat_level"], "yield_velocity_bps": macro["uk_yield_velocity"],
-                   "yield_pct": macro["uk_gilt_close"]},
+                   "yield_pct": macro["uk_gilt_close"], "gbp_usd": macro["gbpusd_close"]},
         }, as_of=macro["as_of"])
 
     auctions = macro["treasury_auction"]

@@ -309,7 +309,7 @@ class AIPromptEngine:
                         f"US Yield Threat: {m.get('us_threat_level', 'GREEN')} "
                         f"(10Y {self._fmt_float(m.get('tnx_close'))}%, "
                         f"velocity {self._fmt_float(m.get('us_yield_velocity'))} bps/3d) | "
-                        f"UK Yield Threat: {m.get('uk_threat_level', 'GREEN')} "
+                        f"UK Yield Threat: {m.get('uk_threat_level') or 'N/A'} "
                         f"(Gilt {self._fmt_float(m.get('uk_gilt_close'))}%, "
                         f"velocity {self._fmt_float(m.get('uk_yield_velocity'))} bps/3d)"
                     )

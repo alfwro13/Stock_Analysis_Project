@@ -79,13 +79,13 @@ def _stress(date, score=0.42):
         conn.close()
 
 
-def _macro(date, us="YELLOW", uk="GREEN"):
+def _macro(date, us="YELLOW", uk="GREEN", tyx=4.9, dxy=104.2, gilt=4.1, gbpusd=1.27, uk_velocity=4.2):
     conn = get_connection()
     try:
         conn.execute(
             "INSERT OR REPLACE INTO macro_regimes (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, us_yield_velocity, us_threat_level, uk_yield_velocity, uk_threat_level) "
-            "VALUES (?, 4.9, 4.3, 0.0, 4.1, 0.0, 18.5, ?, 4.2, ?)",
-            (date, us, uk),
+            "VALUES (?, ?, 4.3, ?, ?, ?, 18.5, ?, ?, ?)",
+            (date, tyx, dxy, gilt, gbpusd, us, uk_velocity, uk),
         )
         conn.commit()
     finally:
@@ -146,8 +146,8 @@ class TestGetMarketRegime:
         }
         assert data["market_stress"]["score"] == 0.42 and data["market_stress"]["features"]["vix_level"] == 17.5
         assert data["market_stress"]["as_of"] == _day() and data["market_stress"]["stale"] is False
-        assert data["macro_threat"]["us"] == {"threat_level": "YELLOW", "yield_velocity_bps": 18.5, "yield_pct": {"10y": 4.3, "30y": 4.9}}
-        assert data["macro_threat"]["uk"] == {"threat_level": "GREEN", "yield_velocity_bps": 4.2, "yield_pct": 4.1}
+        assert data["macro_threat"]["us"] == {"threat_level": "YELLOW", "yield_velocity_bps": 18.5, "yield_pct": {"10y": 4.3, "30y": 4.9}, "dollar_index": 104.2}
+        assert data["macro_threat"]["uk"] == {"threat_level": "GREEN", "yield_velocity_bps": 4.2, "yield_pct": 4.1, "gbp_usd": 1.27}
         assert data["treasury_auctions"]["healthy"] is True and data["treasury_auctions"]["as_of"] == _day()
         assert data["fear_greed"] == {"as_of": _day(), "stale": False, "value": 61.0, "label": "Greed"}
         assert [t["ticker"] for t in data["market_pulse"]["tiles"]] == list(_PULSE)
@@ -159,10 +159,24 @@ class TestGetMarketRegime:
         assert "history" not in body["data"]["market_stress"]
         assert set(body["data"]["market_stress"]) == {"as_of", "stale", "score", "crash_veto_threshold", "features"}
 
-    def test_unreliable_dollar_and_sterling_closes_are_not_exposed(self, mcp_client):
+    def test_dollar_index_and_sterling_are_returned_next_to_the_yields(self, mcp_client):
         _seed_everything()
-        macro = self._regime(mcp_client)["data"]["macro_threat"]
+        body = self._regime(mcp_client)
+        macro = body["data"]["macro_threat"]
         assert set(macro) == {"as_of", "stale", "us", "uk"}
+        assert macro["us"]["dollar_index"] == 104.2 and macro["us"]["yield_pct"] == {"10y": 4.3, "30y": 4.9}
+        assert macro["uk"]["gbp_usd"] == 1.27 and macro["uk"]["yield_pct"] == 4.1
+        assert not [m for m in body["missing"] if "is not available for" in m]
+
+    def test_unavailable_closes_are_null_and_listed_never_zero(self, mcp_client):
+        _seed_everything()
+        _macro(_day(), uk=None, tyx=None, dxy=None, gilt=None, gbpusd=None, uk_velocity=None)
+        body = self._regime(mcp_client)
+        macro = body["data"]["macro_threat"]
+        assert macro["us"]["dollar_index"] is None and macro["us"]["yield_pct"]["30y"] is None
+        assert macro["uk"] == {"threat_level": None, "yield_velocity_bps": None, "yield_pct": None, "gbp_usd": None}
+        for label in ("US 30Y yield", "US Dollar Index (DXY)", "UK gilt yield and threat level", "GBP/USD"):
+            assert f"{label} is not available for {_day()}" in body["missing"]
 
     def test_nothing_computed_yet_lists_every_part_as_missing(self, mcp_client):
         body = self._regime(mcp_client)

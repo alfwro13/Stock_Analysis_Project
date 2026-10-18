@@ -76,8 +76,8 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Key Columns:** `date` (PK), `state` (INTEGER 0/1/2), `label` (TEXT: Bull/Chop/Crash), `probability` (REAL posterior confidence).
 
 #### `macro_regimes`
-* **Purpose:** Dual-region tracker for systemic threat levels derived from sovereign bond yields and exchange rates. Also stores the synthesised macro regime label computed by `regime_engine.classify_macro_regime()`.
-* **Key Columns:** `date` (PK), `tyx_close`, `tnx_close`, `dxy_close`, `uk_gilt_close`, `us_yield_velocity`, `us_threat_level`, `uk_threat_level`, `yield_curve_inverted` (0/1), `days_inverted` (consecutive day streak), `regime_label` (one of: Risk-On, Late Cycle, Stagflation, Contraction, Recovery).
+* **Purpose:** Dual-region tracker for systemic threat levels derived from sovereign bond yields and exchange rates. Also stores the synthesised macro regime label computed by `regime_engine.classify_macro_regime()`. `tyx_close`, `dxy_close`, `gbpusd_close` and the UK trio (`uk_gilt_close`, `uk_yield_velocity`, `uk_threat_level`) are `NULL` when the fetch or the gilt baseline was unavailable; the writer never stores `0.0` or a `^TNX` substitute, and a rerun on the same date keeps an earlier good value (`COALESCE` upsert).
+* **Key Columns:** `date` (PK), `tyx_close`, `tnx_close`, `dxy_close`, `uk_gilt_close`, `gbpusd_close`, `us_yield_velocity`, `us_threat_level`, `uk_yield_velocity`, `uk_threat_level`, `yield_curve_inverted` (0/1), `days_inverted` (consecutive day streak), `regime_label` (one of: Risk-On, Late Cycle, Stagflation, Contraction, Recovery).
 
 #### `macro_calendar`
 * **Purpose:** Tracks Tier-1 economic events, their ground-truth effects on the SPY, and AI-predicted volatility warnings.

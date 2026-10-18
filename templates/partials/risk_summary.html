@@ -24,6 +24,12 @@
     </p>
 </div>
 
+{% if macro_regime and not macro_regime.uk_threat_level %}
+<div class="sentiment-widget risk-summary-row risk-summary-unavailable">
+    <h3 class="risk-summary-header unavailable">🇬🇧 UK 10Y Gilt: N/A</h3>
+    <p class="risk-summary-text">No UK gilt reading is available (the gilt baseline could not be read), so no UK threat level is shown.</p>
+</div>
+{% else %}
 <div class="sentiment-widget risk-summary-row {% if macro_regime.uk_threat_level == 'RED' %}risk-summary-red{% elif macro_regime.uk_threat_level == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
     <h3 class="risk-summary-header {% if macro_regime.uk_threat_level == 'RED' %}red{% elif macro_regime.uk_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
         🇬🇧 UK 10Y Gilt:
@@ -44,3 +50,4 @@
         {% endif %}
     </p>
 </div>
+{% endif %}
