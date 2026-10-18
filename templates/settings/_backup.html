@@ -1,0 +1,99 @@
+        <details class="settings-card" id="backup-recovery-card" ontoggle="handleBackupCardToggle(this)">
+            <summary>💾 Backup &amp; Recovery</summary>
+            <p class="settings-desc">Back up the database, cached market data, and trained ML models to a local folder or an NFS share, on a schedule or on demand.</p>
+
+            {% set backup_cfg = config.SCHEDULING.BACKUP if config.SCHEDULING.BACKUP else {} %}
+            {% set backup_days = backup_cfg.DAYS if backup_cfg.DAYS else ['sun'] %}
+            {% set backup_loc = backup_cfg.LOCATION | default('local') %}
+
+            <div class="settings-panel border-left-cyan">
+                <h4 class="settings-panel-header text-cyan">📦 Automated Backup</h4>
+
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1 mb-0">
+                        <label>Location</label>
+                        <select id="BACKUP_LOCATION" class="form-select" onchange="toggleBackupLocationFields()">
+                            <option value="local" {% if backup_loc != 'nfs' %}selected{% endif %}>Local Folder</option>
+                            <option value="nfs" {% if backup_loc == 'nfs' %}selected{% endif %}>NFS Share</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-2 mb-0 {% if backup_loc == 'nfs' %}d-none{% endif %}" id="backup-local-path-group">
+                        <label>Local Path <span class="text-muted text-xs">(inside the app folder)</span></label>
+                        <input type="text" id="BACKUP_LOCAL_PATH" class="form-control" value="{{ backup_cfg.LOCAL_PATH | default('backups') }}" placeholder="backups">
+                    </div>
+                    <div class="form-group flex-1 mb-0 {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-server-group">
+                        <label>NFS Server <span class="text-muted text-xs">(IP or FQDN)</span></label>
+                        <input type="text" id="BACKUP_NFS_SERVER" class="form-control" value="{{ backup_cfg.NFS_SERVER | default('') }}" placeholder="192.168.1.50">
+                    </div>
+                    <div class="form-group flex-1 mb-0 {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-path-group">
+                        <label>NFS Export Path</label>
+                        <input type="text" id="BACKUP_NFS_PATH" class="form-control" value="{{ backup_cfg.NFS_PATH | default('') }}" placeholder="/exports/backups">
+                    </div>
+                </div>
+
+                <p class="settings-desc-sm {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-setup-note">
+                    ⚠️ <strong>One-time server setup required</strong> — the app needs passwordless <code>sudo</code> rights to mount NFS shares. Run <code>tools/setup_nfs_backup.sh</code> on the host that runs the app (not via <code>sudo</code> — it asks for your password itself), or see <a href="/glossary#doc-nfs-backup-setup">Glossary → Technical Documentation → NFS Backup Setup</a> for the manual steps. Without this, NFS backups fail with a clear error in the Backup Status panel below.
+                </p>
+
+                <div class="flex-gap-15 mb-10 align-end">
+                    <div class="form-group flex-1 mb-0">
+                        <label>What to Back Up</label>
+                        <div class="flex-gap-15">
+                            <label class="checkbox-label"><input type="checkbox" id="BACKUP_INCLUDE_DATA" {% if backup_cfg.INCLUDE_DATA | default(true) %}checked{% endif %}> Data</label>
+                            <label class="checkbox-label"><input type="checkbox" id="BACKUP_INCLUDE_MODELS" {% if backup_cfg.INCLUDE_MODELS | default(true) %}checked{% endif %}> Models</label>
+                            <label class="checkbox-label"><input type="checkbox" id="BACKUP_INCLUDE_DATABASE" {% if backup_cfg.INCLUDE_DATABASE | default(true) %}checked{% endif %}> Database</label>
+                        </div>
+                    </div>
+                    <div class="form-group w-130 flex-shrink-0 mb-0">
+                        <label><abbr title="How many most-recent backup archives to keep at the destination — older ones are deleted automatically after each run.">Retention</abbr></label>
+                        <input type="number" id="BACKUP_RETENTION_COUNT" class="form-control" min="1" max="365" value="{{ backup_cfg.RETENTION_COUNT | default(7) }}">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="BACKUP_ENABLED" {% if backup_cfg.ENABLED %}checked{% endif %}>
+                    <label for="BACKUP_ENABLED">Enable automated backup</label>
+                </div>
+
+                <div class="flex-gap-15 mb-10 align-end">
+                    <div class="form-group flex-1 mb-0">
+                        <label>Days</label>
+                        <div class="day-checkbox-row">
+                            {% for d in ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] %}
+                            <label class="day-checkbox">
+                                <input type="checkbox" class="backup-day" value="{{ d }}" {% if d in backup_days %}checked{% endif %}>
+                                {{ d | upper }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group w-130 flex-shrink-0 mb-0">
+                        <label>Time</label>
+                        <input type="time" id="BACKUP_TIME" class="form-control" value="{{ backup_cfg.TIME | default('03:30') }}">
+                    </div>
+                </div>
+
+                <div class="flex-gap-15 mt-5">
+                    <button type="button" id="backupRunBtn" class="btn btn-primary flex-1" onclick="runBackupNow()">▶ Run Backup Now</button>
+                </div>
+                <div id="backup-run-msg" class="mt-10"></div>
+            </div>
+
+            <div class="settings-panel border-left-orange">
+                <h4 class="settings-panel-header text-orange">♻️ Recovery</h4>
+                <p class="settings-desc-sm">Restoring overwrites the live database, data files, and models with the contents of the selected archive, after checking it against the SHA-256 recorded when it was created. It is refused while a job is running; wait for it to finish first. Restart the service afterward so every in-memory cache reloads the restored data.</p>
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group flex-1 mb-0">
+                        <label>Backup file</label>
+                        <select id="backup-restore-select" class="form-select" onchange="syncBackupTrustControl()">
+                            <option value="">Loading…</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="restoreSelectedBackup()">⚠ Restore</button>
+                </div>
+                <div class="form-group d-none mt-10 mb-0" id="backup-trust-group">
+                    <label class="checkbox-label"><input type="checkbox" id="backup-trust-unhashed"> <abbr title="This archive has no SHA-256 recorded in the backup history (made before checksums were added, or on a rebuilt host), so its integrity cannot be verified. Tick only if you know where the file came from.">Trust this archive (no recorded hash)</abbr></label>
+                </div>
+                <div id="backup-restore-msg" class="mt-10"></div>
+            </div>
+        </details>

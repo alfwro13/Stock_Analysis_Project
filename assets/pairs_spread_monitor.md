@@ -110,7 +110,7 @@ before dispatching via `notification_engine.notify("pairs_spread_alert", ...)`.
 
 ## 6. Configuration
 
-Settings → Tools → **Pairs Spread Monitor** (`templates/settings/_system.html`,
+Settings → Tools → **Pairs Spread Monitor** (`templates/settings/_tools.html`,
 `pairs-spread-monitor-card`) — this card governs the scheduled Portfolio + Watchlist scan only;
 the Universe scan has no schedule/config, it's triggered directly from the page:
 

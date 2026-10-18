@@ -1,0 +1,247 @@
+{% from "settings/_secret_field.html" import secret_field %}
+        <details class="settings-card">
+            <summary>☁️ Nextcloud Talk Webhooks</summary>
+            <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
+            <div class="form-group">
+                <label>Nextcloud Server URL</label>
+                <input type="text" id="NEXTCLOUD_URL" class="form-control" value="{{ nextcloud_url }}" placeholder="https://your.nextcloud.example">
+            </div>
+            <div class="form-group">
+                <label>Bot Username</label>
+                <input type="text" id="BOT_USERNAME" class="form-control" value="{{ nextcloud_bot_username }}" placeholder="notify.bot">
+            </div>
+            {{ secret_field("APP_PASSWORD", "App Password", secrets_set.NEXTCLOUD_APP_PASSWORD) }}
+            {{ secret_field("CONVERSATION_TOKEN", "Talk Conversation Token", secrets_set.NEXTCLOUD_CONVERSATION_TOKEN, placeholder="ch2dtvqn") }}
+            <div class="flex-gap-15 mt-0">
+                <button type="button" class="btn btn-primary" onclick="saveNextcloudSettings()">💾 Save Nextcloud Settings</button>
+                <button type="button" class="btn btn-primary" onclick="testNextcloudMessage()">🧪 Send Test Message</button>
+            </div>
+            <div id="nc-status-msg"></div>
+        </details>
+
+        {% set ghostfolio_enabled = config.GHOSTFOLIO_ENABLED | default(true) %}
+        <details class="settings-card" id="ghostfolio-integration-card">
+            <summary>👻 Ghostfolio Integration</summary>
+            <div class="checkbox-group">
+                <input type="checkbox" id="GHOSTFOLIO_ENABLED" {% if ghostfolio_enabled %}checked{% endif %} onchange="toggleGhostfolioFields()">
+                <label for="GHOSTFOLIO_ENABLED">Enable Ghostfolio Integration</label>
+            </div>
+            <p class="settings-desc">When disabled, credentials, sync scheduling and account syncing below are deactivated, and <code>portfolio.json</code>/<code>watchlist.json</code> are deleted on Save so the Portfolio page's Global Values stop reflecting stale Ghostfolio data.</p>
+
+            <div id="ghostfolio-fields-group" class="{% if not ghostfolio_enabled %}d-none{% endif %}">
+                <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
+                <div class="form-group">
+                    <label>Ghostfolio Server URL</label>
+                    <input type="text" id="GHOSTFOLIO_URL" class="form-control" value="{{ ghostfolio_url }}" placeholder="http://192.168.1.x:3333">
+                </div>
+                {{ secret_field("API_TOKEN", "Security API Token", secrets_set.GHOSTFOLIO_TOKEN) }}
+                <button type="button" class="btn btn-primary mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
+                <div id="ghostfolio-creds-msg"></div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">🔄 Ghostfolio Sync</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
+                        <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Frequency</label>
+                            <select id="GHOSTFOLIO_SYNC_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (Hours)</label>
+                            <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Specific Time (if Interval = 0)</label>
+                            <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
+                        </div>
+                    </div>
+                    <button type="button" id="syncBtn" class="btn btn-primary mt-0" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
+                </div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Opt-In Account Syncing</h4>
+                    <p class="settings-desc">Select which accounts the Data Engine is permitted to synchronize. This dramatically reduces API loads and allows you to exclude specific portfolios from the system math.</p>
+                    <div class="account-list" id="accountListContainer">
+                        {% if config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                            {% for acc in config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                            <div class="account-item">
+                                <input type="checkbox" id="acc_{{ acc.id }}" value="{{ acc.id }}" class="ghostfolio-account-checkbox"
+                                       {% if acc.id in config.GHOSTFOLIO_ACCOUNTS.active %}checked{% endif %}>
+                                <label for="acc_{{ acc.id }}">
+                                    <span>{{ acc.name }}</span>
+                                    <span class="account-badge">{{ acc.currency }}</span>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-table-msg">No accounts discovered. Please click the discovery button below.</div>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="discoverGhostfolioAccounts()">🔍 Discover Accounts on Server</button>
+                    <div id="discovery-status-msg"></div>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>👤 User Account</summary>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Logged in as</h4>
+                <p class="settings-desc text-white">
+                    <strong id="ua-username-display">{{ dashboard_username }}</strong>
+                </p>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Change Username</h4>
+                <p class="settings-desc">Update your dashboard login username.</p>
+                <div class="form-group">
+                    <label>New username</label>
+                    <input type="text" id="ua_new_username" class="form-control" autocomplete="username" placeholder="{{ dashboard_username }}">
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="changeUsername()">👤 Update Username</button>
+                <div id="ua-username-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Account Email</h4>
+                <p class="settings-desc">Email address used for password reset links. Optional — if left blank, reset links are sent via Nextcloud Talk or logged to the server.</p>
+                <p class="settings-desc-sm text-muted">To send reset emails, configure the <a href="#" onclick="document.querySelector('#core-system-card').open=true; return false;">Mail Server settings</a> in Core System &amp; Currencies.</p>
+                <div class="form-group">
+                    <label>Email address</label>
+                    <input type="email" id="ua_account_email" class="form-control" autocomplete="email" value="{{ account_email }}" placeholder="you@example.com">
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="saveAccountEmail()">💾 Save Email</button>
+                <div id="ua-email-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Change Password</h4>
+                <p class="settings-desc">Update your dashboard login password: at least 12 characters and not a commonly used password. This device stays signed in; every other signed-in device is signed out.</p>
+                <div class="form-group">
+                    <label>Current password</label>
+                    <input type="password" id="ua_current_password" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label>New password</label>
+                    <input type="password" id="ua_new_password" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Confirm new password</label>
+                    <input type="password" id="ua_confirm_password" class="form-control" autocomplete="new-password">
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="changePassword()">🔑 Update Password</button>
+                <div id="ua-pw-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">API Key</h4>
+                <p class="settings-desc">Use this key for the Home Assistant integration, sent in the <code>X-API-Key</code> header. It works only on the endpoints that integration calls; every other route and page refuses it. Generating a new key immediately invalidates the old one.</p>
+                <p id="ua_api_key_state" class="settings-desc-sm {{ 'text-success' if secrets_set.API_KEY else 'text-warning' }}">{{ 'An API key is set. It is shown only once, when generated — generate a new one to get a value you can copy.' if secrets_set.API_KEY else 'No API key set — generate one below to enable script access.' }}</p>
+                <div id="ua_api_key_once" class="form-group d-none">
+                    <label for="ua_api_key">New API key — copy it now, it will not be shown again</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="ua_api_key" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('ua_api_key', this)">📋 Copy</button>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="generateApiKey()">🔄 Generate New API Key</button>
+                <div id="ua-apikey-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Embed Token</h4>
+                <p class="settings-desc">Use this token to embed pages (e.g. a Home Assistant iframe card) without logging in: append <code>&amp;embed_token=&lt;token&gt;</code> to any <code>?embed=true</code> URL for <code>/portfolio</code>, <code>/watchlist</code>, or <code>/stock/&lt;ticker&gt;</code>. Generating a new token immediately invalidates the old one.</p>
+                <p id="ua_embed_token_state" class="settings-desc-sm {{ 'text-success' if secrets_set.EMBED_TOKEN else 'text-warning' }}">{{ 'An embed token is set. It is shown only once, when generated — generate a new one to get a value you can copy.' if secrets_set.EMBED_TOKEN else 'No embed token set — generate one below to enable no-login embedding.' }}</p>
+                <div id="ua_embed_token_once" class="form-group d-none">
+                    <label for="ua_embed_token">New embed token — copy it now, it will not be shown again</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="ua_embed_token" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('ua_embed_token', this)">📋 Copy</button>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="generateEmbedToken()">🔄 Generate New Embed Token</button>
+                <div id="ua-embedtoken-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">App Secret Key</h4>
+                <p class="settings-desc">Used to sign session tokens. Rotating immediately invalidates all active sessions — every user will be logged out.</p>
+                <button type="button" class="btn btn-primary mt-0" onclick="rotateAppSecret()">🔄 Rotate App Secret</button>
+                <div id="ua-secret-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Session</h4>
+                <p class="settings-desc">Sign out of the dashboard on this device.</p>
+                <a href="/logout" class="btn btn-primary mt-0 d-inline-block">🚪 Log Out</a>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Log Out Everywhere</h4>
+                <p class="settings-desc">Signs out every browser and device, including this one, including "remember me" sessions. Use it after a lost device or a suspected compromise. API-key and embed-token access is not affected.</p>
+                <button type="button" class="btn btn-primary mt-0" onclick="logoutEverywhere()">🚪 Log Out Everywhere</button>
+                <div id="ua-logout-all-msg"></div>
+            </div>
+
+        </details>
+
+        <details class="settings-card" id="mcp-server-card" data-search-keywords="mcp, claude, model context protocol, bearer key">
+            <summary>🤖 MCP Server</summary>
+            <p class="settings-desc">A read-only endpoint that lets Claude (Claude Code, Claude Desktop) query your accounts, positions, Portfolio X-ray, Market Regime and more. It uses its own key, separate from the Home Assistant API key, and refuses every request while it is disabled or no key is set. Setup steps are in <code>assets/mcp_integration.md</code>.</p>
+            <div class="checkbox-group">
+                <input type="checkbox" id="MCP_SERVER_ENABLED" {% if config.MCP_SERVER_ENABLED %}checked{% endif %} onchange="toggleMcpServer(this)">
+                <label for="MCP_SERVER_ENABLED">Enable the MCP Server</label>
+            </div>
+            <div id="mcp-enabled-msg"></div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Endpoint</h4>
+                <p class="settings-desc">Connect your client to this URL with the header <code>Authorization: Bearer &lt;MCP key&gt;</code>. Use <code>http://localhost:8090/mcp</code> from the machine running the app; do not send the key over plain <code>http</code> across a network.</p>
+                <code id="mcp_endpoint_url">/mcp</code>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">MCP Keys</h4>
+                <p class="settings-desc">Give each client its own key, for example one per computer, so you can delete a single one without breaking the others. A key is shown only once, when you create it; deleting it stops that client immediately. Until at least one key exists every request is refused.</p>
+                <div id="mcp_key_once" class="form-group d-none">
+                    <label for="mcp_new_key">New MCP key — copy it now, it will not be shown again</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="mcp_new_key" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_new_key', this)">📋 Copy</button>
+                    </div>
+                </div>
+                <table class="table table-hover w-100">
+                    <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+                    <tbody id="mcp-keys-body"><tr><td colspan="4" class="text-muted">Loading…</td></tr></tbody>
+                </table>
+                <div class="flex-gap-10">
+                    <input type="text" id="mcp_key_name" class="form-control flex-1" maxlength="{{ mcp_key_name_max }}" placeholder="Key name, e.g. dev box 1" aria-label="MCP key name">
+                    <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="createMcpKey()">➕ Create Key</button>
+                </div>
+                <div id="mcp-key-msg"></div>
+            </div>
+        </details>
+
+        <details class="settings-card" id="investment-policy-card" data-search-keywords="mcp investment policy, investment policy, mcp, claude, rules, limits, never-do list">
+            <summary>📜 MCP Investment Policy</summary>
+            <p class="settings-desc">Your own investment rules, written in Markdown. The MCP Server shows this text to Claude, which reads it before every analysis and measures its suggestions against it. It is saved to <code>data/investment_policy.md</code>, which the backup includes. Up to {{ investment_policy_max }} characters; a longer text is refused, never cut.</p>
+            <div id="policy-load-msg"></div>
+            <div class="form-group">
+                <label for="investment_policy_text">Policy text</label>
+                <textarea id="investment_policy_text" class="form-control font-monospace" rows="24" maxlength="{{ investment_policy_max }}" spellcheck="false"></textarea>
+                <div class="text-muted-small"><span id="policy-char-count">0</span> / {{ investment_policy_max }} characters</div>
+            </div>
+            <div class="flex-gap-10">
+                <button type="button" class="btn btn-primary mt-0" onclick="saveInvestmentPolicy()">💾 Save Policy</button>
+                <button type="button" class="btn btn-outline-secondary mt-0" onclick="loadInvestmentPolicy()">↩️ Discard Changes</button>
+            </div>
+            <div id="policy-save-msg"></div>
+        </details>
