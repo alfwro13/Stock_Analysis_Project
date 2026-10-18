@@ -1085,6 +1085,35 @@ def test_get_forensic_scores_returns_200(client):
     assert isinstance(data["results"], list)
 
 
+@pytest.mark.api
+def test_get_forensic_scores_flags_altman_only_in_distress_zone(client):
+    """flag_altman is set below the Z' distress cutoff of 1.1, not in the grey zone above it."""
+    from database import get_connection
+
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, altman_z_score, score_method) VALUES ('ZZALTGREY', 1.5, 'FORENSIC')"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, altman_z_score, score_method) VALUES ('ZZALTDISTRESS', 0.9, 'FORENSIC')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        rows = {r["ticker"]: r for r in _json(client.get("/api/forensic-scores"))["results"]}
+        assert rows["ZZALTGREY"]["flag_altman"] is False
+        assert rows["ZZALTDISTRESS"]["flag_altman"] is True
+    finally:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker IN ('ZZALTGREY', 'ZZALTDISTRESS')")
+            conn.commit()
+        finally:
+            conn.close()
+
+
 # ── AI Sector Contagion ───────────────────────────────────────────────────────
 
 @pytest.mark.api

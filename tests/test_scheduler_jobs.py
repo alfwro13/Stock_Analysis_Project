@@ -147,3 +147,39 @@ class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
         assert order == ["update_all_data", "quant", "etf_holdings", "universe"]
         engine.bulk_download_historical.assert_called_once_with([], universe=["NVDA", "VOD.L"])
         record.assert_called_once_with("quant_analysis_job")
+
+
+class TestRunForensicScoresJobAltmanThreshold:
+    def test_alerts_only_inside_the_distress_zone(self, tmp_path):
+        from database import get_connection
+
+        for ticker in ("ZZALTGREY", "ZZALTDISTRESS"):
+            (tmp_path / f"{ticker}.json").write_text("{}")
+        z_by_ticker = {"ZZALTGREY": 1.5, "ZZALTDISTRESS": 0.9}
+        engine = MagicMock()
+        engine.get_all_tickers.return_value = list(z_by_ticker)
+        try:
+            with patch("scheduler_jobs.DataEngine", return_value=engine), \
+                 patch("config.FORENSIC_DIR", tmp_path), \
+                 patch("universe_fundamentals_engine._fetch_info", side_effect=lambda t: {"ticker": t}), \
+                 patch("fundamentals_helpers.calculate_piotroski_f_score", return_value=6), \
+                 patch("fundamentals_helpers.calculate_beneish_m_score", return_value=-2.5), \
+                 patch("fundamentals_helpers.calculate_altman_z_score",
+                       side_effect=lambda info, bs, fin: z_by_ticker[info["ticker"]]), \
+                 patch("scheduler_jobs.notify") as mock_notify, \
+                 patch("scheduler_jobs.record_job_run"), \
+                 patch("scheduler_jobs.log_sched_notification"):
+                scheduler_jobs.run_forensic_scores_job()
+        finally:
+            conn = get_connection()
+            try:
+                conn.execute("DELETE FROM stock_signals WHERE ticker IN ('ZZALTGREY', 'ZZALTDISTRESS')")
+                conn.commit()
+            finally:
+                conn.close()
+
+        assert mock_notify.call_count == 1
+        message = mock_notify.call_args.args[2]
+        assert "ZZALTDISTRESS" in message
+        assert "distress zone" in message
+        assert "ZZALTGREY" not in message

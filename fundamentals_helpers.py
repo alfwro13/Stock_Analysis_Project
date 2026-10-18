@@ -134,6 +134,10 @@ def calculate_piotroski_f_score(bs, fin, cf) -> Optional[int]:
     return score if available >= 5 else None
 
 
+ALTMAN_Z_SAFE = 2.6
+ALTMAN_Z_DISTRESS = 1.1
+
+
 def calculate_altman_z_score(info: dict, bs, fin) -> Optional[float]:
     """Altman Z' (non-manufacturer, 4-variable): 6.56*X1 + 3.26*X2 + 6.72*X3 + 1.05*X4.
     Zones: >2.6 safe, 1.1–2.6 grey, <1.1 distress. Returns None if key inputs are absent."""

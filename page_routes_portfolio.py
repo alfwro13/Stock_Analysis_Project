@@ -10,6 +10,7 @@ from utils import ignored_tickers_set, measure_request_stage, time_request_call
 from portfolio_service import get_fx_cache_status
 import table_columns_helpers
 from constants import ACCOUNT_NAME_MAX_CHARS, CSS_VERSION
+from fundamentals_helpers import ALTMAN_Z_DISTRESS
 from page_helpers import (
     _build_position_sizing_context,
     get_unread_count,
@@ -256,5 +257,6 @@ def watchlist_page(request: Request, embed: bool = False, embed_token: str = "")
             "column_prefs": column_prefs,
             "change_period": change_period,
             "risk_paused": get_all_scope_heat_tier() == "RED",
+            "altman_z_distress": ALTMAN_Z_DISTRESS,
         }
     )

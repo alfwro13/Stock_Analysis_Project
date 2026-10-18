@@ -1297,6 +1297,47 @@ def test_portfolio_and_watchlist_thead_th_count_matches_column_registry(client):
 
 
 @pytest.mark.pages
+def test_watchlist_page_colours_altman_z_poor_only_below_distress_cutoff(client):
+    """The Watchlist Altman cell turns metric-poor below the Z' distress cutoff (1.1), not below the old 1.81."""
+    import database as _db
+    from db_accounts import get_watchlist_account, add_watchlist_item
+
+    tickers = {"ZZALTGREY": 1.5, "ZZALTDISTRESS": 0.9}
+    conn = _db.get_connection()
+    try:
+        for t, z in tickers.items():
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, composite_score, altman_z_score) "
+                "VALUES (?, 10.0, 'USD', 'EQUITY', 50, ?)", (t, z))
+        conn.commit()
+    finally:
+        conn.close()
+
+    wl = get_watchlist_account()
+    for t in tickers:
+        add_watchlist_item(wl["id"], t, currency="USD", quote_type="EQUITY")
+
+    try:
+        resp = client.get("/watchlist")
+        assert resp.status_code == 200
+        body = resp.text
+        assert "Below 1.1 signals distress risk." in body
+        grey_row = body[body.index('data-ticker="ZZALTGREY"'):].split('</tr>')[0]
+        distress_row = body[body.index('data-ticker="ZZALTDISTRESS"'):].split('</tr>')[0]
+        assert '<span class="metric-excellent">1.50</span>' in grey_row
+        assert '<span class="metric-poor">0.90</span>' in distress_row
+    finally:
+        conn = _db.get_connection()
+        try:
+            for t in tickers:
+                conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (wl["id"], t))
+                conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (t,))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_watchlist_page_renders_new_optional_columns_for_seeded_ticker(client):
     """New optional Watchlist columns (Fundamentals + Watchlist's Exit Target parity gap) render
     with the correct GBp-aware/percent formatting for a seeded ticker."""
