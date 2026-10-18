@@ -117,6 +117,27 @@ def test_settings_scheduler_job_names_keep_plain_table_text(client):
 
 
 @pytest.mark.pages
+def test_settings_inline_handlers_resolve_to_loaded_scripts(client):
+    """Splitting settings_system.js / _system.html must not orphan an inline on*= handler."""
+    import re
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    for card_id in ("diagnostics-panel", "backup-recovery-card", "core-system-card", "ghostfolio-integration-card",
+                    "mcp-server-card", "investment-policy-card", "tools-card", "workflow-monitor-card"):
+        assert f'id="{card_id}"' in resp.text
+    scripts = re.findall(r'<script src="/static/js/([\w.]+\.js)', resp.text)
+    for name in ("settings_system.js", "settings_account.js", "settings_backup.js"):
+        assert name in scripts
+    static_js = Path(__file__).parent.parent / "static" / "js"
+    source = "\n".join((static_js / name).read_text(encoding="utf-8") for name in scripts)
+    handlers = set(re.findall(r'\bon(?:click|change|toggle|input)="\s*(?:return\s+)?([A-Za-z_]\w*)\(', resp.text))
+    assert handlers
+    window_methods = {"confirm", "alert"}
+    missing = sorted(h for h in handlers - window_methods if not re.search(rf"\bfunction\s+{h}\s*\(", source))
+    assert not missing, f"Settings inline handlers with no function in a loaded script: {missing}"
+
+
+@pytest.mark.pages
 def test_notifications_page_loads(client):
     """GET /notifications must load the notification center."""
     _assert_page_ok(client, "/notifications", label="Notifications")
