@@ -199,8 +199,8 @@ class TestMacroThreatFailedFetches:
 
     _EMPTY = pd.DataFrame()
 
-    def _run(self, empty=(), gilt_closes=None, gilt_dates=None, tnx=(4.30, 4.29)):
-        tnx_df = _make_tnx_df(*tnx)
+    def _run(self, empty=(), gilt_closes=None, gilt_dates=None, tnx=(4.30, 4.29), tnx_df=None, gilt_bytes=None):
+        tnx_df = _make_tnx_df(*tnx) if tnx_df is None else tnx_df
         flat = pd.DataFrame({"Close": [3.5] * len(tnx_df)}, index=tnx_df.index)
         dfs = {"^TYX": flat, "^TNX": tnx_df, "DX-Y.NYB": flat, "GBPUSD=X": flat}
         for ticker in empty:
@@ -209,6 +209,8 @@ class TestMacroThreatFailedFetches:
         if gilt_closes is not None:
             index = pd.DatetimeIndex(gilt_dates if gilt_dates is not None else tnx_df.index[-len(gilt_closes):])
             pd.DataFrame({"Close": gilt_closes}, index=index).to_parquet(history_dir / "UK_GILT_BASELINE.parquet")
+        if gilt_bytes is not None:
+            (history_dir / "UK_GILT_BASELINE.parquet").write_bytes(gilt_bytes)
         with (
             patch("regime_engine.yahoo_engine.get_price_history", return_value=dfs),
             patch("regime_engine.HISTORICAL_DIR", new=history_dir),
@@ -258,6 +260,40 @@ class TestMacroThreatFailedFetches:
         row = self._run(gilt_closes=[4.0, 4.6], gilt_dates=["2025-06-07", "2025-06-08"])
         assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
         assert row["us_threat_level"] == "YELLOW"
+
+    def test_unreadable_gilt_file_leaves_the_uk_side_null_and_still_writes_the_us_row(self, isolated_regime_tables):
+        row = self._run(gilt_bytes=b"not a parquet file")
+        assert row["uk_gilt_close"] is None and row["uk_yield_velocity"] is None and row["uk_threat_level"] is None
+        assert row["us_threat_level"] == "YELLOW" and row["tnx_close"] == 4.3
+
+    def test_gilt_file_without_a_close_column_leaves_the_uk_side_null(self, isolated_regime_tables):
+        no_close = Path(tempfile.mkdtemp()) / "no_close.parquet"
+        pd.DataFrame({"Open": [4.0] * 10}, index=pd.date_range("2025-06-02", periods=10, freq="B")).to_parquet(no_close)
+        row = self._run(gilt_bytes=no_close.read_bytes())
+        assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
+        assert row["us_threat_level"] == "YELLOW"
+
+    @staticmethod
+    def _tnx_without_a_value_four_days_back():
+        return pd.DataFrame({"Close": [4.0, 4.1, 4.2, 4.9]}, index=pd.date_range("2025-06-02", periods=4, freq="D"))
+
+    def test_tnx_without_a_value_four_days_back_leaves_the_us_velocity_and_level_null(self, isolated_regime_tables):
+        row = self._run(tnx_df=self._tnx_without_a_value_four_days_back())
+        assert row["us_yield_velocity"] is None and row["us_threat_level"] is None
+        assert row["tnx_close"] == 4.9
+        assert (row["tyx_close"], row["dxy_close"], row["gbpusd_close"]) == (3.5, 3.5, 3.5)
+
+    def test_tnx_without_a_value_four_days_back_still_scores_the_uk_side(self, isolated_regime_tables):
+        row = self._run(tnx_df=self._tnx_without_a_value_four_days_back(), gilt_closes=[4.0] * 9 + [4.6], gilt_dates=pd.date_range(end="2025-06-05", periods=10, freq="B"))
+        assert row["us_threat_level"] is None
+        assert row["uk_threat_level"] == "RED"
+
+    def test_us_rerun_without_history_keeps_the_values_an_earlier_run_stored(self, isolated_regime_tables):
+        full_history = pd.DataFrame({"Close": [4.0] * 9 + [4.9]}, index=pd.date_range("2025-05-26", periods=10, freq="D"))
+        good = self._run(tnx_df=full_history)
+        rerun = self._run(tnx_df=full_history.iloc[-4:])
+        assert good["us_threat_level"] == "RED" and rerun["us_threat_level"] == "RED"
+        assert rerun["us_yield_velocity"] == good["us_yield_velocity"] is not None
 
     def test_failed_rerun_keeps_the_good_values_stored_for_the_same_date(self, isolated_regime_tables):
         good = self._run(gilt_closes=[4.0] * 9 + [4.6])

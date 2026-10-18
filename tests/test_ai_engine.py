@@ -186,6 +186,29 @@ class TestMacroContextUnavailableUkThreat:
         assert "US Dollar Index (DXY): N/A | GBP/USD: N/A" in text
         assert "None" not in text
 
+    def test_null_us_threat_level_reads_na_not_none(self):
+        import database
+        conn = database.get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO macro_regimes (date, tnx_close, uk_threat_level) "
+                "VALUES ('2999-12-31', 4.3, 'GREEN')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        try:
+            text = ENGINE._get_macro_context()
+        finally:
+            conn = database.get_connection()
+            try:
+                conn.execute("DELETE FROM macro_regimes WHERE date = '2999-12-31'")
+                conn.commit()
+            finally:
+                conn.close()
+        assert "US Yield Threat: N/A (10Y 4.30%, velocity N/A bps/3d)" in text
+        assert "None" not in text
+
 
 class TestTrajectory:
     def test_rising_direction(self):
