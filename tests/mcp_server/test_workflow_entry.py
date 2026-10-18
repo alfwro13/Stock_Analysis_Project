@@ -13,7 +13,7 @@ class TestWorkflowEntry:
 
     def test_ticker_snapshot_artifacts_are_consumed_by_the_server(self):
         consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
-        assert {"stock_signals", "quant_signals", "market_pulse_cache", "fundamentals", "ml_predictions", "watchlist_items", "yahoo_price_data"} <= consumed
+        assert {"stock_signals", "quant_signals", "market_pulse_cache", "fundamentals", "ml_predictions", "watchlist_items", "yahoo_price_data", "holding_price_limits"} <= consumed
 
     def test_alert_and_news_artifacts_are_consumed_and_produced_by_their_nodes(self):
         consumed = set(JOB_GRAPH["claude_mcp_server_source"]["consumes"])
