@@ -1,7 +1,7 @@
 pip>=26.2.1
 pytest>=9.1.1
 packaging>=26.3
-fastapi==0.143.0
+fastapi==0.143.3
 starlette>=1.8.0
 python-dotenv>=1.2.4
 slowapi>=0.1.10
