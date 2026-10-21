@@ -139,6 +139,15 @@ class TestLockoutAndRange:
             assert client.post("/mcp").status_code == 403
         assert texts(remote_notifications) == [f"A request from {OUT_OF_RANGE} was refused: outside the allowed address range."]
 
+    def test_a_private_peer_is_announced_with_the_proxy_hint(self, monkeypatch, remote_notifications):
+        _settings(monkeypatch)
+        _, client = _guarded(address="192.168.1.72")
+        for _ in range(3):
+            assert client.post("/mcp").status_code == 403
+        assert texts(remote_notifications) == [
+            "A request from 192.168.1.72 was refused: it is a private address, so the reverse proxy is probably not trusted in FORWARDED_ALLOW_IPS."
+        ]
+
     def test_a_request_inside_the_range_announces_nothing(self, monkeypatch, remote_notifications):
         _settings(monkeypatch)
         _, client = _guarded()

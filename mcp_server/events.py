@@ -49,9 +49,10 @@ def lockout_tripped(address: str) -> None:
         _emit(f"{_address(address)} was locked out for {minutes} minutes after {MCP_AUTH_FAILURES_MAX} wrong credentials.", "warning")
 
 
-def off_range_request(address: str) -> None:
+def off_range_request(address: str, proxy_like: bool = False) -> None:
     if limits.notify_due(("off_range", address), MCP_NOTIFY_COOLDOWN_SECONDS):
-        _emit(f"A request from {_address(address)} was refused: outside the allowed address range.", "warning")
+        reason = "it is a private address, so the reverse proxy is probably not trusted in FORWARDED_ALLOW_IPS" if proxy_like else "outside the allowed address range"
+        _emit(f"A request from {_address(address)} was refused: {reason}.", "warning")
 
 
 def window_closed_unused() -> None:

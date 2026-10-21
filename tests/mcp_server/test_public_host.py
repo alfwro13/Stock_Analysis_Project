@@ -244,6 +244,88 @@ class TestClientAddress:
         assert post("10.9.9.9", IN_RANGE) == 403
 
 
+class TestProxyTrust:
+    @pytest.mark.parametrize("address", ["127.0.0.1", "10.1.2.3", "172.16.0.9", "192.168.1.72", "169.254.1.1", "100.64.0.1", "::1", "fd00::5", "fe80::1", "::ffff:192.168.1.72"])
+    def test_loopback_private_and_link_local_peers_look_like_the_proxy(self, address):
+        from mcp_server.public_host import is_proxy_like
+        assert is_proxy_like(address)
+
+    @pytest.mark.parametrize("address", [IN_RANGE, OUT_OF_RANGE, "8.8.8.8", "172.32.0.1", "2001:db8::1", "testclient", "", "not-an-address"])
+    def test_public_documentation_and_junk_addresses_do_not(self, address):
+        from mcp_server.public_host import is_proxy_like
+        assert not is_proxy_like(address)
+
+    @pytest.mark.parametrize("value,state", [
+        (None, "unset"), ("", "unset"), (" , ", "unset"), ("*", "wildcard"), ("192.168.1.72,*", "wildcard"),
+        ("127.0.0.1", "loopback"), ("127.0.0.1, ::1, 127.0.0.0/8", "loopback"),
+        ("192.168.1.72", "list"), ("127.0.0.1,192.168.1.72", "list"), ("not-an-address", "list"),
+    ])
+    def test_the_trust_setting_is_classified(self, monkeypatch, value, state):
+        from mcp_server.public_host import forwarded_trust
+        if value is None:
+            monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+        else:
+            monkeypatch.setenv("FORWARDED_ALLOW_IPS", value)
+        assert forwarded_trust()["state"] == state
+
+    def test_the_trust_value_is_cleaned_and_capped(self, monkeypatch):
+        from mcp_server.public_host import forwarded_trust
+        monkeypatch.setenv("FORWARDED_ALLOW_IPS", "10.0.0.1\n" + "9" * 500)
+        value = forwarded_trust()["value"]
+        assert len(value) <= 200 and "\n" not in value
+
+    @pytest.mark.parametrize("value,warns", [(None, True), ("*", True), ("127.0.0.1", False), ("192.168.1.72", False)])
+    def test_startup_warns_for_a_wildcard_or_unset_value_only_when_a_public_host_is_set(self, monkeypatch, caplog, value, warns):
+        from mcp_server import warn_if_proxy_untrusted
+        if value is None:
+            monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+        else:
+            monkeypatch.setenv("FORWARDED_ALLOW_IPS", value)
+        with caplog.at_level("WARNING", logger="mcp_server.public_host"):
+            warn_if_proxy_untrusted("")
+            assert "FORWARDED_ALLOW_IPS" not in caplog.text
+            warn_if_proxy_untrusted(PUBLIC_HOST)
+        assert ("FORWARDED_ALLOW_IPS" in caplog.text) is warns
+
+    def test_a_private_peer_on_the_public_host_is_refused_with_the_proxy_hint(self, monkeypatch, caplog):
+        _settings(monkeypatch)
+        inner, client = _guarded(address="192.168.1.72")
+        with caplog.at_level("WARNING", logger="mcp_server.public_host"):
+            assert _request(client, "POST", "/mcp").status_code == 403
+        assert "probably not trusted in FORWARDED_ALLOW_IPS" in caplog.text
+        assert inner.calls == []
+
+    def test_a_public_address_outside_the_range_keeps_the_range_message(self, monkeypatch, caplog):
+        _settings(monkeypatch)
+        _, client = _guarded(address=OUT_OF_RANGE)
+        with caplog.at_level("WARNING", logger="mcp_server.public_host"):
+            assert _request(client, "POST", "/mcp").status_code == 403
+        assert "outside MCP_REMOTE_ALLOWED_CIDRS" in caplog.text and "FORWARDED_ALLOW_IPS" not in caplog.text
+
+    def test_the_last_peer_is_remembered_for_an_enabled_public_host_request(self, monkeypatch):
+        from mcp_server import limits
+        _settings(monkeypatch)
+        assert limits.last_public_peer() is None
+        _, client = _guarded(address="192.168.1.72")
+        _request(client, "POST", "/mcp")
+        address, at = limits.last_public_peer()
+        assert address == "192.168.1.72" and at.tzinfo is not None
+        _, client = _guarded(address=IN_RANGE)
+        _request(client, "GET", "/oauth/approve")
+        assert limits.last_public_peer()[0] == IN_RANGE
+
+    def test_the_last_peer_ignores_disabled_unlisted_and_other_host_requests(self, monkeypatch):
+        from mcp_server import limits
+        _settings(monkeypatch, enabled=False)
+        _, client = _guarded()
+        _request(client, "POST", "/mcp")
+        _settings(monkeypatch)
+        _request(client, "GET", "/login")
+        _, other = _guarded(host="127.0.0.1")
+        _request(other, "POST", "/mcp")
+        assert limits.last_public_peer() is None
+
+
 class TestRealApp:
     @staticmethod
     def _real_stack(monkeypatch, host):

@@ -80,6 +80,28 @@ class TestEnable:
             assert client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers).status_code == 200
         update.assert_called_once_with({"MCP_REMOTE_ENABLED": True})
 
+    def test_enabling_is_refused_while_the_trust_setting_is_a_wildcard(self, client, step_up_headers, saved_config, monkeypatch):
+        monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+            response = client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers)
+        assert response.status_code == 409 and "FORWARDED_ALLOW_IPS" in response.json()["detail"]
+        update.assert_not_called()
+
+    @pytest.mark.parametrize("value", [None, "127.0.0.1", "192.168.1.72"])
+    def test_enabling_is_allowed_for_an_unset_loopback_or_listed_trust_setting(self, client, step_up_headers, saved_config, monkeypatch, value):
+        if value is None:
+            monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+        else:
+            monkeypatch.setenv("FORWARDED_ALLOW_IPS", value)
+        with patch("api_routes_mcp_remote.update_config_atomic"):
+            assert client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers).status_code == 200
+
+    def test_a_wildcard_does_not_stop_turning_remote_access_off(self, client, auth_cookies, monkeypatch):
+        monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+            assert client.post("/api/mcp-remote/enabled", json={"enabled": False}, headers=_plain(auth_cookies)).status_code == 200
+        update.assert_called_once_with({"MCP_REMOTE_ENABLED": False})
+
     def test_disabling_needs_no_password(self, client, auth_cookies):
         with patch("api_routes_mcp_remote.update_config_atomic") as update:
             assert client.post("/api/mcp-remote/enabled", json={"enabled": False}, headers=_plain(auth_cookies)).status_code == 200
@@ -130,6 +152,31 @@ class TestClientAndPairing:
         assert data["endpoint_url"] == f"https://{PUBLIC_HOST}/mcp" and data["host_active"] is True
         monkeypatch.setattr(config, "MCP_PUBLIC_HOST", "")
         assert _status(client)["host_active"] is False
+
+
+class TestAddressCheck:
+    def test_status_reports_the_trust_setting(self, client, saved_config, monkeypatch):
+        monkeypatch.setenv("FORWARDED_ALLOW_IPS", "192.168.1.72")
+        assert _status(client)["proxy_trust"] == {"state": "list", "value": "192.168.1.72"}
+        monkeypatch.delenv("FORWARDED_ALLOW_IPS")
+        assert _status(client)["proxy_trust"] == {"state": "unset", "value": ""}
+
+    def test_status_has_no_last_request_until_one_reaches_the_public_host(self, client, saved_config):
+        assert _status(client)["last_public_request"] is None
+
+    @pytest.mark.parametrize("address,proxy_like", [("192.168.1.72", True), ("160.79.104.5", False)])
+    def test_status_reports_the_last_public_host_address_and_whether_it_looks_like_the_proxy(self, client, saved_config, address, proxy_like):
+        from mcp_server import limits
+        limits.note_public_peer(address)
+        last = _status(client)["last_public_request"]
+        assert last["address"] == address and last["proxy_like"] is proxy_like
+        assert last["at_display"] and set(last) == {"address", "at_display", "proxy_like"}
+
+    def test_the_panel_script_renders_the_check_with_text_only(self):
+        script = (ROOT / "static/js/settings_mcp_remote.js").read_text(encoding="utf-8")
+        assert "renderMcpRemoteAddressCheck(data.proxy_trust, data.last_public_request)" in script
+        template = (ROOT / "templates/settings/_account.html").read_text(encoding="utf-8")
+        assert 'id="mcp_remote_proxy_trust"' in template and 'id="mcp_remote_last_peer"' in template
 
 
 class TestRequests:

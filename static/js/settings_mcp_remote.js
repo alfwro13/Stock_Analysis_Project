@@ -69,6 +69,29 @@ function renderMcpRemoteApps(apps) {
     }));
 }
 
+function renderMcpRemoteAddressCheck(trust, last) {
+    const proxy = document.getElementById('mcp_remote_proxy_trust');
+    const texts = {
+        unset: ['FORWARDED_ALLOW_IPS is not set: only a reverse proxy on this machine is trusted. Right only if the proxy runs on the same machine as the app.', 'text-warning'],
+        loopback: ['FORWARDED_ALLOW_IPS trusts only this machine (' + trust.value + '). Right only if the reverse proxy runs on the same machine as the app.', 'text-warning'],
+        wildcard: ['FORWARDED_ALLOW_IPS is "*": any host that can reach the app could forge a client address. Set it to the reverse proxy\'s address and restart the service.', 'text-danger'],
+        list: ['FORWARDED_ALLOW_IPS trusts: ' + trust.value + '.', 'text-muted'],
+    };
+    const [text, cssClass] = texts[trust.state];
+    proxy.textContent = text;
+    proxy.className = cssClass;
+    const peer = document.getElementById('mcp_remote_last_peer');
+    if (!last) {
+        peer.textContent = 'No request has reached the public host since the service started.';
+        peer.className = 'text-muted';
+        return;
+    }
+    peer.textContent = 'Last request on the public host: ' + last.address + ' at ' + last.at_display + '. ' + (last.proxy_like
+        ? 'This is a private address: the reverse proxy is probably not trusted in FORWARDED_ALLOW_IPS, so every caller shares it.'
+        : 'Confirm it is the address you sent the test request from.');
+    peer.className = last.proxy_like ? 'text-warning' : 'text-muted';
+}
+
 function renderMcpRemote(data) {
     document.getElementById('MCP_REMOTE_ENABLED').checked = data.enabled;
     const hostInput = document.getElementById('mcp_public_host');
@@ -78,6 +101,7 @@ function renderMcpRemote(data) {
     if (data.public_host && !data.host_active) {
         setStatus('mcp-remote-host-msg', 'warning', 'The saved host is not active yet. Restart the service to apply it.');
     }
+    renderMcpRemoteAddressCheck(data.proxy_trust, data.last_public_request);
     mcpRemoteHasClient = !!data.client;
     document.getElementById('mcp_remote_client_id').textContent = data.client
         ? 'Client ID ' + data.client.client_id + ' (created ' + data.client.created_display + ')'
