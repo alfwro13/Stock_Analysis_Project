@@ -1091,19 +1091,8 @@ def get_system_metrics():
 
         job_last_runs = get_all_job_last_runs()
         config_key_to_job = CONFIG_KEY_TO_JOB
-        def _localise_ts(ts: str) -> str:
-            if not ts or ts == "Never":
-                return "Never"
-            from datetime import datetime as _dt
-            for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'):
-                try:
-                    return time_engine.fmt_datetime(_dt.strptime(ts, fmt))
-                except ValueError:
-                    continue
-            return ts
-
         scheduler_last_runs = {
-            cfg_key: _localise_ts((job_last_runs.get(job_id) or {}).get("last_run", "Never"))
+            cfg_key: time_engine.fmt_stored_utc((job_last_runs.get(job_id) or {}).get("last_run"), fallback="Never")
             for cfg_key, job_id in config_key_to_job.items()
         }
         scheduler_last_runs_sort = {
@@ -1111,7 +1100,7 @@ def get_system_metrics():
             for cfg_key, job_id in config_key_to_job.items()
         }
         for auction_job_id in ("macro_auction_job_am", "macro_auction_job_pm"):
-            scheduler_last_runs[auction_job_id] = _localise_ts((job_last_runs.get(auction_job_id) or {}).get("last_run", "Never"))
+            scheduler_last_runs[auction_job_id] = time_engine.fmt_stored_utc((job_last_runs.get(auction_job_id) or {}).get("last_run"), fallback="Never")
             scheduler_last_runs_sort[auction_job_id] = (job_last_runs.get(auction_job_id) or {}).get("last_run") or ""
 
         return JSONResponse(content={
@@ -1341,18 +1330,11 @@ def get_latest_notifications(last_id: int = 0):
         rows = cursor.fetchall()
         notifications = []
         for row in rows:
-            ts_raw = row["timestamp"] or ""
-            try:
-                from datetime import datetime as _dt
-                dt = _dt.strptime(ts_raw[:19], "%Y-%m-%d %H:%M:%S")
-                ts_display = time_engine.fmt_datetime(dt)
-            except (ValueError, TypeError):
-                ts_display = ts_raw
             notifications.append({
                 "id": row["id"],
                 "type": row["message_type"],
                 "text": row["message_text"],
-                "timestamp": ts_display,
+                "timestamp": time_engine.fmt_stored_utc(row["timestamp"], fallback=""),
             })
         return JSONResponse(content={"status": "success", "notifications": notifications})
     except Exception as e:
@@ -1372,10 +1354,8 @@ def get_scheduler_job_runs(job_id: str):
 
     runs = get_job_run_history(job_id)
     for run in runs:
-        started = datetime.strptime(run["started_at"], "%Y-%m-%d %H:%M:%S")
-        finished = datetime.strptime(run["finished_at"], "%Y-%m-%d %H:%M:%S")
-        run["started_at_display"] = time_engine.fmt_datetime(started)
-        run["finished_at_display"] = time_engine.fmt_datetime(finished)
+        run["started_at_display"] = time_engine.fmt_stored_utc(run["started_at"])
+        run["finished_at_display"] = time_engine.fmt_stored_utc(run["finished_at"])
         run["duration_sec"] = round(run["duration_sec"], 3)
 
     return JSONResponse(content={
@@ -1392,20 +1372,9 @@ def get_workflow_monitor_status():
         graph = build_workflow_graph()
         conflicts = detect_workflow_conflicts(graph)
 
-        def _localise(ts: str):
-            if not ts:
-                return None
-            from datetime import datetime as _dt
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-                try:
-                    return time_engine.fmt_datetime(_dt.strptime(ts, fmt))
-                except ValueError:
-                    continue
-            return ts
-
         for node in graph["nodes"]:
-            node["last_run_display"] = _localise(node.get("last_run"))
-            node["next_run_display"] = _localise(node.get("next_run"))
+            node["last_run_display"] = time_engine.fmt_stored_utc(node.get("last_run"))
+            node["next_run_display"] = time_engine.fmt_stored_utc(node.get("next_run"))
 
         return JSONResponse(content={
             "status": "success",

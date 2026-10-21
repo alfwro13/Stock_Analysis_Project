@@ -1,10 +1,8 @@
 import json
 import hashlib
 import logging
-from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-import time_engine
 from config import HISTORICAL_DIR, INTRADAY_DIR, load_config
 from database import get_connection
 from position_sizing import get_position_sizing_config
@@ -186,16 +184,6 @@ def _load_fundamentals_extra(ticker: str) -> dict:
         return _format_fundamentals_extra(raw)
     except Exception:
         return _format_fundamentals_extra({})
-
-
-def _utc_str_to_local(s: str) -> str:
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            dt = datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
-            return time_engine.fmt_datetime(dt)
-        except ValueError:
-            continue
-    return s
 
 
 def _build_position_sizing_context(config_data: dict, db_rows) -> dict:

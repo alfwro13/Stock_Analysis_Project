@@ -29,7 +29,7 @@ from visuals_ai import (
 )
 from fx_drag_engine import portfolio_lifetime_fx_breakdown
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, INVESTMENT_POLICY_MAX_CHARS, MCP_ACTIVITY_ROWS, MCP_KEY_NAME_MAX_CHARS, MCP_PUBLIC_HOST_MAX_CHARS
-from page_helpers import get_unread_count, _utc_str_to_local
+from page_helpers import get_unread_count
 from page_routes_etf import page_router_etf
 from page_routes_macro import page_router_macro
 from page_routes_portfolio import page_router_portfolio
@@ -138,7 +138,7 @@ def notifications_page(request: Request):
     notifications = []
     for row in rows:
         note = dict(row)
-        note["timestamp"] = _utc_str_to_local(note["timestamp"])
+        note["timestamp"] = time_engine.fmt_stored_utc(note["timestamp"], fallback="")
         notifications.append(note)
     return templates.TemplateResponse(
         request=request,
@@ -535,8 +535,8 @@ def forensic_screener_page(request: Request):
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),
-            "fetch_last_run": _utc_str_to_local((job_last_runs.get("forensic_quarterly_fetch_job") or {}).get("last_run", "")),
-            "score_last_run": _utc_str_to_local((job_last_runs.get("forensic_scores_job") or {}).get("last_run", "")),
+            "fetch_last_run": time_engine.fmt_stored_utc((job_last_runs.get("forensic_quarterly_fetch_job") or {}).get("last_run"), fallback=""),
+            "score_last_run": time_engine.fmt_stored_utc((job_last_runs.get("forensic_scores_job") or {}).get("last_run"), fallback=""),
         },
     )
 

@@ -81,14 +81,8 @@ def ticker_notes_for_display(ticker):
 
     ticker_notes = get_ticker_notes(ticker)
     for note in ticker_notes:
-        note["created_display"] = time_engine.fmt_datetime(
-            datetime.strptime(note["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-        )
-        note["updated_display"] = None
-        if note.get("updated_at"):
-            note["updated_display"] = time_engine.fmt_datetime(
-                datetime.strptime(note["updated_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            )
+        note["created_display"] = time_engine.fmt_stored_utc(note["created_at"])
+        note["updated_display"] = time_engine.fmt_stored_utc(note.get("updated_at"))
     return ticker_notes
 
 

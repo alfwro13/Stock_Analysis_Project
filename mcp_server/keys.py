@@ -77,15 +77,9 @@ def record_use(key_id: int) -> None:
     _executor.submit(_write_use, key_id, datetime.now(timezone.utc).strftime(_STORED_FORMAT))
 
 
-def _display(stored: Optional[str]) -> Optional[str]:
-    if not stored:
-        return None
-    return time_engine.fmt_datetime(datetime.strptime(stored, _STORED_FORMAT).replace(tzinfo=timezone.utc))
-
-
 def list_keys() -> List[dict]:
     return [
-        {"id": row["id"], "name": row["name"], "created_at": _display(row["created_at"]), "last_used_at": _display(row["last_used_at"])}
+        {"id": row["id"], "name": row["name"], "created_at": time_engine.fmt_stored_utc(row["created_at"]), "last_used_at": time_engine.fmt_stored_utc(row["last_used_at"])}
         for row in db_mcp_keys.list_keys()
     ]
 

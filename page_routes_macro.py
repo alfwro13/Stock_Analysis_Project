@@ -46,7 +46,7 @@ from visuals_macro import (
     create_yield_vs_gdp_chart,
 )
 from constants import CSS_VERSION
-from page_helpers import get_unread_count, _utc_str_to_local, intraday_chart_revision
+from page_helpers import get_unread_count, intraday_chart_revision
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
         evt_name = evt.get('event_name', '')
         evt['context'] = None
         evt['insight'] = ""
-        evt['display_date'] = _utc_str_to_local(evt.get('event_date', ''))
+        evt['display_date'] = time_engine.fmt_stored_utc(evt.get('event_date'), fallback='')
 
         polarity = "neutral"
         for pattern, data in EVENT_GLOSSARY.items():
@@ -141,7 +141,7 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
     try:
-        result: dict = {"timestamp": _utc_str_to_local(timestamp)}
+        result: dict = {"timestamp": time_engine.fmt_stored_utc(timestamp, fallback="")}
         for line in msg_text.split('\n'):
             if '**Event:**' in line:
                 part = line.split('**Event:** ', 1)[1]
@@ -234,7 +234,7 @@ def market_sentiment_page(request: Request):
                 else:
                     tickers, severity_score = raw.get("tickers", []), raw.get("severity_score", 0.0)
                 ai_contagion_status.append({
-                    "scan_ts": _utc_str_to_local(r["scan_ts"]),
+                    "scan_ts": time_engine.fmt_stored_utc(r["scan_ts"], fallback=""),
                     "leader_count": r["leader_count"],
                     "etf_count": r["etf_count"],
                     "alert_fired": bool(r["alert_fired"]),
