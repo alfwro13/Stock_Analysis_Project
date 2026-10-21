@@ -264,7 +264,13 @@ class TestRealApp:
         import main
         pairs = set()
         for top in main.app.routes:
-            for route in (top.effective_route_contexts() if hasattr(top, "effective_route_contexts") else [top]):
+            if hasattr(top, "effective_route_contexts"):
+                contexts = list(top.effective_route_contexts())
+            elif hasattr(top, "path"):
+                contexts = [top]
+            else:
+                raise AssertionError(f"Unrecognised route container {type(top).__name__}: FastAPI changed how app.routes nests routers; update _registered_pairs")
+            for route in contexts:
                 path = re.sub(r"\{[^}]+\}", "x", route.path)
                 if hasattr(route, "routes"):
                     path += "/x"
@@ -290,6 +296,16 @@ class TestRealApp:
         assert len(pairs) > 2000 and ("GET", "/login") in pairs and ("POST", "/api/settings") in pairs and ("POST", "/mcp") in pairs and ("GET", "/docs") in pairs
         leaked = [(m, p, r.status_code) for m, p in sorted(pairs - EIGHT) if (r := _request(guarded_app, m, p)).status_code != 404]
         assert leaked == []
+
+    def test_the_enumeration_covers_every_route_the_openapi_schema_documents(self):
+        """Second, independent source: if a FastAPI upgrade changes how app.routes nests routers, the enumeration above would shrink silently and the fail-closed test would pass for the wrong reason."""
+        import main
+        documented = {
+            (method.upper(), re.sub(r"\{[^}]+\}", "x", path))
+            for path, operations in main.app.openapi()["paths"].items() for method in operations
+        }
+        assert len(documented) > 250
+        assert documented <= self._registered_pairs()
 
     def test_all_pairs_including_the_eight_are_404_while_remote_access_is_off(self, guarded_app, monkeypatch):
         _settings(monkeypatch, enabled=False)
