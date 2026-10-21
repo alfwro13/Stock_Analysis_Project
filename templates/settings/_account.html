@@ -251,6 +251,11 @@
                     <label>Endpoint for Claude</label>
                     <div><code id="mcp_remote_endpoint">Save a public host first.</code></div>
                 </div>
+                <div class="form-group">
+                    <label><abbr title="The service setting that names the reverse proxy whose forwarded client address the app trusts. Without it every caller looks like the proxy.">Client address check</abbr></label>
+                    <div id="mcp_remote_proxy_trust" class="text-muted">Loading…</div>
+                    <div id="mcp_remote_last_peer" class="text-muted">Loading…</div>
+                </div>
 
                 <div class="form-group">
                     <label>OAuth client</label>

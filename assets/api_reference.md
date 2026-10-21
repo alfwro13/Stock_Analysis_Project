@@ -1700,18 +1700,20 @@ State of the MCP Remote Access panel (Settings → MCP Server → Remote Access)
   "endpoint_url": "https://mcp.example.com/mcp",
   "client": { "client_id": "mcp-1a2b3c4d5e6f7a8b", "created_display": "2026-10-21 14:02 BST" },
   "pairing": { "open": true, "until_display": "2026-10-21 14:32 BST", "seconds_left": 480 },
+  "proxy_trust": { "state": "list", "value": "192.168.1.72" },
+  "last_public_request": { "address": "160.79.104.5", "at_display": "2026-10-21 14:25 BST", "proxy_like": false },
   "requests": [ { "id": "<22 characters>", "code": "K7P2QX", "requested_display": "2026-10-21 14:25 BST", "address": "203.0.113.5", "user_agent": "Mozilla/5.0 ...", "seconds_left": 240 } ],
   "apps": [ { "client_id": "mcp-1a2b3c4d5e6f7a8b", "connected_display": "2026-10-21 14:26 BST", "expires_display": "2027-01-19 14:26 GMT", "last_used_display": null, "last_address": null } ]
 }
 ```
 
-`public_host` is the saved value and `host_active` is false until a restart applies it. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50.
+`public_host` is the saved value and `host_active` is false until a restart applies it. `proxy_trust` is the service's `FORWARDED_ALLOW_IPS` setting: `state` is `unset`, `loopback`, `wildcard` or `list`, `value` the cleaned, capped text. `last_public_request` is the peer address of the newest request that reached the public host's route check while Remote Access was on (in memory, so `null` after a restart), with `proxy_like` true for a loopback, private or link-local address, which on that host means the reverse proxy is not trusted. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50.
 
 ---
 
 ### `POST /api/mcp-remote/enabled`
 
-Turns Remote Access on or off by writing `MCP_REMOTE_ENABLED` to `config.json` (default `false`). Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise) and a saved `MCP_PUBLIC_HOST` (`409 Save a public host first.`); disabling does neither, because closing the door is the safe direction. Takes effect on the next request. Limited to 10 requests per minute.
+Turns Remote Access on or off by writing `MCP_REMOTE_ENABLED` to `config.json` (default `false`). Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise) a saved `MCP_PUBLIC_HOST` (`409 Save a public host first.`) and a `FORWARDED_ALLOW_IPS` that is not `*` (`409`: any host that can reach the app could then forge the caller's address); disabling does neither, because closing the door is the safe direction. Takes effect on the next request. Limited to 10 requests per minute.
 
 ```json
 { "status": "success", "enabled": true }

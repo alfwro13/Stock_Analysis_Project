@@ -8,7 +8,8 @@ from pydantic import BaseModel
 import config
 from api_deps import limiter, require_step_up
 from config import load_config, update_config_atomic
-from mcp_server import oauth
+from mcp_server import limits, oauth
+from mcp_server.public_host import forwarded_trust, is_proxy_like
 from scheduler_engine import arm_mcp_pairing_window_check
 
 mcp_remote_router = APIRouter()
@@ -19,6 +20,14 @@ _REQUEST_ID = PathParam(pattern=r"^[A-Za-z0-9_-]{22}$")
 
 def _display(stamp: Optional[str]) -> Optional[str]:
     return time_engine.fmt_datetime(datetime.strptime(stamp, _STORED_FORMAT)) if stamp else None
+
+
+def _last_public_request() -> Optional[dict]:
+    peer = limits.last_public_peer()
+    if peer is None:
+        return None
+    address, at = peer
+    return {"address": address, "at_display": time_engine.fmt_datetime(at), "proxy_like": is_proxy_like(address)}
 
 
 def _pairing_state() -> dict:
@@ -44,6 +53,8 @@ def get_mcp_remote(request: Request):
         "endpoint_url": f"https://{host}/mcp" if host else None,
         "client": {"client_id": client["client_id"], "created_display": _display(client["created_at"])} if client else None,
         "pairing": _pairing_state(),
+        "proxy_trust": forwarded_trust(),
+        "last_public_request": _last_public_request(),
         "requests": [
             {
                 "id": row["id"], "code": row["display_code"], "requested_display": _display(row["created_at"]),
@@ -68,6 +79,8 @@ def set_mcp_remote_enabled(request: Request, body: McpRemoteToggle):
         require_step_up(request)
         if not load_config().get("MCP_PUBLIC_HOST"):
             raise HTTPException(status_code=409, detail="Save a public host first.")
+        if forwarded_trust()["state"] == "wildcard":
+            raise HTTPException(status_code=409, detail="FORWARDED_ALLOW_IPS is '*'. Set it to the reverse proxy's address and restart the service first.")
     update_config_atomic({"MCP_REMOTE_ENABLED": body.enabled})
     return {"status": "success", "enabled": body.enabled}
 

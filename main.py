@@ -319,6 +319,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 # Registered after every other middleware so it is the outermost layer: no cookie, header or key is read before it.
 app.add_middleware(mcp_server.PublicHostGuard, public_host=MCP_PUBLIC_HOST)
+mcp_server.warn_if_proxy_untrusted(MCP_PUBLIC_HOST)
 
 
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")

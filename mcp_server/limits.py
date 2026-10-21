@@ -2,7 +2,8 @@ import math
 import threading
 import time
 from collections import deque
-from typing import Dict, Hashable, Optional
+from datetime import datetime, timezone
+from typing import Dict, Hashable, Optional, Tuple
 
 from constants import (
     MCP_AUTH_FAILURE_WINDOW_SECONDS, MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS, MCP_RATE_CALLS_PER_MINUTE,
@@ -18,6 +19,7 @@ _failures: Dict[str, deque] = {}
 _locked_until: Dict[str, float] = {}
 _refusal_logged: Dict[tuple, float] = {}
 _notified_until: Dict[tuple, float] = {}
+_public_peer: Optional[Tuple[str, datetime]] = None
 _last_sweep = 0.0
 
 
@@ -130,9 +132,21 @@ def notify_due(scope: tuple, cooldown_seconds: int) -> bool:
         return True
 
 
-def reset() -> None:
-    global _last_sweep
+def note_public_peer(address: str) -> None:
+    global _public_peer
     with _lock:
+        _public_peer = (address, datetime.now(timezone.utc))
+
+
+def last_public_peer() -> Optional[Tuple[str, datetime]]:
+    with _lock:
+        return _public_peer
+
+
+def reset() -> None:
+    global _last_sweep, _public_peer
+    with _lock:
+        _public_peer = None
         for state in (_calls, _active, _failures, _locked_until, _refusal_logged, _notified_until):
             state.clear()
         _last_sweep = 0.0
