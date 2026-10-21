@@ -1,11 +1,15 @@
 # config.py
 import os
+import re
 import json
 import copy
+import ipaddress
 import math
 import pickle
 from pathlib import Path
 from dotenv import load_dotenv
+
+from constants import MCP_PUBLIC_HOST_MAX_CHARS, MCP_REMOTE_CIDRS_MAX
 
 load_dotenv()
 
@@ -86,6 +90,9 @@ DEFAULT_CONFIG = {
     "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
     "GHOSTFOLIO_ENABLED": False,
     "MCP_SERVER_ENABLED": False,
+    "MCP_REMOTE_ENABLED": False,
+    "MCP_PUBLIC_HOST": "",
+    "MCP_REMOTE_ALLOWED_CIDRS": ["160.79.104.0/21"],
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
         "active": []
@@ -689,6 +696,35 @@ def validate_meta_scoring(value) -> dict:
     return value
 
 
+_HOST_LABEL = re.compile(r"[a-z0-9]([a-z0-9\-]*[a-z0-9])?")
+
+
+def validate_mcp_public_host(value) -> str:
+    """The one spelling of MCP_PUBLIC_HOST (lower case, no port, no trailing dot) that the guard and the trusted-host list both compare."""
+    if not isinstance(value, str):
+        raise ValueError("MCP_PUBLIC_HOST must be a host name")
+    host = value.strip().lower().rstrip(".")
+    if len(host) > MCP_PUBLIC_HOST_MAX_CHARS:
+        raise ValueError(f"MCP_PUBLIC_HOST must be at most {MCP_PUBLIC_HOST_MAX_CHARS} characters")
+    if host and not all(_HOST_LABEL.fullmatch(label) for label in host.split(".")):
+        raise ValueError("MCP_PUBLIC_HOST must be a plain host name (no scheme, port, path or wildcard)")
+    return host
+
+
+def validate_mcp_remote_cidrs(value) -> list:
+    if not isinstance(value, list) or not value:
+        raise ValueError("MCP_REMOTE_ALLOWED_CIDRS must list at least one network; turn MCP_REMOTE_ENABLED off to close remote access")
+    if len(value) > MCP_REMOTE_CIDRS_MAX:
+        raise ValueError(f"MCP_REMOTE_ALLOWED_CIDRS may list at most {MCP_REMOTE_CIDRS_MAX} networks")
+    networks = []
+    for entry in value:
+        try:
+            networks.append(str(ipaddress.ip_network(entry.strip(), strict=True)))
+        except (AttributeError, ValueError):
+            raise ValueError("MCP_REMOTE_ALLOWED_CIDRS entries must be networks such as 160.79.104.0/21") from None
+    return networks
+
+
 def _open_private(path):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.fchmod(fd, 0o600)
@@ -819,6 +855,11 @@ GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [
 PORT = current_config.get("PORT", 8090)
 BIND_HOST = current_config.get("BIND_HOST", DEFAULT_CONFIG["BIND_HOST"])
 ALLOWED_HOSTS = current_config.get("ALLOWED_HOSTS", DEFAULT_CONFIG["ALLOWED_HOSTS"])
+try:
+    MCP_PUBLIC_HOST = validate_mcp_public_host(current_config.get("MCP_PUBLIC_HOST", ""))
+except ValueError:
+    print("[WARNING] MCP_PUBLIC_HOST in config.json is not a plain host name; remote MCP access stays closed.")
+    MCP_PUBLIC_HOST = ""
 COOKIE_SECURE = current_config.get("COOKIE_SECURE", DEFAULT_CONFIG["COOKIE_SECURE"])
 FRAME_ANCESTORS = current_config.get("FRAME_ANCESTORS", DEFAULT_CONFIG["FRAME_ANCESTORS"])
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
