@@ -1085,6 +1085,10 @@ def get_system_metrics():
         pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 0")
         sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 1")
 
+        import db_mcp_audit
+        from mcp_server import oauth as mcp_oauth
+        mcp_requests, mcp_refused = db_mcp_audit.traffic_counts((datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S"))
+
         job_last_runs = get_all_job_last_runs()
         config_key_to_job = CONFIG_KEY_TO_JOB
         def _localise_ts(ts: str) -> str:
@@ -1140,6 +1144,7 @@ def get_system_metrics():
                 "macro_ind": macro_ind_cnt, "macro_cal": macro_cal_cnt,
                 "notes_pending": pending_notes, "notes_sent": sent_notes
             },
+            "mcp": {**mcp_oauth.diagnostics_counts(), "requests_24h": mcp_requests, "refused_24h": mcp_refused},
             "scheduler_last_runs": scheduler_last_runs,
             "scheduler_last_runs_sort": scheduler_last_runs_sort,
             "yahoo_cache": yahoo_engine.get_stats(),

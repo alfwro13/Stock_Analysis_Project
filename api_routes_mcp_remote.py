@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import config
 from api_deps import limiter, require_step_up
 from config import load_config, update_config_atomic
-from mcp_server import limits, oauth
+from mcp_server import audit, limits, oauth
 from mcp_server.public_host import forwarded_trust, is_proxy_like
 from scheduler_engine import arm_mcp_pairing_window_check
 
@@ -16,10 +16,24 @@ mcp_remote_router = APIRouter()
 
 _STORED_FORMAT = "%Y-%m-%d %H:%M:%S"
 _REQUEST_ID = PathParam(pattern=r"^[A-Za-z0-9_-]{22}$")
+_GRANT_ID = PathParam(ge=1, le=2**62)
 
 
 def _display(stamp: Optional[str]) -> Optional[str]:
     return time_engine.fmt_datetime(datetime.strptime(stamp, _STORED_FORMAT)) if stamp else None
+
+
+def _credential(kind: str, credential_id: Optional[int]) -> str:
+    if kind == "session":
+        return "Dashboard"
+    label = {"key": "Key", "oauth": "App"}.get(kind)
+    return f"{label} #{credential_id}" if label and credential_id is not None else "None"
+
+
+def _event_name(row: dict) -> Optional[str]:
+    if row["credential_kind"] == "session" and row["key_id"] is not None:
+        return f"{row['mcp_name']} (App #{row['key_id']})"
+    return row["mcp_name"]
 
 
 def _last_public_request() -> Optional[dict]:
@@ -64,7 +78,7 @@ def get_mcp_remote(request: Request):
         ],
         "apps": [
             {
-                "client_id": row["client_id"], "connected_display": _display(row["created_at"]), "expires_display": _display(row["expires_at"]),
+                "id": row["id"], "client_id": row["client_id"], "connected_display": _display(row["created_at"]), "expires_display": _display(row["expires_at"]),
                 "last_used_display": _display(row["last_used_at"]), "last_address": row["last_address"],
             }
             for row in oauth.connected_apps()
@@ -119,3 +133,36 @@ def deny_mcp_remote_request(request: Request, request_id: str = _REQUEST_ID):
     if not oauth.deny_request(request_id):
         raise HTTPException(status_code=404, detail="That request is no longer pending.")
     return {"status": "success"}
+
+
+@mcp_remote_router.post("/mcp-remote/grants/{grant_id}/revoke")
+@limiter.limit("20/minute")
+def revoke_mcp_remote_grant(request: Request, grant_id: int = _GRANT_ID):
+    if not oauth.revoke_grant(grant_id):
+        raise HTTPException(status_code=404, detail="That app is no longer connected.")
+    audit.record_action("revoke-grant", request.client.host if request.client else None, grant_id)
+    return {"status": "success"}
+
+
+@mcp_remote_router.post("/mcp-remote/revoke-all")
+@limiter.limit("5/minute")
+def revoke_all_mcp_remote_access(request: Request):
+    revoked = oauth.revoke_all_remote_access()
+    audit.record_action(f"revoke-all: {revoked} grants", request.client.host if request.client else None)
+    return {"status": "success", "revoked": revoked}
+
+
+@mcp_remote_router.get("/mcp-remote/activity")
+@limiter.limit("120/minute")
+def get_mcp_remote_activity(request: Request):
+    return {
+        "status": "success",
+        "events": [
+            {
+                "time_display": _display(row["logged_at"]), "credential": _credential(row["credential_kind"], row["key_id"]),
+                "address": row["client_address"], "method": row["mcp_method"], "name": _event_name(row),
+                "status_code": row["status"], "duration_ms": row["duration_ms"],
+            }
+            for row in audit.recent_events()
+        ],
+    }

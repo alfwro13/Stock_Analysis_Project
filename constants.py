@@ -129,6 +129,7 @@ MCP_OAUTH_PRUNE_AFTER_DAYS  = 1                # expired tokens and finished req
 MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS = 10    # a rotated refresh token presented again this soon after its rotation is a retry, refused without revoking the grant
 MCP_OAUTH_LAST_USED_WRITE_SECONDS = 60         # a grant's last-used time and address are written at most this often
 MCP_OAUTH_CONNECTED_APPS_MAX = 50              # grants listed in the Settings Connected Apps table
+MCP_ACTIVITY_ROWS           = 50               # audit rows listed in the Settings Remote Access Recent Activity table
 ETF_CONSTITUENTS_MAX        = 50
 OPTION_LEGS_MAX             = 20
 TABLE_VIEWS_MAX             = 20               # saved column-preset Views per page
@@ -139,7 +140,7 @@ TABLE_FILTER_CONDITIONS_MAX = 50
 TABLE_FILTER_VALUE_MAX_CHARS = 200
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.199"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.200"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

@@ -17,6 +17,26 @@ def get_client() -> Optional[dict]:
             conn.close()
 
 
+def clear_remote_access(conn, now: str) -> int:
+    """Revokes every grant, closes the pairing window and deletes every request, on an open connection; the number of grants revoked."""
+    revoked = conn.execute("UPDATE mcp_oauth_grants SET revoked_at = ? WHERE revoked_at IS NULL", (now,)).rowcount
+    conn.execute("UPDATE mcp_oauth_client SET pairing_open_until = NULL")
+    conn.execute("DELETE FROM mcp_oauth_requests")
+    return revoked
+
+
+def revoke_all(now: str) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        revoked = clear_remote_access(conn, now)
+        conn.commit()
+        return revoked
+    finally:
+        if conn:
+            conn.close()
+
+
 def replace_client(client_id: str, secret_hash: str, now: str) -> None:
     conn = None
     try:
@@ -24,8 +44,7 @@ def replace_client(client_id: str, secret_hash: str, now: str) -> None:
         conn.execute("DELETE FROM mcp_oauth_client")
         conn.execute("INSERT INTO mcp_oauth_client (id, client_id, secret_hash, created_at) VALUES (1, ?, ?, ?)", (client_id, secret_hash, now))
         conn.execute("DELETE FROM mcp_oauth_tokens")
-        conn.execute("DELETE FROM mcp_oauth_requests")
-        conn.execute("UPDATE mcp_oauth_grants SET revoked_at = ? WHERE revoked_at IS NULL", (now,))
+        clear_remote_access(conn, now)
         conn.commit()
     finally:
         if conn:
@@ -52,6 +71,16 @@ def request_counts(now: str, hour_ago: str) -> Tuple[int, int]:
         pending = conn.execute("SELECT COUNT(*) FROM mcp_oauth_requests WHERE status = 'pending' AND expires_at > ?", (now,)).fetchone()[0]
         recent = conn.execute("SELECT COUNT(*) FROM mcp_oauth_requests WHERE created_at >= ?", (hour_ago,)).fetchone()[0]
         return pending, recent
+    finally:
+        if conn:
+            conn.close()
+
+
+def count_pending_requests(now: str) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        return conn.execute("SELECT COUNT(*) FROM mcp_oauth_requests WHERE status = 'pending' AND expires_at > ?", (now,)).fetchone()[0]
     finally:
         if conn:
             conn.close()
@@ -120,6 +149,16 @@ def count_requests_since(since: str) -> int:
     try:
         conn = get_connection()
         return conn.execute("SELECT COUNT(*) FROM mcp_oauth_requests WHERE created_at >= ?", (since,)).fetchone()[0]
+    finally:
+        if conn:
+            conn.close()
+
+
+def count_active_grants(now: str) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        return conn.execute("SELECT COUNT(*) FROM mcp_oauth_grants WHERE revoked_at IS NULL AND expires_at > ?", (now,)).fetchone()[0]
     finally:
         if conn:
             conn.close()

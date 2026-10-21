@@ -10,7 +10,7 @@ function mcpRemoteCell(text) {
 
 function mcpRemoteMessageRow(body, text, cssClass) {
     const td = document.createElement('td');
-    td.colSpan = 5;
+    td.colSpan = body.closest('table').tHead.rows[0].cells.length;
     td.className = cssClass;
     td.textContent = text;
     const tr = document.createElement('tr');
@@ -63,8 +63,31 @@ function renderMcpRemoteApps(apps) {
     }
     body.replaceChildren(...apps.map(a => {
         const tr = document.createElement('tr');
-        tr.append(mcpRemoteCell(a.client_id), mcpRemoteCell(a.connected_display), mcpRemoteCell(a.expires_display),
-            mcpRemoteCell(a.last_used_display || 'Never'), mcpRemoteCell(a.last_address));
+        const actions = document.createElement('td');
+        const revoke = document.createElement('button');
+        revoke.type = 'button';
+        revoke.className = 'btn btn-danger mt-0';
+        revoke.dataset.grantId = a.id;
+        revoke.textContent = '⛔ Revoke';
+        actions.append(revoke);
+        tr.append(mcpRemoteCell('#' + a.id), mcpRemoteCell(a.client_id), mcpRemoteCell(a.connected_display), mcpRemoteCell(a.expires_display),
+            mcpRemoteCell(a.last_used_display || 'Never'), mcpRemoteCell(a.last_address), actions);
+        return tr;
+    }));
+}
+
+function renderMcpRemoteActivity(events) {
+    const body = document.getElementById('mcp-remote-activity-body');
+    if (!events.length) {
+        mcpRemoteMessageRow(body, 'No activity yet.', 'text-muted');
+        return;
+    }
+    body.replaceChildren(...events.map(e => {
+        const tr = document.createElement('tr');
+        const request = [e.method, e.name].filter(Boolean).join(' ');
+        const status = mcpRemoteCell(e.status_code || '—');
+        if (e.status_code >= 400) status.className = 'text-danger';
+        tr.append(mcpRemoteCell(e.time_display), mcpRemoteCell(e.credential), mcpRemoteCell(e.address), mcpRemoteCell(request), status);
         return tr;
     }));
 }
@@ -119,8 +142,9 @@ function renderMcpRemote(data) {
 
 async function loadMcpRemote() {
     try {
-        const res = await fetch('/api/mcp-remote');
-        if (res.ok) renderMcpRemote(await res.json());
+        const [status, activity] = await Promise.all([fetch('/api/mcp-remote'), fetch('/api/mcp-remote/activity')]);
+        if (status.ok) renderMcpRemote(await status.json());
+        if (activity.ok) renderMcpRemoteActivity((await activity.json()).events);
     } catch (e) {
         // the next poll retries
     }
@@ -208,6 +232,32 @@ async function decideMcpRemoteRequest(action, requestId) {
     loadMcpRemote();
 }
 
+async function revokeMcpRemoteGrant(grantId) {
+    if (!confirm('Revoke app #' + grantId + '? It is signed out at once and must be approved again to reconnect.')) return;
+    setStatus('mcp-remote-apps-msg', 'info', 'Revoking…');
+    const res = await fetch('/api/mcp-remote/grants/' + encodeURIComponent(grantId) + '/revoke', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-remote-apps-msg', 'success', 'App #' + grantId + ' revoked.');
+    } else {
+        setStatus('mcp-remote-apps-msg', 'error', mcpRemoteErrorText(data, 'Failed to revoke the app.'));
+    }
+    loadMcpRemote();
+}
+
+async function revokeAllMcpRemoteAccess() {
+    if (!confirm('Revoke all remote access? Every connected app is signed out, the pairing window closes and waiting connection requests are discarded.')) return;
+    setStatus('mcp-remote-apps-msg', 'info', 'Revoking…');
+    const res = await fetch('/api/mcp-remote/revoke-all', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-remote-apps-msg', 'success', 'All remote access revoked (' + data.revoked + ' app(s) signed out).');
+    } else {
+        setStatus('mcp-remote-apps-msg', 'error', mcpRemoteErrorText(data, 'Failed to revoke remote access.'));
+    }
+    loadMcpRemote();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const card = document.getElementById('mcp-server-card');
     if (!card) return;
@@ -215,6 +265,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('mcp-remote-requests-body').addEventListener('click', e => {
         const btn = e.target.closest('button[data-request-id]');
         if (btn) decideMcpRemoteRequest(btn.dataset.action, btn.dataset.requestId);
+    });
+    document.getElementById('mcp-remote-apps-body').addEventListener('click', e => {
+        const btn = e.target.closest('button[data-grant-id]');
+        if (btn) revokeMcpRemoteGrant(btn.dataset.grantId);
     });
     card.addEventListener('toggle', () => { if (card.open) startMcpRemotePolling(); else stopMcpRemotePolling(); });
     if (card.open) startMcpRemotePolling();

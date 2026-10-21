@@ -7,12 +7,13 @@ from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 import db_mcp_audit
-from constants import MCP_AUDIT_ADDRESS_MAX_CHARS, MCP_AUDIT_QUEUE_MAX, MCP_AUDIT_TEXT_MAX_CHARS, MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE
+from constants import MCP_ACTIVITY_ROWS, MCP_AUDIT_ADDRESS_MAX_CHARS, MCP_AUDIT_QUEUE_MAX, MCP_AUDIT_TEXT_MAX_CHARS, MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE
 from utils import clean_display_text
 
 logger = logging.getLogger(__name__)
 
 _STORED_FORMAT = "%Y-%m-%d %H:%M:%S"
+ACTION_METHOD = "dashboard"
 _NAMED_METHODS = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
 _WINDOW_SECONDS = 60
 _lock = threading.Lock()
@@ -106,11 +107,21 @@ def reset() -> None:
         _window_started, _window_stamp, _window_rows, _suppressed = None, "", 0, 0
 
 
+def _store(entry: dict) -> None:
+    with _lock:
+        summary = _roll_window_locked(_now(), entry["logged_at"])
+        admitted = _admit_locked(entry["credential_kind"] == "none")
+    if summary is not None:
+        _submit(summary)
+    if admitted:
+        _submit(entry)
+
+
 def record(
     key_id: Optional[int], address: str, method: Optional[str], name: Optional[str], status: int, duration_ms: int, response_bytes: int,
     grant_id: Optional[int] = None,
 ) -> None:
-    entry = {
+    _store({
         "logged_at": datetime.now(timezone.utc).strftime(_STORED_FORMAT),
         "credential_kind": "oauth" if grant_id is not None else "key" if key_id is not None else "none",
         "key_id": grant_id if grant_id is not None else key_id,
@@ -120,11 +131,23 @@ def record(
         "status": status,
         "duration_ms": duration_ms,
         "response_bytes": response_bytes,
-    }
-    with _lock:
-        summary = _roll_window_locked(_now(), entry["logged_at"])
-        admitted = _admit_locked(entry["credential_kind"] == "none")
-    if summary is not None:
-        _submit(summary)
-    if admitted:
-        _submit(entry)
+    })
+
+
+def record_action(name: str, address: Optional[str] = None, grant_id: Optional[int] = None) -> None:
+    """A dashboard action on remote access (revoke, restore). Kind `session` is never counted against the cap on rows without a credential."""
+    _store({
+        "logged_at": datetime.now(timezone.utc).strftime(_STORED_FORMAT),
+        "credential_kind": "session",
+        "key_id": grant_id,
+        "client_address": clean_display_text(address, MCP_AUDIT_ADDRESS_MAX_CHARS) if address else None,
+        "mcp_method": ACTION_METHOD,
+        "mcp_name": clean_display_text(name, MCP_AUDIT_TEXT_MAX_CHARS),
+        "status": 200,
+        "duration_ms": 0,
+        "response_bytes": 0,
+    })
+
+
+def recent_events() -> list:
+    return db_mcp_audit.recent_entries(MCP_ACTIVITY_ROWS)

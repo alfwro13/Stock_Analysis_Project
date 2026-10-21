@@ -214,6 +214,26 @@ def connected_apps() -> List[dict]:
     return db_mcp_oauth.list_active_grants(_stamp(_now()), MCP_OAUTH_CONNECTED_APPS_MAX)
 
 
+def revoke_grant(grant_id: int) -> bool:
+    return _revoke(grant_id, _now())
+
+
+def revoke_all_remote_access() -> int:
+    """Ends every connection at once: revokes all grants, closes the pairing window and drops every request. The OAuth client stays."""
+    revoked = db_mcp_oauth.revoke_all(_stamp(_now()))
+    invalidate()
+    return revoked
+
+
+def diagnostics_counts() -> dict:
+    now = _stamp(_now())
+    return {
+        "connected_apps": db_mcp_oauth.count_active_grants(now),
+        "pending_requests": db_mcp_oauth.count_pending_requests(now),
+        "pairing_open": pairing_window_open(),
+    }
+
+
 def request_state(binding: str) -> dict:
     """What the waiting page of the browser holding this binding shows; an approved request hands its redirect over once."""
     if not _BINDING_RE.fullmatch(binding):
