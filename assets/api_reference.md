@@ -1267,7 +1267,7 @@ Request-path hardening keys. `BIND_HOST`, `ALLOWED_HOSTS`, `COOKIE_SECURE`, `FRA
 | `ALLOWED_HOSTS` | Non-empty list of host names (`*.example.com` allowed) | A request whose `Host` header is not listed gets 400. `localhost` and `127.0.0.1` are always accepted. |
 | `COOKIE_SECURE` | `auto` (default), `true`, `false` | `Secure` flag on the session and CSRF cookies; `auto` follows the `SERVER_URL` scheme. |
 | `FRAME_ANCESTORS` | List of `scheme://host[:port]` origins | Extra origins in the CSP `frame-ancestors` directive (`'self'` is always included). |
-| `MCP_REMOTE_ENABLED` | `true` or `false` (default `false`) | Master switch for the public MCP hostname. Off, every request for `MCP_PUBLIC_HOST` is `404`. Do not enable before the OAuth task ships (`assets/mcp_integration.md`, **Public hostname guard**). |
+| `MCP_REMOTE_ENABLED` | `true` or `false` (default `false`) | Master switch for the public MCP hostname. Off, every request for `MCP_PUBLIC_HOST` is `404`. Do not enable before the pairing window and approval page ship (MCP-15d; `assets/mcp_integration.md`, **Public hostname guard**). |
 | `MCP_PUBLIC_HOST` | A plain host name or `""` (default) | The public MCP hostname, stored lower case. Only the eight routes in `assets/mcp_integration.md` are served on it; every other request is `404` before any cookie or key is read. Added to the trusted-host list. A scheme, port, path, wildcard or over 253 characters is `422`. |
 | `MCP_REMOTE_ALLOWED_CIDRS` | List of 1 to 16 networks, IPv4 or IPv6, no host bits (default `["160.79.104.0/21"]`) | Peer addresses allowed to call `/mcp`, `/oauth/token`, `/oauth/revoke` and the two `/.well-known/` routes on the public host; any other address gets `403`. An empty list or a bad entry is `422`. |
 | `SCRAPER_ALLOWED_HOSTS` | List of exact host names or IP addresses (no ranges, no wildcards; empty by default) | Hosts the Account Price Scraper may fetch even though they resolve to a private, loopback or link-local address. Any port on a listed host is allowed; the URL must still be `https://`. Settings → Core System & Currencies → Account Price Scraper Allowed Hosts. |
@@ -5222,9 +5222,24 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 | A valid key over 60 calls in a rolling minute, or over 8 calls in flight | `429 {"detail": "Too many MCP requests for this key"}` with `Retry-After` (seconds); other keys are unaffected |
 | A body over 64 KiB | `413 {"detail": "The request body is too large"}` |
 | `Host` equal to `MCP_PUBLIC_HOST` (empty by default, so no host is affected) | `PublicHostGuard`, ahead of every row above: with `MCP_REMOTE_ENABLED` off, or for any method and path outside the eight public routes, `404` with an empty body; for `/mcp` from an address outside `MCP_REMOTE_ALLOWED_CIDRS`, `403` with an empty body; otherwise the request continues to the rows above (`assets/mcp_integration.md`, **Public hostname guard**) |
+| `Host` equal to `MCP_PUBLIC_HOST`, passing the guard | The credential is an OAuth access token (`Authorization: Bearer mcpat_...`), not a named key; a key, `X-API-Key`, a refresh token or an expired or revoked token gets one `401 {"detail": "Invalid or missing access token"}` with `WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource/mcp", scope="mcp:read"`. An OAuth token on any other host is the ordinary `401` above |
 | A Bearer MCP key on any route other than `/mcp` | ignored: the route's normal authentication applies (`302` to `/login` for a pages and `/api/*` call without a session) |
 
 `GET`, `DELETE` and every other method on `/mcp` answer `401` without the key and `405` with `Allow: POST` with it. `/mcp/` answers `307` to `/mcp` once authenticated; any other `/mcp/*` path is `404`. The request body is limited to 64 KiB (`MCP_REQUEST_MAX_BYTES`). Each request is recorded in `mcp_audit_log` (`assets/mcp_integration.md`, **Audit log**).
+
+### OAuth routes (public host only)
+
+Served only for `Host: <MCP_PUBLIC_HOST>` (`404` with an empty body on any other host, `503` while `MCP_SERVER_ENABLED` is off, session and CSRF checks not applied: they authenticate themselves). Not under `/api`, not in the API key scope table. Design and behaviour: `assets/mcp_integration.md`, **OAuth authorization server**. No route sets CORS headers.
+
+| Route | Request | Success | Failure |
+|---|---|---|---|
+| `GET /.well-known/oauth-protected-resource/mcp` | none | `200` JSON `resource`, `authorization_servers`, `scopes_supported`, `bearer_methods_supported` | |
+| `GET /.well-known/oauth-authorization-server` | none | `200` RFC 8414 JSON (no `registration_endpoint`; `code_challenge_methods_supported ["S256"]`) | |
+| `GET /oauth/authorize` | query: `client_id`, `redirect_uri`, `response_type=code`, `code_challenge`, `code_challenge_method=S256`, `state`, `scope`, `resource` | `302` to `/oauth/approve` and an `mcp_oauth_binding` cookie | `403` plain text while no pairing window is open (nothing written); `400` JSON for an unknown client, a redirect URI that is not exactly `https://claude.ai/api/mcp/auth_callback` or a repeated/over-long parameter; `302` to the redirect URI with `error`, `error_description`, `state`, `iss` for a missing `state` (no `state` echoed), a bad `response_type`, PKCE, `scope` or `resource`; `429` with `Retry-After` past 5 pending or 10 per hour |
+| `POST /oauth/token` | `application/x-www-form-urlencoded`, at most 8 KiB; client authentication by `Authorization: Basic` or `client_id` + `client_secret` in the body; `grant_type=authorization_code` with `code`, `redirect_uri`, `code_verifier`, optional `resource`, or `grant_type=refresh_token` with `refresh_token`, optional `scope`, `resource` | `200` JSON `access_token`, `token_type`, `expires_in`, `refresh_token`, `scope`; `Cache-Control: no-store` | `401 invalid_client` (one message for every client failure); `400` `invalid_request`, `unsupported_grant_type`, `invalid_grant` (code or refresh failures), `invalid_scope`, `invalid_target`; `413` for an oversized body; `429` with `Retry-After` for an address in the lockout |
+| `POST /oauth/revoke` | form: client authentication as above and `token` | `200` with an empty body, also for an unknown token | `401 invalid_client`, `400 invalid_request`, `429` |
+
+Errors are JSON `{"error": "...", "error_description": "..."}` and never echo the request. Each call writes one `mcp_audit_log` row.
 
 Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 

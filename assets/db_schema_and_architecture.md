@@ -397,10 +397,33 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 
 #### `mcp_audit_log`
 * **Purpose:** One row per request to the MCP Server (`/mcp`), including refused credentials, for the operator to see who called what and when. It holds no secret, token, argument value, body or header.
-* **Key Columns:** `id` (PK AUTOINCREMENT), `logged_at` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, indexed), `credential_kind` (`key`, or `none` when the credential was refused), `key_id` (INTEGER, NULL when refused; no foreign key, so a row outlives its key and the AUTOINCREMENT id is never reused), `client_address` (TEXT, cleaned, at most 64 characters), `mcp_method` (JSON-RPC method, NULL when the body could not be read) and `mcp_name` (tool, prompt or resource name; NULL for other methods), both cleaned and at most 100 characters; `status` (HTTP status), `duration_ms`, `response_bytes`.
+* **Key Columns:** `id` (PK AUTOINCREMENT), `logged_at` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, indexed), `credential_kind` (`key`, `oauth` for a request made with an OAuth access token, or `none` when the credential was refused or the row records a call to an OAuth endpoint), `key_id` (INTEGER, the key id or, for `oauth`, the grant id; NULL when refused; no foreign key, so a row outlives its key or grant and the AUTOINCREMENT id is never reused), `client_address` (TEXT, cleaned, at most 64 characters), `mcp_method` (JSON-RPC method, NULL when the body could not be read) and `mcp_name` (tool, prompt or resource name; NULL for other methods), both cleaned and at most 100 characters; `status` (HTTP status), `duration_ms`, `response_bytes`.
 * **Writes:** `mcp_server.audit.record()` queues the row; a single worker thread inserts it through `db_mcp_audit.add_entry()`. The queue holds 1,000 rows, then drops. Each request is written once, at the end.
 * **Retention:** 90 days; `db_mcp_audit.prune_older_than()` runs from `MaintenanceEngine.prune_mcp_audit_log()` in the weekly Database & File Maintenance job.
 * **Reads:** none in the app yet.
+
+#### `mcp_oauth_client`
+* **Purpose:** The single OAuth client (Claude) that may connect to the public MCP host, plus the pairing-window flag. At most one row.
+* **Key Columns:** `id` (INTEGER PK, `CHECK (id = 1)`), `client_id` (TEXT), `secret_hash` (TEXT, SHA-256 hex; the secret is shown once and never stored), `created_at` (TEXT UTC), `pairing_open_until` (TEXT UTC, NULL when closed).
+* **Writes:** `mcp_server.oauth.create_client()` (replaces the row and revokes every grant, token and pending request), `open_pairing_window()` / `close_pairing_window()`, through `db_mcp_oauth.py`.
+* **Reads:** `oauth.authenticate_client()` at `/oauth/token` and `/oauth/revoke`; `begin_authorization()` for the window.
+
+#### `mcp_oauth_requests`
+* **Purpose:** One connection request per `/oauth/authorize` call, from pending through approval to the single-use authorization code.
+* **Key Columns:** `id` (TEXT PK, 128-bit random), `display_code` (6 characters shown to the operator), `status` (`pending` / `approved`), `client_state`, `code_challenge`, `redirect_uri`, `resource`, `scope`, `created_at`, `expires_at` (5 minutes), `requester_address` and `user_agent` (cleaned by `utils.clean_display_text()` and capped), `binding_hash` (SHA-256 of the cookie value held by the requesting browser; indexed), `decided_at`, `code_hash` (SHA-256 of the authorization code; indexed; the code itself is never stored), `code_expires_at` (60 seconds after it is claimed), `code_used_at`, `grant_id` (the grant the code created).
+* **Writes:** `oauth.begin_authorization()` inserts (and deletes requests expired more than a day ago), `approve_request()`, `claim_authorization()`, `exchange_code()` through `db_mcp_oauth.py`; every state change is a conditional `UPDATE`, so a request is approved once, claimed once and consumed once.
+* **Reads:** the same functions; no page reads it yet (MCP-15d).
+
+#### `mcp_oauth_grants`
+* **Purpose:** One approved connection. A grant ends when it is revoked or reaches its absolute expiry; its tokens are checked against it on every use.
+* **Key Columns:** `id` (PK AUTOINCREMENT, also the `key_id` of its `mcp_audit_log` rows), `client_id`, `scope`, `resource` (`https://<MCP_PUBLIC_HOST>/mcp` when issued), `created_at`, `expires_at` (90 days), `last_used_at` and `last_address` (written at most once a minute), `revoked_at` (NULL while live).
+* **Writes:** `db_mcp_oauth.create_grant()` at the code exchange, `revoke_grant()` on revoke, refresh-token reuse, code reuse or a new client, `touch_grant()` from `oauth.record_use()`.
+
+#### `mcp_oauth_tokens`
+* **Purpose:** The access and refresh tokens of every grant, hashed.
+* **Key Columns:** `token_hash` (TEXT PK, SHA-256 hex; the token is never stored), `kind` (`access` / `refresh`), `grant_id` (indexed), `created_at`, `expires_at` (15 minutes for access, 30 days idle for refresh, never past the grant's end), `rotated_at` (set when a refresh token is used; a rotated token presented again revokes the grant).
+* **Writes:** `create_grant()`, `add_tokens()` (refresh), `rotate_refresh_token()`; expired rows are deleted when a connection request or a refresh is written.
+* **Reads:** `oauth.verify_access_token()` (behind an in-memory cache), `refresh_tokens()`, `revoke_token()`.
 
 #### `yahoo_api_stats`
 * **Purpose:** Daily aggregated counters for all `yahoo_connection_boundary` invocations. Used by the Yahoo Finance API Usage card in Settings to show request volume, interface breakdown, rate-limit hits, errors, and yfinance-logged issues over the past 8 days.

@@ -47,12 +47,15 @@ def _write(entry: dict) -> None:
             _pending -= 1
 
 
-def record(key_id: Optional[int], address: str, method: Optional[str], name: Optional[str], status: int, duration_ms: int, response_bytes: int) -> None:
+def record(
+    key_id: Optional[int], address: str, method: Optional[str], name: Optional[str], status: int, duration_ms: int, response_bytes: int,
+    grant_id: Optional[int] = None,
+) -> None:
     global _pending, _dropped
     entry = {
         "logged_at": datetime.now(timezone.utc).strftime(_STORED_FORMAT),
-        "credential_kind": "key" if key_id is not None else "none",
-        "key_id": key_id,
+        "credential_kind": "oauth" if grant_id is not None else "key" if key_id is not None else "none",
+        "key_id": grant_id if grant_id is not None else key_id,
         "client_address": clean_display_text(address, MCP_AUDIT_ADDRESS_MAX_CHARS),
         "mcp_method": clean_display_text(method, MCP_AUDIT_TEXT_MAX_CHARS),
         "mcp_name": clean_display_text(name, MCP_AUDIT_TEXT_MAX_CHARS),
