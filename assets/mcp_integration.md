@@ -8,7 +8,7 @@ Build order, decisions and the task list live in `audit/MCP_implementation_plan.
 
 ## Setup
 
-1. In **Settings → MCP Server**, tick **Enable the MCP Server** (it is off by default; the password prompt appears), type a name such as `dev box 1` and press **Create Key**. The key is shown once: copy it into your client. Create one key per computer; delete a single key when that computer should lose access, and the others keep working. Until at least one key exists, every `/mcp` request is refused (fail closed).
+1. In **Settings → MCP Server → Local/LAN Access**, tick **Enable Local/LAN Access** (it is off by default; the password prompt appears), type a name such as `dev box 1` and press **Create Key**. The key is shown once: copy it into your client. Create one key per computer; delete a single key when that computer should lose access, and the others keep working. Until at least one key exists, every `/mcp` request is refused (fail closed). Keys can be created and deleted only while Local/LAN Access is on.
 
    An `MCP_API_KEY` line left in `.env` from an earlier version is ignored; remove it.
 
@@ -22,21 +22,7 @@ Build order, decisions and the task list live in `audit/MCP_implementation_plan.
 
 3. Check it: `claude mcp list` should show `stock-dashboard` as connected, and `/mcp` inside Claude Code lists the tools. A wrong or missing key shows as an authentication failure.
 
-4. Claude Desktop (draft, not tested against a live Desktop install; syntax from the `mcp-remote` README): Desktop starts local programs from `claude_desktop_config.json` (Settings → Developer → Edit Config; macOS `~/Library/Application Support/Claude/`, Windows `%APPDATA%\Claude\`), so it reaches `/mcp` through the `mcp-remote` bridge, which needs Node.js (`npx`):
-
-   ```json
-   {
-     "mcpServers": {
-       "stock-dashboard": {
-         "command": "npx",
-         "args": ["mcp-remote", "https://<your-dashboard-host>/mcp", "--header", "Authorization:${AUTH_HEADER}"],
-         "env": { "AUTH_HEADER": "Bearer <MCP key>" }
-       }
-     }
-   }
-   ```
-
-   The header has no space after the colon and the key sits in `env` because Claude Desktop on Windows does not escape spaces in `args`. Restart Desktop afterwards. The host must be reachable from that computer and be in `ALLOWED_HOSTS`; `http://localhost:8090/mcp` suits a Desktop on the dashboard machine. `mcp-remote` accepts plain `http` beyond localhost only with `--allow-http` (trusted private networks).
+4. Claude Desktop, claude.ai and the Claude mobile apps do not use a key: they use a connector added once in your Claude account, which signs in through **Remote Access** (see **Remote Access** and the **Go-live runbook** under **Operations**). The earlier `mcp-remote` bridge through `claude_desktop_config.json` is no longer offered.
 
 5. The "Dash" instruction. Claude uses a connector only when it decides to, so the Glossary (MCP Server section) offers a standing instruction to paste into Claude Code's `~/.claude/CLAUDE.md`, or into Claude Desktop / claude.ai personal preferences or Project instructions: a message starting with `Dash`, `Dash:` or `Dash-` (any capitalisation) is answered with the `stock-dashboard` tools, reading `policy://investment-policy` first, quoting `as_of`, treating `null` as unavailable and never guessing. It assumes the connector is named `stock-dashboard`. The text lives in `templates/glossary/_mcp_server.html`.
 
@@ -48,7 +34,7 @@ The bearer key must not travel over plain `http` beyond the machine running the 
 |---|---|
 | Credential | A named key created in Settings, sent as `Authorization: Bearer <key>`. Only the SHA-256 hash is stored (table `mcp_api_keys`); the key is 256 bits of randomness, so a fast hash is enough. The presented key is hashed and compared in constant time against every stored hash. |
 | Scope | `/mcp` only. The key never authenticates any other route or page. |
-| Disabled | The Settings toggle (`MCP_SERVER_ENABLED` in `config.json`, default off) is checked first: while it is off every `/mcp` request answers `503` whatever it carries. Turning it on needs a password step-up; turning it off does not. |
+| Disabled (Local/LAN Access) | The Settings toggle (`MCP_LAN_ENABLED` in `config.json`, default off) is checked first, on every host except `MCP_PUBLIC_HOST`: while it is off every `/mcp` request there answers `503` whatever it carries, and keys can be neither created nor deleted (`409`). The public host is not affected by it; its own switch is `MCP_REMOTE_ENABLED`. Turning Local/LAN Access on needs a password step-up; turning it off does not. |
 | No key | While no key exists every `/mcp` request answers `401` (fail closed). The log records that no key exists, never a presented value. |
 | Missing or wrong key | `401` with `WWW-Authenticate: Bearer`. The same reply for unset, missing and wrong, so it does not tell a caller which. |
 | Home Assistant `X-API-Key` | `403` on `/mcp`, even next to a valid Bearer key. `/mcp` is not in `api_deps.API_KEY_ROUTES` and must never be added. |
@@ -92,7 +78,7 @@ Remote access for claude.ai and the mobile apps uses a separate public hostname 
 
 | Config key | Default | Meaning |
 |---|---|---|
-| `MCP_REMOTE_ENABLED` | `false` | Master switch. Off: every request for the public host is `404`, including the eight routes. Applies on the next request. `MCP_SERVER_ENABLED` is separate and still answers `503` on `/mcp` while off. |
+| `MCP_REMOTE_ENABLED` | `false` | Off: every request for the public host is `404`, including the eight routes. Applies on the next request. It is independent of `MCP_LAN_ENABLED`: either can be on while the other is off. |
 | `MCP_PUBLIC_HOST` | `""` | The public host name (lower case, no scheme, port, path or wildcard; stored lower case without a trailing dot). Empty means no host is guarded and remote access cannot be reached. Read once at startup, like `ALLOWED_HOSTS`, so a change needs a restart. When set it is added to the trusted-host list that `TrustedHostMiddleware` and the SDK's Host/Origin check share. It must not also be a dashboard host: the guard would then limit that host to the eight routes. `POST /api/settings` refuses (`422`) a save that leaves `MCP_PUBLIC_HOST` equal to an explicit `ALLOWED_HOSTS` entry, `localhost` or `127.0.0.1` (wildcard entries are not counted); editing `config.json` by hand is not checked. |
 | `MCP_REMOTE_ALLOWED_CIDRS` | `["160.79.104.0/21"]` | Networks allowed to call the machine routes (Anthropic's published outbound range). At least one, at most 16, IPv4 or IPv6, no host bits set. Applies on the next request. |
 
@@ -131,7 +117,7 @@ Task MCP-15c. claude.ai calls a connector from Anthropic's servers, so the publi
 | `POST /oauth/token` | `authorization_code` and `refresh_token` grants. `application/x-www-form-urlencoded` only (JSON and multipart are `invalid_request`), body at most 8 KiB, every reply `Cache-Control: no-store`. |
 | `POST /oauth/revoke` | RFC 7009. Revoking either kind of token ends the whole grant; an unknown token is still `200`. |
 
-Every absolute URL in these documents, the challenge and the `iss` value comes from `MCP_PUBLIC_HOST`, not from the request. The five routes answer `404` on any other `Host` (so the dashboard hostnames never serve them), `503` while `MCP_SERVER_ENABLED` is off, and are exempt from the session check in `auth_middleware` (they authenticate themselves). No route sets a CORS header.
+Every absolute URL in these documents, the challenge and the `iss` value comes from `MCP_PUBLIC_HOST`, not from the request. The five routes answer `404` on any other `Host` (so the dashboard hostnames never serve them), `404` too while `MCP_REMOTE_ENABLED` is off (the guard), and are exempt from the session check in `auth_middleware` (they authenticate themselves). No route sets a CORS header.
 
 **The client.** One row in `mcp_oauth_client`: a random `client_id` (`mcp-` and 16 hex characters) and a 256-bit `client_secret` of which only the SHA-256 hash is stored. `oauth.create_client()` returns both once; creating a client again replaces the old one and revokes every grant and pending request, because the secret changed. The registered redirect URI is the constant `https://claude.ai/api/mcp/auth_callback`, compared exactly (no prefix, trailing slash, query or case variants); the MCP-15f spike confirmed it against claude.ai on 2026-10-21 (the approved request carried exactly this URI). The Remote Access panel's **Create OAuth Client** button calls `create_client()` (see **Remote Access**).
 
@@ -151,7 +137,7 @@ Revoking a grant, Revoke All Remote Access, the activity view and the restore ho
 
 ## Settings card
 
-**Settings → MCP Server** (System settings, after User Account) shows whether the server is enabled, the endpoint URL (built in the browser from the address you opened Settings on) and a table of keys with their name, created time and last-used time (each shown once, when created; a key is never displayed again). Routes, all in `assets/api_reference.md`: `POST /api/mcp-server/enabled` (step-up only when enabling), `GET /api/mcp-keys`, `POST /api/mcp-keys` (step-up; returns the key once) and `DELETE /api/mcp-keys/{id}` (step-up). Names are unique ignoring case, at most 60 characters; at most 20 keys exist at once. Creating or deleting a key takes effect on the next request. Last-used is written at most once a minute per key, off the event loop. Tests: `tests/mcp_server/test_settings_card.py`.
+**Settings → MCP Server** (System settings, after User Account) holds two independent panels, **Remote Access** first and **Local/LAN Access** below it, each with its own enable switch. Local/LAN Access shows its switch, the endpoint URL (built in the browser from the address you opened Settings on) and a table of keys with their name, created time and last-used time (each shown once, when created; a key is never displayed again). Routes, all in `assets/api_reference.md`: `POST /api/mcp-lan/enabled` (step-up only when enabling), `GET /api/mcp-keys`, `POST /api/mcp-keys` (step-up; returns the key once) and `DELETE /api/mcp-keys/{id}` (step-up); both key routes answer `409` while Local/LAN Access is off, and the card disables its Create Key and Delete buttons then (the table stays readable). Names are unique ignoring case, at most 60 characters; at most 20 keys exist at once. Creating or deleting a key takes effect on the next request. Last-used is written at most once a minute per key, off the event loop. `MCP_SERVER_ENABLED`, the earlier single switch, was replaced by `MCP_LAN_ENABLED`: when `config.json` is read, a stored `MCP_SERVER_ENABLED` is removed, becomes the value of `MCP_LAN_ENABLED` (unless that key is already stored) and, if it was off, also turns `MCP_REMOTE_ENABLED` off, so an install with the master off never opens the public host by the upgrade. Tests: `tests/mcp_server/test_settings_card.py`.
 
 ## Remote Access
 
@@ -170,7 +156,7 @@ Task MCP-15d. **Settings → MCP Server → Remote Access** is where the operato
 | **Revoke All Remote Access** | `POST /api/mcp-remote/revoke-all` (asks for confirmation, no password step-up). Revokes every grant, closes the pairing window and deletes every connection request, pending or approved, so a request approved a moment ago cannot still become a grant. The OAuth client and its secret are kept (rotate the secret to replace them). This is the emergency stop; turning **Enable Remote Access** off as well makes the public host `404`. |
 | **Recent Activity** | The last 50 `mcp_audit_log` rows, newest first (`GET /api/mcp-remote/activity`): time, credential (`Key #<id>`, `App #<grant id>`, `Dashboard` or `None` for a refused request), address, request and status. Refused requests are included, and so are your own revokes. It refreshes with the rest of the card. |
 
-Revoking and Revoke All work while the MCP Server is disabled, and a disabled MCP Server (`MCP_SERVER_ENABLED` off) still answers `503` on `/mcp`, both OAuth metadata documents, `/oauth/authorize`, `/oauth/approve`, `/oauth/approve-status`, `/oauth/token` and `/oauth/revoke` (`tests/mcp_server/test_grant_management.py` walks the route table, so a new OAuth route cannot miss it).
+Revoking and Revoke All work while Remote Access is off, and with `MCP_REMOTE_ENABLED` off the public host answers `404` on `/mcp`, both OAuth metadata documents, `/oauth/authorize`, `/oauth/approve`, `/oauth/approve-status`, `/oauth/token` and `/oauth/revoke` (`tests/mcp_server/test_grant_management.py` walks the route table, so a new OAuth route cannot miss it). Turning Local/LAN Access off changes none of this.
 
 **Backup & Recovery restore.** A restore that brings back `data/analysis.db` also revokes remote access, because an older backup would otherwise resurrect grants that were revoked since. The step runs on the staged copy of the database before any live file changes (so a failure leaves the app untouched): every grant gets `revoked_at`, the pairing window is closed and the connection requests are deleted; the client is kept. After the swap the in-memory token cache is dropped, so a token cached before the restore dies at once, and the `restore: <n> grants revoked` row is written. An archive from before the OAuth tables skips the database step; an archive without the database changes nothing. Pinned in `tests/test_backup_engine.py` (`TestRestoreRevokesRemoteAccess`).
 
@@ -641,7 +627,7 @@ Task MCP-15g. Everything above is the setting of one layer; this is the order th
 
 **Order.**
 
-1. **App.** Save `MCP_PUBLIC_HOST` in Settings, restart the service (the host is read once at startup), tick **Enable the MCP Server**. Leave **Enable Remote Access** off. Check that `GET https://<public-host>/oauth/approve-status` is not reachable yet (no DNS record).
+1. **App.** Save `MCP_PUBLIC_HOST` in Settings, restart the service (the host is read once at startup). Leave **Enable Remote Access** off. Check that `GET https://<public-host>/oauth/approve-status` is not reachable yet (no DNS record).
 2. **Tunnel and rules** as in the sections above, the DNS record last.
 3. **Edge checks** (below), then turn on **Enable Remote Access** (password prompt; refused with `409` while `FORWARDED_ALLOW_IPS` is `*`).
 4. **The one-request check** (hard gate, **Client address** above). Do it now: before a connector exists, so the address on the panel is yours and not an Anthropic address that replaces it a moment later.
@@ -664,7 +650,7 @@ Check 1 passed on 2026-10-21 against this deployment: the default site answered 
 **Rollback, fastest first.** Each step undoes one layer on its own; stop at the first one that is enough.
 
 1. **Revoke All Remote Access** (Settings → MCP Server → Remote Access; no password prompt). Every token stops working on the next request, the pairing window closes and pending requests are deleted.
-2. Turn **Enable Remote Access** off. The public host answers `404` on all eight routes; the LAN endpoint is unaffected. To close the LAN endpoint too, turn **Enable the MCP Server** off (`503` everywhere).
+2. Turn **Enable Remote Access** off. The public host answers `404` on all eight routes; the LAN endpoint is unaffected. The LAN endpoint has its own switch: to close it too, turn **Enable Local/LAN Access** off (`503` on `/mcp` from your network).
 3. Remove the `<public-host>` entry from the tunnel's `config.yml` (or restore the dated copy), `cloudflared tunnel ingress validate`, `systemctl restart cloudflared`. The other tunnelled sites are down for a few seconds.
 4. Delete the `<public-host>` DNS record. The name stops resolving to Cloudflare.
 5. Leave the Cloudflare block rule and rate-limit rule in place: they only restrict the public host. Remove the country-block exception only together with step 4, otherwise there is nothing left that needs it.

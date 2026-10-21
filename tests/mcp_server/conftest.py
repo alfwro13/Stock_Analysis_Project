@@ -17,7 +17,7 @@ class _InlineExecutor:
 @pytest.fixture(autouse=True)
 def _mcp_key(monkeypatch):
     from mcp_server import audit, keys, limits, oauth
-    monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": True})
+    monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": True})
     monkeypatch.setattr(keys, "_executor", _InlineExecutor())
     monkeypatch.setattr(audit, "_executor", _InlineExecutor())
     monkeypatch.setattr(oauth, "_executor", _InlineExecutor())

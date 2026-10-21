@@ -253,7 +253,7 @@ class TestHttpLockout:
     def test_right_keys_and_a_disabled_server_never_count(self, mcp_client, monkeypatch):
         for _ in range(MCP_AUTH_FAILURES_MAX + 2):
             assert rpc(mcp_client, "tools/list").status_code == 200
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": False})
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
         for _ in range(MCP_AUTH_FAILURES_MAX + 2):
             assert rpc(mcp_client, "tools/list", key="wrong").status_code == 503
         assert limits.lockout_remaining("testclient") == 0

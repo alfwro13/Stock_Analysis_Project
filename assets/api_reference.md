@@ -1267,7 +1267,7 @@ Request-path hardening keys. `BIND_HOST`, `ALLOWED_HOSTS`, `COOKIE_SECURE`, `FRA
 | `ALLOWED_HOSTS` | Non-empty list of host names (`*.example.com` allowed) | A request whose `Host` header is not listed gets 400. `localhost` and `127.0.0.1` are always accepted. |
 | `COOKIE_SECURE` | `auto` (default), `true`, `false` | `Secure` flag on the session and CSRF cookies; `auto` follows the `SERVER_URL` scheme. |
 | `FRAME_ANCESTORS` | List of `scheme://host[:port]` origins | Extra origins in the CSP `frame-ancestors` directive (`'self'` is always included). |
-| `MCP_REMOTE_ENABLED` | `true` or `false` (default `false`) | Master switch for the public MCP hostname. Off, every request for `MCP_PUBLIC_HOST` is `404`. Turned on and off from Settings → MCP Server → Remote Access (`POST /api/mcp-remote/enabled`, step-up when enabling); see `assets/mcp_integration.md`, **Public hostname guard**. |
+| `MCP_REMOTE_ENABLED` | `true` or `false` (default `false`) | Switch for the public MCP hostname, independent of `MCP_LAN_ENABLED`. Off, every request for `MCP_PUBLIC_HOST` is `404`. Turned on and off from Settings → MCP Server → Remote Access (`POST /api/mcp-remote/enabled`, step-up when enabling); see `assets/mcp_integration.md`, **Public hostname guard**. |
 | `MCP_PUBLIC_HOST` | A plain host name or `""` (default) | The public MCP hostname, stored lower case. Only the eight routes in `assets/mcp_integration.md` are served on it; every other request is `404` before any cookie or key is read. Added to the trusted-host list. A scheme, port, path, wildcard or over 253 characters is `422`, and so is a name the dashboard is served on (an explicit `ALLOWED_HOSTS` entry, `localhost` or `127.0.0.1`; compared case-insensitively, wildcard entries do not count). The check runs on the values the save would leave in place, so adding the stored `MCP_PUBLIC_HOST` to `ALLOWED_HOSTS` is refused too; a save that leaves both fields as stored is never refused for a pre-existing overlap. |
 | `MCP_REMOTE_ALLOWED_CIDRS` | List of 1 to 16 networks, IPv4 or IPv6, no host bits (default `["160.79.104.0/21"]`) | Peer addresses allowed to call `/mcp`, `/oauth/token`, `/oauth/revoke` and the two `/.well-known/` routes on the public host; any other address gets `403`. An empty list or a bad entry is `422`. |
 | `SCRAPER_ALLOWED_HOSTS` | List of exact host names or IP addresses (no ranges, no wildcards; empty by default) | Hosts the Account Price Scraper may fetch even though they resolve to a private, loopback or link-local address. Any port on a listed host is allowed; the URL must still be `https://`. Settings → Core System & Currencies → Account Price Scraper Allowed Hosts. |
@@ -1600,7 +1600,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-lan/enabled` (only when enabling), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
@@ -1657,7 +1657,7 @@ Times are in the display timezone; `last_used_at` is `null` until the key is fir
 
 ### `POST /api/mcp-keys`
 
-Creates a named MCP Server key (32-byte hex). Requires a password step-up (see `POST /api/step-up`). Body `{ "name": "dev box 1" }` (1-60 characters; whitespace is collapsed and control characters removed). Only the SHA-256 hash is stored, so the key is returned in this response and never again. Limited to 10 requests per minute. `409` when the name already exists (ignoring case) or 20 keys exist; `400`/`422` for an empty or over-long name.
+Creates a named MCP Server key (32-byte hex). Requires a password step-up (see `POST /api/step-up`). Body `{ "name": "dev box 1" }` (1-60 characters; whitespace is collapsed and control characters removed). Only the SHA-256 hash is stored, so the key is returned in this response and never again. Limited to 10 requests per minute. `409` when the name already exists (ignoring case), 20 keys exist or Local/LAN Access is off; `400`/`422` for an empty or over-long name.
 
 ```json
 { "status": "success", "id": 1, "name": "dev box 1", "key": "<64-char-hex>" }
@@ -1667,7 +1667,7 @@ Creates a named MCP Server key (32-byte hex). Requires a password step-up (see `
 
 ### `DELETE /api/mcp-keys/{key_id}`
 
-Deletes one MCP Server key; the client using it is refused from the next request and other keys are unaffected. Requires a password step-up. `404` for an unknown id. Limited to 20 requests per minute.
+Deletes one MCP Server key; the client using it is refused from the next request and other keys are unaffected. Requires a password step-up. `404` for an unknown id; `409` while Local/LAN Access is off. Limited to 20 requests per minute.
 
 ```json
 { "status": "success" }
@@ -1675,9 +1675,9 @@ Deletes one MCP Server key; the client using it is refused from the next request
 
 ---
 
-### `POST /api/mcp-server/enabled`
+### `POST /api/mcp-lan/enabled`
 
-Turns the MCP Server on or off by writing `MCP_SERVER_ENABLED` to `config.json` (default `false`). Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); disabling does not, because closing the endpoint is the safe direction. Takes effect on the next `/mcp` request, with no restart. Limited to 10 requests per minute.
+Turns MCP Local/LAN Access on or off by writing `MCP_LAN_ENABLED` to `config.json` (default `false`); the public host has its own switch (`POST /api/mcp-remote/enabled`) and is not affected. Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); disabling does not, because closing the endpoint is the safe direction. The key is not part of the `POST /api/settings` schema. Takes effect on the next `/mcp` request, with no restart. Limited to 10 requests per minute. This route replaced `POST /api/mcp-server/enabled` and `MCP_SERVER_ENABLED`; a stored `MCP_SERVER_ENABLED` is carried over when `config.json` is read (`assets/mcp_integration.md`, **Settings card**).
 
 **Response**
 
@@ -1763,7 +1763,7 @@ Denies one pending connection request; its waiting page then says the request wa
 
 ### `POST /api/mcp-remote/grants/{grant_id}/revoke`
 
-Revokes one connected app: its access and refresh tokens stop working on the next request, and the app must be approved again to reconnect. Session and CSRF only, **no step-up** (closing access is the safe direction). `grant_id` is the integer `id` from `GET /api/mcp-remote` (anything else, including `0` and negative numbers, is `422`). `404` when the grant is already revoked, expired or unknown. Writes one `mcp_audit_log` row (`credential_kind` `session`, `mcp_method` `dashboard`, `mcp_name` `revoke-grant`, the grant id in `key_id`). Works while `MCP_SERVER_ENABLED` is off. Limited to 20 requests per minute.
+Revokes one connected app: its access and refresh tokens stop working on the next request, and the app must be approved again to reconnect. Session and CSRF only, **no step-up** (closing access is the safe direction). `grant_id` is the integer `id` from `GET /api/mcp-remote` (anything else, including `0` and negative numbers, is `422`). `404` when the grant is already revoked, expired or unknown. Writes one `mcp_audit_log` row (`credential_kind` `session`, `mcp_method` `dashboard`, `mcp_name` `revoke-grant`, the grant id in `key_id`). Works while Remote Access is off. Limited to 20 requests per minute.
 
 ```json
 { "status": "success" }
@@ -1773,7 +1773,7 @@ Revokes one connected app: its access and refresh tokens stop working on the nex
 
 ### `POST /api/mcp-remote/revoke-all`
 
-Revoke All Remote Access: revokes every grant, closes the pairing window and deletes every connection request (pending or approved), so nothing waiting can still turn into a grant. The OAuth client and its secret are kept. Session and CSRF only, **no step-up**. Writes one `mcp_audit_log` row (`mcp_name` `revoke-all: <n> grants`). Works while `MCP_SERVER_ENABLED` is off. Limited to 5 requests per minute.
+Revoke All Remote Access: revokes every grant, closes the pairing window and deletes every connection request (pending or approved), so nothing waiting can still turn into a grant. The OAuth client and its secret are kept. Session and CSRF only, **no step-up**. Writes one `mcp_audit_log` row (`mcp_name` `revoke-all: <n> grants`). Works while Remote Access is off. Limited to 5 requests per minute.
 
 ```json
 { "status": "success", "revoked": 2 }
@@ -5327,12 +5327,12 @@ A read-only Model Context Protocol endpoint for Claude. It is not under `/api`, 
 
 Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per call (`initialize`, `tools/list`, `tools/call`, ...) with `Content-Type: application/json` and `Accept: application/json, text/event-stream`; the reply is one JSON body.
 
-**Authentication.** `Authorization: Bearer <key>`, where the key is one of the named MCP keys created in Settings → MCP Server (stored as hashes in `mcp_api_keys`). `auth_middleware` (`main.py`) checks it for `/mcp` and `/mcp/*` only, in constant time, before any other check.
+**Authentication.** `Authorization: Bearer <key>`, where the key is one of the named MCP keys created in Settings → MCP Server → Local/LAN Access (stored as hashes in `mcp_api_keys`). `auth_middleware` (`main.py`) checks it for `/mcp` and `/mcp/*` only, in constant time, before any other check.
 
 | Request | Status |
 |---|---|
 | Valid Bearer key | handled by the SDK (`200`, or the SDK's own `400`/`421`/`403` for a bad Content-Type, Host or Origin) |
-| MCP Server disabled in Settings (`MCP_SERVER_ENABLED` false, the default) | `503 {"detail": "The MCP Server is disabled"}`, checked before the key, so the reply does not depend on what was sent |
+| `Host` other than `MCP_PUBLIC_HOST` with Local/LAN Access disabled in Settings (`MCP_LAN_ENABLED` false, the default) | `503 {"detail": "MCP Local/LAN Access is disabled"}`, checked before the key, so the reply does not depend on what was sent; not audited. The public host is not affected |
 | No MCP key exists yet (fail closed), no `Authorization`, another scheme, or a wrong key | `401 {"detail": "Invalid or missing MCP key"}` with `WWW-Authenticate: Bearer` |
 | Any `X-API-Key` header (the Home Assistant key), with or without a Bearer key | `403 {"detail": "The API key cannot be used on this route"}` |
 | A session cookie alone | `401` (a cookie does not authenticate `/mcp`) |
@@ -5347,7 +5347,7 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 
 ### OAuth routes (public host only)
 
-Served only for `Host: <MCP_PUBLIC_HOST>` (`404` with an empty body on any other host, `503` while `MCP_SERVER_ENABLED` is off, session and CSRF checks not applied: they authenticate themselves). Not under `/api`, not in the API key scope table. Design and behaviour: `assets/mcp_integration.md`, **OAuth authorization server**. No route sets CORS headers.
+Served only for `Host: <MCP_PUBLIC_HOST>` (`404` with an empty body on any other host and on the public host while `MCP_REMOTE_ENABLED` is off, session and CSRF checks not applied: they authenticate themselves). Not under `/api`, not in the API key scope table. Design and behaviour: `assets/mcp_integration.md`, **OAuth authorization server**. No route sets CORS headers.
 
 | Route | Request | Success | Failure |
 |---|---|---|---|

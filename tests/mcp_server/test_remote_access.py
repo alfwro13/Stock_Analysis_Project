@@ -263,12 +263,12 @@ class TestWaitingPage:
         assert not re.search(r"innerHTML|outerHTML|insertAdjacentHTML|eval\(|document\.write", script)
         assert "startsWith(redirectPrefix)" in script
 
-    def test_other_hosts_get_404_and_a_disabled_server_503(self, remote, monkeypatch):
+    def test_other_hosts_get_404_and_the_lan_switch_does_not_matter(self, remote, monkeypatch):
         for path in ("/oauth/approve", "/oauth/approve-status"):
             assert remote.http.get(path, headers=LAN).status_code == 404
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": False})
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
         for path in ("/oauth/approve", "/oauth/approve-status"):
-            assert remote.http.get(path, headers=PUBLIC).status_code == 503
+            assert remote.http.get(path, headers=PUBLIC).status_code == 200
 
     def test_loading_the_page_is_audited_but_polling_is_not(self, remote):
         remote.http.get("/oauth/approve", headers=PUBLIC)

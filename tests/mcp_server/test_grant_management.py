@@ -221,14 +221,14 @@ class TestDiagnosticsCounts:
             assert element in html, element
 
 
-class TestDisabledServer:
-    def test_every_path_answers_503_and_the_revoke_buttons_still_work(self, client, auth_cookies, connected, monkeypatch):
+class TestLanAccessOff:
+    def test_only_the_lan_path_closes_and_the_revoke_buttons_still_work(self, client, auth_cookies, connected, monkeypatch):
         from mcp_server import OAUTH_ROUTES
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": False})
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
         for path, _, methods in OAUTH_ROUTES:
             for method in methods:
-                assert connected.http.request(method, path, headers=PUBLIC).status_code == 503, path
-        assert mcp(connected.remote, connected.access).status_code == 503
+                assert connected.http.request(method, path, headers=PUBLIC).status_code != 503, path
+        assert mcp(connected.remote, connected.access).status_code == 200
         assert mcp(connected.remote, MCP_KEY, headers={"Host": "127.0.0.1"}).status_code == 503
         assert client.post(revoke_url(connected.grant_id), headers=_plain(auth_cookies)).status_code == 200
 

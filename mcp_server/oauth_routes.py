@@ -15,7 +15,6 @@ from config import BASE_DIR
 from constants import MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS, MCP_OAUTH_FORM_MAX_BYTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_REQUEST_SECONDS
 
 from . import audit, events, limits, oauth
-from .auth import disabled_response
 from .oauth import OAuthError
 
 logger = logging.getLogger(__name__)
@@ -34,7 +33,7 @@ def _address(request: Request) -> str:
 def _precheck(request: Request) -> Optional[Response]:
     if not oauth.on_public_host(request.headers.get("host", "")):
         return Response(status_code=404)
-    return disabled_response()
+    return None
 
 
 def _finish(request: Request, name: str, started: float, response: Response, grant_id: Optional[int] = None) -> Response:

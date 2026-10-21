@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
     "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
     "GHOSTFOLIO_ENABLED": False,
-    "MCP_SERVER_ENABLED": False,
+    "MCP_LAN_ENABLED": False,
     "MCP_REMOTE_ENABLED": False,
     "MCP_PUBLIC_HOST": "",
     "MCP_REMOTE_ALLOWED_CIDRS": ["160.79.104.0/21"],
@@ -829,6 +829,15 @@ def _read_config(signature) -> dict:
                 for _k in ("PRIOR_TREND_MIN_PCT", "VOLUME_CONFIRM_MULTIPLIER"):
                     if _k in _old_alerts:
                         hs_alerts[_k] = _old_alerts[_k]
+
+            # MCP_SERVER_ENABLED was the master switch for /mcp and the public host. Remote access stays closed
+            # when the master was off, so an install that had the master off and MCP_REMOTE_ENABLED on does not open the public host.
+            if "MCP_SERVER_ENABLED" in merged_config:
+                legacy_master = bool(merged_config.pop("MCP_SERVER_ENABLED"))
+                if "MCP_LAN_ENABLED" not in data:
+                    merged_config["MCP_LAN_ENABLED"] = legacy_master
+                if not legacy_master:
+                    merged_config["MCP_REMOTE_ENABLED"] = False
 
             performance = merged_config["PERFORMANCE"]
             invalid = [
