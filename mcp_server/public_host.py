@@ -28,6 +28,11 @@ BROWSER_ROUTES = frozenset({
 PUBLIC_ROUTES = MACHINE_ROUTES | BROWSER_ROUTES
 
 
+def normalize_host(header: str) -> str:
+    # Same extraction as TrustedHostMiddleware, plus case and a trailing dot, so a wildcard ALLOWED_HOSTS entry cannot let a variant spelling past the guard.
+    return header.split(":")[0].lower().rstrip(".")
+
+
 def address_allowed(address: str, cidrs) -> bool:
     try:
         ip = ipaddress.ip_address(address)
@@ -55,9 +60,7 @@ class PublicHostGuard:
         if not self.public_host or scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
-        # Same extraction as TrustedHostMiddleware, plus case and a trailing dot, so a wildcard ALLOWED_HOSTS entry cannot let a variant spelling past the guard.
-        host = Headers(scope=scope).get("host", "").split(":")[0].lower().rstrip(".")
-        if host != self.public_host:
+        if normalize_host(Headers(scope=scope).get("host", "")) != self.public_host:
             await self.app(scope, receive, send)
             return
         if scope["type"] == "websocket":

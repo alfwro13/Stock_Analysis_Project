@@ -16,10 +16,11 @@ class _InlineExecutor:
 
 @pytest.fixture(autouse=True)
 def _mcp_key(monkeypatch):
-    from mcp_server import audit, keys, limits
+    from mcp_server import audit, keys, limits, oauth
     monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": True})
     monkeypatch.setattr(keys, "_executor", _InlineExecutor())
     monkeypatch.setattr(audit, "_executor", _InlineExecutor())
+    monkeypatch.setattr(oauth, "_executor", _InlineExecutor())
     key_id = db_mcp_keys.add_key("Test key", keys.hash_key(MCP_KEY), "2026-10-01 09:00:00")
     keys.invalidate()
     limits.reset()
@@ -29,9 +30,11 @@ def _mcp_key(monkeypatch):
         db_mcp_keys.delete_key(key_id)
         keys.invalidate()
         limits.reset()
+        oauth.invalidate()
         conn = get_connection()
         try:
-            conn.execute("DELETE FROM mcp_audit_log")
+            for table in ("mcp_audit_log", "mcp_oauth_client", "mcp_oauth_requests", "mcp_oauth_grants", "mcp_oauth_tokens"):
+                conn.execute(f"DELETE FROM {table}")
             conn.commit()
         finally:
             conn.close()

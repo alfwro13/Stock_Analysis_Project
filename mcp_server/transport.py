@@ -58,7 +58,8 @@ class _Endpoint:
     async def __call__(self, scope, receive, send):
         started = time.monotonic()
         state = scope.get("state", {})
-        key_id, address = state.get("mcp_key_id"), state.get("mcp_address", "unknown")
+        key_id, grant_id, address = state.get("mcp_key_id"), state.get("mcp_grant_id"), state.get("mcp_address", "unknown")
+        limit_key = ("grant", grant_id) if grant_id is not None else key_id
         outcome = {"status": 500, "bytes": 0}
         method = name = None
 
@@ -70,14 +71,14 @@ class _Endpoint:
             await send(message)
 
         def log_call():
-            audit.record(key_id, address, method, name, outcome["status"], int((time.monotonic() - started) * 1000), outcome["bytes"])
+            audit.record(key_id, address, method, name, outcome["status"], int((time.monotonic() - started) * 1000), outcome["bytes"], grant_id)
 
-        retry_after = limits.acquire(key_id)
+        retry_after = limits.acquire(limit_key)
         if retry_after:
             await JSONResponse(
                 {"detail": "Too many MCP requests for this key"}, status_code=429, headers={"Retry-After": str(retry_after)}
             )(scope, receive, traced_send)
-            if limits.first_refusal(("key", key_id)):
+            if limits.first_refusal(("key", limit_key)):
                 log_call()
             return
         try:
@@ -90,7 +91,7 @@ class _Endpoint:
                 method, name = audit.describe_request(body)
             await self._respond(scope, receive, traced_send)
         finally:
-            limits.release(key_id)
+            limits.release(limit_key)
             log_call()
 
 

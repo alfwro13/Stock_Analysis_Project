@@ -1433,6 +1433,67 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_audit_log_logged_at ON mcp_audit_log (logged_at)")
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_oauth_client (
+                id                 INTEGER PRIMARY KEY CHECK (id = 1),
+                client_id          TEXT NOT NULL,
+                secret_hash        TEXT NOT NULL,
+                created_at         TEXT NOT NULL,
+                pairing_open_until TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_oauth_requests (
+                id                TEXT PRIMARY KEY,
+                display_code      TEXT NOT NULL,
+                status            TEXT NOT NULL DEFAULT 'pending',
+                client_state      TEXT NOT NULL,
+                code_challenge    TEXT NOT NULL,
+                redirect_uri      TEXT NOT NULL,
+                resource          TEXT NOT NULL,
+                scope             TEXT NOT NULL,
+                created_at        TEXT NOT NULL,
+                expires_at        TEXT NOT NULL,
+                requester_address TEXT,
+                user_agent        TEXT,
+                binding_hash      TEXT NOT NULL,
+                decided_at        TEXT,
+                code_hash         TEXT,
+                code_expires_at   TEXT,
+                code_used_at      TEXT,
+                grant_id          INTEGER
+            )
+        ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_oauth_requests_binding ON mcp_oauth_requests (binding_hash)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_oauth_requests_code ON mcp_oauth_requests (code_hash)")
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_oauth_grants (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id    TEXT NOT NULL,
+                scope        TEXT NOT NULL,
+                resource     TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                expires_at   TEXT NOT NULL,
+                last_used_at TEXT,
+                last_address TEXT,
+                revoked_at   TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
+                token_hash TEXT PRIMARY KEY,
+                kind       TEXT NOT NULL CHECK (kind IN ('access', 'refresh')),
+                grant_id   INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                rotated_at TEXT
+            )
+        ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_oauth_tokens_grant ON mcp_oauth_tokens (grant_id)")
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS yahoo_api_stats (
                 date                  TEXT PRIMARY KEY,
                 total_calls           INTEGER NOT NULL DEFAULT 0,

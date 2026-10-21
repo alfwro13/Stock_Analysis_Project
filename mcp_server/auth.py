@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 from config import load_config
 from constants import MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS
 
-from . import audit, keys, limits
+from . import audit, keys, limits, oauth
 from .server import MCP_PATH
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,29 @@ def _wrong_credential(address: str, status: int, detail: str, headers: Optional[
     return _rejection(address, status, detail, headers)
 
 
+def disabled_response() -> Optional[JSONResponse]:
+    if load_config().get("MCP_SERVER_ENABLED"):
+        return None
+    return JSONResponse({"detail": "The MCP Server is disabled"}, status_code=503)
+
+
+def _public_host_failure(request: Request, address: str) -> Optional[JSONResponse]:
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() == "bearer" and not request.headers.get("X-API-Key"):
+        grant_id = oauth.verify_access_token(token.strip())
+        if grant_id is not None:
+            oauth.record_use(grant_id, address)
+            request.state.mcp_grant_id = grant_id
+            request.state.mcp_address = address
+            return None
+    challenge = f'Bearer resource_metadata="{oauth.public_origin()}/.well-known/oauth-protected-resource/mcp", scope="{oauth.SCOPE}"'
+    return _wrong_credential(address, 401, "Invalid or missing access token", {"WWW-Authenticate": challenge})
+
+
 def auth_failure(request: Request) -> Optional[JSONResponse]:
-    if not load_config().get("MCP_SERVER_ENABLED"):
-        return JSONResponse({"detail": "The MCP Server is disabled"}, status_code=503)
+    disabled = disabled_response()
+    if disabled is not None:
+        return disabled
     address = request.client.host if request.client else "unknown"
     wait = limits.lockout_remaining(address)
     if wait:
@@ -38,6 +58,8 @@ def auth_failure(request: Request) -> Optional[JSONResponse]:
             address, 429, "Too many wrong MCP credentials from this address", {"Retry-After": str(wait)},
             log=limits.first_refusal(("address", address)),
         )
+    if oauth.on_public_host(request.headers.get("host", "")):
+        return _public_host_failure(request, address)
     if request.headers.get("X-API-Key"):
         return _wrong_credential(address, 403, "The API key cannot be used on this route")
     scheme, _, token = request.headers.get("Authorization", "").partition(" ")

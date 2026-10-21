@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette_csrf import CSRFMiddleware
 
@@ -241,8 +242,12 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     if path == mcp_server.MCP_PATH or path.startswith(mcp_server.MCP_PATH + "/"):
-        rejection = mcp_server.auth_failure(request)
+        rejection = await run_in_threadpool(mcp_server.auth_failure, request)
         return rejection if rejection is not None else await call_next(request)
+
+    # The OAuth routes authenticate themselves and answer 404 on any host but MCP_PUBLIC_HOST
+    if path in mcp_server.OAUTH_PATHS:
+        return await call_next(request)
 
     # API key: only the routes in API_KEY_ROUTES, so a leaked key cannot read pages or settings
     api_key = request.headers.get("X-API-Key", "")
@@ -320,6 +325,8 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_route(mcp_server.MCP_PATH, mcp_server.endpoint, include_in_schema=False)
+for _oauth_path, _oauth_handler, _oauth_methods in mcp_server.OAUTH_ROUTES:
+    app.add_route(_oauth_path, _oauth_handler, methods=_oauth_methods, include_in_schema=False)
 app.include_router(api_router)
 app.include_router(page_router)
 

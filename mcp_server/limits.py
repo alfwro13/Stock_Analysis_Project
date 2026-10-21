@@ -2,7 +2,7 @@ import math
 import threading
 import time
 from collections import deque
-from typing import Dict, Optional
+from typing import Dict, Hashable, Optional
 
 from constants import (
     MCP_AUTH_FAILURE_WINDOW_SECONDS, MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS, MCP_RATE_CALLS_PER_MINUTE,
@@ -12,8 +12,8 @@ from constants import (
 _MINUTE = 60
 _SWEEP_SECONDS = 30
 _lock = threading.Lock()
-_calls: Dict[Optional[int], deque] = {}
-_active: Dict[Optional[int], int] = {}
+_calls: Dict[Optional[Hashable], deque] = {}
+_active: Dict[Optional[Hashable], int] = {}
 _failures: Dict[str, deque] = {}
 _locked_until: Dict[str, float] = {}
 _refusal_logged: Dict[tuple, float] = {}
@@ -76,7 +76,7 @@ def record_failure(address: str) -> bool:
         return True
 
 
-def acquire(key_id: Optional[int]) -> int:
+def acquire(key_id: Optional[Hashable]) -> int:
     """0 when the call may run (a slot is taken until release()), else the seconds to wait."""
     with _lock:
         now = _now()
@@ -96,7 +96,7 @@ def acquire(key_id: Optional[int]) -> int:
         return 0
 
 
-def release(key_id: Optional[int]) -> None:
+def release(key_id: Optional[Hashable]) -> None:
     with _lock:
         if _active.get(key_id, 0) > 1:
             _active[key_id] -= 1
