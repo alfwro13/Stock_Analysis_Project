@@ -40,7 +40,7 @@ Build order, decisions and the task list live in `audit/MCP_implementation_plan.
 
 5. The "Dash" instruction. Claude uses a connector only when it decides to, so the Glossary (MCP Server section) offers a standing instruction to paste into Claude Code's `~/.claude/CLAUDE.md`, or into Claude Desktop / claude.ai personal preferences or Project instructions: a message starting with `Dash`, `Dash:` or `Dash-` (any capitalisation) is answered with the `stock-dashboard` tools, reading `policy://investment-policy` first, quoting `as_of`, treating `null` as unavailable and never guessing. It assumes the connector is named `stock-dashboard`. The text lives in `templates/glossary/_mcp_server.html`.
 
-The bearer key must not travel over plain `http` beyond the machine running the app. The dashboard's LAN/proxy address for Claude Desktop (task MCP-14) and claude.ai / mobile access (task MCP-15, needs OAuth) are not settled; claude.ai and the mobile apps cannot reach the endpoint yet.
+The bearer key must not travel over plain `http` beyond the machine running the app. claude.ai and the Claude mobile apps use the separate public hostname and OAuth instead of a key (see **Public hostname guard**, **OAuth authorization server**, **Remote Access** and the **Go-live runbook** under **Operations**).
 
 ## Security model
 
@@ -88,7 +88,7 @@ Tests: `tests/mcp_server/test_audit_log.py`, `test_rate_limits.py`, `TestPruneMc
 
 ## Public hostname guard
 
-Remote access for claude.ai and the mobile apps uses a separate public hostname (design: `audit/MCP_15_remote_access_design.md`). This section describes the guard (task MCP-15b); the OAuth server behind it (task MCP-15c) is described in the next section. The pairing window, the approval page and the Settings panel are described under **Remote Access** below (task MCP-15d). **Do not turn `MCP_REMOTE_ENABLED` on until the public hostname, tunnel, proxy and Cloudflare rules exist** (go-live, MCP-15g).
+Remote access for claude.ai and the mobile apps uses a separate public hostname (design: `audit/MCP_15_remote_access_design.md`). This section describes the guard (task MCP-15b); the OAuth server behind it (task MCP-15c) is described in the next section. The pairing window, the approval page and the Settings panel are described under **Remote Access** below (task MCP-15d). **Do not turn `MCP_REMOTE_ENABLED` on until the public hostname, tunnel, proxy and Cloudflare rules exist**; the order and the checks are in the **Go-live runbook** under **Operations**.
 
 | Config key | Default | Meaning |
 |---|---|---|
@@ -114,6 +114,7 @@ All three are in the `POST /api/settings` schema (password step-up like every se
 - **Anything else on the public host is `404` with an empty body**, whatever it carries: other methods, `/mcp/`, `HEAD`, `OPTIONS`, every dashboard page and API route, `/static`, `/assets`, `/docs`. The allowlist is the guard's own, not the router's, so a route added to the app later is `404` there by default. `tests/mcp_server/test_public_host.py` enumerates every registered route (2,000+ method and path pairs) and fails if any besides the eight answers anything else. It reads FastAPI's nested-router internals, so it also raises on an unrecognised route container and checks that every path in the OpenAPI schema was enumerated; after a `fastapi` upgrade, run it.
 - **Client address.** The five machine routes need the peer address (`request.client`) to be inside `MCP_REMOTE_ALLOWED_CIDRS`; otherwise `403` with an empty body (the same status the proxy gives, see **Operations**), a warning in the app log and one `mcp_audit_log` row (credential `none`, status `403`) per address per minute. An unparseable or missing address is refused; an IPv4-mapped IPv6 address is read as IPv4; a malformed or empty range setting refuses everything. The three browser routes cannot be range-limited because the operator's own browser calls them.
 - **The guard never reads `X-Forwarded-For`, `X-Real-IP`, `Forwarded` or `CF-Connecting-IP`.** The address is whatever uvicorn resolves: the proxy's address unless the proxy is listed in `FORWARDED_ALLOW_IPS` (never `*`), in which case uvicorn takes the right-most address that is not a trusted proxy. A header sent by an untrusted peer is ignored; the tests run the guard behind uvicorn's `ProxyHeadersMiddleware` to show both cases, including a forged first entry in a chain. Three safeguards watch the setting without reading a header: a startup warning when `MCP_PUBLIC_HOST` is set and `FORWARDED_ALLOW_IPS` is `*` or not set; an off-range refusal from a loopback, private or link-local peer (`public_host.is_proxy_like()`) is logged and notified as "probably not trusted in `FORWARDED_ALLOW_IPS`" instead of the generic range text; and the Remote Access panel's **Client address check** (see **Remote Access**). On the public host a private peer address always means the proxy itself, so the `403` also stops the shared-address lockout there; the setting still matters for `/mcp` with named keys behind a LAN proxy and for the dashboard login limiter.
+- **No app-side rate limit on `/oauth/approve` and `/oauth/approve-status`** (operator decision, 2026-10-21): the operator's browser calls them, so they cannot be range-limited, and a request with a random cookie costs one indexed read. nginx `limit_req` and the Cloudflare rate-limit rule are the brake.
 - **Where the other layers stand.** The guard is the app's layer of defence in depth; the proxy, tunnel and Cloudflare rules in **Operations** are the primary controls. Nothing on this host is reachable until all of them exist.
 
 Tests: `tests/mcp_server/test_public_host.py`.
@@ -154,7 +155,7 @@ Revoking a grant, Revoke All Remote Access, the activity view and the restore ho
 
 ## Remote Access
 
-Task MCP-15d. **Settings → MCP Server → Remote Access** is where the operator prepares and approves a connection from claude.ai or the Claude mobile app. Nothing here exposes anything by itself: the public host stays `404` until `MCP_REMOTE_ENABLED` is on, the hostname exists and the proxy/tunnel rules are in place (go-live, MCP-15g).
+Task MCP-15d. **Settings → MCP Server → Remote Access** is where the operator prepares and approves a connection from claude.ai or the Claude mobile app. Nothing here exposes anything by itself: the public host stays `404` until `MCP_REMOTE_ENABLED` is on, the hostname exists and the proxy/tunnel rules are in place (see the **Go-live runbook** under **Operations**).
 
 | Control | What it does |
 |---|---|
@@ -191,6 +192,8 @@ Revoking and Revoke All work while the MCP Server is disabled, and a disabled MC
 | Lockout | 203.0.113.5 was locked out for 5 minutes after 5 wrong credentials. | When an address trips the `/mcp` / `/oauth/token` lockout, at most once per address per hour. |
 | Off-range request | A request from 198.51.100.7 was refused: outside the allowed address range. | When a machine route is refused for its address, at most once per address per hour. |
 | Window closed unused | The pairing window closed without a connection request. | Once, when a window ends and no request was made in it. |
+
+A replayed authorization code is not a seventh event (operator decision, 2026-10-21): the grant it created is revoked and the attempt is an audit row, which is enough.
 
 Dedup (AGENTS.md rule 19): the first three are exactly-once by their state change (a conditional `UPDATE` or revoke that succeeds once). The two address events use `limits.notify_due(scope, 3600)`, an in-memory cooldown counted from the send, bounded and swept like the other throttles, so a new calendar day alone never re-arms it (a restart does). The Talk copy is prefixed `MCP Remote Access:`.
 
@@ -606,9 +609,10 @@ Check after every edit, before restarting: `cloudflared tunnel ingress validate`
 
 The zone is on the Free plan (five custom rules, one rate-limit rule). The order below keeps the host unreachable until the rules are in place.
 
+0. **Country-block exception (only if the zone has a rule that blocks countries).** Anthropic's range is in the United States, so a zone-wide rule such as `not ip.geoip.country in {"<allowed countries>"}` blocks the connector before any request reaches the tunnel. Amend it so it stays as strict everywhere else: `(not ip.geoip.country in {"<allowed countries>"}) and not (http.host eq "<public-host>" and ip.src in {160.79.104.0/21})`. This edits an existing security rule, so the exact expression is shown to the operator and approved first. Intended side effect: the operator's own browser step at `/oauth/authorize` is country-blocked when abroad, so a new connection cannot be paired from abroad.
 1. **Block rule** (custom rule, placed last, action block). Expression: the host is `<public-host>` and either the path is not one of the eight exact paths, or the path is one of the five machine paths (`/mcp`, `/oauth/token`, `/oauth/revoke`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`) and `ip.src` is outside `160.79.104.0/21`. It uses no regular expressions, which the Free plan does not allow.
 2. **Rate-limit rule** (the only one the plan allows, action block). The Free plan can match on the path only, not the host, so the expression is the exact list of the eight paths (a `/mcp` prefix would also match unrelated applications such as Home Assistant's `/mcp_server`). Limit: 30 requests per 10 seconds per client address, blocked for 10 seconds (the only period and duration the Free plan offers). It is a coarse backstop; the finer limits are in the nginx virtual host and the app.
-3. **DNS record.** A proxied `CNAME` for `<public-host>` to `<tunnel-id>.cfargotunnel.com`, created last. Universal SSL covers a first-level subdomain; the apex `CAA` record only governs issuance.
+3. **DNS record.** A proxied `CNAME` for `<public-host>` to `<tunnel-id>.cfargotunnel.com`, created last. Universal SSL covers a first-level subdomain. The apex `CAA` record only governs issuance, but the certificate the edge presents must come from a CA it lists (`dig CAA <apex>`); Cloudflare picks the CA itself, so the issuer can differ from the one on the origin's own certificate.
 
 **Checks.** From an address outside Anthropic's range (pin the edge address with `curl --resolve` while the local resolver does not know the record): each machine path, an unlisted path and `/` answer Cloudflare's own `403` page; `/oauth/approve-status` is let through and answers the app's empty `404` while Remote Access is off; the edge presents a valid certificate for `<public-host>`; the nginx access log shows the caller's real address, not a loopback or edge address. The app-side client-address gate is the go-live check above.
 
@@ -620,6 +624,55 @@ The account that controls DNS, the WAF and the tunnel is reviewed after any chan
 - API tokens (dashboard: My Profile → API Tokens) are limited to what is in use, each with the smallest scope and an expiry.
 - OAuth grants (My Profile → Access Management → Authentication) and connected apps are limited to what is in use. A connection used for configuration work is revoked when the work is finished.
 - Notifications: the tunnel alerts (Tunnel Health, Tunnel Created and Deleted) go to the operator's email. The plan has no alert type for DNS record changes, so the account audit log (Manage Account → Audit Log) is the control for those: every recent action is the operator's or Cloudflare's own.
+
+### Go-live runbook
+
+Task MCP-15g. Everything above is the setting of one layer; this is the order they are switched on and the checks that prove the layers hold. Placeholders as above, plus `<public-ip>` (the home connection's public address) and `<lan-client>` (any machine on the LAN other than the proxy host). Each step is one change, checked before the next; stop at the first check that does not give its expected answer. The operator runs it; an agent may run the read-only checks. Keep the dates and results in the go-live record (a local note, not the repository).
+
+**Before anything is switched on** (each is a yes/no, none changes anything):
+
+| Layer | Must be true | How to see it |
+|---|---|---|
+| Proxy host | The `<public-host>` virtual host listens on a loopback port only; `fail2ban` jail running; the host hardening above is done | `ss -ltn` on `<proxy-host>` lists the port as `127.0.0.1:<port>` and nothing for it on the LAN address; `fail2ban-client status` |
+| Tunnel | Unprivileged unit running; the entry for `<public-host>` sits before the catch-all; `cloudflared tunnel ingress validate` is clean | **Tunnel: the ingress entry** above |
+| Cloudflare | Country-block exception, block rule and rate-limit rule exist; the DNS record does not yet | **Cloudflare: rules and DNS record** above |
+| App host | `FORWARDED_ALLOW_IPS` is exactly `<proxy-host>`'s address, not `*` | **Client address** above |
+| Code review | The security review of the OAuth and guard code (tasks MCP-15a to 15e) has no open finding | The task's report |
+
+**Order.**
+
+1. **App.** Save `MCP_PUBLIC_HOST` in Settings, restart the service (the host is read once at startup), tick **Enable the MCP Server**. Leave **Enable Remote Access** off. Check that `GET https://<public-host>/oauth/approve-status` is not reachable yet (no DNS record).
+2. **Tunnel and rules** as in the sections above, the DNS record last.
+3. **Edge checks** (below), then turn on **Enable Remote Access** (password prompt; refused with `409` while `FORWARDED_ALLOW_IPS` is `*`).
+4. **The one-request check** (hard gate, **Client address** above). Do it now: before a connector exists, so the address on the panel is yours and not an Anthropic address that replaces it a moment later.
+5. **Connect Claude.** Create the OAuth client, then do these in this order: (a) press **Allow a New Connection (10 minutes)**; (b) only then add the connector in Claude with the endpoint URL, the client ID and the secret (Claude's "Use your own OAuth client" fields) and press Connect; (c) the waiting page opens in your browser and shows a code; (d) press **Approve** under Connection Requests only if the code is the same. **Open the window first.** A Connect pressed while the window is closed lands on a bare `403` page with no text and no hint, by design (nothing is written and nothing is announced); open the window, then press Connect again. Claude's authentication settings cannot be edited later, so a wrong ID or secret means removing and adding the connector again.
+6. **After the first connection.** Recent Activity shows `App #<n>` rows with `200`; **Connected Apps** shows one grant; the **Client address check** now shows an Anthropic address (`160.79.104.0/21`) as the last request, which is the normal state; no off-range or lockout notification arrived. One grant serves every Claude client signed in to that account (web, desktop, mobile), so revoking it disconnects all of them.
+
+**Edge checks (step 3).** Run from the machines named. "Browser-style user agent" means any non-`curl` value (`-A 'Mozilla/5.0 runbook-check'`): the shared vhost snippets of some sites drop `curl`'s own agent with no reply, which curl reports as code `000` or an HTTP/2 stream error, and that proves nothing about which site would have answered.
+
+| # | Check | Command and expected answer |
+|---|---|---|
+| 1 | A LAN client that sends the public host to the proxy host's HTTPS port is not served by the app | From `<lan-client>`: `curl -sk -A '<browser UA>' --resolve <public-host>:443:<proxy-host> https://<public-host>/oauth/approve-status`. The reply is the proxy's LAN-only default site (its own `404` or `403` page), never the app's `{"state":"unknown"}`; the new vhost's access log gains no line. Repeat with `-H 'Host: <public-host>' https://<proxy-host>/oauth/approve-status` (the TLS name is then the address) for the same result |
+| 2 | A forged client address from the LAN gains nothing (finding S4) | Same command as 1 with `-X POST -H 'CF-Connecting-IP: 160.79.104.5' -H 'X-Forwarded-For: 160.79.104.5' -H 'Authorization: Bearer x' https://<public-host>/mcp`: the default site's page again, no line in the vhost's access log, no row in Recent Activity. `curl -m 5 -X POST -H 'Host: <public-host>' -H 'CF-Connecting-IP: 160.79.104.5' http://<proxy-host>:<vhost-port>/mcp` is a refused connection (curl exit 7): the virtual host has no LAN listener to forge a header against |
+| 3 | Plain HTTP with the public host does not reach the app | `curl -s -A '<browser UA>' -i -H 'Host: <public-host>' http://<proxy-host>/mcp`: a redirect to the default site (observed: `301`) or a dropped connection, never an app reply |
+| 4 | The origin address itself serves nothing | From a network outside the LAN (a phone on mobile data, not Wi-Fi): `curl -m 10 -k --resolve <public-host>:443:<public-ip> https://<public-host>/oauth/approve-status` gets no reply (timeout or refused: the router forwards no ports). From inside the LAN the same command can time out for router-loopback reasons and does not count. If any HTTP reply comes back, stop: the origin is reachable around Cloudflare |
+| 5 | The edge presents a valid certificate for the host | `echo \| openssl s_client -connect <public-host>:443 -servername <public-host> 2>/dev/null \| openssl x509 -noout -subject -issuer -dates -ext subjectAltName` and `openssl s_client ... 2>&1 \| grep 'Verify return'`: `Verify return code: 0 (ok)`, a subject alternative name that covers `<public-host>` (`*.<zone>` does), dates in the future. Then `dig +short CAA <zone>`: the issuer's CA must be in that list (a CA outside it means the certificate was not issued under the zone's policy: stop and find out why) |
+| 6 | Edge rules | **Cloudflare: rules and DNS record**, Checks |
+
+Check 1 passed on 2026-10-21 against this deployment: the default site answered `404` for `/mcp` and `/oauth/approve-status` and `403` for the well-known document, and the same with forged headers; `:<vhost-port>` was refused from the LAN; plain HTTP got `301` to the default site; the origin address got no reply from the LAN.
+
+**Rollback, fastest first.** Each step undoes one layer on its own; stop at the first one that is enough.
+
+1. **Revoke All Remote Access** (Settings → MCP Server → Remote Access; no password prompt). Every token stops working on the next request, the pairing window closes and pending requests are deleted.
+2. Turn **Enable Remote Access** off. The public host answers `404` on all eight routes; the LAN endpoint is unaffected. To close the LAN endpoint too, turn **Enable the MCP Server** off (`503` everywhere).
+3. Remove the `<public-host>` entry from the tunnel's `config.yml` (or restore the dated copy), `cloudflared tunnel ingress validate`, `systemctl restart cloudflared`. The other tunnelled sites are down for a few seconds.
+4. Delete the `<public-host>` DNS record. The name stops resolving to Cloudflare.
+5. Leave the Cloudflare block rule and rate-limit rule in place: they only restrict the public host. Remove the country-block exception only together with step 4, otherwise there is nothing left that needs it.
+6. Remove the virtual host as under **Reverse-proxy virtual host** (rollback).
+
+To end a single connection, use **Revoke** on its row in Connected Apps. To rotate the client secret, **Rotate OAuth Client Secret** (it revokes every grant), then remove and add the connector in Claude.
+
+**If it stops working later.** Recent Activity and the notifications say which layer refused: `403` with an "outside the allowed address range" notification means Anthropic's published range changed (update `MCP_REMOTE_ALLOWED_CIDRS` in Settings, the proxy's `allow` lines and the Cloudflare expressions together); a `429` on `/mcp` for a grant with no real burst usually means long-held `subscriptions/listen` requests are using up the in-flight slots (each Claude client holds one for minutes); no row at all means the request never reached the app (tunnel down: `curl 127.0.0.1:20241/ready` on `<proxy-host>`; a rule, DNS or certificate problem: the edge checks above).
 
 ## Testing
 
