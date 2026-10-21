@@ -194,3 +194,65 @@ class TestWriterQueue:
         assert len(audit_rows()) == 3 and audit._pending == 0
         assert len(set(threads)) == 1 and threads[0].startswith("mcp-audit")
         assert threads[0] != threading.current_thread().name
+
+
+class TestUnauthenticatedRowCap:
+    @pytest.fixture
+    def clock(self, monkeypatch):
+        state = {"now": 1000.0}
+        monkeypatch.setattr(audit, "_now", lambda: state["now"])
+        monkeypatch.setattr(audit, "MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE", 3)
+        return state
+
+    def test_rows_past_the_cap_are_counted_not_stored(self, clock, caplog):
+        with caplog.at_level(logging.WARNING, logger="mcp_server.audit"):
+            for _ in range(7):
+                audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        assert len(audit_rows()) == 3
+        assert caplog.text.count("without a valid credential in a minute") == 1
+
+    def test_the_next_minute_stores_one_summary_row_dated_to_the_closed_minute(self, clock):
+        for _ in range(7):
+            audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        clock["now"] += 61
+        audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        rows = audit_rows()
+        assert len(rows) == 5
+        summary = next(r for r in rows if r["mcp_method"] == "audit")
+        assert summary["mcp_name"] == "4 rows without a credential not stored"
+        assert (summary["credential_kind"], summary["key_id"], summary["client_address"], summary["status"]) == ("none", None, None, 0)
+        assert summary["logged_at"] == rows[0]["logged_at"]
+
+    def test_an_authenticated_call_after_the_attack_flushes_the_summary(self, clock):
+        for _ in range(5):
+            audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        clock["now"] += 61
+        audit.record(current_key_id(), "10.0.0.1", "tools/list", None, 200, 1, 10)
+        assert [r["mcp_name"] for r in audit_rows() if r["mcp_method"] == "audit"] == ["2 rows without a credential not stored"]
+
+    def test_no_summary_when_nothing_was_suppressed(self, clock):
+        audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        clock["now"] += 61
+        audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        assert [r["mcp_method"] for r in audit_rows()] == [None, None]
+
+    def test_the_count_starts_again_each_minute(self, clock):
+        for _ in range(3):
+            audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        clock["now"] += 61
+        for _ in range(3):
+            audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        assert len(audit_rows()) == 6
+
+    def test_calls_with_a_key_or_a_grant_are_never_capped(self, clock):
+        for _ in range(3):
+            audit.record(None, "203.0.113.9", None, None, 401, 0, 10)
+        for _ in range(5):
+            audit.record(current_key_id(), "10.0.0.1", "tools/list", None, 200, 1, 10)
+            audit.record(None, "10.0.0.1", "tools/list", None, 200, 1, 10, grant_id=4)
+        assert len(audit_rows()) == 13
+
+    def test_wrong_keys_on_the_endpoint_are_capped_too(self, mcp_client, clock):
+        for _ in range(6):
+            rpc(mcp_client, "tools/list", key="WRONGKEY-5518")
+        assert len(audit_rows()) == 3

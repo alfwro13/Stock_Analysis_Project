@@ -24,12 +24,14 @@ def _mcp_key(monkeypatch):
     key_id = db_mcp_keys.add_key("Test key", keys.hash_key(MCP_KEY), "2026-10-01 09:00:00")
     keys.invalidate()
     limits.reset()
+    audit.reset()
     try:
         yield
     finally:
         db_mcp_keys.delete_key(key_id)
         keys.invalidate()
         limits.reset()
+        audit.reset()
         oauth.invalidate()
         conn = get_connection()
         try:

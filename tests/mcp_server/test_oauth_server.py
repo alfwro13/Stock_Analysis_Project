@@ -345,6 +345,14 @@ class TestAuthorize:
         oauth.open_pairing_window(30)
         assert start(remote)[0].status_code == 302
 
+    def test_closed_window_refusals_are_capped_per_minute_in_the_audit_log(self, remote, monkeypatch):
+        from mcp_server import audit
+        monkeypatch.setattr(audit, "MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE", 2)
+        oauth.close_pairing_window()
+        statuses = [start(remote)[0].status_code for _ in range(6)]
+        assert statuses == [403] * 6
+        assert len(sql("SELECT * FROM mcp_audit_log WHERE mcp_name = 'authorize'")) == 2
+
     def test_the_authorize_endpoint_is_audited_without_the_request_values(self, remote):
         start(remote, state="very-secret-state")
         rows = sql("SELECT * FROM mcp_audit_log WHERE mcp_name = 'authorize'")
