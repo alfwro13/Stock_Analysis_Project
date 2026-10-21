@@ -376,3 +376,59 @@ class TestConfigKeys:
             {"MCP_REMOTE_ENABLED": "maybe"},
         ):
             assert client.post("/api/settings", json=body, headers=step_up_headers).status_code == 422, body
+
+
+class TestPublicHostOverlap:
+    ALLOWED = ["stock.awroblew.biz", "Ha.Awroblew.biz.", "192.168.1.70", "*.lan.example"]
+
+    @pytest.mark.parametrize("host", ["stock.awroblew.biz", "STOCK.awroblew.biz.", "ha.awroblew.biz", "192.168.1.70", "localhost", "127.0.0.1"])
+    def test_a_host_the_dashboard_is_served_on_overlaps(self, host):
+        assert config.mcp_public_host_overlaps_allowed_hosts(host, self.ALLOWED)
+
+    @pytest.mark.parametrize("host", ["mcp.awroblew.biz", "mcp.lan.example", "lan.example", ""])
+    def test_other_hosts_and_wildcard_matches_do_not_overlap(self, host):
+        assert not config.mcp_public_host_overlaps_allowed_hosts(host, self.ALLOWED)
+
+    def test_a_bare_wildcard_overlaps_nothing(self):
+        assert not config.mcp_public_host_overlaps_allowed_hosts("mcp.awroblew.biz", ["*"])
+
+    def test_the_settings_route_refuses_a_public_host_that_is_an_allowed_host(self, client, step_up_headers, monkeypatch):
+        monkeypatch.setattr("api_routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz", "localhost"]})
+        written = []
+        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        for body in ({"MCP_PUBLIC_HOST": "Stock.Awroblew.biz"}, {"MCP_PUBLIC_HOST": "localhost"}):
+            response = client.post("/api/settings", json=body, headers=step_up_headers)
+            assert response.status_code == 422, body
+            assert response.json()["status"] == "error"
+            assert "stock.awroblew.biz" not in response.text.lower()
+        assert written == []
+
+    def test_the_settings_route_refuses_adding_the_stored_public_host_to_allowed_hosts(self, client, step_up_headers, monkeypatch):
+        monkeypatch.setattr("api_routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "mcp.awroblew.biz", "ALLOWED_HOSTS": ["stock.awroblew.biz"]})
+        written = []
+        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        response = client.post("/api/settings", json={"ALLOWED_HOSTS": ["stock.awroblew.biz", "mcp.awroblew.biz"]}, headers=step_up_headers)
+        assert response.status_code == 422
+        assert written == []
+
+    def test_one_save_that_sends_both_fields_is_checked_together(self, client, step_up_headers, monkeypatch):
+        monkeypatch.setattr("api_routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz"]})
+        written = []
+        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        response = client.post("/api/settings", json={"MCP_PUBLIC_HOST": "mcp.awroblew.biz", "ALLOWED_HOSTS": ["mcp.awroblew.biz"]}, headers=step_up_headers)
+        assert response.status_code == 422
+        assert written == []
+
+    def test_the_settings_route_accepts_a_separate_public_host_and_an_unchanged_overlap(self, client, step_up_headers, monkeypatch):
+        stored = {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz", "*.lan.example"]}
+        monkeypatch.setattr("api_routes_system.load_config", lambda: stored)
+        written = []
+        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        monkeypatch.setattr("api_routes_system.reload_scheduler", lambda: None)
+        monkeypatch.setattr("api_routes_system._configure_file_logging", lambda cfg: None)
+        for body in ({"MCP_PUBLIC_HOST": "mcp.awroblew.biz"}, {"MCP_PUBLIC_HOST": "mcp.lan.example"}):
+            assert client.post("/api/settings", json=body, headers=step_up_headers).status_code == 200, body
+        stored = {"MCP_PUBLIC_HOST": "stock.awroblew.biz", "ALLOWED_HOSTS": ["stock.awroblew.biz"]}
+        body = {"ALLOWED_HOSTS": ["stock.awroblew.biz"], "MCP_PUBLIC_HOST": "stock.awroblew.biz", "BASE_CURRENCY": "GBP"}
+        assert client.post("/api/settings", json=body, headers=step_up_headers).status_code == 200
+        assert len(written) == 3
