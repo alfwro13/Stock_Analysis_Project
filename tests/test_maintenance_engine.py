@@ -223,6 +223,62 @@ class TestPruneSchedulerRunHistory:
         assert eng.metrics["scheduler_runs_deleted"] == 7
 
 
+class TestPruneMcpAuditLog:
+    def setup_method(self):
+        self._clear()
+
+    def teardown_method(self):
+        self._clear()
+
+    @staticmethod
+    def _clear():
+        conn = None
+        try:
+            conn = _conn()
+            conn.execute("DELETE FROM mcp_audit_log")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    @staticmethod
+    def _stamp(days_ago: float) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def test_prunes_rows_older_than_the_retention_and_keeps_the_rest(self):
+        conn = None
+        try:
+            conn = _conn()
+            conn.executemany(
+                "INSERT INTO mcp_audit_log (logged_at, credential_kind, status) VALUES (?, 'key', 200)",
+                [(self._stamp(91),), (self._stamp(120),), (self._stamp(89),), (self._stamp(0),)],
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+        eng = _engine()
+        eng.prune_mcp_audit_log()
+
+        conn = None
+        try:
+            conn = _conn()
+            remaining = [r[0] for r in conn.execute("SELECT logged_at FROM mcp_audit_log ORDER BY logged_at")]
+        finally:
+            if conn:
+                conn.close()
+        assert len(remaining) == 2
+        assert all(stamp >= self._stamp(90) for stamp in remaining)
+        assert eng.metrics["mcp_audit_deleted"] == 2
+
+    def test_a_database_error_is_logged_and_does_not_stop_maintenance(self):
+        eng = _engine()
+        with patch("maintenance_engine.db_mcp_audit.prune_older_than", side_effect=RuntimeError("locked")):
+            eng.prune_mcp_audit_log()
+        assert eng.metrics["mcp_audit_deleted"] == 0
+
+
 # ── prune_pulse_cache ─────────────────────────────────────────────────────────
 
 class TestPrunePulseCache:

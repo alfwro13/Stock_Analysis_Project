@@ -19,7 +19,10 @@ from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, i
 from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
-from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT
+import db_mcp_audit
+from constants import (
+    MCP_AUDIT_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
+)
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -35,6 +38,7 @@ class MaintenanceEngine:
             "deleted_files": [],
             "pulse_cache_deleted": 0,
             "scheduler_runs_deleted": 0,
+            "mcp_audit_deleted": 0,
             "vacuum_success": False,
             "ghostfolio_files_purged": 0,
             "benchmark_watchlist_tickers_added": 0,
@@ -153,6 +157,14 @@ class MaintenanceEngine:
         finally:
             if conn:
                 conn.close()
+
+    def prune_mcp_audit_log(self):
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=MCP_AUDIT_RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            self.metrics["mcp_audit_deleted"] = db_mcp_audit.prune_older_than(cutoff)
+            logger.info("Removed %d old MCP audit log entries", self.metrics["mcp_audit_deleted"])
+        except Exception as e:
+            logger.error("Error pruning the MCP audit log: %s", e)
 
     def _get_pulse_active_tickers(self) -> set:
         """Every ticker any market_pulse_cache writer currently tracks (portfolio holdings,
@@ -291,6 +303,7 @@ class MaintenanceEngine:
                 f"Automated System Maintenance completed.\n"
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
                 f"• Old Scheduler Runs Trimmed: {self.metrics['scheduler_runs_deleted']}\n"
+                f"• Old MCP Audit Log Entries Trimmed: {self.metrics['mcp_audit_deleted']}\n"
                 f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}"
                 f"{files_section}\n"
                 f"• Ghostfolio Files Purged (integration disabled): {self.metrics['ghostfolio_files_purged']}\n"
@@ -361,6 +374,7 @@ class MaintenanceEngine:
         self.ensure_pension_benchmarks_on_watchlist()
         self.prune_database_logs()
         self.prune_scheduler_run_history()
+        self.prune_mcp_audit_log()
         self.prune_pulse_cache()
         self.garbage_collect_files()
         self.enforce_ghostfolio_disabled()
