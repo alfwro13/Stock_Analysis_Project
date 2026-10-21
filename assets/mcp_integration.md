@@ -570,7 +570,7 @@ The tunnel client (`cloudflared`) sits between the internet and the proxy, so it
 | Item | Setting |
 |---|---|
 | Account | A dedicated system account and group `cloudflared` (no home directory, shell `nologin`). |
-| Credential file | `/etc/cloudflared/<tunnel-id>.json`, mode `0600`, owned by the `cloudflared` account. It is the only copy outside the root-only backup directory. The origin certificate (`cert.pem`, used only by tunnel management commands) lives in root's home and is not readable by the account. |
+| Credential file | `/etc/cloudflared/<tunnel-id>.json`, mode `0600`, owned by the `cloudflared` account. There is no other copy of it on the host. The origin certificate (`cert.pem`, used only by tunnel management commands) lives in root's home and is not readable by the account. |
 | `config.yml` | `/etc/cloudflared/config.yml`, mode `0640`, owner `root`, group `cloudflared`; `credentials-file` names the path above. |
 | Unit | `User=cloudflared`, `Group=cloudflared`, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectKernelLogs`, `ProtectControlGroups`, `ProtectClock`, `ProtectHostname`, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`, `LockPersonality`, `SystemCallArchitectures=native`, `UMask=0077`, an empty `CapabilityBoundingSet` and `AmbientCapabilities`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, `Restart=on-failure`. `ExecStart` runs `cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run`. |
 
@@ -578,12 +578,12 @@ The tunnel client (`cloudflared`) sits between the internet and the proxy, so it
 
 **Applying or changing the setup.**
 
-1. Copy the unit, `config.yml` and the credential to a dated directory that only root can read.
+1. Copy the unit and `config.yml` to a dated directory that only root can read.
 2. Create the account, install the credential and the edited `config.yml`, and validate with `cloudflared --config <file> tunnel ingress validate`.
 3. Install the unit, run `systemd-analyze verify` on it, `systemctl daemon-reload`, `systemctl restart cloudflared`, and wait for `/ready`. The tunnelled sites are unavailable for a few seconds during the restart.
 4. Request every tunnelled hostname through the public edge and compare the status codes with the ones before. Do this from a machine other than the proxy host, or pin the edge address with `curl --resolve`: the proxy host's `/etc/hosts` resolves the hostnames to itself.
 
-Rollback: copy the backed-up unit and `config.yml` over the current ones, put the credential back where that `config.yml` expects it, `systemctl daemon-reload`, `systemctl restart cloudflared`.
+Rollback: copy the backed-up unit and `config.yml` over the current ones, `systemctl daemon-reload`, `systemctl restart cloudflared`.
 
 **Updating the client.** `--no-autoupdate` means the client changes only when the operator updates it, and the package repository is not among the `unattended-upgrades` origins. Check monthly, and after any Cloudflare announcement about the client:
 
