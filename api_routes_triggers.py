@@ -315,7 +315,7 @@ async def get_profiler_status():
             "pending_count": breakdown.get("pending_count", 0),
             "breakdown": breakdown,
             "last_run": {
-                "display": time_engine.fmt_datetime(datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")) if last_run else None,
+                "display": time_engine.fmt_stored_utc(last_run),
                 "status": last.get("last_status"),
                 "duration_sec": last.get("last_duration_sec"),
             },
@@ -571,24 +571,15 @@ def trigger_backup_run(request: Request, background_tasks: BackgroundTasks):
     return JSONResponse(content={"status": "success", "message": "Backup started in the background. Check System Notifications for the summary."})
 
 
-def _localise_backup_ts(ts):
-    if not ts:
-        return ts
-    try:
-        return time_engine.fmt_datetime(datetime.strptime(ts, "%Y-%m-%d %H:%M:%S"))
-    except ValueError:
-        return ts
-
-
 @triggers_router.get("/backup/status")
 def get_backup_status_endpoint():
     try:
         result = get_backup_status()
         if result.get("last_backup"):
-            result["last_backup"]["started_at"] = _localise_backup_ts(result["last_backup"].get("started_at"))
-            result["last_backup"]["finished_at"] = _localise_backup_ts(result["last_backup"].get("finished_at"))
+            result["last_backup"]["started_at"] = time_engine.fmt_stored_utc(result["last_backup"].get("started_at"))
+            result["last_backup"]["finished_at"] = time_engine.fmt_stored_utc(result["last_backup"].get("finished_at"))
         for b in result.get("backups", []):
-            b["mtime"] = _localise_backup_ts(b.get("mtime"))
+            b["mtime"] = time_engine.fmt_stored_utc(b.get("mtime"))
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.exception("Failed to fetch backup status")

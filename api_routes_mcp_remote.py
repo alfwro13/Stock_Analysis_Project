@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 import time_engine
@@ -14,13 +13,8 @@ from scheduler_engine import arm_mcp_pairing_window_check
 
 mcp_remote_router = APIRouter()
 
-_STORED_FORMAT = "%Y-%m-%d %H:%M:%S"
 _REQUEST_ID = PathParam(pattern=r"^[A-Za-z0-9_-]{22}$")
 _GRANT_ID = PathParam(ge=1, le=2**62)
-
-
-def _display(stamp: Optional[str]) -> Optional[str]:
-    return time_engine.fmt_datetime(datetime.strptime(stamp, _STORED_FORMAT)) if stamp else None
 
 
 def _credential(kind: str, credential_id: Optional[int]) -> str:
@@ -46,7 +40,7 @@ def _last_public_request() -> Optional[dict]:
 
 def _pairing_state() -> dict:
     until = oauth.pairing_window_until()
-    return {"open": until is not None, "until_display": _display(until), "seconds_left": oauth.seconds_left(until) if until else 0}
+    return {"open": until is not None, "until_display": time_engine.fmt_stored_utc(until), "seconds_left": oauth.seconds_left(until) if until else 0}
 
 
 class McpRemoteToggle(BaseModel):
@@ -65,21 +59,21 @@ def get_mcp_remote(request: Request):
         "public_host": host,
         "host_active": bool(host) and host == config.MCP_PUBLIC_HOST,
         "endpoint_url": f"https://{host}/mcp" if host else None,
-        "client": {"client_id": client["client_id"], "created_display": _display(client["created_at"])} if client else None,
+        "client": {"client_id": client["client_id"], "created_display": time_engine.fmt_stored_utc(client["created_at"])} if client else None,
         "pairing": _pairing_state(),
         "proxy_trust": forwarded_trust(),
         "last_public_request": _last_public_request(),
         "requests": [
             {
-                "id": row["id"], "code": row["display_code"], "requested_display": _display(row["created_at"]),
+                "id": row["id"], "code": row["display_code"], "requested_display": time_engine.fmt_stored_utc(row["created_at"]),
                 "address": row["requester_address"], "user_agent": row["user_agent"], "seconds_left": oauth.seconds_left(row["expires_at"]),
             }
             for row in oauth.pending_requests()
         ],
         "apps": [
             {
-                "id": row["id"], "client_id": row["client_id"], "connected_display": _display(row["created_at"]), "expires_display": _display(row["expires_at"]),
-                "last_used_display": _display(row["last_used_at"]), "last_address": row["last_address"],
+                "id": row["id"], "client_id": row["client_id"], "connected_display": time_engine.fmt_stored_utc(row["created_at"]), "expires_display": time_engine.fmt_stored_utc(row["expires_at"]),
+                "last_used_display": time_engine.fmt_stored_utc(row["last_used_at"]), "last_address": row["last_address"],
             }
             for row in oauth.connected_apps()
         ],
@@ -159,7 +153,7 @@ def get_mcp_remote_activity(request: Request):
         "status": "success",
         "events": [
             {
-                "time_display": _display(row["logged_at"]), "credential": _credential(row["credential_kind"], row["key_id"]),
+                "time_display": time_engine.fmt_stored_utc(row["logged_at"]), "credential": _credential(row["credential_kind"], row["key_id"]),
                 "address": row["client_address"], "method": row["mcp_method"], "name": _event_name(row),
                 "status_code": row["status"], "duration_ms": row["duration_ms"],
             }

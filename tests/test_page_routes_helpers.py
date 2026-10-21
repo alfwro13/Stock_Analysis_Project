@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from page_routes import _build_rss_base_url
 from page_routes_macro import enrich_macro_events, _parse_cb_nlp_message
 from page_helpers import (
-    _fmt_currency, _fmt_volume, _utc_str_to_local, calculate_pnl, _build_position_sizing_context,
+    _fmt_currency, _fmt_volume, calculate_pnl, _build_position_sizing_context,
     get_pattern_tags_by_ticker, compute_badge_tags,
 )
 import database as db
@@ -274,26 +274,6 @@ class TestFmtVolume:
     def test_exact_million_boundary(self):
         result = _fmt_volume(1e6)
         assert "M" in result
-
-
-# ---------------------------------------------------------------------------
-# _utc_str_to_local
-# ---------------------------------------------------------------------------
-
-class TestUtcStrToLocal:
-    def test_valid_datetime_string_returns_formatted(self):
-        result = _utc_str_to_local("2026-06-08 14:30:00")
-        assert result  # non-empty; actual format depends on USER_TIMEZONE
-
-    def test_valid_hhmm_string_parsed(self):
-        result = _utc_str_to_local("2026-06-08 14:30")
-        assert result
-
-    def test_invalid_string_returned_unchanged(self):
-        assert _utc_str_to_local("not-a-date") == "not-a-date"
-
-    def test_empty_string_returned_unchanged(self):
-        assert _utc_str_to_local("") == ""
 
 
 # ---------------------------------------------------------------------------

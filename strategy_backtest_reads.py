@@ -1,7 +1,6 @@
 # GUI name: "Strategy Backtester". Read side of strategy_backtest_runs.py: the saved-run list, a run's result payload and its allocation history.
 
 import json
-from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -12,16 +11,11 @@ from stable_shortlist_reads import SIGNAL_LABELS
 from strategy_backtest_runs import (
     MAX_TRANSACTIONS_PER_STRATEGY,
     STATE_COMPLETED,
-    TS_FORMAT,
     expire_interrupted_runs,
     get_run_row,
     run_dir,
 )
 from xray_engine import native_max_drawdown
-
-
-def _local(ts: Optional[str]) -> Optional[str]:
-    return time_engine.fmt_datetime(datetime.strptime(ts, TS_FORMAT)) if ts else None
 
 
 def _basket_label(basket: dict) -> str:
@@ -45,7 +39,7 @@ def list_runs() -> List[Dict]:
         basket, config = json.loads(r["basket_json"]), json.loads(r["config_json"])
         summary = json.loads(r["summary_json"]) if r["summary_json"] else None
         runs.append({
-            "id": r["id"], "state": r["state"], "created_at": _local(r["created_at"]), "error": r["error"],
+            "id": r["id"], "state": r["state"], "created_at": time_engine.fmt_stored_utc(r["created_at"]), "error": r["error"],
             "basket": _basket_label(basket), "currency": basket["currency"], "tickers": len(basket["tickers"]),
             "strategies": len(config["strategies"]), "period": summary["period"] if summary else None,
             "incomplete": summary["incomplete"] if summary else False,
@@ -71,8 +65,8 @@ def get_run(run_id: str) -> Dict:
     payload = {
         "status": "success",
         "run": {
-            "id": row["id"], "state": row["state"], "created_at": _local(row["created_at"]),
-            "finished_at": _local(row["finished_at"]), "error": row["error"], "config": config,
+            "id": row["id"], "state": row["state"], "created_at": time_engine.fmt_stored_utc(row["created_at"]),
+            "finished_at": time_engine.fmt_stored_utc(row["finished_at"]), "error": row["error"], "config": config,
             "basket": {**basket, "label": _basket_label(basket)},
             "inputs": json.loads(row["inputs_json"]) if row["inputs_json"] else None,
         },

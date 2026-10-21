@@ -24,6 +24,7 @@ from time_engine import (
     to_local,
     fmt_time,
     fmt_datetime,
+    fmt_stored_utc,
     fmt_reset_time,
     EXCHANGE_HOURS,
     _load_exchange_registry,
@@ -618,6 +619,38 @@ class TestFmtDatetime:
         with patch("time_engine._load_config", return_value=_UTC_CONFIG):
             result = fmt_datetime(_UTC_NOON)
         assert isinstance(result, str)
+
+
+class TestFmtStoredUtc:
+    _LONDON = {"USER_TIMEZONE": "Europe/London"}
+    _NEW_YORK = {"USER_TIMEZONE": "America/New_York"}
+
+    def test_seconds_format_converted_to_user_tz(self):
+        with patch("time_engine._load_config", return_value=self._NEW_YORK):
+            assert fmt_stored_utc("2026-01-15 12:00:00") == "2026-01-15 07:00 EST"
+
+    def test_minutes_format_accepted(self):
+        with patch("time_engine._load_config", return_value=self._LONDON):
+            assert fmt_stored_utc("2026-06-08 14:30") == "2026-06-08 15:30 BST"
+
+    def test_iso_forms_accepted(self):
+        with patch("time_engine._load_config", return_value=self._LONDON):
+            assert fmt_stored_utc("2026-01-15T12:00:00") == "2026-01-15 12:00 GMT"
+            assert fmt_stored_utc("2026-01-15T12:00:00.123456") == "2026-01-15 12:00 GMT"
+
+    def test_matches_fmt_datetime_of_the_utc_instant(self):
+        with patch("time_engine._load_config", return_value=self._NEW_YORK):
+            assert fmt_stored_utc("2026-01-15 12:00:00") == fmt_datetime(_UTC_NOON)
+
+    def test_empty_gives_fallback(self):
+        assert fmt_stored_utc(None) is None
+        assert fmt_stored_utc("") is None
+        assert fmt_stored_utc("", fallback="Never") == "Never"
+        assert fmt_stored_utc(None, fallback="") == ""
+
+    def test_unparseable_returned_unchanged(self):
+        assert fmt_stored_utc("not-a-date") == "not-a-date"
+        assert fmt_stored_utc("Never", fallback="x") == "Never"
 
 
 # ---------------------------------------------------------------------------

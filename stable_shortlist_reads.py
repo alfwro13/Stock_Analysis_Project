@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from typing import Optional
 
 import numpy as np
@@ -143,7 +142,7 @@ def get_shortlist(signal_type: str, scope: str) -> dict:
         r["ineligible_label"] = INELIGIBLE_LABELS.get(r["ineligible_reason"]) if r["ineligible_reason"] else None
     snapshot = dict(snap)
     snapshot["config"] = json.loads(snapshot.pop("config_json"))
-    snapshot["decision_local"] = time_engine.fmt_datetime(datetime.strptime(snapshot["decision_ts"], "%Y-%m-%d %H:%M:%S"))
+    snapshot["decision_local"] = time_engine.fmt_stored_utc(snapshot["decision_ts"])
     payload["snapshot"] = snapshot
     payload["members"] = sorted((r for r in rows if r["selected"]), key=lambda r: (r["rank"], r["ticker"]))
     payload["changes"] = sorted(

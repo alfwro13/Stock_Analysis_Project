@@ -1,6 +1,5 @@
 import json
 import logging
-from datetime import datetime, timezone
 from typing import List, Optional
 
 import pandas as pd
@@ -695,11 +694,7 @@ def get_forensic_scores(request: Request):
                 "piotroski_f_score":    f,
                 "altman_z_score":       z,
                 "beneish_m_score":      m,
-                "forensic_last_updated": (
-                    time_engine.fmt_datetime(
-                        datetime.strptime(r['forensic_last_updated'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                    ) if r['forensic_last_updated'] else None
-                ),
+                "forensic_last_updated": time_engine.fmt_stored_utc(r['forensic_last_updated']),
                 "flag_piotroski":       f is not None and f < 4,
                 "flag_altman":          z is not None and z < ALTMAN_Z_DISTRESS,
                 "flag_beneish":         m is not None and m > -1.78,
