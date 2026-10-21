@@ -8,7 +8,7 @@ import db_mcp_oauth
 import notification_engine as ne
 import scheduler_engine
 import scheduler_jobs
-from constants import MCP_AUTH_FAILURES_MAX, MCP_NOTIFY_COOLDOWN_SECONDS, MCP_OAUTH_PAIRING_MINUTES
+from constants import MCP_AUTH_FAILURES_MAX, MCP_NOTIFY_COOLDOWN_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS
 from database import get_connection
 from mcp_server import events, limits, oauth
 
@@ -99,11 +99,19 @@ class TestRefreshReuse:
     def test_a_reused_refresh_token_is_announced_once_when_the_grant_is_revoked(self, remote, remote_notifications):
         first = tokens(remote)
         refresh(remote, first["refresh_token"])
+        remote.clock.advance(seconds=MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS + 1)
         remote_notifications.clear()
         assert refresh(remote, first["refresh_token"]).status_code == 400
         assert texts(remote_notifications) == ["A refresh token was used twice; the connected app was signed out."]
         assert refresh(remote, first["refresh_token"]).status_code == 400
         assert len(remote_notifications) == 1
+
+    def test_a_retry_within_the_grace_announces_nothing(self, remote, remote_notifications):
+        first = tokens(remote)
+        refresh(remote, first["refresh_token"])
+        remote_notifications.clear()
+        assert refresh(remote, first["refresh_token"]).status_code == 400
+        assert remote_notifications == []
 
     def test_an_ordinary_refresh_announces_nothing(self, remote, remote_notifications):
         first = tokens(remote)
