@@ -1,0 +1,69 @@
+:root {
+    --approve-bg: #0f1419;
+    --approve-card: #1a2129;
+    --approve-text: #e6edf3;
+    --approve-muted: #9aa7b4;
+    --approve-border: #2f3a46;
+    --approve-accent: #58a6ff;
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --approve-bg: #f4f6f8;
+        --approve-card: #ffffff;
+        --approve-text: #1c2430;
+        --approve-muted: #5a6877;
+        --approve-border: #d3dae1;
+        --approve-accent: #0b63c5;
+    }
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+    background: var(--approve-bg);
+    color: var(--approve-text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.approve-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 28px 24px;
+    background: var(--approve-card);
+    border: 1px solid var(--approve-border);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.approve-card h1 {
+    margin: 0 0 12px;
+    font-size: 1.4rem;
+}
+
+.approve-card p {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.approve-code {
+    display: inline-block;
+    padding: 6px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 1.8rem;
+    letter-spacing: 0.2em;
+    color: var(--approve-accent);
+    border: 1px solid var(--approve-border);
+    border-radius: 8px;
+}
+
+.approve-hint {
+    color: var(--approve-muted);
+    font-size: 0.9rem;
+}

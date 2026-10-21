@@ -13,13 +13,14 @@ from urllib.parse import urlencode
 import config
 import db_mcp_oauth
 from constants import (
-    MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_GRANT_DAYS,
+    MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_CONNECTED_APPS_MAX, MCP_OAUTH_GRANT_DAYS,
     MCP_OAUTH_LAST_USED_WRITE_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_PENDING_MAX,
     MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR,
     MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
 from utils import clean_display_text
 
+from . import events
 from .keys import hash_key
 from .public_host import normalize_host
 from .server import MCP_PATH
@@ -33,6 +34,7 @@ REFRESH_PREFIX = "mcprt_"
 
 _STORED_FORMAT = "%Y-%m-%d %H:%M:%S"
 _CHALLENGE_RE = re.compile(r"[A-Za-z0-9_-]{43}")
+_BINDING_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 _VERIFIER_RE = re.compile(r"[A-Za-z0-9\-._~]{43,128}")
 _DISPLAY_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 _GRANT_REFUSED = "The grant is invalid, expired or revoked."
@@ -90,6 +92,11 @@ def create_client() -> dict:
     return {"client_id": client_id, "client_secret": secret}
 
 
+def client_summary() -> Optional[dict]:
+    row = db_mcp_oauth.get_client()
+    return {"client_id": row["client_id"], "created_at": row["created_at"]} if row else None
+
+
 def authenticate_client(client_id: str, secret: str) -> bool:
     row = db_mcp_oauth.get_client()
     expected_id, expected_hash = (row["client_id"], row["secret_hash"]) if row else ("", "")
@@ -98,8 +105,10 @@ def authenticate_client(client_id: str, secret: str) -> bool:
     return row is not None and id_ok and secret_ok
 
 
-def open_pairing_window(minutes: int = MCP_OAUTH_PAIRING_MINUTES) -> bool:
-    return db_mcp_oauth.set_pairing_open_until(_stamp(_now() + timedelta(minutes=minutes)))
+def open_pairing_window(minutes: int = MCP_OAUTH_PAIRING_MINUTES) -> Optional[str]:
+    """The stored end of the new window, or None when there is no client to pair."""
+    until = _stamp(_now() + timedelta(minutes=minutes))
+    return until if db_mcp_oauth.set_pairing_open_until(until) else None
 
 
 def close_pairing_window() -> bool:
@@ -113,6 +122,27 @@ def _window_open(client: dict, now: datetime) -> bool:
 def pairing_window_open() -> bool:
     client = db_mcp_oauth.get_client()
     return client is not None and _window_open(client, _now())
+
+
+def pairing_window_until() -> Optional[str]:
+    client = db_mcp_oauth.get_client()
+    return client["pairing_open_until"] if client is not None and _window_open(client, _now()) else None
+
+
+def seconds_left(stamp: str) -> int:
+    return max(0, int(_epoch(stamp) - _now().timestamp()))
+
+
+def check_pairing_window(armed_until: str) -> bool:
+    """Run when the window armed for armed_until ends; tells the operator when no connection request was made during it."""
+    client = db_mcp_oauth.get_client()
+    if client is None or client["pairing_open_until"] != armed_until or armed_until > _stamp(_now()):
+        return False
+    opened = datetime.strptime(armed_until, _STORED_FORMAT) - timedelta(minutes=MCP_OAUTH_PAIRING_MINUTES)
+    if db_mcp_oauth.count_requests_since(_stamp(opened)):
+        return False
+    events.window_closed_unused()
+    return True
 
 
 def begin_authorization(params: Dict[str, str], address: str, user_agent: Optional[str]) -> str:
@@ -142,10 +172,11 @@ def begin_authorization(params: Dict[str, str], address: str, user_agent: Option
     if pending >= MCP_OAUTH_PENDING_MAX or recent >= MCP_OAUTH_REQUESTS_PER_HOUR:
         raise OAuthError("temporarily_unavailable", "Too many connection requests.", status=429, retry_after=MCP_OAUTH_REQUEST_SECONDS)
     binding = secrets.token_urlsafe(32)
+    display_code = "".join(secrets.choice(_DISPLAY_CODE_ALPHABET) for _ in range(6))
     db_mcp_oauth.insert_request(
         {
             "id": secrets.token_urlsafe(16),
-            "display_code": "".join(secrets.choice(_DISPLAY_CODE_ALPHABET) for _ in range(6)),
+            "display_code": display_code,
             "client_state": state,
             "code_challenge": challenge,
             "redirect_uri": REDIRECT_URI,
@@ -159,11 +190,45 @@ def begin_authorization(params: Dict[str, str], address: str, user_agent: Option
         },
         _stamp(now - timedelta(days=MCP_OAUTH_PRUNE_AFTER_DAYS)),
     )
+    events.request_waiting(display_code, address)
     return binding
 
 
 def approve_request(request_id: str) -> bool:
-    return db_mcp_oauth.approve_request(request_id, _stamp(_now()))
+    if not db_mcp_oauth.approve_request(request_id, _stamp(_now())):
+        return False
+    request = db_mcp_oauth.get_request(request_id)
+    events.request_approved(request["display_code"])
+    return True
+
+
+def deny_request(request_id: str) -> bool:
+    return db_mcp_oauth.deny_request(request_id, _stamp(_now()))
+
+
+def pending_requests() -> List[dict]:
+    return db_mcp_oauth.list_pending_requests(_stamp(_now()))
+
+
+def connected_apps() -> List[dict]:
+    return db_mcp_oauth.list_active_grants(_stamp(_now()), MCP_OAUTH_CONNECTED_APPS_MAX)
+
+
+def request_state(binding: str) -> dict:
+    """What the waiting page of the browser holding this binding shows; an approved request hands its redirect over once."""
+    if not _BINDING_RE.fullmatch(binding):
+        return {"state": "unknown"}
+    row = db_mcp_oauth.get_request_by_binding(hash_key(binding))
+    if row is None:
+        return {"state": "unknown"}
+    if row["status"] == "denied":
+        return {"state": "denied"}
+    if row["expires_at"] <= _stamp(_now()):
+        return {"state": "expired"}
+    if row["status"] == "pending":
+        return {"state": "pending", "code": row["display_code"]}
+    redirect = claim_authorization(binding) if row["status"] == "approved" else None
+    return {"state": "approved", "redirect": redirect} if redirect else {"state": "done"}
 
 
 def claim_authorization(binding: str) -> Optional[str]:
@@ -258,7 +323,8 @@ def refresh_tokens(client_id: str, refresh_token: str, scope: Optional[str], res
 
 
 def _refresh_reused(grant_id: int, now: datetime):
-    _revoke(grant_id, now)
+    if _revoke(grant_id, now):
+        events.refresh_reused()
     logger.warning("A rotated refresh token was presented again; grant %s was revoked", grant_id)
     raise _grant_refused()
 

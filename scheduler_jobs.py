@@ -170,6 +170,16 @@ def run_account_performance_refresh_job():
     finally:
         record_job_run('account_performance_refresh_job')
 
+def run_mcp_pairing_window_check(armed_until: str):
+    from mcp_server.oauth import check_pairing_window  # mcp_server imports scheduler_engine, which imports this module
+
+    try:
+        check_pairing_window(armed_until)
+    except Exception as e:
+        log_sched_notification("Error", f"MCP Pairing Window Check failed: {e}")
+    finally:
+        record_job_run('mcp_pairing_window_check_job')
+
 def run_treasury_bill_maturity_sweep():
     try:
         result = sweep_matured_bills()

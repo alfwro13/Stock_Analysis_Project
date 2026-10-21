@@ -1,23 +1,29 @@
 import base64
 import binascii
+import functools
 import logging
 import time
 from typing import Dict, Optional, Tuple
 from urllib.parse import parse_qsl, unquote_plus
 
+from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 
+from config import BASE_DIR
 from constants import MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS, MCP_OAUTH_FORM_MAX_BYTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_REQUEST_SECONDS
 
-from . import audit, limits, oauth
+from . import audit, events, limits, oauth
 from .auth import disabled_response
 from .oauth import OAuthError
 
 logger = logging.getLogger(__name__)
 
 BINDING_COOKIE = "mcp_oauth_binding"
+_APPROVE_CSS = BASE_DIR / "static" / "css" / "oauth_approve.css"
+_APPROVE_JS = BASE_DIR / "static" / "js" / "oauth_approve.js"
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 _NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 
 
@@ -120,6 +126,31 @@ async def authorize(request: Request) -> Response:
     return _finish(request, "authorize", started, response)
 
 
+@functools.lru_cache(maxsize=1)
+def _approve_page() -> str:
+    # The public host serves no /static, so the page carries its own CSS and JS, read from the repository files and never from the request.
+    return templates.get_template("oauth_approve.html").render(
+        css=_APPROVE_CSS.read_text(encoding="utf-8"), js=_APPROVE_JS.read_text(encoding="utf-8"), redirect_prefix=oauth.REDIRECT_URI
+    )
+
+
+async def approve(request: Request) -> Response:
+    refused = _precheck(request)
+    if refused is not None:
+        return refused
+    started = time.monotonic()
+    page = await run_in_threadpool(_approve_page)
+    return _finish(request, "approve", started, HTMLResponse(page, headers=_NO_STORE))
+
+
+async def approve_status(request: Request) -> Response:
+    refused = _precheck(request)
+    if refused is not None:
+        return refused
+    state = await run_in_threadpool(oauth.request_state, request.cookies.get(BINDING_COOKIE, ""))
+    return JSONResponse(state, headers=_NO_STORE)
+
+
 async def _read_form(request: Request) -> Dict[str, str]:
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/x-www-form-urlencoded":
         raise OAuthError("invalid_request", "The body must be application/x-www-form-urlencoded.")
@@ -160,6 +191,7 @@ async def _authenticate(request: Request, fields: Dict[str, str]) -> str:
     address = _address(request)
     if limits.record_failure(address):
         logger.warning("Locked %s out of the MCP endpoints for %d s after %d wrong credentials", address, MCP_AUTH_LOCKOUT_SECONDS, MCP_AUTH_FAILURES_MAX)
+        events.lockout_tripped(address)
     raise OAuthError("invalid_client", "Client authentication failed.", status=401)
 
 
@@ -219,6 +251,8 @@ ROUTES = (
     ("/.well-known/oauth-protected-resource/mcp", protected_resource_metadata, ["GET"]),
     ("/.well-known/oauth-authorization-server", authorization_server_metadata, ["GET"]),
     ("/oauth/authorize", authorize, ["GET"]),
+    ("/oauth/approve", approve, ["GET"]),
+    ("/oauth/approve-status", approve_status, ["GET"]),
     ("/oauth/token", token, ["POST"]),
     ("/oauth/revoke", revoke, ["POST"]),
 )

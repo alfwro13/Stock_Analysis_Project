@@ -63,6 +63,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "risk_orchestrator_digest": {"label": "Risk Orchestrator Daily Rollup", "job_id": "risk_orchestrator_digest_job", "default": dict(_ON)},
     "sentiment_scan_degraded": {"label": "NLP Sentiment Scan Degraded",    "job_id": "sentiment_scan_job",     "default": dict(_ON)},
     "failed_login_alert":      {"label": "Failed Login Alert",              "job_id": None,                     "default": dict(_ON)},
+    "mcp_remote_access_alert": {"label": "MCP Remote Access",               "job_id": "claude_mcp_server_source", "default": dict(_ON)},
 }
 
 ALERT_MESSAGE_TYPES = tuple(meta["alert_type"] for meta in NOTIFICATION_SOURCES.values() if "alert_type" in meta)

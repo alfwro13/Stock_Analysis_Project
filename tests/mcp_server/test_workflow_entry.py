@@ -42,7 +42,7 @@ class TestWorkflowEntry:
         meta = JOB_GRAPH["claude_mcp_server_source"]
         assert meta["label"] == "MCP Server"
         assert meta["category"] == "external"
-        assert meta["produces"] == ["mcp_audit_log"]
+        assert meta["produces"] == ["mcp_audit_log", "mcp_oauth_requests"]
 
     def test_audit_log_has_one_producer_and_the_maintenance_job_prunes_it(self):
         producers = [job_id for job_id, other in JOB_GRAPH.items() if "mcp_audit_log" in other["produces"]]
@@ -63,3 +63,16 @@ class TestWorkflowEntry:
 
     def test_yahoo_source_still_has_no_inputs(self):
         assert _build_node("yahoo_finance_source", JOB_GRAPH["yahoo_finance_source"], None, {})["consumes"] == []
+
+
+class TestPairingWindowCheckEntry:
+    def test_job_is_labelled_and_consumes_what_the_server_produces(self):
+        meta = JOB_GRAPH["mcp_pairing_window_check_job"]
+        assert meta["label"] == "MCP Pairing Window Check"
+        assert meta["produces"] == [] and meta["consumes"] == ["mcp_oauth_requests"]
+        assert "mcp_oauth_requests" in JOB_GRAPH["claude_mcp_server_source"]["produces"]
+
+    def test_graph_draws_an_edge_from_the_server_to_the_check(self):
+        nodes = [_build_node(job_id, meta, None, {}) for job_id, meta in JOB_GRAPH.items() if not meta.get("dynamic")]
+        edges = [e for e in _derive_edges(nodes) if e["via"] == "mcp_oauth_requests"]
+        assert edges == [{"from": "claude_mcp_server_source", "to": "mcp_pairing_window_check_job", "via": "mcp_oauth_requests"}]

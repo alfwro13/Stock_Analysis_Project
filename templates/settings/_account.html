@@ -193,7 +193,7 @@
 
         </details>
 
-        <details class="settings-card" id="mcp-server-card" data-search-keywords="mcp, claude, model context protocol, bearer key">
+        <details class="settings-card" id="mcp-server-card" data-search-keywords="mcp, claude, model context protocol, bearer key, remote access, claude.ai, mobile, oauth, pairing, connect">
             <summary>🤖 MCP Server</summary>
             <p class="settings-desc">A read-only endpoint that lets Claude (Claude Code, Claude Desktop) query your accounts, positions, Portfolio X-ray, Market Regime and more. It uses its own key, separate from the Home Assistant API key, and refuses every request while it is disabled or no key is set. Setup steps are in <code>assets/mcp_integration.md</code>.</p>
             <div class="checkbox-group">
@@ -227,6 +227,75 @@
                     <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="createMcpKey()">➕ Create Key</button>
                 </div>
                 <div id="mcp-key-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20" id="mcp-remote-panel">
+                <h4 class="settings-panel-header text-blue">Remote Access</h4>
+                <p class="settings-desc">Lets claude.ai and the Claude mobile app reach the MCP Server from the internet through your public hostname. Every connection must be approved here, by you, while a <abbr title="A 10-minute period in which a new connection request is accepted. Outside it, nobody can start a connection.">pairing window</abbr> is open.</p>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="MCP_REMOTE_ENABLED" {% if config.MCP_REMOTE_ENABLED %}checked{% endif %} onchange="toggleMcpRemote(this)">
+                    <label for="MCP_REMOTE_ENABLED">Enable Remote Access</label>
+                </div>
+                <div id="mcp-remote-enabled-msg"></div>
+
+                <div class="form-group">
+                    <label for="mcp_public_host">Public host</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="mcp_public_host" class="form-control flex-1" maxlength="{{ mcp_public_host_max }}" placeholder="mcp.example.com" autocomplete="off" spellcheck="false" value="{{ config.MCP_PUBLIC_HOST }}">
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="saveMcpPublicHost()">💾 Save</button>
+                    </div>
+                    <div class="text-muted-small">The host is read once at startup, so a change needs a restart.</div>
+                    <div id="mcp-remote-host-msg"></div>
+                </div>
+                <div class="form-group">
+                    <label>Endpoint for Claude</label>
+                    <div><code id="mcp_remote_endpoint">Save a public host first.</code></div>
+                </div>
+
+                <div class="form-group">
+                    <label>OAuth client</label>
+                    <div class="flex-gap-10">
+                        <span id="mcp_remote_client_id" class="text-muted">Loading…</span>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" id="mcp-remote-client-btn" onclick="createMcpRemoteClient()">🔑 Create OAuth Client</button>
+                    </div>
+                    <div class="text-muted-small">Enter the client ID and secret in Claude's connector dialog. Rotating the secret signs out every connected app: remove and re-add the connector in Claude.</div>
+                    <div id="mcp-remote-client-msg"></div>
+                </div>
+                <div id="mcp_remote_client_once" class="form-group d-none">
+                    <label for="mcp_remote_new_client_id">Client ID</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="mcp_remote_new_client_id" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_remote_new_client_id', this)">📋 Copy</button>
+                    </div>
+                    <label for="mcp_remote_new_secret">Client Secret — copy it now, it will not be shown again</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="mcp_remote_new_secret" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_remote_new_secret', this)">📋 Copy</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>New connection</label>
+                    <div class="flex-gap-10">
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" id="mcp-remote-pairing-btn" onclick="openMcpPairingWindow()">🔓 Allow a New Connection (10 minutes)</button>
+                        <span id="mcp_remote_pairing_state" class="text-muted">Pairing window closed.</span>
+                    </div>
+                    <div id="mcp-remote-pairing-msg"></div>
+                </div>
+
+                <h5 class="settings-panel-header">Connection Requests</h5>
+                <p class="settings-desc">Approve only if the code matches the one shown in your browser.</p>
+                <table class="table table-hover w-100">
+                    <thead><tr><th>Code</th><th>Requested</th><th>From</th><th>Browser</th><th></th></tr></thead>
+                    <tbody id="mcp-remote-requests-body"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
+                </table>
+                <div id="mcp-remote-request-msg"></div>
+
+                <h5 class="settings-panel-header">Connected Apps</h5>
+                <table class="table table-hover w-100">
+                    <thead><tr><th>Client</th><th>Connected</th><th>Expires</th><th>Last used</th><th>Last address</th></tr></thead>
+                    <tbody id="mcp-remote-apps-body"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
+                </table>
             </div>
         </details>
 
