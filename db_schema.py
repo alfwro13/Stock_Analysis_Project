@@ -1417,6 +1417,22 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_audit_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                logged_at       TEXT NOT NULL,
+                credential_kind TEXT NOT NULL,
+                key_id          INTEGER,
+                client_address  TEXT,
+                mcp_method      TEXT,
+                mcp_name        TEXT,
+                status          INTEGER NOT NULL,
+                duration_ms     INTEGER,
+                response_bytes  INTEGER
+            )
+        ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_audit_log_logged_at ON mcp_audit_log (logged_at)")
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS yahoo_api_stats (
                 date                  TEXT PRIMARY KEY,
                 total_calls           INTEGER NOT NULL DEFAULT 0,

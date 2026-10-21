@@ -395,6 +395,13 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 * **Writes:** `mcp_server.keys.create_key()` / `delete_key()` through `db_mcp_keys.py`; `record_use()` writes `last_used_at` at most once per minute per key, on a worker thread.
 * **Reads:** `mcp_server.keys` caches the hashes in memory and drops the cache on every create or delete, so authenticating a request needs no query.
 
+#### `mcp_audit_log`
+* **Purpose:** One row per request to the MCP Server (`/mcp`), including refused credentials, for the operator to see who called what and when. It holds no secret, token, argument value, body or header.
+* **Key Columns:** `id` (PK AUTOINCREMENT), `logged_at` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, indexed), `credential_kind` (`key`, or `none` when the credential was refused), `key_id` (INTEGER, NULL when refused; no foreign key, so a row outlives its key and the AUTOINCREMENT id is never reused), `client_address` (TEXT, cleaned, at most 64 characters), `mcp_method` (JSON-RPC method, NULL when the body could not be read) and `mcp_name` (tool, prompt or resource name; NULL for other methods), both cleaned and at most 100 characters; `status` (HTTP status), `duration_ms`, `response_bytes`.
+* **Writes:** `mcp_server.audit.record()` queues the row; a single worker thread inserts it through `db_mcp_audit.add_entry()`. The queue holds 1,000 rows, then drops. Each request is written once, at the end.
+* **Retention:** 90 days; `db_mcp_audit.prune_older_than()` runs from `MaintenanceEngine.prune_mcp_audit_log()` in the weekly Database & File Maintenance job.
+* **Reads:** none in the app yet.
+
 #### `yahoo_api_stats`
 * **Purpose:** Daily aggregated counters for all `yahoo_connection_boundary` invocations. Used by the Yahoo Finance API Usage card in Settings to show request volume, interface breakdown, rate-limit hits, errors, and yfinance-logged issues over the past 8 days.
 * **Key Columns:** `date` (PK TEXT `YYYY-MM-DD` UTC), `total_calls`, `ipv4_calls`, `ipv6_calls`, `rate_limit_429`, `other_errors`, `yfinance_logged_errors` (all INTEGER, default 0).

@@ -32,7 +32,9 @@ def tool_data(response):
 def table_counts():
     conn = get_connection()
     try:
-        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+        tables = [
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'mcp_audit_log'")
+        ]
         return {t: conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] for t in tables}
     finally:
         conn.close()

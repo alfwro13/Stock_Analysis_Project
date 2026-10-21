@@ -5211,9 +5211,12 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 | No MCP key exists yet (fail closed), no `Authorization`, another scheme, or a wrong key | `401 {"detail": "Invalid or missing MCP key"}` with `WWW-Authenticate: Bearer` |
 | Any `X-API-Key` header (the Home Assistant key), with or without a Bearer key | `403 {"detail": "The API key cannot be used on this route"}` |
 | A session cookie alone | `401` (a cookie does not authenticate `/mcp`) |
+| 5 wrong credentials (`401`/`403` above) from one client address within 60 s | that address is locked out for 5 minutes: every request from it, a valid key included, is `429 {"detail": "Too many wrong MCP credentials from this address"}` with `Retry-After`. Separate from the dashboard login lockout |
+| A valid key over 60 calls in a rolling minute, or over 8 calls in flight | `429 {"detail": "Too many MCP requests for this key"}` with `Retry-After` (seconds); other keys are unaffected |
+| A body over 64 KiB | `413 {"detail": "The request body is too large"}` |
 | A Bearer MCP key on any route other than `/mcp` | ignored: the route's normal authentication applies (`302` to `/login` for a pages and `/api/*` call without a session) |
 
-`GET`, `DELETE` and every other method on `/mcp` answer `401` without the key and `405` with `Allow: POST` with it. `/mcp/` answers `307` to `/mcp` once authenticated; any other `/mcp/*` path is `404`. The request body is limited by the SDK to 4 MiB.
+`GET`, `DELETE` and every other method on `/mcp` answer `401` without the key and `405` with `Allow: POST` with it. `/mcp/` answers `307` to `/mcp` once authenticated; any other `/mcp/*` path is `404`. The request body is limited to 64 KiB (`MCP_REQUEST_MAX_BYTES`). Each request is recorded in `mcp_audit_log` (`assets/mcp_integration.md`, **Audit log**).
 
 Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 

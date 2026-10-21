@@ -86,6 +86,7 @@ EXPECTED_TABLES = [
     "watchlist_items",
     "backup_history",
     "mcp_api_keys",
+    "mcp_audit_log",
     "market_ticker_registry",
     "market_pulse_sparkline",
     "instrument_sessions",

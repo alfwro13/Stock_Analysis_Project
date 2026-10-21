@@ -16,16 +16,25 @@ class _InlineExecutor:
 
 @pytest.fixture(autouse=True)
 def _mcp_key(monkeypatch):
-    from mcp_server import keys
+    from mcp_server import audit, keys, limits
     monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": True})
     monkeypatch.setattr(keys, "_executor", _InlineExecutor())
+    monkeypatch.setattr(audit, "_executor", _InlineExecutor())
     key_id = db_mcp_keys.add_key("Test key", keys.hash_key(MCP_KEY), "2026-10-01 09:00:00")
     keys.invalidate()
+    limits.reset()
     try:
         yield
     finally:
         db_mcp_keys.delete_key(key_id)
         keys.invalidate()
+        limits.reset()
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM mcp_audit_log")
+            conn.commit()
+        finally:
+            conn.close()
 
 
 @pytest.fixture(autouse=True)
