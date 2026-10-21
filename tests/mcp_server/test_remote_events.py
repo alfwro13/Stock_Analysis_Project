@@ -263,6 +263,10 @@ class TestScheduledJob:
         assert job.args == ("2031-05-06 07:08:09",)
         assert job.trigger.run_date == datetime(2031, 5, 6, 7, 8, 9, tzinfo=timezone.utc)
 
+    def test_a_corrupt_window_end_raises_instead_of_arming_nothing(self):
+        with pytest.raises(ValueError):
+            scheduler_engine.arm_mcp_pairing_window_check("not-a-date")
+
     def test_a_window_opened_later_replaces_the_earlier_check(self):
         scheduler_engine.arm_mcp_pairing_window_check("2031-05-06 07:08:09")
         scheduler_engine.arm_mcp_pairing_window_check("2031-05-06 07:20:00")

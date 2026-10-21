@@ -1279,6 +1279,24 @@ class TestLoginLockout:
         for got, want in zip(observed, expected):
             assert abs(got - want) <= 1
 
+    def test_corrupt_lock_timestamp_raises_instead_of_reading_as_unlocked(self, test_username):
+        from auth import login_lockout_remaining
+        from database import get_connection
+        with _fresh_client() as c:
+            for _ in range(5):
+                _login(c, test_username, "wrong-guess")
+            conn = None
+            try:
+                conn = get_connection()
+                conn.execute("UPDATE login_throttle SET locked_until = 'garbage' WHERE id = 1")
+                conn.commit()
+                with pytest.raises(ValueError):
+                    login_lockout_remaining()
+            finally:
+                if conn:
+                    conn.close()
+                _clear_login_throttle()
+
     def test_lock_expires_on_its_own(self, test_username, test_password):
         from database import get_connection
         with _fresh_client() as c:

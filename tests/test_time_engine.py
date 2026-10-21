@@ -25,6 +25,7 @@ from time_engine import (
     fmt_time,
     fmt_datetime,
     fmt_stored_utc,
+    parse_stored_utc,
     fmt_reset_time,
     EXCHANGE_HOURS,
     _load_exchange_registry,
@@ -619,6 +620,26 @@ class TestFmtDatetime:
         with patch("time_engine._load_config", return_value=_UTC_CONFIG):
             result = fmt_datetime(_UTC_NOON)
         assert isinstance(result, str)
+
+
+class TestParseStoredUtc:
+    def test_every_stored_form_gives_an_aware_utc_datetime(self):
+        expected = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        assert parse_stored_utc("2026-01-15 12:00:00") == expected
+        assert parse_stored_utc("2026-01-15 12:00") == expected
+        assert parse_stored_utc("2026-01-15T12:00:00") == expected
+        assert parse_stored_utc("2026-01-15T12:00:00.000000") == expected
+
+    def test_result_is_aware_so_it_subtracts_from_now(self):
+        parsed = parse_stored_utc("2026-01-15 12:00:00")
+        assert parsed.tzinfo is timezone.utc
+        assert (datetime.now(timezone.utc) - parsed).total_seconds() > 0
+
+    def test_empty_or_unparseable_gives_none(self):
+        assert parse_stored_utc(None) is None
+        assert parse_stored_utc("") is None
+        assert parse_stored_utc("not-a-date") is None
+        assert parse_stored_utc("2026-01-15") is None
 
 
 class TestFmtStoredUtc:

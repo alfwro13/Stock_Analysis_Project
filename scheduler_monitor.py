@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from db_accounts import get_account
 from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _DYNAMIC_ACCOUNT_TOPUP_RE, _resolve_manifest, job_label
+from time_engine import parse_stored_utc
 
 _ACCOUNT_TYPE_ARTIFACT = {"Pension": "pension_account_data", "House": "house_account_data"}
 
@@ -76,23 +77,12 @@ def _period_days(weekdays: set[int] | None) -> int:
     return 1 if (weekdays is None or len(weekdays) >= 5) else 7
 
 
-def _parse_last_run(value):
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
-
-
 def _job_status(node: dict) -> tuple[str, str]:
     if not node["enabled"]:
         return "disabled", "disabled"
     if node.get("last_status") == "error":
         return "red", "error"
-    last_run = _parse_last_run(node.get("last_run"))
+    last_run = parse_stored_utc(node.get("last_run"))
     if last_run is None:
         return "amber", "never_run"
     if not node.get("schedule"):

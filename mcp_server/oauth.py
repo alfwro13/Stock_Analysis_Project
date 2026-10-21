@@ -18,6 +18,7 @@ from constants import (
     MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS, MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS,
     MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
+from time_engine import parse_stored_utc
 from utils import clean_display_text
 
 from . import events
@@ -64,8 +65,15 @@ def _stamp(moment: datetime) -> str:
     return moment.strftime(_STORED_FORMAT)
 
 
+def _moment(stamp: str) -> datetime:
+    parsed = parse_stored_utc(stamp)
+    if parsed is None:
+        raise ValueError("stored OAuth timestamp is not a UTC timestamp")
+    return parsed
+
+
 def _epoch(stamp: str) -> float:
-    return datetime.strptime(stamp, _STORED_FORMAT).replace(tzinfo=timezone.utc).timestamp()
+    return _moment(stamp).timestamp()
 
 
 def public_origin() -> str:
@@ -138,7 +146,7 @@ def check_pairing_window(armed_until: str) -> bool:
     client = db_mcp_oauth.get_client()
     if client is None or client["pairing_open_until"] != armed_until or armed_until > _stamp(_now()):
         return False
-    opened = datetime.strptime(armed_until, _STORED_FORMAT) - timedelta(minutes=MCP_OAUTH_PAIRING_MINUTES)
+    opened = _moment(armed_until) - timedelta(minutes=MCP_OAUTH_PAIRING_MINUTES)
     if db_mcp_oauth.count_requests_since(_stamp(opened)):
         return False
     events.window_closed_unused()
@@ -337,7 +345,7 @@ def refresh_tokens(client_id: str, refresh_token: str, scope: Optional[str], res
     if not db_mcp_oauth.rotate_refresh_token(token_hash, stamped):
         # a concurrent request rotated it between our read and our update, so it was rotated within this request
         return _rotated_token_presented(row["grant_id"], stamped, now)
-    rows, body = _new_tokens(now, datetime.strptime(row["grant_expires_at"], _STORED_FORMAT).replace(tzinfo=timezone.utc))
+    rows, body = _new_tokens(now, _moment(row["grant_expires_at"]))
     db_mcp_oauth.add_tokens(row["grant_id"], rows, _stamp(now - timedelta(days=MCP_OAUTH_PRUNE_AFTER_DAYS)))
     invalidate(row["grant_id"])
     return body, row["grant_id"]

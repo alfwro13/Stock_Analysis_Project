@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from database import get_connection
 from db_helpers import sentiment_fresh_since
+from time_engine import parse_stored_utc
 from utils import time_request_call
 from page_helpers import compute_badge_tags, get_pattern_tags_by_ticker
 
@@ -274,9 +275,8 @@ def data_freshness(stock_data):
     last_updated = stock_data.get('last_updated')
     if not last_updated:
         return 'red', "Never"
-    try:
-        lu_date = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    except Exception:
+    lu_date = parse_stored_utc(last_updated)
+    if lu_date is None:
         return 'red', last_updated
     return ('green' if datetime.now(timezone.utc) - lu_date < timedelta(hours=24) else 'yellow'), last_updated
 

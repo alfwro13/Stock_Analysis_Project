@@ -9,6 +9,7 @@ from config import FUNDAMENTALS_DIR
 from yahoo_engine import yahoo_engine
 from database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
+from time_engine import parse_stored_utc
 from utils import epoch_to_iso_date, safe_ticker_filename
 
 logger = logging.getLogger(__name__)
@@ -336,11 +337,10 @@ _SECTOR_KEY_LABELS = {
 def _needs_holdings_refresh(top_holdings: Optional[str], holdings_updated_at: Optional[str]) -> bool:
     if not top_holdings or not holdings_updated_at:
         return True
-    try:
-        last = datetime.strptime(holdings_updated_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    except ValueError:
+    last = parse_stored_utc(holdings_updated_at)
+    if last is None:
         return True
-    return last < datetime.now(timezone.utc) - timedelta(days=_HOLDINGS_REFRESH_DAYS)
+    return last <datetime.now(timezone.utc) - timedelta(days=_HOLDINGS_REFRESH_DAYS)
 
 
 def sync_etf_holdings_cache(tickers: List[str]) -> None:

@@ -785,11 +785,8 @@ def rss_alerts_feed():
 
     items = []
     for row in rows:
-        try:
-            dt = datetime.strptime(row["timestamp"][:19], "%Y-%m-%d %H:%M:%S")
-            pub_date = dt.replace(tzinfo=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
-        except Exception:
-            pub_date = now_str
+        dt = time_engine.parse_stored_utc((row["timestamp"] or "")[:19])
+        pub_date = dt.strftime("%a, %d %b %Y %H:%M:%S +0000") if dt else now_str
 
         msg_type = row["message_type"]
         msg_text = row["message_text"] or ""

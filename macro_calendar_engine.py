@@ -6,7 +6,7 @@ import pandas as pd
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
 from database import get_connection
-from time_engine import localize_naive_to_utc
+from time_engine import localize_naive_to_utc, parse_stored_utc
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -103,11 +103,8 @@ def fetch_and_process_calendar() -> List[Tuple]:
             previous_val = clean_value(event.findtext('previous'))
             actual_val = clean_value(event.findtext('actual'))
 
-            try:
-                event_utc = datetime.strptime(formatted_date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                is_passed = 1 if datetime.now(timezone.utc) > event_utc else 0
-            except ValueError:
-                is_passed = 0
+            event_utc = parse_stored_utc(formatted_date)
+            is_passed = 1 if event_utc is not None and datetime.now(timezone.utc) > event_utc else 0
 
             processed_events.append((
                 event_id,
@@ -192,8 +189,11 @@ def reconcile_past_events() -> None:
 
         updates = []
         for row in events_to_reconcile:
+            event_dt = parse_stored_utc(row['event_date'])
+            if event_dt is None:
+                logger.error("Failed to process reconciliation for event %s: unparseable event_date", row['event_id'])
+                continue
             try:
-                event_dt = datetime.strptime(row['event_date'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                 window_end = event_dt + timedelta(minutes=30)
 
                 event_window = spy_df[(spy_df.index >= event_dt) & (spy_df.index <= window_end)]

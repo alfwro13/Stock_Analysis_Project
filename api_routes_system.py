@@ -914,8 +914,7 @@ def get_yahoo_api_stats_detail_endpoint(date_str: str):
         raw_rows = get_yahoo_api_call_log(date_str)
         bucket_jobs: dict = defaultdict(lambda: defaultdict(lambda: {"count": 0, "errors": 0, "yf_errors": 0}))
         for r in raw_rows:
-            naive = datetime.strptime(r["minute_ts"] + ":00", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            local_dt = time_engine.to_local(naive)
+            local_dt = time_engine.to_local(time_engine.parse_stored_utc(r["minute_ts"]))
             bucket_minute = (local_dt.minute // 15) * 15
             bucket_label = local_dt.strftime("%H:") + "%02d" % bucket_minute
             label = job_label(r["job_id"]) if r["job_id"] else "Manual / On-Demand"
