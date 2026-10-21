@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Optional
 from urllib.parse import quote
 
+import db_mcp_oauth
 from config import BASE_DIR, DATA_DIR, DB_PATH, load_config
 from database import get_connection
 from notification_engine import notify
@@ -364,6 +365,28 @@ def _stage_database(tar: tarfile.TarFile, member: tarfile.TarInfo) -> Path:
     return staged
 
 
+def _revoke_remote_access(staged: Path) -> Optional[int]:
+    """Revokes in the staged copy, so it happens before any live change; None when the archive predates the OAuth tables."""
+    conn = None
+    try:
+        conn = sqlite3.connect(staged)
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mcp_oauth_grants'").fetchone():
+            return None
+        revoked = db_mcp_oauth.clear_remote_access(conn, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+        conn.commit()
+        return revoked
+    finally:
+        if conn:
+            conn.close()
+
+
+def _forget_remote_access(revoked: Optional[int]) -> None:
+    from mcp_server import audit, oauth
+    oauth.invalidate()
+    if revoked is not None:
+        audit.record_action(f"restore: {revoked} grants revoked")
+
+
 def _swap_database(staged: Path) -> None:
     sidecars = [Path(str(DB_PATH) + suffix) for suffix in _DB_SIDECARS]
     for sidecar in sidecars:
@@ -428,12 +451,14 @@ def _apply_archive(local_copy: Path, adopted_row: Optional[dict]) -> None:
         to_extract = [m for m in members if m.name not in skipped]
         staged = _stage_database(tar, db_member) if db_member else None
         try:
+            revoked = _revoke_remote_access(staged) if staged else None
             history = _read_backup_history() if staged else []
             tar.extractall(path=BASE_DIR, members=to_extract, filter="data")
             if staged:
                 _swap_database(staged)
                 staged = None
                 _merge_backup_history(history + ([adopted_row] if adopted_row else []))
+                _forget_remote_access(revoked)
             elif adopted_row:
                 _record_backup_history(**adopted_row)
         finally:

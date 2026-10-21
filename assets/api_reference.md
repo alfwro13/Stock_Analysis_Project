@@ -1703,11 +1703,11 @@ State of the MCP Remote Access panel (Settings → MCP Server → Remote Access)
   "proxy_trust": { "state": "list", "value": "192.168.1.72" },
   "last_public_request": { "address": "160.79.104.5", "at_display": "2026-10-21 14:25 BST", "proxy_like": false },
   "requests": [ { "id": "<22 characters>", "code": "K7P2QX", "requested_display": "2026-10-21 14:25 BST", "address": "203.0.113.5", "user_agent": "Mozilla/5.0 ...", "seconds_left": 240 } ],
-  "apps": [ { "client_id": "mcp-1a2b3c4d5e6f7a8b", "connected_display": "2026-10-21 14:26 BST", "expires_display": "2027-01-19 14:26 GMT", "last_used_display": null, "last_address": null } ]
+  "apps": [ { "id": 3, "client_id": "mcp-1a2b3c4d5e6f7a8b", "connected_display": "2026-10-21 14:26 BST", "expires_display": "2027-01-19 14:26 GMT", "last_used_display": null, "last_address": null } ]
 }
 ```
 
-`public_host` is the saved value and `host_active` is false until a restart applies it. `proxy_trust` is the service's `FORWARDED_ALLOW_IPS` setting: `state` is `unset`, `loopback`, `wildcard` or `list`, `value` the cleaned, capped text. `last_public_request` is the peer address of the newest request that reached the public host's route check while Remote Access was on (in memory, so `null` after a restart), with `proxy_like` true for a loopback, private or link-local address, which on that host means the reverse proxy is not trusted. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50.
+`public_host` is the saved value and `host_active` is false until a restart applies it. `proxy_trust` is the service's `FORWARDED_ALLOW_IPS` setting: `state` is `unset`, `loopback`, `wildcard` or `list`, `value` the cleaned, capped text. `last_public_request` is the peer address of the newest request that reached the public host's route check while Remote Access was on (in memory, so `null` after a restart), with `proxy_like` true for a loopback, private or link-local address, which on that host means the reverse proxy is not trusted. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50; `id` is the grant id used by the revoke route and shown as `App #<id>` in the activity list, and `last_used_display` / `last_address` are updated at most once a minute per grant.
 
 ---
 
@@ -1757,6 +1757,41 @@ Denies one pending connection request; its waiting page then says the request wa
 
 ```json
 { "status": "success" }
+```
+
+---
+
+### `POST /api/mcp-remote/grants/{grant_id}/revoke`
+
+Revokes one connected app: its access and refresh tokens stop working on the next request, and the app must be approved again to reconnect. Session and CSRF only, **no step-up** (closing access is the safe direction). `grant_id` is the integer `id` from `GET /api/mcp-remote` (anything else, including `0` and negative numbers, is `422`). `404` when the grant is already revoked, expired or unknown. Writes one `mcp_audit_log` row (`credential_kind` `session`, `mcp_method` `dashboard`, `mcp_name` `revoke-grant`, the grant id in `key_id`). Works while `MCP_SERVER_ENABLED` is off. Limited to 20 requests per minute.
+
+```json
+{ "status": "success" }
+```
+
+---
+
+### `POST /api/mcp-remote/revoke-all`
+
+Revoke All Remote Access: revokes every grant, closes the pairing window and deletes every connection request (pending or approved), so nothing waiting can still turn into a grant. The OAuth client and its secret are kept. Session and CSRF only, **no step-up**. Writes one `mcp_audit_log` row (`mcp_name` `revoke-all: <n> grants`). Works while `MCP_SERVER_ENABLED` is off. Limited to 5 requests per minute.
+
+```json
+{ "status": "success", "revoked": 2 }
+```
+
+---
+
+### `GET /api/mcp-remote/activity`
+
+The last 50 `mcp_audit_log` rows, newest first, for the Recent Activity table of the Remote Access panel (requests to `/mcp`, the OAuth endpoints, refused requests, and the dashboard's own revokes). Session required; the API key and the MCP key are refused. Limited to 120 requests per minute. `credential` is `Key #<id>`, `App #<grant id>`, `Dashboard` or `None`; a dashboard row's `name` carries the grant as `revoke-grant (App #3)`. `address`, `method` and `name` are cleaned, length-capped text (the log never holds a key, token, argument or body) and must be rendered with `textContent`.
+
+```json
+{
+  "status": "success",
+  "events": [
+    { "time_display": "2026-10-21 14:30 BST", "credential": "App #3", "address": "160.79.104.5", "method": "tools/call", "name": "get_holdings", "status_code": 200, "duration_ms": 41 }
+  ]
+}
 ```
 
 ---
@@ -2052,7 +2087,7 @@ Verification happens before any live file changes, and every refusal returns `40
 - a member is outside `data/` and `models/`, or is anything but a regular file or directory (links, devices);
 - `data/analysis.db` fails `PRAGMA integrity_check`.
 
-Members are extracted with `filter="data"`. `data/analysis.db-wal` and `-shm` are never extracted. The database is staged next to the live file and swapped in atomically, and the live `-wal`/`-shm` are removed. `backup_history` rows the restored database lacks are carried forward, so newer archives keep their hashes. A `trust_unhashed` restore records the archive's computed hash as a `trigger_type: "adopted"` row, so later restores verify normally. A missing archive or an extraction failure returns `500` with `status: "error"`.
+Members are extracted with `filter="data"`. `data/analysis.db-wal` and `-shm` are never extracted. The database is staged next to the live file and swapped in atomically, and the live `-wal`/`-shm` are removed. `backup_history` rows the restored database lacks are carried forward, so newer archives keep their hashes. When the archive holds the database, the staged copy also has every OAuth grant revoked, the pairing window closed and every connection request deleted before anything live changes (an older backup would otherwise bring revoked Remote Access tokens back to life); the in-memory token cache is dropped after the swap and one `mcp_audit_log` row `restore: <n> grants revoked` is written. An archive from before the OAuth tables skips this. A `trust_unhashed` restore records the archive's computed hash as a `trigger_type: "adopted"` row, so later restores verify normally. A missing archive or an extraction failure returns `500` with `status: "error"`.
 
 Scheduled job firing is paused for the whole restore and resumed afterward, whatever the outcome. If a job is already running (the Active Jobs list), nothing is touched and the response is `409` with `status: "busy"` and a `message` naming the running job(s), the same shape as `POST /api/system/restart`: a running job holds connections to the database file being replaced and would lose its later writes.
 
@@ -2112,9 +2147,18 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
     "macro_cal": 320,
     "notes_pending": 3,
     "notes_sent": 1240
+  },
+  "mcp": {
+    "connected_apps": 1,
+    "pending_requests": 0,
+    "pairing_open": false,
+    "requests_24h": 412,
+    "refused_24h": 3
   }
 }
 ```
+
+`mcp` feeds the two MCP rows of the System Diagnostics panel: live (unrevoked, unexpired) Remote Access grants, unexpired pending connection requests, whether the pairing window is open, and the `mcp_audit_log` rows of the last 24 hours (`requests_24h` leaves out the dashboard's own revoke rows and the cap's summary rows; `refused_24h` counts `401`, `403` and `429`). Counts only, no addresses.
 
 ---
 

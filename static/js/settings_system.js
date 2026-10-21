@@ -198,6 +198,10 @@ async function fetchSystemMetrics() {
             document.getElementById('diag-notes-sent').innerText = `${fmt(data.state.notes_sent)} Sent`;
             document.getElementById('diag-notes-pending').innerText = `${fmt(data.state.notes_pending)} Pending`;
             if (data.state.notes_pending > 0) document.getElementById('diag-notes-pending').style.color = "#ffaa00";
+            document.getElementById('diag-mcp-apps').innerText = `${fmt(data.mcp.connected_apps)} Connected`;
+            document.getElementById('diag-mcp-pending').innerText = `${fmt(data.mcp.pending_requests)} Pending, window ${data.mcp.pairing_open ? 'open' : 'closed'}`;
+            document.getElementById('diag-mcp-requests').innerText = fmt(data.mcp.requests_24h);
+            document.getElementById('diag-mcp-refused').innerText = `${fmt(data.mcp.refused_24h)} Refused`;
 
             document.getElementById('diag-db-size').innerText = `${data.infra.db_size_mb} MB`;
             document.getElementById('diag-hist-size').innerText = `${data.infra.hist_size_mb} MB`;

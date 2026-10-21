@@ -655,6 +655,123 @@ class TestRestoreBackup:
         assert "No SHA-256" in resp.json()["message"]
 
 
+_OAUTH_TABLES = ("mcp_oauth_client", "mcp_oauth_requests", "mcp_oauth_grants", "mcp_oauth_tokens")
+
+
+def _oauth_db_bytes(tmp_path, grants_sql=None):
+    """An archive database that still holds an active grant, a revoked one, an open pairing window and a waiting request, as an older backup would."""
+    path = tmp_path / "crafted_oauth.db"
+    path.unlink(missing_ok=True)
+    _make_db(path)
+    live = get_connection()
+    try:
+        ddl = [r[0] for r in live.execute(f"SELECT sql FROM sqlite_master WHERE type = 'table' AND name IN ({', '.join('?' * len(_OAUTH_TABLES))})", _OAUTH_TABLES)]
+    finally:
+        live.close()
+    conn = sqlite3.connect(path)
+    try:
+        for statement in ddl:
+            conn.execute(statement)
+        if grants_sql:
+            conn.execute("DROP TABLE mcp_oauth_grants")
+            conn.execute(grants_sql)
+        else:
+            conn.execute(
+                "INSERT INTO mcp_oauth_grants (id, client_id, scope, resource, created_at, expires_at, revoked_at) VALUES "
+                "(1, 'mcp-old', 'mcp:read', 'https://x/mcp', '2026-10-01 00:00:00', '2999-01-01 00:00:00', NULL), "
+                "(2, 'mcp-old', 'mcp:read', 'https://x/mcp', '2026-10-01 00:00:00', '2999-01-01 00:00:00', '2026-10-02 00:00:00')"
+            )
+        conn.execute("INSERT INTO mcp_oauth_client (id, client_id, secret_hash, created_at, pairing_open_until) VALUES (1, 'mcp-old', 'h', '2026-10-01 00:00:00', '2999-01-01 00:00:00')")
+        if not grants_sql:
+            conn.execute(
+                "INSERT INTO mcp_oauth_requests (id, display_code, client_state, code_challenge, redirect_uri, resource, scope, created_at, expires_at, binding_hash) "
+                "VALUES ('r1', 'ABC234', 's', 'c', 'u', 'r', 'mcp:read', '2026-10-01 00:00:00', '2999-01-01 00:00:00', 'b')"
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return path.read_bytes()
+
+
+def _live_oauth_rows(app_tree):
+    conn = sqlite3.connect(app_tree / "data" / "analysis.db")
+    try:
+        grants = conn.execute("SELECT id, revoked_at IS NOT NULL, revoked_at FROM mcp_oauth_grants ORDER BY id").fetchall()
+        client = conn.execute("SELECT client_id, pairing_open_until FROM mcp_oauth_client").fetchall()
+        requests = conn.execute("SELECT COUNT(*) FROM mcp_oauth_requests").fetchone()[0]
+    finally:
+        conn.close()
+    return grants, client, requests
+
+
+class TestRestoreRevokesRemoteAccess:
+    """An older backup would bring revoked OAuth grants back to life, so a restore that swaps the database revokes them all."""
+
+    def _restore(self, app_tree, name, db_bytes):
+        _craft_archive(app_tree, name, [("data/analysis.db", "file", db_bytes)])
+        with patch("backup_engine.load_config", return_value=_cfg()), patch("mcp_server.audit.record_action") as record:
+            result = backup_engine.restore_backup(name)
+        return result, record
+
+    def test_every_grant_is_revoked_the_window_closed_and_the_requests_dropped(self, app_tree):
+        result, _ = self._restore(app_tree, "backup_20200201_000001.tar.gz", _oauth_db_bytes(app_tree))
+        assert result["status"] == "success"
+        grants, client, requests = _live_oauth_rows(app_tree)
+        assert [(g[0], g[1]) for g in grants] == [(1, 1), (2, 1)]
+        assert grants[1][2] == "2026-10-02 00:00:00", "a grant that was already revoked keeps its own revocation time"
+        assert client == [("mcp-old", None)]
+        assert requests == 0
+
+    def test_the_in_memory_token_cache_is_dropped_so_a_cached_token_dies_at_once(self, app_tree):
+        from mcp_server import oauth
+        oauth._cache["cached-token-hash"] = (1, 9e12)
+        try:
+            self._restore(app_tree, "backup_20200201_000002.tar.gz", _oauth_db_bytes(app_tree))
+            assert "cached-token-hash" not in oauth._cache
+        finally:
+            oauth._cache.pop("cached-token-hash", None)
+
+    def test_the_restore_is_written_to_the_mcp_audit_log(self, app_tree):
+        _, record = self._restore(app_tree, "backup_20200201_000003.tar.gz", _oauth_db_bytes(app_tree))
+        record.assert_called_once_with("restore: 1 grants revoked")
+
+    def test_an_archive_from_before_the_oauth_tables_restores_and_logs_nothing(self, app_tree):
+        from mcp_server import oauth
+        oauth._cache["cached-token-hash"] = (1, 9e12)
+        try:
+            result, record = self._restore(app_tree, "backup_20200201_000004.tar.gz", _db_bytes(app_tree))
+            assert result["status"] == "success" and _live_marker(app_tree) == "from-archive"
+            record.assert_not_called()
+            assert "cached-token-hash" not in oauth._cache
+        finally:
+            oauth._cache.pop("cached-token-hash", None)
+
+    def test_an_archive_without_a_database_leaves_the_live_grants_alone(self, app_tree):
+        from mcp_server import oauth
+        oauth._cache["cached-token-hash"] = (1, 9e12)
+        try:
+            _craft_archive(app_tree, "backup_20200201_000005.tar.gz", [("data/restored.txt", "file", "x")])
+            with patch("backup_engine.load_config", return_value=_cfg()), patch("mcp_server.audit.record_action") as record:
+                assert backup_engine.restore_backup("backup_20200201_000005.tar.gz")["status"] == "success"
+            record.assert_not_called()
+            assert "cached-token-hash" in oauth._cache
+        finally:
+            oauth._cache.pop("cached-token-hash", None)
+
+    def test_a_failure_while_revoking_changes_nothing_live(self, app_tree):
+        broken = _oauth_db_bytes(app_tree, grants_sql="CREATE TABLE mcp_oauth_grants (id INTEGER)")
+        result, record = self._restore(app_tree, "backup_20200201_000006.tar.gz", broken)
+        assert result["status"] == "error"
+        assert _live_marker(app_tree) == "original"
+        assert (app_tree / "data" / "historical" / "AAPL.parquet").read_text() == "fake-parquet"
+        record.assert_not_called()
+        assert list((app_tree / "data").glob(".restore_*")) == []
+
+    def test_no_work_file_is_left_beside_the_restored_database(self, app_tree):
+        self._restore(app_tree, "backup_20200201_000007.tar.gz", _oauth_db_bytes(app_tree))
+        assert sorted(p.name for p in (app_tree / "data").iterdir() if p.is_file()) == ["analysis.db"]
+
+
 @pytest.mark.api
 class TestRestoreJobGuard:
     @pytest.fixture
