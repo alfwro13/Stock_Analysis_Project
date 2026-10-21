@@ -13,7 +13,7 @@ from config import HISTORICAL_DIR
 from database import get_connection
 from db_helpers import get_upcoming_macro_events, sentiment_fresh_since
 from portfolio_service import get_rate_to_base
-from time_engine import now_local
+from time_engine import now_local, parse_stored_utc
 from regime_engine import get_latest_regime
 from utils import contained_ticker_path
 
@@ -407,13 +407,11 @@ class AIPromptEngine:
             # Staleness check — warn the LLM if data is older than 7 days.
             last_updated = r.get('last_updated', '')
             staleness_note = ""
-            try:
-                lu_dt = datetime.strptime(last_updated[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            lu_dt = parse_stored_utc(last_updated[:19] if last_updated else None)
+            if lu_dt is not None:
                 age_days = (datetime.now(timezone.utc) - lu_dt).days
                 if age_days > 7:
                     staleness_note = f"\n[WARNING: This data is {age_days} days old — treat as stale.]"
-            except (ValueError, TypeError):
-                pass
 
             return (
                 f"Next Earnings: {r.get('next_earnings_date', 'N/A')}\n"

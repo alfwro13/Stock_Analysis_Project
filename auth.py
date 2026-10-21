@@ -12,6 +12,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from time_engine import parse_stored_utc
+
 logger = logging.getLogger(__name__)
 
 _PBKDF2_ITERS = 600_000
@@ -207,7 +209,9 @@ def login_lockout_remaining() -> int:
             conn.close()
     if not row or not row["locked_until"]:
         return 0
-    locked_until = datetime.strptime(row["locked_until"], _THROTTLE_TS_FORMAT).replace(tzinfo=timezone.utc)
+    locked_until = parse_stored_utc(row["locked_until"])
+    if locked_until is None:
+        raise ValueError("login_throttle.locked_until is not a UTC timestamp")
     return max(0, math.ceil((locked_until - datetime.now(timezone.utc)).total_seconds()))
 
 

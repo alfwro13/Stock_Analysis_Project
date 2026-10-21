@@ -5,6 +5,7 @@ from typing import List, Optional
 from config import load_config
 from constants import NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_connection
+from time_engine import parse_stored_utc
 from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
@@ -43,13 +44,9 @@ def get_recent_alert_notifications(since: str, limit: int) -> list:
 
 
 def parse_utc_epoch(stored_utc: Optional[str]) -> float:
-    """Parses a `"%Y-%m-%d %H:%M:%S"` UTC timestamp (SQLite storage format) to a Unix epoch."""
-    if not stored_utc:
-        return 0.0
-    try:
-        return datetime.strptime(stored_utc, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
-    except ValueError:
-        return 0.0
+    """A stored UTC timestamp (SQLite storage format) as a Unix epoch; 0.0 when empty or unparseable."""
+    parsed = parse_stored_utc(stored_utc)
+    return parsed.timestamp() if parsed else 0.0
 
 
 def resolve_live_price(

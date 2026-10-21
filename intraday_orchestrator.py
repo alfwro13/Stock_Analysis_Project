@@ -296,13 +296,7 @@ class IntradayOrchestrator:
                 return True  # suppress this scan; re-armed for next genuine breach
 
             # Case 4b: cooldown elapsed AND material deterioration.
-            try:
-                # Attach tzinfo so it can be subtracted from aware datetime.now(timezone.utc).
-                last_fired = datetime.strptime(
-                    row["last_fired_utc"], "%Y-%m-%d %H:%M:%S"
-                ).replace(tzinfo=timezone.utc)
-            except (TypeError, ValueError):
-                last_fired = None
+            last_fired = time_engine.parse_stored_utc(row["last_fired_utc"])
 
             cooldown_ok = (
                 last_fired is not None

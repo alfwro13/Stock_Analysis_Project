@@ -12,6 +12,7 @@ from database import get_connection
 from db_helpers import get_company_names, get_portfolio_watchlist_tickers
 from fundamentals_helpers import get_instrument_type
 from price_history_helpers import load_daily_close, session_window_returns
+from time_engine import parse_stored_utc
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, is_missing_sector, normalize_currency_bucket
 
 # GUI name: "Sector-Relative Momentum". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
@@ -151,7 +152,7 @@ def _save(rows: list[dict]) -> None:
         )
         if rows:
             # Keyed to computed_at, not as_of_date: a cohort with stale parquet can trail the newest as-of by months, and an as_of cutoff deleted the scored rows just written.
-            ran_at = datetime.strptime(max(r["computed_at"] for r in rows), "%Y-%m-%d %H:%M:%S")
+            ran_at = parse_stored_utc(max(r["computed_at"] for r in rows))
             cutoff = (ran_at - timedelta(days=RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("DELETE FROM sector_relative_momentum_results WHERE computed_at < ?", (cutoff,))
         conn.commit()

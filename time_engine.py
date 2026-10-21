@@ -166,17 +166,24 @@ def fmt_datetime(dt: datetime) -> str:
 _STORED_UTC_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S")
 
 
+def parse_stored_utc(stamp: Optional[str]) -> Optional[datetime]:
+    """A stored UTC timestamp string as an aware UTC datetime; None when empty or unparseable."""
+    if not stamp:
+        return None
+    for fmt in _STORED_UTC_FORMATS:
+        try:
+            return datetime.strptime(stamp, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
 def fmt_stored_utc(stamp: Optional[str], fallback: Optional[str] = None) -> Optional[str]:
     """Display a stored UTC timestamp string; empty gives *fallback*, an unparseable value comes back unchanged."""
     if not stamp:
         return fallback
-    for fmt in _STORED_UTC_FORMATS:
-        try:
-            parsed = datetime.strptime(stamp, fmt)
-        except ValueError:
-            continue
-        return fmt_datetime(parsed)
-    return stamp
+    parsed = parse_stored_utc(stamp)
+    return stamp if parsed is None else fmt_datetime(parsed)
 
 
 def _match_suffix(ticker: str) -> Optional[str]:

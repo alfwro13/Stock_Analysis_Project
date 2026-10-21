@@ -1155,7 +1155,9 @@ def reload_scheduler():
 
 def arm_mcp_pairing_window_check(until: str) -> None:
     """One-shot check at the end of the pairing window that ends at `until` (UTC 'YYYY-MM-DD HH:MM:SS'); a window opened later replaces it."""
-    run_at = datetime.strptime(until, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    run_at = time_engine.parse_stored_utc(until)
+    if run_at is None:
+        raise ValueError("pairing window end is not a UTC timestamp")
     scheduler.add_job(
         run_mcp_pairing_window_check,
         DateTrigger(run_date=run_at, timezone=timezone.utc),
