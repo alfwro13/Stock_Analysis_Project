@@ -734,6 +734,35 @@ class TestVerificationOnMcp:
             assert mcp(remote, "mcpat_wrong").status_code == 401
         assert mcp(remote, body["access_token"]).status_code == 429
 
+    def test_requests_with_no_credential_never_lock_the_shared_address_out(self, remote):
+        body = tokens(remote)
+        for headers in ({}, {"Authorization": ""}, {"Authorization": "  "}, {"X-API-Key": ""}):
+            for _ in range(MCP_AUTH_FAILURES_MAX + 2):
+                response = rpc(remote.http, "tools/list", key=None, headers=headers)
+                assert response.status_code == 401 and response.headers["www-authenticate"] == CHALLENGE
+        assert limits.lockout_remaining("testclient") == 0
+        assert mcp(remote, body["access_token"]).status_code == 200
+
+    def test_credential_less_requests_do_not_add_to_failures_already_counted(self, remote):
+        body = tokens(remote)
+        for _ in range(MCP_AUTH_FAILURES_MAX - 1):
+            assert mcp(remote, "mcpat_wrong").status_code == 401
+        for _ in range(MCP_AUTH_FAILURES_MAX):
+            assert rpc(remote.http, "tools/list", key=None).status_code == 401
+        assert mcp(remote, body["access_token"]).status_code == 200
+
+    @pytest.mark.parametrize("headers", [{"Authorization": "Basic Zm9vOmJhcg=="}, {"Authorization": "mcpat_bare"}, {"X-API-Key": "anything"}])
+    def test_any_other_credential_attempt_still_counts_and_locks_the_address_out(self, remote, headers):
+        body = tokens(remote)
+        for _ in range(MCP_AUTH_FAILURES_MAX):
+            assert rpc(remote.http, "tools/list", key=None, headers=headers).status_code == 401
+        assert mcp(remote, body["access_token"]).status_code == 429
+
+    def test_a_credential_less_request_is_still_audited(self, remote):
+        assert rpc(remote.http, "tools/list", key=None).status_code == 401
+        rows = sql("SELECT credential_kind, status FROM mcp_audit_log WHERE status = 401")
+        assert [(r["credential_kind"], r["status"]) for r in rows] == [("none", 401)]
+
     def test_a_token_for_another_resource_or_without_the_scope_is_refused(self, remote):
         conn = get_connection()
         try:

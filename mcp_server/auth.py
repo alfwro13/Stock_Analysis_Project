@@ -36,7 +36,8 @@ def disabled_response() -> Optional[JSONResponse]:
 
 
 def _public_host_failure(request: Request, address: str) -> Optional[JSONResponse]:
-    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    authorization = request.headers.get("Authorization", "").strip()
+    scheme, _, token = authorization.partition(" ")
     if scheme.lower() == "bearer" and not request.headers.get("X-API-Key"):
         grant_id = oauth.verify_access_token(token.strip())
         if grant_id is not None:
@@ -45,7 +46,10 @@ def _public_host_failure(request: Request, address: str) -> Optional[JSONRespons
             request.state.mcp_address = address
             return None
     challenge = f'Bearer resource_metadata="{oauth.public_origin()}/.well-known/oauth-protected-resource/mcp", scope="{oauth.SCOPE}"'
-    return _wrong_credential(address, 401, "Invalid or missing access token", {"WWW-Authenticate": challenge})
+    headers = {"WWW-Authenticate": challenge}
+    if not authorization and not request.headers.get("X-API-Key"):
+        return _rejection(address, 401, "Invalid or missing access token", headers)
+    return _wrong_credential(address, 401, "Invalid or missing access token", headers)
 
 
 def auth_failure(request: Request) -> Optional[JSONResponse]:
