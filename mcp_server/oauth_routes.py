@@ -199,7 +199,7 @@ def _grant(client_id: str, fields: Dict[str, str]) -> Tuple[dict, int]:
     if grant_type == "authorization_code":
         if not all(fields.get(name) for name in ("code", "redirect_uri", "code_verifier")):
             raise OAuthError("invalid_request", "code, redirect_uri and code_verifier are required.")
-        return oauth.exchange_code(fields["code"], fields["redirect_uri"], fields["code_verifier"], fields.get("resource"))
+        return oauth.exchange_code(client_id, fields["code"], fields["redirect_uri"], fields["code_verifier"], fields.get("resource"))
     if grant_type == "refresh_token":
         if not fields.get("refresh_token"):
             raise OAuthError("invalid_request", "refresh_token is required.")

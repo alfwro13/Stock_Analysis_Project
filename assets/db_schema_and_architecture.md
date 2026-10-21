@@ -417,7 +417,7 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 #### `mcp_oauth_grants`
 * **Purpose:** One approved connection. A grant ends when it is revoked or reaches its absolute expiry; its tokens are checked against it on every use.
 * **Key Columns:** `id` (PK AUTOINCREMENT, also the `key_id` of its `mcp_audit_log` rows), `client_id`, `scope`, `resource` (`https://<MCP_PUBLIC_HOST>/mcp` when issued), `created_at`, `expires_at` (90 days), `last_used_at` and `last_address` (written at most once a minute), `revoked_at` (NULL while live).
-* **Writes:** `db_mcp_oauth.create_grant()` at the code exchange, `revoke_grant()` on the Revoke button, refresh-token reuse or code reuse, `revoke_all()` on Revoke All Remote Access, and `clear_remote_access()` (revoke every grant, clear `pairing_open_until`, delete every request) for a new client and for a Backup & Recovery restore (on the staged database copy), `touch_grant()` from `oauth.record_use()`.
+* **Writes:** `db_mcp_oauth.create_grant()` at the code exchange (one transaction: it inserts the grant, links it to its approved request and checks the client is still current, and rolls back with `None` when the request was deleted or the client replaced), `revoke_grant()` on the Revoke button, refresh-token reuse or code reuse, `revoke_all()` on Revoke All Remote Access, and `clear_remote_access()` (revoke every grant, clear `pairing_open_until`, delete every request) for a new client and for a Backup & Recovery restore (on the staged database copy), `touch_grant()` from `oauth.record_use()`.
 * **Reads:** `oauth.connected_apps()` (the Connected Apps table, live grants only) and `count_active_grants()` (the Diagnostics count).
 
 #### `mcp_oauth_tokens`
