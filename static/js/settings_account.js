@@ -42,18 +42,30 @@ async function generateApiKey() {
     }
 }
 
-async function toggleMcpServer(box) {
+function mcpLanEnabled() {
+    return document.getElementById('MCP_LAN_ENABLED').checked;
+}
+
+function applyMcpLanState() {
+    const off = !mcpLanEnabled();
+    document.getElementById('mcp_key_name').disabled = off;
+    document.getElementById('mcp-key-create-btn').disabled = off;
+    document.querySelectorAll('#mcp-keys-body button[data-key-id]').forEach(btn => { btn.disabled = off; });
+}
+
+async function toggleMcpLan(box) {
     const enabled = box.checked;
-    setStatus('mcp-enabled-msg', 'info', 'Saving…');
+    setStatus('mcp-lan-enabled-msg', 'info', 'Saving…');
     const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) };
-    const res = enabled ? await stepUpFetch('/api/mcp-server/enabled', options) : await fetch('/api/mcp-server/enabled', options);
+    const res = enabled ? await stepUpFetch('/api/mcp-lan/enabled', options) : await fetch('/api/mcp-lan/enabled', options);
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-        setStatus('mcp-enabled-msg', 'success', enabled ? 'MCP Server enabled.' : 'MCP Server disabled. Requests to /mcp are refused.');
+        setStatus('mcp-lan-enabled-msg', 'success', enabled ? 'Local/LAN Access enabled.' : 'Local/LAN Access disabled. Requests to /mcp from your network are refused.');
     } else {
         box.checked = !enabled;
-        setStatus('mcp-enabled-msg', 'error', data.detail || 'Failed to save.');
+        setStatus('mcp-lan-enabled-msg', 'error', data.detail || 'Failed to save.');
     }
+    applyMcpLanState();
 }
 
 async function loadMcpKeys() {
@@ -70,6 +82,7 @@ async function loadMcpKeys() {
     }
     body.innerHTML = keys.map(k => `<tr><td>${escapeHtml(k.name)}</td><td>${escapeHtml(k.created_at)}</td><td>${escapeHtml(k.last_used_at || 'Never')}</td>`
         + `<td><button type="button" class="btn btn-danger mt-0" data-key-id="${escapeHtml(String(k.id))}" data-key-name="${escapeHtml(k.name)}">🗑️ Delete</button></td></tr>`).join('');
+    applyMcpLanState();
 }
 
 async function createMcpKey() {

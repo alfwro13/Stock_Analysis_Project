@@ -422,7 +422,7 @@ class TestRealApp:
 
     def test_credentials_other_than_a_bearer_key_do_not_authenticate_mcp_on_the_public_host(self, trusted_host_app, auth_cookies, monkeypatch):
         monkeypatch.setenv("EMBED_TOKEN", "embed-token-for-test")
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": True})
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": True})
         cookie = {"Cookie": "; ".join(f"{k}={v}" for k, v in auth_cookies.items())}
         assert _request(trusted_host_app, "POST", "/mcp", headers=cookie, json={}).status_code == 401
         assert _request(trusted_host_app, "POST", "/mcp?embed=true&embed_token=embed-token-for-test", json={}).status_code == 401

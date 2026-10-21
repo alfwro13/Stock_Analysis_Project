@@ -11,6 +11,7 @@ from config import BASE_DIR, load_config, update_config_atomic
 from constants import INVESTMENT_POLICY_MAX_CHARS, MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
 from database import get_connection
 from mcp_server import keys as mcp_keys
+from mcp_server.auth import lan_enabled
 from mcp_server.resources import investment_policy
 from utils import clean_display_text, write_text_atomic
 
@@ -124,9 +125,15 @@ def list_mcp_keys():
     return {"status": "success", "keys": mcp_keys.list_keys()}
 
 
+def _require_mcp_lan_enabled() -> None:
+    if not lan_enabled():
+        raise HTTPException(status_code=409, detail="Turn on Local/LAN Access first.")
+
+
 @auth_router.post("/mcp-keys", dependencies=[Depends(require_step_up)])
 @limiter.limit("10/minute")
 def create_mcp_key(request: Request, body: McpKeyBody):
+    _require_mcp_lan_enabled()
     name = clean_display_text(body.name, MCP_KEY_NAME_MAX_CHARS)
     if not name:
         raise HTTPException(status_code=400, detail="Enter a name for the key.")
@@ -142,21 +149,22 @@ def create_mcp_key(request: Request, body: McpKeyBody):
 @auth_router.delete("/mcp-keys/{key_id}", dependencies=[Depends(require_step_up)])
 @limiter.limit("20/minute")
 def delete_mcp_key(request: Request, key_id: int):
+    _require_mcp_lan_enabled()
     if not mcp_keys.delete_key(key_id):
         raise HTTPException(status_code=404, detail="No such MCP key.")
     return {"status": "success"}
 
 
-class McpServerToggle(BaseModel):
+class McpLanToggle(BaseModel):
     enabled: bool
 
 
-@auth_router.post("/mcp-server/enabled")
+@auth_router.post("/mcp-lan/enabled")
 @limiter.limit("10/minute")
-def set_mcp_server_enabled(request: Request, body: McpServerToggle):
+def set_mcp_lan_enabled(request: Request, body: McpLanToggle):
     if body.enabled:
         require_step_up(request)
-    update_config_atomic({"MCP_SERVER_ENABLED": body.enabled})
+    update_config_atomic({"MCP_LAN_ENABLED": body.enabled})
     return {"status": "success", "enabled": body.enabled}
 
 

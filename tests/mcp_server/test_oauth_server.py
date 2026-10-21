@@ -179,13 +179,12 @@ class TestMetadata:
         for method, path in (("GET", "/.well-known/oauth-authorization-server"), ("GET", "/oauth/authorize"), ("POST", "/oauth/token")):
             assert remote.http.request(method, path).status_code == 404
 
-    def test_a_disabled_mcp_server_answers_503_on_every_oauth_route(self, remote, monkeypatch):
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": False})
-        for method, path in (
-            ("GET", "/.well-known/oauth-protected-resource/mcp"), ("GET", "/.well-known/oauth-authorization-server"),
-            ("GET", "/oauth/authorize"), ("POST", "/oauth/token"), ("POST", "/oauth/revoke"),
-        ):
-            assert remote.http.request(method, path).status_code == 503, path
+    def test_the_lan_switch_does_not_touch_the_oauth_routes(self, remote, monkeypatch):
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
+        assert remote.http.get("/.well-known/oauth-protected-resource/mcp").status_code == 200
+        assert remote.http.get("/.well-known/oauth-authorization-server").status_code == 200
+        for method, path in (("GET", "/oauth/authorize"), ("POST", "/oauth/token"), ("POST", "/oauth/revoke")):
+            assert remote.http.request(method, path).status_code != 503, path
 
     def test_a_session_cookie_is_not_needed_and_not_redirected(self, remote):
         assert remote.http.get("/oauth/authorize").status_code != 302
@@ -723,10 +722,12 @@ class TestVerificationOnMcp:
         assert response.status_code == 401 and response.headers["www-authenticate"] == "Bearer"
         assert response.json() == {"detail": "Invalid or missing MCP key"}
 
-    def test_a_server_that_is_disabled_answers_503_before_any_token_check(self, remote, monkeypatch):
+    def test_the_public_host_ignores_the_lan_switch(self, remote, monkeypatch):
         body = tokens(remote)
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": False})
-        assert mcp(remote, body["access_token"]).status_code == 503
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
+        assert mcp(remote, body["access_token"]).status_code == 200
+        assert mcp(remote, "mcpat_wrong").status_code == 401
+        assert mcp(remote, MCP_KEY, headers=LAN_HOST).status_code == 503
 
     def test_five_wrong_tokens_lock_the_address_out_even_with_a_valid_token(self, remote):
         body = tokens(remote)
@@ -899,6 +900,22 @@ class TestBehindTheHostGuard:
             PublicHostGuard(main.app, public_host=PUBLIC_HOST), base_url=f"https://{PUBLIC_HOST}",
             raise_server_exceptions=False, client=(address, 50000), follow_redirects=False,
         )
+
+    def test_remote_access_off_is_404_on_every_public_route_whatever_the_lan_switch_says(self, remote, monkeypatch):
+        http = self._stack(monkeypatch, "160.79.104.5", enabled=False)
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": True})
+        for method, path in (
+            ("GET", "/.well-known/oauth-protected-resource/mcp"), ("GET", "/.well-known/oauth-authorization-server"), ("GET", "/oauth/authorize"),
+            ("GET", "/oauth/approve"), ("GET", "/oauth/approve-status"), ("POST", "/oauth/token"), ("POST", "/oauth/revoke"), ("POST", "/mcp"),
+        ):
+            response = http.request(method, path)
+            assert (response.status_code, response.content) == (404, b""), path
+
+    def test_the_public_host_serves_oauth_tokens_while_local_lan_access_is_off(self, remote, monkeypatch):
+        body = tokens(remote)
+        http = self._stack(monkeypatch, "160.79.104.5")
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
+        assert rpc(http, "tools/list", key=body["access_token"]).status_code == 200
 
     def test_the_flow_from_the_allowed_range(self, remote, monkeypatch):
         http = self._stack(monkeypatch, "160.79.104.5")

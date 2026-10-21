@@ -119,7 +119,7 @@ class TestRows:
         assert "HAKEY-3321" not in repr(row)
 
     def test_a_disabled_server_writes_nothing(self, mcp_client, monkeypatch):
-        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_SERVER_ENABLED": False})
+        monkeypatch.setattr("mcp_server.auth.load_config", lambda: {"MCP_LAN_ENABLED": False})
         assert rpc(mcp_client, "tools/list").status_code == 503
         assert audit_rows() == []
 

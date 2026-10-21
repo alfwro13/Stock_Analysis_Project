@@ -193,42 +193,9 @@
 
         </details>
 
-        <details class="settings-card" id="mcp-server-card" data-search-keywords="mcp, claude, model context protocol, bearer key, remote access, claude.ai, mobile, oauth, pairing, connect">
+        <details class="settings-card" id="mcp-server-card" data-search-keywords="mcp, claude, model context protocol, bearer key, remote access, local access, lan access, local/lan, claude.ai, mobile, oauth, pairing, connect">
             <summary>🤖 MCP Server</summary>
-            <p class="settings-desc">A read-only endpoint that lets Claude (Claude Code, Claude Desktop) query your accounts, positions, Portfolio X-ray, Market Regime and more. It uses its own key, separate from the Home Assistant API key, and refuses every request while it is disabled or no key is set. Setup steps are in <code>assets/mcp_integration.md</code>.</p>
-            <div class="checkbox-group">
-                <input type="checkbox" id="MCP_SERVER_ENABLED" {% if config.MCP_SERVER_ENABLED %}checked{% endif %} onchange="toggleMcpServer(this)">
-                <label for="MCP_SERVER_ENABLED">Enable the MCP Server</label>
-            </div>
-            <div id="mcp-enabled-msg"></div>
-
-            <div class="settings-panel mt-20">
-                <h4 class="settings-panel-header text-blue">Endpoint</h4>
-                <p class="settings-desc">Connect your client to this URL with the header <code>Authorization: Bearer &lt;MCP key&gt;</code>. Use <code>http://localhost:8090/mcp</code> from the machine running the app; do not send the key over plain <code>http</code> across a network.</p>
-                <code id="mcp_endpoint_url">/mcp</code>
-            </div>
-
-            <div class="settings-panel mt-20">
-                <h4 class="settings-panel-header text-blue">MCP Keys</h4>
-                <p class="settings-desc">Give each client its own key, for example one per computer, so you can delete a single one without breaking the others. A key is shown only once, when you create it; deleting it stops that client immediately. Until at least one key exists every request is refused.</p>
-                <div id="mcp_key_once" class="form-group d-none">
-                    <label for="mcp_new_key">New MCP key — copy it now, it will not be shown again</label>
-                    <div class="flex-gap-10">
-                        <input type="text" id="mcp_new_key" class="form-control font-monospace flex-1" readonly>
-                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_new_key', this)">📋 Copy</button>
-                    </div>
-                </div>
-                <table class="table table-hover w-100">
-                    <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th></th></tr></thead>
-                    <tbody id="mcp-keys-body"><tr><td colspan="4" class="text-muted">Loading…</td></tr></tbody>
-                </table>
-                <div class="flex-gap-10">
-                    <input type="text" id="mcp_key_name" class="form-control flex-1" maxlength="{{ mcp_key_name_max }}" placeholder="Key name, e.g. dev box 1" aria-label="MCP key name">
-                    <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="createMcpKey()">➕ Create Key</button>
-                </div>
-                <div id="mcp-key-msg"></div>
-            </div>
-
+            <p class="settings-desc">A read-only endpoint that lets Claude query your accounts, positions, Portfolio X-ray, Market Regime and more. It has two independent ways in, each with its own switch (both off by default): <strong>Remote Access</strong> for claude.ai and the Claude mobile app, and <strong>Local/LAN Access</strong> for clients on your own network. Setup steps are in <code>assets/mcp_integration.md</code>.</p>
             <div class="settings-panel mt-20" id="mcp-remote-panel">
                 <h4 class="settings-panel-header text-blue">Remote Access</h4>
                 <p class="settings-desc">Lets claude.ai and the Claude mobile app reach the MCP Server from the internet through your public hostname. Every connection must be approved here, by you, while a <abbr title="A 10-minute period in which a new connection request is accepted. Outside it, nobody can start a connection.">pairing window</abbr> is open.</p>
@@ -316,6 +283,39 @@
                         <tbody id="mcp-remote-activity-body"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
                     </table>
                 </div>
+            </div>
+
+            <div class="settings-panel mt-20" id="mcp-lan-panel">
+                <h4 class="settings-panel-header text-blue">Local/LAN Access</h4>
+                <p class="settings-desc">Lets Claude Code and other clients on your own network reach the MCP Server with a named key. It is separate from Remote Access: either can be on while the other is off. While it is off, <code>/mcp</code> answers <code>503</code> on every host except the public host, and keys can be neither created nor deleted.</p>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="MCP_LAN_ENABLED" {% if config.MCP_LAN_ENABLED %}checked{% endif %} onchange="toggleMcpLan(this)">
+                    <label for="MCP_LAN_ENABLED">Enable Local/LAN Access</label>
+                </div>
+                <div id="mcp-lan-enabled-msg"></div>
+
+                <h5 class="settings-panel-header">Endpoint</h5>
+                <p class="settings-desc">Connect your client to this URL with the header <code>Authorization: Bearer &lt;MCP key&gt;</code>. Use <code>http://localhost:8090/mcp</code> from the machine running the app; do not send the key over plain <code>http</code> across a network.</p>
+                <code id="mcp_endpoint_url">/mcp</code>
+
+                <h5 class="settings-panel-header">MCP Keys</h5>
+                <p class="settings-desc">Give each client its own key, for example one per computer, so you can delete a single one without breaking the others. A key is shown only once, when you create it; deleting it stops that client immediately. Until at least one key exists every request is refused.</p>
+                <div id="mcp_key_once" class="form-group d-none">
+                    <label for="mcp_new_key">New MCP key — copy it now, it will not be shown again</label>
+                    <div class="flex-gap-10">
+                        <input type="text" id="mcp_new_key" class="form-control font-monospace flex-1" readonly>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="copyGeneratedSecret('mcp_new_key', this)">📋 Copy</button>
+                    </div>
+                </div>
+                <table class="table table-hover w-100">
+                    <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+                    <tbody id="mcp-keys-body"><tr><td colspan="4" class="text-muted">Loading…</td></tr></tbody>
+                </table>
+                <div class="flex-gap-10">
+                    <input type="text" id="mcp_key_name" class="form-control flex-1" maxlength="{{ mcp_key_name_max }}" placeholder="Key name, e.g. dev box 1" aria-label="MCP key name"{% if not config.MCP_LAN_ENABLED %} disabled{% endif %}>
+                    <button type="button" class="btn btn-primary mt-0 btn-nowrap" id="mcp-key-create-btn" onclick="createMcpKey()"{% if not config.MCP_LAN_ENABLED %} disabled{% endif %}>➕ Create Key</button>
+                </div>
+                <div id="mcp-key-msg"></div>
             </div>
         </details>
 

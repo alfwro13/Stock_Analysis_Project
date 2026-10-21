@@ -12,7 +12,7 @@
             <div class="term-box">
                 <span class="term-title">MCP Server</span>
                 <p>The <strong>MCP Server</strong> is a read-only endpoint at <code>/mcp</code> that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language through tools such as <code>get_accounts</code>, instead of you copying prompts across. It can only read: it cannot change settings, place trades or write data.</p>
-                <p>It has its own keys, created in Settings → MCP Server (one per computer, each with a name, shown only once and deletable on its own), sent as <code>Authorization: Bearer &lt;key&gt;</code>. An MCP key works only on <code>/mcp</code> and the Home Assistant API Key does not, so a leaked key of one cannot be used with the other. While the MCP Server is disabled or no key exists, <code>/mcp</code> refuses every request.</p>
+                <p>It has its own keys, created in Settings → MCP Server → Local/LAN Access (one per computer, each with a name, shown only once and deletable on its own), sent as <code>Authorization: Bearer &lt;key&gt;</code>. An MCP key works only on <code>/mcp</code> and the Home Assistant API Key does not, so a leaked key of one cannot be used with the other. While Local/LAN Access is disabled or no key exists, <code>/mcp</code> refuses every request from your own network.</p>
                 <p>Every answer states when its data was produced (<code>as_of</code>), whether the LSE and NYSE are open, the units used, and what is stale or missing. A missing value is returned as <code>null</code>, never as zero.</p>
                 <p>You can give Claude your own rules by writing them in <code>data/investment_policy.md</code>. Claude reads that file before it analyses anything and measures its suggestions against it. If the file is missing, empty or too long, Claude is told to say so instead of inventing a policy. Claude only reads the file; you edit it yourself.</p>
             </div>
@@ -71,7 +71,7 @@ The connector is read-only: never claim to have placed a trade or changed a sett
 
             <div class="term-box">
                 <span class="term-title">Connecting Claude Code to the MCP Server</span>
-                <p>1. In <strong>Settings → MCP Server</strong>, tick <strong>Enable the MCP Server</strong> (off by default; the dashboard password is asked), type a name for this computer such as <code>dev box 1</code> and press <strong>Create Key</strong>. The key is shown once: copy it now.</p>
+                <p>1. In <strong>Settings → MCP Server → Local/LAN Access</strong>, tick <strong>Enable Local/LAN Access</strong> (off by default; the dashboard password is asked), type a name for this computer such as <code>dev box 1</code> and press <strong>Create Key</strong>. The key is shown once: copy it now.</p>
                 <p>2. On the computer that runs Claude Code, add the server (replace the key; the name <code>stock-dashboard</code> is what the Dash instruction refers to):</p>
                 <pre><code>claude mcp add --transport http stock-dashboard http://localhost:8090/mcp --header "Authorization: Bearer &lt;MCP key&gt;"</code></pre>
                 <p>3. Check it with <code>claude mcp list</code>, which should show <code>stock-dashboard</code> as connected, or type <code>/mcp</code> inside Claude Code to see its tools. A wrong or missing key shows as an authentication failure.</p>
@@ -79,32 +79,8 @@ The connector is read-only: never claim to have placed a trade or changed a sett
             </div>
 
             <div class="term-box">
-                <span class="term-title">Connecting Claude Desktop to the MCP Server</span>
-                <p>Claude Desktop starts local programs from its configuration file, so it reaches the dashboard through the <strong>mcp-remote</strong> bridge, which needs <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js</a> (it provides <code>npx</code>). Create a key as in the Claude Code steps, then open Claude Desktop → Settings → Developer → Edit Config and add the server to <code>claude_desktop_config.json</code> (macOS: <code>~/Library/Application Support/Claude/</code>, Windows: <code>%APPDATA%\Claude\</code>):</p>
-                <pre><code>{
-  "mcpServers": {
-    "stock-dashboard": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://&lt;your-dashboard-host&gt;/mcp",
-        "--header",
-        "Authorization:${AUTH_HEADER}"
-      ],
-      "env": {
-        "AUTH_HEADER": "Bearer &lt;MCP key&gt;"
-      }
-    }
-  }
-}</code></pre>
-                <p>Save the file and restart Claude Desktop; the tools appear under the connector named <code>stock-dashboard</code>. The key goes in <code>env</code>, and the header has no space after the colon, because Claude Desktop on Windows does not escape spaces inside <code>args</code>.</p>
-                <p>The address must be reachable from the computer running Claude Desktop, and its host name must be in the dashboard's <code>ALLOWED_HOSTS</code>. Use <code>http://localhost:8090/mcp</code> only when Claude Desktop runs on the dashboard machine. Do not send the key over plain <code>http</code> across a network: use your HTTPS address. <code>mcp-remote</code> accepts plain <code>http</code> beyond localhost only with its <code>--allow-http</code> option, meant for trusted private networks.</p>
-                <p>Claude.ai in the browser and the mobile apps cannot use this setup: they connect through MCP Remote Access (below), which needs a public hostname prepared first.</p>
-            </div>
-
-            <div class="term-box">
                 <span class="term-title">MCP Remote Access</span>
-                <p><strong>MCP Remote Access</strong> lets claude.ai and the Claude mobile app reach the MCP Server from the internet through a public hostname you choose, instead of only from your own network. It is off by default and has its own switch in Settings → MCP Server → Remote Access. Preparing the public hostname itself (tunnel, proxy and firewall rules) is a separate one-off job described in <code>assets/mcp_integration.md</code>.</p>
+                <p><strong>MCP Remote Access</strong> lets claude.ai and the Claude mobile app reach the MCP Server from the internet through a public hostname you choose, instead of only from your own network. It is off by default and has its own switch in Settings → MCP Server → Remote Access, separate from the one for Local/LAN Access. Claude Desktop uses the same connector, which you add once in your Claude account and which is then available on desktop and mobile. Preparing the public hostname itself (tunnel, proxy and firewall rules) is a separate one-off job described in <code>assets/mcp_integration.md</code>.</p>
                 <p>Nobody can connect on their own. You create an <strong>OAuth client</strong> (a client ID and a secret, shown once) and type them into Claude's connector dialog. A new connection is then accepted only while you have opened a 10-minute <strong>pairing window</strong>: Claude shows a short code, the same code appears in the dashboard under <strong>Connection Requests</strong>, and you press <strong>Approve</strong> (the dashboard password is asked) only if the two codes match. Approval happens inside the dashboard, never on the internet.</p>
                 <p>Remote Access signs in with its own short-lived tokens instead of the MCP keys: an MCP key does not work on the public hostname and a Remote Access token does not work on your own network. Everything stays read-only. The <strong>Connected Apps</strong> table lists what is connected, when each app was last used and from which address, and has a <strong>Revoke</strong> button per app; <strong>Revoke All Remote Access</strong> signs every app out, closes the pairing window and discards waiting requests, and <strong>Recent Activity</strong> lists the last 50 requests, refused ones included. Rotating the client secret or restoring a backup also signs every connected app out. The <strong>MCP Remote Access</strong> notification tells you when a request is waiting or approved, when a refresh token is used twice, when an address is locked out after wrong credentials, when a request comes from outside the allowed address range, and when a pairing window closes without a connection request.</p>
             </div>

@@ -29,10 +29,8 @@ def _wrong_credential(address: str, status: int, detail: str, headers: Optional[
     return _rejection(address, status, detail, headers)
 
 
-def disabled_response() -> Optional[JSONResponse]:
-    if load_config().get("MCP_SERVER_ENABLED"):
-        return None
-    return JSONResponse({"detail": "The MCP Server is disabled"}, status_code=503)
+def lan_enabled() -> bool:
+    return bool(load_config().get("MCP_LAN_ENABLED"))
 
 
 def _public_host_failure(request: Request, address: str) -> Optional[JSONResponse]:
@@ -53,9 +51,9 @@ def _public_host_failure(request: Request, address: str) -> Optional[JSONRespons
 
 
 def auth_failure(request: Request) -> Optional[JSONResponse]:
-    disabled = disabled_response()
-    if disabled is not None:
-        return disabled
+    on_public_host = oauth.on_public_host(request.headers.get("host", ""))
+    if not on_public_host and not lan_enabled():
+        return JSONResponse({"detail": "MCP Local/LAN Access is disabled"}, status_code=503)
     address = request.client.host if request.client else "unknown"
     wait = limits.lockout_remaining(address)
     if wait:
@@ -63,7 +61,7 @@ def auth_failure(request: Request) -> Optional[JSONResponse]:
             address, 429, "Too many wrong MCP credentials from this address", {"Retry-After": str(wait)},
             log=limits.first_refusal(("address", address)),
         )
-    if oauth.on_public_host(request.headers.get("host", "")):
+    if on_public_host:
         return _public_host_failure(request, address)
     if request.headers.get("X-API-Key"):
         return _wrong_credential(address, 403, "The API key cannot be used on this route")
