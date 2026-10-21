@@ -569,28 +569,33 @@ The tunnel client (`cloudflared`) sits between the internet and the proxy, so it
 
 | Item | Setting |
 |---|---|
-| Account | A dedicated system account and group `cloudflared` (no home, `nologin`). |
-| Credential file | `/etc/cloudflared/<tunnel-id>.json`, mode `0600`, owned by that account. The copy under root's home is removed once the hostnames have been checked; the dated backup is the only other copy (root-only directory). The origin certificate (`cert.pem`, needed only for tunnel management commands) stays in root's home. |
-| `config.yml` | `/etc/cloudflared/config.yml`, mode `0640`, `root:cloudflared`; `credentials-file` points at the new path. |
-| Unit | `User=` and `Group=cloudflared`, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, the kernel and control-group protections, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`, `LockPersonality`, `UMask=0077`, an empty `CapabilityBoundingSet` and `AmbientCapabilities`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`. `--no-autoupdate` is kept. `systemd-analyze security` went from 9.6 (unsafe) to 3.0. |
+| Account | A dedicated system account and group `cloudflared` (no home directory, shell `nologin`). |
+| Credential file | `/etc/cloudflared/<tunnel-id>.json`, mode `0600`, owned by the `cloudflared` account. It is the only copy outside the root-only backup directory. The origin certificate (`cert.pem`, used only by tunnel management commands) lives in root's home and is not readable by the account. |
+| `config.yml` | `/etc/cloudflared/config.yml`, mode `0640`, owner `root`, group `cloudflared`; `credentials-file` names the path above. |
+| Unit | `User=cloudflared`, `Group=cloudflared`, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectKernelLogs`, `ProtectControlGroups`, `ProtectClock`, `ProtectHostname`, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`, `LockPersonality`, `SystemCallArchitectures=native`, `UMask=0077`, an empty `CapabilityBoundingSet` and `AmbientCapabilities`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, `Restart=on-failure`. `ExecStart` runs `cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run`. |
 
-Procedure: copy the unit, `config.yml` and the credential to a dated, root-only backup directory; create the account; install the credential and the edited `config.yml`; validate with `cloudflared --config <file> tunnel ingress validate`; install the unit and `systemd-analyze verify` it; restart; wait for `curl 127.0.0.1:20241/ready` to report a connection. The script restores the backups and restarts the old unit if any step fails. The tunnelled sites are unavailable for a few seconds while it restarts. Afterwards request each hostname through the public edge (not from the proxy host itself, whose hosts file may resolve them locally) and compare the status codes with those from before.
+`systemd-analyze security cloudflared` rates the unit OK (about 3). The tunnel listens for metrics on `127.0.0.1:20241`; `curl 127.0.0.1:20241/ready` reports the number of edge connections (four when healthy). A journal warning about the UDP receive buffer is harmless: the kernel's `net.core.rmem_max` is below what the client asks for and it uses a smaller buffer.
 
-Rollback: copy the backed-up unit and `config.yml` over the new ones, restore the credential to its old location, `systemctl daemon-reload`, `systemctl restart cloudflared`.
+**Applying or changing the setup.**
+
+1. Copy the unit, `config.yml` and the credential to a dated directory that only root can read.
+2. Create the account, install the credential and the edited `config.yml`, and validate with `cloudflared --config <file> tunnel ingress validate`.
+3. Install the unit, run `systemd-analyze verify` on it, `systemctl daemon-reload`, `systemctl restart cloudflared`, and wait for `/ready`. The tunnelled sites are unavailable for a few seconds during the restart.
+4. Request every tunnelled hostname through the public edge and compare the status codes with the ones before. Do this from a machine other than the proxy host, or pin the edge address with `curl --resolve`: the proxy host's `/etc/hosts` resolves the hostnames to itself.
+
+Rollback: copy the backed-up unit and `config.yml` over the current ones, put the credential back where that `config.yml` expects it, `systemctl daemon-reload`, `systemctl restart cloudflared`.
 
 **Updating the client.** `--no-autoupdate` means the client changes only when the operator updates it, and the package repository is not among the `unattended-upgrades` origins. Check monthly, and after any Cloudflare announcement about the client:
 
-1. `apt-get update && apt list --upgradable 2>/dev/null | grep cloudflared`; read the release notes for the new version.
+1. `apt-get update && apt list --upgradable 2>/dev/null | grep cloudflared`; read the release notes of the new version.
 2. Copy the unit and `config.yml` to a dated backup.
 3. `apt-get install --only-upgrade cloudflared` (the package ships only the binary, so the unit and `config.yml` are untouched).
-4. `systemctl restart cloudflared`; wait for `/ready`; request each hostname through the public edge.
+4. `systemctl restart cloudflared`, wait for `/ready`, request each hostname through the public edge.
 5. Rollback: `apt-get install cloudflared=<previous version>` and restart.
-
-A warning about the UDP receive buffer in the journal is harmless (a kernel setting, `net.core.rmem_max`); the client falls back to a smaller buffer.
 
 ### Tunnel: the ingress entry for the public host
 
-One entry is added to the existing tunnel's `config.yml`, before the final `http_status:404` catch-all; the existing entries are left alone:
+`config.yml` holds one entry for `<public-host>` before the final `http_status:404` catch-all:
 
 ```yaml
   - hostname: <public-host>
@@ -598,32 +603,33 @@ One entry is added to the existing tunnel's `config.yml`, before the final `http
     service: http://127.0.0.1:8088
 ```
 
-The service is plain HTTP to the loopback port of the vhost, so it needs no certificate and the LAN cannot reach it; the original `Host` header is forwarded and the vhost checks it. Validate before restarting: `cloudflared tunnel ingress validate`, then `cloudflared tunnel ingress rule https://<public-host>/<path>` for each of the eight routes (each must report the new rule) and for `/`, `/mcp/`, `/mcpx`, `/oauth/other` and an unrelated path (each must report the catch-all), plus one URL of every other hostname (each must report its own rule). Restart the tunnel afterwards. Until the DNS record exists nothing is reachable through it.
+The service is plain HTTP to the loopback port of the virtual host, so it needs no certificate and the LAN cannot reach it. The original `Host` header is forwarded and the virtual host checks it. Every other hostname keeps its own entry.
+
+Check after every edit, before restarting: `cloudflared tunnel ingress validate`, then `cloudflared tunnel ingress rule https://<public-host>/<path>`. Each of the eight routes must report the `<public-host>` rule; `/`, `/mcp/`, `/mcpx`, `/oauth/other` and an unrelated path must report the catch-all; one URL of every other hostname must report its own rule. The tunnel is restarted to load the file. Until the DNS record below exists, nothing is reachable through the entry.
 
 Rollback: restore the backed-up `config.yml` and restart.
 
 ### Cloudflare: rules and DNS record
 
-Applied in this order, so the exception never exists without the block and nothing is reachable before the rules are in place. The zone is on the Free plan: five custom rules and one rate-limit rule.
+The zone is on the Free plan (five custom rules, one rate-limit rule). The order below keeps the exception from existing without the block, and keeps the host unreachable until the rules are in place. Save the existing rule text before editing.
 
-1. **Block rule** (new custom rule, appended): block when the host is `<public-host>` and either the path is not one of the eight exact paths, or the path is one of the five machine paths (`/mcp`, `/oauth/token`, `/oauth/revoke` and the two `/.well-known/` routes) and `ip.src` is outside `160.79.104.0/21`. No regular expressions, so it fits the Free plan.
-2. **Rate-limit rule** (the only one the plan allows): the Free plan can match on the path only (no host), counts per client address over 10 s, and blocks for 10 s. The rule matches the eight exact paths (an exact list, because a `/mcp` prefix would also match unrelated applications such as Home Assistant's `/mcp_server`), 30 requests per 10 s. It is a coarse backstop: the finer limits are in the nginx vhost and the app.
-3. **Geo exception**: the zone's rule that blocks every country except the operator's own ones gets `and not (http.host eq "<public-host>" and ip.src in {160.79.104.0/21})`, which exempts Anthropic's published outbound range for that host only; every other host and source stays as strict as before. Side effect: the operator's browser steps (`/oauth/authorize`, `/oauth/approve`) are still geo-blocked when abroad, so a connection cannot be paired from abroad.
-4. **DNS record**: a proxied `CNAME` for the public host to `<tunnel-id>.cfargotunnel.com`; then confirm the edge presents a valid certificate for the public host (Universal SSL covers a first-level subdomain; the apex `CAA` record only governs issuance).
+1. **Block rule** (custom rule, placed last, action block). Expression: the host is `<public-host>` and either the path is not one of the eight exact paths, or the path is one of the five machine paths (`/mcp`, `/oauth/token`, `/oauth/revoke`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`) and `ip.src` is outside `160.79.104.0/21`. It uses no regular expressions, which the Free plan does not allow.
+2. **Rate-limit rule** (the only one the plan allows, action block). The Free plan can match on the path only, not the host, so the expression is the exact list of the eight paths (a `/mcp` prefix would also match unrelated applications such as Home Assistant's `/mcp_server`). Limit: 30 requests per 10 seconds per client address, blocked for 10 seconds (the only period and duration the Free plan offers). It is a coarse backstop; the finer limits are in the nginx virtual host and the app.
+3. **Geo exception.** The zone's rule that blocks every country except the operator's own carries `and not (http.host eq "<public-host>" and ip.src in {160.79.104.0/21})`. This exempts Anthropic's published outbound range for that host only; every other host and source stays as strict as before. The operator's browser steps (`/oauth/authorize`, `/oauth/approve`) remain subject to the country rule, so a connection cannot be paired from abroad.
+4. **DNS record.** A proxied `CNAME` for `<public-host>` to `<tunnel-id>.cfargotunnel.com`, created last. Universal SSL covers a first-level subdomain; the apex `CAA` record only governs issuance.
 
-Checks after the record exists, from an address outside Anthropic's range and pinned to the edge address with `curl --resolve` if the local resolver does not know the record yet: each machine path, an unlisted path and `/` answer Cloudflare's own `403` page; `/oauth/approve-status` is let through and answers the app's empty `404` while Remote Access is off; the nginx access log shows the caller's real address, not a loopback or edge address. The client-address gate at the app is still the go-live check above.
+**Checks.** From an address outside Anthropic's range (pin the edge address with `curl --resolve` while the local resolver does not know the record): each machine path, an unlisted path and `/` answer Cloudflare's own `403` page; `/oauth/approve-status` is let through and answers the app's empty `404` while Remote Access is off; the edge presents a valid certificate for `<public-host>`; the nginx access log shows the caller's real address, not a loopback or edge address. The app-side client-address gate is the go-live check above.
 
-Before editing, save the existing rule text. Rollback: delete the new rules and the DNS record and restore the saved geo-rule expression.
+Rollback: delete the new rules and the DNS record, and restore the saved expression of the geo rule.
 
 ### Cloudflare: account review
 
-Done when the work is finished and recorded; the connection used to make the changes is revoked afterwards.
+The account that controls DNS, the WAF and the tunnel is reviewed after any change to them and at least monthly:
 
-- Two-factor authentication on the account, a security key preferred.
-- API tokens: list them in the dashboard, delete the ones no longer needed, and give any that remain the smallest scope and an expiry.
-- OAuth grants (My Profile → Access Management → Authentication) and the connected-apps list: revoke every grant that is not needed, including the one used for this work.
-- Notifications: turn on the tunnel alerts (Tunnel Health, Tunnel Created and Deleted) for the operator's email. The plan has no alert type for DNS record changes, so review the account audit log (Manage Account → Audit Log) after any change and at least monthly.
-- Audit log: confirm every recent action was the operator's or Cloudflare's own.
+- Two-factor authentication is on, with a security key preferred.
+- API tokens (dashboard: My Profile → API Tokens) are limited to what is in use, each with the smallest scope and an expiry.
+- OAuth grants (My Profile → Access Management → Authentication) and connected apps are limited to what is in use. A connection used for configuration work is revoked when the work is finished.
+- Notifications: the tunnel alerts (Tunnel Health, Tunnel Created and Deleted) go to the operator's email. The plan has no alert type for DNS record changes, so the account audit log (Manage Account → Audit Log) is the control for those: every recent action is the operator's or Cloudflare's own.
 
 ## Testing
 
