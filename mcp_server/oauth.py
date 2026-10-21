@@ -43,6 +43,7 @@ _GRANT_REFUSED = "The grant is invalid, expired or revoked."
 _lock = threading.Lock()
 _cache: Dict[str, Tuple[int, float]] = {}
 _last_written: Dict[int, float] = {}
+_generation = 0
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mcp-oauth-use")
 
 
@@ -295,8 +296,8 @@ def _revoke(grant_id: int, now: datetime) -> bool:
     return revoked
 
 
-def exchange_code(code: str, redirect_uri: str, code_verifier: str, resource: Optional[str]) -> Tuple[dict, int]:
-    """(token response, grant id). The code is consumed by the first presentation, whatever the checks say."""
+def exchange_code(client_id: str, code: str, redirect_uri: str, code_verifier: str, resource: Optional[str]) -> Tuple[dict, int]:
+    """(token response, grant id). The code is consumed by the first presentation, whatever the checks say. The grant belongs to the client that authenticated."""
     now = _now()
     request, reused = db_mcp_oauth.consume_code(hash_key(code), _stamp(now))
     if request is None:
@@ -317,12 +318,13 @@ def exchange_code(code: str, redirect_uri: str, code_verifier: str, resource: Op
         raise OAuthError("invalid_target", "The resource does not match the authorization request.")
     grant_expires = now + timedelta(days=MCP_OAUTH_GRANT_DAYS)
     rows, body = _new_tokens(now, grant_expires)
-    client = db_mcp_oauth.get_client()
     grant_id = db_mcp_oauth.create_grant(
         request["id"],
-        {"client_id": client["client_id"], "scope": request["scope"], "resource": request["resource"], "created_at": _stamp(now), "expires_at": _stamp(grant_expires)},
+        {"client_id": client_id, "scope": request["scope"], "resource": request["resource"], "created_at": _stamp(now), "expires_at": _stamp(grant_expires)},
         rows,
     )
+    if grant_id is None:
+        raise _grant_refused()
     return body, grant_id
 
 
@@ -369,7 +371,9 @@ def revoke_token(client_id: str, token: str) -> None:
 
 
 def invalidate(grant_id: Optional[int] = None) -> None:
+    global _generation
     with _lock:
+        _generation += 1
         if grant_id is None:
             _cache.clear()
             _last_written.clear()
@@ -379,13 +383,17 @@ def invalidate(grant_id: Optional[int] = None) -> None:
         _last_written.pop(grant_id, None)
 
 
-def _remember(token_hash: str, grant_id: int, expires: float, now: float) -> None:
+def _remember(token_hash: str, grant_id: int, expires: float, now: float, generation: int) -> bool:
+    """False, caching nothing, when an invalidation ran since generation was read: the database row it came from may be revoked."""
     with _lock:
+        if generation != _generation:
+            return False
         for stale in [h for h, (_, until) in _cache.items() if until <= now]:
             del _cache[stale]
         if len(_cache) >= MCP_OAUTH_CACHE_MAX_ENTRIES:
             del _cache[next(iter(_cache))]
         _cache[token_hash] = (grant_id, expires)
+        return True
 
 
 def verify_access_token(token: str) -> Optional[int]:
@@ -393,23 +401,25 @@ def verify_access_token(token: str) -> Optional[int]:
     if not token.startswith(ACCESS_PREFIX):
         return None
     token_hash = hash_key(token)
-    now = _now()
-    moment = now.timestamp()
-    with _lock:
-        cached = _cache.get(token_hash)
-        if cached is not None:
-            if cached[1] > moment:
-                return cached[0]
-            del _cache[token_hash]
-    row = db_mcp_oauth.get_token(token_hash)
-    stamped = _stamp(now)
-    if (
-        row is None or row["kind"] != "access" or row["revoked_at"] or row["token_expires_at"] <= stamped
-        or row["grant_expires_at"] <= stamped or row["resource"] != resource_url() or SCOPE not in row["scope"].split()
-    ):
-        return None
-    _remember(token_hash, row["grant_id"], min(_epoch(row["token_expires_at"]), _epoch(row["grant_expires_at"])), moment)
-    return row["grant_id"]
+    while True:
+        now = _now()
+        moment = now.timestamp()
+        with _lock:
+            cached = _cache.get(token_hash)
+            if cached is not None:
+                if cached[1] > moment:
+                    return cached[0]
+                del _cache[token_hash]
+            generation = _generation
+        row = db_mcp_oauth.get_token(token_hash)
+        stamped = _stamp(now)
+        if (
+            row is None or row["kind"] != "access" or row["revoked_at"] or row["token_expires_at"] <= stamped
+            or row["grant_expires_at"] <= stamped or row["resource"] != resource_url() or SCOPE not in row["scope"].split()
+        ):
+            return None
+        if _remember(token_hash, row["grant_id"], min(_epoch(row["token_expires_at"]), _epoch(row["grant_expires_at"])), moment, generation):
+            return row["grant_id"]
 
 
 def _write_use(grant_id: int, used_at: str, address: str) -> None:

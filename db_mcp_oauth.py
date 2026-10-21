@@ -246,7 +246,8 @@ def consume_code(code_hash: str, now: str) -> Tuple[Optional[dict], bool]:
             conn.close()
 
 
-def create_grant(request_id: str, grant: dict, tokens: List[dict]) -> int:
+def create_grant(request_id: str, grant: dict, tokens: List[dict]) -> Optional[int]:
+    """The grant id, or None when the request was removed or the client replaced since the code was redeemed; the insert holds the write lock, so Revoke All lands wholly before or after."""
     conn = None
     try:
         conn = get_connection()
@@ -255,7 +256,13 @@ def create_grant(request_id: str, grant: dict, tokens: List[dict]) -> int:
             "VALUES (:client_id, :scope, :resource, :created_at, :expires_at)",
             grant,
         ).lastrowid
-        conn.execute("UPDATE mcp_oauth_requests SET grant_id = ? WHERE id = ?", (grant_id, request_id))
+        linked = conn.execute(
+            "UPDATE mcp_oauth_requests SET grant_id = ? WHERE id = ? AND status = 'approved' AND grant_id IS NULL", (grant_id, request_id)
+        ).rowcount
+        current = conn.execute("SELECT client_id FROM mcp_oauth_client WHERE id = 1").fetchone()
+        if not linked or current is None or current["client_id"] != grant["client_id"]:
+            conn.rollback()
+            return None
         _insert_tokens(conn, grant_id, tokens)
         conn.commit()
         return grant_id

@@ -804,7 +804,7 @@ class TestVerificationOnMcp:
             assert mcp(remote, body["access_token"]).status_code == 200
         assert len(oauth._cache) == 2 and MCP_OAUTH_CACHE_MAX_ENTRIES >= 2
         remote.clock.advance(minutes=20)
-        oauth._remember("hash", 1, remote.clock.now.timestamp() + 60, remote.clock.now.timestamp())
+        assert oauth._remember("hash", 1, remote.clock.now.timestamp() + 60, remote.clock.now.timestamp(), oauth._generation)
         assert list(oauth._cache) == ["hash"]
 
     def test_the_token_check_runs_off_the_event_loop(self, remote, monkeypatch):
@@ -875,6 +875,73 @@ class TestClient:
             conn.close()
         assert not oauth.authenticate_client("", "") and not oauth.pairing_window_open()
         assert not oauth.open_pairing_window()
+
+
+class TestRevocationRaces:
+    """A revoke that lands between two steps of a token exchange or a token check must still win."""
+
+    def run_between(self, monkeypatch, module, name, action):
+        real = getattr(module, name)
+
+        def wrapper(*args):
+            action()
+            return real(*args)
+
+        monkeypatch.setattr(module, name, wrapper)
+
+    def test_revoke_all_between_redeeming_a_code_and_creating_the_grant_refuses_the_exchange(self, remote, monkeypatch):
+        code, verifier, _ = pair(remote)
+        self.run_between(monkeypatch, db_mcp_oauth, "create_grant", oauth.revoke_all_remote_access)
+        with pytest.raises(oauth.OAuthError) as refused:
+            oauth.exchange_code(remote.client_id, code, REDIRECT_URI, verifier, RESOURCE)
+        assert refused.value.error == "invalid_grant"
+        assert sql("SELECT COUNT(*) AS n FROM mcp_oauth_grants")[0]["n"] == 0
+        assert sql("SELECT COUNT(*) AS n FROM mcp_oauth_tokens")[0]["n"] == 0
+
+    def test_revoke_all_right_after_the_grant_is_created_revokes_it(self, remote):
+        body = tokens(remote)
+        assert mcp(remote, body["access_token"]).status_code == 200
+        oauth.revoke_all_remote_access()
+        assert mcp(remote, body["access_token"]).status_code == 401
+        one_error(refresh(remote, body["refresh_token"]), 400, "invalid_grant")
+
+    def test_a_secret_rotation_between_redeeming_a_code_and_creating_the_grant_refuses_the_exchange(self, remote, monkeypatch):
+        code, verifier, _ = pair(remote)
+        self.run_between(monkeypatch, db_mcp_oauth, "create_grant", oauth.create_client)
+        with pytest.raises(oauth.OAuthError) as refused:
+            oauth.exchange_code(remote.client_id, code, REDIRECT_URI, verifier, RESOURCE)
+        assert refused.value.error == "invalid_grant"
+        assert sql("SELECT COUNT(*) AS n FROM mcp_oauth_grants")[0]["n"] == 0
+        assert sql("SELECT COUNT(*) AS n FROM mcp_oauth_tokens")[0]["n"] == 0
+
+    def test_the_grant_belongs_to_the_client_that_authenticated(self, remote):
+        tokens(remote)
+        assert sql("SELECT client_id FROM mcp_oauth_grants")[0]["client_id"] == remote.client_id
+
+    def test_a_revoke_between_the_database_read_and_the_cache_write_is_not_cached(self, remote, monkeypatch):
+        body = tokens(remote)
+        grant_id = sql("SELECT id FROM mcp_oauth_grants")[0]["id"]
+        oauth.invalidate()
+        real_get_token = db_mcp_oauth.get_token
+        revoked = []
+
+        def read_then_revoke(token_hash):
+            row = real_get_token(token_hash)
+            if not revoked:
+                revoked.append(oauth.revoke_grant(grant_id))
+            return row
+
+        monkeypatch.setattr(db_mcp_oauth, "get_token", read_then_revoke)
+        assert oauth.verify_access_token(body["access_token"]) is None
+        assert revoked == [True]
+        assert keys.hash_key(body["access_token"]) not in oauth._cache
+        assert mcp(remote, body["access_token"]).status_code == 401
+
+    def test_a_check_that_no_revoke_interrupted_is_cached(self, remote):
+        body = tokens(remote)
+        oauth.invalidate()
+        assert mcp(remote, body["access_token"]).status_code == 200
+        assert keys.hash_key(body["access_token"]) in oauth._cache
 
 
 class TestOldRowsAreDeleted:
