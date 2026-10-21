@@ -126,6 +126,7 @@ MCP_OAUTH_STATE_MAX_CHARS   = 512              # the client's `state`
 MCP_OAUTH_USER_AGENT_MAX_CHARS = 200           # requester user agent stored with a pending request
 MCP_OAUTH_CACHE_MAX_ENTRIES = 1000             # access-token hashes the in-memory verification cache holds
 MCP_OAUTH_PRUNE_AFTER_DAYS  = 1                # expired tokens and finished requests older than this are deleted when a new one is written
+MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS = 10    # a rotated refresh token presented again this soon after its rotation is a retry, refused without revoking the grant
 MCP_OAUTH_LAST_USED_WRITE_SECONDS = 60         # a grant's last-used time and address are written at most this often
 MCP_OAUTH_CONNECTED_APPS_MAX = 50              # grants listed in the Settings Connected Apps table
 ETF_CONSTITUENTS_MAX        = 50

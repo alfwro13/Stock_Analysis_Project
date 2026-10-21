@@ -15,8 +15,8 @@ import db_mcp_oauth
 from constants import (
     MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_CONNECTED_APPS_MAX, MCP_OAUTH_GRANT_DAYS,
     MCP_OAUTH_LAST_USED_WRITE_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_PENDING_MAX,
-    MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR,
-    MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
+    MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS, MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS,
+    MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
 from utils import clean_display_text
 
@@ -299,7 +299,7 @@ def exchange_code(code: str, redirect_uri: str, code_verifier: str, resource: Op
 
 
 def refresh_tokens(client_id: str, refresh_token: str, scope: Optional[str], resource: Optional[str]) -> Tuple[dict, int]:
-    """(token response, grant id). Presenting a refresh token that was already rotated revokes the whole grant."""
+    """(token response, grant id). A refresh token presented again after its rotation revokes the whole grant, unless it is within the retry grace."""
     now = _now()
     stamped = _stamp(now)
     token_hash = hash_key(refresh_token)
@@ -307,7 +307,7 @@ def refresh_tokens(client_id: str, refresh_token: str, scope: Optional[str], res
     if row is None or row["kind"] != "refresh" or row["client_id"] != client_id or row["revoked_at"] or row["grant_expires_at"] <= stamped:
         raise _grant_refused()
     if row["rotated_at"]:
-        return _refresh_reused(row["grant_id"], now)
+        return _rotated_token_presented(row["grant_id"], row["rotated_at"], now)
     if row["token_expires_at"] <= stamped or row["resource"] != resource_url():
         raise _grant_refused()
     if scope is not None and (not scope.split() or set(scope.split()) - set(row["scope"].split())):
@@ -315,14 +315,18 @@ def refresh_tokens(client_id: str, refresh_token: str, scope: Optional[str], res
     if resource is not None and resource != row["resource"]:
         raise OAuthError("invalid_target", "The resource does not match the grant.")
     if not db_mcp_oauth.rotate_refresh_token(token_hash, stamped):
-        return _refresh_reused(row["grant_id"], now)
+        # a concurrent request rotated it between our read and our update, so it was rotated within this request
+        return _rotated_token_presented(row["grant_id"], stamped, now)
     rows, body = _new_tokens(now, datetime.strptime(row["grant_expires_at"], _STORED_FORMAT).replace(tzinfo=timezone.utc))
     db_mcp_oauth.add_tokens(row["grant_id"], rows, _stamp(now - timedelta(days=MCP_OAUTH_PRUNE_AFTER_DAYS)))
     invalidate(row["grant_id"])
     return body, row["grant_id"]
 
 
-def _refresh_reused(grant_id: int, now: datetime):
+def _rotated_token_presented(grant_id: int, rotated_at: str, now: datetime):
+    if rotated_at >= _stamp(now - timedelta(seconds=MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS)):
+        logger.warning("A rotated refresh token was presented again within the retry grace; grant %s was kept", grant_id)
+        raise _grant_refused()
     if _revoke(grant_id, now):
         events.refresh_reused()
     logger.warning("A rotated refresh token was presented again; grant %s was revoked", grant_id)

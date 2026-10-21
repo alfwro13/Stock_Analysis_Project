@@ -14,7 +14,7 @@ import config
 import db_mcp_oauth
 from constants import (
     MCP_AUTH_FAILURES_MAX, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_PENDING_MAX,
-    MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_USER_AGENT_MAX_CHARS,
+    MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
 from database import get_connection
 from mcp_server import keys, limits, oauth
@@ -566,12 +566,50 @@ class TestRefresh:
         first = tokens(remote)
         second = refresh(remote, first["refresh_token"]).json()
         assert mcp(remote, second["access_token"]).status_code == 200
+        remote.clock.advance(seconds=MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS + 1)
         one_error(refresh(remote, first["refresh_token"]), 400, "invalid_grant")
         assert sql("SELECT revoked_at FROM mcp_oauth_grants")[0]["revoked_at"] is not None
         assert mcp(remote, second["access_token"]).status_code == 401
         assert mcp(remote, first["access_token"]).status_code == 401
         one_error(refresh(remote, second["refresh_token"]), 400, "invalid_grant")
         assert first["refresh_token"] not in caplog.text and second["refresh_token"] not in caplog.text
+
+    def test_a_rotated_refresh_token_presented_again_within_the_grace_is_refused_without_revoking(self, remote, caplog):
+        first = tokens(remote)
+        second = refresh(remote, first["refresh_token"]).json()
+        remote.clock.advance(seconds=MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS)
+        one_error(refresh(remote, first["refresh_token"]), 400, "invalid_grant")
+        one_error(refresh(remote, first["refresh_token"]), 400, "invalid_grant")
+        assert sql("SELECT revoked_at FROM mcp_oauth_grants")[0]["revoked_at"] is None
+        assert mcp(remote, second["access_token"]).status_code == 200
+        assert refresh(remote, second["refresh_token"]).status_code == 200
+        assert first["refresh_token"] not in caplog.text and second["refresh_token"] not in caplog.text
+
+    def test_the_grace_ends_one_second_after_its_length(self, remote):
+        first = tokens(remote)
+        second = refresh(remote, first["refresh_token"]).json()
+        remote.clock.advance(seconds=MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS + 1)
+        one_error(refresh(remote, first["refresh_token"]), 400, "invalid_grant")
+        assert sql("SELECT revoked_at FROM mcp_oauth_grants")[0]["revoked_at"] is not None
+        assert mcp(remote, second["access_token"]).status_code == 401
+
+    def test_a_refresh_that_loses_the_rotation_race_does_not_revoke_the_grant(self, remote, monkeypatch):
+        first = tokens(remote)
+        real_get_token = db_mcp_oauth.get_token
+        winner = {}
+
+        def get_token_then_lose_the_race(token_hash):
+            row = real_get_token(token_hash)
+            if row is not None and row["kind"] == "refresh" and not winner:
+                winner["body"] = None
+                winner["body"] = refresh(remote, first["refresh_token"]).json()
+            return row
+
+        monkeypatch.setattr(db_mcp_oauth, "get_token", get_token_then_lose_the_race)
+        response = remote.http.post("/oauth/token", data={"grant_type": "refresh_token", "refresh_token": first["refresh_token"]}, auth=remote.auth)
+        one_error(response, 400, "invalid_grant")
+        assert sql("SELECT revoked_at FROM mcp_oauth_grants")[0]["revoked_at"] is None
+        assert mcp(remote, winner["body"]["access_token"]).status_code == 200
 
     @pytest.mark.parametrize("make_token", [
         lambda body: "mcprt_unknown-token", lambda body: body["access_token"], lambda body: "", lambda body: "not-prefixed",
