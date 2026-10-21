@@ -604,12 +604,11 @@ Check after every edit, before restarting: `cloudflared tunnel ingress validate`
 
 ### Cloudflare: rules and DNS record
 
-The zone is on the Free plan (five custom rules, one rate-limit rule). The order below keeps the exception from existing without the block, and keeps the host unreachable until the rules are in place.
+The zone is on the Free plan (five custom rules, one rate-limit rule). The order below keeps the host unreachable until the rules are in place.
 
 1. **Block rule** (custom rule, placed last, action block). Expression: the host is `<public-host>` and either the path is not one of the eight exact paths, or the path is one of the five machine paths (`/mcp`, `/oauth/token`, `/oauth/revoke`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server`) and `ip.src` is outside `160.79.104.0/21`. It uses no regular expressions, which the Free plan does not allow.
 2. **Rate-limit rule** (the only one the plan allows, action block). The Free plan can match on the path only, not the host, so the expression is the exact list of the eight paths (a `/mcp` prefix would also match unrelated applications such as Home Assistant's `/mcp_server`). Limit: 30 requests per 10 seconds per client address, blocked for 10 seconds (the only period and duration the Free plan offers). It is a coarse backstop; the finer limits are in the nginx virtual host and the app.
-3. **Geo exception.** The zone's rule that blocks every country except the operator's own carries `and not (http.host eq "<public-host>" and ip.src in {160.79.104.0/21})`. This exempts Anthropic's published outbound range for that host only; every other host and source stays as strict as before. The operator's browser steps (`/oauth/authorize`, `/oauth/approve`) remain subject to the country rule, so a connection cannot be paired from abroad.
-4. **DNS record.** A proxied `CNAME` for `<public-host>` to `<tunnel-id>.cfargotunnel.com`, created last. Universal SSL covers a first-level subdomain; the apex `CAA` record only governs issuance.
+3. **DNS record.** A proxied `CNAME` for `<public-host>` to `<tunnel-id>.cfargotunnel.com`, created last. Universal SSL covers a first-level subdomain; the apex `CAA` record only governs issuance.
 
 **Checks.** From an address outside Anthropic's range (pin the edge address with `curl --resolve` while the local resolver does not know the record): each machine path, an unlisted path and `/` answer Cloudflare's own `403` page; `/oauth/approve-status` is let through and answers the app's empty `404` while Remote Access is off; the edge presents a valid certificate for `<public-host>`; the nginx access log shows the caller's real address, not a loopback or edge address. The app-side client-address gate is the go-live check above.
 
