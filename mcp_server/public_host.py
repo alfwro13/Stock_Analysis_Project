@@ -8,7 +8,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from config import load_config
 
-from . import audit, limits
+from . import audit, events, limits
 from .server import MCP_PATH
 
 logger = logging.getLogger(__name__)
@@ -86,5 +86,6 @@ class PublicHostGuard:
                 if limits.first_refusal(("range", address)):
                     logger.warning("Refused %s from %s: outside MCP_REMOTE_ALLOWED_CIDRS", scope["path"], address)
                     audit.record(None, address, None, None, 403, 0, 0)
+                    events.off_range_request(address)
                 return Response(status_code=403)
         return None

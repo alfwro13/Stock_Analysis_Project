@@ -1246,6 +1246,7 @@ async def api_portfolio_optimizer_run(request: Request, req: PortfolioOptimizerR
 
 # --- Sub-router registrations ---
 from api_routes_auth import auth_router
+from api_routes_mcp_remote import mcp_remote_router
 from api_routes_triggers import triggers_router
 from api_routes_system import system_router
 from api_routes_analysis import analysis_router
@@ -1253,6 +1254,7 @@ from api_routes_accounts import accounts_router
 from api_routes_backtester import backtester_router
 
 api_router.include_router(auth_router)
+api_router.include_router(mcp_remote_router)
 api_router.include_router(triggers_router)
 api_router.include_router(system_router)
 api_router.include_router(analysis_router)

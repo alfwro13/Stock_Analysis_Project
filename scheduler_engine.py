@@ -1150,6 +1150,32 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule System Configuration Check: %s", e)
 
+    rearm_mcp_pairing_window_check()
+
+
+def arm_mcp_pairing_window_check(until: str) -> None:
+    """One-shot check at the end of the pairing window that ends at `until` (UTC 'YYYY-MM-DD HH:MM:SS'); a window opened later replaces it."""
+    run_at = datetime.strptime(until, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    scheduler.add_job(
+        run_mcp_pairing_window_check,
+        DateTrigger(run_date=run_at, timezone=timezone.utc),
+        args=[until],
+        id="mcp_pairing_window_check_job",
+        replace_existing=True,
+    )
+
+
+def rearm_mcp_pairing_window_check() -> None:
+    """reload_scheduler removes every job, so a window still open is armed again."""
+    from mcp_server.oauth import pairing_window_until
+
+    try:
+        until = pairing_window_until()
+        if until:
+            arm_mcp_pairing_window_check(until)
+    except Exception as e:
+        logger.error("Failed to re-arm the MCP Pairing Window Check: %s", e)
+
 
 def start_scheduler():
     scheduler.add_listener(_on_job_event, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -1201,7 +1227,7 @@ from scheduler_jobs import (
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
-    run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job,
+    run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job, run_mcp_pairing_window_check,
 )
 
 

@@ -410,14 +410,15 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 
 #### `mcp_oauth_requests`
 * **Purpose:** One connection request per `/oauth/authorize` call, from pending through approval to the single-use authorization code.
-* **Key Columns:** `id` (TEXT PK, 128-bit random), `display_code` (6 characters shown to the operator), `status` (`pending` / `approved`), `client_state`, `code_challenge`, `redirect_uri`, `resource`, `scope`, `created_at`, `expires_at` (5 minutes), `requester_address` and `user_agent` (cleaned by `utils.clean_display_text()` and capped), `binding_hash` (SHA-256 of the cookie value held by the requesting browser; indexed), `decided_at`, `code_hash` (SHA-256 of the authorization code; indexed; the code itself is never stored), `code_expires_at` (60 seconds after it is claimed), `code_used_at`, `grant_id` (the grant the code created).
-* **Writes:** `oauth.begin_authorization()` inserts (and deletes requests expired more than a day ago), `approve_request()`, `claim_authorization()`, `exchange_code()` through `db_mcp_oauth.py`; every state change is a conditional `UPDATE`, so a request is approved once, claimed once and consumed once.
-* **Reads:** the same functions; no page reads it yet (MCP-15d).
+* **Key Columns:** `id` (TEXT PK, 128-bit random), `display_code` (6 characters shown to the operator), `status` (`pending` / `approved` / `denied`), `client_state`, `code_challenge`, `redirect_uri`, `resource`, `scope`, `created_at`, `expires_at` (5 minutes), `requester_address` and `user_agent` (cleaned by `utils.clean_display_text()` and capped), `binding_hash` (SHA-256 of the cookie value held by the requesting browser; indexed), `decided_at`, `code_hash` (SHA-256 of the authorization code; indexed; the code itself is never stored), `code_expires_at` (60 seconds after it is claimed), `code_used_at`, `grant_id` (the grant the code created).
+* **Writes:** `oauth.begin_authorization()` inserts (and deletes requests expired more than a day ago), `approve_request()`, `deny_request()` (Settings **Deny**), `claim_authorization()`, `exchange_code()` through `db_mcp_oauth.py`; every state change is a conditional `UPDATE`, so a request is approved once, claimed once and consumed once.
+* **Reads:** the same functions; `oauth.pending_requests()` (the Remote Access panel), `request_state()` (the waiting page's status poll, by `binding_hash`) and `check_pairing_window()` (requests created since the window opened; the **MCP Pairing Window Check** job). Produced by the MCP Server node as the `mcp_oauth_requests` artifact in the Workflow Monitor.
 
 #### `mcp_oauth_grants`
 * **Purpose:** One approved connection. A grant ends when it is revoked or reaches its absolute expiry; its tokens are checked against it on every use.
 * **Key Columns:** `id` (PK AUTOINCREMENT, also the `key_id` of its `mcp_audit_log` rows), `client_id`, `scope`, `resource` (`https://<MCP_PUBLIC_HOST>/mcp` when issued), `created_at`, `expires_at` (90 days), `last_used_at` and `last_address` (written at most once a minute), `revoked_at` (NULL while live).
 * **Writes:** `db_mcp_oauth.create_grant()` at the code exchange, `revoke_grant()` on revoke, refresh-token reuse, code reuse or a new client, `touch_grant()` from `oauth.record_use()`.
+* **Reads:** `oauth.connected_apps()` (the Connected Apps table, live grants only).
 
 #### `mcp_oauth_tokens`
 * **Purpose:** The access and refresh tokens of every grant, hashed.

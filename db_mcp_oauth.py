@@ -87,12 +87,80 @@ def get_request(request_id: str) -> Optional[dict]:
             conn.close()
 
 
+def list_pending_requests(now: str) -> List[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, display_code, created_at, expires_at, requester_address, user_agent FROM mcp_oauth_requests "
+            "WHERE status = 'pending' AND expires_at > ? ORDER BY created_at",
+            (now,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_request_by_binding(binding_hash: str) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT status, display_code, expires_at FROM mcp_oauth_requests WHERE binding_hash = ?", (binding_hash,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        if conn:
+            conn.close()
+
+
+def count_requests_since(since: str) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        return conn.execute("SELECT COUNT(*) FROM mcp_oauth_requests WHERE created_at >= ?", (since,)).fetchone()[0]
+    finally:
+        if conn:
+            conn.close()
+
+
+def list_active_grants(now: str, limit: int) -> List[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, client_id, created_at, expires_at, last_used_at, last_address FROM mcp_oauth_grants "
+            "WHERE revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (now, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
 def approve_request(request_id: str, now: str) -> bool:
     conn = None
     try:
         conn = get_connection()
         changed = conn.execute(
             "UPDATE mcp_oauth_requests SET status = 'approved', decided_at = ? WHERE id = ? AND status = 'pending' AND expires_at > ?",
+            (now, request_id, now),
+        ).rowcount
+        conn.commit()
+        return changed > 0
+    finally:
+        if conn:
+            conn.close()
+
+
+def deny_request(request_id: str, now: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        changed = conn.execute(
+            "UPDATE mcp_oauth_requests SET status = 'denied', decided_at = ? WHERE id = ? AND status = 'pending' AND expires_at > ?",
             (now, request_id, now),
         ).rowcount
         conn.commit()

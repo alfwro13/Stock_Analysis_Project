@@ -1600,7 +1600,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
@@ -1683,6 +1683,78 @@ Turns the MCP Server on or off by writing `MCP_SERVER_ENABLED` to `config.json` 
 
 ```json
 { "status": "success", "enabled": true }
+```
+
+---
+
+### `GET /api/mcp-remote`
+
+State of the MCP Remote Access panel (Settings → MCP Server → Remote Access), polled every 3 seconds while the card is open. Session required; the API key and the MCP key are refused. Limited to 120 requests per minute. Never returns a secret or a hash. Times are in the display timezone.
+
+```json
+{
+  "status": "success",
+  "enabled": true,
+  "public_host": "mcp.example.com",
+  "host_active": true,
+  "endpoint_url": "https://mcp.example.com/mcp",
+  "client": { "client_id": "mcp-1a2b3c4d5e6f7a8b", "created_display": "2026-10-21 14:02 BST" },
+  "pairing": { "open": true, "until_display": "2026-10-21 14:32 BST", "seconds_left": 480 },
+  "requests": [ { "id": "<22 characters>", "code": "K7P2QX", "requested_display": "2026-10-21 14:25 BST", "address": "203.0.113.5", "user_agent": "Mozilla/5.0 ...", "seconds_left": 240 } ],
+  "apps": [ { "client_id": "mcp-1a2b3c4d5e6f7a8b", "connected_display": "2026-10-21 14:26 BST", "expires_display": "2027-01-19 14:26 GMT", "last_used_display": null, "last_address": null } ]
+}
+```
+
+`public_host` is the saved value and `host_active` is false until a restart applies it. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50.
+
+---
+
+### `POST /api/mcp-remote/enabled`
+
+Turns Remote Access on or off by writing `MCP_REMOTE_ENABLED` to `config.json` (default `false`). Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise) and a saved `MCP_PUBLIC_HOST` (`409 Save a public host first.`); disabling does neither, because closing the door is the safe direction. Takes effect on the next request. Limited to 10 requests per minute.
+
+```json
+{ "status": "success", "enabled": true }
+```
+
+---
+
+### `POST /api/mcp-remote/client`
+
+Creates the OAuth client for Claude's connector dialog, or rotates its secret. Requires a password step-up. No body. The 256-bit secret is returned in this response only; the database keeps its SHA-256 hash. Replacing an existing client revokes every grant and drops pending requests. Limited to 5 requests per minute.
+
+```json
+{ "status": "success", "client_id": "mcp-1a2b3c4d5e6f7a8b", "client_secret": "<64-char-hex>" }
+```
+
+---
+
+### `POST /api/mcp-remote/pairing`
+
+Opens the 10-minute pairing window in which `/oauth/authorize` accepts a new connection request, and arms the MCP Pairing Window Check job for its end. Requires a password step-up. `409` when Remote Access is off (`Turn on Remote Access first.`) or no client exists (`Create the OAuth client first.`). Opening a window again replaces the previous one. Limited to 10 requests per minute.
+
+```json
+{ "status": "success", "pairing": { "open": true, "until_display": "2026-10-21 14:32 BST", "seconds_left": 600 } }
+```
+
+---
+
+### `POST /api/mcp-remote/requests/{request_id}/approve`
+
+Approves one pending connection request. Requires a password step-up. `request_id` is the 22-character id from `GET /api/mcp-remote` (anything else is `422`). `409` when the pairing window has closed; `404` when the request is not pending (already decided, expired or unknown). The waiting page of the browser that started it then receives the redirect back to Claude. Limited to 20 requests per minute.
+
+```json
+{ "status": "success" }
+```
+
+---
+
+### `POST /api/mcp-remote/requests/{request_id}/deny`
+
+Denies one pending connection request; its waiting page then says the request was denied. Session and CSRF only, **no step-up** (refusing is the safe direction). `404` when the request is not pending. Limited to 20 requests per minute.
+
+```json
+{ "status": "success" }
 ```
 
 ---
@@ -5236,6 +5308,8 @@ Served only for `Host: <MCP_PUBLIC_HOST>` (`404` with an empty body on any other
 | `GET /.well-known/oauth-protected-resource/mcp` | none | `200` JSON `resource`, `authorization_servers`, `scopes_supported`, `bearer_methods_supported` | |
 | `GET /.well-known/oauth-authorization-server` | none | `200` RFC 8414 JSON (no `registration_endpoint`; `code_challenge_methods_supported ["S256"]`) | |
 | `GET /oauth/authorize` | query: `client_id`, `redirect_uri`, `response_type=code`, `code_challenge`, `code_challenge_method=S256`, `state`, `scope`, `resource` | `302` to `/oauth/approve` and an `mcp_oauth_binding` cookie | `403` plain text while no pairing window is open (nothing written); `400` JSON for an unknown client, a redirect URI that is not exactly `https://claude.ai/api/mcp/auth_callback` or a repeated/over-long parameter; `302` to the redirect URI with `error`, `error_description`, `state`, `iss` for a missing `state` (no `state` echoed), a bad `response_type`, PKCE, `scope` or `resource`; `429` with `Retry-After` past 5 pending or 10 per hour |
+| `GET /oauth/approve` | none | `200` HTML waiting page (`Cache-Control: no-store`), self-contained: its CSS and JS are inlined, it loads nothing from `/static`, and it contains no code or secret | |
+| `GET /oauth/approve-status` | the `mcp_oauth_binding` cookie | `200` JSON `{"state": "pending", "code": "K7P2QX"}`, `{"state": "approved", "redirect": "https://claude.ai/api/mcp/auth_callback?code=...&state=...&iss=..."}` (once; the authorization code is minted by this call), `{"state": "denied"}`, `{"state": "expired"}`, `{"state": "done"}` (already handed over) or `{"state": "unknown"}` (no or unrecognised cookie); `Cache-Control: no-store`. Not written to `mcp_audit_log` | |
 | `POST /oauth/token` | `application/x-www-form-urlencoded`, at most 8 KiB; client authentication by `Authorization: Basic` or `client_id` + `client_secret` in the body; `grant_type=authorization_code` with `code`, `redirect_uri`, `code_verifier`, optional `resource`, or `grant_type=refresh_token` with `refresh_token`, optional `scope`, `resource` | `200` JSON `access_token`, `token_type`, `expires_in`, `refresh_token`, `scope`; `Cache-Control: no-store` | `401 invalid_client` (one message for every client failure); `400` `invalid_request`, `unsupported_grant_type`, `invalid_grant` (code or refresh failures), `invalid_scope`, `invalid_target`; `413` for an oversized body; `429` with `Retry-After` for an address in the lockout |
 | `POST /oauth/revoke` | form: client authentication as above and `token` | `200` with an empty body, also for an unknown token | `401 invalid_client`, `400 invalid_request`, `429` |
 

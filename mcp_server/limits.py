@@ -17,6 +17,7 @@ _active: Dict[Optional[Hashable], int] = {}
 _failures: Dict[str, deque] = {}
 _locked_until: Dict[str, float] = {}
 _refusal_logged: Dict[tuple, float] = {}
+_notified_until: Dict[tuple, float] = {}
 _last_sweep = 0.0
 
 
@@ -43,6 +44,8 @@ def _sweep_locked(now: float) -> None:
         del _calls[key]
     for scope in [s for s, logged in _refusal_logged.items() if now - logged >= MCP_REFUSAL_LOG_SECONDS]:
         del _refusal_logged[scope]
+    for scope in [s for s, until in _notified_until.items() if until <= now]:
+        del _notified_until[scope]
 
 
 def lockout_remaining(address: str) -> int:
@@ -115,9 +118,21 @@ def first_refusal(scope: tuple) -> bool:
         return True
 
 
+def notify_due(scope: tuple, cooldown_seconds: int) -> bool:
+    """True when no notification for this scope was sent within cooldown_seconds; counts from the send, so a new calendar day alone never re-arms it."""
+    with _lock:
+        now = _now()
+        _sweep_locked(now)
+        until = _notified_until.get(scope)
+        if until is not None and until > now:
+            return False
+        _put(_notified_until, scope, now + cooldown_seconds)
+        return True
+
+
 def reset() -> None:
     global _last_sweep
     with _lock:
-        for state in (_calls, _active, _failures, _locked_until, _refusal_logged):
+        for state in (_calls, _active, _failures, _locked_until, _refusal_logged, _notified_until):
             state.clear()
         _last_sweep = 0.0

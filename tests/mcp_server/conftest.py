@@ -43,6 +43,16 @@ def _mcp_key(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def remote_notifications(monkeypatch):
+    """The MCP Remote Access events that notify() was asked to send, run inline and never delivered, so no test writes system_notifications or reaches Nextcloud."""
+    from mcp_server import events
+    sent = []
+    monkeypatch.setattr(events, "_executor", _InlineExecutor())
+    monkeypatch.setattr(events, "notify", lambda source, message_type, text, **kwargs: sent.append({"source": source, "type": message_type, "text": text, **kwargs}))
+    return sent
+
+
+@pytest.fixture(autouse=True)
 def _no_macro_refresh_worker(monkeypatch):
     """get_market_regime reads Fear & Greed, which spawns a Yahoo-fetching thread when the macro cache is stale; its late yahoo_api_* writes race every table-count assertion."""
     monkeypatch.setattr("sentiment_engine._check_and_trigger_async_refresh", lambda: None)

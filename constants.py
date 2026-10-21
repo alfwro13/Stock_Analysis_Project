@@ -104,6 +104,7 @@ MCP_AUTH_FAILURE_WINDOW_SECONDS = 60
 MCP_AUTH_LOCKOUT_SECONDS    = 300              # every /mcp request from a locked-out address is 429, even with a valid key; the dashboard login is not affected
 MCP_THROTTLE_MAX_ENTRIES    = 10_000           # addresses/keys the in-memory /mcp throttles track at once; the oldest is dropped past it
 MCP_REFUSAL_LOG_SECONDS     = 60               # a 429 is written to the audit log at most this often per address or key
+MCP_NOTIFY_COOLDOWN_SECONDS = 3600             # a lockout or off-range notification repeats for one address at most this often
 MCP_AUDIT_RETENTION_DAYS    = 90               # mcp_audit_log rows older than this are pruned by the maintenance job
 MCP_AUDIT_QUEUE_MAX         = 1000             # audit rows waiting for the writer thread; past it a row is dropped, never the request
 MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE = 600         # audit rows without a valid key or token (rejections, OAuth browser steps) stored per minute; the rest are counted into one summary row
@@ -126,6 +127,7 @@ MCP_OAUTH_USER_AGENT_MAX_CHARS = 200           # requester user agent stored wit
 MCP_OAUTH_CACHE_MAX_ENTRIES = 1000             # access-token hashes the in-memory verification cache holds
 MCP_OAUTH_PRUNE_AFTER_DAYS  = 1                # expired tokens and finished requests older than this are deleted when a new one is written
 MCP_OAUTH_LAST_USED_WRITE_SECONDS = 60         # a grant's last-used time and address are written at most this often
+MCP_OAUTH_CONNECTED_APPS_MAX = 50              # grants listed in the Settings Connected Apps table
 ETF_CONSTITUENTS_MAX        = 50
 OPTION_LEGS_MAX             = 20
 TABLE_VIEWS_MAX             = 20               # saved column-preset Views per page
@@ -136,7 +138,7 @@ TABLE_FILTER_CONDITIONS_MAX = 50
 TABLE_FILTER_VALUE_MAX_CHARS = 200
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.197"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.198"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

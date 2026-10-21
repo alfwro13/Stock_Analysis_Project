@@ -30,7 +30,7 @@ ALL_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 HIDDEN_FROM_OPENAPI = {
     "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
     "/mcp", "/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-authorization-server",
-    "/oauth/authorize", "/oauth/token", "/oauth/revoke",
+    "/oauth/authorize", "/oauth/approve", "/oauth/approve-status", "/oauth/token", "/oauth/revoke",
 }
 
 

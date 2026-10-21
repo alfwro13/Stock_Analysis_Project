@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 from config import load_config
 from constants import MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS
 
-from . import audit, keys, limits, oauth
+from . import audit, events, keys, limits, oauth
 from .server import MCP_PATH
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ def _wrong_credential(address: str, status: int, detail: str, headers: Optional[
         logger.warning(
             "Locked %s out of %s for %d s after %d wrong credentials", address, MCP_PATH, MCP_AUTH_LOCKOUT_SECONDS, MCP_AUTH_FAILURES_MAX
         )
+        events.lockout_tripped(address)
     return _rejection(address, status, detail, headers)
 
 
