@@ -494,6 +494,39 @@ Tests, run on the proxy host itself with `curl -H 'Host: <public-host>' -H 'CF-C
 
 Rollback: remove the symlink in `sites-enabled`, `nginx -t`, `nginx -s reload`.
 
+### Client address: `FORWARDED_ALLOW_IPS` and the go-live check
+
+The address range, the lockout and the audit log all use the address uvicorn resolves, and uvicorn resolves it from `X-Forwarded-For` only when the direct peer is listed in `FORWARDED_ALLOW_IPS`. The chain is the visitor, Cloudflare, the tunnel, the nginx vhost (which sets the header to the visitor's address alone), then the app, whose direct peer is `<proxy-host>`.
+
+**The rule.** `FORWARDED_ALLOW_IPS` on `<app-host>` is exactly the address of `<proxy-host>` as the app sees it: never `*`, never a wider subnet than needed, never empty (empty trusts only loopback, so every caller shares the proxy's address). The app enforces part of this: it logs a warning at startup when `MCP_PUBLIC_HOST` is set and the value is `*` or unset, and it refuses (`409`) to turn Remote Access on while the value is `*`.
+
+**Where it is set.** The value is read once from the environment of the service process, so a change needs a restart. Read it from the running process, not from a file, because that is what uvicorn used:
+
+```
+systemctl cat <app-service> | grep -n FORWARDED_ALLOW_IPS
+sudo tr '\0' '\n' < /proc/$(systemctl show -p MainPID --value <app-service>)/environ | grep FORWARDED_ALLOW_IPS
+```
+
+To change it, add or edit `Environment="FORWARDED_ALLOW_IPS=<proxy-host address>"` in the unit (`systemctl edit <app-service>`), `systemctl daemon-reload`, restart the service and read the process environment again. Rollback: restore the previous unit text and restart.
+
+**The one-request check (hard gate, run at go-live).** Run it after the tunnel route and DNS record exist and Remote Access is on, and before creating the OAuth client or opening a pairing window.
+
+1. Note your own public address (a "what is my IP" page) on the network you will test from.
+2. Send one request through the public path from that network: `curl -s https://<public-host>/oauth/approve-status` (answers `{"state":"unknown"}`). It is a browser route, so the range check does not apply and no off-range warning or notification is raised. Do not use `/mcp` for this: from outside the Anthropic range it is refused and notified.
+3. Open Settings → MCP Server → Remote Access and read **Client address check**. The first line must show the list with the proxy's address, and the second line the address of the last request on the public host.
+4. The address in the second line must equal the one from step 1. If it does, the gate is passed; write the date and the address in the go-live record.
+
+If it does not match:
+
+| Shown | Meaning | Fix |
+|---|---|---|
+| A private address (flagged), such as the proxy's | The app does not trust the proxy | Correct `FORWARDED_ALLOW_IPS`, restart, repeat the check |
+| `127.0.0.1` | The vhost did not receive `CF-Connecting-IP`, so it forwarded its own loopback address | Check the tunnel and the vhost's `real_ip_header`; the vhost fails closed on the range check, so nothing is exposed meanwhile |
+| An address that is not yours | The chain carries another hop (an edge address) or a client-supplied value | Stop; do not open a pairing window until the chain is explained |
+| Empty | No request passed the guard: Remote Access is off, the host does not match `MCP_PUBLIC_HOST`, the tunnel route is missing, or the app restarted since | Check each, then send the request again |
+
+The last address is kept in memory only and is replaced by every later request that passes the enabled check, so read it straight after the test request.
+
 ### Banning repeat offenders at nginx
 
 A host firewall cannot ban visitors of this vhost: their traffic reaches nginx from the tunnel on loopback, and the real address exists only inside nginx. So a fail2ban jail bans in nginx instead:
