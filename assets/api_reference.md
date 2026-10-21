@@ -5239,7 +5239,7 @@ Served only for `Host: <MCP_PUBLIC_HOST>` (`404` with an empty body on any other
 | `POST /oauth/token` | `application/x-www-form-urlencoded`, at most 8 KiB; client authentication by `Authorization: Basic` or `client_id` + `client_secret` in the body; `grant_type=authorization_code` with `code`, `redirect_uri`, `code_verifier`, optional `resource`, or `grant_type=refresh_token` with `refresh_token`, optional `scope`, `resource` | `200` JSON `access_token`, `token_type`, `expires_in`, `refresh_token`, `scope`; `Cache-Control: no-store` | `401 invalid_client` (one message for every client failure); `400` `invalid_request`, `unsupported_grant_type`, `invalid_grant` (code or refresh failures), `invalid_scope`, `invalid_target`; `413` for an oversized body; `429` with `Retry-After` for an address in the lockout |
 | `POST /oauth/revoke` | form: client authentication as above and `token` | `200` with an empty body, also for an unknown token | `401 invalid_client`, `400 invalid_request`, `429` |
 
-Errors are JSON `{"error": "...", "error_description": "..."}` and never echo the request. Each call writes one `mcp_audit_log` row.
+Errors are JSON `{"error": "...", "error_description": "..."}` and never echo the request. Each call writes one `mcp_audit_log` row (rows without a credential are capped per minute; see `assets/mcp_integration.md`).
 
 Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 

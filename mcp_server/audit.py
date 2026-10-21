@@ -1,21 +1,27 @@
 import json
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 import db_mcp_audit
-from constants import MCP_AUDIT_ADDRESS_MAX_CHARS, MCP_AUDIT_QUEUE_MAX, MCP_AUDIT_TEXT_MAX_CHARS
+from constants import MCP_AUDIT_ADDRESS_MAX_CHARS, MCP_AUDIT_QUEUE_MAX, MCP_AUDIT_TEXT_MAX_CHARS, MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE
 from utils import clean_display_text
 
 logger = logging.getLogger(__name__)
 
 _STORED_FORMAT = "%Y-%m-%d %H:%M:%S"
 _NAMED_METHODS = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
+_WINDOW_SECONDS = 60
 _lock = threading.Lock()
 _pending = 0
 _dropped = 0
+_window_started: Optional[float] = None
+_window_stamp = ""
+_window_rows = 0
+_suppressed = 0
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mcp-audit")
 
 
@@ -47,11 +53,63 @@ def _write(entry: dict) -> None:
             _pending -= 1
 
 
+def _now() -> float:
+    return time.monotonic()
+
+
+def _submit(entry: dict) -> None:
+    global _pending, _dropped
+    with _lock:
+        if _pending >= MCP_AUDIT_QUEUE_MAX:
+            _dropped += 1
+            if _dropped == 1 or _dropped % 100 == 0:
+                logger.warning("MCP audit queue is full: %d entries dropped so far", _dropped)
+            return
+        _pending += 1
+    _executor.submit(_write, entry)
+
+
+def _roll_window_locked(now: float, stamp: str) -> Optional[dict]:
+    """Starts a new counting window when the last one ended; returns the summary row of the closed window if it suppressed any row."""
+    global _window_started, _window_stamp, _window_rows, _suppressed
+    if _window_started is not None and now - _window_started < _WINDOW_SECONDS:
+        return None
+    summary = None
+    if _suppressed:
+        summary = {
+            "logged_at": _window_stamp, "credential_kind": "none", "key_id": None, "client_address": None, "mcp_method": "audit",
+            "mcp_name": f"{_suppressed} rows without a credential not stored", "status": 0, "duration_ms": 0, "response_bytes": 0,
+        }
+    _window_started, _window_stamp, _window_rows, _suppressed = now, stamp, 0, 0
+    return summary
+
+
+def _admit_locked(unauthenticated: bool) -> bool:
+    global _window_rows, _suppressed
+    if not unauthenticated:
+        return True
+    if _window_rows < MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE:
+        _window_rows += 1
+        return True
+    if not _suppressed:
+        logger.warning(
+            "More than %d MCP requests without a valid credential in a minute: the rest are counted in one audit row, not stored",
+            MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE,
+        )
+    _suppressed += 1
+    return False
+
+
+def reset() -> None:
+    global _window_started, _window_stamp, _window_rows, _suppressed
+    with _lock:
+        _window_started, _window_stamp, _window_rows, _suppressed = None, "", 0, 0
+
+
 def record(
     key_id: Optional[int], address: str, method: Optional[str], name: Optional[str], status: int, duration_ms: int, response_bytes: int,
     grant_id: Optional[int] = None,
 ) -> None:
-    global _pending, _dropped
     entry = {
         "logged_at": datetime.now(timezone.utc).strftime(_STORED_FORMAT),
         "credential_kind": "oauth" if grant_id is not None else "key" if key_id is not None else "none",
@@ -64,10 +122,9 @@ def record(
         "response_bytes": response_bytes,
     }
     with _lock:
-        if _pending >= MCP_AUDIT_QUEUE_MAX:
-            _dropped += 1
-            if _dropped == 1 or _dropped % 100 == 0:
-                logger.warning("MCP audit queue is full: %d entries dropped so far", _dropped)
-            return
-        _pending += 1
-    _executor.submit(_write, entry)
+        summary = _roll_window_locked(_now(), entry["logged_at"])
+        admitted = _admit_locked(entry["credential_kind"] == "none")
+    if summary is not None:
+        _submit(summary)
+    if admitted:
+        _submit(entry)
