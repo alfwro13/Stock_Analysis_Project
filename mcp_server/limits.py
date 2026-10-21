@@ -105,7 +105,7 @@ def release(key_id: Optional[int]) -> None:
 
 
 def first_refusal(scope: tuple) -> bool:
-    """True when a 429 for this address or key has not been audit-logged within MCP_REFUSAL_LOG_SECONDS."""
+    """True when a refusal (429, or the 403 of an address outside the allowed range) for this scope has not been audit-logged within MCP_REFUSAL_LOG_SECONDS."""
     with _lock:
         now = _now()
         logged = _refusal_logged.get(scope)

@@ -55,13 +55,14 @@ The bearer key must not travel over plain `http` beyond the machine running the 
 | Session cookie | Does not authenticate `/mcp`. |
 | Other routes | A Bearer MCP key there is ignored; the request is treated as unauthenticated (`302` to `/login`). |
 | Methods | `POST` only. `GET`, `DELETE` and the rest answer `405` with `Allow: POST` after authentication. |
-| Host and Origin | `TrustedHostMiddleware` and the SDK's own Host/Origin check use the same host list (`ALLOWED_HOSTS` plus `localhost` and `127.0.0.1`). A foreign `Origin` is refused with `403`. |
+| Host and Origin | `TrustedHostMiddleware` and the SDK's own Host/Origin check use the same host list (`ALLOWED_HOSTS` plus `localhost`, `127.0.0.1` and `MCP_PUBLIC_HOST` when set). A foreign `Origin` is refused with `403`. |
 | Secrets in logs | The key is never logged. Log lines go through `log_config.SafeFormatter`, which also masks `token=` style query values. |
 | Errors | An unexpected tool failure answers with a fixed `Error executing tool <name>`; the exception text stays in the server log (rule 23). An anticipated failure (unknown `account`, an empty X-ray scope, Ghostfolio not reachable) keeps a curated message after the same prefix, written for the client and never built from an exception. |
 | Rate limiting | Per key: at most 60 calls in any rolling minute and 8 calls in flight at once (`MCP_RATE_CALLS_PER_MINUTE`, `MCP_RATE_CONCURRENT_CALLS`). Over either, the call is `429` with `Retry-After` (seconds); a refused call is not counted and every other key is unaffected. In-memory, so a restart resets it. |
 | Wrong credentials | Per client address: 5 wrong credentials (a wrong or missing Bearer key, or any `X-API-Key` header) inside 60 seconds lock that address out for 5 minutes. While locked out **every** `/mcp` request from it is `429` with `Retry-After`, a valid key included. It is kept apart from the dashboard login lockout (`login_throttle`): the two never share a counter, so failed attempts on `/mcp` cannot lock the operator out of the dashboard, and only the offending address is blocked. In-memory and bounded (10,000 addresses). The address is the one `request.client` carries, so behind a reverse proxy `FORWARDED_ALLOW_IPS` must trust the proxy; otherwise every caller shares the proxy's address. |
 | Body size | A `POST /mcp` body over 64 KiB (`MCP_REQUEST_MAX_BYTES`) is `413`. The endpoint reads the body to record the JSON-RPC method and the tool, prompt or resource name. |
 | Audit log | Every request that reaches the endpoint, and every refused credential, is one row in `mcp_audit_log` (see **Audit log** below). It never holds a key, a token, argument values, request or response bodies, or any header. |
+| Public hostname | Off by default. When `MCP_PUBLIC_HOST` names a host, a request carrying that `Host` is answered by `PublicHostGuard` before anything else (see **Public hostname guard** below). |
 
 CSRF does not interfere: the CSRF middleware only enforces when a `session` cookie is present, and an MCP client sends none.
 
@@ -77,6 +78,38 @@ Table `mcp_audit_log` (`assets/db_schema_and_architecture.md`) records one row p
 - **Not built yet:** no Settings view of the log; it is read with SQL.
 
 Tests: `tests/mcp_server/test_audit_log.py`, `test_rate_limits.py`, `TestPruneMcpAuditLog` in `tests/test_maintenance_engine.py`.
+
+## Public hostname guard
+
+Remote access for claude.ai and the mobile apps uses a separate public hostname (design: `audit/MCP_15_remote_access_design.md`). This section describes the part that is built (task MCP-15b); the OAuth server, the pairing window and the Settings card come later. **Do not turn `MCP_REMOTE_ENABLED` on yet:** until the OAuth task lands, `POST /mcp` on the public host still accepts a named Bearer key (from an address in the allowed range) and the seven other routes are not served.
+
+| Config key | Default | Meaning |
+|---|---|---|
+| `MCP_REMOTE_ENABLED` | `false` | Master switch. Off: every request for the public host is `404`, including the eight routes. Applies on the next request. `MCP_SERVER_ENABLED` is separate and still answers `503` on `/mcp` while off. |
+| `MCP_PUBLIC_HOST` | `""` | The public host name (lower case, no scheme, port, path or wildcard; stored lower case without a trailing dot). Empty means no host is guarded and remote access cannot be reached. Read once at startup, like `ALLOWED_HOSTS`, so a change needs a restart. When set it is added to the trusted-host list that `TrustedHostMiddleware` and the SDK's Host/Origin check share. It must not also be a dashboard host: the guard would then limit that host to the eight routes. |
+| `MCP_REMOTE_ALLOWED_CIDRS` | `["160.79.104.0/21"]` | Networks allowed to call the machine routes (Anthropic's published outbound range). At least one, at most 16, IPv4 or IPv6, no host bits set. Applies on the next request. |
+
+All three are in the `POST /api/settings` schema (password step-up like every settings save; `422` for a bad value) and in `DEFAULT_CONFIG`; there is no Settings card for them yet.
+
+`mcp_server.public_host.PublicHostGuard` is the outermost middleware (registered last in `main.py`), so no cookie, session, `X-API-Key`, embed token, CSRF check or `Authorization` header is read before it. It compares only the `Host` header (lower-cased, port and trailing dot removed, so a wildcard `ALLOWED_HOSTS` entry cannot let a variant spelling past it), the method, the path and the peer address:
+
+| Route | Called by | Range check |
+|---|---|---|
+| `POST /mcp` | Anthropic | yes |
+| `GET /.well-known/oauth-protected-resource/mcp` | Anthropic | yes |
+| `GET /.well-known/oauth-authorization-server` | Anthropic | yes |
+| `POST /oauth/token` | Anthropic | yes |
+| `POST /oauth/revoke` | Anthropic | yes |
+| `GET /oauth/authorize` | the operator's browser | no |
+| `GET /oauth/approve` | the operator's browser | no |
+| `GET /oauth/approve-status` | the operator's browser | no |
+
+- **Anything else on the public host is `404` with an empty body**, whatever it carries: other methods, `/mcp/`, `HEAD`, `OPTIONS`, every dashboard page and API route, `/static`, `/assets`, `/docs`. The allowlist is the guard's own, not the router's, so a route added to the app later is `404` there by default. `tests/mcp_server/test_public_host.py` enumerates every registered route (2,000+ method and path pairs) and fails if any besides the eight answers anything else. It reads FastAPI's nested-router internals, so it also raises on an unrecognised route container and checks that every path in the OpenAPI schema was enumerated; after a `fastapi` upgrade, run it.
+- **Client address.** The five machine routes need the peer address (`request.client`) to be inside `MCP_REMOTE_ALLOWED_CIDRS`; otherwise `403` with an empty body (the same status the proxy gives, see **Operations**), a warning in the app log and one `mcp_audit_log` row (credential `none`, status `403`) per address per minute. An unparseable or missing address is refused; an IPv4-mapped IPv6 address is read as IPv4; a malformed or empty range setting refuses everything. The three browser routes cannot be range-limited because the operator's own browser calls them.
+- **The guard never reads `X-Forwarded-For`, `X-Real-IP`, `Forwarded` or `CF-Connecting-IP`.** The address is whatever uvicorn resolves: the proxy's address unless the proxy is listed in `FORWARDED_ALLOW_IPS` (never `*`), in which case uvicorn takes the right-most address that is not a trusted proxy. A header sent by an untrusted peer is ignored; the tests run the guard behind uvicorn's `ProxyHeadersMiddleware` to show both cases, including a forged first entry in a chain.
+- **Where the other layers stand.** The guard is the app's layer of defence in depth; the proxy, tunnel and Cloudflare rules in **Operations** are the primary controls. Nothing on this host is reachable until all of them exist.
+
+Tests: `tests/mcp_server/test_public_host.py`.
 
 ## Settings card
 
@@ -103,6 +136,7 @@ Streamable HTTP in stateless JSON mode: each `POST /mcp` is one JSON-RPC request
 | `mcp_server/limits.py` | The in-memory throttles: per-key calls/minute and concurrency, per-address failed-credential lockout, once-a-minute 429 logging. |
 | `mcp_server/audit.py` | `record()` (cleans the text, queues the row for the single writer thread) and `describe_request()` (the JSON-RPC method and name from a body). |
 | `db_mcp_audit.py` | The SQL for the `mcp_audit_log` table: insert and prune. |
+| `mcp_server/public_host.py` | `PublicHostGuard` (the outermost middleware: the eight public routes, `404` for everything else, the client-address check) and the route sets. |
 | `mcp_server/transport.py` | The POST-only ASGI `endpoint` (body cap, per-key limits, audit row per request), the SDK Host/Origin settings and `run()`. |
 | `mcp_server/envelope.py` | `envelope()`, `iso_utc()`, `iso_from_stored_utc()` (a stored `YYYY-MM-DD HH:MM:SS` UTC string as ISO, `null` when empty or unparseable), `date_epoch()` (a `YYYY-MM-DD` data date as 00:00 UTC), `dated_part()` (the one builder of a tool part's `{as_of, stale, ...}`: `as_of` is the ISO time of the epoch, or the raw data date when passed as `as_of=`; stale after `stale_after`, 5 days by default, never when `ages=False`) and the stale limits. |
 | `mcp_server/scope.py` | The `account` argument: `AccountArg`, `resolve_scope()`, `ACCOUNT_ALL`. |
@@ -375,7 +409,7 @@ A dedicated nginx `server` for `<public-host>` that listens on a loopback port o
 - **Logs.** `mcp_access.log` uses its own format with the URI but no query string, `mcp_error.log` at `warn`. The distribution's weekly rotation of `/var/log/nginx/*.log` already covers them.
 - **No TLS on this listener.** The edge terminates TLS; the vhost does not include any shared TLS or header snippet, so it inherits none of the other sites' settings.
 
-Tests, run on the proxy host itself with `curl -H 'Host: <public-host>' -H 'CF-Connecting-IP: <addr>' http://127.0.0.1:8088/...` (the header simulates the edge): an unknown path and a wrong `Host` answer `404`; each machine route answers `403` for an address outside the range and without the header, and is proxied (the app answers) for an address inside it; a 100 KB body answers `413`; a burst of 40 requests on an OAuth route produces `429`; the listener is refused from another machine on the LAN. Until the app lists `<public-host>` in `ALLOWED_HOSTS`, a proxied request is answered `400` by the app, which is expected.
+Tests, run on the proxy host itself with `curl -H 'Host: <public-host>' -H 'CF-Connecting-IP: <addr>' http://127.0.0.1:8088/...` (the header simulates the edge): an unknown path and a wrong `Host` answer `404`; each machine route answers `403` for an address outside the range and without the header, and is proxied (the app answers) for an address inside it; a 100 KB body answers `413`; a burst of 40 requests on an OAuth route produces `429`; the listener is refused from another machine on the LAN. Until `MCP_PUBLIC_HOST` is set to `<public-host>` in `config.json` (and the app restarted), the app has no such host in its trusted list and answers a proxied request `400`, which is expected; with it set but `MCP_REMOTE_ENABLED` off, every route answers `404` (see **Public hostname guard**).
 
 Rollback: remove the symlink in `sites-enabled`, `nginx -t`, `nginx -s reload`.
 

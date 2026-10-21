@@ -93,6 +93,7 @@ Request models in `api_routes_accounts.py`, `api_routes.py` and the `POST /api/s
 | Account name | 100 characters (`422`) | `POST /api/accounts`, `PUT /api/accounts/{id}` |
 | Saved Views | 20 per page; name 100 characters; 50 filter conditions; filter `key`/`operator` 64 and `value`/`value2` 200 characters | `POST /api/ui-preferences/views` |
 | Investment policy text | 50,000 characters (`INVESTMENT_POLICY_MAX_CHARS`, `422`); the MCP Server refuses a longer file on disk too | `PUT /api/investment-policy` |
+| MCP public host | 253 characters (`MCP_PUBLIC_HOST_MAX_CHARS`); allowed networks 16 (`MCP_REMOTE_CIDRS_MAX`) (`422`) | `POST /api/settings` |
 | Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
 
 ### Ticker format (SEC 24/27 · S4-2)
@@ -1258,7 +1259,7 @@ The credential endpoints are:
 
 **Stored secrets are write-only (SEC 12/27 · S1-2).** `GET /settings` never renders a stored secret: it shows only whether each of the API key, embed token, SMTP password, Nextcloud app password, Nextcloud conversation token, Ghostfolio token, FRED key and HF token is set, and sends `Cache-Control: no-store`. Every secret field in the save endpoints above is optional: an absent, empty or whitespace-only value leaves the stored value unchanged, a non-empty value replaces it, and a `CLEAR_<FIELD>` flag (`CLEAR_FRED_API_KEY`, `CLEAR_HF_TOKEN`, `CLEAR_GHOSTFOLIO_TOKEN`, `CLEAR_APP_PASSWORD`, `CLEAR_CONVERSATION_TOKEN`, and `clear_smtp_pass` on the SMTP endpoint) set to `true` empties it. The URL, host and user-name fields of those endpoints are not secrets and are still always written.
 
-Request-path hardening keys. The first four are applied at the next restart; `SCRAPER_ALLOWED_HOSTS` takes effect on the next scrape:
+Request-path hardening keys. `BIND_HOST`, `ALLOWED_HOSTS`, `COOKIE_SECURE`, `FRAME_ANCESTORS` and `MCP_PUBLIC_HOST` are applied at the next restart; `SCRAPER_ALLOWED_HOSTS` takes effect on the next scrape and the two other `MCP_REMOTE_*` keys on the next request:
 
 | Key | Values | Effect |
 |---|---|---|
@@ -1266,6 +1267,9 @@ Request-path hardening keys. The first four are applied at the next restart; `SC
 | `ALLOWED_HOSTS` | Non-empty list of host names (`*.example.com` allowed) | A request whose `Host` header is not listed gets 400. `localhost` and `127.0.0.1` are always accepted. |
 | `COOKIE_SECURE` | `auto` (default), `true`, `false` | `Secure` flag on the session and CSRF cookies; `auto` follows the `SERVER_URL` scheme. |
 | `FRAME_ANCESTORS` | List of `scheme://host[:port]` origins | Extra origins in the CSP `frame-ancestors` directive (`'self'` is always included). |
+| `MCP_REMOTE_ENABLED` | `true` or `false` (default `false`) | Master switch for the public MCP hostname. Off, every request for `MCP_PUBLIC_HOST` is `404`. Do not enable before the OAuth task ships (`assets/mcp_integration.md`, **Public hostname guard**). |
+| `MCP_PUBLIC_HOST` | A plain host name or `""` (default) | The public MCP hostname, stored lower case. Only the eight routes in `assets/mcp_integration.md` are served on it; every other request is `404` before any cookie or key is read. Added to the trusted-host list. A scheme, port, path, wildcard or over 253 characters is `422`. |
+| `MCP_REMOTE_ALLOWED_CIDRS` | List of 1 to 16 networks, IPv4 or IPv6, no host bits (default `["160.79.104.0/21"]`) | Peer addresses allowed to call `/mcp`, `/oauth/token`, `/oauth/revoke` and the two `/.well-known/` routes on the public host; any other address gets `403`. An empty list or a bad entry is `422`. |
 | `SCRAPER_ALLOWED_HOSTS` | List of exact host names or IP addresses (no ranges, no wildcards; empty by default) | Hosts the Account Price Scraper may fetch even though they resolve to a private, loopback or link-local address. Any port on a listed host is allowed; the URL must still be `https://`. Settings → Core System & Currencies → Account Price Scraper Allowed Hosts. |
 
 Invalid values are rejected with 422.
@@ -1280,6 +1284,9 @@ Invalid values are rejected with 422.
   "ALLOWED_HOSTS": ["stock.example.com", "192.168.1.70"],
   "COOKIE_SECURE": "auto",
   "FRAME_ANCESTORS": ["https://ha.example.com"],
+  "MCP_REMOTE_ENABLED": false,
+  "MCP_PUBLIC_HOST": "mcp.example.com",
+  "MCP_REMOTE_ALLOWED_CIDRS": ["160.79.104.0/21"],
   "SCRAPER_ALLOWED_HOSTS": ["192.168.1.71"],
   "BASE_CURRENCY": "GBP",
   "YAHOO_IPV6_ADDRESS": "2a00:1450:400f:804::200e",
@@ -5214,6 +5221,7 @@ Streamable HTTP transport, stateless JSON mode. Send one JSON-RPC request per ca
 | 5 wrong credentials (`401`/`403` above) from one client address within 60 s | that address is locked out for 5 minutes: every request from it, a valid key included, is `429 {"detail": "Too many wrong MCP credentials from this address"}` with `Retry-After`. Separate from the dashboard login lockout |
 | A valid key over 60 calls in a rolling minute, or over 8 calls in flight | `429 {"detail": "Too many MCP requests for this key"}` with `Retry-After` (seconds); other keys are unaffected |
 | A body over 64 KiB | `413 {"detail": "The request body is too large"}` |
+| `Host` equal to `MCP_PUBLIC_HOST` (empty by default, so no host is affected) | `PublicHostGuard`, ahead of every row above: with `MCP_REMOTE_ENABLED` off, or for any method and path outside the eight public routes, `404` with an empty body; for `/mcp` from an address outside `MCP_REMOTE_ALLOWED_CIDRS`, `403` with an empty body; otherwise the request continues to the rows above (`assets/mcp_integration.md`, **Public hostname guard**) |
 | A Bearer MCP key on any route other than `/mcp` | ignored: the route's normal authentication applies (`302` to `/login` for a pages and `/api/*` call without a session) |
 
 `GET`, `DELETE` and every other method on `/mcp` answer `401` without the key and `405` with `Allow: POST` with it. `/mcp/` answers `307` to `/mcp` once authenticated; any other `/mcp/*` path is `404`. The request body is limited to 64 KiB (`MCP_REQUEST_MAX_BYTES`). Each request is recorded in `mcp_audit_log` (`assets/mcp_integration.md`, **Audit log**).

@@ -20,7 +20,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette_csrf import CSRFMiddleware
 
-from config import ALLOWED_HOSTS, BASE_DIR, BIND_HOST, FRAME_ANCESTORS, PORT, SERVER_URL, load_config
+from config import ALLOWED_HOSTS, BASE_DIR, BIND_HOST, FRAME_ANCESTORS, MCP_PUBLIC_HOST, PORT, SERVER_URL, load_config
 from api_deps import API_KEY_ROUTES
 from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_token
 from api_routes import limiter
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 configure_file_logging(load_config())
 
-_TRUSTED_HOSTS = sorted({*ALLOWED_HOSTS, "localhost", "127.0.0.1"})
+_TRUSTED_HOSTS = sorted({*ALLOWED_HOSTS, "localhost", "127.0.0.1", *([MCP_PUBLIC_HOST] if MCP_PUBLIC_HOST else [])})
 
 _TIMED_ROUTES = {
     "/portfolio", "/watchlist", "/stock/{ticker}",
@@ -310,6 +310,10 @@ async def security_headers_middleware(request: Request, call_next):
     for name, value in _SECURITY_HEADERS.items():
         response.headers.setdefault(name, value)
     return response
+
+
+# Registered after every other middleware so it is the outermost layer: no cookie, header or key is read before it.
+app.add_middleware(mcp_server.PublicHostGuard, public_host=MCP_PUBLIC_HOST)
 
 
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")

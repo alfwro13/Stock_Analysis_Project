@@ -24,7 +24,7 @@ from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_ser
 from config import (
     BASE_DIR, DATA_DIR, DB_PATH, FUNDAMENTALS_DIR, HISTORICAL_DIR,
     INTRADAY_DIR, PORTFOLIO_PATH, WATCHLIST_PATH, load_config,
-    update_config_atomic, validate_meta_scoring, validate_xray_targets,
+    update_config_atomic, validate_mcp_public_host, validate_mcp_remote_cidrs, validate_meta_scoring, validate_xray_targets,
 )
 from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
@@ -438,6 +438,9 @@ class SettingsConfig(FiniteModel):
     SCRAPER_ALLOWED_HOSTS: Optional[List[str]] = None
     COOKIE_SECURE: Optional[Literal["auto", "true", "false"]] = None
     FRAME_ANCESTORS: Optional[List[str]] = None
+    MCP_REMOTE_ENABLED: Optional[bool] = None
+    MCP_PUBLIC_HOST: Optional[str] = None
+    MCP_REMOTE_ALLOWED_CIDRS: Optional[List[str]] = None
     BASE_CURRENCY: Optional[str] = None
     USER_TIMEZONE: Optional[str] = None
     HOME_EXCHANGE: Optional[str] = None
@@ -460,6 +463,8 @@ class SettingsConfig(FiniteModel):
     _routing_shape = field_validator("NOTIFICATION_ROUTING")(validate_routing_map)
     _xray_shape = field_validator("XRAY_TARGETS")(validate_xray_targets)
     _meta_scoring_shape = field_validator("META_SCORING")(validate_meta_scoring)
+    _mcp_public_host = field_validator("MCP_PUBLIC_HOST")(validate_mcp_public_host)
+    _mcp_remote_cidrs = field_validator("MCP_REMOTE_ALLOWED_CIDRS")(validate_mcp_remote_cidrs)
 
     @field_validator("BIND_HOST")
     @classmethod
