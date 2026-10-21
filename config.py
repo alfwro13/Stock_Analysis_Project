@@ -711,6 +711,15 @@ def validate_mcp_public_host(value) -> str:
     return host
 
 
+def mcp_public_host_overlaps_allowed_hosts(public_host, allowed_hosts) -> bool:
+    """True when the public MCP host is a name the dashboard is served on; wildcard entries do not count, only a named host is a self-lockout."""
+    if not isinstance(public_host, str) or not public_host:
+        return False
+    served = {"localhost", "127.0.0.1"}
+    served.update(h.strip().lower().rstrip(".") for h in allowed_hosts or [] if "*" not in h)
+    return public_host.strip().lower().rstrip(".") in served
+
+
 def validate_mcp_remote_cidrs(value) -> list:
     if not isinstance(value, list) or not value:
         raise ValueError("MCP_REMOTE_ALLOWED_CIDRS must list at least one network; turn MCP_REMOTE_ENABLED off to close remote access")

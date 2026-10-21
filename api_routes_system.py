@@ -24,7 +24,8 @@ from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_ser
 from config import (
     BASE_DIR, DATA_DIR, DB_PATH, FUNDAMENTALS_DIR, HISTORICAL_DIR,
     INTRADAY_DIR, PORTFOLIO_PATH, WATCHLIST_PATH, load_config,
-    update_config_atomic, validate_mcp_public_host, validate_mcp_remote_cidrs, validate_meta_scoring, validate_xray_targets,
+    mcp_public_host_overlaps_allowed_hosts, update_config_atomic, validate_mcp_public_host, validate_mcp_remote_cidrs, validate_meta_scoring,
+    validate_xray_targets,
 )
 from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
@@ -1289,10 +1290,26 @@ def terminate_active_jobs():
     return JSONResponse(content={"status": "success", "terminated": names})
 
 
+def _mcp_host_overlap(incoming: dict) -> bool:
+    if "MCP_PUBLIC_HOST" not in incoming and "ALLOWED_HOSTS" not in incoming:
+        return False
+    stored = load_config()
+    host = incoming.get("MCP_PUBLIC_HOST", stored.get("MCP_PUBLIC_HOST"))
+    allowed = incoming.get("ALLOWED_HOSTS", stored.get("ALLOWED_HOSTS"))
+    if (host, allowed) == (stored.get("MCP_PUBLIC_HOST"), stored.get("ALLOWED_HOSTS")):
+        return False
+    return mcp_public_host_overlaps_allowed_hosts(host, allowed)
+
+
 @system_router.post("/settings", dependencies=[Depends(require_step_up)])
 def save_settings(config: SettingsConfig):
     try:
         incoming_data = config.model_dump(exclude_none=True)
+        if _mcp_host_overlap(incoming_data):
+            return JSONResponse(status_code=422, content={
+                "status": "error",
+                "message": "MCP_PUBLIC_HOST cannot be a host name the dashboard is served on (ALLOWED_HOSTS, localhost or 127.0.0.1): that host would answer only the MCP routes.",
+            })
         if incoming_data.get("GHOSTFOLIO_ENABLED") is False:
             incoming_data["GHOSTFOLIO_ACCOUNTS"] = {"discovered": [], "active": []}
             scheduling = incoming_data.setdefault("SCHEDULING", {})
