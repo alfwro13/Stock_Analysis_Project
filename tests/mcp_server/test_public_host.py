@@ -27,6 +27,11 @@ MACHINE = {
     ("GET", "/.well-known/oauth-authorization-server"), ("POST", "/oauth/token"), ("POST", "/oauth/revoke"),
 }
 ALL_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+HIDDEN_FROM_OPENAPI = {
+    "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
+    "/mcp", "/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-authorization-server",
+    "/oauth/authorize", "/oauth/token", "/oauth/revoke",
+}
 
 
 def _settings(monkeypatch, enabled=True, cidrs=("160.79.104.0/21",)):
@@ -260,22 +265,27 @@ class TestRealApp:
         return self._real_stack(monkeypatch, "localhost")
 
     @staticmethod
-    def _registered_pairs():
+    def _route_contexts():
         import main
-        pairs = set()
+        contexts = []
         for top in main.app.routes:
             if hasattr(top, "effective_route_contexts"):
-                contexts = list(top.effective_route_contexts())
+                contexts.extend(top.effective_route_contexts())
             elif hasattr(top, "path"):
-                contexts = [top]
+                contexts.append(top)
             else:
-                raise AssertionError(f"Unrecognised route container {type(top).__name__}: FastAPI changed how app.routes nests routers; update _registered_pairs")
-            for route in contexts:
-                path = re.sub(r"\{[^}]+\}", "x", route.path)
-                if hasattr(route, "routes"):
-                    path += "/x"
-                for method in set(getattr(route, "methods", None) or ()) | set(ALL_METHODS):
-                    pairs.add((method, path))
+                raise AssertionError(f"Unrecognised route container {type(top).__name__}: FastAPI changed how app.routes nests routers; update _route_contexts")
+        return contexts
+
+    @classmethod
+    def _registered_pairs(cls):
+        pairs = set()
+        for route in cls._route_contexts():
+            path = re.sub(r"\{[^}]+\}", "x", route.path)
+            if hasattr(route, "routes"):
+                path += "/x"
+            for method in set(getattr(route, "methods", None) or ()) | set(ALL_METHODS):
+                pairs.add((method, path))
         return pairs
 
     def test_the_guard_is_the_outermost_middleware_and_carries_the_configured_host(self):
@@ -306,6 +316,11 @@ class TestRealApp:
         }
         assert len(documented) > 250
         assert documented <= self._registered_pairs()
+
+    def test_routes_hidden_from_openapi_are_a_reviewed_list(self):
+        """The openapi cross-check cannot see a route registered with include_in_schema=False, so each one is named here; a new one fails until someone confirms the public-host guard still answers 404 for it and adds it."""
+        hidden = {route.path for route in self._route_contexts() if getattr(route, "include_in_schema", True) is False}
+        assert hidden == HIDDEN_FROM_OPENAPI
 
     def test_all_pairs_including_the_eight_are_404_while_remote_access_is_off(self, guarded_app, monkeypatch):
         _settings(monkeypatch, enabled=False)
