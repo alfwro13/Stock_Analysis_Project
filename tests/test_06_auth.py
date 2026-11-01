@@ -521,12 +521,6 @@ class TestLogout:
 # 5.  POST /api/change-password
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.fixture(autouse=True)
-def _reset_rate_limits():
-    from api_deps import limiter
-    limiter.reset()
-
-
 def _clear_login_throttle():
     from database import get_connection
     conn = None
