@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 
 import db_mcp_oauth
-from api_deps import limiter
 from constants import MCP_ACTIVITY_ROWS
 from database import get_connection
 from mcp_server import audit, oauth
@@ -14,13 +13,6 @@ from mcp_server import audit, oauth
 from .helpers import MCP_KEY
 from .test_oauth_server import mcp, pair, refresh, remote, sql, start, token_form, tokens  # noqa: F401  remote is a fixture
 from .test_remote_access import PUBLIC, ROOT, _plain, _status
-
-
-@pytest.fixture(autouse=True)
-def _fresh_rate_limits():
-    limiter.reset()
-    yield
-    limiter.reset()
 
 
 @pytest.fixture

@@ -125,6 +125,15 @@ def _block_real_nextcloud_send():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The limiter is process-wide, so the suite's request count would otherwise build up across tests and trip a per-minute cap on a fast runner."""
+    from api_deps import limiter
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest.fixture(scope="session")
 def client():
     """

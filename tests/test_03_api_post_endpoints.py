@@ -823,13 +823,6 @@ def test_no_trigger_endpoint_returns_500(client):
 @pytest.mark.api
 class TestImportServerSecurity:
 
-    @pytest.fixture(autouse=True)
-    def _reset_limiter(self):
-        from api_deps import limiter
-        limiter.reset()
-        yield
-        limiter.reset()
-
     def test_path_traversal_with_dotdot_is_rejected(self, client):
         resp = client.post("/api/universe/import/server", json={"filename": "../../../etc/passwd.csv"})
         assert resp.status_code == 400
