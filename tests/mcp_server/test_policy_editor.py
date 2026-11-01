@@ -20,14 +20,6 @@ def policy_path(tmp_path, monkeypatch):
     return path
 
 
-@pytest.fixture(autouse=True)
-def _fresh_rate_limit():
-    from api_deps import limiter
-    limiter.reset()
-    yield
-    limiter.reset()
-
-
 @pytest.fixture
 def headers(auth_cookies):
     return {"Cookie": "; ".join(f"{k}={v}" for k, v in auth_cookies.items()), "X-CSRFToken": auth_cookies["csrftoken"]}

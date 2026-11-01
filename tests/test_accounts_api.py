@@ -8,15 +8,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-@pytest.fixture(autouse=True)
-def _reset_rate_limiter():
-    """Most tests here create an account; on a fast runner they pass the 120/minute cap on POST /api/accounts."""
-    from api_deps import limiter
-    limiter.reset()
-    yield
-    limiter.reset()
-
-
 def _json(resp) -> dict:
     try:
         return resp.json()
