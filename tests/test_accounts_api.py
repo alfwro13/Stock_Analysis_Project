@@ -3286,3 +3286,138 @@ def test_portfolio_totals_route_reuses_its_answer_until_refresh_now(client):
             assert third["current_value"] == 2.0
     finally:
         portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+
+
+def _post_dividend(client, account_id, ticker, **extra):
+    body = {
+        "txn_type": "Dividend", "txn_date": "2026-02-01", "ticker": ticker,
+        "currency": "GBP", "quantity": 10, "unit_price": 1.0, "exchange_rate": 1.0,
+    }
+    body.update(extra)
+    with patch("api_routes_accounts.resnapshot_account"), patch("api_routes_accounts.update_single_profile"):
+        return client.post(f"/api/accounts/{account_id}/transactions", json=body)
+
+
+@pytest.mark.api
+def test_dividend_is_rejected_for_a_ticker_never_held_in_the_account(client):
+    import database as _db
+    account_id = _create_account(client)
+    other_id = _create_account(client, name="Other Dividend Account")
+    try:
+        _post_txn(client, other_id, "Buy", "ZZDIVOTHER", 5)
+        for ticker in ("ZZDIVNEVER", "ZZDIVOTHER", None):
+            resp = _post_dividend(client, account_id, ticker)
+            assert resp.status_code == 422, ticker
+            assert "held in this account" in _json(resp)["message"]
+        assert [t for t in _db.get_transactions(account_id) if t["txn_type"] == "Dividend"] == []
+    finally:
+        _db.soft_delete_account(account_id)
+        _db.soft_delete_account(other_id)
+
+
+@pytest.mark.api
+def test_dividend_is_accepted_for_open_and_closed_positions_case_insensitively(client):
+    import database as _db
+    account_id = _create_account(client)
+    try:
+        _post_txn(client, account_id, "Buy", "ZZDIVOPEN", 5)
+        _post_txn(client, account_id, "Buy", "ZZDIVSHUT", 5)
+        _post_txn(client, account_id, "Sell", "ZZDIVSHUT", 5)
+        assert _post_dividend(client, account_id, "ZZDIVOPEN").status_code == 200
+        assert _post_dividend(client, account_id, "zzdivshut").status_code == 200
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_dividend_edit_cannot_move_to_an_unheld_ticker_but_unchanged_ticker_stays_editable(client):
+    import database as _db
+    account_id = _create_account(client)
+    try:
+        _post_txn(client, account_id, "Buy", "ZZDIVEDIT", 5)
+        legacy_id = _db.add_transaction(account_id, "Dividend", "2026-01-20", ticker="ZZDIVLEGACY", unit_price=3.0, quantity=1)
+        kept = _json(_post_dividend(client, account_id, "ZZDIVEDIT"))["id"]
+        url = f"/api/accounts/{account_id}/transactions/{kept}"
+        body = {"txn_type": "Dividend", "txn_date": "2026-02-01", "currency": "GBP", "quantity": 10,
+                "unit_price": 1.0, "exchange_rate": 1.0}
+        with patch("api_routes_accounts.resnapshot_account"):
+            assert client.put(url, json={**body, "ticker": "ZZDIVNEVER"}).status_code == 422
+            assert client.put(url, json={**body, "ticker": "ZZDIVEDIT", "notes": "ok"}).status_code == 200
+            legacy_url = f"/api/accounts/{account_id}/transactions/{legacy_id}"
+            assert client.put(legacy_url, json={**body, "ticker": "ZZDIVLEGACY", "notes": "kept"}).status_code == 200
+            buy_id = [t["id"] for t in _db.get_transactions(account_id) if t["txn_type"] == "Buy"][0]
+            as_dividend = {**body, "ticker": "ZZDIVEDIT"}
+            assert client.put(f"/api/accounts/{account_id}/transactions/{buy_id}", json=as_dividend).status_code == 200
+            assert client.put(f"/api/accounts/{account_id}/transactions/{buy_id}", json={**body, "ticker": "ZZDIVNEVER"}).status_code == 422
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_held_tickers_endpoint_lists_buy_sell_tickers_only(client):
+    import database as _db
+    account_id = _create_account(client)
+    try:
+        for ticker in ("ZZHELDB", "ZZHELDA"):
+            _post_txn(client, account_id, "Buy", ticker, 2)
+        _db.add_transaction(account_id, "Dividend", "2026-01-20", ticker="ZZHELDDIV", unit_price=1.0, quantity=1)
+        _db.add_transaction(account_id, "Buy", "2026-01-21", ticker="TBILL-99", unit_price=1.0, quantity=1)
+        data = _json(client.get(f"/api/accounts/{account_id}/held-tickers"))
+        assert data["status"] == "success"
+        assert [t["ticker"] for t in data["tickers"]] == ["ZZHELDA", "ZZHELDB"]
+        assert set(data["tickers"][0]) == {"ticker", "company_name", "currency"}
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_held_tickers_endpoint_unknown_account_returns_404(client):
+    assert client.get("/api/accounts/999999/held-tickers").status_code == 404
+
+
+@pytest.mark.api
+def test_dividend_ticker_suggestions_match_by_prefix_only():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is unavailable")
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const fields = Object.fromEntries(['txn-type', 'txn-ticker', 'txn-account'].map(id => [id, {value: ''}]));
+fields['txn-ticker-options'] = {options: [], replaceChildren(...items) { this.options = items; }};
+const context = {
+    document: {getElementById: id => fields[id], addEventListener: () => {}},
+    window: {BASE_CURRENCY: 'GBP'},
+    Option: function (text, value) { this.text = text; this.value = value; },
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+vm.runInContext(`_heldTickers = [{ticker: 'AAPL', company_name: 'Apple'}, {ticker: 'AA.L', company_name: null}, {ticker: 'MSFT', company_name: 'Microsoft'}];`, context);
+const shown = () => fields['txn-ticker-options'].options.map(o => o.value);
+fields['txn-type'].value = 'Dividend';
+fields['txn-ticker'].value = '';
+context._renderTickerSuggestions();
+assert.deepEqual(shown(), ['AAPL', 'AA.L', 'MSFT']);
+fields['txn-ticker'].value = 'a';
+context._renderTickerSuggestions();
+assert.deepEqual(shown(), ['AAPL', 'AA.L']);
+fields['txn-ticker'].value = 'AAP';
+context._renderTickerSuggestions();
+assert.deepEqual(shown(), ['AAPL']);
+fields['txn-ticker'].value = 'SFT';
+context._renderTickerSuggestions();
+assert.deepEqual(shown(), []);
+fields['txn-type'].value = 'Buy';
+fields['txn-ticker'].value = 'A';
+context._renderTickerSuggestions();
+assert.deepEqual(shown(), []);
+"""
+    result = subprocess.run(
+        [node, "-e", script, str(Path(__file__).parent.parent / "static/js/accounts.js")],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr

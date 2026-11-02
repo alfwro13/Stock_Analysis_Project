@@ -3772,7 +3772,7 @@ Native, database-backed brokerage accounts + transaction ledger (`/accounts`). C
 
 ### `GET /accounts`
 
-HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal. For foreign-currency Buy transactions, the modal can calculate the trade exchange rate from the broker's total cost in base currency (including fees), quantity, per-share price, and fee. Foreign-currency dividends use the net amount received and withholding. A fee in the trade currency shares the inferred rate; a fee in another currency uses its own entered fee rate. The calculated trade rate is submitted as the transaction's explicit `exchange_rate`.
+HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal. For foreign-currency Buy transactions, the modal can calculate the trade exchange rate from the broker's total cost in base currency (including fees), quantity, per-share price, and fee. Foreign-currency dividends use the net amount received and withholding. A fee in the trade currency shares the inferred rate; a fee in another currency uses its own entered fee rate. The calculated trade rate is submitted as the transaction's explicit `exchange_rate`. With the type set to Dividend, the Ticker field suggests only tickers that are or were held in the chosen account, matched by prefix as you type (`GET /api/accounts/{id}/held-tickers`), and the server refuses any other ticker.
 
 ### `GET /accounts/{id}`
 
@@ -3824,6 +3824,17 @@ Updates an existing account. Same body and 422 validation (`name` length, `curre
 ### `DELETE /api/accounts/{id}`
 
 Soft-deletes the account (sets `deleted_at`). Transaction history is preserved. Returns 404 if not found. Rate limit: 30/minute. The Delete button lives in a "Danger Zone" section at the bottom of each account's detail page (Trading/House/Pension — `templates/partials/_delete_account_modal.html` + `static/js/account_danger_zone.js`), not on the account tile, and is gated behind a checkbox-confirmation modal rather than a one-click browser `confirm()`.
+
+---
+
+### `GET /api/accounts/{id}/held-tickers`
+
+Returns every ticker that has at least one `Buy` or `Sell` row in this account, open or closed, sorted by ticker (`db_accounts.get_account_traded_tickers()`). Each entry carries `ticker`, `company_name` and `currency` from the ticker's newest Buy/Sell row. The synthetic `PENSION-{id}` and `TBILL-{id}` tickers are left out. The Add/Edit Transaction modal loads it when the type is `Dividend` and suggests only the tickers that start with what has been typed. Returns 404 if the account does not exist.
+
+**Response:**
+```json
+{ "status": "success", "tickers": [ { "ticker": "AAPL", "company_name": "Apple Inc.", "currency": "USD" } ] }
+```
 
 ---
 
@@ -3928,13 +3939,13 @@ Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`
 }
 ```
 
-Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`, or if `txn_date` is not a real `YYYY-MM-DD` date, the resolved `currency` / `fee_currency` is not a three-letter code (case kept, so `GBp` is valid) or `ticker` is not a valid ticker (see **Ticker format**) — the message names the field.
+Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`, or if `txn_date` is not a real `YYYY-MM-DD` date, the resolved `currency` / `fee_currency` is not a three-letter code (case kept, so `GBp` is valid) or `ticker` is not a valid ticker (see **Ticker format**) — the message names the field. A `Dividend` must name a ticker that has at least one `Buy` or `Sell` row in this same account (compared case-insensitively); otherwise, including when `ticker` is missing, the request is rejected with 422 and nothing is stored.
 
 ---
 
 ### `PUT /api/accounts/{id}/transactions/{txn_id}`
 
-Updates a transaction. Same body, validation (422 for a malformed `txn_date`, `currency`, `fee_currency` or `ticker`) and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. Rate limit: 30/minute.
+Updates a transaction. Same body, validation (422 for a malformed `txn_date`, `currency`, `fee_currency` or `ticker`) and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. The `Dividend` ticker rule of POST applies too, except that an existing `Dividend` saved with its ticker unchanged is not re-checked, so older rows stay editable. Rate limit: 30/minute.
 
 ---
 

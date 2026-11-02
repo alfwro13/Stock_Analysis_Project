@@ -786,6 +786,28 @@ def get_all_account_tickers() -> list:
             conn.close()
 
 
+def get_account_traded_tickers(account_id: int) -> list:
+    """Tickers with at least one Buy/Sell row in this account (open or closed), newest row's company name and currency, sorted by ticker; raises on a database error so a caller never reads a failure as 'never held'."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT ticker, company_name, currency FROM account_transactions "
+            "WHERE account_id = ? AND txn_type IN ('Buy', 'Sell') "
+            "AND ticker IS NOT NULL AND ticker != '' "
+            "AND ticker NOT LIKE 'PENSION-%' AND ticker NOT LIKE 'TBILL-%' "
+            "ORDER BY txn_date, id",
+            (account_id,),
+        )
+        latest = {row["ticker"]: {"ticker": row["ticker"], "company_name": row["company_name"], "currency": row["currency"]}
+                  for row in cursor.fetchall()}
+        return [latest[t] for t in sorted(latest)]
+    finally:
+        if conn:
+            conn.close()
+
+
 def create_pending_topup(account_id: int, scheduled_date: str, expected_amount: float) -> Optional[int]:
     conn = None
     try:

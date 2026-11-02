@@ -1,6 +1,8 @@
 let _accountsCache = {};
 let _txnCache = {};
 let _txnLookupTimer = null;
+let _heldTickers = [];
+let _txnModalOpening = false;
 
 function _formatThousands(value) {
     return Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -375,6 +377,7 @@ function _updateTxnFieldsForType() {
     }
     _refreshTxnCurrencyUI();
     _updateTxnTotalPreview();
+    _loadHeldTickers(!_txnModalOpening);
 }
 
 function _refreshTxnCurrencyUI() {
@@ -525,7 +528,9 @@ function openTxnModal(accountId = null, txn = null) {
     document.getElementById('txn-fx-calc-status').textContent = '';
     document.getElementById('txn-ticker-result').innerHTML = '';
     document.getElementById('txn-status').innerHTML = '';
+    _txnModalOpening = true;
     _updateTxnFieldsForType();
+    _txnModalOpening = false;
     _txnModal().show();
 }
 
@@ -538,8 +543,68 @@ function editTransaction(accountId, txnId) {
     openTxnModal(accountId, txn);
 }
 
+function _isDividendTxn() {
+    return document.getElementById('txn-type').value === 'Dividend';
+}
+
+function _renderTickerSuggestions() {
+    const prefix = document.getElementById('txn-ticker').value.trim().toUpperCase();
+    const matches = _isDividendTxn() ? _heldTickers.filter(t => t.ticker.toUpperCase().startsWith(prefix)) : [];
+    document.getElementById('txn-ticker-options').replaceChildren(...matches.map(t => {
+        const option = new Option(t.ticker, t.ticker);
+        if (t.company_name) option.label = t.company_name;
+        return option;
+    }));
+}
+
+async function _loadHeldTickers(recheck) {
+    const accountId = document.getElementById('txn-account').value;
+    _heldTickers = [];
+    if (_isDividendTxn() && accountId) {
+        try {
+            const r = await fetch(`/api/accounts/${accountId}/held-tickers`);
+            const data = await r.json();
+            if (accountId !== document.getElementById('txn-account').value) return;
+            if (data.status === 'success') _heldTickers = data.tickers || [];
+        } catch (e) {
+            _heldTickers = [];
+        }
+    }
+    _renderTickerSuggestions();
+    if (!recheck) return;
+    if (!_isDividendTxn()) document.getElementById('txn-ticker-result').innerHTML = '';
+    else if (document.getElementById('txn-ticker').value.trim()) _checkHeldTicker();
+}
+
+function _checkHeldTicker() {
+    const resultEl = document.getElementById('txn-ticker-result');
+    const ticker = document.getElementById('txn-ticker').value.trim().toUpperCase();
+    if (!ticker) {
+        resultEl.innerHTML = '';
+        document.getElementById('txn-company-name').value = '';
+        return;
+    }
+    const match = _heldTickers.find(t => t.ticker.toUpperCase() === ticker);
+    if (match) {
+        if (match.currency) _setCurrencySelectValue(match.currency);
+        document.getElementById('txn-company-name').value = match.company_name || '';
+        const detail = match.currency ? ` (${escapeHtml(match.currency)})` : '';
+        resultEl.innerHTML = `<span class="msg-success">${escapeHtml(match.company_name || match.ticker)}${detail}</span>`;
+        _onTxnCurrencyOrDateChange();
+    } else if (_heldTickers.some(t => t.ticker.toUpperCase().startsWith(ticker))) {
+        resultEl.innerHTML = '<span class="msg-info">Pick one of the suggested tickers held in this account.</span>';
+    } else {
+        resultEl.innerHTML = '<span class="msg-error">No ticker starting with this is or was held in this account.</span>';
+    }
+}
+
 function _lookupTicker() {
     clearTimeout(_txnLookupTimer);
+    _renderTickerSuggestions();
+    if (_isDividendTxn()) {
+        _checkHeldTicker();
+        return;
+    }
     const tickerInput = document.getElementById('txn-ticker');
     const resultEl = document.getElementById('txn-ticker-result');
     const ticker = tickerInput.value.trim().toUpperCase();
@@ -685,4 +750,5 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAccounts();
     _populateCurrencySelect();
     document.getElementById('txn-ticker').addEventListener('input', _lookupTicker);
+    document.getElementById('txn-account').addEventListener('change', () => _loadHeldTickers(true));
 });
