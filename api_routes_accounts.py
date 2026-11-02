@@ -39,6 +39,7 @@ from database import (
     soft_delete_account,
     get_transactions,
     get_transaction,
+    get_account_traded_tickers,
     add_transaction,
     update_transaction,
     get_connection,
@@ -244,6 +245,21 @@ def _invalid_input_response(
     return None
 
 
+def _dividend_ticker_error(account_id: int, txn_type: str, ticker: Optional[str], existing: Optional[dict] = None) -> Optional[JSONResponse]:
+    """A 422 when a Dividend names a ticker the account never bought or sold; an edit that leaves an existing Dividend's ticker unchanged is exempt so legacy rows stay editable."""
+    if txn_type != "Dividend":
+        return None
+    if existing and existing["txn_type"] == "Dividend" and (existing["ticker"] or "").upper() == (ticker or "").upper():
+        return None
+    held = {row["ticker"].upper() for row in get_account_traded_tickers(account_id)}
+    if ticker and ticker.upper() in held:
+        return None
+    return JSONResponse(status_code=422, content={
+        "status": "error",
+        "message": "A dividend needs a ticker that is or was held in this account (it has at least one Buy or Sell here).",
+    })
+
+
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> Optional[float]:
     if exchange_rate is not None:
         return exchange_rate
@@ -394,6 +410,17 @@ def api_list_transactions(account_id: int):
     return JSONResponse(content={"status": "success", "transactions": get_transactions(account_id)})
 
 
+@accounts_router.get("/accounts/{account_id}/held-tickers")
+def api_list_held_tickers(account_id: int):
+    try:
+        if get_account(account_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        return JSONResponse(content={"status": "success", "tickers": get_account_traded_tickers(account_id)})
+    except Exception as e:
+        logger.error("api_list_held_tickers account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
 @accounts_router.get("/accounts/{account_id}/value-history")
 def api_account_value_history(
     account_id: int,
@@ -468,6 +495,9 @@ def api_create_transaction(
         )
         if invalid:
             return invalid
+        not_held = _dividend_ticker_error(account_id, body.txn_type, ticker)
+        if not_held:
+            return not_held
         if ticker:
             _ensure_ticker_data(ticker, background_tasks)
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
@@ -540,6 +570,9 @@ def api_update_transaction(
         )
         if invalid:
             return invalid
+        not_held = _dividend_ticker_error(account_id, body.txn_type, ticker, existing)
+        if not_held:
+            return not_held
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         if exchange_rate is None:
             return _missing_fx_response(currency, txn_date=body.txn_date)
