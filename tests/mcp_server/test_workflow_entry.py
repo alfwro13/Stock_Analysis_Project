@@ -25,7 +25,7 @@ class TestWorkflowEntry:
         meta = JOB_GRAPH["notifications_source"]
         assert meta["label"] == "Notifications"
         assert meta["category"] == "manual" and meta["non_job"] is True
-        assert meta["produces"] == ["system_notifications"] and meta["consumes"] == []
+        assert meta["produces"] == ["system_notifications", "nextcloud_talk_stats"] and meta["consumes"] == []
         producers = [job_id for job_id, other in JOB_GRAPH.items() if "system_notifications" in other["produces"]]
         assert producers == ["notifications_source"]
 
