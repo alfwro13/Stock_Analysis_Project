@@ -93,6 +93,24 @@ Stock Detail converts the recorded base-currency average cost into the ticker's 
 
 A lifecycle task samples the event loop every 250 ms and writes `event_loop_lag` at WARNING when a sample is at least 100 ms late. A watchdog thread samples the loop stack at the 100 ms threshold and adds `suspected_blocker=module.py:function:line` for the nearest project frame, plus `callers=` with up to 11 outer project frames in call order; each entry contains only a source filename, function and line. This shows which route or helper reached a generic wrapper such as `database._retry_on_locked()`. A sample at that wrapper's `call(*args, **kwargs)` line means a SQLite execute or commit was in progress; it does not show that a lock error or retry occurred. A field is `unavailable` if the watchdog could not capture it. This is a snapshot of the code running during the delay, not proof that the named function caused the full delay. The lag value is how late the probe resumed, not a request duration. A long GIL hold in another thread can prevent the watchdog from sampling; external-library work is attributed to its nearest project caller. Use nearby `request_timing` lines and `Server-Timing` stages to distinguish a slow handler from a request waiting before dispatch. `debug_scripts/performance_baseline.py` repeats an offline route matrix against an isolated development data snapshot and includes a controlled stalled intraday fetch. It blocks yfinance calls and stubs FX rates; it must never be pointed at production data or interpreted as a browser first-byte measurement. Remove its copied development snapshot from the worktree before running the regression suite. A warning with `suspected_blocker=unavailable` or only `main.py:<module>` means the loop thread was waiting for the GIL, not that a handler blocked: attribute it by matching the warning timestamps against the scheduler's `Running job` and `executed successfully` lines in `app.log` (a job that holds a few percent of wall time but most of the warnings is the cause), then profile that job on a development copy of the data under a lag probe with `gc.callbacks` timing. That is how PERF-7 found the Trap Monitor's per-alert referee model unpickling (see `assets/bull_bear_trap_monitor.md`); Global Model Training and process restarts remain the other sources of lag.
 
+### Process memory telemetry
+
+The dashboard process was killed by the kernel OOM killer twice in the logs retained to 4 Nov 2026 (4.5-4.9 GB resident after 3-5 days, on an 8 GB host with no swap), and nothing recorded how memory grew. `memory_helpers.py` ("Process Memory Telemetry", `memory_telemetry_job`, every `constants.MEMORY_SAMPLE_INTERVAL_MINUTES` = 15, first run at start-up) writes one line to `app.log`:
+
+`Memory periodic: rss=… MiB (anon=… file=… thp=…) peak=… available=… glibc_in_use=… glibc_free_held=… arrow=…(backend) py_blocks=… gc2=… threads=… uptime=…h`
+
+| Field | Source | What it separates |
+|---|---|---|
+| `rss`, `anon`, `file`, `peak` | `psutil` and `/proc/self/status` (`RssAnon`, `RssFile`, `VmHWM`) | heap and buffers (`anon`) from memory-mapped files such as the FinBERT weights (`file`) |
+| `thp` | `/proc/self/smaps_rollup` `AnonHugePages` | how much of `anon` sits in transparent huge pages (the host has THP set to `always`) |
+| `available` | `psutil.virtual_memory()` | what the host can still hand out |
+| `glibc_in_use`, `glibc_free_held` | glibc `mallinfo2()` via `ctypes` | live C-level allocations versus free memory the allocator keeps (fragmentation) |
+| `arrow` | `pyarrow.default_memory_pool()`, only if `pyarrow` is already imported | pandas 3 string columns, which live in Arrow's pool (jemalloc on the production build), outside glibc |
+| `py_blocks` | `sys.getallocatedblocks()` | growth in live Python objects; a flat value with a growing `rss` points at native memory |
+| `gc2` | `gc.get_stats()` | generation-2 collections, to correlate with `event_loop_lag` stalls |
+
+Every scheduled or manual job also gets one `Memory job <id>: <s>s, rss A -> B MiB (±Δ), N MiB available` line from `scheduler_engine._run_tracked_job`, but only when it ran at least `MEMORY_JOB_LOG_MIN_SECONDS` (5) or moved the process RSS by at least `MEMORY_JOB_LOG_MIN_DELTA_MIB` (50); the one-minute and two-minute jobs would otherwise add thousands of lines a day. RSS is process-wide, so a job overlapping another is credited with that job's movement too. Settings → System Diagnostics → Server Infrastructure shows a fresh sample from `GET /api/system/metrics` (`memory`). Nothing is stored in the database: `app.log` is the history. Find the series with `grep "Memory periodic" logs/app.log*`.
+
 ### Request execution during blocking work
 
 The Fundamentals Data Profiler status endpoint awaits its SQLite queue breakdown and last-run lookup in request workers. A slow status query can still delay that response, while unrelated requests continue to run.

@@ -2154,9 +2154,29 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
     "pairing_open": false,
     "requests_24h": 412,
     "refused_24h": 3
+  },
+  "memory": {
+    "taken_at": "2026-11-04 12:00:00",
+    "rss_mib": 1709.4,
+    "rss_anon_mib": 852.1,
+    "rss_file_mib": 817.3,
+    "rss_peak_mib": 1763.5,
+    "anon_huge_mib": 456.0,
+    "available_mib": 6320.0,
+    "total_mib": 7947.0,
+    "glibc_in_use_mib": 310.2,
+    "glibc_free_held_mib": 41.8,
+    "arrow_backend": "jemalloc",
+    "arrow_mib": 12.5,
+    "python_blocks": 1480232,
+    "gc_gen2_collections": 38,
+    "threads": 35,
+    "uptime_hours": 0.2
   }
 }
 ```
+
+`memory` is a fresh sample of the dashboard process (`memory_helpers.sample()`), the same figures the Process Memory Telemetry job writes to `app.log` every 15 minutes. All sizes are MiB. A figure the platform cannot report (the `/proc` split and `mallinfo2` exist on Linux/glibc only; the Arrow pool is read only if `pyarrow` is already loaded) is `null`, never `0`. `glibc_free_held_mib` is memory the C allocator holds free inside its arenas: if it grows while `glibc_in_use_mib` does not, freed memory is not returning to the OS (fragmentation).
 
 `mcp` feeds the two MCP rows of the System Diagnostics panel: live (unrevoked, unexpired) Remote Access grants, unexpired pending connection requests, whether the pairing window is open, and the `mcp_audit_log` rows of the last 24 hours (`requests_24h` leaves out the dashboard's own revoke rows and the cap's summary rows; `refused_24h` counts `401`, `403` and `429`). Counts only, no addresses.
 
