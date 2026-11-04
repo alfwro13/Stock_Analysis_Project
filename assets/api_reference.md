@@ -2148,6 +2148,12 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
     "notes_pending": 3,
     "notes_sent": 1240
   },
+  "nextcloud_talk": {
+    "sent": 18,
+    "failed": 2,
+    "state": "ok",
+    "last_error": null
+  },
   "mcp": {
     "connected_apps": 1,
     "pending_requests": 0,
@@ -2177,6 +2183,8 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
 ```
 
 `memory` is a fresh sample of the dashboard process (`memory_helpers.sample()`), the same figures the Process Memory Telemetry job writes to `app.log` every 15 minutes. All sizes are MiB. A figure the platform cannot report (the `/proc` split and `mallinfo2` exist on Linux/glibc only; the Arrow pool is read only if `pyarrow` is already loaded) is `null`, never `0`. `glibc_free_held_mib` is memory the C allocator holds free inside its arenas: if it grows while `glibc_in_use_mib` does not, freed memory is not returning to the OS (fragmentation).
+
+`nextcloud_talk` feeds the Nextcloud Talk row of the System Diagnostics panel: the messages sent and failed today (UTC day, from `nextcloud_talk_stats`; the counters restart at UTC midnight) and `state`: `failing` when the last send of the day failed (`last_error` is then `HTTP <status>` or the exception class, never a URL), `ok` when it succeeded, `idle` when nothing was sent yet today. A missing Talk configuration is not an attempt and does not count.
 
 `mcp` feeds the two MCP rows of the System Diagnostics panel: live (unrevoked, unexpired) Remote Access grants, unexpired pending connection requests, whether the pairing window is open, and the `mcp_audit_log` rows of the last 24 hours (`requests_24h` leaves out the dashboard's own revoke rows and the cap's summary rows; `refused_24h` counts `401`, `403` and `429`). Counts only, no addresses.
 

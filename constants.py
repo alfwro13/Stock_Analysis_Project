@@ -106,6 +106,11 @@ MCP_THROTTLE_MAX_ENTRIES    = 10_000           # addresses/keys the in-memory /m
 MCP_REFUSAL_LOG_SECONDS     = 60               # a 429 is written to the audit log at most this often per address or key
 MCP_NOTIFY_COOLDOWN_SECONDS = 3600             # a lockout or off-range notification repeats for one address at most this often
 MCP_AUDIT_RETENTION_DAYS    = 90               # mcp_audit_log rows older than this are pruned by the maintenance job
+NEXTCLOUD_TALK_MAX_RETRIES  = 3                # re-sends of a Talk message that failed, after the first attempt
+NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS = 300  # a failed message is retried no sooner than this after its last attempt, so a burst of alerts cannot use up its retries at once
+NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS = 7200    # a queued Talk message older than this is dropped as stale
+NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS = 21600  # the "Nextcloud Talk delivery is failing" notification repeats at most this often
+NEXTCLOUD_TALK_STATS_RETENTION_DAYS = 90       # nextcloud_talk_stats rows older than this are pruned by the maintenance job
 MCP_AUDIT_QUEUE_MAX         = 1000             # audit rows waiting for the writer thread; past it a row is dropped, never the request
 MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE = 600         # audit rows without a valid key or token (rejections, OAuth browser steps) stored per minute; the rest are counted into one summary row
 MCP_AUDIT_TEXT_MAX_CHARS    = 100            # request-derived text (JSON-RPC method, tool/prompt/resource name) stored in mcp_audit_log
@@ -144,7 +149,7 @@ MEMORY_JOB_LOG_MIN_SECONDS  = 5                # a scheduled job gets a memory l
 MEMORY_JOB_LOG_MIN_DELTA_MIB = 50              # ... or when it moved the process RSS by at least this much
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.203" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.204" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

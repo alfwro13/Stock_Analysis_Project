@@ -2,6 +2,8 @@ import logging
 import os
 import requests
 
+from database import record_nextcloud_talk_attempt
+
 logger = logging.getLogger(__name__)
 
 def __noop_logger(*args, **kwargs):
@@ -71,14 +73,31 @@ def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_usern
         log_message(f"❌ FATAL File Share Error: {e}")
         return False
 
-def send_text_message(message_text: str, config_data: dict) -> bool:
+def _credentials(config_data: dict) -> tuple:
     # Env vars take precedence: credentials are never written to config.json, only .env/os.environ;
     # config_data is a fallback for callers that resolve credentials themselves.
-    url = os.environ.get("NEXTCLOUD_URL") or config_data.get("NEXTCLOUD_URL", "")
-    token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or config_data.get("CONVERSATION_TOKEN", "")
-    user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config_data.get("BOT_USERNAME", "")
-    pwd = os.environ.get("NEXTCLOUD_APP_PASSWORD") or config_data.get("APP_PASSWORD", "")
-    
+    return (
+        os.environ.get("NEXTCLOUD_URL") or config_data.get("NEXTCLOUD_URL", ""),
+        os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or config_data.get("CONVERSATION_TOKEN", ""),
+        os.environ.get("NEXTCLOUD_BOT_USERNAME") or config_data.get("BOT_USERNAME", ""),
+        os.environ.get("NEXTCLOUD_APP_PASSWORD") or config_data.get("APP_PASSWORD", ""),
+    )
+
+
+def is_configured(config_data: dict) -> bool:
+    return all(_credentials(config_data))
+
+
+def _record_attempt(ok: bool, error=None) -> None:
+    try:
+        record_nextcloud_talk_attempt(ok, error)
+    except Exception as e:
+        logger.warning("Could not record the Nextcloud Talk attempt: %s", e)
+
+
+def send_text_message(message_text: str, config_data: dict) -> bool:
+    url, token, user, pwd = _credentials(config_data)
+
     if not all([url, token, user, pwd]):
         return False
 
@@ -99,7 +118,12 @@ def send_text_message(message_text: str, config_data: dict) -> bool:
             timeout=10
         )
         response.raise_for_status()
-        return True
     except Exception as e:
-        logger.error("Failed to send Nextcloud text message: %s", e)
+        # The exception text carries the request URL, which contains the conversation token.
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        reason = f"HTTP {status}" if status else type(e).__name__
+        logger.error("Failed to send Nextcloud text message: %s", reason)
+        _record_attempt(False, reason)
         return False
+    _record_attempt(True)
+    return True

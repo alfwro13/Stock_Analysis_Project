@@ -279,6 +279,52 @@ class TestPruneMcpAuditLog:
         assert eng.metrics["mcp_audit_deleted"] == 0
 
 
+# ── prune_nextcloud_talk_stats ────────────────────────────────────────────────
+
+class TestPruneNextcloudTalkStats:
+    @staticmethod
+    def _day(days_ago: int) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+
+    def teardown_method(self):
+        conn = None
+        try:
+            conn = _conn()
+            conn.execute("DELETE FROM nextcloud_talk_stats")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def test_prunes_days_older_than_the_retention_and_keeps_the_rest(self):
+        conn = None
+        try:
+            conn = _conn()
+            conn.executemany(
+                "INSERT INTO nextcloud_talk_stats (stat_date, sent) VALUES (?, 1)",
+                [(self._day(91),), (self._day(200),), (self._day(89),), (self._day(0),)],
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+        _engine().prune_nextcloud_talk_stats()
+
+        conn = None
+        try:
+            conn = _conn()
+            remaining = [r[0] for r in conn.execute("SELECT stat_date FROM nextcloud_talk_stats ORDER BY stat_date")]
+        finally:
+            if conn:
+                conn.close()
+        assert remaining == [self._day(89), self._day(0)]
+
+    def test_a_database_error_is_logged_and_does_not_stop_maintenance(self):
+        with patch("maintenance_engine.prune_nextcloud_talk_stats", side_effect=RuntimeError("locked")):
+            _engine().prune_nextcloud_talk_stats()
+
+
 # ── prune_pulse_cache ─────────────────────────────────────────────────────────
 
 class TestPrunePulseCache:

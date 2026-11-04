@@ -956,6 +956,8 @@ table.dataTable tbody tr td { color: #ccc; }
 .diag-table tr:last-child td { border-bottom: none; }
 .diag-table td.val-col { font-family: ui-monospace, "SF Mono", Consolas, monospace; color: #00ffcc; font-weight: bold; text-align: right; white-space: nowrap; }
 .diag-table td.sub-val-col { font-family: ui-monospace, "SF Mono", Consolas, monospace; color: #aaa; text-align: right; white-space: nowrap; }
+.diag-table td.sub-val-col.diag-failing { color: #ff4d4d; }
+.diag-table td.sub-val-col.diag-working { color: #4caf50; }
 .scheduler-table { width: 100%; border-collapse: collapse; font-size: 13px; background-color: #1a1a1a; border-radius: 6px; overflow: hidden; }
 .scheduler-table th, .scheduler-table td { padding: 10px 15px; text-align: left; border-bottom: 1px solid #333; }
 .scheduler-table th { background-color: #2c2c2c; color: #4da6ff; }

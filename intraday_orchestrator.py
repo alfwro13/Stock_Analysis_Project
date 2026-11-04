@@ -484,8 +484,8 @@ class IntradayOrchestrator:
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
             msg = msg_builder(ticker, formatted_price, alert, ml_conf, var, sent, url)
-            if notify(_ALERT_SOURCES[engine], engine, feed_builder(ticker, formatted_price, alert), nextcloud_text=msg, conn=conn):
-                self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
+            notify(_ALERT_SOURCES[engine], engine, feed_builder(ticker, formatted_price, alert), nextcloud_text=msg, conn=conn)
+            self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
             time.sleep(_DISPATCH_SLEEP_SECONDS)
 
     @staticmethod
@@ -542,8 +542,8 @@ class IntradayOrchestrator:
                 f"🔗 [View Position]({url})"
             )
             feed_msg = f"{ticker} ({account_name}): {label} of {formatted_limit} reached — current price {formatted_price}."
-            if notify(_ALERT_SOURCES["HoldingLimit"], "HoldingLimit", feed_msg, nextcloud_text=msg, conn=conn):
-                self.record_alert_fired("HoldingLimit", key, current_price, reason, conn)
+            notify(_ALERT_SOURCES["HoldingLimit"], "HoldingLimit", feed_msg, nextcloud_text=msg, conn=conn)
+            self.record_alert_fired("HoldingLimit", key, current_price, reason, conn)
             time.sleep(_DISPATCH_SLEEP_SECONDS)
 
     def run(self) -> None:
@@ -697,14 +697,14 @@ class IntradayOrchestrator:
                             f"Expect immediate severe valuation compression across high-multiple and tech equities. "
                             f"Risk-Off environment detected."
                         )
-                        if notify(
+                        notify(
                             _ALERT_SOURCES["Macro"],
                             "Macro",
                             f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)",
                             nextcloud_text=msg,
                             conn=conn,
-                        ):
-                            self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro, conn)
+                        )
+                        self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro, conn)
             except Exception:
                 logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
 

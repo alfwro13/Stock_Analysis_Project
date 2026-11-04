@@ -248,8 +248,8 @@ def run_update_pipeline():
             try:
                 conn_alert = get_connection()
                 if not orch._evaluate_alert_gate("HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert):
-                    if notify("hmm_regime_alert", "HMM Regime", msg, conn=conn_alert):
-                        orch.record_alert_fired("HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert)
+                    notify("hmm_regime_alert", "HMM Regime", msg, conn=conn_alert)
+                    orch.record_alert_fired("HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert)
             except Exception as _e:
                 logger.error("HMM alert gate error: %s", _e)
             finally:
@@ -273,8 +273,8 @@ def run_update_pipeline():
             try:
                 conn_alert = get_connection()
                 if not orch._evaluate_alert_gate("MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert):
-                    if notify("market_stress_alert", "Market Stress", msg, conn=conn_alert):
-                        orch.record_alert_fired("MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert)
+                    notify("market_stress_alert", "Market Stress", msg, conn=conn_alert)
+                    orch.record_alert_fired("MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert)
             except Exception as _e:
                 logger.error("Market stress alert gate error: %s", _e)
             finally:
@@ -795,16 +795,16 @@ def run_ai_contagion_job():
                 logger.info("AIContagion: alert suppressed by daily gate (max_per_day=%s).", max_per_day)
                 continue
 
-            if notify(
+            notify(
                 "ai_contagion_alert",
                 "AIContagion",
                 _build_contagion_feed_text(event),
                 nextcloud_text=_build_contagion_message(event, config),
                 conn=conn,
-            ):
-                orch.record_alert_fired(
-                    "AIContagion", event["ticker"], event["price"], event["reason"], conn
-                )
+            )
+            orch.record_alert_fired(
+                "AIContagion", event["ticker"], event["price"], event["reason"], conn
+            )
             leaders_summary = ", ".join(
                 f"{s['ticker']} ({s['intraday_pct']:+.2f}%)"
                 for s in event.get("leader_shocks", [])
@@ -907,8 +907,8 @@ def run_trap_monitor_job():
                 f"Bull Trap: {row.get('bull_trap_level', '—')} | Bear Trap: {row.get('bear_trap_level', '—')}",
                 f"Capitulation: {row.get('cap_level', '—')} | Wyckoff: {row.get('wyckoff_level', '—')}",
             ]
-            if notify("trap_monitor_alert", "TrapMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
-                orch.record_alert_fired("TrapMonitor", ticker, ema_distance, reason, conn)
+            notify("trap_monitor_alert", "TrapMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn)
+            orch.record_alert_fired("TrapMonitor", ticker, ema_distance, reason, conn)
             logger.info("TrapMonitor: alert fired for %s (%s).", ticker, phase)
 
     except Exception as e:
@@ -1012,8 +1012,8 @@ def _fire_risk_orchestrator_critical_alerts(scopes: list) -> None:
                         f"PHI score {row['phi_score']} has reached RED.\n\n"
                         f"🔗 [View Portfolio Heat Index](/portfolio-heat-index)"
                     )
-                    if notify("risk_orchestrator_phi_critical", "PhiCritical", msg, conn=conn_alert):
-                        orch.record_alert_fired("PhiCritical", row["scope"], row["phi_score"], reason, conn_alert)
+                    notify("risk_orchestrator_phi_critical", "PhiCritical", msg, conn=conn_alert)
+                    orch.record_alert_fired("PhiCritical", row["scope"], row["phi_score"], reason, conn_alert)
             if row["correlation_tier"] == "RED" and row["max_correlation"] is not None:
                 reason = f"CORRELATION_SPIKE_{row['scope']}"
                 if not orch._evaluate_alert_gate("CorrelationSpike", row["scope"], row["max_correlation"], reason, conn_alert):
@@ -1022,8 +1022,8 @@ def _fire_risk_orchestrator_critical_alerts(scopes: list) -> None:
                         f"Max pairwise correlation {row['max_correlation']} has reached RED.\n\n"
                         f"🔗 [View Portfolio Heat Index](/portfolio-heat-index)"
                     )
-                    if notify("risk_orchestrator_correlation_spike", "CorrelationSpike", msg, conn=conn_alert):
-                        orch.record_alert_fired("CorrelationSpike", row["scope"], row["max_correlation"], reason, conn_alert)
+                    notify("risk_orchestrator_correlation_spike", "CorrelationSpike", msg, conn=conn_alert)
+                    orch.record_alert_fired("CorrelationSpike", row["scope"], row["max_correlation"], reason, conn_alert)
     except Exception as e:
         logger.error("Risk Orchestrator critical alert evaluation failed: %s", e)
     finally:
@@ -1135,9 +1135,9 @@ def run_pairs_spread_monitor_job():
                 f"Correlation: {row['correlation']:.2f}",
                 row["direction"],
             ]
-            if notify("pairs_spread_alert", "PairsSpreadMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
-                orch.record_alert_fired("PairsSpreadMonitor", pair_key, abs(row["zscore"]), reason, conn)
-                fired += 1
+            notify("pairs_spread_alert", "PairsSpreadMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn)
+            orch.record_alert_fired("PairsSpreadMonitor", pair_key, abs(row["zscore"]), reason, conn)
+            fired += 1
 
         log_sched_notification("Success", f"Pairs Spread Monitor complete — {len(results)} pair(s) monitored, {fired} alert(s) fired.")
     except Exception as e:
@@ -1251,9 +1251,9 @@ def run_pattern_detection_job():
                 f"Volume confirms: {row.get('volume_confirms')} | RSI divergence: {row.get('rsi_divergence')} | "
                 f"Pattern fit (R²): {row.get('pattern_r2') if row.get('pattern_r2') is not None else '—'}",
             ]
-            if notify("pattern_detection_alert", "PatternDetector", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
-                orch.record_alert_fired("PatternDetector", gate_key, severity, reason, conn)
-                fired += 1
+            notify("pattern_detection_alert", "PatternDetector", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn)
+            orch.record_alert_fired("PatternDetector", gate_key, severity, reason, conn)
+            fired += 1
 
         notify("pattern_detection_job", "Success", f"Pattern Detection complete — {len(results)} candidate(s), {fired} alert(s) fired.")
     except Exception as e:
