@@ -162,6 +162,8 @@ from db_helpers import (  # noqa: E402
     soft_delete_ticker_registry_row,
     get_instrument_sessions,
     upsert_instrument_session,
+    record_nextcloud_talk_attempt,
+    get_nextcloud_talk_today,
 )
 from db_accounts import (  # noqa: E402
     get_accounts,

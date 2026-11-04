@@ -1,11 +1,18 @@
 # GUI name: "Notification Settings". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 import logging
 import threading
+import time
 import sqlite3
 from typing import Optional
 
 from config import load_config
-from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES
+from constants import (
+    NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS,
+    NEXTCLOUD_TALK_MAX_RETRIES,
+    NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS,
+    NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS,
+)
+from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES, get_nextcloud_talk_today
 import nextcloud_talk
 
 logger = logging.getLogger(__name__)
@@ -64,6 +71,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "sentiment_scan_degraded": {"label": "NLP Sentiment Scan Degraded",    "job_id": "sentiment_scan_job",     "default": dict(_ON)},
     "failed_login_alert":      {"label": "Failed Login Alert",              "job_id": None,                     "default": dict(_ON)},
     "mcp_remote_access_alert": {"label": "MCP Remote Access",               "job_id": "claude_mcp_server_source", "default": dict(_ON)},
+    "nextcloud_talk_health":   {"label": "Nextcloud Talk Delivery Warning", "job_id": None,                     "default": dict(_NO_TALK)},
 }
 
 ALERT_MESSAGE_TYPES = tuple(meta["alert_type"] for meta in NOTIFICATION_SOURCES.values() if "alert_type" in meta)
@@ -134,17 +142,73 @@ def validate_routing_map(value) -> dict:
     return value
 
 
-def notify(
-    source: str,
-    message_type: str,
-    message_text: str,
-    *,
-    nextcloud_text: Optional[str] = None,
-    level: str = "info",
-    conn: Optional[sqlite3.Connection] = None,
-) -> bool:
-    """Route one event to log/in-app/Nextcloud per NOTIFICATION_ROUTING; returns False only when Talk is enabled and the send failed (lets dedup callers retry on the next scan)."""
-    config = load_config()
+_pending_talk: list = []
+_pending_lock = threading.Lock()
+_health_warning = {"last": None}
+
+
+def _deliver_talk(source: str, text: str, config: dict) -> bool:
+    """True when the message was sent or Talk is not configured (nothing to retry); False when a real send failed."""
+    try:
+        sent = bool(nextcloud_talk.send_text_message(text, config))
+    except Exception as e:
+        logger.error("notify: Nextcloud dispatch failed for %s: %s", source, type(e).__name__)
+        sent = False
+    if sent or not nextcloud_talk.is_configured(config):
+        return True
+    _warn_talk_failing(config)
+    return False
+
+
+def _warn_talk_failing(config: dict) -> None:
+    now = time.monotonic()
+    with _pending_lock:
+        last = _health_warning["last"]
+        if last is not None and now - last < NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS:
+            return
+        _health_warning["last"] = now
+    try:
+        reason = get_nextcloud_talk_today().get("last_error")
+    except Exception:
+        reason = None
+    _route(
+        "nextcloud_talk_health", "Warning",
+        f"Nextcloud Talk delivery is failing{f' ({reason})' if reason else ''}. Alerts are still recorded here; "
+        f"failed Talk messages are retried up to {NEXTCLOUD_TALK_MAX_RETRIES} times. "
+        "Check the conversation token and that the bot user is a participant of the room.",
+        None, "warning", None, config,
+    )
+
+
+def _retry_pending_talk(config: dict) -> None:
+    """Re-sends due failed messages; stops at the first failure so a down server costs one blocking call, not one per message."""
+    now = time.monotonic()
+    due, keep = [], []
+    with _pending_lock:
+        for message in _pending_talk:
+            if now - message["queued"] > NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS:
+                logger.warning("notify: dropped a stale queued Nextcloud message for %s", message["source"])
+            elif now - message["last_attempt"] >= NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS:
+                due.append(message)
+            else:
+                keep.append(message)
+        _pending_talk[:] = keep
+    for index, message in enumerate(due):
+        if _deliver_talk(message["source"], message["text"], config):
+            continue
+        message["retries"] += 1
+        message["last_attempt"] = time.monotonic()
+        requeue = due[index + 1:]
+        if message["retries"] >= NEXTCLOUD_TALK_MAX_RETRIES:
+            logger.warning("notify: dropped a Nextcloud message for %s after %d retries", message["source"], message["retries"])
+        else:
+            requeue.insert(0, message)
+        with _pending_lock:
+            _pending_talk.extend(requeue)
+        return
+
+
+def _route(source, message_type, message_text, nextcloud_text, level, conn, config) -> None:
     routing = effective_routing(source, config)
 
     if routing["log_file"]:
@@ -164,12 +228,27 @@ def notify(
             _db_log_notification(message_type, message_text)
 
     if routing["nextcloud_talk"]:
-        try:
-            return bool(nextcloud_talk.send_text_message(nextcloud_text or message_text, config))
-        except Exception as e:
-            logger.error("notify: Nextcloud dispatch failed for %s: %s", source, e)
-            return False
+        text = nextcloud_text or message_text
+        if not _deliver_talk(source, text, config):
+            now = time.monotonic()
+            with _pending_lock:
+                _pending_talk.append({"source": source, "text": text, "retries": 0, "queued": now, "last_attempt": now})
 
+
+def notify(
+    source: str,
+    message_type: str,
+    message_text: str,
+    *,
+    nextcloud_text: Optional[str] = None,
+    level: str = "info",
+    conn: Optional[sqlite3.Connection] = None,
+) -> bool:
+    """Route one event to log/in-app/Nextcloud per NOTIFICATION_ROUTING; a failed Talk send is queued for bounded Talk-only retry, so the return is always True and dedup callers stamp their ledger once."""
+    config = load_config()
+    _route(source, message_type, message_text, nextcloud_text, level, conn, config)
+    if _pending_talk:
+        _retry_pending_talk(config)
     return True
 
 

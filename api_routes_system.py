@@ -28,7 +28,7 @@ from config import (
     validate_xray_targets,
 )
 from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
-from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
+from database import get_connection, get_nextcloud_talk_today, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging, resolve_log_dir
 from market_pulse import get_cached_pulse_from_db, proxy_tickers_needing_refresh, registry_tickers_needing_refresh, reload_ticker_registry
@@ -1134,6 +1134,7 @@ def get_system_metrics():
                 "macro_ind": macro_ind_cnt, "macro_cal": macro_cal_cnt,
                 "notes_pending": pending_notes, "notes_sent": sent_notes
             },
+            "nextcloud_talk": get_nextcloud_talk_today(),
             "mcp": {**mcp_oauth.diagnostics_counts(), "requests_24h": mcp_requests, "refused_24h": mcp_refused},
             "scheduler_last_runs": scheduler_last_runs,
             "scheduler_last_runs_sort": scheduler_last_runs_sort,

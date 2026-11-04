@@ -198,6 +198,16 @@ async function fetchSystemMetrics() {
             document.getElementById('diag-notes-sent').innerText = `${fmt(data.state.notes_sent)} Sent`;
             document.getElementById('diag-notes-pending').innerText = `${fmt(data.state.notes_pending)} Pending`;
             if (data.state.notes_pending > 0) document.getElementById('diag-notes-pending').style.color = "#ffaa00";
+            {
+                const nc = data.nextcloud_talk;
+                const ncState = document.getElementById('diag-nc-state');
+                document.getElementById('diag-nc-sent').innerText = `${fmt(nc.sent)} Sent`;
+                ncState.innerText = nc.state === 'failing'
+                    ? `Failing${nc.last_error ? ' (' + nc.last_error + ')' : ''}, ${fmt(nc.failed)} failed`
+                    : (nc.state === 'ok' ? 'Working OK' : 'No messages today');
+                ncState.classList.toggle('diag-failing', nc.state === 'failing');
+                ncState.classList.toggle('diag-working', nc.state === 'ok');
+            }
             document.getElementById('diag-mcp-apps').innerText = `${fmt(data.mcp.connected_apps)} Connected`;
             document.getElementById('diag-mcp-pending').innerText = `${fmt(data.mcp.pending_requests)} Pending, window ${data.mcp.pairing_open ? 'open' : 'closed'}`;
             document.getElementById('diag-mcp-requests').innerText = fmt(data.mcp.requests_24h);

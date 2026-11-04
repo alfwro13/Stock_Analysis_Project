@@ -155,6 +155,33 @@ def test_get_system_metrics_includes_auction_job_keys(client):
     assert "macro_auction_job_pm" in body["scheduler_last_runs"]
 
 
+@pytest.mark.api
+def test_get_system_metrics_reports_nextcloud_talk_counters(client):
+    """The System Diagnostics Nextcloud Talk row reads today's sent/failed counters and a state of idle, ok or failing."""
+    from database import get_connection, record_nextcloud_talk_attempt
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM nextcloud_talk_stats")
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        idle = _json(client.get("/api/system/metrics"))["nextcloud_talk"]
+        assert idle == {"sent": 0, "failed": 0, "state": "idle", "last_error": None}
+
+        record_nextcloud_talk_attempt(True)
+        record_nextcloud_talk_attempt(False, "HTTP 404")
+        failing = _json(client.get("/api/system/metrics"))["nextcloud_talk"]
+        assert failing == {"sent": 1, "failed": 1, "state": "failing", "last_error": "HTTP 404"}
+    finally:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM nextcloud_talk_stats")
+            conn.commit()
+        finally:
+            conn.close()
+
+
 # ── Network / Settings ────────────────────────────────────────────────────────
 
 @pytest.mark.api

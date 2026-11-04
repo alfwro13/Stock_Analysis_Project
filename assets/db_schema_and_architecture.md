@@ -195,6 +195,13 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Auto-read types:** rows with `message_type` in `Info`/`Success`/`Scheduler` (`database.AUTO_READ_MESSAGE_TYPES`) are inserted with `is_read = 1` — these don't need operator triage, so they never contribute to the unread badge or the `/notifications` page's "unread" card highlight.
 * **Page-level filtering (client-side only):** the `/notifications` page's type filter buttons (`static/js/notifications.js`) are multi-select — clicking more than one (e.g. Crash and Moonshot) shows the union of both — plus an independent "Unread Only" toggle ANDed against the type selection. Both are pure DOM filters over the server-rendered/polled cards (no new query params on `GET /api/notifications/latest`) and persist across reloads via `localStorage` (`notif_active_types`, `notif_unread_only`).
 
+#### `nextcloud_talk_stats`
+* **Purpose:** One row per UTC day counting the Nextcloud Talk text messages the app sent and the ones that failed, for the Nextcloud Talk row of Settings → System Diagnostics. Counters restart each day because each day is its own row.
+* **Key Columns:** `stat_date` (PK, TEXT UTC `YYYY-MM-DD`), `sent` and `failed` (INTEGER counters), `last_success_utc` and `last_failure_utc` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, NULL until the first one), `last_error` (TEXT, the last failure as `HTTP <status>` or the exception class; never a URL, token or message text).
+* **Writes:** `nextcloud_talk.send_text_message()` through `db_helpers.record_nextcloud_talk_attempt()` after every real send (a call with no Talk configuration is not an attempt); a failed stats write is logged and never changes the send result.
+* **Reads:** `db_helpers.get_nextcloud_talk_today()` for `GET /api/system/metrics`. The state is `failing` when `last_failure_utc` is not older than `last_success_utc`, `ok` when the last send worked, `idle` with no row for today.
+* **Retention:** 90 days (`NEXTCLOUD_TALK_STATS_RETENTION_DAYS`); `MaintenanceEngine.prune_nextcloud_talk_stats()` runs in the weekly Database & File Maintenance job.
+
 #### `scheduler_run_log`
 * **Purpose:** Records the latest run timestamp and aggregate timing per APScheduler job ID so jobs can guard against re-running within their minimum interval and the Workflow Monitor can report current health.
 * **Key Columns:** `job_id` (PK), `last_run`, `last_started`, `last_duration_sec`, `avg_duration_sec` (plain mean of the job's last 20 successful runs in `scheduler_run_history`; failed runs are excluded, and a job with no successful run keeps its previous value), `last_status` (`success`/`error`).

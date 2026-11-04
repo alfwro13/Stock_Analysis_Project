@@ -13,7 +13,7 @@ from database import (
     add_watchlist_item, get_connection, get_watchlist_account, get_watchlist_tickers,
     log_notification as _db_log_notification,
 )
-from db_helpers import add_ticker_note, get_ticker_notes
+from db_helpers import add_ticker_note, get_ticker_notes, prune_nextcloud_talk_stats
 from ghostfolio_sync import purge_ghostfolio_files
 from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, in_scope_currencies
 from portfolio_service import fx_pair
@@ -21,7 +21,7 @@ from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
 import db_mcp_audit
 from constants import (
-    MCP_AUDIT_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
+    MCP_AUDIT_RETENTION_DAYS, NEXTCLOUD_TALK_STATS_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
 )
 
 class MaintenanceEngine:
@@ -165,6 +165,13 @@ class MaintenanceEngine:
             logger.info("Removed %d old MCP audit log entries", self.metrics["mcp_audit_deleted"])
         except Exception as e:
             logger.error("Error pruning the MCP audit log: %s", e)
+
+    def prune_nextcloud_talk_stats(self):
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=NEXTCLOUD_TALK_STATS_RETENTION_DAYS)).strftime("%Y-%m-%d")
+            logger.info("Removed %d old Nextcloud Talk daily counters", prune_nextcloud_talk_stats(cutoff))
+        except Exception as e:
+            logger.error("Error pruning the Nextcloud Talk counters: %s", e)
 
     def _get_pulse_active_tickers(self) -> set:
         """Every ticker any market_pulse_cache writer currently tracks (portfolio holdings,
@@ -375,6 +382,7 @@ class MaintenanceEngine:
         self.prune_database_logs()
         self.prune_scheduler_run_history()
         self.prune_mcp_audit_log()
+        self.prune_nextcloud_talk_stats()
         self.prune_pulse_cache()
         self.garbage_collect_files()
         self.enforce_ghostfolio_disabled()

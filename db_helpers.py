@@ -1508,3 +1508,58 @@ def refresh_job_average_duration(cursor, job_id: Optional[str] = None) -> None:
         "WHERE job_id = scheduler_run_log.job_id AND status = 'success')",
         (SCHEDULER_RUN_HISTORY_LIMIT, job_id, job_id),
     )
+
+
+def record_nextcloud_talk_attempt(ok: bool, error: Optional[str] = None) -> None:
+    """Counts one real Talk send in today's (UTC) row; a missing configuration is never an attempt."""
+    now = datetime.now(timezone.utc)
+    stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    if ok:
+        sql = ("INSERT INTO nextcloud_talk_stats (stat_date, sent, last_success_utc) VALUES (?, 1, ?) "
+               "ON CONFLICT(stat_date) DO UPDATE SET sent = sent + 1, last_success_utc = excluded.last_success_utc")
+        params = (now.strftime("%Y-%m-%d"), stamp)
+    else:
+        sql = ("INSERT INTO nextcloud_talk_stats (stat_date, failed, last_failure_utc, last_error) VALUES (?, 1, ?, ?) "
+               "ON CONFLICT(stat_date) DO UPDATE SET failed = failed + 1, "
+               "last_failure_utc = excluded.last_failure_utc, last_error = excluded.last_error")
+        params = (now.strftime("%Y-%m-%d"), stamp, error)
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(sql, params)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_nextcloud_talk_today() -> dict:
+    """Today's (UTC) Talk counters plus state: 'failing' when the last attempt failed, 'ok' when it succeeded, 'idle' with no attempt today."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT sent, failed, last_success_utc, last_failure_utc, last_error FROM nextcloud_talk_stats WHERE stat_date = ?",
+            (today,),
+        ).fetchone()
+    finally:
+        if conn:
+            conn.close()
+    if row is None:
+        return {"sent": 0, "failed": 0, "state": "idle", "last_error": None}
+    last_ok, last_fail = row["last_success_utc"], row["last_failure_utc"]
+    failing = last_fail is not None and (last_ok is None or last_fail >= last_ok)
+    return {"sent": row["sent"], "failed": row["failed"], "state": "failing" if failing else "ok", "last_error": row["last_error"] if failing else None}
+
+
+def prune_nextcloud_talk_stats(cutoff_date: str) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        deleted = conn.execute("DELETE FROM nextcloud_talk_stats WHERE stat_date < ?", (cutoff_date,)).rowcount
+        conn.commit()
+        return deleted
+    finally:
+        if conn:
+            conn.close()

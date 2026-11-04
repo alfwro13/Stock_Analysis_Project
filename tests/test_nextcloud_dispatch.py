@@ -14,17 +14,24 @@ Regression tests for the two bugs fixed in the Crash/Moonshot notification path:
            send): record_alert_fired was called (burning the cooldown) and the
            notification was logged with status='sent'.
 
-Tests are grouped into two suites:
+  LR-03 (4 Nov) reversed the fix for BUG 2: withholding record_alert_fired on a failed
+  Talk send made every alert repeat on each 10-minute scan for as long as Talk failed
+  (572 failures, 408 Moonshot rows for 11 conditions). notify() now stamps the dedup
+  ledger once the in-app/log channels are written and retries only the Talk message.
+
+Tests are grouped into three suites:
 
   TestSendTextMessageCredentials
       Verifies that send_text_message resolves credentials from os.environ
       regardless of what is in the config_data dict.
 
   TestDispatchAlerts
-      Verifies that _dispatch_alerts:
-        - on success   → calls record_alert_fired + logs status='sent'
-        - on False     → skips record_alert_fired + logs status='failed'
-        - on exception → skips record_alert_fired + logs status='failed'
+      Verifies that _dispatch_alerts stamps the dedup ledger and writes one in-app row
+      whether the Talk send succeeds, returns False or raises, and that a failed message
+      is queued for Talk-only retry.
+
+  TestSendTextMessageStats
+      Verifies the daily Talk counters and that a failure logs no URL or token.
 
 All tests are pure unit tests: no network calls, no yfinance, no real DB writes
 beyond what the session-level temp DB already provides.
@@ -51,6 +58,24 @@ def _block_real_nextcloud_send():
     a mocked requests.post, so it needs the real function running, not the global mock.
     TestDispatchAlerts patches send_text_message itself per-test regardless, so is unaffected."""
     yield
+    conn = _conn()
+    conn.execute("DELETE FROM nextcloud_talk_stats")
+    conn.commit()
+    conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_talk_state():
+    import notification_engine as ne
+    ne._pending_talk.clear()
+    ne._health_warning["last"] = None
+    yield
+    ne._pending_talk.clear()
+    ne._health_warning["last"] = None
+    conn = _conn()
+    conn.execute("DELETE FROM system_notifications WHERE message_text LIKE 'Nextcloud Talk delivery is failing%'")
+    conn.commit()
+    conn.close()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -243,18 +268,23 @@ class TestSendTextMessageCredentials:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Suite 2 — _dispatch_alerts return-value handling
+#  Suite 2 — _dispatch_alerts with a failing Talk channel
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@pytest.fixture
+def _talk_configured():
+    with patch.dict(os.environ, NC_ENV, clear=False):
+        yield
+
+
+@pytest.mark.usefixtures("_talk_configured")
 class TestDispatchAlerts:
     """
-    _dispatch_alerts now routes through notification_engine.notify(). The dedup
-    guarantee is preserved: notify() returns False when an enabled Nextcloud send
-    fails, and the alert must then NOT be recorded in alert_state (so it retries on
-    the next scan). The in-app feed row is an independent channel and is written
-    regardless of the Nextcloud outcome. Routing falls back to the registry default
-    (crash/moonshot → log+in-app+Nextcloud all on) since TEST_CONFIG has no
-    NOTIFICATION_ROUTING block.
+    _dispatch_alerts routes through notification_engine.notify(). A failed Talk send
+    must not leave the alert unrecorded: it is stamped in alert_state once the in-app
+    row is written, and only the Talk message is queued for bounded retry. Routing
+    falls back to the registry default (crash/moonshot -> log+in-app+Nextcloud all on)
+    since TEST_CONFIG has no NOTIFICATION_ROUTING block.
     """
 
     @staticmethod
@@ -276,53 +306,61 @@ class TestDispatchAlerts:
         return _cm()
 
     def test_successful_send_records_alert_and_writes_feed(self, orch, db_conn):
-        """Happy path: Nextcloud send succeeds → alert recorded, in-app feed row written."""
+        import notification_engine as ne
         with self._patch(result=True):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
 
-        assert _read_alert_state("Crash", TEST_TICKER) is not None, (
-            "record_alert_fired must be called on a successful send."
-        )
+        assert _read_alert_state("Crash", TEST_TICKER) is not None
         assert _read_notifications(), "notify() must write an in-app feed row on success."
+        assert ne._pending_talk == []
 
-    def test_failed_send_does_not_record_alert(self, orch, db_conn):
-        """Nextcloud send returns False → alert NOT recorded (retries next scan)."""
+    def test_failed_send_records_alert_once_and_queues_the_talk_message(self, orch, db_conn):
+        import notification_engine as ne
         with self._patch(result=False):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
 
-        assert _read_alert_state("Crash", TEST_TICKER) is None, (
-            "record_alert_fired must NOT be called when the Nextcloud send returns False. "
-            "The alert must remain unrecorded so it retries on the next scan cycle."
+        assert _read_alert_state("Crash", TEST_TICKER) is not None, (
+            "A failed Talk send must still stamp the dedup ledger, or the alert repeats every scan."
         )
+        assert len(_read_notifications()) == 1
+        assert [m["source"] for m in ne._pending_talk] == ["crash_alert"]
 
-    def test_failed_send_still_writes_in_app_feed(self, orch, db_conn):
-        """Nextcloud send returns False → in-app feed row still written (independent channel)."""
+    def test_failed_send_suppresses_the_same_condition_on_the_next_scan(self, orch, db_conn):
+        tuples = _make_alert_tuple()
         with self._patch(result=False):
-            orch._dispatch_alerts(
-                "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
+            orch._dispatch_alerts("Crash", tuples, db_conn, _msg_builder, _feed_builder)
+            suppressed = orch._evaluate_alert_gate(
+                "Crash", TEST_TICKER, tuples[0][1]["price"], tuples[0][1]["reason"], db_conn
             )
 
-        assert _read_notifications(), (
-            "The in-app feed row must still be written even when the Nextcloud send fails."
-        )
+        assert suppressed, "The second scan must find the condition already fired."
 
-    def test_exception_during_send_does_not_record_alert(self, orch, db_conn):
-        """Exception from the Nextcloud send → alert NOT recorded."""
+    def test_exception_during_send_records_alert_and_queues_the_message(self, orch, db_conn):
+        import notification_engine as ne
         with self._patch(exc=RuntimeError("boom")):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
 
-        assert _read_alert_state("Crash", TEST_TICKER) is None, (
-            "record_alert_fired must NOT be called when the Nextcloud send raises."
-        )
+        assert _read_alert_state("Crash", TEST_TICKER) is not None
+        assert len(ne._pending_talk) == 1
 
-    def test_moonshot_failed_send_does_not_record_alert(self, orch, db_conn):
-        """Same return-value check applies for the Moonshot engine."""
+    def test_unconfigured_talk_records_alert_and_queues_nothing(self, orch, db_conn):
+        import notification_engine as ne
+        clean = {k: v for k, v in os.environ.items() if k not in NC_ENV}
+        with patch.dict(os.environ, clean, clear=True), self._patch(result=False):
+            orch._dispatch_alerts(
+                "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
+            )
+
+        assert _read_alert_state("Crash", TEST_TICKER) is not None
+        assert ne._pending_talk == []
+
+    def test_moonshot_failed_send_records_alert(self, orch, db_conn):
         moonshot_tuple = [
             (TEST_TICKER, {"price": 200.0, "reason": f"SPIKE {MSG_MARKER}", "cautions": []}, "USD", {})
         ]
@@ -338,12 +376,9 @@ class TestDispatchAlerts:
                 "Moonshot", moonshot_tuple, db_conn, moon_msg, moon_feed
             )
 
-        assert _read_alert_state("Moonshot", TEST_TICKER) is None, (
-            "Moonshot: record_alert_fired must NOT be called when the send returns False."
-        )
+        assert _read_alert_state("Moonshot", TEST_TICKER) is not None
 
-    def test_multiple_tickers_partial_failure(self, orch, db_conn):
-        """If the first ticker send fails and the second succeeds, only the second is recorded."""
+    def test_multiple_tickers_partial_failure_records_both(self, orch, db_conn):
         ticker_a = TEST_TICKER + "_A"
         ticker_b = TEST_TICKER + "_B"
         alert = {"price": 100.0, "reason": f"CRASH {MSG_MARKER}"}
@@ -362,10 +397,8 @@ class TestDispatchAlerts:
             with self._patch(side_effect=send_side_effect):
                 orch._dispatch_alerts("Crash", tuples, db_conn, _msg_builder, _feed_builder)
 
-            assert _read_alert_state("Crash", ticker_a) is None, \
-                "ticker_a send failed — must not be recorded."
-            assert _read_alert_state("Crash", ticker_b) is not None, \
-                "ticker_b send succeeded — must be recorded."
+            assert _read_alert_state("Crash", ticker_a) is not None
+            assert _read_alert_state("Crash", ticker_b) is not None
         finally:
             conn = _conn()
             conn.execute("DELETE FROM alert_state WHERE ticker IN (?, ?)", (ticker_a, ticker_b))
@@ -375,3 +408,75 @@ class TestDispatchAlerts:
             )
             conn.commit()
             conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Suite 3 — daily counters and log content of send_text_message
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestSendTextMessageStats:
+    @staticmethod
+    def _today():
+        from database import get_nextcloud_talk_today
+        return get_nextcloud_talk_today()
+
+    def test_success_is_counted_and_state_is_ok(self):
+        with patch.dict(os.environ, NC_ENV, clear=False), patch("requests.post") as mock_post:
+            mock_post.return_value = MagicMock()
+            from nextcloud_talk import send_text_message
+            assert send_text_message("hello", {}) is True
+
+        today = self._today()
+        assert today["sent"] == 1 and today["failed"] == 0 and today["state"] == "ok"
+
+    def test_http_404_is_counted_and_logs_status_without_url_or_token(self, caplog):
+        import requests
+        response = MagicMock(status_code=404)
+        error = requests.exceptions.HTTPError(
+            f"404 Client Error: Not Found for url: {NC_ENV['NEXTCLOUD_URL']}/ocs/v2.php/apps/spreed/api/v1/chat/{NC_ENV['NEXTCLOUD_CONVERSATION_TOKEN']}",
+            response=response,
+        )
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = error
+        with patch.dict(os.environ, NC_ENV, clear=False), patch("requests.post", return_value=mock_resp):
+            from nextcloud_talk import send_text_message
+            with caplog.at_level("ERROR", logger="nextcloud_talk"):
+                assert send_text_message("hello", {}) is False
+
+        today = self._today()
+        assert today["failed"] == 1 and today["state"] == "failing" and today["last_error"] == "HTTP 404"
+        assert "HTTP 404" in caplog.text
+        assert NC_ENV["NEXTCLOUD_CONVERSATION_TOKEN"] not in caplog.text
+        assert NC_ENV["NEXTCLOUD_URL"] not in caplog.text
+
+    def test_connection_error_is_counted_by_exception_class(self):
+        import requests
+        with patch.dict(os.environ, NC_ENV, clear=False), patch("requests.post", side_effect=requests.exceptions.ConnectionError("unreachable")):
+            from nextcloud_talk import send_text_message
+            send_text_message("hello", {})
+
+        assert self._today()["last_error"] == "ConnectionError"
+
+    def test_missing_configuration_is_not_an_attempt(self):
+        clean = {k: v for k, v in os.environ.items() if k not in NC_ENV}
+        with patch.dict(os.environ, clean, clear=True):
+            from nextcloud_talk import send_text_message
+            assert send_text_message("hello", {}) is False
+
+        assert self._today() == {"sent": 0, "failed": 0, "state": "idle", "last_error": None}
+
+    def test_a_success_after_a_failure_turns_the_state_back_to_ok(self):
+        import requests
+        with patch.dict(os.environ, NC_ENV, clear=False):
+            from nextcloud_talk import send_text_message
+            with patch("requests.post", side_effect=requests.exceptions.ConnectionError("down")):
+                send_text_message("hello", {})
+            conn = _conn()
+            conn.execute("UPDATE nextcloud_talk_stats SET last_failure_utc = '2000-01-01 00:00:00'")
+            conn.commit()
+            conn.close()
+            with patch("requests.post", return_value=MagicMock()):
+                send_text_message("hello", {})
+
+        today = self._today()
+        assert today["state"] == "ok" and today["sent"] == 1 and today["failed"] == 1
