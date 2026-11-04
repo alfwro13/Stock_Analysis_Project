@@ -14,7 +14,8 @@ from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from config import load_config
 import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
-from constants import SCHEDULER_RUN_HISTORY_LIMIT
+import memory_helpers
+from constants import MEMORY_SAMPLE_INTERVAL_MINUTES, SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_accounts, get_connection, get_etf_predictor_configs
 from db_helpers import refresh_job_average_duration
 from news_feed_engine import run_news_feed_job
@@ -255,6 +256,7 @@ def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
         logger.warning("Manual run of %s skipped: it is already running.", job_id)
         return None
     started = datetime.now(timezone.utc)
+    rss_before = memory_helpers.rss_mib()
     previous_context = getattr(_job_execution_context, "current", None)
     context = {"error_detail": None}
     _job_execution_context.current = context
@@ -284,6 +286,7 @@ def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
                 _running_job_runs[job_id] = remaining
             else:
                 _running_job_runs.pop(job_id, None)
+        memory_helpers.log_job_memory(job_id, rss_before, (finished - started).total_seconds())
 
 
 def _on_job_event(event) -> None:
@@ -1017,6 +1020,19 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to schedule Account Performance Refresh: %s", e)
 
+    try:
+        scheduler.add_job(
+            run_memory_telemetry_job,
+            IntervalTrigger(minutes=MEMORY_SAMPLE_INTERVAL_MINUTES, timezone=timezone.utc),
+            id='memory_telemetry_job',
+            replace_existing=True,
+            misfire_grace_time=60,
+            next_run_time=datetime.now(timezone.utc),
+        )
+        logger.info("Process Memory Telemetry scheduled every %d min.", MEMORY_SAMPLE_INTERVAL_MINUTES)
+    except Exception as e:
+        logger.error("Failed to schedule Process Memory Telemetry: %s", e)
+
     for _exch in ("LSE", "NYSE"):
         try:
             _params = time_engine.reset_cron_trigger_params(_exch)
@@ -1230,6 +1246,7 @@ from scheduler_jobs import (
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
     run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job, run_mcp_pairing_window_check,
+    run_memory_telemetry_job,
 )
 
 

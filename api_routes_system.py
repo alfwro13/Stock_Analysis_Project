@@ -35,6 +35,7 @@ from market_pulse import get_cached_pulse_from_db, proxy_tickers_needing_refresh
 from market_pulse_write import fetch_and_save_pulse
 from market_session_helpers import is_exchange_open
 import markets_engine
+import memory_helpers
 from notification_engine import notify, validate_routing_map
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
@@ -1128,6 +1129,7 @@ def get_system_metrics():
                 "hist_size_mb": hist_size, "hist_cnt": hist_cnt,
                 "intra_size_mb": intra_size, "intra_cnt": intra_cnt
             },
+            "memory": memory_helpers.sample(),
             "state": {
                 "macro_ind": macro_ind_cnt, "macro_cal": macro_cal_cnt,
                 "notes_pending": pending_notes, "notes_sent": sent_notes

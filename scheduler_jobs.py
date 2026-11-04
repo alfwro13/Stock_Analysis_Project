@@ -2,6 +2,7 @@ import logging
 import threading as _threading
 from datetime import datetime, timedelta, timezone
 
+import memory_helpers
 import time_engine
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -169,6 +170,15 @@ def run_account_performance_refresh_job():
         log_sched_notification("Error", f"Account Performance Refresh failed: {e}")
     finally:
         record_job_run('account_performance_refresh_job')
+
+def run_memory_telemetry_job():
+    """Writes one process-memory line to app.log every MEMORY_SAMPLE_INTERVAL_MINUTES; silent on success like the Dip Radar scan."""
+    try:
+        memory_helpers.log_sample("periodic")
+    except Exception as e:
+        log_sched_notification("Error", f"Process Memory Telemetry failed: {e}")
+    finally:
+        record_job_run('memory_telemetry_job')
 
 def run_mcp_pairing_window_check(armed_until: str):
     from mcp_server.oauth import check_pairing_window  # mcp_server imports scheduler_engine, which imports this module

@@ -139,8 +139,12 @@ TABLE_VIEW_NAME_MAX_CHARS   = 100
 TABLE_FILTER_CONDITIONS_MAX = 50
 TABLE_FILTER_VALUE_MAX_CHARS = 200
 
+MEMORY_SAMPLE_INTERVAL_MINUTES = 15            # Process Memory Telemetry cadence
+MEMORY_JOB_LOG_MIN_SECONDS  = 5                # a scheduled job gets a memory line when it ran at least this long
+MEMORY_JOB_LOG_MIN_DELTA_MIB = 50              # ... or when it moved the process RSS by at least this much
+
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.202"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.203" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

@@ -218,6 +218,19 @@ async function fetchSystemMetrics() {
             document.getElementById('diag-disk-used').innerText = `${data.infra.disk_used_gb} GB`;
             document.getElementById('diag-disk-pct').innerText = `${data.infra.disk_pct}% Used`;
 
+            {
+                const m = data.memory;
+                const mib = v => (v === null || v === undefined) ? 'n/a' : `${fmt(Math.round(v))} MiB`;
+                document.getElementById('diag-mem-rss').innerText = mib(m.rss_mib);
+                document.getElementById('diag-mem-rss-sub').innerText = `Anon ${mib(m.rss_anon_mib)}, File ${mib(m.rss_file_mib)}, THP ${mib(m.anon_huge_mib)}`;
+                document.getElementById('diag-mem-peak').innerText = mib(m.rss_peak_mib);
+                document.getElementById('diag-mem-peak-sub').innerText = `Up ${m.uptime_hours.toFixed(1)} h, ${m.threads ?? 'n/a'} threads`;
+                document.getElementById('diag-mem-avail').innerText = mib(m.available_mib);
+                document.getElementById('diag-mem-avail-sub').innerText = `of ${mib(m.total_mib)}`;
+                document.getElementById('diag-mem-alloc').innerText = `glibc free ${mib(m.glibc_free_held_mib)}`;
+                document.getElementById('diag-mem-alloc-sub').innerText = `Arrow ${mib(m.arrow_mib)} (${m.arrow_backend ?? 'n/a'})`;
+            }
+
             if (data.scheduler_last_runs) {
                 const sortMap = data.scheduler_last_runs_sort || {};
                 document.querySelectorAll('[data-sched-key]').forEach(td => {

@@ -64,6 +64,10 @@
                                 <tr><td>CPU Load (1m, 5m, 15m)</td><td class="val-col" id="diag-cpu">--</td><td class="sub-val-col">Native Linux</td></tr>
                                 <tr><td>Total Disk Capacity</td><td class="val-col" id="diag-disk-tot">--</td><td class="sub-val-col">Host Partition</td></tr>
                                 <tr><td>Disk Used</td><td class="val-col" id="diag-disk-used">--</td><td class="sub-val-col" id="diag-disk-pct">--</td></tr>
+                                <tr><td><abbr title="Resident memory of the dashboard process. Anon is heap and buffers, File is memory-mapped files such as the FinBERT weights, THP is anonymous memory backed by transparent huge pages.">Process Memory (RSS)</abbr></td><td class="val-col" id="diag-mem-rss">--</td><td class="sub-val-col" id="diag-mem-rss-sub">--</td></tr>
+                                <tr><td><abbr title="Highest resident memory the dashboard process has reached since it started.">Peak Process Memory</abbr></td><td class="val-col" id="diag-mem-peak">--</td><td class="sub-val-col" id="diag-mem-peak-sub">--</td></tr>
+                                <tr><td><abbr title="Memory the host can hand out without swapping; the VM has no swap, so the kernel kills the largest process when this reaches zero.">Host Memory Available</abbr></td><td class="val-col" id="diag-mem-avail">--</td><td class="sub-val-col" id="diag-mem-avail-sub">--</td></tr>
+                                <tr><td><abbr title="Memory the C allocator holds but the application is not using (fragmentation) and the memory pool of the Arrow library behind pandas string columns. A growing free-held figure means freed memory is not returning to the OS.">Allocator Held Memory</abbr></td><td class="val-col" id="diag-mem-alloc">--</td><td class="sub-val-col" id="diag-mem-alloc-sub">--</td></tr>
                                 <tr><td>IPv4/IPv6 Routing</td><td class="val-col text-accent-cyan" id="diag-route-stat">See Above</td><td class="sub-val-col">network_engine.py</td></tr>
                             </tbody>
                         </table>
