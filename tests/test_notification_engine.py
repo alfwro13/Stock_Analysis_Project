@@ -121,24 +121,24 @@ class TestTalkRetry:
 
     def _notify(self, text):
         with patch("notification_engine.load_config", return_value=self._cfg()):
-            return ne.notify("network_fault", "Net", f"{text} {MARKER}")
+            ne.notify("network_fault", "Net", f"{text} {MARKER}")
 
     def test_failed_send_returns_true_writes_in_app_once_and_queues(self, clock):
         with patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
-            assert self._notify("a") is True
+            self._notify("a")
         assert len(_read(MARKER)) == 1
         assert [m["source"] for m in ne._pending_talk] == ["network_fault"]
 
     def test_send_that_raises_is_queued_like_a_failed_send(self, clock):
         with patch("notification_engine.nextcloud_talk.send_text_message", side_effect=RuntimeError("boom")):
-            assert self._notify("a") is True
+            self._notify("a")
         assert len(ne._pending_talk) == 1
 
     def test_unconfigured_talk_queues_nothing_and_raises_no_warning(self, clock, monkeypatch):
         for key in NC_ENV:
             monkeypatch.delenv(key)
         with patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
-            assert self._notify("a") is True
+            self._notify("a")
         assert ne._pending_talk == []
         assert _read(HEALTH_TEXT) == []
 
@@ -238,17 +238,15 @@ class TestNotifyChannels:
     def test_nextcloud_called_only_when_enabled(self):
         with patch("notification_engine.load_config", return_value=self._routing(nextcloud_talk=True)), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True) as send:
-            result = ne.notify("network_fault", "Net", f"x {MARKER}", nextcloud_text="rich")
+            ne.notify("network_fault", "Net", f"x {MARKER}", nextcloud_text="rich")
         send.assert_called_once()
         assert send.call_args[0][0] == "rich"
-        assert result is True
 
     def test_nextcloud_not_called_when_disabled(self):
         with patch("notification_engine.load_config", return_value=self._routing(in_app=True)), \
              patch("notification_engine.nextcloud_talk.send_text_message") as send:
-            result = ne.notify("network_fault", "Net", f"y {MARKER}")
+            ne.notify("network_fault", "Net", f"y {MARKER}")
         send.assert_not_called()
-        assert result is True
 
     def test_info_success_scheduler_auto_marked_read_via_db_log_path(self):
         with patch("notification_engine.load_config", return_value=self._routing(in_app=True)):

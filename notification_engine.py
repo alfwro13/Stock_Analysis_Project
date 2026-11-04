@@ -243,13 +243,12 @@ def notify(
     nextcloud_text: Optional[str] = None,
     level: str = "info",
     conn: Optional[sqlite3.Connection] = None,
-) -> bool:
-    """Route one event to log/in-app/Nextcloud per NOTIFICATION_ROUTING; a failed Talk send is queued for bounded Talk-only retry, so the return is always True and dedup callers stamp their ledger once."""
+) -> None:
+    """Route one event to log/in-app/Nextcloud per NOTIFICATION_ROUTING; a failed Talk send is queued for bounded Talk-only retry, so dedup callers stamp their ledger unconditionally."""
     config = load_config()
     _route(source, message_type, message_text, nextcloud_text, level, conn, config)
     if _pending_talk:
         _retry_pending_talk(config)
-    return True
 
 
 def send_test_message() -> bool:

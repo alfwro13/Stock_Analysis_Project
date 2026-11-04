@@ -579,12 +579,12 @@ class TestDispatchHoldingLimitAlerts:
         assert row is not None
         assert row["last_price"] == 85.0
 
-    def test_failed_notify_does_not_record_alert_state(self, orch, db_conn):
+    def test_failed_talk_send_still_records_alert_state(self, orch, db_conn):
         alert_tuples = [(HOLDING_KEY_HIGH, TEST_TICKER, "Trading", "high", 200.0, 210.0, "USD")]
-        with patch("intraday_orchestrator.notify", return_value=False):
+        with patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
             orch._dispatch_holding_limit_alerts(alert_tuples, db_conn)
 
-        assert _read_alert_state("HoldingLimit", HOLDING_KEY_HIGH) is None
+        assert _read_alert_state("HoldingLimit", HOLDING_KEY_HIGH) is not None
 
 
 class TestCheckHoldingLimits:
