@@ -14,6 +14,7 @@ All "trigger" POST endpoints are tested separately in test_03_*.
 
 import sys
 import json
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -131,6 +132,30 @@ def test_get_freshness_returns_200(client):
     expected_keys = {"model_state", "prices_state"}
     missing = expected_keys - set(data.keys())
     assert not missing, f"Response missing expected freshness keys: {missing}"
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("today,expected", [
+    (datetime(2026, 11, 7, 10, 0), "freshness-fresh"),
+    (datetime(2026, 11, 9, 9, 0), "freshness-fresh"),
+    (datetime(2026, 11, 11, 9, 0), "freshness-warn"),
+    (datetime(2026, 11, 13, 9, 0), "freshness-stale"),
+])
+def test_freshness_prices_state_counts_trading_days_only(monkeypatch, today, expected):
+    """A Friday bar stays green over the weekend and on Monday; only missed trading days turn it amber/red."""
+    from unittest.mock import MagicMock
+    import api_routes
+    import time_engine
+
+    conn = MagicMock()
+    conn.cursor.return_value.fetchone.return_value = {"max_date": "2026-11-06"}
+    monkeypatch.setattr(api_routes, "get_connection", lambda: conn)
+    monkeypatch.setattr(time_engine, "now_local", lambda: today)
+    monkeypatch.setattr(time_engine, "_load_config", lambda: {"HOME_EXCHANGE": "LSE"})
+
+    body = json.loads(api_routes.get_data_freshness().body)
+    assert body["prices_date"] == "2026-11-06"
+    assert body["prices_state"] == expected
 
 
 # ── System Metrics ────────────────────────────────────────────────────────────

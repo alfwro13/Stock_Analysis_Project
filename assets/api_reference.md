@@ -564,7 +564,9 @@ Thresholds are defined in `constants.py`:
 | Item | Warn after | Stale after |
 |------|-----------|-------------|
 | ML model | 7 days | 14 days |
-| Price data | 3 days | 5 days |
+| Price data | 3 trading days | 5 trading days |
+
+The ML model age is in calendar days. The price-data state counts only trading days between `prices_date` and today (local date), through `time_engine.trading_days_since()`: a day counts when NYSE or the `HOME_EXCHANGE` held a session (weekends and exchange holidays do not), so the **Quant** badge stays green over a weekend and on the Monday after a Friday bar. `prices_days_ago` stays a plain calendar-day count and no longer decides the state.
 
 ---
 
