@@ -4,8 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 import memory_helpers
 import time_engine
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from account_reminders_engine import create_due_reminder, reminder_job_display_name
 from accounts_engine import refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts
 from backup_engine import run_backup
 from config import load_config
@@ -1546,6 +1548,65 @@ def unregister_account_topup_job(account_id: int) -> None:
     from apscheduler.jobstores.base import JobLookupError
     try:
         scheduler.remove_job(f"account_autotopup_{account_id}_job")
+    except (JobLookupError, Exception):
+        pass
+
+
+_REMINDER_SHORT_MONTHS = {29: (2,), 30: (2,), 31: (2, 4, 6, 9, 11)}
+
+
+def _reminder_trigger(day_of_month: int):
+    tz = time_engine.get_user_tz()
+    short_months = _REMINDER_SHORT_MONTHS.get(day_of_month)
+    if not short_months:
+        return CronTrigger(day=day_of_month, hour=8, minute=0, timezone=tz)
+    full_months = ",".join(str(m) for m in range(1, 13) if m not in short_months)
+    return OrTrigger([
+        CronTrigger(day=day_of_month, month=full_months, hour=8, minute=0, timezone=tz),
+        CronTrigger(day="last", month=",".join(str(m) for m in short_months), hour=8, minute=0, timezone=tz),
+    ])
+
+
+def _run_account_reminder_job(reminder_id: int) -> None:
+    job_id = f"account_reminder_{reminder_id}_job"
+    job_name = reminder_job_display_name(reminder_id, job_label("account_reminder_dynamic"))
+    _mark_job_started(job_name, job_id)
+    try:
+        created = create_due_reminder(reminder_id)
+        if created:
+            notify("account_reminder_status", "Success",
+                   f"{created['account_name']}: {created['title']} is pending — record or dismiss it on the account page.",
+                   level="info")
+    except Exception as e:
+        logger.error("Pension Reminders job %s failed: %s", job_id, e)
+        notify("account_reminder_status", "Error", f"{job_name} failed: {e}", level="error")
+    finally:
+        _mark_job_done(job_name)
+        record_job_run(job_id)
+
+
+def register_account_reminder_job(reminder: dict) -> None:
+    if not reminder.get("enabled"):
+        return
+    reminder_id = reminder["id"]
+    try:
+        scheduler.add_job(
+            _run_account_reminder_job,
+            _reminder_trigger(int(reminder["day_of_month"])),
+            id=f"account_reminder_{reminder_id}_job",
+            kwargs={"reminder_id": reminder_id},
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+        logger.info("Pension Reminders job registered for reminder %s.", reminder_id)
+    except Exception as e:
+        logger.error("Failed to register Pension Reminders job for reminder %s: %s", reminder_id, e)
+
+
+def unregister_account_reminder_job(reminder_id: int) -> None:
+    from apscheduler.jobstores.base import JobLookupError
+    try:
+        scheduler.remove_job(f"account_reminder_{reminder_id}_job")
     except (JobLookupError, Exception):
         pass
 

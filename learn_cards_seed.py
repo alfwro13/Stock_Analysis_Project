@@ -3356,6 +3356,20 @@ CARDS = [
         "explanation": """<p>A Pension account's one holding is built from two dedicated actions on its detail page rather than the generic transaction form. <strong>Pay In</strong> records a contribution: pick a date and the Unit Price field auto-fills from price history for that date (still editable, in case the lookup is missing or you want to override it); enter the amount paid in (in the account's own currency) and a live preview above Save shows exactly how many units that buys before you commit. <strong>Admin Fee</strong> automates the calculation most pension providers don't give you directly: rather than asking for a fee amount in pounds, it offers a choice of two inputs depending on what the provider's portal actually shows — <strong>units remaining after the fee</strong> (the modal computes the delta against units currently held, shown for reference) or, if the provider states it directly, <strong>units deducted</strong> entered as-is. Either way the modal auto-fills the unit price the same way Pay In does and shows a live preview of the units removed, their monetary cost, and the whole Pension account value after the fee before you save. Both actions still require a manual click and a manual portal reading — only the arithmetic is automated, not the detection of when a fee happened.</p>""",
     },
     {
+        "term_key": "pension-reminders",
+        "section_id": "accounts",
+        "term_title": "Pension Reminders",
+        "question": "Does a Pension Reminder record the Pay In or Admin Fee for you when its day arrives?",
+        "answer": "No, it only stages a pending task; you record it with the existing Pay In or Admin Fee form or dismiss it",
+        "distractors": [
+            "Yes, it posts the transaction automatically using the last known unit price",
+            "Yes, but only for Pay In; Admin Fees always need a manual entry",
+            "No, it only sends a notification and never lists anything on the account page",
+        ],
+        "explanation": """<p>A Pension account's <strong>Reminders</strong> button (on its tile on the Accounts page) lists the account's reminders and lets you add, edit or delete them. Each reminder has a <strong>type</strong> (<strong>Pay In</strong> or <strong>Admin Fee</strong>), a <strong>cadence</strong> (monthly is the only one) and a <strong>day of the month</strong>. A new reminder starts <strong>disabled</strong>; a disabled reminder is kept but never fires. A day of 29-31 falls on the last day of any month that is shorter.</p>
+<p>When an enabled reminder's day arrives, the app does <strong>not</strong> record anything for you. It stages a <strong>pending</strong> task named for its month, such as <em>November 2026 Pay In</em>, tags the account <code>[PENDING ACTION]</code> on the Accounts page and sends a <strong>Pension Reminders</strong> notification. Opening the Pension account's page shows a banner listing every waiting task: <strong>Record</strong> opens the existing Pay In or Admin Fee form with the due date filled in, and saving that form marks the task done; <strong>Dismiss</strong> clears it with no transaction. Tasks from several months stack, each resolved on its own, so a missed December does not hide November. Deleting or disabling a reminder stops future tasks but leaves already-pending ones in place. The schedule fires at 08:00 in your timezone, so a task is staged only if the app is running at that moment.</p>""",
+    },
+    {
         "term_key": "pension-benchmarks",
         "section_id": "accounts",
         "term_title": "Pension Benchmarks",

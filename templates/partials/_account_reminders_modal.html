@@ -1,0 +1,51 @@
+<div class="modal fade" id="remindersModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Pension Reminders</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="reminders-account-id">
+        <input type="hidden" id="reminders-edit-id">
+
+        <div id="reminders-list-view">
+            <p class="text-muted small">When an enabled reminder's day arrives, the account is tagged <code>[PENDING ACTION]</code> and its page lists what is waiting. Nothing is recorded until you do it with the Pay In or Admin Fee form.</p>
+            <div id="reminders-list"></div>
+            <button type="button" class="btn btn-primary btn-sm mt-2" onclick="showReminderForm(null)">+ Add Reminder</button>
+        </div>
+
+        <div id="reminders-form-view" class="d-none">
+            <div class="form-group">
+                <label for="reminder-type">Type</label>
+                <select id="reminder-type">
+                    <option value="pay_in">Pay In</option>
+                    <option value="admin_fee">Admin Fee</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="reminder-cadence">Cadence</label>
+                <select id="reminder-cadence">
+                    <option value="monthly">Monthly</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="reminder-day"><abbr title="Day of the month the task is due. Days 29-31 fall on the last day of months that are shorter.">Day of Month</abbr></label>
+                <select id="reminder-day">
+                    {% for day in range(1, 32) %}
+                    <option value="{{ day }}">{{ day }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="reminder-enabled">
+                <label class="form-check-label" for="reminder-enabled"><abbr title="A disabled reminder is kept but never fires.">Enabled</abbr></label>
+            </div>
+            <button type="button" class="btn-save" onclick="saveReminder()">Save</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showReminderList()">Cancel</button>
+        </div>
+        <div id="reminders-status" class="status-msg-sm mt-2"></div>
+      </div>
+    </div>
+  </div>
+</div>

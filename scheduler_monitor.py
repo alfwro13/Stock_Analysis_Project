@@ -1,8 +1,9 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from account_reminders_engine import reminder_job_display_name
 from db_accounts import get_account
-from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _DYNAMIC_ACCOUNT_TOPUP_RE, _resolve_manifest, job_label
+from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _DYNAMIC_ACCOUNT_TOPUP_RE, _DYNAMIC_ACCOUNT_REMINDER_RE, _resolve_manifest, job_label
 from time_engine import parse_stored_utc
 
 _ACCOUNT_TYPE_ARTIFACT = {"Pension": "pension_account_data", "House": "house_account_data"}
@@ -156,6 +157,8 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
         account_id = int(job_id.split("_")[2])
         acc = get_account(account_id)
         label = f"Account Auto Top-up — {acc['name'] if acc else account_id}"
+    elif _DYNAMIC_ACCOUNT_REMINDER_RE.match(job_id):
+        label = reminder_job_display_name(int(job_id.split("_")[2]), meta["label"])
     runs = run_row or {}
     next_run = None
     next_run_time = getattr(job, "next_run_time", None) if enabled else None

@@ -1673,6 +1673,33 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_reminders (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                reminder_type   TEXT NOT NULL,
+                cadence         TEXT NOT NULL DEFAULT 'monthly',
+                day_of_month    INTEGER NOT NULL,
+                enabled         INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_reminder_pending (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                reminder_id     INTEGER NOT NULL,
+                account_id      INTEGER NOT NULL,
+                reminder_type   TEXT NOT NULL,
+                due_date        TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                txn_id          INTEGER,
+                resolved_at     TEXT,
+                created_at      TEXT DEFAULT (datetime('now')),
+                UNIQUE (reminder_id, due_date)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS backup_history (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 started_at      TEXT NOT NULL,

@@ -17,6 +17,7 @@ from notification_engine import notify, set_job_source, clear_job_source, curren
 import memory_helpers
 from constants import MEMORY_SAMPLE_INTERVAL_MINUTES, SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_accounts, get_connection, get_etf_predictor_configs
+from db_account_reminders import get_reminders
 from db_helpers import refresh_job_average_duration
 from news_feed_engine import run_news_feed_job
 
@@ -1106,6 +1107,14 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to register account Auto Top-up jobs from DB: %s", e)
 
+    try:
+        live_account_ids = {_acc["id"] for _acc in get_accounts()}
+        for _reminder in get_reminders():
+            if _reminder["account_id"] in live_account_ids:
+                register_account_reminder_job(_reminder)
+    except Exception as e:
+        logger.error("Failed to register Pension Reminders jobs from DB: %s", e)
+
     auction_cfg = scheduling.get("MACRO_AUCTIONS", {})
     if auction_cfg.get("ENABLED", True):
         _user_tz = time_engine.get_user_tz()
@@ -1245,6 +1254,7 @@ from scheduler_jobs import (
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
+    register_account_reminder_job, unregister_account_reminder_job, _run_account_reminder_job,
     run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job, run_mcp_pairing_window_check,
     run_memory_telemetry_job,
 )
