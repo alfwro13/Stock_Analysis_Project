@@ -80,6 +80,9 @@ def _fetch_full_text(url: str) -> str | None:
     try:
         import trafilatura
         html = fetch_body(url, _ARTICLE_HEADERS, max_redirects=_ARTICLE_MAX_REDIRECTS)
+        if not html or not html.strip():
+            logger.debug("Article body empty for %s", url)
+            return None
         return trafilatura.extract(html, include_comments=False, include_tables=False)
     except Exception as e:
         logger.debug("Article body fetch failed for %s: %s", url, e)

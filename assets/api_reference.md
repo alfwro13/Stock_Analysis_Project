@@ -3033,6 +3033,7 @@ Stores and retrieves news articles for portfolio and watchlist tickers. Articles
 - The connection is pinned to the vetted IP with the certificate and SNI checked against the host name. A TLS error fails the fetch; it is never retried without verification.
 - Up to 2 redirects are followed, and every hop is re-vetted (https, public address, pinned) like the first request.
 - The body is cut off at 2 MB (it was 20 MB). Any refusal or failure leaves `full_text` empty and is logged at debug level.
+- An empty or whitespace-only body is never handed to trafilatura, which logged three ERROR lines per article for it; `full_text` stays empty and the skip is logged at debug level.
 
 ### `GET /api/news-feed`
 
