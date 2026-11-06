@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -607,3 +608,36 @@ class TestGetYahooApiCallLog:
         assert rows[0]["minute_ts"] == "2099-04-02 09:05"
         assert rows[0]["job_id"] == "quant_analysis_job"
         assert rows[0]["call_count"] == 3
+
+
+class TestYfinanceInplaceWarningFilter:
+    @staticmethod
+    def _yfinance_parse_quotes():
+        from yfinance import utils
+        return utils.parse_quotes({
+            "timestamp": [2, 1],
+            "indicators": {"quote": [{"open": [1, 1], "high": [1, 1], "low": [1, 1], "close": [1, 1], "volume": [1, 1]}]},
+        })
+
+    def test_ignores_pandas4_inplace_warning_raised_inside_yfinance(self):
+        import warnings
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            ne.silence_yfinance_inplace_warning()
+            self._yfinance_parse_quotes()
+        assert [w for w in caught if issubclass(w.category, pd.errors.Pandas4Warning)] == []
+
+    def test_still_reports_the_same_warning_from_app_code(self):
+        import warnings
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            ne.silence_yfinance_inplace_warning()
+            pd.DataFrame({"a": [2, 1]}, index=[2, 1]).sort_index(inplace=True)
+        assert any(issubclass(w.category, pd.errors.Pandas4Warning) for w in caught)
+
+    def test_yfinance_would_warn_without_the_filter(self):
+        import warnings
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self._yfinance_parse_quotes()
+        assert any(issubclass(w.category, pd.errors.Pandas4Warning) for w in caught)

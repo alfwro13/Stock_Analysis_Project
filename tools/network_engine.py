@@ -4,9 +4,11 @@ import random
 import logging
 import traceback
 import threading
+import warnings
 import queue as _queue_module
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+import pandas as pd
 from curl_cffi import requests as cffi_requests
 
 from config import load_config, DATA_DIR
@@ -95,6 +97,22 @@ def _ensure_yf_error_filter() -> None:
             return
         logging.getLogger("yfinance").addFilter(_YfErrorNoiseFilter())
         _yf_error_filter_installed = True
+
+
+def silence_yfinance_inplace_warning() -> None:
+    """yfinance 1.7.0 calls DataFrame.sort_index/rename/drop/set_index(inplace=True), which pandas
+    3.1 flags with a Pandas4Warning on every call (~15k a day on stderr, LR-11). Only that one
+    warning, raised from a yfinance module, is ignored; a different pandas warning from yfinance,
+    or the same one from this app's own code, stays visible. Remove once yfinance drops inplace."""
+    warnings.filterwarnings(
+        "ignore",
+        message=r"The inplace keyword",
+        category=pd.errors.Pandas4Warning,
+        module=r"yfinance(\.|$)",
+    )
+
+
+silence_yfinance_inplace_warning()
 
 
 def suppress_yf_delisted_noise(active: bool) -> None:
