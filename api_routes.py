@@ -73,7 +73,6 @@ from reports_engine import get_sector_trends, get_mean_reversion_setups, get_lea
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions
-from ml_training_engine import train_global_ml_model
 from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, update_single_profile
 from tools.network_engine import GLOBAL_IPV6_STATUS

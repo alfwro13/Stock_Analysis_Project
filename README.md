@@ -280,6 +280,7 @@ ExecStart=/home/yourusername/Stock_Analysis_Project/venv/bin/python main.py
 
 Restart=always  
 RestartSec=5  
+OOMPolicy=continue  
 Environment="PYTHONUNBUFFERED=1"
 Environment="HF_HUB_OFFLINE=1"
 
@@ -292,6 +293,8 @@ WantedBy=multi-user.target
 
 
 **`HF_HUB_OFFLINE=1`:** the FinBERT sentiment model is loaded from the local Hugging Face cache at a pinned revision, and this setting stops the app from contacting the Hub on every load. On a fresh install, download the model once with the variable unset (`HF_HUB_OFFLINE=0 venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('ProsusAI/finbert', revision='<NLP_FINBERT_REVISION in constants.py>', allow_patterns=['*.json', '*.txt', 'model.safetensors'])"`), run as the service user, before starting the service. The filter fetches only the safetensors weights and tokenizer files (about 420 MB); the app refuses to load a pickle `.bin`. The model weights carry the CC BY-NC-SA 4.0 license (see Credits & Acknowledgments).
+
+**`OOMPolicy=continue`:** the weekly Global Model Training runs in a child process of the dashboard, so that running out of memory ends the training and not the web server. systemd's default (`stop`) stops the whole service when the kernel kills any process in it, which would undo that; `continue` only logs it. A killed web process is still restarted by `Restart=always`.
 
 **Optional - `FORWARDED_ALLOW_IPS`:** the app only trusts the client address that a reverse proxy forwards (`X-Forwarded-For`) when the proxy connects from the same machine. Leave the line commented out if Nginx runs on the same machine as the dashboard. If the proxy runs on a different machine, uncomment it and set it to that machine's address (a comma-separated list is accepted); otherwise every visitor appears to come from the proxy, they share one login rate-limit bucket, and real client addresses never reach the logs. Never set it to `*`: any host that can reach the app could then forge its address. Changing it needs `sudo systemctl daemon-reload` and a restart of the service. If you use MCP Remote Access, Settings → MCP Server → Remote Access shows the current value and the address of the last request on the public host, the app logs a warning at startup when the value is `*` or not set, and Remote Access cannot be turned on while it is `*`.
 

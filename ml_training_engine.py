@@ -3,7 +3,6 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import psutil
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import average_precision_score
@@ -12,10 +11,10 @@ from sklearn.frozen import FrozenEstimator
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.calibration import CalibratedClassifierCV
 
-from yahoo_engine import yahoo_engine
+import memory_helpers
 from model_compatibility_engine import dump_sklearn_artifact
 from database import get_connection, log_notification
-from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
+from constants import ML_TRAINING_ABORT_AVAILABLE_GB, PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
     CONTINUOUS_FEATURES, FUNDAMENTAL_FEATURES, TRAINING_HISTORY_QUERY, build_model_features,
@@ -41,8 +40,8 @@ def _load_training_history() -> pd.DataFrame:
     logger.info(
         "Training history loaded: %d rows, %.1f MiB table, %.1f MiB process RSS, %.1f MiB available",
         len(df), df.memory_usage(deep=True).sum() / 1024**2,
-        psutil.Process().memory_info().rss / 1024**2,
-        psutil.virtual_memory().available / 1024**2,
+        memory_helpers.rss_mib(),
+        memory_helpers.available_mib(),
     )
     return df
 
@@ -59,13 +58,12 @@ class _Split(NamedTuple):
 
 def _search_iterations() -> Optional[int]:
     """Randomized-search budget for the RAM available now; None (after notifying) when training must not start."""
-    avail_gb = psutil.virtual_memory().available / (1024 ** 3)
-    abort_gb = 0.75
+    avail_gb = memory_helpers.available_mib() / 1024
     throttle_gb = 1.5
-    if avail_gb < abort_gb:
+    if avail_gb < ML_TRAINING_ABORT_AVAILABLE_GB:
         msg = (
             f"ML Training aborted: only {avail_gb:.1f} GB RAM available "
-            f"(minimum {abort_gb} GB required). Free memory and retry."
+            f"(minimum {ML_TRAINING_ABORT_AVAILABLE_GB} GB required). Free memory and retry."
         )
         logger.error(msg)
         log_notification("Error", msg)
@@ -76,6 +74,25 @@ def _search_iterations() -> Optional[int]:
             'Low memory (%s GB available) — throttling search to %s iterations.', format(avail_gb, '.1f'), n_iter
         )
     return n_iter
+
+
+def _enough_memory_after_load(label: str) -> bool:
+    """The pre-load gate cannot see the history's own footprint; 25 Oct 2026 passed it with 1.0 GB and died 39 s after the load."""
+    avail_gb = memory_helpers.available_mib() / 1024
+    if avail_gb >= ML_TRAINING_ABORT_AVAILABLE_GB:
+        return True
+    msg = (
+        f"{label} aborted after loading the history: only {avail_gb:.1f} GB RAM available "
+        f"(minimum {ML_TRAINING_ABORT_AVAILABLE_GB} GB required). Free memory and retry."
+    )
+    logger.error(msg)
+    log_notification("Error", msg)
+    return False
+
+
+def _peak_rss_text() -> str:
+    peak = memory_helpers.sample()["rss_peak_mib"]
+    return "" if peak is None else f" Peak RSS {peak:,.0f} MiB."
 
 
 def _log_remaining_fundamental_nulls(df: pd.DataFrame) -> None:
@@ -308,14 +325,13 @@ def _refit_production_ensemble(final_rf, final_xgb, X_prod, y_prod, X_calib, y_c
     return production_ensemble
 
 
-def train_global_ml_model() -> None:
-    """Fundamentals are joined and preprocessed for drift diagnostics only; FEATURE_COLS excludes them (see ml_features.py)."""
+def train_global_ml_model() -> bool:
+    """Fundamentals are joined and preprocessed for drift diagnostics only; FEATURE_COLS excludes them (see ml_features.py). False when training did not finish."""
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
 
-    yahoo_engine.prune_expired()
     n_iter = _search_iterations()
     if n_iter is None:
-        return
+        return False
 
     log_notification("Info", "Global ML Model Training pipeline initiated.")
 
@@ -324,7 +340,10 @@ def train_global_ml_model() -> None:
 
         if df.empty:
             logger.warning("No data found in DB. Aborting ML training.")
-            return
+            return False
+
+        if not _enough_memory_after_load("ML Training"):
+            return False
 
         logger.info('Extracting features from %s historical records...', len(df))
 
@@ -337,7 +356,7 @@ def train_global_ml_model() -> None:
 
         if len(df) < 1000:
             logger.warning('Insufficient training samples (%s).', len(df))
-            return
+            return False
 
         _log_class_distribution(df)
 
@@ -366,47 +385,39 @@ def train_global_ml_model() -> None:
         log_notification(
             "Success",
             f"ML Model trained — True OOS PR-AUC: {true_oos_pr_auc:.2%}  "
-            f"(baseline: {true_oos_baseline:.2%})."
+            f"(baseline: {true_oos_baseline:.2%}).{_peak_rss_text()}"
         )
+        return True
 
     except Exception as e:
         logger.error('Fatal error during ML training: %s', e)
         log_notification("Error", f"ML Model Training failed: {str(e)}")
+        return False
 
 
-def train_quantile_models() -> None:
-    """
-    Trains two XGBoost quantile regressors on the same 18-feature pipeline
-    as the binary classifier, with a continuous 10-day return target.
-
-    Q10 (quantile_alpha=0.10): pessimistic floor — 10th-percentile return.
-    Q90 (quantile_alpha=0.90): optimistic ceiling — 90th-percentile return.
-
-    Inference converts returns to prices:
-        price_qN = close_price * (1 + qN_predicted_return)
-
-    Models are saved to models/quantile_q10.joblib and quantile_q90.joblib.
-    """
+def train_quantile_models() -> bool:
+    """Q10/Q90 XGBoost regressors on the classifier's feature pipeline with a clipped 10-day return target (inference converts it to prices). False when training did not finish."""
     logger.info("Initiating Quantile Regression model training (Q10 / Q90)...")
 
-    yahoo_engine.prune_expired()
-    _mem = psutil.virtual_memory()
-    _avail_gb = _mem.available / (1024 ** 3)
-    if _avail_gb < 0.75:
+    _avail_gb = memory_helpers.available_mib() / 1024
+    if _avail_gb < ML_TRAINING_ABORT_AVAILABLE_GB:
         msg = (
             f"Quantile training aborted: only {_avail_gb:.1f} GB RAM available "
-            "(minimum 0.75 GB required)."
+            f"(minimum {ML_TRAINING_ABORT_AVAILABLE_GB} GB required)."
         )
         logger.error(msg)
         log_notification("Error", msg)
-        return
+        return False
 
     try:
         df = _load_training_history()
 
         if df.empty:
             logger.warning("No data found for quantile training. Aborting.")
-            return
+            return False
+
+        if not _enough_memory_after_load("Quantile training"):
+            return False
 
         df = build_model_features(df)
         df.dropna(subset=FEATURE_COLS, inplace=True)
@@ -421,7 +432,7 @@ def train_quantile_models() -> None:
 
         if len(df) < 1000:
             logger.warning('Insufficient training samples (%s) for quantile training.', len(df))
-            return
+            return False
 
         df.sort_values('date', inplace=True)
         df.reset_index(drop=True, inplace=True)
@@ -473,7 +484,6 @@ def train_quantile_models() -> None:
 
         del q10, q90, X_train, y_train, X_test, y_test, df
 
-        # Refit on full dataset with fixed hyperparameters
         final_q10 = XGBRegressor(objective='reg:quantileerror', quantile_alpha=0.10, **_xgb_params)
         final_q90 = XGBRegressor(objective='reg:quantileerror', quantile_alpha=0.90, **_xgb_params)
         final_q10.fit(X_full, y_full)
@@ -487,9 +497,11 @@ def train_quantile_models() -> None:
         log_notification(
             "Success",
             f"Quantile Regression models trained — Q10/Q90 price bands ready. "
-            f"Test crossing rate: {crossing_pct:.2%}."
+            f"Test crossing rate: {crossing_pct:.2%}.{_peak_rss_text()}"
         )
+        return True
 
     except Exception as e:
         logger.error('Fatal error during quantile training: %s', e)
         log_notification("Error", f"Quantile Regression Training failed: {str(e)}")
+        return False

@@ -1833,20 +1833,27 @@ def test_bg_execute_ml_inference_runs_quantile_scoring_too():
     mock_quantile.assert_called_once_with(["ZZINFER"])
 
 
-def test_bg_execute_ml_training_runs_quantile_training_too():
-    """The manual "Run Training Now" trigger must match the scheduled ml_training_job's
-    behavior (train_global_ml_model + train_quantile_models) — the same missing-second-call
-    pattern as bg_execute_ml_inference, found in the same 2026-07-10 audit pass."""
+def test_bg_execute_ml_training_runs_the_same_child_process_as_the_scheduled_job():
+    """The manual "Run Training Now" trigger must match the scheduled ml_training_job: one child
+    process that trains the classifier and then the quantile models (the missing-second-call
+    pattern of bg_execute_ml_inference, found in the 2026-07-10 audit pass)."""
     import api_routes_triggers
 
-    with (
-        patch("api_routes_triggers.train_global_ml_model") as mock_train,
-        patch("api_routes_triggers.train_quantile_models") as mock_train_quantile,
-    ):
+    with patch("api_routes_triggers.run_training_child") as mock_child:
         api_routes_triggers.bg_execute_ml_training()
 
-    mock_train.assert_called_once()
-    mock_train_quantile.assert_called_once()
+    mock_child.assert_called_once_with()
+
+
+def test_bg_execute_ml_training_reports_a_failed_child_as_an_error():
+    import api_routes_triggers
+    from ml_training_process import TrainingFailed
+
+    with patch("api_routes_triggers.run_training_child", side_effect=TrainingFailed("exited with code 7")), \
+            patch("api_routes_triggers.log_sched_notification") as notify:
+        api_routes_triggers.bg_execute_ml_training()
+
+    notify.assert_called_once_with("Error", "ML Global Training failed: exited with code 7")
 
 
 @pytest.mark.api
