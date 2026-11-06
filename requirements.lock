@@ -1230,7 +1230,9 @@ mpmath==1.3.0 \
 multitasking==0.0.13 \
     --hash=sha256:d896b5df877c9ca5eeddbf0e5994124694d6cb535aba698fb23344c7025155a1 \
     --hash=sha256:ec9243af140c67bfe52dc98d7173c294512735a88e8425c458b250db99dc2b48
-    # via yfinance
+    # via
+    #   -r requirements.txt
+    #   yfinance
 narwhals==2.21.0 \
     --hash=sha256:1e6617d0fca68ae1fda29e5397c4eaacd3ffc9fffe6bcd6ded0c690475e853be \
     --hash=sha256:7c6e7f50528e62b7a967dd864d7e117d2955d38d4f730653ce46a9861358e2dc

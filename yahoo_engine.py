@@ -11,11 +11,13 @@ from email.utils import parsedate_to_datetime
 from typing import Optional
 from urllib.parse import quote
 
+import multitasking
 import yfinance as yf
 from curl_cffi import requests as cffi_requests
 import pandas as pd
 
 from tools.network_engine import _RateLimitedError, _TransientHTTPError, yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset, suppress_yf_delisted_noise
+from constants import YF_DOWNLOAD_THREAD_JOIN_SECONDS
 from notification_engine import notify
 from utils import measure_request_stage
 
@@ -51,6 +53,23 @@ class _RateLimitAwareLock:
 # this held for less time on average; per-request retry backoff sleeps release it entirely — see
 # tools.network_engine._sleep_outside_lock).
 _yf_singleton_lock = _RateLimitAwareLock()
+
+
+def _release_download_threads() -> None:
+    # multitasking appends every thread yf.download(threads=True) starts to a global list and never
+    # removes it, so each finished thread keeps its 8 MiB stack mapped for the life of the process
+    # (~880 an hour on prod, LR-01). Call under _yf_singleton_lock, where no other download runs.
+    tasks = multitasking.get_list_of_tasks()
+    for task in tasks:
+        task.join(YF_DOWNLOAD_THREAD_JOIN_SECONDS)
+    tasks[:] = [task for task in tasks if task.is_alive()]
+
+
+def _yf_download(*args, **kwargs) -> pd.DataFrame:
+    try:
+        return yf.download(*args, **kwargs)
+    finally:
+        _release_download_threads()
 
 _CacheEntry = namedtuple("_CacheEntry", ["data", "expires_at"])
 
@@ -274,7 +293,7 @@ class YahooEngine:
             try:
                 with _yf_singleton_lock:
                     with yahoo_connection_boundary(f"Price History {period}/{interval}", lock=_yf_singleton_lock) as session:
-                        df_bulk = yf.download(
+                        df_bulk = _yf_download(
                             missing, period=period, interval=interval,
                             group_by="ticker", auto_adjust=True, progress=False,
                             session=session,
@@ -385,7 +404,7 @@ class YahooEngine:
                     if not missing:
                         return {t: df for t, df in result.items() if df is not None}
                     with yahoo_connection_boundary(f"Intraday {period}/{interval}", lock=_yf_singleton_lock) as session:
-                        df_bulk = yf.download(
+                        df_bulk = _yf_download(
                             missing, period=period, interval=interval, prepost=prepost,
                             group_by="ticker", auto_adjust=True, progress=False,
                             session=session,
