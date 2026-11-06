@@ -63,8 +63,12 @@ def _arrow_pool() -> tuple[str | None, float | None]:
     return pool.backend_name, pool.bytes_allocated() / _MIB
 
 
-def rss_mib() -> float:
-    return psutil.Process().memory_info().rss / _MIB
+def rss_mib(pid: int | None = None) -> float:
+    return psutil.Process(pid).memory_info().rss / _MIB
+
+
+def available_mib() -> float:
+    return psutil.virtual_memory().available / _MIB
 
 
 def sample() -> dict:
@@ -120,5 +124,5 @@ def log_job_memory(job_id: str, rss_before_mib: float, duration_sec: float) -> N
         return
     logger.info(
         "Memory job %s: %.0fs, rss %.0f -> %.0f MiB (%+.0f), %.0f MiB available",
-        job_id, duration_sec, rss_before_mib, rss_after, delta, psutil.virtual_memory().available / _MIB,
+        job_id, duration_sec, rss_before_mib, rss_after, delta, available_mib(),
     )

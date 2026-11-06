@@ -27,7 +27,7 @@ from maintenance_engine import MaintenanceEngine
 from notification_engine import notify
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
-from ml_training_engine import train_global_ml_model, train_quantile_models
+from ml_training_process import run_training_child
 from quant_engine import run_daily_quant_scan
 from quant_signals import QuantEngine
 from risk_engine import update_all_tail_risks
@@ -521,8 +521,7 @@ def run_ml_training():
     try:
         log_sched_notification("Scheduler", "Started ML Global Training...")
         logger.info("ML Global Training initiated.")
-        train_global_ml_model()
-        train_quantile_models()
+        run_training_child()
         logger.info("ML Global Training complete.")
         log_sched_notification("Success", "ML Global Training completed successfully.")
     except Exception as e:

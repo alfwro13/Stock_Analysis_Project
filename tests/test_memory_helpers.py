@@ -29,6 +29,16 @@ def test_sample_reports_the_running_process():
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc breakdown is Linux-only")
+def test_rss_and_available_memory_readers_follow_psutil(monkeypatch):
+    import os
+
+    import psutil
+
+    assert memory_helpers.rss_mib() == pytest.approx(memory_helpers.rss_mib(os.getpid()), rel=0.2)
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: type("Mem", (), {"available": 3 * 1024 * 1024 * 1024})())
+    assert memory_helpers.available_mib() == 3 * 1024
+
+
 def test_sample_splits_rss_into_anon_and_file_on_linux():
     s = memory_helpers.sample()
     assert s["rss_anon_mib"] > 0

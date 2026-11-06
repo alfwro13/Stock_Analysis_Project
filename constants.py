@@ -149,6 +149,11 @@ MEMORY_SAMPLE_INTERVAL_MINUTES = 15            # Process Memory Telemetry cadenc
 MEMORY_JOB_LOG_MIN_SECONDS  = 5                # a scheduled job gets a memory line when it ran at least this long
 MEMORY_JOB_LOG_MIN_DELTA_MIB = 50              # ... or when it moved the process RSS by at least this much
 
+ML_TRAINING_ABORT_AVAILABLE_GB = 0.75          # Global Model Training aborts, before and again after the history load, with less available RAM than this
+ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB = 300   # the web process kills the training child below this much available RAM, ahead of the kernel OOM killer; initial value, tune from the logged peak
+ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process samples the training child's memory
+ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
+
 # ── Static asset versioning ───────────────────────────────────────────────────
 CSS_VERSION = "5.204" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 

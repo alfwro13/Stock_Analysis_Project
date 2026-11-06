@@ -118,16 +118,18 @@ def test_training_completes_after_releasing_intermediates(training_history, tmp_
             stack.enter_context(patch.object(engine, name, tmp_path / (name + suffix)))
         stack.enter_context(patch.object(engine, "RandomizedSearchCV", side_effect=small_search))
         stack.enter_context(patch.object(engine, "XGBRegressor", side_effect=small_regressor))
-        stack.enter_context(patch.object(engine, "log_notification"))
-        stack.enter_context(patch.object(engine.psutil, "virtual_memory", return_value=MagicMock(available=8 * 1024**3)))
+        notify = stack.enter_context(patch.object(engine, "log_notification"))
+        stack.enter_context(patch.object(engine.memory_helpers, "available_mib", return_value=8 * 1024.0))
         if kind == "classifier":
-            engine.train_global_ml_model()
+            assert engine.train_global_ml_model() is True
+            assert "Peak RSS" in notify.call_args.args[1]
             model = joblib.load(engine.MODEL_PATH)
             scores = model.predict_proba(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
             assert np.isfinite(scores).all()
             assert engine.FEATURE_STATS_PATH.exists()
         else:
-            engine.train_quantile_models()
+            assert engine.train_quantile_models() is True
+            assert "Peak RSS" in notify.call_args.args[1]
             for path in [engine.QUANTILE_Q10_PATH, engine.QUANTILE_Q90_PATH]:
                 model = joblib.load(path)
                 scores = model.predict(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
@@ -138,7 +140,7 @@ def test_training_completes_after_releasing_intermediates(training_history, tmp_
 def test_search_iterations_follow_available_memory(available_gb, expected):
     import ml_training_engine as engine
 
-    with patch.object(engine.psutil, "virtual_memory", return_value=MagicMock(available=available_gb * 1024**3)), \
+    with patch.object(engine.memory_helpers, "available_mib", return_value=available_gb * 1024), \
          patch.object(engine, "log_notification") as notify:
         assert engine._search_iterations() == expected
     assert notify.called is (expected is None)
@@ -218,3 +220,40 @@ def test_feature_stats_record_universe_size_and_feature_moments(tmp_path):
     assert stats["_meta"]["train_universe_size"] == 2
     assert set(stats["features"]) == set(engine.CONTINUOUS_FEATURES)
     assert stats["features"]["rsi_14"]["mean"] == pytest.approx(float(df["rsi_14"].mean()))
+
+
+@pytest.mark.parametrize("trainer", ["train_global_ml_model", "train_quantile_models"])
+def test_training_aborts_with_a_notification_when_the_history_load_leaves_too_little_memory(trainer):
+    import ml_training_engine as engine
+
+    history = pd.DataFrame({"ticker": ["A"], "date": ["2025-01-01"], "close_price": [1.0]})
+    with patch.object(engine.memory_helpers, "available_mib", side_effect=[8 * 1024.0, 0.5 * 1024]), \
+         patch.object(engine, "_load_training_history", return_value=history), \
+         patch.object(engine, "build_model_features", side_effect=AssertionError("features must not be built")), \
+         patch.object(engine, "log_notification") as notify:
+        assert getattr(engine, trainer)() is False
+
+    errors = [c.args[1] for c in notify.call_args_list if c.args[0] == "Error"]
+    assert len(errors) == 1
+    assert "after loading the history" in errors[0]
+
+
+@pytest.mark.parametrize("trainer", ["train_global_ml_model", "train_quantile_models"])
+def test_training_reports_failure_for_an_empty_history(trainer):
+    import ml_training_engine as engine
+
+    with patch.object(engine.memory_helpers, "available_mib", return_value=8 * 1024.0), \
+         patch.object(engine, "_load_training_history", return_value=pd.DataFrame()), \
+         patch.object(engine, "log_notification"):
+        assert getattr(engine, trainer)() is False
+
+
+@pytest.mark.parametrize("trainer", ["train_global_ml_model", "train_quantile_models"])
+def test_training_reports_failure_when_a_stage_raises(trainer):
+    import ml_training_engine as engine
+
+    with patch.object(engine.memory_helpers, "available_mib", return_value=8 * 1024.0), \
+         patch.object(engine, "_load_training_history", side_effect=RuntimeError("read failed")), \
+         patch.object(engine, "log_notification") as notify:
+        assert getattr(engine, trainer)() is False
+    assert any("read failed" in c.args[1] for c in notify.call_args_list)

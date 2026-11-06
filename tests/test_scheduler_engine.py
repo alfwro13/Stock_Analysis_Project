@@ -1045,10 +1045,28 @@ class TestCanonicalJobNames:
         def _fake_training():
             captured.update(get_active_jobs())
 
-        with patch("scheduler_jobs.train_global_ml_model", _fake_training):
+        with patch("scheduler_jobs.run_training_child", _fake_training):
             _sched_module.run_ml_training()
         assert "Global Model Training (Walk-Forward)" in captured
         assert "ML Global Training" not in captured
+
+    def test_training_runner_reports_success_only_when_the_child_finished(self):
+        with patch("scheduler_jobs.run_training_child") as child, patch("scheduler_engine.notify") as notify:
+            _sched_module.run_ml_training()
+        child.assert_called_once()
+        assert [c.args[1] for c in notify.call_args_list] == ["Scheduler", "Success"]
+
+    def test_training_runner_records_a_failed_child_as_an_error_not_a_success(self):
+        from ml_training_process import TrainingFailed
+
+        with patch("scheduler_jobs.run_training_child", side_effect=TrainingFailed("the training process was killed (signal 9)")), \
+                patch("scheduler_engine.notify") as notify:
+            run_manual_job("ml_training_job", _sched_module.run_ml_training)
+        row = get_job_run_history("ml_training_job")[0]
+        assert row["status"] == "error"
+        assert "signal 9" in row["error_detail"]
+        texts = [c.args[2] for c in notify.call_args_list]
+        assert not any("completed successfully" in t for t in texts)
 
 
 class TestFormerlyUntrackedManualTriggers:

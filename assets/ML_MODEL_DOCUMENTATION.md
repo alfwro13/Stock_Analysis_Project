@@ -169,7 +169,8 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 |---|---|---|
 | `ml_features.py` | — (shared) | Model/feature-stats/quantile file paths, `FEATURE_COLS`, `SECTOR_MAP`, fundamental bounds, `cross_sectional_zscore`, fundamental winsorize/impute, `build_model_features`, and the `TRAINING_HISTORY_QUERY` / `LATEST_FEATURES_QUERY` SQL |
 | `ml_backfill_engine.py` | Historical Data Backfill & Sync | SPY benchmark, target-ticker selection, ticker metadata sync, `run_historical_backfill`, `rebuild_quant_history` |
-| `ml_training_engine.py` | Global Model Training (Walk-Forward) | `train_global_ml_model` (classifier), `train_quantile_models` (Q10/Q90) |
+| `ml_training_engine.py` | Global Model Training (Walk-Forward) | `train_global_ml_model` (classifier), `train_quantile_models` (Q10/Q90); each returns `False` when training did not finish |
+| `ml_training_process.py` | Global Model Training (Walk-Forward) | `run_training_child` (the web process's supervisor: starts the child, relays its log, watchdog), `child_main` (the child's entry point) |
 | `ml_inference_engine.py` | Daily ML Inference | `update_daily_ml_predictions`, `score_quantile_predictions` |
 
 Classifier training, quantile training, classifier inference and quantile scoring all call `ml_features.build_model_features()` (derived columns, fundamental winsorize/impute, inf-to-NaN, per-date cross-sectional z-scores) and read their rows through the two shared queries, so train and serve cannot drift apart. Training computes its feature statistics from the raw columns the builder leaves in place.
@@ -630,10 +631,53 @@ Production's September 20 kernel log recorded a global OOM kill at approximately
 6.26 GiB anonymous RSS on a 7.8 GiB host with no swap; the application log stopped
 before feature extraction after reporting only 1.0 GB available.
 
-Expired Yahoo cache entries are reclaimed before checking available memory.
 The loader logs row count, table size, process RSS, and available system memory.
-The existing available-memory check remains a coarse guard: reducing randomized
+The pre-load available-memory check is a coarse guard: reducing randomized
 search iterations does not reduce the size of the training dataset, and neither
 batching nor that guard guarantees protection from concurrent system-wide load.
-The evidence establishes a SQL-load peak and an expired-cache retention defect;
-it does not attribute all long-running process growth to either one.
+
+### Training runs in a child process (November 2026, LR-02)
+
+Weekly training used to run inside the web process. On Sunday 25 Oct 2026 04:00 the
+process held 4.4 GB (after days of growth), the check passed with 1.0 GB available,
+the history load left 226 MiB, and the kernel OOM-killed the dashboard 39 s later.
+
+`scheduler_jobs.run_ml_training()` and the manual `POST /api/ml/trigger-training`
+now call `ml_training_process.run_training_child()`, which starts a fresh
+interpreter (`sys.executable -c ... child_main()`, not a fork of the large web process)
+that runs `train_global_ml_model()` and then `train_quantile_models()`. A step that
+fails does not stop the other, as before. Consequences:
+
+* The child's memory goes back to the OS when it exits, and the training stack
+  (xgboost, scikit-learn) is imported only there.
+* The child writes `/proc/self/oom_score_adj` = `constants.ML_TRAINING_CHILD_OOM_SCORE_ADJ`
+  (1000), so if the kernel does run out of memory it picks the child, not the
+  web process (raising the score needs no privilege). If the write fails the child
+  logs a warning and trains anyway.
+* Its log lines (`LEVEL|logger|message`, newlines escaped by `SafeFormatter`) are read
+  by the web process and re-emitted through its own loggers, so `app.log` shows them
+  in one place. A line without that prefix (a traceback, a library warning) is logged
+  at INFO as `training child: ...`.
+* **Memory guards.** `_search_iterations()` and the quantile step abort below
+  `constants.ML_TRAINING_ABORT_AVAILABLE_GB` (0.75 GB) before loading; both steps
+  check it again **after** the history load (`_enough_memory_after_load`) and abort
+  with an Error notification. While the child runs, the web process samples the host's
+  available RAM (`memory_helpers.available_mib()`) every `ML_TRAINING_WATCHDOG_POLL_SECONDS` (2 s)
+  and kills the child below `ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB` (300 MiB), ahead of
+  the kernel. The two numbers are initial values: the real peak was never measured.
+  The Success notification of each step ends with `Peak RSS N MiB` (kernel `VmHWM` of
+  the child), and the supervisor logs `Global Model Training child finished: exit code
+  .. sampled peak RSS .. lowest available RAM ..` for every outcome, including a kill.
+  Tune the two constants from those figures after the first runs.
+* **Outcome.** The child exits 0 when both steps finished and `EXIT_STEP_FAILED` (3)
+  when one returned `False`. Any non-zero exit (a step failure, a watchdog kill, a
+  signal, a crash) raises `TrainingFailed`, so the scheduled job reports
+  `ML Global Training failed: <reason>` (run history: error) instead of "completed
+  successfully", which the old runner printed even after an abort.
+* **Unit setting.** systemd's default `OOMPolicy=stop` stops the whole service when
+  the kernel kills any process in its cgroup, including this child. Set
+  `OOMPolicy=continue` on the service (README, "Running as a Background Service")
+  or a child kill that beats the watchdog still restarts the dashboard.
+* A child started by a service stop or restart is killed with the rest of the
+  cgroup (`KillMode=control-group`); the web process also kills it if its own
+  supervising thread fails.

@@ -21,7 +21,7 @@ from scheduler_engine import (
     run_fundamentals_profiler, run_universe_deep_sync_job,
     run_xray_risk_cache_job, run_anomaly_training_job, record_job_run,
     run_maintenance_engine, run_manual_job, get_all_job_last_runs,
-    scheduler_quiesced, run_universe_csv_import_scan,
+    scheduler_quiesced, run_universe_csv_import_scan, log_sched_notification,
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import get_backup_status, restore_backup, run_backup
@@ -33,7 +33,7 @@ from universe_engine import update_market_universe
 from utils import INVALID_TICKER_MESSAGE, is_valid_ticker
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
-from ml_training_engine import train_global_ml_model, train_quantile_models
+from ml_training_process import TrainingFailed, run_training_child
 from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, load_blacklist, remove_from_blacklist
 from seed_macro_calendar import seed_calendar
@@ -102,8 +102,11 @@ def bg_execute_universe_quant_scan():
     run_daily_quant_scan(tickers, scan_type='universe')
 
 def bg_execute_ml_training():
-    train_global_ml_model()
-    train_quantile_models()
+    try:
+        run_training_child()
+    except TrainingFailed as e:
+        logger.error("ML Global Training Failed: %s", e)
+        log_sched_notification("Error", f"ML Global Training failed: {e}")
 
 def bg_execute_ml_inference():
     tickers = get_universe_tickers()

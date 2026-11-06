@@ -784,7 +784,7 @@ Rebuilds 2 years of historical feature rows used to train the ML model. Only nee
 
 ### `POST /api/ml/trigger-training`
 
-Trains the global XGBoost/RF soft-voting ensemble using the historical feature backfill (`train_global_ml_model()`, saved to `models/ml_ensemble.joblib`), then trains the Q10/Q90 quantile regressors (`train_quantile_models()`, saved to `models/quantile_q10.joblib`/`quantile_q90.joblib`) — matching the scheduled `ml_training_job`'s two-step behavior via `bg_execute_ml_training()`. Runs asynchronously — may take 10–30 minutes. Before 2026-07-10 this endpoint only ran the first step, silently leaving the quantile models untrained if the weekly scheduled job was ever skipped.
+Trains the global XGBoost/RF soft-voting ensemble using the historical feature backfill (`train_global_ml_model()`, saved to `models/ml_ensemble.joblib`), then trains the Q10/Q90 quantile regressors (`train_quantile_models()`, saved to `models/quantile_q10.joblib`/`quantile_q90.joblib`) — matching the scheduled `ml_training_job`'s two-step behavior via `bg_execute_ml_training()`. Both steps run in one child process (`ml_training_process.run_training_child()`), so an out-of-memory kill takes down the child and not the web server; a failed or killed child is reported as an `ML Global Training failed: ...` Error notification. Runs asynchronously — may take 10–30 minutes. Before 2026-07-10 this endpoint only ran the first step, silently leaving the quantile models untrained if the weekly scheduled job was ever skipped.
 
 **Request body:** none  
 **Response:** standard background task response
