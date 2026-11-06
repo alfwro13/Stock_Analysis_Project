@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 # a naive default — below this, 17 days of noisy history would overfit to a handful of points.
 _MIN_HISTORY_FOR_CALIBRATION = 10
 
+_CLOSES_DAYS = 65
+
 def _exchange_currency(exchange: str) -> str:
     info = time_engine.EXCHANGE_HOURS.get(exchange, {})
     return info.get("currency", "USD")
@@ -174,7 +176,38 @@ def find_unknown_exchange_tickers(tickers: list) -> list[str]:
     return unknown
 
 
-def _fetch_constituent_closes(config: dict, days: int = 65) -> pd.DataFrame:
+def _has_close_data(ticker: str, daily_df: pd.DataFrame) -> bool:
+    return ticker in daily_df.columns and not daily_df[ticker].dropna().empty
+
+
+def find_tickers_without_data(tickers: list) -> list[str] | None:
+    """Tickers Yahoo returns no daily closes for, or None when no ticker answered (a Yahoo outage proves nothing).
+
+    Uses the same call and period as _fetch_constituent_closes, so a ticker that passes is already cached for the run.
+    """
+    unique = list(dict.fromkeys(tickers))
+    if not unique:
+        return []
+    frames = yahoo_engine.get_price_history(unique, period=f"{_CLOSES_DAYS}d", interval="1d")
+    answered = {t for t, df in frames.items() if "Close" in df.columns and not df["Close"].dropna().empty}
+    if not answered:
+        return None
+    return [t for t in unique if t not in answered]
+
+
+def _warn_constituents_without_data(etf_ticker: str, constituents: list, daily_df: pd.DataFrame) -> None:
+    """One log line per run for every constituent with no closes; its weight contributes nothing to the prediction."""
+    missing = [h for h in constituents if not _has_close_data(h["ticker"], daily_df)]
+    if not missing or daily_df.empty:
+        return
+    logger.warning(
+        "%s: no price data for constituent(s) %s (%.1f%% of weight); their contribution is treated as zero. "
+        "Correct the ticker in Settings > ETF Price Predictors.",
+        etf_ticker, ", ".join(h["ticker"] for h in missing), sum(h["weight"] for h in missing) * 100,
+    )
+
+
+def _fetch_constituent_closes(config: dict, days: int = _CLOSES_DAYS) -> pd.DataFrame:
     constituent_tickers = [h["ticker"] for h in config["constituents"]]
     etf_ticker = config["etf_ticker"]
     fx_pair = config.get("_fx_pair")
@@ -502,8 +535,10 @@ def run_prediction(
     # caller may be reusing this same daily_df object for the correlation/overlay calls too.
     df = daily_df.copy() if daily_df is not None else _fetch_constituent_closes(config)
 
+    _warn_constituents_without_data(etf_ticker, constituents, df)
+
     if etf_ticker not in df.columns or df[etf_ticker].dropna().empty:
-        fallback = yahoo_engine.get_price_history([etf_ticker], period="65d", interval="1d")
+        fallback = yahoo_engine.get_price_history([etf_ticker], period=f"{_CLOSES_DAYS}d", interval="1d")
         fallback_df = fallback.get(etf_ticker)
         if fallback_df is not None and not fallback_df.empty:
             close = fallback_df["Close"].copy()

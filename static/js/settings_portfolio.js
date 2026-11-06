@@ -246,7 +246,7 @@ async function checkEtfConfig(tickerInputId, containerId, statusId) {
             ? `<span class="msg-success">ETF ${escapeHtml(data.etf.ticker)}: &#10003; ${escapeHtml(data.etf.name || 'found')}</span>`
             : `<span class="msg-error">ETF ${escapeHtml(data.etf.ticker)}: &#10007; not found on Yahoo Finance</span>`);
         if (badTickers.length)
-            lines.push(`<span class="msg-error">Unknown tickers: ${badTickers.map(escapeHtml).join(', ')}</span>`);
+            lines.push(`<span class="msg-error">No Yahoo Finance price data for: ${badTickers.map(escapeHtml).join(', ')}</span>`);
         else
             lines.push(`<span class="msg-success">All ${data.constituents.length} constituent(s) found &#10003;</span>`);
         lines.push(warnWeight
@@ -254,6 +254,12 @@ async function checkEtfConfig(tickerInputId, containerId, statusId) {
             : `<span class="msg-success">Total weight = ${data.total_weight.toFixed(2)} &#10003;</span>`);
         if (statusEl) statusEl.innerHTML = lines.join('<br>');
     } catch (e) { if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`; }
+}
+
+function _showEtfSaveWarnings(id, warnings) {
+    if (!warnings || !warnings.length) return;
+    const el = document.getElementById(`etf-status-${id}`);
+    if (el) el.innerHTML = warnings.map(w => `<span class="msg-warning">${escapeHtml(w)}</span>`).join('<br>');
 }
 
 async function saveNewEtfPredictor() {
@@ -280,7 +286,8 @@ async function saveNewEtfPredictor() {
         if (data.status === 'success') {
             status.innerHTML = '<span class="msg-success">Predictor created.</span>';
             document.getElementById('add-etf-form').classList.add('d-none');
-            loadEtfPredictors();
+            await loadEtfPredictors();
+            _showEtfSaveWarnings(data.id, data.warnings);
         } else {
             status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }
@@ -309,7 +316,8 @@ async function saveEtfEdit(id) {
         const data = await r.json();
         if (data.status === 'success') {
             if (statusEl) statusEl.innerHTML = '<span class="msg-success">Saved.</span>';
-            loadEtfPredictors();
+            await loadEtfPredictors();
+            _showEtfSaveWarnings(id, data.warnings);
         } else {
             if (statusEl) statusEl.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed')}</span>`;
         }

@@ -3306,7 +3306,9 @@ Create a new predictor configuration. Weights are normalised to sum=1.0 automati
 }
 ```
 
-Returns `{"status": "success", "message": "...", "id": <new_config_id>}`. Returns 422 if `constituents` is empty or all weights are zero.
+Returns `{"status": "success", "message": "...", "id": <new_config_id>, "warnings": [...]}`. Returns 422 if `constituents` is empty or all weights are zero.
+
+After the config is saved, the ETF ticker and every constituent are probed once with a 65-day daily-close request (the same call and cache key a prediction run uses). `warnings` holds one fixed sentence naming every ticker Yahoo returned no closes for, and is `[]` when all have data or when Yahoo answered for none of them (an outage proves nothing). A warning never blocks the save: a constituent without data adds nothing to the prediction, and each run logs one `no price data for constituent(s)` line naming it and its weight share.
 
 Rate limit: 10/minute.
 
@@ -3314,7 +3316,7 @@ Rate limit: 10/minute.
 
 ### `PUT /api/etf-predictors/{id}`
 
-Update an existing predictor configuration. Same body as POST. Returns 404 if not found or soft-deleted.
+Update an existing predictor configuration. Same body as POST, and the same `warnings` field in the success response (the stored constituents are probed when the body sends none). Returns 404 if not found or soft-deleted.
 
 Rate limit: 10/minute.
 
@@ -3332,7 +3334,7 @@ Rate limit: 10/minute.
 
 ### `POST /api/etf-predictors/validate`
 
-Validates an ETF ticker and its constituent list against Yahoo Finance. Returns per-ticker validity, resolved name, total weight, and a `weight_ok` flag (true if total is within 1% of 100 or 0.01 of 1.0).
+Validates an ETF ticker and its constituent list against Yahoo Finance. Returns per-ticker validity, resolved name, total weight, and a `weight_ok` flag (true if total is within 1% of 100 or 0.01 of 1.0). A ticker is `valid` only when Yahoo returns daily closes for it: `.info` answers a one-key stub for a symbol it does not list (`SES.PA`), so an answer there is not proof of a listing. When Yahoo answers for no ticker at all, validity falls back to the `.info` answer.
 
 **Request body:**
 ```json

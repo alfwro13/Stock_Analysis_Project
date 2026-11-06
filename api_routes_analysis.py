@@ -960,14 +960,16 @@ def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:
 @limiter.limit("10/minute")
 def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
     try:
-        from etf_predictor_engine import _ticker_exchange_explicit, find_unknown_exchange_tickers
+        from etf_predictor_engine import _ticker_exchange_explicit, find_tickers_without_data, find_unknown_exchange_tickers
         import time_engine as _te
 
         etf_ticker = body.etf_ticker.upper().strip()
+        # .info answers a one-key stub for a symbol Yahoo does not list (SES.PA), so listing is judged by price data.
+        no_data = set(find_tickers_without_data([etf_ticker] + [i.ticker.upper().strip() for i in body.constituents]) or [])
         etf_info = yahoo_engine.get_ticker_info(etf_ticker)
         etf_result = {
             "ticker": etf_ticker,
-            "valid": etf_info is not None,
+            "valid": etf_info is not None and etf_ticker not in no_data,
             "name": (etf_info.get("longName") or etf_info.get("shortName", "")) if etf_info else None,
         }
 
@@ -983,7 +985,7 @@ def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
             constituent_results.append({
                 "ticker": t,
                 "weight": item.weight,
-                "valid": info is not None,
+                "valid": info is not None and t not in no_data,
                 "name": (info.get("longName") or info.get("shortName", "")) if info else None,
                 "exchange": exchange,
                 "exchange_known": exchange_known,
@@ -1033,6 +1035,17 @@ def _invalid_etf_ticker_response(etf_ticker: str, constituents: Optional[List[di
     return JSONResponse(status_code=422, content={"status": "error", "message": INVALID_TICKER_MESSAGE})
 
 
+def _etf_no_data_warnings(etf_ticker: str, constituents: Optional[List[dict]]) -> List[str]:
+    from etf_predictor_engine import find_tickers_without_data
+    missing = find_tickers_without_data([etf_ticker.upper().strip()] + [c["ticker"] for c in constituents or []])
+    if not missing:
+        return []
+    return [
+        f"Yahoo Finance returned no price data for {', '.join(missing)}. The predictor was saved; "
+        f"a constituent without data adds nothing to the prediction. Check the ticker symbol."
+    ]
+
+
 @analysis_router.post("/etf-predictors")
 @limiter.limit("10/minute")
 def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
@@ -1063,7 +1076,10 @@ def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
                 "id": config_id, "enabled": True, "deleted_at": None,
                 "pre_run_time": body.pre_run_time, "post_run_time": body.post_run_time,
             })
-        return JSONResponse(content={"status": "success", "message": "Predictor created.", "id": config_id})
+        return JSONResponse(content={
+            "status": "success", "message": "Predictor created.", "id": config_id,
+            "warnings": _etf_no_data_warnings(body.etf_ticker, constituents),
+        })
     except Exception as e:
         logger.error("create_etf_predictor failed: %s", e)
         return _error_500(e)
@@ -1075,7 +1091,8 @@ def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorCon
     try:
         from database import update_etf_predictor_config, get_etf_predictor_config
         from scheduler_engine import register_etf_predictor_jobs, unregister_etf_predictor_jobs
-        if get_etf_predictor_config(config_id) is None:
+        config = get_etf_predictor_config(config_id)
+        if config is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
         constituents = _normalise_constituents(body.constituents) if body.constituents else None
         if constituents is not None and not constituents:
@@ -1100,7 +1117,10 @@ def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorCon
                 "id": config_id, "enabled": True, "deleted_at": None,
                 "pre_run_time": body.pre_run_time, "post_run_time": body.post_run_time,
             })
-        return JSONResponse(content={"status": "success", "message": "Predictor updated."})
+        return JSONResponse(content={
+            "status": "success", "message": "Predictor updated.",
+            "warnings": _etf_no_data_warnings(body.etf_ticker, constituents if constituents is not None else config["constituents"]),
+        })
     except Exception as e:
         logger.error("update_etf_predictor %s failed: %s", config_id, e)
         return _error_500(e)
