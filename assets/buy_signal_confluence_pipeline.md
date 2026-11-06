@@ -75,14 +75,14 @@ distinct dates are sparse and can silently span far more than 5 trading days for
 ticker. `score_analysis._trading_windows_batch()` computes the shared window once per batch;
 `_pattern_signals_batch()`/`_trap_signals_batch()` filter against it. Earnings Volatility only
 scans a ticker within ~14 days of its next earnings date, so its own "last 5 scans" (from
-`earnings_volatility_history`, added alongside the previously latest-only `earnings_volatility`
-table specifically to support this rolling window) can span several calendar weeks for a
+`earnings_volatility_history`, which keeps every scan alongside the latest-only `earnings_volatility`
+table to support this rolling window) can span several calendar weeks for a
 ticker that isn't near-term — expected, not a gap.
 
-**Statistical pillar's sibling column.** `pairs_spread_results` gained `cheap_ticker`/
-`rich_ticker` columns in the same change (previously only a human-readable `direction` string
-like `"AAA rich vs BBB"` existed) so a pair's cheap side can be read as a value without
-string-parsing — added for future extensibility, not currently wired into this pillar's vote
+**Statistical pillar's sibling column.** `pairs_spread_results` has `cheap_ticker`/
+`rich_ticker` columns (alongside the human-readable `direction` string
+like `"AAA rich vs BBB"`) so a pair's cheap side can be read as a value without
+string-parsing — kept for extensibility, not currently wired into this pillar's vote
 (the Statistical pillar is earnings drift only; Pairs Spread Monitor evaluates a relationship
 between two tickers, not one ticker in isolation, and isn't folded in here).
 
@@ -105,8 +105,7 @@ a range-bound (Chop) market, trend-following scores matter more in a trending (B
 
 **Inputs**, each normalized to 0-100 before weighting:
 - `stock_signals.composite_score` (already 0-100).
-- `stock_signals.ml_confidence` — **previously a dead schema column with no write site
-  anywhere in the codebase.** `ml_inference_engine.update_daily_ml_predictions()` now mirrors
+- `stock_signals.ml_confidence` — `ml_inference_engine.update_daily_ml_predictions()` mirrors
   `quant_signals.ml_confidence_score` onto it in the same `UPDATE` pass, every time the daily
   ML Inference job (`ml_inference_job`) runs — needed as a one-row-per-ticker join target this
   score can read without a second `quant_signals` subselect.
@@ -161,11 +160,10 @@ data, not a replacement. Glossary: `templates/glossary/_regime_weighted_score.ht
 
 ## C. Cross-Engine Alert Referee
 
-Generalizes `alert_referee_engine.py`'s calibrated-probability veto — previously piloted on
-Trap Monitor only (see `AGENTS.md`'s "Alert Confidence Referee" entry) — to a second engine,
-`CONFLUENCE_ENGINE = "Confluence"`, that scores the combined Part A/B signal itself (Part A's
+`alert_referee_engine.py`'s calibrated-probability veto (see `AGENTS.md`'s "Alert Confidence Referee" entry) covers two engines: Trap Monitor and
+`CONFLUENCE_ENGINE = "Confluence"`, which scores the combined Part A/B signal itself (Part A's
 3 pillar votes + Part B's regime-weighted score) rather than either source engine's own raw
-features. Same shared architecture as the Trap Monitor pilot — `CalibratedClassifierCV`
+features. Same shared architecture as the Trap Monitor referee — `CalibratedClassifierCV`
 (isotonic) on a `RandomForestClassifier`, `_HARD_MIN_SAMPLES` hard floor, Shadow→Active gating —
 but with its own model file (`models/alert_referee_confluence.joblib`), its own training
 schedule/config (`SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE`, mirroring
@@ -217,14 +215,14 @@ engine is usable data for the combined model:
 
 **Evaluation trigger.** Rather than a new scheduled job, the Confluence shadow evaluation
 piggybacks on the existing `trap_monitor_job` (frequent intraday cadence) with a once-per-ticker-
-per-day gate: `db_helpers.log_trap_phase()` now returns `True` only when it actually inserted a
+per-day gate: `db_helpers.log_trap_phase()` returns `True` only when it actually inserted a
 new row (blocked by `trap_phase_history`'s `UNIQUE(ticker, scan_date)` on every later call that
 day) — `TrapEngine._save_results()` surfaces this as `row["_new_trap_history_row"]`, alongside
 `row["confluence_direction"]`/`pillar_*`/`regime_weighted_score`. `scheduler_jobs
 .run_trap_monitor_job()` calls `evaluate_alert(CONFLUENCE_ENGINE, ...)` only when
 `_new_trap_history_row` is true and a confluence direction exists — recomputing pillar
 votes/regime every 5-minute intraday tick would just re-log an identical daily-granularity
-result, the same spurious-repeat failure mode AGENTS.md's rule 19 already flags for Trap
+result, the same spurious-repeat failure mode AGENTS.md's rule 19 flags for Trap
 Monitor's own alert dedup. `pattern_detection_job`'s own scan populates the training-data
 columns on its own history rows but does not independently trigger a shadow evaluation, avoiding
 duplicate same-day log rows for one ticker's confluence state.
@@ -236,11 +234,10 @@ default Sunday 05:30 local — 30 minutes after Trap Monitor's own referee train
 `GET /api/alert-referee/status`/`log` all take an `engine` query param (`TrapMonitor` default,
 or `Confluence`) rather than duplicating routes.
 
-**Expect Shadow mode for a long stretch after launch** — same as the Trap Monitor pilot — since
-the combined feature set has never been scored before; `confluence_features_ts` only starts
-populating from the day this shipped forward (aside from the one-time historical backfill), so
+**Expect Shadow mode for a long stretch on a new install** — same as the Trap Monitor referee — since
+the combined feature set has no scored history; `confluence_features_ts` fills only from the first evaluation forward (aside from the one-time historical backfill), so
 `readiness_status(CONFLUENCE_ENGINE)`'s `current` count starts low regardless of how much history
-`trap_phase_history`/`pattern_detection_history` already had before this change.
+`trap_phase_history`/`pattern_detection_history` holds.
 
 ---
 
@@ -248,10 +245,10 @@ populating from the day this shipped forward (aside from the one-time historical
 
 Requires a minimum reward:risk ratio, computed entirely from this app's existing ATR-based
 stop-loss math, before a ticker is labeled a **Buy Recommendation** — the pipeline's final,
-synthesized output. Deliberately **not** a Kelly Criterion calculation — this app already
-rejected Kelly sizing in favor of fixed-fractional ATR sizing (see the Position Sizing glossary
+synthesized output. Deliberately **not** a Kelly Criterion calculation — this app uses
+fixed-fractional ATR sizing rather than Kelly sizing (see the Position Sizing glossary
 entry) because Kelly's "optimal" sizing is too aggressive when the edge estimate isn't reliable;
-this reuses that same rationale rather than reopening it.
+the same rationale applies here.
 
 `position_sizing.passes_risk_reward_gate(ticker)` / `passes_risk_reward_gate_batch(tickers)`
 return `None` (no signal) when a required input is missing, otherwise `{"entry_price",

@@ -1,6 +1,6 @@
 # Portfolio Heat Index (Risk Orchestrator)
 
-Synthesizes three previously-independent risk signals — VaR, correlation, and drawdown —
+Synthesizes three independent risk signals — VaR, correlation, and drawdown —
 into a single 0-100 Portfolio Heat Index (PHI) per account scope, plus a per-ticker Risk
 Contribution tier. Mirrors `quant_signals.py`'s composite "System Verdict" score, but risk-
 focused and portfolio-scoped rather than per-ticker-technicals-scoped.
@@ -17,9 +17,8 @@ Scheduler jobs: `risk_orchestrator_job` (daily Mon-Fri, config `SCHEDULING.RISK_
 DB tables: `portfolio_heat_index`, `ticker_risk_contribution`, `pretrade_check_log` (§6),
 `atr_stop_history` (§7)
 
-Phase 1 (scoring + dashboard) shipped first; Pillar A (pre-trade gatekeeper, §6) shipped next;
-Pillar C1 (daily rollup, §7) and Pillar C2 (critical escalations, §8) shipped after that —
-the full plan in `audit/risk_orchestrator_plan.md` has now shipped in its entirety.
+The orchestrator has four parts: scoring and dashboard (§1-5), the pre-trade gatekeeper (§6),
+the daily rollup (§7) and critical escalations (§8).
 
 ---
 
@@ -71,7 +70,7 @@ same three-input, same-formula tier using ticker-level inputs instead of portfol
 - **Max pairwise correlation** — this ticker's own highest correlation with any other current
   holding (also added to `assemble_xray_report()`'s per-holding payload alongside the scope-
   wide max above).
-- **Stop distance** — `(current_price - stock_signals.atr_stop_loss) / current_price`, a new,
+- **Stop distance** — `(current_price - stock_signals.atr_stop_loss) / current_price`, a
   cheap calculation; a smaller (or negative) distance is riskier, so it's inverted before
   normalizing against the drawdown thresholds.
 
@@ -153,7 +152,7 @@ scheduler job (default Mon-Fri 19:25 local, ten minutes after `risk_orchestrator
 - Any ticker whose `atr_stop_loss` rose since the prior trading day.
 
 **"Since the last rollup" without depending on the rollup having run.** `stock_signals.atr_stop_loss`
-is latest-value-only, so a new table, `atr_stop_history` (`ticker`, `date`, `atr_stop_loss`,
+is latest-value-only, so a separate table, `atr_stop_history` (`ticker`, `date`, `atr_stop_loss`,
 composite PK), is written alongside it in `quant_signals.py`'s `save_to_db()` on every quant scan.
 `risk_orchestrator_engine._tickers_with_rising_stop()` compares the two most recent **distinct
 dates present in the table** (not "yesterday" by wall-clock date, and not "the last time this job

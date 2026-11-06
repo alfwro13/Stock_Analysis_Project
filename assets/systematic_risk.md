@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS stock_signals (
 );
 ```
 
-There is no `systemic_threat_level` or `threat_source` column — those belonged to an earlier, unified design that was superseded by the independent `us_threat_level`/`uk_threat_level` split.
+Threat levels are stored per region in `us_threat_level` and `uk_threat_level`; there is no combined `systemic_threat_level` or `threat_source` column.
 
 ## 4\. Threat Level Thresholds & Classifications
 

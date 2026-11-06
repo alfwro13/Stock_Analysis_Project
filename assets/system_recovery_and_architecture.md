@@ -57,7 +57,7 @@ Once the background notifications confirm these tasks are complete, refresh your
 
 The dashboard uses PBKDF2-SHA256 password hashing. The hash is stored as `DASHBOARD_PASSWORD_HASH` in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared after the first password change.
 
-There are three ways to reset the admin password if you are locked out. The first two need a shell on the server; the self-service reset needs a configured email or Nextcloud Talk channel. There is no browser reset page that works without one of these: the old `FORCE_PASSWORD_RESET` flag and `/admin-reset-password` page were removed because they let anyone who could reach the app set the password.
+There are three ways to reset the admin password if you are locked out. The first two need a shell on the server; the self-service reset needs a configured email or Nextcloud Talk channel. There is no unauthenticated browser reset page and no config flag that opens one, because either would let anyone who can reach the app set the password.
 
 ---
 

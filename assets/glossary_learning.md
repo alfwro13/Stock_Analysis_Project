@@ -1,6 +1,6 @@
 # Glossary Learning
 
-A spaced-repetition study system layered on top of the Glossary, added July 2026. Reachable
+A spaced-repetition study system layered on top of the Glossary. Reachable
 only via the 🎓 **Learn the Glossary** button next to the Glossary page header (`/glossary`) —
 there is deliberately no separate navbar entry.
 

@@ -23,7 +23,7 @@ Key functions:
 | `_monthly_returns`, `_monthly_heatmap_matrix` | Calendar-month compounded returns, reshaped into a year × month grid for the heatmap chart |
 | `_underwater_chart_data`, `_cumulative_growth_chart_data`, `_histogram_chart_data` | Chart-payload shaping |
 
-It depends on three functions added to `xray_engine.py` in the same change (extracted from what was previously inline in `assemble_xray_report()`):
+It depends on three functions in `xray_engine.py`, shared with `assemble_xray_report()`:
 
 | Function | Purpose |
 |----------|---------|
@@ -90,7 +90,7 @@ All four are rendered client-side with Plotly (`static/js/performance_analytics.
 
 ## Relationship to X-ray and Monte Carlo
 
-- **X-ray** (`/portfolio` → X-ray panel) computes Sharpe ratio, historical VaR/CVaR, skewness/kurtosis, beta, volatility, and (as of this feature) Calmar Ratio and Max Drawdown — all from the same `xray_returns_cache`-derived return series the Tearsheet uses. The Tearsheet does not recompute any of these; it only adds metrics X-ray doesn't have.
+- **X-ray** (`/portfolio` → X-ray panel) computes Sharpe ratio, historical VaR/CVaR, skewness/kurtosis, beta, volatility, and Calmar Ratio and Max Drawdown — all from the same `xray_returns_cache`-derived return series the Tearsheet uses. The Tearsheet does not recompute any of these; it only adds metrics X-ray doesn't have.
 - **Monte Carlo Wealth Simulator** (`/monte-carlo`) is forward-looking — it projects future wealth via correlated GBM simulation. The Tearsheet is backward-looking — it summarises historical performance. They share no calculations, but do share the account-tile picker component (`accounts_engine.list_scope_accounts_with_values()`, extracted in this change so both pages' account pickers stay in sync).
 
 ## Data sources
@@ -101,7 +101,7 @@ All four are rendered client-side with Plotly (`static/js/performance_analytics.
 | Holdings/weights | `xray_engine.resolve_scope_holdings(account_id)` — Ghostfolio (optional) + built-in Trading accounts |
 | Risk-free rate | `config.json` → `RISK_FREE_RATE` |
 
-No new database table and no new scheduled job — this feature reads an existing cache and computes everything at request time.
+This feature has no database table and no scheduled job of its own — it reads an existing cache and computes everything at request time.
 
 ## API
 

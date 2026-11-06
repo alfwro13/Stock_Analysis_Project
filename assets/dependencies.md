@@ -139,7 +139,7 @@ and what should I test?" without grepping the whole codebase first.
 | `hmmlearn` | GaussianHMM regime classification (`regime_engine.py`, `macro_ai_engine.py`) | Model API stability — this package has historically had breaking API changes across majors; pin conservatively |
 | `scipy` | Statistical/optimization routines underpinning `scikit-learn`/`hmmlearn` and used directly in risk calculations; `scipy.optimize.minimize(method="SLSQP")` solves the Portfolio Optimizer's Long-Only mode and, through `portfolio_optimizer_engine.long_only_allocations()`, the Strategy Backtester's rolling Steadiest/Best Reward-for-Risk strategies | Rarely breaking on its own; mostly a transitive-compatibility concern with scikit-learn/hmmlearn pins. After an upgrade, run `tests/test_portfolio_optimizer_engine.py` and `tests/test_strategy_backtest_engine.py` — their hand-computed Long-Only answers and look-ahead checks catch SLSQP behaviour changes |
 | `joblib` | Serializes/deserializes every `models/*.joblib` artifact | **Pickle-compatibility risk**: a joblib major upgrade can fail to deserialize models trained under an older version — always retrain (Settings → Machine Learning & AI Engine) after a joblib major-version bump, don't assume old `.joblib` files still load |
-| `transformers` | FinBERT sentiment pipeline (`huggingface_engine.py`) — the only sanctioned NLP path per AGENTS.md rule 4 | `pipeline()` call signature, tokenizer defaults. **Note:** this project's dev venv was already running transformers 5.x before the `>=4.37.0` floor was ever raised in requirements.txt — the declared floor had drifted stale relative to what's actually been running and tested for some time |
+| `transformers` | FinBERT sentiment pipeline (`huggingface_engine.py`) — the only sanctioned NLP path per AGENTS.md rule 4 | `pipeline()` call signature, tokenizer defaults. The floor in `requirements.txt` (`>=5.22.1`) matches the 5.x series the project is tested on |
 | `torch` | Backend tensor library required by `transformers`'s pipeline; never imported directly by app code. Floor `>=2.14.1` is well above 2.6, the first release that closes the `torch.load` code-execution bug (CVE-2025-32434) | CUDA/CPU wheel selection, not usually an app-code compatibility risk |
 
 ## Testing (dev-only, not shipped)
@@ -148,14 +148,13 @@ and what should I test?" without grepping the whole codebase first.
 |---|---|---|
 | `pytest` | Test runner for the whole `tests/` suite | Fixture/marker API changes — would surface immediately as `./run_tests.sh` failing to collect tests |
 
-## Removed as unused
+## Packages deliberately not installed
 
 - **`ghostfolio`** (the `ghostfolio` PyPI client) — never imported. `ghostfolio_sync.py`
   talks to the Ghostfolio API with `requests`, so the integration does not need it.
 - **`shap`** — never imported, and nothing loads `models/xgb_explainer*.pkl`;
-  those files are orphaned artifacts of a retired training step. Both packages were
-  dropped from `requirements.txt` (and, with them, `numba`, `llvmlite` and `slicer`
-  from the lock) in the supply-chain hardening change (SEC 18/27).
+  those files are orphaned artifacts of a retired training step. Neither package is in
+  `requirements.txt` (nor are `numba`, `llvmlite` and `slicer`, which only `shap` pulled in).
 
 ## Vendored Mermaid
 
@@ -163,7 +162,7 @@ and what should I test?" without grepping the whole codebase first.
 `dist/mermaid.min.js` from the npm package (MIT license). It is loaded
 only by the Settings page, where `static/js/workflow_monitor.js` draws the Workflow
 Monitor flow-chart. It is committed to git like every other front-end library;
-the application no longer downloads it at startup.
+the application does not download it at startup.
 
 **Tracking new releases:** `package.json` at the repository root records the
 vendored version (`"mermaid": "12.2.0"`, an exact pin). Nothing is installed from
