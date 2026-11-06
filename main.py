@@ -27,7 +27,7 @@ from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_
 from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
-from log_config import LOG_FORMAT, SafeFormatter, configure_file_logging, uvicorn_log_config
+from log_config import configure_console_logging, configure_file_logging, uvicorn_log_config
 from utils import _request_counts, _request_stages, harden_runtime_permissions
 
 from api_routes import api_router
@@ -35,9 +35,7 @@ from page_routes import page_router
 from data_engine import run_yfinance_smoke_test
 import mcp_server
 
-_console_handler = logging.StreamHandler()
-_console_handler.setFormatter(SafeFormatter(LOG_FORMAT))
-logging.basicConfig(level=logging.INFO, handlers=[_console_handler])
+configure_console_logging()
 logger = logging.getLogger(__name__)
 
 configure_file_logging(load_config())
