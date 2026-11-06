@@ -27,8 +27,8 @@ SCORE_STRONG_SELL = -60
 # ── Data freshness thresholds (UI staleness badge) ────────────────────────────
 FRESHNESS_MODEL_WARN_DAYS   = 7   # model file older than this → amber
 FRESHNESS_MODEL_STALE_DAYS  = 14  # model file older than this → red
-FRESHNESS_PRICES_WARN_DAYS  = 3   # price data older than this → amber (covers normal weekends)
-FRESHNESS_PRICES_STALE_DAYS = 5   # price data older than this → red
+FRESHNESS_PRICES_WARN_DAYS  = 3   # trading days (NYSE or home exchange open) since the latest bar → amber; weekends and holidays don't count
+FRESHNESS_PRICES_STALE_DAYS = 5   # trading days since the latest bar → red
 
 # ── Macro AI engine ────────────────────────────────────────────────────────────
 # Training data minimums

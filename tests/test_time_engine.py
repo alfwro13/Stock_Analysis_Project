@@ -351,6 +351,40 @@ class TestExchangeHadSession:
             time_engine._uncovered_calendar_warned.discard("BOGUS_EXCHANGE")
 
 
+class TestTradingDaysSince:
+    @pytest.fixture(autouse=True)
+    def _home_lse(self):
+        with patch.object(time_engine, "_load_config", return_value={"HOME_EXCHANGE": "LSE"}):
+            yield
+
+    def test_friday_to_monday_is_one_trading_day(self):
+        assert time_engine.trading_days_since(datetime(2026, 11, 6).date(), datetime(2026, 11, 9).date()) == 1
+
+    def test_weekend_days_do_not_count(self):
+        friday = datetime(2026, 11, 6).date()
+        assert time_engine.trading_days_since(friday, datetime(2026, 11, 7).date()) == 0
+        assert time_engine.trading_days_since(friday, datetime(2026, 11, 8).date()) == 0
+
+    def test_same_day_and_reversed_range_count_nothing(self):
+        day = datetime(2026, 11, 9).date()
+        assert time_engine.trading_days_since(day, day) == 0
+        assert time_engine.trading_days_since(day, datetime(2026, 11, 2).date()) == 0
+
+    def test_full_week_counts_five(self):
+        assert time_engine.trading_days_since(datetime(2026, 11, 6).date(), datetime(2026, 11, 13).date()) == 5
+
+    def test_day_counts_when_either_default_exchange_traded(self):
+        thursday, friday = datetime(2025, 7, 3).date(), datetime(2025, 7, 4).date()
+        assert time_engine.trading_days_since(thursday, friday) == 1
+        assert time_engine.trading_days_since(thursday, friday, ("NYSE",)) == 0
+
+    def test_holiday_weekend_skips_days_when_every_exchange_was_closed(self):
+        thursday = datetime(2026, 4, 2).date()
+        assert time_engine.trading_days_since(thursday, datetime(2026, 4, 5).date()) == 0
+        assert time_engine.trading_days_since(thursday, datetime(2026, 4, 6).date()) == 1
+        assert time_engine.trading_days_since(thursday, datetime(2026, 4, 6).date(), ("LSE",)) == 0
+
+
 class TestSessionCloseUtc:
     def test_regular_nyse_close_follows_daylight_saving(self):
         assert time_engine.session_close_utc("NYSE", datetime(2026, 1, 6).date()) == datetime(2026, 1, 6, 21, 0, tzinfo=timezone.utc)

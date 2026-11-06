@@ -348,6 +348,19 @@ def exchange_had_session(exchange: str, session_date) -> bool:
     return bool(calendar.is_session(pd.Timestamp(session_date)))
 
 
+def trading_days_since(after_date, through_date, exchanges: Optional[tuple[str, ...]] = None) -> int:
+    """Dates in (after_date, through_date] on which any of *exchanges* (default NYSE and HOME_EXCHANGE) held a session."""
+    if exchanges is None:
+        exchanges = ("NYSE", _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE))
+    count = 0
+    day = after_date + timedelta(days=1)
+    while day <= through_date:
+        if any(exchange_had_session(exchange, day) for exchange in exchanges):
+            count += 1
+        day += timedelta(days=1)
+    return count
+
+
 def session_close_utc(exchange: str, session_date) -> datetime:
     """Tz-aware UTC close of *exchange*'s session on *session_date*, honouring early closes; static hours when the calendar has no such session."""
     override = _session_window_override(exchange, session_date)

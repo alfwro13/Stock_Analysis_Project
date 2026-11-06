@@ -714,7 +714,7 @@ def get_data_freshness():
         prices_d     = datetime.strptime(row["max_date"], "%Y-%m-%d").date()
         prices_days  = (today - prices_d).days
         prices_date  = row["max_date"]
-        prices_state = _state(prices_days, FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS)
+        prices_state = _state(time_engine.trading_days_since(prices_d, today), FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS)
     else:
         prices_days, prices_date, prices_state = None, None, "freshness-stale"
 
