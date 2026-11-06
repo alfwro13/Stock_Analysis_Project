@@ -15,7 +15,7 @@ from fundamentals_helpers import calculate_peter_lynch_peg
 from pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import contained_ticker_path, epoch_to_iso_date
+from utils import contained_ticker_path, epoch_to_iso_date, is_non_ticker_history_file, is_synthetic_ticker
 from constants import (
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
@@ -898,15 +898,31 @@ class QuantEngine:
         except Exception as conn_e:
             logger.error("Failed to secure database connection for %s: %s", ticker, conn_e)
 
+    @staticmethod
+    def _history_has_close(ticker: str) -> bool:
+        """False only when the stored parquet is readable and carries no valid Close; an unreadable file is left to analyze_ticker to report."""
+        filepath = contained_ticker_path(HISTORICAL_DIR, ticker, ".parquet")
+        try:
+            return bool(pd.read_parquet(filepath, columns=["Close"])["Close"].notna().any())
+        except Exception:
+            return True
+
     def run_all(self) -> None:
-        from utils import is_synthetic_ticker
         logger.info("Starting Institutional Quantamental Engine...")
+        empty_history = []
         for filename in os.listdir(HISTORICAL_DIR):
-            if filename.endswith(".parquet") and "BASELINE" not in filename:
-                ticker = filename.replace(".parquet", "")
-                if is_synthetic_ticker(ticker):
-                    continue
-                self.analyze_ticker(ticker)
+            if not filename.endswith(".parquet"):
+                continue
+            ticker = filename.replace(".parquet", "")
+            if is_non_ticker_history_file(ticker) or is_synthetic_ticker(ticker):
+                continue
+            if not self._history_has_close(ticker):
+                empty_history.append(ticker)
+                continue
+            self.analyze_ticker(ticker)
+        if empty_history:
+            logger.info("Quant scan skipped %d ticker(s) whose stored history has no valid Close: %s",
+                        len(empty_history), ", ".join(sorted(empty_history)))
         logger.info("Analysis Complete. Master Database is fully updated.")
 
 if __name__ == "__main__":

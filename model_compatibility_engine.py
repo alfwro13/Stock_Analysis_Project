@@ -12,6 +12,7 @@ from sklearn import __version__ as sklearn_version
 from sklearn.exceptions import InconsistentVersionWarning
 
 from config import ANOMALY_MODELS_DIR, BASE_DIR, HISTORICAL_DIR
+from constants import IF_CACHE_STEM
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,7 @@ def scan_model_compatibility() -> None:
         ),
         (
             "quant_analysis_job",
-            [HISTORICAL_DIR / "market_stress_if.joblib"],
+            [HISTORICAL_DIR / f"{IF_CACHE_STEM}.joblib"],
         ),
     ]
     anomaly_model = next(ANOMALY_MODELS_DIR.glob("*.joblib"), None)

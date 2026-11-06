@@ -16,16 +16,17 @@ from constants import (
     MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL,
     IF_STRESS_N_ESTIMATORS, IF_STRESS_CONTAMINATION, IF_STRESS_MIN_ROWS,
     IF_STRESS_VOL_WINDOW, IF_STRESS_ALERT_THRESHOLD, IF_STRESS_ALERT_DAYS,
+    HMM_CACHE_STEM, IF_CACHE_STEM,
 )
 
 logger = logging.getLogger(__name__)
 
-_HMM_CACHE_PATH = HISTORICAL_DIR / "SPY_hmm.parquet"
+_HMM_CACHE_PATH = HISTORICAL_DIR / f"{HMM_CACHE_STEM}.parquet"
 _HMM_LABEL_MAP = {0: "Bull", 1: "Chop", 2: "Crash"}
 _HMM_EWMA_LAMBDA = 0.94
 
-_IF_CACHE_PATH = HISTORICAL_DIR / "market_stress_if.parquet"
-_IF_MODEL_PATH = HISTORICAL_DIR / "market_stress_if.joblib"
+_IF_CACHE_PATH = HISTORICAL_DIR / f"{IF_CACHE_STEM}.parquet"
+_IF_MODEL_PATH = HISTORICAL_DIR / f"{IF_CACHE_STEM}.joblib"
 _IF_TICKERS = ["^VIX", "HYG", "^TNX", "SPY"]
 _IF_FEATURE_COLS = ["vix_level", "vix_ma_ratio", "hyg_return", "tnx_change", "spy_vol_zscore", "spy_return"]
 

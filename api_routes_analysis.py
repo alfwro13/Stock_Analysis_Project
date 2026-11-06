@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from api_deps import FiniteModel, job_busy_response, limiter, _error_500
-from constants import ETF_CONSTITUENTS_MAX
+from constants import ETF_CONSTITUENTS_MAX, HMM_CACHE_STEM
 
 from config import HISTORICAL_DIR
 from database import get_connection
@@ -838,7 +838,7 @@ def get_market_regime_full(request: Request):
         )
         stat_rows = cursor.fetchall()
 
-        hmm_cache = HISTORICAL_DIR / "SPY_hmm.parquet"
+        hmm_cache = HISTORICAL_DIR / f"{HMM_CACHE_STEM}.parquet"
         spy_returns: dict = {}
         if hmm_cache.exists():
             df_spy = pd.read_parquet(hmm_cache)

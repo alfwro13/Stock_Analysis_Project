@@ -10,6 +10,8 @@ EARNINGS_DRIFT_HORIZONS = (1, 5, 20)  # trading days after earnings for signed d
 # ── Market regime classification ───────────────────────────────────────────────
 REGIME_CRASH_VOL    = 35.0  # annualised vol % at or above which regime = Crash
 REGIME_VOLATILE_VOL = 20.0  # annualised vol % at or above which regime = Volatile
+HMM_CACHE_STEM = "SPY_hmm"  # regime_engine caches live in data/historical but are not tickers
+IF_CACHE_STEM = "market_stress_if"
 
 # ── RSI bands ─────────────────────────────────────────────────────────────────
 RSI_HEALTHY_MIN         = 40.0  # scoring model: RSI "room to run" lower bound
