@@ -10,6 +10,7 @@ agents/
 agents
 
 .claude/
+.vscode
 
 # Ignore data folder and all its contents
 data/
