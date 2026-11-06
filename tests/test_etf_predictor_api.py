@@ -17,6 +17,12 @@ def _json(resp) -> dict:
         ) from exc
 
 
+@pytest.fixture(autouse=True)
+def _no_yahoo_price_probe():
+    with patch("etf_predictor_engine.find_tickers_without_data", return_value=[]):
+        yield
+
+
 _SAMPLE_BODY = {
     "name": "API Test Predictor",
     "etf_ticker": "TST.L",
@@ -314,3 +320,64 @@ def test_etf_run_and_fill_actuals_queue_the_tracked_manual_job(client):
         )
     finally:
         _db.soft_delete_etf_predictor_config(config_id)
+
+
+@pytest.mark.api
+def test_validate_marks_a_ticker_without_price_data_invalid_even_when_info_answers_a_stub(client):
+    """Yahoo's .info answers a one-key dict for a symbol it does not list (SES.PA), which is truthy."""
+    with patch("etf_predictor_engine.find_tickers_without_data", return_value=["SES.PA"]), \
+         patch("api_routes_analysis.yahoo_engine.get_ticker_info", return_value={"trailingPegRatio": None}):
+        resp = client.post("/api/etf-predictors/validate", json={
+            "etf_ticker": "TST.L",
+            "constituents": [{"ticker": "SES.PA", "weight": 60.0}, {"ticker": "AAPL", "weight": 40.0}],
+        })
+    data = _json(resp)
+    assert data["etf"]["valid"] is True
+    assert {c["ticker"]: c["valid"] for c in data["constituents"]} == {"SES.PA": False, "AAPL": True}
+
+
+@pytest.mark.api
+def test_validate_falls_back_to_info_when_the_price_probe_is_inconclusive(client):
+    with patch("etf_predictor_engine.find_tickers_without_data", return_value=None), \
+         patch("api_routes_analysis.yahoo_engine.get_ticker_info", return_value={"longName": "X"}):
+        resp = client.post("/api/etf-predictors/validate", json={
+            "etf_ticker": "TST.L", "constituents": [{"ticker": "AAPL", "weight": 100.0}],
+        })
+    assert _json(resp)["constituents"][0]["valid"] is True
+
+
+@pytest.mark.api
+def test_create_warns_about_a_ticker_without_price_data_but_still_saves(client):
+    with patch("etf_predictor_engine.find_tickers_without_data", return_value=["MSFT"]) as mock_probe:
+        resp = client.post("/api/etf-predictors", json=_SAMPLE_BODY)
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert len(data["warnings"]) == 1 and "MSFT" in data["warnings"][0]
+    assert mock_probe.call_args.args[0] == ["TST.L", "AAPL", "MSFT", "NVDA"]
+
+    import database as _db
+    assert _db.get_etf_predictor_config(data["id"]) is not None
+    _db.soft_delete_etf_predictor_config(data["id"])
+
+
+@pytest.mark.api
+def test_create_has_no_warnings_when_every_ticker_has_data(client):
+    resp = client.post("/api/etf-predictors", json=_SAMPLE_BODY)
+    data = _json(resp)
+    assert data["warnings"] == []
+
+    import database as _db
+    _db.soft_delete_etf_predictor_config(data["id"])
+
+
+@pytest.mark.api
+def test_update_warns_about_a_ticker_without_price_data(client):
+    config_id = _json(client.post("/api/etf-predictors", json=_SAMPLE_BODY))["id"]
+    with patch("etf_predictor_engine.find_tickers_without_data", return_value=["AAPL"]):
+        resp = client.put(f"/api/etf-predictors/{config_id}", json=_SAMPLE_BODY)
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert len(data["warnings"]) == 1 and "AAPL" in data["warnings"][0]
+
+    import database as _db
+    _db.soft_delete_etf_predictor_config(config_id)

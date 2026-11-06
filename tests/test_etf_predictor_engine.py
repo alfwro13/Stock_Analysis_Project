@@ -14,6 +14,7 @@ from etf_predictor_engine import (
     detect_fx_pair,
     fetch_shared_prediction_data,
     fill_actuals_for_config,
+    find_tickers_without_data,
     find_unknown_exchange_tickers,
     get_etf_correlation_data,
     get_etf_intraday_overlay_data,
@@ -668,3 +669,90 @@ class TestGetEtfRecentCloses:
         with patch("etf_predictor_engine.load_daily_close", return_value=None) as mock_load:
             assert get_etf_recent_closes("FBAK.L", daily) is None
         mock_load.assert_called_once()
+
+
+def _closes(values):
+    return pd.DataFrame({"Close": values}, index=pd.date_range("2026-01-01", periods=len(values)))
+
+
+class TestFindTickersWithoutData:
+    def test_returns_tickers_yahoo_gave_no_closes_for(self):
+        frames = {"A": _closes([1.0, 2.0]), "B": _closes([float("nan"), float("nan")])}
+        with patch("etf_predictor_engine.yahoo_engine.get_price_history", return_value=frames) as mock_fetch:
+            assert find_tickers_without_data(["A", "B", "SES.PA", "A"]) == ["B", "SES.PA"]
+
+        mock_fetch.assert_called_once_with(["A", "B", "SES.PA"], period="65d", interval="1d")
+
+    def test_all_present_returns_empty_list(self):
+        with patch("etf_predictor_engine.yahoo_engine.get_price_history", return_value={"A": _closes([1.0])}):
+            assert find_tickers_without_data(["A"]) == []
+
+    def test_no_answer_at_all_is_inconclusive_not_every_ticker_missing(self):
+        with patch("etf_predictor_engine.yahoo_engine.get_price_history", return_value={}):
+            assert find_tickers_without_data(["A", "B"]) is None
+
+    def test_empty_input_makes_no_yahoo_call(self):
+        with patch("etf_predictor_engine.yahoo_engine.get_price_history") as mock_fetch:
+            assert find_tickers_without_data([]) == []
+
+        mock_fetch.assert_not_called()
+
+
+@pytest.mark.db
+class TestConstituentWithoutDataWarning:
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM etf_predictor_predictions WHERE config_id IN "
+                         "(SELECT id FROM etf_predictor_configs WHERE name='No Data Warning Test')")
+            conn.execute("DELETE FROM etf_predictor_configs WHERE name='No Data Warning Test'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _config(self):
+        return _db.create_etf_predictor_config(
+            name="No Data Warning Test", etf_ticker="FBAK.L",
+            constituents=[
+                {"ticker": "A", "weight": 0.3}, {"ticker": "B", "weight": 0.3},
+                {"ticker": "C", "weight": 0.3}, {"ticker": "SES.PA", "weight": 0.1},
+            ],
+        )
+
+    def _daily(self, with_missing_column=True):
+        idx = pd.date_range("2026-01-01", periods=10)
+        data = {t: [50.0 + i for i in range(10)] for t in ("FBAK.L", "A", "B", "C")}
+        if not with_missing_column:
+            data["SES.PA"] = [float("nan")] * 10
+        return pd.DataFrame(data, index=idx)
+
+    @pytest.mark.parametrize("with_missing_column", [True, False])
+    def test_run_logs_one_warning_naming_the_ticker_and_its_weight(self, caplog, with_missing_column):
+        cid = self._config()
+        with patch("etf_predictor_engine.detect_fx_pair", return_value=None), \
+             caplog.at_level("WARNING", logger="etf_predictor_engine"):
+            result = run_prediction(cid, daily_df=self._daily(with_missing_column), intraday_data={})
+
+        warnings = [r.getMessage() for r in caplog.records if "no price data for constituent" in r.getMessage()]
+        assert len(warnings) == 1
+        assert "SES.PA" in warnings[0] and "10.0% of weight" in warnings[0]
+        assert result["status"] == "success"
+        assert result["n_holdings_used"] == 3
+
+    def test_no_warning_when_every_constituent_has_data(self, caplog):
+        cid = self._config()
+        daily = self._daily()
+        daily["SES.PA"] = 40.0
+        with patch("etf_predictor_engine.detect_fx_pair", return_value=None), \
+             caplog.at_level("WARNING", logger="etf_predictor_engine"):
+            run_prediction(cid, daily_df=daily, intraday_data={})
+
+        assert not [r for r in caplog.records if "no price data for constituent" in r.getMessage()]
+
+    def test_no_warning_when_the_whole_daily_fetch_came_back_empty(self, caplog):
+        cid = self._config()
+        with patch("etf_predictor_engine.detect_fx_pair", return_value=None), \
+             caplog.at_level("WARNING", logger="etf_predictor_engine"):
+            run_prediction(cid, daily_df=pd.DataFrame(), intraday_data={})
+
+        assert not [r for r in caplog.records if "no price data for constituent" in r.getMessage()]
