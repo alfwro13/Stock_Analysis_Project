@@ -2637,6 +2637,41 @@ def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(clie
 
 
 @pytest.mark.api
+def test_price_refresh_is_followed_by_a_portfolio_totals_refresh(client):
+    """Without the follow-up, every poll that triggers a price fetch finds a changed fingerprint and serves the previous figures, so Home Assistant would run one poll behind all market hours (LR-10)."""
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="PriceRefreshTotalsFollowUpAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZPTFOLLOWUP",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    order = []
+    with patch("api_routes_accounts.fetch_and_save_pulse", side_effect=lambda *a, **k: order.append("fetch")), \
+         patch("api_routes_accounts.queue_portfolio_totals_refresh", side_effect=lambda: order.append("refresh")), \
+         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
+        resp = client.get("/api/accounts/portfolio-totals")
+    assert resp.status_code == 200
+    assert order == ["fetch", "refresh"]
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_no_portfolio_totals_refresh_is_queued_when_no_price_fetch_is_due(client):
+    with patch("api_routes_accounts.tickers_needing_refresh", return_value=[]), \
+         patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("api_routes_accounts.queue_portfolio_totals_refresh") as mock_queue:
+        resp = client.get("/api/accounts/portfolio-totals")
+    assert resp.status_code == 200
+    mock_fetch.assert_not_called()
+    mock_queue.assert_not_called()
+
+
+@pytest.mark.api
 def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(client):
     with patch("api_routes_accounts.resnapshot_account"), \
          patch("api_routes_accounts.update_single_profile"):

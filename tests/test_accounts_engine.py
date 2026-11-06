@@ -329,6 +329,89 @@ def test_run_account_value_snapshot_also_refreshes_performance_cache():
 
 
 @pytest.mark.db
+def test_run_account_value_snapshot_queues_a_portfolio_totals_refresh(monkeypatch):
+    """The snapshot bumps the ledger revision many times, so the first Home Assistant poll after it would
+    recompute portfolio-totals inline, in the middle of the 01:00-01:35 batch window (LR-10)."""
+    import scheduler_jobs
+    queued = []
+    monkeypatch.setattr(scheduler_jobs, "queue_portfolio_totals_refresh", lambda: queued.append(1))
+    create_account("SnapshotQueuesTotalsAcc", "GBP", initial_cash=7.0)
+    scheduler_jobs.run_account_value_snapshot()
+    assert queued == [1]
+
+
+@pytest.mark.db
+def test_run_account_value_snapshot_does_not_queue_a_refresh_when_the_snapshot_fails(monkeypatch):
+    import scheduler_jobs
+    queued = []
+    monkeypatch.setattr(scheduler_jobs, "queue_portfolio_totals_refresh", lambda: queued.append(1))
+    monkeypatch.setattr(scheduler_jobs, "snapshot_all_accounts", lambda scheduled=True: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(scheduler_jobs, "notify", lambda *a, **k: None)
+    with pytest.raises(RuntimeError):
+        scheduler_jobs.run_account_value_snapshot()
+    assert queued == []
+
+
+@pytest.mark.db
+def test_account_figures_are_identical_with_and_without_shared_inputs():
+    _seed_stock_signal("ZZINPUTS", 12.0, "GBP")
+    aid = create_account("SharedInputsAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZINPUTS", currency="GBP",
+                    quantity=20, unit_price=10, exchange_rate=1.0)
+    add_transaction(aid, "Sell", "2026-01-20", ticker="ZZINPUTS", currency="GBP",
+                    quantity=5, unit_price=11, exchange_rate=1.0)
+    add_transaction(aid, "Dividend", "2026-02-01", ticker="ZZINPUTS", currency="GBP",
+                    quantity=1, unit_price=3, exchange_rate=1.0)
+
+    inputs = accounts_engine.AccountInputs(aid)
+    assert accounts_engine.cash_balance(aid, inputs) == accounts_engine.cash_balance(aid)
+    assert accounts_engine.total_value(aid, inputs) == accounts_engine.total_value(aid)
+    assert accounts_engine.account_summary(aid, inputs) == accounts_engine.account_summary(aid)
+    assert accounts_engine.holdings_with_market_value(aid, inputs) == accounts_engine.holdings_with_market_value(aid)
+    assert accounts_engine.derive_account_holdings(aid, inputs) == accounts_engine.derive_account_holdings(aid)
+
+
+@pytest.mark.db
+def test_shared_inputs_read_the_account_ledger_and_prices_once(monkeypatch):
+    _seed_stock_signal("ZZONCE", 12.0, "GBP")
+    aid = create_account("SharedInputsOnceAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZONCE", currency="GBP",
+                    quantity=20, unit_price=10, exchange_rate=1.0)
+    reads = {"account": 0, "transactions": 0, "prices": 0}
+    real_account, real_transactions, real_prices = (
+        accounts_engine.get_account, accounts_engine.get_transactions, accounts_engine.current_price_map,
+    )
+
+    def counted(name, real):
+        def wrapper(*args, **kwargs):
+            reads[name] += 1
+            return real(*args, **kwargs)
+        return wrapper
+
+    monkeypatch.setattr(accounts_engine, "get_account", counted("account", real_account))
+    monkeypatch.setattr(accounts_engine, "get_transactions", counted("transactions", real_transactions))
+    monkeypatch.setattr(accounts_engine, "current_price_map", counted("prices", real_prices))
+
+    inputs = accounts_engine.AccountInputs(aid)
+    accounts_engine.cash_balance(aid, inputs)
+    accounts_engine.total_value(aid, inputs)
+    accounts_engine.account_summary(aid, inputs)
+    accounts_engine.holdings_with_market_value(aid, inputs)
+    accounts_engine.derive_account_holdings(aid, inputs)
+    assert reads == {"account": 1, "transactions": 1, "prices": 1}
+
+
+@pytest.mark.db
+def test_shared_inputs_for_a_missing_account_match_the_standalone_answers():
+    inputs = accounts_engine.AccountInputs(999999)
+    assert accounts_engine.cash_balance(999999, inputs) == 0.0
+    assert accounts_engine.total_value(999999, inputs) is None
+    assert accounts_engine.account_summary(999999, inputs) == {}
+    assert accounts_engine.holdings_with_market_value(999999, inputs) == []
+    assert accounts_engine.derive_account_holdings(999999, inputs) == {}
+
+
+@pytest.mark.db
 def test_run_account_performance_refresh_job_runner_is_wired():
     """scheduler_jobs.run_account_performance_refresh_job must actually call
     accounts_engine.refresh_all_trading_performance_caches — a regression guard for the job

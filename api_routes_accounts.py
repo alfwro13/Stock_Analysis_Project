@@ -22,7 +22,8 @@ from account_scraper_engine import (
 )
 from portfolio_metrics_engine import (
     account_metrics_list, cached_portfolio_totals, holdings_with_metrics_all_accounts,
-    invalidate_portfolio_totals_cache, other_accounts_list, set_holding_price_limit,
+    invalidate_portfolio_totals_cache, other_accounts_list, queue_portfolio_totals_refresh,
+    set_holding_price_limit,
 )
 import notification_engine
 from api_deps import FiniteModel, job_busy_response, limiter, _error_500
@@ -886,6 +887,7 @@ def maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
     stale = tickers_needing_refresh(tickers, refresh_rate)
     if stale:
         background_tasks.add_task(fetch_and_save_pulse, stale)
+        background_tasks.add_task(queue_portfolio_totals_refresh)
 
 
 @accounts_router.get("/accounts/portfolio-totals")

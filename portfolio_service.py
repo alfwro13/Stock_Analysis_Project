@@ -8,21 +8,34 @@ from yahoo_engine import yahoo_engine
 logger = logging.getLogger(__name__)
 
 _persisted_fx_reads = ContextVar("persisted_fx_reads", default=False)
+_fx_rate_memo = ContextVar("fx_rate_memo", default=None)
 
 
 @contextmanager
 def persisted_fx_reads():
-    """Read-only request paths use the persisted FX quote (background refresh) instead of awaiting Yahoo."""
+    """Read-only request paths use the persisted FX quote (background refresh) instead of awaiting Yahoo; each pair is resolved once per block."""
     token = _persisted_fx_reads.set(True)
+    memo_token = _fx_rate_memo.set({})
     try:
         yield
     finally:
+        _fx_rate_memo.reset(memo_token)
         _persisted_fx_reads.reset(token)
 
 
 def _fx_rate(pair: str, *, cache_only: bool = False):
     if cache_only:
         return yahoo_engine.get_cached_fx_rate(pair)["rate"]
+    memo = _fx_rate_memo.get()
+    if memo is not None and pair in memo:
+        return memo[pair]
+    rate = _resolve_fx_rate(pair)
+    if memo is not None:
+        memo[pair] = rate
+    return rate
+
+
+def _resolve_fx_rate(pair: str):
     if _persisted_fx_reads.get():
         quote = yahoo_engine.get_cached_fx_rate(pair, max_age=load_config()["PERFORMANCE"]["HA_FX_MAX_AGE_SECONDS"])
         if quote["rate"] is not None:

@@ -5,18 +5,19 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from accounts_engine import (
-    _EPS, _fx, _gross_base, account_summary, current_price_map, derive_account_holdings,
+    _EPS, _fx, _gross_base, AccountInputs, account_summary, derive_account_holdings,
     holdings_with_market_value, refresh_performance_cache, scraped_price_performance, total_value,
 )
+from cache_refresh_helpers import request_cache_refresh
 from config import BASE_CURRENCY
-from constants import PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS
+from constants import PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS, PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS
 from database import get_connection
 from db_accounts import (
     get_accounts, get_all_holding_price_limits, get_performance_cache, get_price_history,
-    get_transactions, get_value_history, get_value_history_currency, ledger_revision,
+    get_value_history, get_value_history_currency, ledger_revision, snapshot_revision,
     upsert_holding_price_limit,
 )
-from portfolio_service import get_rate_to_base
+from portfolio_service import get_rate_to_base, persisted_fx_reads
 from treasury_bill_engine import daily_accretion_change, get_treasury_bill_by_ticker, parse_tbill_buy_txn_id
 
 logger = logging.getLogger(__name__)
@@ -79,10 +80,10 @@ def _market_pulse_change_map(tickers: list) -> dict:
             conn.close()
 
 
-def _dividends_by_ticker(account_id: int) -> dict:
-    """Sum of _gross_base() over Dividend transactions, grouped by ticker, for one account."""
+def _dividends_by_ticker(transactions: list) -> dict:
+    """Sum of _gross_base() over Dividend transactions, grouped by ticker."""
     totals: dict = {}
-    for txn in get_transactions(account_id):
+    for txn in transactions:
         if txn["txn_type"] == "Dividend" and txn["ticker"]:
             totals[txn["ticker"]] = totals.get(txn["ticker"], 0.0) + _gross_base(txn)
     return {t: round(v, 2) for t, v in totals.items()}
@@ -97,14 +98,18 @@ def holdings_with_metrics_all_accounts() -> dict:
     accounts produces two separate rows, matching how the Home Assistant integration surfaces
     each account as its own device."""
     accounts = _trading_accounts()
+    account_inputs: dict = {}
     account_holdings: dict = {}
     all_tickers: set = set()
+    price_map: dict = {}
     for acc in accounts:
-        holdings = holdings_with_market_value(acc["id"])
+        inputs = AccountInputs(acc["id"])
+        holdings = holdings_with_market_value(acc["id"], inputs)
+        account_inputs[acc["id"]] = inputs
         account_holdings[acc["id"]] = holdings
         all_tickers.update(h["ticker"] for h in holdings)
+        price_map.update(inputs.prices)
 
-    price_map = current_price_map(list(all_tickers))
     signals_map = _stock_signals_map(list(all_tickers))
     pulse_map = _market_pulse_change_map(list(all_tickers))
     limits_map = get_all_holding_price_limits()
@@ -112,7 +117,7 @@ def holdings_with_metrics_all_accounts() -> dict:
     rows = []
     for acc in accounts:
         account_id = acc["id"]
-        dividends_by_ticker = _dividends_by_ticker(account_id)
+        dividends_by_ticker = _dividends_by_ticker(account_inputs[account_id].transactions)
         for h in account_holdings[account_id]:
             ticker = h["ticker"]
             priced = price_map.get(ticker)
@@ -224,17 +229,18 @@ def portfolio_totals() -> dict:
         return result
 
     account_ids = [a["id"] for a in accounts]
-    current_value = sum(total_value(aid) or 0.0 for aid in account_ids)
+    account_inputs = {aid: AccountInputs(aid) for aid in account_ids}
+    current_value = sum(total_value(aid, account_inputs[aid]) or 0.0 for aid in account_ids)
     total_investment = 0.0
     unrealized = 0.0
     dividends = 0.0
     for aid in account_ids:
-        for row in holdings_with_market_value(aid):
+        for row in holdings_with_market_value(aid, account_inputs[aid]):
             total_investment += row["total_investment"]
             unrealized += row["market_value"] - row["total_investment"]
-        dividends += account_summary(aid).get("dividend", 0.0)
+        dividends += account_summary(aid, account_inputs[aid]).get("dividend", 0.0)
 
-    gain_ex_fx, gain_actual = portfolio_gain_fx_decomposition(account_ids)
+    gain_ex_fx, gain_actual = portfolio_gain_fx_decomposition(account_ids, account_inputs)
 
     result["current_value"] = round(current_value, 2)
     result["total_investment"] = round(total_investment, 2)
@@ -246,8 +252,9 @@ def portfolio_totals() -> dict:
         result["portfolio_gain_pct"] = round(gain_ex_fx / total_investment * 100, 2)
         result["portfolio_gain_fx_pct"] = round(gain_actual / total_investment * 100, 2)
         result["unrealized_pnl_pct"] = round(unrealized / total_investment * 100, 2)
-    result["twr_pct"] = portfolio_twr_ex_fx(account_ids)
-    result["twr_fx_pct"] = portfolio_twr_fx(account_ids)
+    histories = {aid: get_value_history(aid) for aid in account_ids}
+    result["twr_pct"] = portfolio_twr_ex_fx(account_ids, histories)
+    result["twr_fx_pct"] = portfolio_twr_fx(account_ids, histories)
     return result
 
 
@@ -258,6 +265,7 @@ _HELD_TRADING_TICKERS_SQL = (
 
 _totals_cache_lock = threading.Lock()
 _totals_cache: Optional[tuple] = None
+_TOTALS_REFRESH_KEY = "portfolio_totals"
 
 
 def _totals_price_fingerprint() -> Optional[tuple]:
@@ -281,24 +289,58 @@ def _totals_price_fingerprint() -> Optional[tuple]:
             conn.close()
 
 
-def cached_portfolio_totals() -> dict:
-    """portfolio_totals() reused while no ledger write, price or FX quote has landed since it was computed (at most PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS)."""
-    global _totals_cache
+def _totals_key() -> Optional[tuple]:
     revision = ledger_revision()
+    snapshots = snapshot_revision()
     fingerprint = _totals_price_fingerprint()
     if fingerprint is None:
-        return portfolio_totals()
-    key = (revision, datetime.now(timezone.utc).date().isoformat(), fingerprint)
+        return None
+    return (revision, datetime.now(timezone.utc).date().isoformat(), (snapshots, fingerprint))
+
+
+def _compute_and_store_totals(key: tuple) -> dict:
+    global _totals_cache
     started = time.monotonic()
-    with _totals_cache_lock:
-        cached = _totals_cache
-    if cached and cached[0] == key and started - cached[1] < PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS:
-        return cached[2]
     result = portfolio_totals()
     if result["account_count"]:
         with _totals_cache_lock:
             _totals_cache = (key, started, result)
     return result
+
+
+def refresh_portfolio_totals() -> bool:
+    """Recomputes and stores the answer unless it is already current; for work off the request path, reading the persisted FX quote as the endpoint does."""
+    key = _totals_key()
+    if key is None:
+        return False
+    with _totals_cache_lock:
+        cached = _totals_cache
+    if cached and cached[0] == key and time.monotonic() - cached[1] < PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS:
+        return True
+    with persisted_fx_reads():
+        return bool(_compute_and_store_totals(key)["account_count"])
+
+
+def queue_portfolio_totals_refresh() -> None:
+    request_cache_refresh(_TOTALS_REFRESH_KEY, refresh_portfolio_totals)
+
+
+def cached_portfolio_totals() -> dict:
+    """Reuses portfolio_totals() until a ledger write or a new UTC day; a price, FX or nightly-snapshot change, or an expired answer, is served (up to the stale limit) while a background recompute runs (LR-10)."""
+    key = _totals_key()
+    if key is None:
+        return portfolio_totals()
+    with _totals_cache_lock:
+        cached = _totals_cache
+    if cached:
+        cached_key, computed_at, result = cached
+        age = time.monotonic() - computed_at
+        if cached_key == key and age < PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS:
+            return result
+        if cached_key[:2] == key[:2] and age < PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS:
+            queue_portfolio_totals_refresh()
+            return result
+    return _compute_and_store_totals(key)
 
 
 def invalidate_portfolio_totals_cache() -> None:
@@ -369,12 +411,12 @@ def other_accounts_list() -> dict:
     return {"base_currency": BASE_CURRENCY, "accounts": accounts}
 
 
-def _avg_purchase_fx_rate(account_id: int, tickers: set) -> dict:
+def _avg_purchase_fx_rate(transactions: list, tickers: set) -> dict:
     """Purchase-quantity-weighted-average `exchange_rate` across still-open Buy legs, per ticker —
     isolates the FX rate actually paid at purchase, as opposed to today's live rate."""
     weighted: dict[str, float] = {}
     qty_total: dict[str, float] = {}
-    for txn in get_transactions(account_id):
+    for txn in transactions:
         ticker = txn["ticker"]
         if txn["txn_type"] != "Buy" or ticker not in tickers:
             continue
@@ -384,7 +426,7 @@ def _avg_purchase_fx_rate(account_id: int, tickers: set) -> dict:
     return {t: (weighted[t] / qty_total[t]) for t in tickers if qty_total.get(t)}
 
 
-def portfolio_gain_fx_decomposition(account_ids: list) -> tuple:
+def portfolio_gain_fx_decomposition(account_ids: list, account_inputs: Optional[dict] = None) -> tuple:
     """Decomposes OPEN-holdings unrealized gain, summed in BASE_CURRENCY across account_ids, into
     (gain_ex_fx, gain_actual). gain_actual re-derives unrealized_pnl()'s math (today's live FX
     rate); gain_ex_fx re-expresses today's market value using each holding's own purchase-
@@ -393,11 +435,12 @@ def portfolio_gain_fx_decomposition(account_ids: list) -> tuple:
     gain_ex_fx = 0.0
     gain_actual = 0.0
     for aid in account_ids:
-        holdings = derive_account_holdings(aid)
+        inputs = account_inputs[aid] if account_inputs else AccountInputs(aid)
+        holdings = derive_account_holdings(aid, inputs)
         if not holdings:
             continue
-        prices = current_price_map(list(holdings.keys()))
-        avg_fx = _avg_purchase_fx_rate(aid, set(holdings.keys()))
+        prices = inputs.prices
+        avg_fx = _avg_purchase_fx_rate(inputs.transactions, set(holdings.keys()))
         for ticker, h in holdings.items():
             total_investment = h["accounts"][0]["total_investment"]
             priced = prices.get(ticker)
@@ -438,13 +481,14 @@ def _chain_link_twr(series: list) -> Optional[float]:
     return round((growth - 1.0) * 100, 2)
 
 
-def _merge_value_history(account_ids: list) -> list:
+def _merge_value_history(account_ids: list, histories: Optional[dict] = None) -> list:
     """Sums `total_value`/`net_contributions` across accounts per date — a date missing from one
     account's history simply contributes 0 for it (not an inner join), so an account opened later
-    still contributes from its own start date without distorting earlier dates."""
+    still contributes from its own start date without distorting earlier dates. `histories` maps
+    account id to its already-read value history."""
     by_date: dict[str, dict] = {}
     for aid in account_ids:
-        for row in get_value_history(aid):
+        for row in (histories[aid] if histories is not None else get_value_history(aid)):
             d = row["snapshot_date"]
             entry = by_date.setdefault(d, {"total_value": 0.0, "net_contributions": 0.0})
             entry["total_value"] += row["total_value"] or 0.0
@@ -452,14 +496,14 @@ def _merge_value_history(account_ids: list) -> list:
     return [(d, by_date[d]["total_value"], by_date[d]["net_contributions"]) for d in sorted(by_date)]
 
 
-def portfolio_twr_fx(account_ids: list) -> Optional[float]:
+def portfolio_twr_fx(account_ids: list, histories: Optional[dict] = None) -> Optional[float]:
     """True chain-linked Time-Weighted Return (%), 'actual/with-FX' variant, from the existing
     account_value_history table merged across account_ids."""
-    series = _merge_value_history(account_ids)
+    series = _merge_value_history(account_ids, histories)
     return _chain_link_twr(series)
 
 
-def portfolio_twr_ex_fx(account_ids: list) -> Optional[float]:
+def portfolio_twr_ex_fx(account_ids: list, histories: Optional[dict] = None) -> Optional[float]:
     """FX-neutral TWR variant (%): synthesizes a total_value series where each currency's equity
     contribution is revalued at its own earliest-observed ('baseline') fx_rate instead of the
     fx_rate actually in effect on each date, isolating the equity-only return from FX movement.
@@ -483,7 +527,7 @@ def portfolio_twr_ex_fx(account_ids: list) -> Optional[float]:
 
     cash_and_contrib_by_date: dict[str, dict] = {}
     for aid in account_ids:
-        for row in get_value_history(aid):
+        for row in (histories[aid] if histories is not None else get_value_history(aid)):
             d = row["snapshot_date"]
             entry = cash_and_contrib_by_date.setdefault(
                 d, {"cash_value": 0.0, "net_contributions": 0.0, "equity_value": 0.0}
