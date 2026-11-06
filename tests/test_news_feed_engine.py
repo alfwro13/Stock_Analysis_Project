@@ -6,6 +6,7 @@ Covers:
   _build_ticker_source_map()— portfolio/watchlist union, 'both' label, ignored filter
   _fetch_full_text()        — vetted fetch only: https, public address, 2 redirects, 2 MB, no TLS-off retry
 """
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -114,6 +115,19 @@ class TestFetchFullText:
              patch.object(outbound_fetch_helpers, "_get_pinned") as pinned:
             assert _fetch_full_text("https://publisher.example/a") is None
         pinned.assert_not_called()
+
+    @pytest.mark.parametrize("body", ["", "   \n\t"])
+    def test_empty_body_skips_trafilatura_and_logs_no_errors(self, body, caplog):
+        with patch("news_feed_engine.fetch_body", return_value=body), \
+             patch("trafilatura.extract", side_effect=AssertionError("must not parse an empty body")), \
+             caplog.at_level(logging.DEBUG):
+            assert _fetch_full_text("https://publisher.example/a") is None
+        assert not [r for r in caplog.records if r.name.startswith("trafilatura")]
+
+    def test_empty_body_with_real_trafilatura_logs_no_errors(self, caplog):
+        with patch("news_feed_engine.fetch_body", return_value=""), caplog.at_level(logging.DEBUG):
+            assert _fetch_full_text("https://publisher.example/a") is None
+        assert not [r for r in caplog.records if r.name.startswith("trafilatura")]
 
     def test_fetch_failure_returns_none(self):
         with patch("news_feed_engine.fetch_body", side_effect=Exception("TLS handshake failed")):
