@@ -246,3 +246,51 @@ class TestPersistedFxReads:
             mock_yf.get_fx_rate.return_value = 1.5
             assert get_rate_to_base("USD") == pytest.approx(1.5)
             mock_yf.get_cached_fx_rate.assert_not_called()
+
+    def test_a_pair_is_resolved_once_per_block(self):
+        from portfolio_service import get_rate_to_base, persisted_fx_reads
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_cached_fx_rate.return_value = {"rate": 1.1, "updated_at": 1.0}
+            with persisted_fx_reads():
+                rates = [get_rate_to_base("USD") for _ in range(5)]
+        assert rates == [pytest.approx(1.1)] * 5
+        assert mock_yf.get_cached_fx_rate.call_count == 1
+
+    def test_each_pair_is_resolved_separately(self):
+        from portfolio_service import get_rate_to_base, persisted_fx_reads
+        quotes = {"USDGBP=X": 1.1, "EURGBP=X": 0.85}
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_cached_fx_rate.side_effect = lambda pair, **kwargs: {"rate": quotes[pair], "updated_at": 1.0}
+            with persisted_fx_reads():
+                assert get_rate_to_base("USD") == pytest.approx(1.1)
+                assert get_rate_to_base("EUR") == pytest.approx(0.85)
+                assert get_rate_to_base("USD") == pytest.approx(1.1)
+        assert mock_yf.get_cached_fx_rate.call_count == 2
+
+    def test_an_unavailable_rate_is_remembered_for_the_block(self):
+        from portfolio_service import get_rate_to_base, persisted_fx_reads
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_cached_fx_rate.return_value = {"rate": None, "updated_at": None}
+            mock_yf.get_fx_rate.return_value = None
+            with persisted_fx_reads():
+                assert get_rate_to_base("USD") is None
+                assert get_rate_to_base("USD") is None
+        mock_yf.get_fx_rate.assert_called_once_with("USDGBP=X")
+
+    def test_a_new_block_resolves_the_rate_again(self):
+        from portfolio_service import get_rate_to_base, persisted_fx_reads
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_cached_fx_rate.return_value = {"rate": 1.1, "updated_at": 1.0}
+            with persisted_fx_reads():
+                get_rate_to_base("USD")
+            with persisted_fx_reads():
+                get_rate_to_base("USD")
+        assert mock_yf.get_cached_fx_rate.call_count == 2
+
+    def test_nothing_is_remembered_outside_a_block(self):
+        from portfolio_service import get_rate_to_base
+        with patch("portfolio_service.BASE_CURRENCY", "GBP"), patch("portfolio_service.yahoo_engine") as mock_yf:
+            mock_yf.get_fx_rate.return_value = 1.5
+            get_rate_to_base("USD")
+            get_rate_to_base("USD")
+        assert mock_yf.get_fx_rate.call_count == 2

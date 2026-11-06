@@ -9,6 +9,7 @@ from utils import is_currency_code, is_iso_date, is_valid_ticker
 logger = logging.getLogger(__name__)
 
 _ledger_revision = 0
+_snapshot_revision = 0
 _ledger_revision_lock = threading.Lock()
 
 
@@ -16,10 +17,20 @@ def ledger_revision() -> int:
     return _ledger_revision
 
 
+def snapshot_revision() -> int:
+    return _snapshot_revision
+
+
 def _bump_ledger_revision() -> None:
     global _ledger_revision
     with _ledger_revision_lock:
         _ledger_revision += 1
+
+
+def _bump_snapshot_revision() -> None:
+    global _snapshot_revision
+    with _ledger_revision_lock:
+        _snapshot_revision += 1
 
 
 def _invalid_txn_field(fields: dict) -> Optional[str]:
@@ -363,7 +374,7 @@ def upsert_value_snapshot(
             (account_id, snapshot_date, total_value, cash_value, equity_value, net_contributions)
         )
         conn.commit()
-        _bump_ledger_revision()
+        _bump_snapshot_revision()
     except Exception as e:
         logger.error("Failed to upsert value snapshot for account %s: %s", account_id, e)
     finally:
@@ -412,7 +423,7 @@ def upsert_value_snapshot_currency(
             (account_id, snapshot_date, currency, native_value, base_value, fx_rate)
         )
         conn.commit()
-        _bump_ledger_revision()
+        _bump_snapshot_revision()
     except Exception as e:
         logger.error("Failed to upsert currency value snapshot for account %s: %s", account_id, e)
     finally:

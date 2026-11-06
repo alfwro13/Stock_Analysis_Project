@@ -25,6 +25,7 @@ from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from maintenance_engine import MaintenanceEngine
 from notification_engine import notify
+from portfolio_metrics_engine import queue_portfolio_totals_refresh
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
 from ml_training_process import run_training_child
@@ -151,6 +152,8 @@ def run_account_value_snapshot(scheduled: bool = True):
         # on market hours) would see a stale figure until the next trading day is well underway.
         # DB/cache-only: reads whatever prices are already cached, no live Yahoo call.
         refresh_all_trading_performance_caches()
+        # The snapshot rows invalidated the cached portfolio totals; recompute now so the next Home Assistant poll is a hit.
+        queue_portfolio_totals_refresh()
         notify("account_value_snapshot_status", "Success",
                f"Account Value Snapshot completed: {written} account(s) updated.", level="info")
     except Exception as e:

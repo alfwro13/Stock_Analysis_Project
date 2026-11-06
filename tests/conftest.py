@@ -126,6 +126,13 @@ def _block_real_nextcloud_send():
 
 
 @pytest.fixture(autouse=True)
+def _block_background_totals_refresh():
+    """The portfolio-totals cache queues its recompute on a cache-refresh worker; a stray worker would read the shared test DB while other tests run and outlive the session. A test asserting on the queueing patches `portfolio_metrics_engine.request_cache_refresh` itself."""
+    with patch("portfolio_metrics_engine.request_cache_refresh"):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """The limiter is process-wide, so the suite's request count would otherwise build up across tests and trip a per-minute cap on a fast runner."""
     from api_deps import limiter

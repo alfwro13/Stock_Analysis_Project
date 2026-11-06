@@ -196,9 +196,32 @@ def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, trans
     return open_holdings, closed, round(realized_total, 2), realized_by_txn_id
 
 
-def derive_account_holdings(account_id: Optional[int] = None) -> dict:
+class AccountInputs:
+    """One account's row, transactions, ledger and prices, each read once; pass it as `inputs` when a computation needs several figures for the same account (LR-10: portfolio-totals read each of them four times)."""
+
+    def __init__(self, account_id: int):
+        self.account_id = account_id
+        self.account = get_account(account_id)
+        self.transactions = get_transactions(account_id) if self.account else []
+        self._ledger = None
+        self._prices = None
+
+    @property
+    def ledger(self):
+        if self._ledger is None:
+            self._ledger = _ledger_for_account(self.account_id, transactions=self.transactions)
+        return self._ledger
+
+    @property
+    def prices(self) -> dict:
+        if self._prices is None:
+            self._prices = current_price_map(list(self.ledger[0].keys()))
+        return self._prices
+
+
+def derive_account_holdings(account_id: Optional[int] = None, inputs: Optional[AccountInputs] = None) -> dict:
     """Current open holdings across one account (or all when account_id is None), keyed by ticker,
-    in the portfolio.json shape (cost basis in BASE currency)."""
+    in the portfolio.json shape (cost basis in BASE currency). `inputs` only applies to a single account."""
     if account_id is not None:
         account_ids = [account_id]
     else:
@@ -206,10 +229,11 @@ def derive_account_holdings(account_id: Optional[int] = None) -> dict:
 
     result: dict[str, dict] = {}
     for aid in account_ids:
-        acc = get_account(aid)
+        source = inputs if inputs is not None else AccountInputs(aid)
+        acc = source.account
         if not acc:
             continue
-        open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
+        open_holdings = source.ledger[0]
         for ticker, holding in open_holdings.items():
             acc_entry = {
                 "id": f"acct:{aid}",
@@ -312,15 +336,17 @@ def export_transactions_csv(account_id: int) -> str:
     return buf.getvalue()
 
 
-def holdings_with_market_value(account_id: int) -> list:
+def holdings_with_market_value(account_id: int, inputs: Optional[AccountInputs] = None) -> list:
     """Open holdings for one account enriched with current price, market value, allocation %,
     and unrealized performance — shape required by the account detail page's Holdings table."""
-    holdings = derive_account_holdings(account_id)
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    holdings = derive_account_holdings(account_id, inputs)
     if not holdings:
         return []
-    prices = current_price_map(list(holdings.keys()))
+    prices = inputs.prices
     first_dates: dict[str, str] = {}
-    for txn in get_transactions(account_id):
+    for txn in inputs.transactions:
         if txn["txn_type"] == "Buy" and txn["ticker"]:
             first_dates.setdefault(txn["ticker"], txn["txn_date"])
 
@@ -474,12 +500,14 @@ def _merge_into(base: dict, extra: dict) -> None:
         base["price_in_pence"] = True
 
 
-def cash_balance(account_id: int) -> float:
-    acc = get_account(account_id)
+def cash_balance(account_id: int, inputs: Optional[AccountInputs] = None) -> float:
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    acc = inputs.account
     if not acc:
         return 0.0
     balance = acc["initial_cash"] or 0.0
-    for txn in get_transactions(account_id):
+    for txn in inputs.transactions:
         if txn["update_cash"]:
             balance += _cash_delta(txn)
     return round(balance, 2)
@@ -876,15 +904,16 @@ def _bucket_equity_by_currency(open_holdings: dict, price_lookup) -> tuple:
     return total, breakdown
 
 
-def _equity_value(open_holdings: dict) -> float:
-    total, _breakdown = _equity_value_with_breakdown(open_holdings)
+def _equity_value(open_holdings: dict, prices: Optional[dict] = None) -> float:
+    total, _breakdown = _equity_value_with_breakdown(open_holdings, prices)
     return total
 
 
-def _equity_value_with_breakdown(open_holdings: dict) -> tuple:
+def _equity_value_with_breakdown(open_holdings: dict, prices: Optional[dict] = None) -> tuple:
     if not open_holdings:
         return 0.0, {}
-    prices = current_price_map(list(open_holdings.keys()))
+    if prices is None:
+        prices = current_price_map(list(open_holdings.keys()))
 
     def _lookup(ticker, holding):
         priced = prices.get(ticker)
@@ -898,11 +927,11 @@ def _equity_value_with_breakdown(open_holdings: dict) -> tuple:
     return _bucket_equity_by_currency(open_holdings, _lookup)
 
 
-def _equity_value_for_account(acc: dict, open_holdings: dict) -> float:
+def _equity_value_for_account(acc: dict, open_holdings: dict, prices: Optional[dict] = None) -> float:
     """House has no Buy/Sell ledger at all (per design — it's a single scraped valuation, not a
     holding), so `_equity_value` would always see an empty `open_holdings` and return 0."""
     if acc["account_type"] != "House":
-        return _equity_value(open_holdings)
+        return _equity_value(open_holdings, prices)
     from account_scraper_engine import latest_price
     priced = latest_price(acc["id"])
     if not priced or not priced[0]:
@@ -932,37 +961,40 @@ def _equity_value_for_account_with_breakdown(acc: dict, open_holdings: dict) -> 
     return base, {currency: {"native": native, "base": base, "fx_rate": fx_rate}}
 
 
-def account_summary(account_id: int) -> dict:
-    acc = get_account(account_id)
+def account_summary(account_id: int, inputs: Optional[AccountInputs] = None) -> dict:
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    acc = inputs.account
     if not acc:
         return {}
-    transactions = get_transactions(account_id)
+    transactions = inputs.transactions
     interest = sum(_gross_base(t) for t in transactions if t["txn_type"] == "Interest")
     dividend = sum(_gross_base(t) for t in transactions if t["txn_type"] == "Dividend")
-    open_holdings, _closed, realized, _realized_by_txn = _ledger_for_account(account_id)
+    open_holdings, _closed, realized, _realized_by_txn = inputs.ledger
     return {
         "account_id": account_id,
         "name": acc["name"],
         "currency": acc["currency"],
         "note": acc["note"],
-        "cash_balance": cash_balance(account_id),
+        "cash_balance": cash_balance(account_id, inputs),
         "interest": round(interest, 2),
         "dividend": round(dividend, 2),
         "activity_count": len(transactions),
         "holdings_count": len(open_holdings),
-        "equity_value": round(_equity_value_for_account(acc, open_holdings), 2),
+        "equity_value": round(_equity_value_for_account(acc, open_holdings, inputs.prices), 2),
         "realized_pnl": realized,
     }
 
 
-def total_value(account_id: int) -> Optional[float]:
+def total_value(account_id: int, inputs: Optional[AccountInputs] = None) -> Optional[float]:
     """Live cash + live equity, right now — the current total value used by the return tiles."""
-    acc = get_account(account_id)
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    acc = inputs.account
     if not acc:
         return None
-    open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
-    equity = _equity_value_for_account(acc, open_holdings)
-    cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(account_id)
+    equity = _equity_value_for_account(acc, inputs.ledger[0], inputs.prices)
+    cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(account_id, inputs)
     return round(cash + equity, 2)
 
 

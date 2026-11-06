@@ -629,6 +629,14 @@ def counted_totals(monkeypatch):
     portfolio_metrics_engine.invalidate_portfolio_totals_cache()
 
 
+@pytest.fixture
+def queued_refreshes(monkeypatch):
+    """Captures what the totals cache hands to the cache-refresh coordinator instead of running it on a worker."""
+    queued = []
+    monkeypatch.setattr(portfolio_metrics_engine, "request_cache_refresh", lambda key, refresh: queued.append((key, refresh)))
+    return queued
+
+
 def _delete_pulse_rows(*tickers):
     conn = None
     try:
@@ -649,17 +657,30 @@ def test_cached_portfolio_totals_reuses_the_answer_while_nothing_changed(counted
 
 
 @pytest.mark.db
-def test_cached_portfolio_totals_recomputes_after_a_ledger_write(counted_totals):
+def test_cached_portfolio_totals_recomputes_inline_after_a_ledger_write(counted_totals, queued_refreshes):
     aid = create_account("TotalsCacheLedgerAcc", "GBP")
     portfolio_metrics_engine.cached_portfolio_totals()
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTCLEDGER", currency="GBP",
                     quantity=1, unit_price=10, exchange_rate=1.0)
     portfolio_metrics_engine.cached_portfolio_totals()
     assert len(counted_totals) == 2
+    assert queued_refreshes == []
 
 
 @pytest.mark.db
-def test_cached_portfolio_totals_recomputes_after_a_held_ticker_price_or_fx_quote_lands(counted_totals):
+def test_cached_portfolio_totals_recomputes_inline_on_a_new_utc_day(counted_totals, queued_refreshes):
+    portfolio_metrics_engine.cached_portfolio_totals()
+    key, computed_at, result = portfolio_metrics_engine._totals_cache
+    portfolio_metrics_engine._totals_cache = ((key[0], "2000-01-01", key[2]), computed_at, result)
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert len(counted_totals) == 2
+    assert queued_refreshes == []
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh_when_a_price_or_fx_quote_lands(
+    counted_totals, queued_refreshes,
+):
     import time
     from db_helpers import upsert_fx_quote
 
@@ -668,9 +689,10 @@ def test_cached_portfolio_totals_recomputes_after_a_held_ticker_price_or_fx_quot
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTCPRICE", currency="GBP",
                     quantity=1, unit_price=10, exchange_rate=1.0)
     try:
-        portfolio_metrics_engine.cached_portfolio_totals()
-        portfolio_metrics_engine.cached_portfolio_totals()
+        first = portfolio_metrics_engine.cached_portfolio_totals()
+        assert portfolio_metrics_engine.cached_portfolio_totals() == first
         assert len(counted_totals) == 1
+        assert queued_refreshes == []
 
         conn = None
         try:
@@ -683,12 +705,21 @@ def test_cached_portfolio_totals_recomputes_after_a_held_ticker_price_or_fx_quot
         finally:
             if conn:
                 conn.close()
-        portfolio_metrics_engine.cached_portfolio_totals()
+        assert portfolio_metrics_engine.cached_portfolio_totals() == first
+        assert len(counted_totals) == 1
+        assert [key for key, _ in queued_refreshes] == ["portfolio_totals"]
+
+        assert queued_refreshes[0][1]() is True
         assert len(counted_totals) == 2
+        second = portfolio_metrics_engine.cached_portfolio_totals()
+        assert second != first
+        assert len(counted_totals) == 2
+        assert len(queued_refreshes) == 1
 
         upsert_fx_quote("ZZTCFX=X", 0.8, time.time())
-        portfolio_metrics_engine.cached_portfolio_totals()
-        assert len(counted_totals) == 3
+        assert portfolio_metrics_engine.cached_portfolio_totals() == second
+        assert len(counted_totals) == 2
+        assert len(queued_refreshes) == 2
     finally:
         _delete_pulse_rows("ZZTCPRICE", "ZZTCFX=X")
 
@@ -717,11 +748,162 @@ def test_cached_portfolio_totals_ignores_prices_of_tickers_nobody_holds(counted_
 
 
 @pytest.mark.db
-def test_cached_portfolio_totals_expires_after_the_max_age(counted_totals, monkeypatch):
+def test_cached_portfolio_totals_serves_an_expired_answer_and_queues_a_refresh(counted_totals, queued_refreshes, monkeypatch):
+    first = portfolio_metrics_engine.cached_portfolio_totals()
+    monkeypatch.setattr(portfolio_metrics_engine, "PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS", 0)
+    assert portfolio_metrics_engine.cached_portfolio_totals() == first
+    assert len(counted_totals) == 1
+    assert len(queued_refreshes) == 1
+
+    assert queued_refreshes[0][1]() is True
+    assert len(counted_totals) == 2
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_recomputes_inline_beyond_the_stale_limit(counted_totals, queued_refreshes, monkeypatch):
     portfolio_metrics_engine.cached_portfolio_totals()
     monkeypatch.setattr(portfolio_metrics_engine, "PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS", 0)
+    monkeypatch.setattr(portfolio_metrics_engine, "PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS", 0)
     portfolio_metrics_engine.cached_portfolio_totals()
     assert len(counted_totals) == 2
+    assert queued_refreshes == []
+
+
+@pytest.mark.db
+def test_refresh_portfolio_totals_does_nothing_while_the_answer_is_current(counted_totals):
+    portfolio_metrics_engine.cached_portfolio_totals()
+    assert portfolio_metrics_engine.refresh_portfolio_totals() is True
+    assert len(counted_totals) == 1
+
+
+@pytest.mark.db
+def test_refresh_portfolio_totals_reads_the_persisted_fx_quote(monkeypatch):
+    from portfolio_service import _persisted_fx_reads
+
+    seen = []
+
+    def stub():
+        seen.append(_persisted_fx_reads.get())
+        return {"account_count": 1}
+
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+    monkeypatch.setattr(portfolio_metrics_engine, "portfolio_totals", stub)
+    try:
+        assert portfolio_metrics_engine.refresh_portfolio_totals() is True
+        assert seen == [True]
+    finally:
+        portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+
+
+@pytest.mark.db
+def test_refresh_portfolio_totals_reports_failure_so_the_coordinator_backs_off(monkeypatch):
+    portfolio_metrics_engine.invalidate_portfolio_totals_cache()
+    monkeypatch.setattr(portfolio_metrics_engine, "portfolio_totals", lambda: {"account_count": 0})
+    assert portfolio_metrics_engine.refresh_portfolio_totals() is False
+    assert portfolio_metrics_engine._totals_cache is None
+
+    monkeypatch.setattr(portfolio_metrics_engine, "_totals_price_fingerprint", lambda: None)
+    assert portfolio_metrics_engine.refresh_portfolio_totals() is False
+
+
+@pytest.mark.db
+def test_queue_portfolio_totals_refresh_hands_the_refresh_to_the_coordinator(queued_refreshes):
+    portfolio_metrics_engine.queue_portfolio_totals_refresh()
+    assert queued_refreshes == [("portfolio_totals", portfolio_metrics_engine.refresh_portfolio_totals)]
+
+
+def _connections_during(fn) -> int:
+    import sqlite3
+    import threading
+
+    real_connect = sqlite3.connect
+    caller = threading.get_ident()
+    opened = []
+
+    def counting(*args, **kwargs):
+        if threading.get_ident() == caller:
+            opened.append(1)
+        return real_connect(*args, **kwargs)
+
+    fn()
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(sqlite3, "connect", counting)
+        fn()
+    return len(opened)
+
+
+@pytest.mark.db
+def test_totals_and_holdings_list_read_each_accounts_ledger_and_prices_once(monkeypatch):
+    import database as _db
+
+    _seed_stock_signal("ZZLEDONCE", 12.0, "GBP")
+    aid = create_account("LedgerOnceAcc", "GBP", initial_cash=500.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLEDONCE", currency="GBP",
+                    quantity=3, unit_price=10, exchange_rate=1.0)
+    transaction_reads = []
+    price_reads = []
+    real_transactions, real_prices = accounts_engine.get_transactions, accounts_engine.current_price_map
+    monkeypatch.setattr(accounts_engine, "get_transactions", lambda account_id: (transaction_reads.append(account_id), real_transactions(account_id))[1])
+    monkeypatch.setattr(accounts_engine, "current_price_map", lambda tickers: (price_reads.append(list(tickers)), real_prices(tickers))[1])
+    try:
+        for read in (portfolio_metrics_engine.portfolio_totals, portfolio_metrics_engine.holdings_with_metrics_all_accounts):
+            transaction_reads.clear()
+            price_reads.clear()
+            read()
+            assert transaction_reads.count(aid) == 1
+            assert sum("ZZLEDONCE" in tickers for tickers in price_reads) == 1
+    finally:
+        _db.soft_delete_account(aid)
+
+
+@pytest.mark.db
+def test_home_assistant_figures_do_not_open_more_connections_for_more_holdings():
+    """Every SQLite call releases the GIL, so a response that opens a connection per holding waits a thread-switch interval for each one behind a busy batch job: portfolio-totals took 1-15 s at 01:30 (LR-10)."""
+    import time
+    from config import BASE_CURRENCY
+    from db_helpers import upsert_fx_quote
+    from portfolio_service import persisted_fx_reads
+
+    currency = "CHF" if BASE_CURRENCY != "CHF" else "EUR"
+    pair = f"{currency}{BASE_CURRENCY}=X"
+    upsert_fx_quote(pair, 0.9, time.time())
+    aid_a = create_account("ConnBudgetAccA", "GBP")
+    aid_b = create_account("ConnBudgetAccB", "GBP")
+    tickers = [f"ZZCB{n}" for n in range(8)]
+    conn = None
+
+    def measure():
+        def read():
+            with persisted_fx_reads():
+                portfolio_metrics_engine.portfolio_totals()
+                portfolio_metrics_engine.holdings_with_metrics_all_accounts()
+        return _connections_during(read)
+
+    try:
+        for ticker in tickers:
+            _seed_stock_signal(ticker, 10.0, currency)
+        for aid, ticker in ((aid_a, tickers[0]), (aid_a, tickers[1]), (aid_b, tickers[2])):
+            add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency=currency,
+                            quantity=1, unit_price=10, exchange_rate=0.9)
+        few = measure()
+        for aid, ticker in ((aid_a, tickers[3]), (aid_a, tickers[4]), (aid_a, tickers[5]),
+                            (aid_b, tickers[6]), (aid_b, tickers[7])):
+            add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency=currency,
+                            quantity=1, unit_price=10, exchange_rate=0.9)
+        many = measure()
+        assert many == few
+    finally:
+        import database as _db
+        _db.soft_delete_account(aid_a)
+        _db.soft_delete_account(aid_b)
+        _delete_pulse_rows(pair)
+        try:
+            conn = get_connection()
+            conn.executemany("DELETE FROM stock_signals WHERE ticker = ?", [(t,) for t in tickers])
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
 
 
 @pytest.mark.db
@@ -781,8 +963,6 @@ def test_every_ledger_writer_bumps_the_ledger_revision():
     assert bumped(add)
     assert bumped(lambda: db_accounts.update_transaction(txn_id, quantity=2))
     assert bumped(lambda: db_accounts.update_account(aid, initial_cash=5.0))
-    assert bumped(lambda: db_accounts.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0))
-    assert bumped(lambda: db_accounts.upsert_value_snapshot_currency(aid, "2026-01-05", "GBP", 1.0, 1.0, 1.0))
     bill_id = None
 
     def make_bill():
@@ -794,3 +974,42 @@ def test_every_ledger_writer_bumps_the_ledger_revision():
     assert bumped(lambda: db_accounts.delete_treasury_bill(bill_id))
     assert bumped(lambda: db_accounts.delete_transaction(txn_id))
     assert bumped(lambda: db_accounts.soft_delete_account(aid))
+
+
+@pytest.mark.db
+def test_snapshot_writers_bump_only_the_snapshot_revision():
+    """The nightly snapshot writes many rows while the 01:00-01:35 batch jobs run; counting them as ledger edits made a poll in that window recompute portfolio-totals inline (LR-10)."""
+    import db_accounts
+
+    aid = db_accounts.create_account("SnapshotRevisionAcc", "GBP")
+    try:
+        for write in (
+            lambda: db_accounts.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0),
+            lambda: db_accounts.upsert_value_snapshot_currency(aid, "2026-01-05", "GBP", 1.0, 1.0, 1.0),
+        ):
+            ledger_before, snapshot_before = db_accounts.ledger_revision(), db_accounts.snapshot_revision()
+            write()
+            assert db_accounts.snapshot_revision() > snapshot_before
+            assert db_accounts.ledger_revision() == ledger_before
+    finally:
+        db_accounts.soft_delete_account(aid)
+
+
+@pytest.mark.db
+def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh_when_a_snapshot_lands(counted_totals, queued_refreshes):
+    import db_accounts
+
+    aid = create_account("TotalsCacheSnapshotAcc", "GBP")
+    try:
+        first = portfolio_metrics_engine.cached_portfolio_totals()
+        db_accounts.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0)
+        assert portfolio_metrics_engine.cached_portfolio_totals() == first
+        assert len(counted_totals) == 1
+        assert len(queued_refreshes) == 1
+
+        assert queued_refreshes[0][1]() is True
+        assert len(counted_totals) == 2
+        portfolio_metrics_engine.cached_portfolio_totals()
+        assert len(counted_totals) == 2
+    finally:
+        db_accounts.soft_delete_account(aid)
