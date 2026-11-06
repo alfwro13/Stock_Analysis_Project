@@ -3,7 +3,6 @@
 **Project:** Stock Analysis Quantitative Trading Terminal  
 **Engine:** `intraday_bottom_engine.py`  
 **API Endpoints:** `POST /api/intraday-monitor/add`, `POST /api/intraday-monitor/remove`, `GET /api/intraday-monitor/list`, `GET /api/intraday-monitor/analysis/{ticker}`  
-**Last Updated:** 2026-06-05  
 
 ---
 
@@ -262,7 +261,7 @@ Both jobs are **always registered** (no config flag required to enable them). Th
 **Timing of the scan window:**  
 `CronTrigger(day_of_week='mon-fri', hour='7-21', minute='1-59/2', timezone=timezone.utc)`
 
-(Starts at minute 1, not 0 — staggered off the round-minute boundary alongside several other write-heavy scheduled jobs, to avoid the multi-job "database is locked" pileups found 2026-07-21.)
+(Starts at minute 1, not 0 — staggered off the round-minute boundary alongside several other write-heavy scheduled jobs, to avoid multi-job "database is locked" pileups.)
 
 This covers 09:00–15:59 ET. The final scan of the session occurs at 15:58. The reset job fires at 16:05, giving a 7-minute window after close for any final analysis before monitors are cleared.
 
@@ -369,9 +368,9 @@ A collapsible "🎯 Dip Radar" panel is inserted between the **Intraday Pulse** 
 
 ### Settings Page (`settings.html`)
 
-A new **"🎯 Dip Radar — Intraday Bottom Finder"** card is inserted in the intraday monitoring section (between Crash & Moonshot Alerts and News & RSS).
+The **"🎯 Dip Radar — Intraday Bottom Finder"** card sits in the intraday monitoring section (between Crash & Moonshot Alerts and News & RSS).
 
-The card contains **Active Session Monitors** — a dynamically loaded list of today's monitors with per-ticker Disable buttons, populated by polling `GET /api/intraday-monitor/list` on page load. Channel routing for the bottom-detected alert now lives in the dedicated **Notification Settings** card (source `dip_radar_alert`), not in this card.
+The card contains **Active Session Monitors** — a dynamically loaded list of today's monitors with per-ticker Disable buttons, populated by polling `GET /api/intraday-monitor/list` on page load. Channel routing for the bottom-detected alert lives in the dedicated **Notification Settings** card (source `dip_radar_alert`), not in this card.
 
 ---
 

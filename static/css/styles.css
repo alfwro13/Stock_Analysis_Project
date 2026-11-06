@@ -1,7 +1,7 @@
 /* ────────────────────────────────────────────────────────────────────────── QUANTAMENTAL DASHBOARD - INTEGRATED PRODUCTION STYLESHEET ────────────────────────────────────────────────────────────────────────── */
 /* CACHE BUSTING: When updating this file, bump CSS_VERSION in constants.py so all templates serve the new version. */
 /* ============================================================================
-   BOOTSTRAP 5 THEME LAYER  (frontend migration — see assets/frontend_migration_plan.md)
+   BOOTSTRAP 5 THEME LAYER
    Reproduces the dashboard dark palette by overriding Bootstrap's CSS variables,
    so no Sass build is needed. styles.css is loaded last in base.html, so these win.
    Only pages that extend base.html carry data-bs-theme="dark"; legacy self-contained

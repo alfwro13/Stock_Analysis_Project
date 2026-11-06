@@ -40,14 +40,13 @@ This must happen the same run `score_quantile_predictions()` executes — `quant
 logged into `predicted_movers_history` before the next run overwrites it, that day's prediction
 is lost forever, not just delayed.
 
-Represented in the Workflow Monitor: `ml_inference_job`'s `JOB_GRAPH` entry now also `produces`
+Represented in the Workflow Monitor: `ml_inference_job`'s `JOB_GRAPH` entry also `produces`
 `predicted_movers_history`; the two pages' read surface is covered by the
 `predicted_movers_leaderboard_source` `non_job` entry (mirrors `monte_carlo_source`).
 
 ## 2. Scope: Portfolio, Watchlist and Universe
 
-The leaderboard has a three-way scope toggle (the combined Portfolio + Watchlist list was split in
-October 2026; `portfolio_watchlist` is no longer a valid scope):
+The leaderboard has a three-way scope toggle (`portfolio_watchlist` is not a valid scope):
 
 - **Portfolio** — held tickers, `db_helpers.get_portfolio_tickers()`
   (`accounts_engine.get_combined_holdings()`, ignored-ticker-filtered).

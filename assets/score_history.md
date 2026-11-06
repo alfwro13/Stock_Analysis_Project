@@ -119,13 +119,13 @@ The forward return is computed relative to **the price at the time of scoring**,
 
 ## ⏳ 5. The Pending Period
 
-Since `score_history` logging began in June 2026, the approximate dates when each horizon first becomes calculable are:
+Each horizon first becomes calculable roughly this long after `score_history` logging begins:
 
 | Horizon | Returns available from |
 |---|---|
-| 3M | ~September 2026 |
-| 6M | ~December 2026 |
-| 12M | ~June 2027 |
+| 3M | ~3 months after the first event |
+| 6M | ~6 months after the first event |
+| 12M | ~12 months after the first event |
 
 The banner on the page always shows the exact dates based on the actual earliest event in the database — these are estimates.
 

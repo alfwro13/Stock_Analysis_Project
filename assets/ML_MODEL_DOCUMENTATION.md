@@ -3,7 +3,6 @@
 **Project:** Stock Analysis Quantitative Trading Terminal  
 **Model File:** `models/ml_ensemble.joblib`  
 **Engines:** `ml_features.py`, `ml_backfill_engine.py`, `ml_training_engine.py`, `ml_inference_engine.py`  
-**Last Updated:** 2026-05-24  
 **Final PR-AUC:** 0.4217 (random baseline: 0.3348)
 
 ---
@@ -15,8 +14,8 @@
 3. [Training Data](#3-training-data)
 4. [Feature Registry](#4-feature-registry)
 5. [Architecture](#5-architecture)
-6. [Bug Fixes Applied Before Training](#6-bug-fixes-applied-before-training)
-7. [Improvement History](#7-improvement-history)
+6. [Training Data Safeguards](#6-training-data-safeguards)
+7. [Feature Selection Evidence](#7-feature-selection-evidence)
 8. [Known Limitations & Assumptions](#8-known-limitations--assumptions)
 9. [Evaluation Methodology](#9-evaluation-methodology)
 10. [Operational Notes](#10-operational-notes)
@@ -46,7 +45,7 @@ target = 0  otherwise
 
 **Threshold:** 3% over 10 days. This equates to approximately 75% annualised return if sustained, which is used purely as a binary discriminator between strong and weak setups. It is not a return forecast.
 
-**Horizon selection rationale:** The initial 5-day horizon was replaced with 10 days after empirical testing showed a PR-AUC improvement from 0.3592 to 0.4217. The mechanism is signal-to-noise: technical momentum factors need time to play out before mean-reversion noise dominates at very short horizons (Jegadeesh & Titman, 1993, found optimal momentum horizons of 3–12 months; at 5-day intraday horizons, market microstructure noise dominates).
+**Horizon selection rationale:** A 10-day horizon outperformed a 5-day one in empirical testing (PR-AUC 0.4217 vs 0.3592). The mechanism is signal-to-noise: technical momentum factors need time to play out before mean-reversion noise dominates at very short horizons (Jegadeesh & Titman, 1993, found optimal momentum horizons of 3–12 months; at 5-day intraday horizons, market microstructure noise dominates).
 
 **Class distribution at 10-day horizon:**
 ```
@@ -78,8 +77,8 @@ After applying the 252-day momentum warmup constraint and `dropna()`:
 - Approximately 82,633 rows across 350 tickers
 - Average ~236 rows per ticker
 
-### Key consistency requirement — BUG-02
-All data must use `auto_adjust=True` consistently across backfill, training, and inference. Using `auto_adjust=False` during backfill and `auto_adjust=True` during inference causes systematic feature distribution shift after any stock split. This was identified and corrected before any model training described in this document.
+### Key consistency requirement
+All data must use `auto_adjust=True` consistently across backfill, training, and inference. Using `auto_adjust=False` during backfill and `auto_adjust=True` during inference causes systematic feature distribution shift after any stock split.
 
 ---
 
@@ -219,13 +218,13 @@ z_score(feature, date) = (feature_value - mean(feature, date)) / std(feature, da
 
 Where mean and std are computed across **all tickers on the same date** — not across time. This forces the model to evaluate each stock relative to its peers on that specific trading day, neutralising absolute size and market-level bias. A stock with RSI 65 on a day when the whole market averages RSI 65 receives a z-score near 0. The same RSI 65 on a day when the market averages RSI 40 receives a strongly positive z-score — correctly identified as a genuine outlier.
 
-**Critical implementation note (BUG-03):** At inference time, z-scores must be computed across the full population of all tickers at the latest date — not just the requested ticker subset. Computing z-scores on a batch of 3–10 tickers collapses all scores to the base rate because every stock's z-score approaches 0 when the peer group is trivially small. The fix: `update_daily_ml_predictions()` fetches ALL tickers with valid features at the latest date before z-scoring, regardless of the `tickers` parameter.
+**Critical implementation note:** At inference time, z-scores must be computed across the full population of all tickers at the latest date — not just the requested ticker subset. Computing z-scores on a batch of 3–10 tickers collapses all scores to the base rate because every stock's z-score approaches 0 when the peer group is trivially small. `update_daily_ml_predictions()` therefore fetches ALL tickers with valid features at the latest date before z-scoring, regardless of the `tickers` parameter.
 
 ### 5.3 Probability Calibration
 
 Each base estimator is individually wrapped in `CalibratedClassifierCV(method='isotonic', cv=walk_forward_splits)` before being assembled into the final `VotingClassifier`. Isotonic regression calibration adjusts the raw model probabilities so they better approximate true event frequencies.
 
-**Known limitation (BUG-04):** The base estimators (`best_rf`, `best_xgb`) are fitted on the full training dataset before calibration. The `CalibratedClassifierCV` then calibrates using the same walk-forward splits. This introduces mild calibration data leakage — the base model has already seen the data used for calibration. The confidence scores should therefore be treated as **ranking signals** (relative ordering) rather than **calibrated probabilities** (absolute event frequencies). Fixing this requires a three-way temporal split (train / calibrate / test) which is scheduled for a future refactor once the feature set is finalised.
+**Known limitation (calibration leakage, see §6):** The base estimators (`best_rf`, `best_xgb`) are fitted on the full training dataset before calibration. The `CalibratedClassifierCV` then calibrates using the same walk-forward splits. This introduces mild calibration data leakage — the base model has already seen the data used for calibration. The confidence scores should therefore be treated as **ranking signals** (relative ordering) rather than **calibrated probabilities** (absolute event frequencies). Fixing this requires a three-way temporal split (train / calibrate / test), which is not implemented.
 
 ### 5.4 Production Ensemble
 
@@ -261,61 +260,61 @@ Standard k-fold cross-validation is explicitly avoided because it allows future 
 
 ---
 
-## 6. Bug Fixes Applied Before Training
+## 6. Training Data Safeguards
 
-The following bugs were identified in an audit of the original codebase and corrected before any model training described in this document. All improvements below are measured on the corrected baseline.
+The following safeguards keep the training, backfill and inference paths consistent. All results in §7 are measured with them in place.
 
-### BUG-01: Missing `sqlite3` import — `macro_data_engine.py`
-The except block caught `sqlite3.Error` but the module never imported `sqlite3`. Any database failure caused a secondary `NameError` inside the handler, masking the original error. **Fix:** Added `import sqlite3` at the top of the file.
+### Database error handling — `macro_data_engine.py`
+The except block catches `sqlite3.Error` and the module imports `sqlite3`, so a database failure is reported as itself rather than masked by a secondary `NameError` inside the handler.
 
-### BUG-02: `auto_adjust` inconsistency — `ml_backfill_engine.py`
-`run_historical_backfill()` used `auto_adjust=False` while `run_daily_quant_scan()` used `auto_adjust=True`. After any stock split, ML features computed from unadjusted backfill prices were on a completely different scale from adjusted inference prices. **Fix:** Changed backfill to `auto_adjust=True`. Required a full database truncation of `quant_signals` and complete retraining.
+### Consistent `auto_adjust` — `ml_backfill_engine.py`
+`run_historical_backfill()` and `run_daily_quant_scan()` both use `auto_adjust=True`. With `auto_adjust=False` in the backfill, ML features computed after any stock split would be on a completely different scale from adjusted inference prices. Changing the setting requires truncating `quant_signals` and retraining.
 
-**Verification (NVDA split 10-for-1 June 2024):**
+**Example (NVDA 10-for-1 split, June 2024):**
 ```
-Before fix: close_price for NVDA in early 2025 ≈ $800–900 (unadjusted)
-After fix:  close_price for NVDA in early 2025 ≈ $115–130 (adjusted)
+Unadjusted: close_price for NVDA in early 2025 ≈ $800–900
+Adjusted:   close_price for NVDA in early 2025 ≈ $115–130
 ```
 
-### BUG-03: Cross-sectional z-score population collapse at inference
-During inference on a 3-10 ticker batch, `groupby('date').transform(zscore)` computed z-scores across trivially small populations. All features collapsed to near-zero z-scores, driving all model outputs to the base rate (~34%).
+### Cross-sectional z-score population at inference
+Computing `groupby('date').transform(zscore)` on a 3-10 ticker batch gives z-scores over trivially small populations. All features collapse to near-zero z-scores, driving all model outputs to the base rate (~34%).
 
-**Before fix — score distribution on 3 tickers:**
+**Score distribution when z-scoring only 3 tickers:**
 ```
 count=3, mean=36.43, std=1.38, min=34.92, max=37.63
 ```
 
-**After fix — score distribution on 339 tickers:**
+**Score distribution when z-scoring the full population (339 tickers):**
 ```
 count=184, mean=34.03, std=11.62, min=3.90, max=70.17
 ```
 
-**Fix:** `update_daily_ml_predictions()` now fetches ALL tickers at the latest date with complete features for z-scoring, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
+`update_daily_ml_predictions()` therefore fetches ALL tickers at the latest date with complete features for z-scoring, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
 
-### BUG-04: Calibration data leakage — `ml_training_engine.py`
-`CalibratedClassifierCV` calibrates probability outputs using the same data the base model was already fitted on. This inflates confidence score calibration quality. **Status:** Documented and deferred. Confidence scores are used as ranking signals only. Full fix requires a three-way temporal split and is scheduled for a future refactor.
+### Calibration data leakage — `ml_training_engine.py`
+`CalibratedClassifierCV` calibrates probability outputs using the same data the base model was already fitted on. This inflates confidence score calibration quality. **Status:** a known limitation. Confidence scores are used as ranking signals only. A full fix requires a three-way temporal split.
 
 ### Class imbalance correction
-The original model used `scoring='accuracy'` for hyperparameter search. Accuracy is a degenerate metric for imbalanced targets — a model predicting the majority class for every observation scores 73.8% accuracy while being completely useless.
+Hyperparameter search does not use `scoring='accuracy'`. Accuracy is a degenerate metric for imbalanced targets — a model predicting the majority class for every observation scores 73.8% accuracy while being completely useless.
 
-**Original class distribution (5-day target):**
+**Class distribution at a 5-day target:**
 ```
 Positive (1): 26,634  (26.2%)
 Negative (0): 74,848  (73.8%)
 ```
 
-**Fixes applied:**
+**Handling:**
 - `class_weight='balanced'` on RandomForestClassifier
 - `scale_pos_weight = neg_count / pos_count` (dynamic, computed per training run) on XGBClassifier
 - `scoring='average_precision'` on both RandomizedSearchCV instances
 
 ---
 
-## 7. Improvement History
+## 7. Feature Selection Evidence
 
-All improvements are measured on the same 82,633-row dataset (350-ticker universe, 2y history, 10-day target horizon where specified). PR-AUC is the primary evaluation metric.
+Each step below adds one change to the previous one. All steps are measured on the same 82,633-row dataset (350-ticker universe, 2y history, 10-day target horizon where specified). PR-AUC is the primary evaluation metric.
 
-### Iteration 0 — Corrected Baseline (post bug fixes)
+### Iteration 0 — Baseline
 
 **Features:** 10 technical features only  
 **Target horizon:** 5 days  
@@ -325,11 +324,11 @@ All improvements are measured on the same 82,633-row dataset (350-ticker univers
 
 **Distribution:**
 ```
-count=3 (inference on 3-ticker batch — BUG-03 not yet fixed)
+count=3 (inference z-scored on a 3-ticker batch)
 mean=36.43, std=1.38, min=34.92, max=37.63
 ```
 
-*Note: After BUG-03 fix with full population inference:*
+*With full-population inference:*
 ```
 count=109, mean=30.13, std=8.34, min=7.19, max=53.58
 ```
@@ -379,7 +378,7 @@ Std:              11.56
 
 **Change:** Added 2 relative strength features: `rel_strength_5d`, `rel_strength_20d`  
 **Scientific basis:** Cross-sectional momentum — stocks outperforming the market index tend to continue outperforming (Jegadeesh & Titman, 1993; Carhart, 1997 *"On Persistence in Mutual Fund Performance"*, Journal of Finance 52(1), pp. 57–82). Relative strength strips out the market beta component, isolating idiosyncratic price leadership from stocks simply rising with the tide.  
-**Implementation note:** SPY downloaded once via `download_spy_benchmark()` (`ml_backfill_engine.py`, shared with `quant_engine.py`'s daily scan since 2026-07-10) before the main ticker loop. UK stock caveat documented — SPY used as universal benchmark; FTSE-relative strength would be marginally more accurate for `.L` tickers.
+**Implementation note:** SPY downloaded once via `download_spy_benchmark()` (`ml_backfill_engine.py`, shared with `quant_engine.py`'s daily scan) before the main ticker loop. UK stock caveat documented — SPY used as universal benchmark; FTSE-relative strength would be marginally more accurate for `.L` tickers.
 
 **Result:**
 ```
@@ -455,7 +454,7 @@ Std:              11.62
 65-100 band:      1 stock (CLS at 70.17)
 ```
 
-**Note on gap above baseline:** The gap dropped from 0.1137 to 0.0869 because the baseline itself rose (higher positive prevalence makes random prediction harder to beat proportionally). This is not a regression — the absolute PR-AUC improvement of +0.0625 is the largest of any single change in this session.
+**Note on gap above baseline:** The gap dropped from 0.1137 to 0.0869 because the baseline itself rose (higher positive prevalence makes random prediction harder to beat proportionally). This is not a regression — the absolute PR-AUC improvement of +0.0625 is the largest of any single step.
 
 ---
 
@@ -463,7 +462,7 @@ Std:              11.62
 
 | Iteration | Change | PR-AUC | Baseline | Gap | % Above Random | Max Score | Std |
 |---|---|---|---|---|---|---|---|
-| 0 | Corrected baseline | 0.3232 | 0.2625 | 0.0607 | 23% | 53.58 | 8.34 |
+| 0 | Baseline | 0.3232 | 0.2625 | 0.0607 | 23% | 53.58 | 8.34 |
 | 1 | + Momentum factors | 0.3325 | 0.2526 | 0.0799 | 32% | 53.58 | 8.85 |
 | 2 | + Volatility regime | 0.3457 | 0.2531 | 0.0926 | 37% | 49.95 | 11.56 |
 | 3 | + Relative strength | 0.3557 | 0.2455 | 0.1102 | 45% | 49.04 | 10.00 |
@@ -528,7 +527,7 @@ Average Precision is the area under the Precision-Recall curve. It is the correc
 The distribution of `ml_confidence_score` across the inference universe is monitored at each training run. Key diagnostics:
 
 - **Std > 10.0:** Model is genuinely discriminating between stocks
-- **Std < 5.0:** Warning — model may be collapsing to base rate (check BUG-03 fix is deployed)
+- **Std < 5.0:** Warning — model may be collapsing to base rate (check that inference z-scores the full population, see §5.2)
 - **Max > 60:** Model has high-conviction setups present in the universe
 - **Mean near baseline × 100:** Distribution is centred correctly
 
@@ -559,10 +558,10 @@ The full pipeline runs via APScheduler:
 | File | Location | Description |
 |---|---|---|
 | `ml_ensemble.joblib` | `models/` | Serialised VotingClassifier ensemble |
-| `feature_stats.json` | `models/` | Training population means and stds per feature, plus the median training universe size (`_meta.train_universe_size`). Plain JSON, not a pickle: it is read on every Home Assistant poll through `ml_features.load_feature_stats()`, and a non-finite moment is stored as `null` and skipped by the drift check. The old `feature_stats.joblib` is no longer read and can be deleted by hand. Until the next Global Model Training run writes the JSON, the coverage thresholds use their fallbacks (30 for inference, 200 for the system check) and the drift check is skipped |
+| `feature_stats.json` | `models/` | Training population means and stds per feature, plus the median training universe size (`_meta.train_universe_size`). Plain JSON, not a pickle: it is read on every Home Assistant poll through `ml_features.load_feature_stats()`, and a non-finite moment is stored as `null` and skipped by the drift check. A leftover `feature_stats.joblib` is not read and can be deleted by hand. Until the first Global Model Training run writes the JSON, the coverage thresholds use their fallbacks (30 for inference, 200 for the system check) and the drift check is skipped |
 | `*.joblib.sklearn-version` | Beside each persisted estimator | Exact scikit-learn version used to train that artifact; startup queues Global Model Training (Walk-Forward) when it differs from the installed version |
 
-The shared `model_compatibility_engine.py` loader checks the sidecar before unpickling. Existing artifacts created before sidecars were introduced are checked by promoting scikit-learn's `InconsistentVersionWarning` to an error; a compatible legacy artifact receives its sidecar on first load.
+The shared `model_compatibility_engine.py` loader checks the sidecar before unpickling. An artifact without a sidecar is checked by promoting scikit-learn's `InconsistentVersionWarning` to an error; a compatible one receives its sidecar on first load.
 
 ### Database Columns Written
 
@@ -570,7 +569,7 @@ The shared `model_compatibility_engine.py` loader checks the sidecar before unpi
 |---|---|---|
 | `quant_signals` | `ml_confidence_score` | Score 0–100. Updated daily by inference |
 | `quant_signals` | `mom_1m` through `mom_12m_skip1m`, `atr_pct` | Momentum/volatility features, written by the daily quant scan (`quant_engine.py`) and re-derived over the full 2-year window by the weekly backfill |
-| `quant_signals` | `hist_vol_20`, `rel_strength_5d`, `rel_strength_20d` | As of 2026-07-10, also written by the daily quant scan (`quant_engine.py`), not just the weekly backfill — previously these three were backfill-only, so `score_quantile_predictions()`'s same-date "all features non-null" query would only succeed on the day the weekly backfill last ran (and even then only if `download_spy_benchmark()`'s cached SPY history happened to be date-aligned with the ticker; see `ml_backfill_engine.download_spy_benchmark()`'s `method='ffill'` reindex fix for the alignment half of this bug). `rel_strength_5d`/`20d` still require SPY data (`None` on failure — `ml_backfill_engine.download_spy_benchmark()`, shared by both the daily scan and the weekly backfill); `hist_vol_20` has no SPY dependency and always populates |
+| `quant_signals` | `hist_vol_20`, `rel_strength_5d`, `rel_strength_20d` | Written by the daily quant scan (`quant_engine.py`) as well as the weekly backfill, so `score_quantile_predictions()`'s same-date "all features non-null" query succeeds every day (`ml_backfill_engine.download_spy_benchmark()` aligns the cached SPY history to the ticker's dates with a `method='ffill'` reindex). `rel_strength_5d`/`20d` still require SPY data (`None` on failure — `ml_backfill_engine.download_spy_benchmark()`, shared by both the daily scan and the weekly backfill); `hist_vol_20` has no SPY dependency and always populates |
 
 ### UI Colour Thresholds
 
@@ -613,7 +612,7 @@ update_daily_ml_predictions(get_target_tickers())
 
 
 
-### Training memory (September 2026)
+### Training memory
 
 Both the classifier and Q10/Q90 training read the full eligible history through
 `ml_training_engine._load_training_history()`. SQLite results are fetched in
@@ -623,30 +622,27 @@ truncate history, normalize individual batches, or alter the temporal splits.
 Feature engineering and cross-sectional statistics still use the full population.
 Wide intermediate tables and evaluation models are released before later fits.
 
-The September investigation found 1,317,065 eligible rows in the copied database.
-On dev, loading that same query in a fresh process peaked at 2,618 MiB RSS before
-batching and 693 MiB after batching (about 74% less). These measurements cover SQL
-loading only, not the full training run. The resulting table was about 305 MiB.
-Production's September 20 kernel log recorded a global OOM kill at approximately
-6.26 GiB anonymous RSS on a 7.8 GiB host with no swap; the application log stopped
-before feature extraction after reporting only 1.0 GB available.
+On a copy of the database with 1,317,065 eligible rows, loading that query in a
+fresh process peaked at 2,618 MiB RSS unbatched and 693 MiB batched (about 74% less).
+These measurements cover SQL loading only, not the full training run. The resulting
+table was about 305 MiB. Training on a host with no swap and little free memory can
+be killed by the kernel's out-of-memory killer before feature extraction.
 
 The loader logs row count, table size, process RSS, and available system memory.
 The pre-load available-memory check is a coarse guard: reducing randomized
 search iterations does not reduce the size of the training dataset, and neither
 batching nor that guard guarantees protection from concurrent system-wide load.
 
-### Training runs in a child process (November 2026, LR-02)
+### Training runs in a child process
 
-Weekly training used to run inside the web process. On Sunday 25 Oct 2026 04:00 the
-process held 4.4 GB (after days of growth), the check passed with 1.0 GB available,
-the history load left 226 MiB, and the kernel OOM-killed the dashboard 39 s later.
+Training runs outside the web process because a long-lived web process holds several
+GB, so a memory-hungry history load inside it can make the kernel OOM-kill the dashboard.
 
 `scheduler_jobs.run_ml_training()` and the manual `POST /api/ml/trigger-training`
-now call `ml_training_process.run_training_child()`, which starts a fresh
+call `ml_training_process.run_training_child()`, which starts a fresh
 interpreter (`sys.executable -c ... child_main()`, not a fork of the large web process)
 that runs `train_global_ml_model()` and then `train_quantile_models()`. A step that
-fails does not stop the other, as before. Consequences:
+fails does not stop the other. Consequences:
 
 * The child's memory goes back to the OS when it exits, and the training stack
   (xgboost, scikit-learn) is imported only there.
@@ -664,16 +660,16 @@ fails does not stop the other, as before. Consequences:
   with an Error notification. While the child runs, the web process samples the host's
   available RAM (`memory_helpers.available_mib()`) every `ML_TRAINING_WATCHDOG_POLL_SECONDS` (2 s)
   and kills the child below `ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB` (300 MiB), ahead of
-  the kernel. The two numbers are initial values: the real peak was never measured.
+  the kernel. The two numbers are initial values, not measured peaks.
   The Success notification of each step ends with `Peak RSS N MiB` (kernel `VmHWM` of
   the child), and the supervisor logs `Global Model Training child finished: exit code
   .. sampled peak RSS .. lowest available RAM ..` for every outcome, including a kill.
-  Tune the two constants from those figures after the first runs.
+  Tune the two constants from those figures.
 * **Outcome.** The child exits 0 when both steps finished and `EXIT_STEP_FAILED` (3)
   when one returned `False`. Any non-zero exit (a step failure, a watchdog kill, a
   signal, a crash) raises `TrainingFailed`, so the scheduled job reports
   `ML Global Training failed: <reason>` (run history: error) instead of "completed
-  successfully", which the old runner printed even after an abort.
+  successfully".
 * **Unit setting.** systemd's default `OOMPolicy=stop` stops the whole service when
   the kernel kills any process in its cgroup, including this child. Set
   `OOMPolicy=continue` on the service (README, "Running as a Background Service")

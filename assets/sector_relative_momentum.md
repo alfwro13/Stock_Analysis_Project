@@ -33,7 +33,7 @@ The job fetches no price data and queues no refresh. `_load_close()` reads the s
 
 ## 3. Storage and freshness
 
-`sector_relative_momentum_results`, primary key `(ticker, window_sessions, as_of_date)`. Scored rows are stored for the whole pool; unavailable-reason rows (`no_metadata`, `not_equity`, `no_sector`, `no_currency`, `no_history`, `insufficient_history`, `small_cohort`) only for Portfolio/Watchlist tickers. A rerun with the same as-of date replaces the row and refreshes its `computed_at`. After each run rows whose `computed_at` is more than 30 days old are deleted, so a cohort's current row survives however old its as-of date is, while superseded as-of dates and tickers that left the pool age out. Pruning by as-of date relative to the newest as-of in the run is wrong: a cohort with stale parquet trails by weeks, and that rule deleted every scored row it had just written (production, Oct 2026). Each run stamps a short `input_revision` digest of the window's scored inputs.
+`sector_relative_momentum_results`, primary key `(ticker, window_sessions, as_of_date)`. Scored rows are stored for the whole pool; unavailable-reason rows (`no_metadata`, `not_equity`, `no_sector`, `no_currency`, `no_history`, `insufficient_history`, `small_cohort`) only for Portfolio/Watchlist tickers. A rerun with the same as-of date replaces the row and refreshes its `computed_at`. After each run rows whose `computed_at` is more than 30 days old are deleted, so a cohort's current row survives however old its as-of date is, while superseded as-of dates and tickers that left the pool age out. Pruning by as-of date relative to the newest as-of in the run would be wrong: a cohort with stale parquet trails by weeks, and that rule would delete every scored row it had just written. Each run stamps a short `input_revision` digest of the window's scored inputs.
 
 Readers always take the latest `as_of_date` per ticker and window and show it, so a value from an earlier session is never presented as today's. A ticker the job has not stored a row for shows `not_computed`, never a neutral zero.
 
@@ -41,7 +41,7 @@ Readers always take the latest `as_of_date` per ticker and window and show it, s
 
 - **Reports → Sector-Relative Momentum** — scope toggle (Portfolio + Watchlist / Universe) and window toggle (63 / 126 Sessions).
 - **Portfolio and Watchlist optional columns** (category "Sector-Relative Momentum"): `sector_rel_mom_63`, `sector_rel_rank_63`, `sector_rel_mom_126`, `sector_rel_rank_126` — see `assets/configurable_columns.md`.
-- **AI prompt** — `ai_engine._get_sector_peer_context()` now reads the persisted 63-session standing (rank, percentile, LEADER / MID-PACK / LAGGARD, strongest and weakest cohort members) instead of ranking `rel_strength_20d` itself. One calculation, three surfaces, identical numbers.
+- **AI prompt** — `ai_engine._get_sector_peer_context()` reads the persisted 63-session standing (rank, percentile, LEADER / MID-PACK / LAGGARD, strongest and weakest cohort members) rather than ranking `rel_strength_20d` itself. One calculation, three surfaces, identical numbers.
 
 The Reports card "Relative Strength Leaders" is unrelated: it is an RSI / MACD screen of stocks above their 50-day SMA.
 

@@ -1,11 +1,11 @@
 # Configurable Columns, Views, Advanced Filter & Sticky Header (Portfolio / Watchlist)
 
-Added July 2026, extended later that month with X-ray/Earnings Volatility columns, named
-Views, and an Advanced Filter builder. Desktop-only (≥769px). Five related additions to
-the Portfolio (`/portfolio`) and Watchlist (`/watchlist`) DataTables:
+Desktop-only (≥769px). Five related features of the Portfolio (`/portfolio`) and
+Watchlist (`/watchlist`) DataTables, covering X-ray/Earnings Volatility columns, named
+Views and an Advanced Filter builder:
 
 1. A **Columns** picker (toolbar dropdown) letting the user show/hide columns, from a catalog
-   of ~69 optional columns that weren't previously shown on either page at all (see below).
+   of ~69 optional columns that are not shown by default on either page (see below).
 2. A **Views** picker (toolbar dropdown, same visual style) for saving/applying named column
    presets — a bulk "show exactly these columns" shortcut layered on top of the Columns picker's
    per-column state. Ships with 3 built-in views; the user can add, overwrite, and delete views
@@ -62,9 +62,9 @@ optional-column `<th>`/`<td>` loop is generic. See AGENTS.md's Documentation
 Maintenance section — this is a mandatory step whenever new displayable data is
 added anywhere in the app, not an optional nice-to-have.
 
-### X-ray / Earnings Volatility columns (added in the same feature's second stage)
+### X-ray / Earnings Volatility columns
 
-Five columns needing a genuinely new JOIN, deliberately deferred from the first stage:
+Five columns that need their own JOIN:
 
 - `xray_beta` / `xray_annualized_vol` — from `xray_risk_cache`, joined on
   `(ticker, benchmark)` where `benchmark` is pinned to the fixed
@@ -128,16 +128,16 @@ practical usability ceiling for a focused view):
   market cap.
 - **Technical Signals** — RSI/MACD/trend/volatility/momentum/ML confidence.
 - **Position Targets** — Target Price, Low/High Target, Stop-Loss, Entry/Exit Zone,
-  Suggested Shares/Position Value. This view is the direct replacement for
-  Watchlist's removed `#targetFilter` "Has Target Set" dropdown (see below) — it
-  surfaces the same information as a column preset instead of a row filter.
+  Suggested Shares/Position Value. This view stands in for a
+  "Has Target Set" row filter (see below) — it surfaces that information as a column
+  preset instead of a row filter.
 
 Saving/renaming/deleting a view is a **full-list replacement** via
 `POST /api/ui-preferences/views` (`{scope, views: [...]}`) — the client always sends
 the complete updated list, matching `POST /api/ui-preferences/columns`'s existing
 pattern rather than adding separate add/rename/delete endpoints.
 
-**Size limits (SEC 23/27).** Both endpoints write into `config.json`, which every page reads, so
+**Size limits.** Both endpoints write into `config.json`, which every page reads, so
 they refuse oversize input with `422`: at most 20 Views per page, a view name of at most 100
 characters (the View name input carries `maxlength="100"`), 50 filter conditions per view, filter
 `value`/`value2` of at most 200 characters, and at most 200 keys of at most 64 characters in any
@@ -155,40 +155,32 @@ concept. This is why leaving the Columns picker open after applying a view shows
 now-current (view-derived) checkbox state, and why manually tweaking a checkbox
 after applying a view doesn't need any special "detach from view" handling.
 
-### Removal of Watchlist's `#targetFilter`
+### No Watchlist target filter
 
-Before Views existed, Watchlist had a `#targetFilter` dropdown ("All Rows" / "Has
-Target Set") that did two unrelated things at once: filtered rows via a
-`$.fn.dataTable.ext.search` predicate on `data-has-target`, and toggled 5 columns
-(Piotroski/Altman/Beneish vs. Low/High Target) via a `column_picker.js`
-`applyFilterOverride()` mechanism built specifically to AND that filter's intent
-with the user's saved column preference. Both were removed in favor of the
-Position Targets view: Piotroski/Altman/Beneish/Low Target/High Target are now
-plain, independently toggleable columns like any other (visible by default, since
-they're Watchlist *core* columns) — the row-level "only show tickers with a target
-set" filtering capability was deliberately not replaced (explicit product decision;
-sort/scan manually or via the Position Targets view instead). `applyFilterOverride`
-and its supporting `filterOverrides` state were deleted from `column_picker.js`
-entirely once nothing called it — do not re-add this pattern without a concrete
-second caller; a page-specific filter/column interaction like this is the
-exception, not something every page needs.
+Watchlist has no "Has Target Set" row-filter dropdown. Piotroski/Altman/Beneish/Low
+Target/High Target are plain, independently toggleable columns like any other (visible
+by default, since they're Watchlist *core* columns). Showing only tickers with a target
+set is deliberately not a built-in filter (explicit product decision): sort/scan
+manually, use the Position Targets view, or build an Advanced Filter condition.
+`column_picker.js` has no page-specific filter/column override mechanism; do not add
+one without a concrete second caller, because a page-specific filter/column interaction
+is the exception, not something every page needs.
 
 ## Advanced Filter — `static/js/advanced_filter.js`
 
 A per-page modal (`#advFilterModal`) for building multi-condition row filters over any
-column — core or optional, regardless of current visibility — on top of the pre-existing
-quick-filter dropdowns (Signal/Tags/Score/Sector), which are untouched and keep working
-exactly as before. Conditions combine with a single global **AND/OR toggle** (`logic`,
+column — core or optional, regardless of current visibility — on top of the
+quick-filter dropdowns (Signal/Tags/Score/Sector), which work independently. Conditions combine with a single global **AND/OR toggle** (`logic`,
 shown once ≥2 conditions exist) — not per-pair grouping, which was considered and rejected
 as unneeded complexity for this app's use cases. A worked example needing OR: "Low Target
-is not empty OR High Target is not empty" (added 2026-07-19) lists every ticker with any
+is not empty OR High Target is not empty" lists every ticker with any
 Position Target set — impossible to express under AND alone, since a single ticker rarely
 has both a low and a high target set simultaneously.
 
 **Column metadata drives the operator set.** Every column (`PORTFOLIO_CORE_COLUMNS` /
-`WATCHLIST_CORE_COLUMNS` / `OPTIONAL_COLUMNS`, all from `table_columns_helpers.py`) now
-carries a `fmt` — core columns didn't need one before this feature, since
-`build_optional_column_cells()`/`_format_value()` only ever run over `OPTIONAL_COLUMNS`.
+`WATCHLIST_CORE_COLUMNS` / `OPTIONAL_COLUMNS`, all from `table_columns_helpers.py`)
+carries a `fmt`, including core columns, although
+`build_optional_column_cells()`/`_format_value()` only run over `OPTIONAL_COLUMNS`.
 `advanced_filter.js`'s `FMT_FAMILY` map collapses the existing `fmt` vocabulary down to
 four operator families:
 
@@ -236,8 +228,8 @@ column visibility:**
   — `{logic: "AND"|"OR", conditions: [TableFilterCondition, ...]}`) travels through the
   exact same `POST /api/ui-preferences/views` full-list replacement `columns` already
   uses — no new endpoint. `model_dump(exclude_none=True)` keeps a filter-less view's
-  stored shape identical to before this feature (no stray `"filter": null` key), so older
-  saved views round-trip unchanged.
+  stored shape free of a stray `"filter": null` key, so views saved without a filter
+  round-trip unchanged.
 
   Applying a view fully replaces the active filter (its `filter` spec, or none) — there is
   no separate "current view" concept to merge against, matching the "Applying a view does
@@ -246,22 +238,20 @@ column visibility:**
   just a bulk shortcut for setting the one piece of "current filter" state, not a second
   persisted concept living alongside it.
 
-  **Wire-format migration (2026-07-19):** the filter's `logic` field was added after the
-  feature's initial ship, when `filter` was still a bare `List[TableFilterCondition]` with
-  no wrapper object and an implicit AND. `advanced_filter.js`'s `normalizeFilterSpec(raw)`
-  treats a bare array (old shape, from `localStorage` or an already-saved view) as
-  `{logic: 'AND', conditions: raw}` — the only backward-compat surface this needed, since
-  `resolve_views()`/`localStorage` reads are never themselves validated against the
-  `TableFilterSpec` Pydantic model (that only gates what the client POSTs going forward).
+  **Filter wire format:** the filter is `{logic, conditions}`. `advanced_filter.js`'s
+  `normalizeFilterSpec(raw)` also accepts a bare array of conditions (from `localStorage`
+  or an already-saved view) and treats it as `{logic: 'AND', conditions: raw}`, since
+  `resolve_views()`/`localStorage` reads are never validated against the
+  `TableFilterSpec` Pydantic model (that only gates what the client POSTs).
 
-`static/js/column_picker.js`'s `initViewsMenu(picker, opts)` gained two optional hooks to
+`static/js/column_picker.js`'s `initViewsMenu(picker, opts)` has two optional hooks to
 wire this in without column_picker.js knowing anything about filters itself:
 `opts.getExtraViewData()` (called on Save Current; its return value is merged into the
 saved view object — Advanced Filter passes `{filter: advFilter.getCurrentFilter()}`) and
 `opts.onApplyView(view)` (called after a saved view is applied; Advanced Filter calls
 `advFilter.applyFilter(view.filter || [])`).
 
-**Active-view indicator and delete confirmation (2026-07-19):** the Views dropdown marks
+**Active-view indicator and delete confirmation:** the Views dropdown marks
 whichever saved view (if any) exactly matches the *current* live state — visible-column
 set, full column order and active filter — with a "✓ Active" badge, via `initViewsMenu`'s private
 `isViewActive(view)` (column-set equality via `_columnSetsEqual`, filter equality via
@@ -274,12 +264,11 @@ no "detach from view" bookkeeping needed. Recomputed on every `renderMenu()` cal
 (after apply/save/delete) and additionally on the dropdown's own `show.bs.dropdown` event
 (`menuEl.closest('.dropdown')`), since checkbox toggles in the separate Columns dropdown
 don't call back into `initViewsMenu` — reopening the Views dropdown is the point the badge
-needs to be fresh, not every intervening column-visibility click. Deleting a view now asks
+needs to be fresh, not every intervening column-visibility click. Deleting a view asks
 `confirm('Delete the view "..."? This cannot be undone.')` first, matching every other
 destructive action's `confirm()` pattern elsewhere in the app (e.g.
-`static/js/accounts.js`, `static/js/notifications.js`) — there was previously no
-confirmation at all, so a stray click permanently discarded a saved view (columns and any
-filter) with no undo.
+`static/js/accounts.js`, `static/js/notifications.js`), because a deleted view (columns and any
+filter) cannot be restored.
 
 ## Front-end — `static/js/column_picker.js`
 
