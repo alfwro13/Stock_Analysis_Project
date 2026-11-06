@@ -111,6 +111,7 @@ NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS = 300  # a failed message is retried n
 NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS = 7200    # a queued Talk message older than this is dropped as stale
 NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS = 21600  # the "Nextcloud Talk delivery is failing" notification repeats at most this often
 NEXTCLOUD_TALK_STATS_RETENTION_DAYS = 90       # nextcloud_talk_stats rows older than this are pruned by the maintenance job
+YF_DOWNLOAD_THREAD_JOIN_SECONDS = 5         # per-thread wait for yfinance's download threads to exit before their stacks are released
 MCP_AUDIT_QUEUE_MAX         = 1000             # audit rows waiting for the writer thread; past it a row is dropped, never the request
 MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE = 600         # audit rows without a valid key or token (rejections, OAuth browser steps) stored per minute; the rest are counted into one summary row
 MCP_AUDIT_TEXT_MAX_CHARS    = 100            # request-derived text (JSON-RPC method, tool/prompt/resource name) stored in mcp_audit_log
