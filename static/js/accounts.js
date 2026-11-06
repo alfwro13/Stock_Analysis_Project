@@ -85,8 +85,8 @@ function _scraperStatusBadgeHtml(acc) {
 
 const _ACCOUNT_DETAIL_URL_SUFFIX = { Pension: '/pension', House: '/house' };
 
-function _pendingTopupTagHtml(acc) {
-    const count = (acc.pending_topups || []).length;
+function _pendingActionTagHtml(pendingItems) {
+    const count = (pendingItems || []).length;
     if (!count) return '';
     const suffix = count > 1 ? ` &times;${count}` : '';
     return ` <span class="account-badge account-badge-pending">[PENDING ACTION${suffix}]</span>`;
@@ -103,7 +103,7 @@ function _accountCardHtml(acc) {
         <div class="guide-card h-100" id="account-card-${acc.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h4 class="mb-0">${escapeHtml(acc.name)} <span class="account-badge">${escapeHtml(acc.account_type)}</span>${isTrading ? _pendingTopupTagHtml(acc) : ''}</h4>
+                    <h4 class="mb-0">${escapeHtml(acc.name)} <span class="account-badge">${escapeHtml(acc.account_type)}</span>${isTrading ? _pendingActionTagHtml(acc.pending_topups) : ''}${isPension ? _pendingActionTagHtml(acc.pending_reminders) : ''}</h4>
                     <p class="text-muted account-stats-line mb-0">${_accountStatsLine(acc)}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${escapeHtml(acc.note)}</p>` : ''}
                 </div>
@@ -111,6 +111,7 @@ function _accountCardHtml(acc) {
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAccountModal(${acc.id})">Edit</button>
                     ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper ${_scraperStatusBadgeHtml(acc)}</button>` : ''}
                     ${isPension ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openBenchmarkModal(${acc.id})">&#127919; Benchmarks</button>` : ''}
+                    ${isPension ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openRemindersModal(${acc.id})">&#128276; Reminders</button>` : ''}
                     ${isTrading ? `<button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAutoTopupModal(${acc.id})">&#9200; Auto Top-up</button>` : ''}
                 </div>
             </div>

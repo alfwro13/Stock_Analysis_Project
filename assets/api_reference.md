@@ -3821,7 +3821,7 @@ HTML page. Dedicated House account detail view (used instead of the generic ledg
 
 ### `GET /api/accounts`
 
-Returns all non-deleted accounts. The stored scraper request headers may carry a provider cookie or `Authorization` value, so `scraper_headers` is never returned: each account carries `scraper_headers_set` (boolean) instead (`db_accounts._public_account()`, which `get_account()`/`get_accounts()`/`get_watchlist_account()` all apply; the scraper reads the real value through `db_accounts.get_scraper_headers()`). Each account is annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`), and `pending_topups` (unresolved rows from `account_autotopup_pending`, oldest first — powers the `[PENDING ACTION]` tile tag). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
+Returns all non-deleted accounts. The stored scraper request headers may carry a provider cookie or `Authorization` value, so `scraper_headers` is never returned: each account carries `scraper_headers_set` (boolean) instead (`db_accounts._public_account()`, which `get_account()`/`get_accounts()`/`get_watchlist_account()` all apply; the scraper reads the real value through `db_accounts.get_scraper_headers()`). Each account is annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Pension accounts are also annotated with `pending_reminders` (unresolved rows from `account_reminder_pending`, oldest first, each with `title` such as "November 2026 Pay In" and `type_label` — powers the `[PENDING ACTION]` tile tag). Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`), and `pending_topups` (unresolved rows from `account_autotopup_pending`, oldest first — powers the `[PENDING ACTION]` tile tag). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
 
 **Response:**
 ```json
@@ -4167,8 +4167,9 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 
 **Request body:**
 ```json
-{ "txn_date": "2026-06-27", "amount": 500.0, "unit_price": null }
+{ "txn_date": "2026-06-27", "amount": 500.0, "unit_price": null, "reminder_pending_id": null }
 ```
+`reminder_pending_id` (optional) names a pending `pay_in` Pension Reminder of this account; it is checked before anything is recorded (422 if unknown, of the other type or already resolved) and marked `done` with the new transaction once the Pay In is saved.
 
 **Response:** `{ "status": "success", "txn_id": 42, "units": 312.5, "unit_price": 1.6 }`. Returns 422 if `txn_date` is not a real `YYYY-MM-DD` date, or if no price can be resolved for that date and no override was supplied.
 
@@ -4183,12 +4184,46 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 { "txn_date": "2026-07-01", "units_after": 995.0, "unit_price": null }
 ```
 
+Both bodies accept an optional `reminder_pending_id` with the same meaning as on `pension/contribution`, here for a pending `admin_fee` reminder.
+
 **Request body (units deducted, stated directly):**
 ```json
 { "txn_date": "2026-07-01", "units_removed": 5.0, "unit_price": null }
 ```
 
 **Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if `txn_date` is not a real `YYYY-MM-DD` date, if neither or both of `units_after`/`units_removed` are supplied, if the resulting `units_removed` is not positive or exceeds the units currently held, or if no price can be resolved and no override was supplied.
+
+---
+
+### Pension Reminders
+
+Monthly Pay In / Admin Fee prompts on a `Pension` account; see the Pension Reminders glossary entry. All five endpoints answer 404 for an unknown account and 400 for one that is not `Pension`. Nothing here is in `API_KEY_ROUTES`.
+
+### `GET /api/accounts/{id}/reminders`
+
+Returns `{"status": "success", "reminders": [{"id": 3, "account_id": 7, "reminder_type": "pay_in", "cadence": "monthly", "day_of_month": 1, "enabled": 0, "created_at": "2026-06-27 09:00:00"}]}`. Rate limit: 60/minute.
+
+### `POST /api/accounts/{id}/reminders`
+
+Creates a reminder and, when `enabled`, registers its dynamic job `account_reminder_{reminder_id}_job` (08:00 in `USER_TIMEZONE`). `enabled` defaults to `false`.
+
+```json
+{ "reminder_type": "pay_in", "cadence": "monthly", "day_of_month": 1, "enabled": false }
+```
+
+Returns `{"status": "success", "message": "Reminder saved.", "id": 3}`. 422 if `reminder_type` is not `pay_in`/`admin_fee`, `cadence` is not `monthly` or `day_of_month` is outside 1-31. Rate limit: 30/minute.
+
+### `PUT /api/accounts/{id}/reminders/{reminder_id}`
+
+Replaces the reminder's fields (same body as `POST`) and re-registers or removes its job according to `enabled`. 404 if the reminder does not belong to the account. Rate limit: 30/minute.
+
+### `DELETE /api/accounts/{id}/reminders/{reminder_id}`
+
+Removes the reminder and its job. Tasks it already staged stay pending. Rate limit: 30/minute.
+
+### `POST /api/accounts/{id}/reminders/pending/{pending_id}/dismiss`
+
+Marks a pending task `dismissed` with no transaction. Returns `{"status": "success", "message": "Reminder dismissed."}`; 400 if the task is not this account's or has already been resolved. Rate limit: 30/minute.
 
 ---
 

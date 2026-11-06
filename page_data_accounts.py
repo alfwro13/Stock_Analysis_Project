@@ -55,6 +55,7 @@ def trading_account_context(acc, chart_period_cookie):
 
 
 def pension_account_context(acc):
+    from account_reminders_engine import labelled_pending_reminders
     from accounts_engine import (
         account_summary, pension_activities, pension_benchmark_overlay, pension_display_label,
         scraped_price_performance,
@@ -86,6 +87,7 @@ def pension_account_context(acc):
         "summary": account_summary(account_id),
         "performance": scraped_price_performance(account_id),
         "activities": pension_activities(account_id),
+        "pending_reminders": labelled_pending_reminders(account_id),
         "price_chart_html": price_chart_html,
         "value_chart_html": value_chart_html,
         "base_currency": BASE_CURRENCY,

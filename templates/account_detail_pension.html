@@ -20,6 +20,22 @@
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openPensionFeeModal({{ account.id }})">Admin Fee</button>
 </div>
 
+{% if pending_reminders %}
+<div class="availability-banner no-data" id="pension-reminders-banner">
+    <strong>&#9888; {{ pending_reminders | length }} pension task{{ '' if pending_reminders | length == 1 else 's' }} waiting</strong>
+    {% for p in pending_reminders %}
+    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mt-2" id="pension-reminder-{{ p.id }}">
+        <span><strong>{{ p.title }}</strong> pending &middot; due {{ p.due_date }}</span>
+        <span class="d-flex gap-2">
+            <button type="button" class="btn btn-primary btn-sm" onclick="recordPensionReminder({{ p.id }})">Record {{ p.type_label }}</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="dismissPensionReminder({{ p.id }})">Dismiss</button>
+        </span>
+    </div>
+    {% endfor %}
+    <div id="pension-reminders-status" class="status-msg-sm mt-2"></div>
+</div>
+{% endif %}
+
 {# ── Charts ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="chart-wrapper" id="pension-price-chart-outer-wrapper">
@@ -118,6 +134,7 @@
     window.BASE_CURRENCY = "{{ base_currency }}";
     window.ACCOUNT_TRANSACTIONS = {{ activities | tojson }};
     window.CURRENT_ACCOUNT = {{ account | tojson }};
+    window.PENSION_PENDING_REMINDERS = {{ pending_reminders | tojson }};
 </script>
 <script src="/static/js/chart_fullscreen.js?v={{ css_version }}"></script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>

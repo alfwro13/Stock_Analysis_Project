@@ -58,10 +58,12 @@ async function _fetchPensionUnitsAsOf(accountId, date) {
 }
 
 let _pensionContribUnitsBefore = null;
+let _pensionContribReminderId = null;
 
-function openPensionContributionModal(accountId) {
+function openPensionContributionModal(accountId, options = {}) {
     document.getElementById('pension-contrib-account-id').value = accountId;
-    document.getElementById('pension-contrib-date').value = new Date().toISOString().slice(0, 10);
+    _pensionContribReminderId = options.reminderPendingId ?? null;
+    document.getElementById('pension-contrib-date').value = options.date || new Date().toISOString().slice(0, 10);
     document.getElementById('pension-contrib-amount').value = '';
     document.getElementById('pension-contrib-price').value = '';
     document.getElementById('pension-contrib-preview').innerHTML = '';
@@ -119,6 +121,7 @@ async function submitPensionContribution() {
                 txn_date: txnDate,
                 amount,
                 unit_price: priceOverride === '' ? null : parseFloat(priceOverride),
+                reminder_pending_id: _pensionContribReminderId,
             }),
         });
         const data = await r.json();
@@ -134,6 +137,7 @@ async function submitPensionContribution() {
 }
 
 let _pensionFeeUnitsBefore = null;
+let _pensionFeeReminderId = null;
 
 function _pensionFeeMode() {
     return document.querySelector('input[name="pension-fee-mode"]:checked').value;
@@ -146,9 +150,10 @@ function _onPensionFeeModeChange() {
     _updatePensionFeePreview();
 }
 
-function openPensionFeeModal(accountId) {
+function openPensionFeeModal(accountId, options = {}) {
     document.getElementById('pension-fee-account-id').value = accountId;
-    document.getElementById('pension-fee-date').value = new Date().toISOString().slice(0, 10);
+    _pensionFeeReminderId = options.reminderPendingId ?? null;
+    document.getElementById('pension-fee-date').value = options.date || new Date().toISOString().slice(0, 10);
     document.getElementById('pension-fee-mode-after').checked = true;
     document.getElementById('pension-fee-units-after').value = '';
     document.getElementById('pension-fee-units-removed').value = '';
@@ -234,6 +239,7 @@ async function submitPensionFee() {
                 units_after: mode === 'after' ? parseFloat(unitsAfter) : null,
                 units_removed: mode === 'removed' ? parseFloat(unitsRemoved) : null,
                 unit_price: priceOverride === '' ? null : parseFloat(priceOverride),
+                reminder_pending_id: _pensionFeeReminderId,
             }),
         });
         const data = await r.json();
@@ -243,6 +249,33 @@ async function submitPensionFee() {
             if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else {
             status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed.')}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;
+    }
+}
+
+function recordPensionReminder(pendingId) {
+    const pending = (window.PENSION_PENDING_REMINDERS || []).find(p => p.id === pendingId);
+    if (!pending) return;
+    const options = { date: pending.due_date, reminderPendingId: pending.id };
+    if (pending.reminder_type === 'pay_in') {
+        openPensionContributionModal(window.CURRENT_ACCOUNT.id, options);
+    } else {
+        openPensionFeeModal(window.CURRENT_ACCOUNT.id, options);
+    }
+}
+
+async function dismissPensionReminder(pendingId) {
+    const status = document.getElementById('pension-reminders-status');
+    status.innerHTML = '<span class="msg-info">Dismissing...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${window.CURRENT_ACCOUNT.id}/reminders/pending/${pendingId}/dismiss`, { method: 'POST' });
+        const data = await r.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            status.innerHTML = `<span class="msg-error">${escapeHtml(data.message || 'Failed to dismiss.')}</span>`;
         }
     } catch (e) {
         status.innerHTML = `<span class="msg-error">${escapeHtml(e.message)}</span>`;

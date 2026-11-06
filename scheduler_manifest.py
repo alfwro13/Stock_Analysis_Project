@@ -18,7 +18,7 @@ JOB_GRAPH: dict[str, dict] = {
     # same downstream artifacts (e.g. "portfolio") so it must appear on the graph too.
     "manual_account_entry_source":    {"label": "Manual Account Entry",                           "category": "manual",      "engine": "accounts_engine.py",            "produces": ["manual_account_entries"],                                     "consumes": [],                                                                   "non_job": True, "settings_anchor": None},
     "trading_accounts_node":          {"label": "Trading Account(s)",                             "category": "manual",      "engine": "accounts_engine.py",            "produces": ["portfolio"],                                                  "consumes": ["manual_account_entries", "account_autotopup_pending"],              "non_job": True, "settings_anchor": None},
-    "pension_accounts_node":          {"label": "Pension Account(s)",                              "category": "manual",      "engine": "accounts_engine.py",            "produces": ["pension_account_data"],                                       "consumes": ["manual_account_entries"],                                           "non_job": True, "settings_anchor": None},
+    "pension_accounts_node":          {"label": "Pension Account(s)",                              "category": "manual",      "engine": "accounts_engine.py",            "produces": ["pension_account_data"],                                       "consumes": ["manual_account_entries", "account_reminder_pending"],               "non_job": True, "settings_anchor": None},
     "house_accounts_node":            {"label": "House Account(s)",                                "category": "manual",      "engine": "accounts_engine.py",            "produces": ["house_account_data"],                                         "consumes": ["manual_account_entries"],                                           "non_job": True, "settings_anchor": None},
     "position_targets_source":        {"label": "Position Targets",                               "category": "manual",      "engine": "api_routes_accounts.py",        "produces": ["holding_price_limits"],                                       "consumes": ["portfolio", "watchlist_items"],                                     "non_job": True, "settings_anchor": None},
 
@@ -84,6 +84,7 @@ JOB_GRAPH: dict[str, dict] = {
     "memory_telemetry_job":           {"label": "Process Memory Telemetry",                       "category": "maintenance", "engine": "memory_helpers.py",             "produces": [],                                                             "consumes": [],                                                                    "settings_anchor": "diagnostics-panel"},
     "account_scraper_dynamic":        {"label": "Account Price Scraper",                          "category": "portfolio",   "engine": "account_scraper_engine.py",     "produces": ["account_price_history"],                                      "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
     "account_autotopup_dynamic":      {"label": "Account Auto Top-up",                            "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_autotopup_pending"],                                  "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
+    "account_reminder_dynamic":       {"label": "Pension Reminders",                              "category": "portfolio",   "engine": "account_reminders_engine.py",   "produces": ["account_reminder_pending"],                                   "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
     "treasury_bill_maturity_sweep_job": {"label": "UK Treasury Bill Maturity Sweep",              "category": "portfolio",   "engine": "treasury_bill_engine.py",       "produces": ["account_transactions", "treasury_bills"],                    "consumes": ["treasury_bills"],                                                   "settings_anchor": "automation-schedulers-card"},
     "backup_job":                     {"label": "Automated Backup",                               "category": "maintenance", "engine": "backup_engine.py",              "produces": ["backup_archive"],                                             "consumes": ["analysis.db", "data", "models"],                                    "settings_anchor": "backup-recovery-card"},
 
@@ -200,6 +201,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")
 _DYNAMIC_ACCOUNT_SCRAPER_RE = re.compile(r"^account_scraper_\d+_job$")
 _DYNAMIC_ACCOUNT_TOPUP_RE = re.compile(r"^account_autotopup_\d+_job$")
+_DYNAMIC_ACCOUNT_REMINDER_RE = re.compile(r"^account_reminder_\d+_job$")
 
 
 def etf_predictor_job_label(job_id: str) -> str:
@@ -245,4 +247,6 @@ def _resolve_manifest(job_id: str) -> dict | None:
         return JOB_GRAPH["account_scraper_dynamic"]
     if _DYNAMIC_ACCOUNT_TOPUP_RE.match(job_id):
         return JOB_GRAPH["account_autotopup_dynamic"]
+    if _DYNAMIC_ACCOUNT_REMINDER_RE.match(job_id):
+        return JOB_GRAPH["account_reminder_dynamic"]
     return None
