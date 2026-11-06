@@ -613,8 +613,8 @@ class TestGetYahooApiCallLog:
 class TestYfinanceInplaceWarningFilter:
     @staticmethod
     def _yfinance_parse_quotes():
-        from yfinance import utils
-        return utils.parse_quotes({
+        import yahoo_engine
+        return yahoo_engine.yf.utils.parse_quotes({
             "timestamp": [2, 1],
             "indicators": {"quote": [{"open": [1, 1], "high": [1, 1], "low": [1, 1], "close": [1, 1], "volume": [1, 1]}]},
         })
