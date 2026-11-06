@@ -12,7 +12,7 @@ mcp>=2.3,<3
 yfinance==1.7.0
 multitasking>=0.0.13
 pandas==3.1.0
-pyarrow==26.0.0
+pyarrow==26.0.1
 ta==0.11.0
 plotly==7.1.0
 Jinja2==3.1.6
