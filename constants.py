@@ -7,6 +7,8 @@ PREDICTION_RETURN_THRESHOLD = 0.03  # 3% return required for a positive label
 # ── Earnings Volatility drift prediction ───────────────────────────────────────
 EARNINGS_DRIFT_HORIZONS = (1, 5, 20)  # trading days after earnings for signed drift stats + predictions
 
+DAILY_BAR_COLUMNS = ("Open", "High", "Low", "Close", "Volume")  # what prepare_daily_history() leaves in every ticker's data/historical file
+
 # ── Market regime classification ───────────────────────────────────────────────
 REGIME_CRASH_VOL    = 35.0  # annualised vol % at or above which regime = Crash
 REGIME_VOLATILE_VOL = 20.0  # annualised vol % at or above which regime = Volatile

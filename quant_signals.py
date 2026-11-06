@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import ta
 
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
@@ -15,8 +16,9 @@ from fundamentals_helpers import calculate_peter_lynch_peg
 from pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import contained_ticker_path, epoch_to_iso_date
+from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker
 from constants import (
+    DAILY_BAR_COLUMNS,
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
 )
@@ -898,15 +900,36 @@ class QuantEngine:
         except Exception as conn_e:
             logger.error("Failed to secure database connection for %s: %s", ticker, conn_e)
 
+    @staticmethod
+    def _history_kind(ticker: str) -> str:
+        """'not_bars' for a file without every daily-bar column (a regime cache), 'empty' for bars with no valid Close; an unreadable file is 'bars' so analyze_ticker reports it."""
+        filepath = contained_ticker_path(HISTORICAL_DIR, ticker, ".parquet")
+        try:
+            if not set(DAILY_BAR_COLUMNS) <= set(pq.read_schema(filepath).names):
+                return "not_bars"
+            has_close = pd.read_parquet(filepath, columns=["Close"])["Close"].notna().any()
+            return "bars" if has_close else "empty"
+        except Exception:
+            return "bars"
+
     def run_all(self) -> None:
-        from utils import is_synthetic_ticker
         logger.info("Starting Institutional Quantamental Engine...")
+        skipped = {"not_bars": [], "empty": []}
         for filename in os.listdir(HISTORICAL_DIR):
-            if filename.endswith(".parquet") and "BASELINE" not in filename:
-                ticker = filename.replace(".parquet", "")
-                if is_synthetic_ticker(ticker):
-                    continue
+            if not filename.endswith(".parquet") or "BASELINE" in filename:
+                continue
+            ticker = filename.replace(".parquet", "")
+            if is_synthetic_ticker(ticker):
+                continue
+            kind = self._history_kind(ticker)
+            if kind == "bars":
                 self.analyze_ticker(ticker)
+            else:
+                skipped[kind].append(ticker)
+        for kind, reason in (("not_bars", "is not daily OHLCV bars"), ("empty", "has no valid Close")):
+            if skipped[kind]:
+                logger.info("Quant scan skipped %d file(s) whose stored history %s: %s",
+                            len(skipped[kind]), reason, ", ".join(sorted(skipped[kind])))
         logger.info("Analysis Complete. Master Database is fully updated.")
 
 if __name__ == "__main__":
