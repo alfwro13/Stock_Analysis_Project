@@ -10,8 +10,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import log_config
 from log_config import (
-    LOG_FORMAT, RedactAccessLogFilter, SafeFormatter, configure_file_logging, effective_log_dir, redact_secrets,
-    resolve_log_dir, uvicorn_log_config,
+    LOG_FORMAT, RedactAccessLogFilter, SafeFormatter, configure_console_logging, configure_file_logging,
+    effective_log_dir, redact_secrets, resolve_log_dir, uvicorn_log_config,
 )
 
 pytestmark = pytest.mark.config
@@ -152,6 +152,51 @@ class TestArchive:
 
 def _record(msg, *args, exc_info=None):
     return logging.LogRecord("t", logging.INFO, __file__, 1, msg, args, exc_info)
+
+
+def _app_root_handlers():
+    return [h for h in logging.getLogger().handlers if not type(h).__module__.startswith("_pytest")]
+
+
+@pytest.fixture
+def restore_root_logging():
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
+    yield root
+    for h in list(root.handlers):
+        if h not in handlers:
+            h.close()
+    root.handlers[:] = handlers
+    root.setLevel(level)
+
+
+class TestConsoleLogging:
+    def test_replaces_rich_handler_installed_by_mcp_sdk(self, restore_root_logging):
+        from mcp.server.mcpserver.utilities.logging import configure_logging
+
+        restore_root_logging.handlers.clear()
+        configure_logging("INFO")
+        assert [type(h).__name__ for h in restore_root_logging.handlers] == ["RichHandler"]
+
+        configure_console_logging()
+
+        handlers = restore_root_logging.handlers
+        assert len(handlers) == 1 and type(handlers[0]) is logging.StreamHandler
+        assert isinstance(handlers[0].formatter, SafeFormatter)
+        assert restore_root_logging.level == logging.INFO
+
+    def test_console_line_is_one_plain_line(self, restore_root_logging, capsys):
+        configure_console_logging()
+        logging.getLogger("x").info("a\nb token=secret")
+        err = capsys.readouterr().err
+        assert err.count("\n") == 1 and "\\n" in err and "secret" not in err
+
+    def test_main_module_leaves_no_rich_handler_on_root(self):
+        import main  # noqa: F401
+
+        handlers = _app_root_handlers()
+        assert not any(type(h).__module__.startswith("rich") for h in handlers)
+        assert handlers and all(isinstance(h.formatter, SafeFormatter) for h in handlers)
 
 
 class TestSafeFormatter:

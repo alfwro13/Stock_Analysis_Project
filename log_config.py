@@ -35,6 +35,13 @@ class SafeFormatter(logging.Formatter):
         return redact_secrets(super().formatException(ei))
 
 
+def configure_console_logging() -> None:
+    """force=True: the MCP SDK's MCPServer constructor runs logging.basicConfig with a RichHandler at import time, which turns a plain basicConfig into a silent no-op and leaves the journal wrapped, coloured and unsanitised (LR-06)."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(SafeFormatter(LOG_FORMAT))
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
+
+
 class RedactAccessLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args

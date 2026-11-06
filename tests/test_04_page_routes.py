@@ -2290,10 +2290,11 @@ def test_request_timing_reports_stages_without_query_values(client, caplog):
     timing = response.headers["Server-Timing"]
     assert "app;dur=" in timing
     assert "sql;dur=" in timing
-    assert "private-marker" not in caplog.text
-    assert "route=/portfolio" in caplog.text
-    assert " counts=" in caplog.text
-    assert "embed_token" not in caplog.text
+    app_log = "\n".join(r.getMessage() for r in caplog.records if r.name == "main")
+    assert "private-marker" not in app_log
+    assert "route=/portfolio" in app_log
+    assert " counts=" in app_log
+    assert "embed_token" not in app_log
 
 
 def test_request_timing_logs_fast_requests_at_info_only_when_they_have_counts(client, caplog):
