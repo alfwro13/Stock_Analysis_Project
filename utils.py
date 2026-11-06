@@ -17,8 +17,6 @@ from time import perf_counter
 from typing import Any, Optional
 from urllib.parse import quote, urlsplit
 
-from constants import HMM_CACHE_STEM, IF_CACHE_STEM
-
 logger = logging.getLogger(__name__)
 
 _request_stages: ContextVar[list[tuple[str, float]] | None] = ContextVar("request_stages", default=None)
@@ -397,14 +395,6 @@ def is_synthetic_ticker(ticker: str) -> bool:
     from treasury_bill_engine import parse_tbill_buy_txn_id
     from account_scraper_engine import parse_pension_account_id
     return parse_tbill_buy_txn_id(ticker) is not None or parse_pension_account_id(ticker) is not None
-
-
-NON_TICKER_HISTORY_STEMS = frozenset({HMM_CACHE_STEM, IF_CACHE_STEM})
-
-
-def is_non_ticker_history_file(stem: str) -> bool:
-    """True for a data/historical file that is not a ticker's daily bars: a baseline series or a regime_engine cache."""
-    return "BASELINE" in stem or stem in NON_TICKER_HISTORY_STEMS
 
 
 NON_YAHOO_REGISTRY_TICKERS = frozenset({"UK10YG"})

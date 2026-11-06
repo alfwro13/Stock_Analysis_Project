@@ -32,17 +32,23 @@ def test_run_all_skips_tbill_synthetic_tickers(tmp_path):
     assert analyzed == {"AAPL"}
 
 
-def _write_history(directory, name, closes):
+def _write_history(directory, name, closes, bars=True):
     index = pd.date_range("2026-01-01", periods=len(closes), freq="D")
-    pd.DataFrame({"Close": closes}, index=index).to_parquet(directory / f"{name}.parquet")
+    frame = pd.DataFrame({"Close": closes}, index=index)
+    if bars:
+        for column in ("Open", "High", "Low"):
+            frame[column] = frame["Close"]
+        frame["Volume"] = 100
+    frame.to_parquet(directory / f"{name}.parquet")
 
 
-def test_run_all_skips_regime_caches_and_empty_history(tmp_path, caplog):
-    """LR-08: the regime caches and tickers whose stored Close is all NaN (delisted) were analysed
-    every night and logged an ERROR each; they are skipped, the empty ones named once at INFO."""
+def test_run_all_skips_non_bar_files_and_empty_history(tmp_path, caplog):
+    """LR-08: regime caches (no OHLCV columns) and tickers whose stored Close is all NaN (delisted)
+    were analysed every night and logged an ERROR each; they are skipped and named once at INFO."""
     _write_history(tmp_path, "AAPL", [1.0, 2.0, 3.0])
-    _write_history(tmp_path, "SPY_hmm", [1.0, 2.0])
-    _write_history(tmp_path, "market_stress_if", [1.0, 2.0])
+    _write_history(tmp_path, "SPY_hmm", [1.0, 2.0], bars=False)
+    _write_history(tmp_path, "market_stress_if", [1.0, 2.0], bars=False)
+    _write_history(tmp_path, "FUTURE_CACHE", [1.0, 2.0], bars=False)
     _write_history(tmp_path, "SP500_BASELINE", [1.0, 2.0])
     _write_history(tmp_path, "ZNGA", [float("nan")] * 3)
     _write_history(tmp_path, "PFC.L", [float("nan")] * 3)
@@ -54,11 +60,11 @@ def test_run_all_skips_regime_caches_and_empty_history(tmp_path, caplog):
         engine.run_all()
 
     assert {c.args[0] for c in mock_analyze.call_args_list} == {"AAPL"}
-    skipped = [r for r in caplog.records if "skipped" in r.getMessage()]
-    assert len(skipped) == 1
-    assert skipped[0].levelname == "INFO"
-    assert "2 ticker(s)" in skipped[0].getMessage()
-    assert "PFC.L, ZNGA" in skipped[0].getMessage()
+    skipped = {r.getMessage() for r in caplog.records if "skipped" in r.getMessage()}
+    assert len(skipped) == 2
+    assert any("3 file(s)" in m and "is not daily OHLCV bars" in m and "FUTURE_CACHE, SPY_hmm, market_stress_if" in m for m in skipped)
+    assert any("2 file(s)" in m and "has no valid Close" in m and "PFC.L, ZNGA" in m for m in skipped)
+    assert all(r.levelname == "INFO" for r in caplog.records if "skipped" in r.getMessage())
 
 
 def test_run_all_still_analyses_a_file_it_cannot_read(tmp_path):
@@ -71,17 +77,6 @@ def test_run_all_still_analyses_a_file_it_cannot_read(tmp_path):
         engine.run_all()
 
     assert {c.args[0] for c in mock_analyze.call_args_list} == {"BROKEN"}
-
-
-def test_regime_cache_paths_are_the_excluded_stems():
-    """The excluded stems and the files regime_engine writes come from the same constants."""
-    import regime_engine
-    from utils import is_non_ticker_history_file
-
-    assert is_non_ticker_history_file(regime_engine._HMM_CACHE_PATH.stem)
-    assert is_non_ticker_history_file(regime_engine._IF_CACHE_PATH.stem)
-    assert is_non_ticker_history_file("TYX_BASELINE")
-    assert not is_non_ticker_history_file("SPY")
 
 
 _SAVE_TO_DB_DEFAULTS = dict(

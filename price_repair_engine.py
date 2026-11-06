@@ -12,6 +12,7 @@ import pandas as pd
 
 from cache_refresh_helpers import request_cache_refresh
 from config import DATA_DIR, HISTORICAL_DIR
+from constants import DAILY_BAR_COLUMNS
 from database import get_connection
 from quant_signals import QuantEngine
 from utils import normalize_ticker, safe_ticker_filename
@@ -20,7 +21,7 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-BAR_FIELDS = ("Open", "High", "Low", "Close", "Volume")
+BAR_FIELDS = DAILY_BAR_COLUMNS
 REPAIRS_PATH = DATA_DIR / "price_repairs.json"
 _repair_lock = threading.Lock()
 
