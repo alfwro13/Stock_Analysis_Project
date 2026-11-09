@@ -200,8 +200,8 @@ def _seed_quant(ticker, date, close, q10=None, q90=None, score=None):
     conn = db.get_connection()
     try:
         conn.execute(
-            """INSERT OR REPLACE INTO quant_signals (ticker, date, close_price, price_q10, price_q90, composite_score)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT OR REPLACE INTO quant_signals (ticker, date, close_price, price_q10, price_q90, quantile_scored_at, composite_score)
+               VALUES (?, ?, ?, ?, ?, datetime('now'), ?)""",
             (ticker, date, close, q10, q90, score),
         )
         conn.commit()

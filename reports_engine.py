@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Any
 from database import get_connection
+from db_helpers import ml_fresh_since
 from utils import is_iso_date
 from fundamentals_helpers import (
     QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,
@@ -195,7 +196,7 @@ def get_dividend_harvest_setups(
             s.dividend_yield,
             s.ex_dividend_date,
             s.composite_score,
-            q.ml_confidence_score
+            CASE WHEN q.ml_scored_at >= ? THEN q.ml_confidence_score END AS ml_confidence_score
         FROM quant_signals q
         INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
         LEFT JOIN market_universe m ON q.ticker = m.ticker
@@ -210,7 +211,7 @@ def get_dividend_harvest_setups(
         LIMIT 500
         """
 
-        cursor.execute(query, (min_yield, min_score))
+        cursor.execute(query, (ml_fresh_since(), min_yield, min_score))
         rows = cursor.fetchall()
 
         results = [dict(row) for row in rows if is_iso_date(row['ex_dividend_date'])]
@@ -366,7 +367,8 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
 
         query = """
         WITH latest_quant AS (
-            SELECT q.ticker, q.close_price, q.ml_confidence_score
+            SELECT q.ticker, q.close_price,
+                   CASE WHEN q.ml_scored_at >= ? THEN q.ml_confidence_score END AS ml_confidence_score
             FROM quant_signals q
             INNER JOIN (SELECT ticker, MAX(date) AS max_date FROM quant_signals GROUP BY ticker) l
                 ON q.ticker = l.ticker AND q.date = l.max_date
@@ -408,7 +410,7 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
         LIMIT 500
         """
         cursor.execute(query, (
-            GARP_MAX_PEG, GARP_MIN_GROWTH, GARP_MIN_ROE, GARP_MIN_FORWARD_PE, GARP_MAX_FORWARD_PE, GARP_MIN_MARKET_CAP,
+            ml_fresh_since(), GARP_MAX_PEG, GARP_MIN_GROWTH, GARP_MIN_ROE, GARP_MIN_FORWARD_PE, GARP_MAX_FORWARD_PE, GARP_MIN_MARKET_CAP,
         ))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]

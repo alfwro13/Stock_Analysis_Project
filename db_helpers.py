@@ -35,7 +35,7 @@ def ml_fresh_cutoff_date(today: _Date) -> _Date:
 
 
 def ml_fresh_since() -> str:
-    """UTC `"%Y-%m-%d %H:%M:%S"` cutoff: a `quant_signals.ml_scored_at` before it is too old to display."""
+    """UTC `"%Y-%m-%d %H:%M:%S"` cutoff: a `quant_signals.ml_scored_at` or `quantile_scored_at` before it is too old to display."""
     return ml_fresh_cutoff_date(datetime.now(timezone.utc).date()).strftime("%Y-%m-%d 00:00:00")
 
 
@@ -891,13 +891,10 @@ def get_first_close_on_or_after(conn, ticker: str, date: str) -> Optional[dict]:
 
 
 def get_latest_quantile_bands(tickers: list) -> list:
-    """Latest quant_signals row per ticker with non-null price_q10/price_q90 — the same
-    inline correlated-subquery idiom used elsewhere in the codebase for 'latest row per
-    ticker' (ml_inference_engine.py, page_routes.py, market_pulse.py). Shared by
-    predicted_movers_engine.py and the /earnings-volatility page, both of which need the
-    general-purpose ML Quantile Price Band for a ticker."""
+    """Latest quant_signals row per ticker with a price_q10/price_q90 scored inside the ml_fresh_since() window; the one reader of the ML Quantile Price Band for Predicted Movers, Stable Shortlist, position sizing and /earnings-volatility."""
     if not tickers:
         return []
+    fresh_since = ml_fresh_since()
     conn = None
     try:
         conn = get_connection()
@@ -907,12 +904,14 @@ def get_latest_quantile_bands(tickers: list) -> list:
                 FROM quant_signals qs
                 WHERE qs.ticker IN ({placeholders})
                   AND qs.price_q10 IS NOT NULL AND qs.price_q90 IS NOT NULL
+                  AND qs.quantile_scored_at >= ?
                   AND qs.date = (
                       SELECT MAX(qs2.date) FROM quant_signals qs2
                       WHERE qs2.ticker = qs.ticker
                         AND qs2.price_q10 IS NOT NULL AND qs2.price_q90 IS NOT NULL
+                        AND qs2.quantile_scored_at >= ?
                   )""",
-            tickers,
+            [*tickers, fresh_since, fresh_since],
         ).fetchall()
         return [dict(r) for r in rows]
     except Exception as e:

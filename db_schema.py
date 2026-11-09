@@ -2100,6 +2100,7 @@ def migrate_db(conn, cursor) -> None:
         'kc_exit_signal': 'INTEGER',
         'price_q10': 'REAL',
         'price_q90': 'REAL',
+        'quantile_scored_at': 'TEXT',
     }
 
     for col_name, data_type in required_quant_columns.items():

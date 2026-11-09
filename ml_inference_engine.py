@@ -236,7 +236,8 @@ def score_quantile_predictions(tickers: List[str]) -> None:
         df = build_model_features(df)
 
         target_set = set(tickers)
-        payloads: List[Tuple[float, float, str, str]] = []
+        scored_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        payloads: List[Tuple[float, float, str, str, str]] = []
 
         for _, row in df.iterrows():
             if row['ticker'] not in target_set:
@@ -250,13 +251,13 @@ def score_quantile_predictions(tickers: List[str]) -> None:
             close     = float(row['close_price'])
             price_q10 = close * (1.0 + q10_ret)
             price_q90 = close * (1.0 + q90_ret)
-            payloads.append((price_q10, price_q90, row['ticker'], row['date']))
+            payloads.append((price_q10, price_q90, scored_at, row['ticker'], row['date']))
 
         if payloads:
             cursor = conn.cursor()
             cursor.executemany("""
                 UPDATE quant_signals
-                SET price_q10 = ?, price_q90 = ?
+                SET price_q10 = ?, price_q90 = ?, quantile_scored_at = ?
                 WHERE ticker = ? AND date = ?
             """, payloads)
             conn.commit()

@@ -622,6 +622,8 @@ Respects `FREETRADE_ONLY_MODE` setting — if enabled, only Freetrade-eligible t
 
 `sentiment_score` is the most recent FinBERT score scored within `SCHEDULING.SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS` (default 3 days); `null` when the ticker has no headlines inside that window.
 
+`ml_confidence_score` is the latest row's score, `null` when it was scored more than `ML_FEATURE_MAX_AGE_TRADING_DAYS` trading days ago (`db_helpers.ml_fresh_since()`).
+
 **Response**
 
 ```json
@@ -795,7 +797,7 @@ Trains the global XGBoost/RF soft-voting ensemble using the historical feature b
 
 ### `POST /api/ml/trigger-inference`
 
-Runs daily ML inference on all universe tickers (or portfolio/watchlist tickers if universe is empty): first refreshes every ticker's latest indicator row from the local Parquet history (`run_daily_quant_scan(..., scan_type='universe_refresh', read_only=True)`), then writes `ml_confidence_score` and `ml_scored_at` (`update_daily_ml_predictions()`, which raises the stale-features warning for unscored Portfolio/Watchlist tickers) and `price_q10`/`price_q90` ML Quantile Bands (`score_quantile_predictions()`) — matching the scheduled `ml_inference_job` via `bg_execute_ml_inference()`. Runs asynchronously.
+Runs daily ML inference on all universe tickers (or portfolio/watchlist tickers if universe is empty): first refreshes every ticker's latest indicator row from the local Parquet history (`run_daily_quant_scan(..., scan_type='universe_refresh', read_only=True)`), then writes `ml_confidence_score` and `ml_scored_at` (`update_daily_ml_predictions()`, which raises the stale-features warning for unscored Portfolio/Watchlist tickers) and `price_q10`/`price_q90` ML Quantile Bands with `quantile_scored_at` (`score_quantile_predictions()`) — matching the scheduled `ml_inference_job` via `bg_execute_ml_inference()`. Runs asynchronously.
 
 **Request body:** none  
 **Response:** standard background task response

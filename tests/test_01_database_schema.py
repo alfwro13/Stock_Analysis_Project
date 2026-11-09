@@ -126,7 +126,8 @@ def test_quant_signals_has_required_columns():
     cols = _columns("quant_signals")
     required = {
         "ticker", "date", "rsi_14", "macd", "sma_50", "sma_200",
-        "ml_confidence_score", "var_95", "cvar_95", "composite_score",
+        "ml_confidence_score", "ml_scored_at", "price_q10", "price_q90", "quantile_scored_at",
+        "var_95", "cvar_95", "composite_score",
     }
     missing = required - cols
     assert not missing, f"quant_signals missing columns: {missing}"
