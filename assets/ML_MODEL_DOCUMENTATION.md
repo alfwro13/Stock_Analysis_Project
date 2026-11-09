@@ -655,16 +655,19 @@ fails does not stop the other. Consequences:
   in one place. A line without that prefix (a traceback, a library warning) is logged
   at INFO as `training child: ...`.
 * **Memory guards.** `_search_iterations()` and the quantile step abort below
-  `constants.ML_TRAINING_ABORT_AVAILABLE_GB` (0.75 GB) before loading; both steps
-  check it again **after** the history load (`_enough_memory_after_load`) and abort
-  with an Error notification. While the child runs, the web process samples the host's
+  `constants.ML_TRAINING_ABORT_AVAILABLE_GB` (0.75 GB) before loading. Both steps check
+  again **after** the history load (`_enough_memory_after_load`) against
+  `ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB` (1.5 GB), because the child still grows by
+  about 1.2 GB between the load (about 1 GB resident) and its peak of about 2.1 GB, and
+  abort with an Error notification. While the child runs, the web process samples the host's
   available RAM (`memory_helpers.available_mib()`) every `ML_TRAINING_WATCHDOG_POLL_SECONDS` (2 s)
   and kills the child below `ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB` (300 MiB), ahead of
-  the kernel. The two numbers are initial values, not measured peaks.
-  The Success notification of each step ends with `Peak RSS N MiB` (kernel `VmHWM` of
-  the child), and the supervisor logs `Global Model Training child finished: exit code
-  .. sampled peak RSS .. lowest available RAM ..` for every outcome, including a kill.
-  Tune the two constants from those figures.
+  the kernel. A single allocation larger than the headroom can still reach the kernel first.
+  The Success notification of each step ends with `Peak RSS N MiB` (the child's own kernel
+  high-water mark, `VmHWM`), and the supervisor logs `Global Model Training child finished: exit code
+  .. peak RSS .. lowest available RAM ..` for every outcome, including a kill. The supervisor reads
+  the same `VmHWM` of the child on every poll (`memory_helpers.peak_rss_mib(pid)`), so a spike
+  between two polls is still counted. Tune the thresholds from those figures.
 * **Outcome.** The child exits 0 when both steps finished and `EXIT_STEP_FAILED` (3)
   when one returned `False`. Any non-zero exit (a step failure, a watchdog kill, a
   signal, a crash) raises `TrainingFailed`, so the scheduled job reports

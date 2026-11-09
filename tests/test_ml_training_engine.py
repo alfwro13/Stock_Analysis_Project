@@ -222,12 +222,24 @@ def test_feature_stats_record_universe_size_and_feature_moments(tmp_path):
     assert stats["features"]["rsi_14"]["mean"] == pytest.approx(float(df["rsi_14"].mean()))
 
 
+@pytest.mark.parametrize("available_mib, enough", [(512.0, False), (1024.0, False), (1.4 * 1024, False), (1.5 * 1024, True), (4096.0, True)])
+def test_post_load_guard_requires_the_headroom_the_training_still_grows_into(available_mib, enough):
+    import ml_training_engine as engine
+    from constants import ML_TRAINING_ABORT_AVAILABLE_GB, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB
+
+    assert ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB > ML_TRAINING_ABORT_AVAILABLE_GB
+    with patch.object(engine.memory_helpers, "available_mib", return_value=available_mib), \
+         patch.object(engine, "log_notification") as notify:
+        assert engine._enough_memory_after_load("ML Training") is enough
+    assert notify.called is (not enough)
+
+
 @pytest.mark.parametrize("trainer", ["train_global_ml_model", "train_quantile_models"])
 def test_training_aborts_with_a_notification_when_the_history_load_leaves_too_little_memory(trainer):
     import ml_training_engine as engine
 
     history = pd.DataFrame({"ticker": ["A"], "date": ["2025-01-01"], "close_price": [1.0]})
-    with patch.object(engine.memory_helpers, "available_mib", side_effect=[8 * 1024.0, 0.5 * 1024]), \
+    with patch.object(engine.memory_helpers, "available_mib", side_effect=[8 * 1024.0, 1.0 * 1024]), \
          patch.object(engine, "_load_training_history", return_value=history), \
          patch.object(engine, "build_model_features", side_effect=AssertionError("features must not be built")), \
          patch.object(engine, "log_notification") as notify:

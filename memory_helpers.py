@@ -67,6 +67,11 @@ def rss_mib(pid: int | None = None) -> float:
     return psutil.Process(pid).memory_info().rss / _MIB
 
 
+def peak_rss_mib(pid: int | None = None) -> float | None:
+    """The kernel's high-water mark (VmHWM), so a spike between two samples is still seen; None when /proc cannot be read."""
+    return _kb_to_mib(_proc_kb_fields(f"/proc/{'self' if pid is None else pid}/status").get("VmHWM"))
+
+
 def available_mib() -> float:
     return psutil.virtual_memory().available / _MIB
 
