@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import scheduler_jobs
+from constants import RISK_DIGEST_TALK_TOP_MOVERS
 from database import get_connection
 from risk_orchestrator_engine import (
     _sub_score,
@@ -338,7 +339,7 @@ class TestTickersWithRisingStop:
             conn.execute("DELETE FROM atr_stop_history")
             conn.execute("INSERT INTO atr_stop_history (ticker, date, atr_stop_loss) VALUES ('AAA', '2026-07-20', 100.0)")
             conn.commit()
-            assert _tickers_with_rising_stop(conn) == []
+            assert _tickers_with_rising_stop(conn, ["AAA"]) == []
         finally:
             conn.close()
 
@@ -355,10 +356,27 @@ class TestTickersWithRisingStop:
                 ],
             )
             conn.commit()
-            result = _tickers_with_rising_stop(conn)
+            result = _tickers_with_rising_stop(conn, ["AAA", "BBB", "CCC"])
         finally:
             conn.close()
         assert result == [{"ticker": "AAA", "old_stop": 100.0, "new_stop": 105.0}]
+
+    def test_ignores_tickers_outside_the_given_list(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM atr_stop_history")
+            conn.executemany(
+                "INSERT INTO atr_stop_history (ticker, date, atr_stop_loss) VALUES (?, ?, ?)",
+                [
+                    ("AAA", "2026-07-20", 100.0), ("AAA", "2026-07-21", 105.0),
+                    ("UNI", "2026-07-20", 10.0), ("UNI", "2026-07-21", 11.0),
+                ],
+            )
+            conn.commit()
+            assert [r["ticker"] for r in _tickers_with_rising_stop(conn, ["AAA"])] == ["AAA"]
+            assert _tickers_with_rising_stop(conn, []) == []
+        finally:
+            conn.close()
 
 
 @pytest.mark.db
@@ -394,11 +412,59 @@ class TestBuildDailyDigest:
         finally:
             conn.close()
 
-        digest = build_daily_digest()
+        with patch("risk_orchestrator_engine.get_portfolio_watchlist_tickers", return_value=["AAA"]):
+            digest = build_daily_digest()
         assert digest["scope_count"] == 1
         assert digest["rising_stop_count"] == 1
         assert "All Accounts: 42.0 (YELLOW)" in digest["message"]
         assert "AAA: 100.0 → 105.0" in digest["message"]
+
+    def test_message_lists_only_held_and_watched_stops_and_talk_copy_is_short(self):
+        tickers = [f"T{i:03d}" for i in range(40)]
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM portfolio_heat_index")
+            conn.execute("DELETE FROM atr_stop_history")
+            conn.execute(
+                "INSERT INTO portfolio_heat_index (scope, scope_label, phi_score, tier, var_pct_of_equity, last_updated) "
+                "VALUES ('all', 'All Accounts', 42.0, 'YELLOW', 2.1, '2026-07-21 19:15:00')"
+            )
+            rows = []
+            for i, t in enumerate(tickers + ["UNIVERSE_ONLY"]):
+                rows += [(t, "2026-07-20", 100.0), (t, "2026-07-21", 100.0 + i + 1)]
+            conn.executemany("INSERT INTO atr_stop_history (ticker, date, atr_stop_loss) VALUES (?, ?, ?)", rows)
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("risk_orchestrator_engine.get_portfolio_watchlist_tickers", return_value=tickers):
+            digest = build_daily_digest()
+
+        assert digest["rising_stop_count"] == 40
+        assert "UNIVERSE_ONLY" not in digest["message"]
+        assert digest["message"].count("→") == 40
+        talk = digest["talk_message"]
+        assert "All Accounts: 42.0 (YELLOW)" in talk
+        assert f"**ATR Stops Moved Up**: 40 (largest {RISK_DIGEST_TALK_TOP_MOVERS} by % rise)" in talk
+        assert talk.count("→") == RISK_DIGEST_TALK_TOP_MOVERS
+        assert "T039: 100.0 → 140.0 (+40.0%)" in talk
+        assert "T000" not in talk
+
+    def test_talk_copy_matches_message_when_no_stop_moved_up(self):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM portfolio_heat_index")
+            conn.execute("DELETE FROM atr_stop_history")
+            conn.execute(
+                "INSERT INTO portfolio_heat_index (scope, scope_label, phi_score, tier, var_pct_of_equity, last_updated) "
+                "VALUES ('all', 'All Accounts', 42.0, 'YELLOW', 2.1, '2026-07-21 19:15:00')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("risk_orchestrator_engine.get_portfolio_watchlist_tickers", return_value=["AAA"]):
+            digest = build_daily_digest()
+        assert digest["talk_message"] == digest["message"]
 
 
     def test_scope_without_a_score_reads_unavailable(self):
@@ -420,7 +486,7 @@ class TestBuildDailyDigest:
 class TestRunRiskOrchestratorDigestJobRunner:
     def test_dispatches_notification_when_message_present(self):
         with patch("risk_orchestrator_engine.build_daily_digest",
-                   return_value={"message": "brief", "scope_count": 1, "rising_stop_count": 0}), \
+                   return_value={"message": "brief", "talk_message": "short", "scope_count": 1, "rising_stop_count": 0}), \
              patch("scheduler_jobs.notify") as mock_notify, \
              patch("scheduler_jobs.log_sched_notification"), \
              patch("scheduler_jobs._mark_job_started"), \
@@ -428,11 +494,11 @@ class TestRunRiskOrchestratorDigestJobRunner:
              patch("scheduler_jobs.record_job_run"):
             scheduler_jobs.run_risk_orchestrator_digest_job()
 
-        mock_notify.assert_called_once_with("risk_orchestrator_digest", "Info", "brief")
+        mock_notify.assert_called_once_with("risk_orchestrator_digest", "Info", "brief", nextcloud_text="short")
 
     def test_skips_notification_when_no_data(self):
         with patch("risk_orchestrator_engine.build_daily_digest",
-                   return_value={"message": None, "scope_count": 0, "rising_stop_count": 0}), \
+                   return_value={"message": None, "talk_message": None, "scope_count": 0, "rising_stop_count": 0}), \
              patch("scheduler_jobs.notify") as mock_notify, \
              patch("scheduler_jobs.log_sched_notification"), \
              patch("scheduler_jobs._mark_job_started"), \

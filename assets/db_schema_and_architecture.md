@@ -262,7 +262,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 
 #### `atr_stop_history`
 * **Purpose:** Daily snapshot of `stock_signals.atr_stop_loss` per ticker, written alongside that column's own upsert in `quant_signals.py` so the Risk Orchestrator Digest (C1) can answer "did this ticker's stop move up since the last rollup" without depending on a previous digest run having actually succeeded — `stock_signals.atr_stop_loss` itself is latest-value-only. See `assets/risk_orchestrator.md` §7.
-* **Key Columns:** `ticker`, `date` (composite PK), `atr_stop_loss`.
+* **Key Columns:** `ticker`, `date` (composite PK), `atr_stop_loss`. Covers the whole scored universe; the digest reads only the held and watched tickers.
 
 #### `ai_contagion_snapshots`
 * **Purpose:** AI sector contagion scan results — payload JSON + alert flag. Pruned to last 7 days automatically.

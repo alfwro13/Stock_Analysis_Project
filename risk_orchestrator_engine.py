@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from config import load_config
-from database import get_connection
+from constants import RISK_DIGEST_TALK_TOP_MOVERS
+from database import get_connection, get_portfolio_watchlist_tickers
+from price_history_helpers import pct_from_anchor
 from xray_engine import assemble_xray_report, simulate_scope_with_hypothetical_holding
 
 logger = logging.getLogger(__name__)
@@ -341,46 +343,47 @@ def _suggest_reduced_value(
     return round(best, 2) if best else None
 
 
-def _tickers_with_rising_stop(conn) -> list:
-    """Compares the two most recent atr_stop_history dates so the digest can report stops
-    that moved up without depending on a prior digest run having actually succeeded."""
+def _tickers_with_rising_stop(conn, tickers: list) -> list:
+    """Compares the two most recent atr_stop_history dates (which cover the whole scored universe) for `tickers` only, so the digest reports stops that moved up without depending on a prior digest run having actually succeeded."""
+    if not tickers:
+        return []
     dates = [r["date"] for r in conn.execute(
         "SELECT DISTINCT date FROM atr_stop_history ORDER BY date DESC LIMIT 2"
     ).fetchall()]
     if len(dates) < 2:
         return []
     latest, previous = dates[0], dates[1]
+    placeholders = ",".join("?" * len(tickers))
     rows = conn.execute(
-        """
+        f"""
         SELECT a.ticker AS ticker, b.atr_stop_loss AS old_stop, a.atr_stop_loss AS new_stop
         FROM atr_stop_history a
         JOIN atr_stop_history b ON b.ticker = a.ticker AND b.date = ?
         WHERE a.date = ? AND a.atr_stop_loss IS NOT NULL AND b.atr_stop_loss IS NOT NULL
-              AND a.atr_stop_loss > b.atr_stop_loss
+              AND a.atr_stop_loss > b.atr_stop_loss AND a.ticker IN ({placeholders})
         ORDER BY a.ticker
         """,
-        (previous, latest),
+        (previous, latest, *tickers),
     ).fetchall()
     return [{"ticker": r["ticker"], "old_stop": r["old_stop"], "new_stop": r["new_stop"]} for r in rows]
 
 
 def build_daily_digest() -> dict:
-    """Composes the Risk Orchestrator Daily Rollup (Pillar C1): current PHI per scope, VaR,
-    and any ATR stops that moved up since the prior trading day. Reads already-persisted
-    portfolio_heat_index/atr_stop_history rather than recomputing anything."""
+    """Composes the Risk Orchestrator Daily Rollup (Pillar C1): current PHI per scope, VaR, and any ATR stops of held or watched tickers that moved up since the prior trading day. Reads already-persisted portfolio_heat_index/atr_stop_history rather than recomputing anything; `talk_message` is the short copy for Nextcloud Talk."""
+    tickers = get_portfolio_watchlist_tickers()
     conn = None
     try:
         conn = get_connection()
         phi_rows = conn.execute(
             "SELECT scope, scope_label, phi_score, tier, var_pct_of_equity FROM portfolio_heat_index ORDER BY scope"
         ).fetchall()
-        rising_stops = _tickers_with_rising_stop(conn)
+        rising_stops = _tickers_with_rising_stop(conn, tickers)
     finally:
         if conn:
             conn.close()
 
     if not phi_rows:
-        return {"message": None, "scope_count": 0, "rising_stop_count": 0}
+        return {"message": None, "talk_message": None, "scope_count": 0, "rising_stop_count": 0}
 
     lines = ["**Risk Orchestrator — Daily Rollup**", "", "**Portfolio Heat Index**"]
     for row in phi_rows:
@@ -388,15 +391,28 @@ def build_daily_digest() -> dict:
         score_part = f"{row['phi_score']} ({row['tier']})" if row["phi_score"] is not None else "unavailable (an input is missing)"
         lines.append(f"- {row['scope_label']}: {score_part}{var_part}")
 
+    talk_lines = list(lines)
     lines.append("")
+    talk_lines.append("")
     if rising_stops:
         lines.append("**ATR Stops Moved Up**")
         for s in rising_stops:
             lines.append(f"- {s['ticker']}: {s['old_stop']} → {s['new_stop']}")
+            s["rise_pct"] = pct_from_anchor(s["new_stop"], s["old_stop"])
+        top = sorted(rising_stops, key=lambda s: s["rise_pct"], reverse=True)[:RISK_DIGEST_TALK_TOP_MOVERS]
+        talk_lines.append(f"**ATR Stops Moved Up**: {len(rising_stops)} (largest {len(top)} by % rise)")
+        for s in top:
+            talk_lines.append(f"- {s['ticker']}: {s['old_stop']} → {s['new_stop']} (+{s['rise_pct']:.1f}%)")
     else:
         lines.append("**ATR Stops Moved Up**: none since the prior trading day.")
+        talk_lines.append("**ATR Stops Moved Up**: none since the prior trading day.")
 
-    return {"message": "\n".join(lines), "scope_count": len(phi_rows), "rising_stop_count": len(rising_stops)}
+    return {
+        "message": "\n".join(lines),
+        "talk_message": "\n".join(talk_lines),
+        "scope_count": len(phi_rows),
+        "rising_stop_count": len(rising_stops),
+    }
 
 
 def evaluate_pretrade_check(
