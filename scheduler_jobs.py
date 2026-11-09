@@ -29,7 +29,7 @@ from maintenance_engine import MaintenanceEngine
 from notification_engine import notify
 from portfolio_metrics_engine import queue_portfolio_totals_refresh
 from ml_backfill_engine import run_historical_backfill
-from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
+from ml_inference_engine import alert_unscored_holdings, update_daily_ml_predictions, score_quantile_predictions
 from ml_training_process import run_training_child
 from quant_engine import run_daily_quant_scan
 from quant_signals import QuantEngine
@@ -546,7 +546,8 @@ def run_ml_inference():
             engine = DataEngine()
             tickers = engine.get_all_tickers()
         if tickers:
-            update_daily_ml_predictions(tickers)
+            run_daily_quant_scan(tickers, scan_type='universe_refresh', read_only=True)
+            alert_unscored_holdings(update_daily_ml_predictions(tickers))
             score_quantile_predictions(tickers)
             from predicted_movers_engine import backfill_actual_outcomes, log_predictions
             resolved = backfill_actual_outcomes()

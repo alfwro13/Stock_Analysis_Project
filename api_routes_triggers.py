@@ -32,7 +32,7 @@ from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
 from utils import INVALID_TICKER_MESSAGE, is_valid_ticker
 from ml_backfill_engine import run_historical_backfill
-from ml_inference_engine import update_daily_ml_predictions, score_quantile_predictions
+from ml_inference_engine import alert_unscored_holdings, update_daily_ml_predictions, score_quantile_predictions
 from ml_training_process import TrainingFailed, run_training_child
 from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, load_blacklist, remove_from_blacklist
@@ -115,7 +115,8 @@ def bg_execute_ml_inference():
         tickers = engine.get_all_tickers()
 
     if tickers:
-        update_daily_ml_predictions(tickers)
+        run_daily_quant_scan(tickers, scan_type='universe_refresh', read_only=True)
+        alert_unscored_holdings(update_daily_ml_predictions(tickers))
         score_quantile_predictions(tickers)
 
 def bg_init_macro_pipeline():

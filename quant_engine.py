@@ -20,8 +20,8 @@ def _latest(row, column):
 
 # GUI name: "Daily Quant Screener (Portfolio & Watchlist)". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 
-def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> None:
-    """Vectorised TA scan: downloads 2y OHLCV, computes indicators, upserts quant_signals; resumable via quant_scan_states."""
+def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily', read_only: bool = False) -> None:
+    """Vectorised TA scan: downloads 2y OHLCV, computes indicators, upserts quant_signals; resumable via quant_scan_states. read_only uses the Parquet on disk only and skips the Yahoo throttle."""
     total_tickers = len(ticker_list)
     if not ticker_list:
         logger.warning("Ticker list is empty for scan type '%s'. Aborting scan.", scan_type)
@@ -67,19 +67,21 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
         # Fetched once per scan (not per ticker) — shared source for rel_strength_5d/20d below.
         spy_df = download_spy_benchmark()
         short_history = []
+        no_history = 0
 
         for i in range(start_idx, total_tickers):
             ticker = ticker_list[i]
-            logger.info("Processing %s (%d/%d) [%s]...", ticker, i + 1, total_tickers, scan_type)
+            logger.log(logging.DEBUG if read_only else logging.INFO, "Processing %s (%d/%d) [%s]...", ticker, i + 1, total_tickers, scan_type)
             
             try:
                 # 2 years guarantees an accurate 200-day SMA baseline
-                df = load_or_fetch_daily_history(ticker)
+                df = load_or_fetch_daily_history(ticker, read_only=read_only)
                 if df is None:
                     df = pd.DataFrame()
 
                 if df.empty:
-                    logger.warning("No OHLCV data returned for %s. Skipping.", ticker)
+                    logger.log(logging.DEBUG if read_only else logging.WARNING, "No OHLCV data returned for %s. Skipping.", ticker)
+                    no_history += 1
                     continue
 
                 df.dropna(subset=['Close', 'Volume'], inplace=True)
@@ -184,8 +186,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 logger.error("Error analyzing %s: %s", ticker, str(e))
                 conn.rollback()
             finally:
-                # Mandatory throttling to prevent Yahoo Finance IP bans
-                time.sleep(random.uniform(0.5, 1.5))
+                if not read_only:
+                    time.sleep(random.uniform(0.5, 1.5))
 
 
             processed = i + 1
@@ -193,6 +195,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 pct = int((processed / total_tickers) * 100)
                 log_notification("Info", f"Quant Scan ({scan_type}) Progress: {pct}% ({processed}/{total_tickers} tickers processed).")
 
+        if read_only and no_history:
+            logger.info("Quant scan '%s' skipped %d ticker(s) with no Parquet history on disk.", scan_type, no_history)
         if short_history:
             logger.info("Quant scan '%s' skipped %d ticker(s) with fewer than 200 daily bars (SMA-200 needs them): %s",
                         scan_type, len(short_history), ", ".join(short_history))

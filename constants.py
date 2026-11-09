@@ -170,6 +170,8 @@ NLP_CB_TONE_THRESHOLD      = 0.15  # |score| above which tone is hawkish/dovish 
 NLP_NEWS_MAX_AGE_DAYS      = 3     # default age limit for a headline to count; SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS overrides
 NLP_SENTIMENT_MIN_COVERAGE = 0.5   # a scan scoring a smaller share of its tickers raises the degraded-scan alert
 
+ML_FEATURE_MAX_AGE_TRADING_DAYS = 3  # newest quant_signals row inference accepts, and the age past which a stored ML score is not shown
+
 # ── Sentiment chart rendering ─────────────────────────────────────────────────
 SENTIMENT_CHART_FIGSIZE    = (12, 6)  # matplotlib figure size for Nextcloud alert chart
 SENTIMENT_CHART_DPI        = 300      # export resolution for Nextcloud alert chart

@@ -2073,6 +2073,7 @@ def migrate_db(conn, cursor) -> None:
 
     required_quant_columns = {
         'ml_confidence_score': 'REAL',
+        'ml_scored_at': 'TEXT',
         'sentiment_score': 'REAL',
         'sentiment_scored_at': 'TEXT',
         'var_95': 'REAL',

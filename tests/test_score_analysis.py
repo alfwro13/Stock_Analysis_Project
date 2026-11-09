@@ -140,11 +140,11 @@ def _seed_earnings_vol_history(ticker, scan_date, edge_score, drift_avg_pct_5d):
     conn.close()
 
 
-def _seed_ml_confidence(ticker, date_, score):
+def _seed_ml_confidence(ticker, date_, score, scored_at=None):
     conn = _db_module.get_connection()
     conn.execute(
-        "INSERT OR REPLACE INTO quant_signals (ticker, date, ml_confidence_score) VALUES (?, ?, ?)",
-        (ticker, date_, score),
+        "INSERT OR REPLACE INTO quant_signals (ticker, date, ml_confidence_score, ml_scored_at) VALUES (?, ?, ?, ?)",
+        (ticker, date_, score, scored_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
     )
     conn.commit()
     conn.close()
@@ -248,6 +248,35 @@ class TestEvaluatePillarConfluence:
         _seed_ml_confidence("AMD", _d(0), 70)
         result = evaluate_pillar_confluence("AMD")
         assert "statistical" not in result["bullish_pillars"]
+
+    @staticmethod
+    def _ml_votes(ticker, as_of=None):
+        from score_analysis import _ml_signals_batch
+        conn = _db_module.get_connection()
+        try:
+            return _ml_signals_batch([ticker], conn, as_of=as_of)[ticker]
+        finally:
+            conn.close()
+
+    def test_ml_score_older_than_the_freshness_window_does_not_vote_live(self):
+        _seed_ml_confidence("STALEML", _d(0), 80, scored_at="2020-01-01 01:30:00")
+        assert self._ml_votes("STALEML") == []
+
+    def test_unstamped_ml_score_does_not_vote_live(self):
+        conn = _db_module.get_connection()
+        conn.execute("INSERT OR REPLACE INTO quant_signals (ticker, date, ml_confidence_score) VALUES ('UNSTAMPEDML', ?, 80)", (_d(0),))
+        conn.commit()
+        conn.close()
+        assert self._ml_votes("UNSTAMPEDML") == []
+
+    def test_fresh_newest_score_keeps_older_scores_in_the_window(self):
+        _seed_ml_confidence("FRESHML", _d(2), 20, scored_at="2020-01-01 01:30:00")
+        _seed_ml_confidence("FRESHML", _d(0), 80)
+        assert self._ml_votes("FRESHML") == ["up", "down"]
+
+    def test_stale_ml_score_still_votes_when_reconstructing_a_past_date(self):
+        _seed_ml_confidence("STALEASOF", _d(3), 80, scored_at="2020-01-01 01:30:00")
+        assert self._ml_votes("STALEASOF", as_of=_d(1)) == ["up"]
 
     def test_signal_outside_window_ignored(self):
         # 6 distinct trading days: the oldest (stale) row falls outside the 5-day window.
@@ -754,8 +783,9 @@ def test_sparse_observation_queries_return_only_five_per_ticker(as_of):
                     (ticker, day, 0 if index % 2 else 1, -2 if index % 3 else 2),
                 )
                 conn.execute(
-                    "INSERT INTO quant_signals (ticker, date, ml_confidence_score) VALUES (?, ?, ?)",
-                    (ticker, day, None if index % 3 == 0 else (75 if index % 2 else 25)),
+                    "INSERT INTO quant_signals (ticker, date, ml_confidence_score, ml_scored_at) VALUES (?, ?, ?, ?)",
+                    (ticker, day, None if index % 3 == 0 else (75 if index % 2 else 25),
+                     datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
                 )
         conn.commit()
         for function, table, date_column, non_null in (

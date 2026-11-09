@@ -1,9 +1,9 @@
 from database import get_connection
-from db_helpers import sentiment_fresh_since
+from db_helpers import ml_fresh_since, sentiment_fresh_since
 
 _SIGNAL_COLUMNS = """
                    (SELECT ml_confidence_score FROM quant_signals
-                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL AND ml_scored_at >= ?
                     ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
                    (SELECT var_95 FROM quant_signals
                     WHERE ticker = s.ticker AND var_95 IS NOT NULL
@@ -65,7 +65,7 @@ def _select_signal_rows(cursor, benchmark_symbol: str, tickers: list[str], extra
             {_SIGNAL_JOINS}
             {extra_joins}
             WHERE s.ticker IN ({placeholders})
-        """, (sentiment_fresh_since(), benchmark_symbol, *batch))
+        """, (ml_fresh_since(), sentiment_fresh_since(), benchmark_symbol, *batch))
         rows.extend(cursor.fetchall())
     return rows
 

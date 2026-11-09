@@ -1,59 +1,77 @@
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS
+from db_helpers import get_portfolio_watchlist_tickers, ml_fresh_since
 from model_compatibility_engine import load_sklearn_artifact
 from database import get_connection, log_notification
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
-    CONTINUOUS_FEATURES, LATEST_FEATURES_QUERY, build_model_features, load_feature_stats,
+    CONTINUOUS_FEATURES, LATEST_FEATURES_QUERY, build_model_features, inference_cross_section,
+    load_feature_stats,
 )
+from notification_engine import notify
 
 logger = logging.getLogger(__name__)
 
 # GUI name: "Daily ML Inference". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 
+_MAX_TICKERS_IN_WARNING = 15
+_warned_unscored_holdings: set = set()
 
-def update_daily_ml_predictions(tickers: List[str]) -> None:
-    """
-    Fetches the latest row for ALL tickers in the DB with complete feature
-    data, applies fundamental preprocessing, computes cross-sectional
-    z-scores across the full population, then writes confidence scores back
-    for the requested ticker subset.
 
-    Design notes:
-    - Z-scoring is intentionally **per-date cross-sectional**: each feature is
-      normalised relative to every other ticker on that same date, matching
-      exactly how the model was trained.  Do NOT replace with fixed/global
-      scaling parameters — that would break the model's design.
-    - The **full stored universe** for the latest date is the normalisation
-      population at both train time and serve time.  The SQL query fetches all
-      tickers unconditionally; the `tickers` argument is never used to narrow
-      the cross-section.
-    - The `tickers` argument filters **writes only** — only the requested
-      tickers receive an updated ml_confidence_score in the database.
-    - A coverage guard refuses to score when the universe for the latest date
-      is too small for reliable z-scores (e.g. after a partial scan that left
-      only a handful of rows).
-    - A drift diagnostic compares today's raw feature distributions against the
-      saved training statistics and logs a warning when divergence is large.
-      It never alters any predictions.
+def _coverage_threshold(saved_stats: Optional[Dict[str, Any]]) -> Tuple[int, Optional[int]]:
+    train_universe_size = saved_stats.get('_meta', {}).get('train_universe_size') if saved_stats is not None else None
+    threshold = max(30, int(0.25 * train_universe_size)) if train_universe_size is not None else 30
+    return threshold, train_universe_size
 
-    Fundamental features are joined from stock_signals (latest snapshot per
-    ticker) — identical join to training, consistent with the known
-    point-in-time bias documented in train_global_ml_model().
 
-    Args:
-        tickers: Tickers whose ml_confidence_score should be updated.
-    """
+def _log_cross_section(summary: Dict[str, Any], threshold: int) -> None:
+    per_date = ', '.join(f'{d}={n}' for d, n in list(summary['date_counts'].items())[:6])
+    logger.info(
+        'Inference cross-section: %s of %s latest rows used (dates %s to %s); %s older than %s trading days, '
+        '%s on dates below the %s-ticker coverage threshold. Tickers per date: %s.',
+        summary['latest_rows'] - summary['too_old'] - summary['thin_dates'], summary['latest_rows'],
+        summary['min_date'], summary['max_date'], summary['too_old'], ML_FEATURE_MAX_AGE_TRADING_DAYS,
+        summary['thin_dates'], threshold, per_date,
+    )
+
+
+def alert_unscored_holdings(unscored: Optional[List[str]]) -> None:
+    """One warning per newly unscored Portfolio/Watchlist ticker set; rearms when every held and watched ticker is scored again."""
+    global _warned_unscored_holdings
+    if unscored is None:
+        return
+    unscored_set = set(unscored)
+    missing = unscored_set & set(get_portfolio_watchlist_tickers())
+    new = missing - _warned_unscored_holdings
+    _warned_unscored_holdings = missing
+    if not new:
+        return
+    shown = sorted(missing)[:_MAX_TICKERS_IN_WARNING]
+    extra = f" (+{len(missing) - len(shown)} more)" if len(missing) > len(shown) else ""
+    notify(
+        "ml_inference_stale_features", "Warning",
+        f"Daily ML Inference could not score {len(missing)} Portfolio/Watchlist ticker(s): their newest quant "
+        f"features are older than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days or missing: {', '.join(shown)}{extra}. "
+        f"{len(unscored_set) - len(missing)} other universe ticker(s) have no fresh score either. "
+        "Check the Daily Quant Screener and the Update Pipeline for these tickers.",
+        level="warning",
+    )
+
+
+def update_daily_ml_predictions(tickers: List[str]) -> Optional[List[str]]:
+    """Scores `tickers` from the latest quant row of every stored ticker, z-scored per date as in training; returns the requested tickers left unscored (None when inference did not run)."""
     if not tickers:
         logger.warning("Empty ticker list. Skipping inference.")
-        return
+        return None
 
     if not MODEL_PATH.exists():
         logger.warning('Model not found at %s. Awaiting training cycle.', MODEL_PATH)
-        return
+        return None
 
     logger.info('Initiating ML Inference for %s assets...', len(tickers))
 
@@ -65,48 +83,26 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
         if df.empty:
             logger.warning("No data with complete feature set found. Re-run backfill first.")
-            return
+            return None
 
-        # ── Load saved stats (shared by Change A and Change B) ────────────────
         saved_stats: Optional[Dict[str, Any]] = load_feature_stats(FEATURE_STATS_PATH)
+        threshold, train_universe_size = _coverage_threshold(saved_stats)
 
-        # ── Change A: Universe-coverage guard ─────────────────────────────────
-        # Refuse to score when the cross-section is too thin for reliable
-        # z-scores.  Threshold = 25% of the training median tickers/date,
-        # with an absolute floor of 30.
-        n_universe: int = df['ticker'].nunique()
-        train_universe_size: Optional[int] = (
-            saved_stats.get('_meta', {}).get('train_universe_size')
-            if saved_stats is not None else None
-        )
-        coverage_threshold: int = (
-            max(30, int(0.25 * train_universe_size))
-            if train_universe_size is not None else 30
-        )
-        if n_universe < coverage_threshold:
+        df, summary = inference_cross_section(df, datetime.now(timezone.utc).date(), threshold)
+        _log_cross_section(summary, threshold)
+        if df.empty:
             msg = (
-                f"Inference universe too small for reliable z-scoring: "
-                f"{n_universe} tickers present, threshold {coverage_threshold} "
-                f"(25 %% of training universe {train_universe_size}). "
+                f"No date holds a usable cross-section for inference: no date within the last "
+                f"{ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days has {threshold} tickers "
+                f"(25% of training universe {train_universe_size}). "
                 "Skipping inference — run a full quant scan first."
             )
             logger.error(msg)
             log_notification("Error", msg)
-            return
-
-        logger.info(
-            'Loaded %s rows for cross-sectional normalisation (%s unique tickers, date: %s).',
-            len(df),
-            n_universe,
-            df['date'].iloc[0],
-        )
+            return None
 
         df = build_model_features(df)
 
-        # ── Change B: Train-vs-serve feature drift diagnostic ─────────────────
-        # Compares today's raw (pre-z-score) feature means against the pooled
-        # training statistics saved in feature_stats.json.  Emits a single
-        # WARNING listing all drifted features; never alters any predictions.
         try:
             if saved_stats is not None:
                 train_feature_stats: Dict[str, Dict[str, float]] = (
@@ -136,8 +132,8 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         except Exception as _drift_e:
             logger.info('Feature drift check skipped due to error: %s', _drift_e)
 
-        # ── Score only requested tickers ──────────────────────────────────────
         target_set      = set(tickers)
+        scored_at       = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         update_payloads = []
 
         for _, row in df.iterrows():
@@ -152,13 +148,16 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                 continue
             ml_confidence_score = float(round(prob * 100.0, 2))
 
-            update_payloads.append((ml_confidence_score, row['ticker'], row['date']))
+            update_payloads.append((ml_confidence_score, scored_at, row['ticker'], row['date']))
+
+        scored_tickers = {payload[2] for payload in update_payloads}
+        unscored = sorted(target_set - scored_tickers)
 
         if update_payloads:
             cursor = conn.cursor()
             cursor.executemany("""
                 UPDATE quant_signals
-                SET ml_confidence_score = ?
+                SET ml_confidence_score = ?, ml_scored_at = ?
                 WHERE ticker = ? AND date = ?
             """, update_payloads)
             # stock_signals.ml_confidence mirrors the same value onto the one-row-per-ticker
@@ -168,7 +167,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                 UPDATE stock_signals
                 SET ml_confidence = ?
                 WHERE ticker = ?
-            """, [(score, ticker) for score, ticker, _date in update_payloads])
+            """, [(score, ticker) for score, _scored_at, ticker, _date in update_payloads])
             conn.commit()
             logger.info('✅ Executed ML predictions for %s assets.', len(update_payloads))
         else:
@@ -177,8 +176,20 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                 "by running the daily quant scan before ML inference."
             )
 
+        if unscored:
+            cursor = conn.cursor()
+            cursor.executemany("""
+                UPDATE stock_signals SET ml_confidence = NULL
+                WHERE ticker = ? AND ml_confidence IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM quant_signals q
+                                  WHERE q.ticker = stock_signals.ticker AND q.ml_scored_at >= ?)
+            """, [(ticker, ml_fresh_since()) for ticker in unscored])
+            conn.commit()
+        return unscored
+
     except Exception as e:
         logger.error('Fatal error during ML inference: %s', e)
+        return None
     finally:
         if conn:
             conn.close()
@@ -213,6 +224,13 @@ def score_quantile_predictions(tickers: List[str]) -> None:
 
         if df.empty:
             logger.warning("No data for quantile scoring. Re-run quant scan first.")
+            return
+
+        threshold, _ = _coverage_threshold(load_feature_stats(FEATURE_STATS_PATH))
+        df, summary = inference_cross_section(df, datetime.now(timezone.utc).date(), threshold)
+        _log_cross_section(summary, threshold)
+        if df.empty:
+            logger.warning("No date holds a usable cross-section for quantile scoring. Re-run quant scan first.")
             return
 
         df = build_model_features(df)

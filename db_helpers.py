@@ -1,11 +1,12 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date as _Date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import List, Optional
 
 from config import load_config
-from constants import NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
+from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
 from database import get_connection
-from time_engine import parse_stored_utc
+from time_engine import parse_stored_utc, trading_days_since
 from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,20 @@ def sentiment_max_age_days() -> int:
 def sentiment_fresh_since() -> str:
     """UTC `"%Y-%m-%d %H:%M:%S"` cutoff: a `quant_signals.sentiment_scored_at` before it is too old to display."""
     return (datetime.now(timezone.utc) - timedelta(days=sentiment_max_age_days())).strftime("%Y-%m-%d %H:%M:%S")
+
+
+@lru_cache(maxsize=4)
+def ml_fresh_cutoff_date(today: _Date) -> _Date:
+    """Oldest date still within ML_FEATURE_MAX_AGE_TRADING_DAYS trading days of *today*; a feature row dated before it is too old to score."""
+    day = today
+    while trading_days_since(day, today) < ML_FEATURE_MAX_AGE_TRADING_DAYS:
+        day -= timedelta(days=1)
+    return day
+
+
+def ml_fresh_since() -> str:
+    """UTC `"%Y-%m-%d %H:%M:%S"` cutoff: a `quant_signals.ml_scored_at` before it is too old to display."""
+    return ml_fresh_cutoff_date(datetime.now(timezone.utc).date()).strftime("%Y-%m-%d 00:00:00")
 
 
 def get_recent_alert_notifications(since: str, limit: int) -> list:

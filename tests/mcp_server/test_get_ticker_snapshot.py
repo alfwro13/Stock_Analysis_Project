@@ -75,9 +75,9 @@ def book(fundamentals_dir):
         for ticker, close in ((HELD, 119.0), (UNIVERSE, 12.0)):
             conn.execute(
                 "INSERT OR REPLACE INTO quant_signals (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, "
-                "volume_surge, bullish_cross, ml_confidence_score, mom_1m, mom_3m, mom_6m, mom_12m_skip1m, atr_pct, hist_vol_20, "
+                "volume_surge, bullish_cross, ml_confidence_score, ml_scored_at, mom_1m, mom_3m, mom_6m, mom_12m_skip1m, atr_pct, hist_vol_20, "
                 "rel_strength_5d, rel_strength_20d, price_q10, price_q90) "
-                "VALUES (?, ?, ?, 1000, 55.0, 1.2, 1.0, 0.2, 110.0, 100.0, 1, 0, 72.5, 0.04, 0.08, 0.12, 0.2, 0.02, 0.25, 0.01, 0.03, 100.0, 140.0)",
+                "VALUES (?, ?, ?, 1000, 55.0, 1.2, 1.0, 0.2, 110.0, 100.0, 1, 0, 72.5, datetime('now'), 0.04, 0.08, 0.12, 0.2, 0.02, 0.25, 0.01, 0.03, 100.0, 140.0)",
                 (ticker, _day(1), close),
             )
         conn.execute(

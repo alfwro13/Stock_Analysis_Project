@@ -58,7 +58,7 @@ return `{"bullish_pillars": [...], "bearish_pillars": [...], "confluence": bool,
   up automatically with zero changes to this pillar's code.
 - **Statistical** — `earnings_volatility_history.drift_avg_pct_5d` sign, gated on
   `edge_score > 0` (only counted when there's a real measured mispricing edge, not noise).
-- **ML** — `quant_signals.ml_confidence_score` above/below 50.
+- **ML** — `quant_signals.ml_confidence_score` above/below 50. A live window votes only while its newest score is fresh (`ml_scored_at >= db_helpers.ml_fresh_since()`); a window reconstructed `as_of` a past date does not apply that limit.
 
 **Per-pillar voting.** A pillar only casts a vote when every signal it saw in the window points
 the same way (`score_analysis._pillar_vote()`) — if a pillar's own signals conflict with each

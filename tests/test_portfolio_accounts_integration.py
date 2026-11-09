@@ -3,6 +3,7 @@
 import json
 import re
 import time
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -277,11 +278,11 @@ def test_portfolio_signal_query_scopes_enrichment_and_keeps_global_freshness():
             (held, "Preferred Name"),
         )
         conn.executemany(
-            "INSERT INTO quant_signals (ticker, date, ml_confidence_score, var_95, atr_pct) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO quant_signals (ticker, date, ml_confidence_score, ml_scored_at, var_95, atr_pct) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (held, "2026-09-29", 0.62, 4.0, 1.0),
-                (held, "2026-09-30", None, 5.0, 2.0),
+                (held, "2026-09-29", 0.62, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), 4.0, 1.0),
+                (held, "2026-09-30", None, None, 5.0, 2.0),
             ],
         )
         conn.commit()
@@ -318,8 +319,8 @@ def test_portfolio_and_watchlist_signal_rows_share_columns_and_keep_page_specifi
             (ticker, "2026-10-01 10:00:00", "Parity Name", "USD", 10.0),
         )
         conn.execute(
-            "INSERT INTO quant_signals (ticker, date, ml_confidence_score, atr_pct) VALUES (?, ?, ?, ?)",
-            (ticker, "2026-09-30", 0.5, 1.5),
+            "INSERT INTO quant_signals (ticker, date, ml_confidence_score, ml_scored_at, atr_pct) VALUES (?, ?, ?, ?, ?)",
+            (ticker, "2026-09-30", 0.5, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), 1.5),
         )
         conn.commit()
 

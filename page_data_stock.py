@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from database import get_connection
-from db_helpers import sentiment_fresh_since
+from db_helpers import ml_fresh_since, sentiment_fresh_since
 from time_engine import parse_stored_utc
 from utils import time_request_call
 from page_helpers import compute_badge_tags, get_pattern_tags_by_ticker
@@ -173,7 +173,7 @@ def load_stock_row(ticker):
         time_request_call("sql", cursor.execute, '''
             SELECT s.*, p.business_summary,
                    (SELECT ml_confidence_score FROM quant_signals
-                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL AND ml_scored_at >= ?
                     ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
                    (SELECT var_95 FROM quant_signals
                     WHERE ticker = s.ticker AND var_95 IS NOT NULL
@@ -215,7 +215,7 @@ def load_stock_row(ticker):
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             WHERE s.ticker = ?
-        ''', (sentiment_fresh_since(), ticker))
+        ''', (ml_fresh_since(), sentiment_fresh_since(), ticker))
         stock_data = cursor.fetchone()
 
         if stock_data:
