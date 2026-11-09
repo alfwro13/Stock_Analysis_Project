@@ -222,12 +222,17 @@ class TestActiveJobsTracking:
 
 class TestSchedulerQuiesced:
     def setup_method(self):
-        with _sched_module._active_jobs_lock:
-            _sched_module._active_jobs.clear()
+        self._reset()
 
     def teardown_method(self):
+        self._reset()
+
+    @staticmethod
+    def _reset():
         with _sched_module._active_jobs_lock:
             _sched_module._active_jobs.clear()
+            _sched_module._running_job_runs.clear()
+            _sched_module._restore_in_progress = False
 
     @pytest.fixture
     def live_scheduler(self):
@@ -246,12 +251,13 @@ class TestSchedulerQuiesced:
             assert running == {}
         assert live_scheduler.state == STATE_RUNNING
 
-    def test_yields_the_running_jobs_and_resumes(self, live_scheduler):
-        from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
+    def test_a_refused_claim_touches_nothing(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_RUNNING
         _mark_job_started("Busy Job")
         with _sched_module.scheduler_quiesced() as running:
             assert list(running) == ["Busy Job"]
-            assert live_scheduler.state == STATE_PAUSED
+            assert live_scheduler.state == STATE_RUNNING
+            assert not _sched_module.restore_in_progress()
         assert live_scheduler.state == STATE_RUNNING
 
     def test_resumes_when_the_block_raises(self, live_scheduler):
@@ -280,6 +286,44 @@ class TestSchedulerQuiesced:
         with patch.object(_sched_module, "scheduler", BackgroundScheduler()):
             with _sched_module.scheduler_quiesced() as running:
                 assert list(running) == ["Busy Job"]
+
+    def test_restore_in_progress_is_set_only_inside_the_block(self, live_scheduler):
+        assert not _sched_module.restore_in_progress()
+        with _sched_module.scheduler_quiesced() as running:
+            assert running == {}
+            assert _sched_module.restore_in_progress()
+        assert not _sched_module.restore_in_progress()
+
+    def test_restore_in_progress_is_cleared_when_the_block_raises(self, live_scheduler):
+        with pytest.raises(KeyError):
+            with _sched_module.scheduler_quiesced():
+                raise KeyError("boom")
+        assert not _sched_module.restore_in_progress()
+
+    def test_a_second_restore_is_refused_and_leaves_the_first_in_place(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_PAUSED
+        with _sched_module.scheduler_quiesced():
+            with _sched_module.scheduler_quiesced() as running:
+                assert list(running) == [_sched_module.RESTORE_ACTIVITY_NAME]
+            assert _sched_module.restore_in_progress()
+            assert live_scheduler.state == STATE_PAUSED
+        assert not _sched_module.restore_in_progress()
+
+    def test_a_job_run_that_has_not_reached_the_active_list_blocks_the_claim(self, live_scheduler):
+        with _sched_module._active_jobs_lock:
+            _sched_module._running_job_runs["backup_job"] = 1
+        with _sched_module.scheduler_quiesced() as running:
+            assert list(running) == [_sched_module.job_label("backup_job")]
+            assert not _sched_module.restore_in_progress()
+
+    def test_manual_and_scheduled_runs_are_skipped_while_restoring(self, live_scheduler):
+        ran = []
+        with _sched_module.scheduler_quiesced():
+            assert run_manual_job("restore_guard_job", lambda: ran.append("manual")) is None
+            assert _sched_module._run_tracked_job("restore_guard_job", "scheduled", lambda: ran.append("scheduled")) is None
+            assert not is_job_running("restore_guard_job")
+        assert ran == []
+        assert run_manual_job("restore_guard_job", lambda: "ran") == "ran"
 
 
 def _record_runs(job_id, durations, status="success", first_minute=0):

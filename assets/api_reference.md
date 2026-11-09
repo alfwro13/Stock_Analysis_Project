@@ -78,7 +78,7 @@ Every endpoint that queues a job's run on demand (`run_manual_job`: the Settings
 }
 ```
 
-The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. Four triggers have no scheduled job of their own and use a `non_job` manifest id: `POST /api/pairs-spread/run-universe` (`pairs_spread_universe_source`), `POST /api/pattern-detection/backfill` (`pattern_detection_backfill_source`), `POST /api/market-regime/run` (`market_regime_hmm_source`) and `POST /api/universe/import/server` (`universe_csv_import_source`). The ETF predictor routes use the predictor's own scheduled ids: `POST /api/etf-predictors/{id}/run` is guarded by `etf_predictor_{id}_pre_job` and `POST /api/etf-predictors/{id}/fill-actuals` by `etf_predictor_{id}_post_job`, so a click is refused while that predictor's scheduled run is in progress; the 404 for an unknown config is answered before the busy check. A run of any of these is written to `scheduler_run_history` (`trigger_source: manual`) and shows in the Active Jobs panel.
+While a backup restore is running (`POST /api/backup/restore`) the same refusal is answered for every such endpoint with `message: "A backup restore is in progress. Wait for it to finish, then try again."`, whichever job it would start. The name in `message` is the job's canonical `scheduler_manifest.JOB_GRAPH` label. Endpoints that share one job id block each other: `POST /api/trigger-universe-update` and `POST /api/trigger-universe-quant-scan` (`universe_routine_job`), `POST /api/macro/init-pipeline` and `POST /api/macro/run-pipeline` (`macro_calendar_job`). A scheduled firing is not blocked by a manual run (APScheduler's `max_instances=1` still covers scheduled vs. scheduled). The guard is `api_deps.job_busy_response()`, backed by `scheduler_engine.is_job_running()`; `_run_tracked_job` also drops a manual run that loses a race between the check and the task start. The guard is released in a `finally`, so a failed job never stays "running"; a job that hangs keeps blocking manual triggers until the service restarts. Four triggers have no scheduled job of their own and use a `non_job` manifest id: `POST /api/pairs-spread/run-universe` (`pairs_spread_universe_source`), `POST /api/pattern-detection/backfill` (`pattern_detection_backfill_source`), `POST /api/market-regime/run` (`market_regime_hmm_source`) and `POST /api/universe/import/server` (`universe_csv_import_source`). The ETF predictor routes use the predictor's own scheduled ids: `POST /api/etf-predictors/{id}/run` is guarded by `etf_predictor_{id}_pre_job` and `POST /api/etf-predictors/{id}/fill-actuals` by `etf_predictor_{id}_post_job`, so a click is refused while that predictor's scheduled run is in progress; the 404 for an unknown config is answered before the busy check. A run of any of these is written to `scheduler_run_history` (`trigger_source: manual`) and shows in the Active Jobs panel.
 
 ### Request input limits
 
@@ -2093,7 +2093,7 @@ Verification happens before any live file changes, and every refusal returns `40
 
 Members are extracted with `filter="data"`. `data/analysis.db-wal` and `-shm` are never extracted. The database is staged next to the live file and swapped in atomically, and the live `-wal`/`-shm` are removed. `backup_history` rows the restored database lacks are carried forward, so newer archives keep their hashes. When the archive holds the database, the staged copy also has every OAuth grant revoked, the pairing window closed and every connection request deleted before anything live changes (an older backup would otherwise bring revoked Remote Access tokens back to life); the in-memory token cache is dropped after the swap and one `mcp_audit_log` row `restore: <n> grants revoked` is written. An archive from before the OAuth tables skips this. A `trust_unhashed` restore records the archive's computed hash as a `trigger_type: "adopted"` row, so later restores verify normally. A missing archive or an extraction failure returns `500` with `status: "error"`.
 
-Scheduled job firing is paused for the whole restore and resumed afterward, whatever the outcome. If a job is already running (the Active Jobs list), nothing is touched and the response is `409` with `status: "busy"` and a `message` naming the running job(s), the same shape as `POST /api/system/restart`: a running job holds connections to the database file being replaced and would lose its later writes.
+Scheduled job firing is paused for the whole restore and resumed afterward, whatever the outcome. If a job is already running (the Active Jobs list, or a run that has started but not yet reached it), or another restore is running, nothing is touched and the response is `409` with `status: "busy"` and a `message` naming the running job(s), the same shape as `POST /api/system/restart`: a running job holds connections to the database file being replaced and would lose its later writes. The running-jobs check and the start of the restore happen under one lock, so no job can start between them. For the whole restore every manual job trigger (`409`, see *Job already running*), `POST /api/system/restart` and `POST /api/system/force-restart` (`409`) are refused, and a scheduled firing that was already submitted is dropped with a warning in the log. Connections opened by web requests and cache-refresh workers are not tracked; restart the service after the restore as above.
 
 ---
 
@@ -2336,7 +2336,7 @@ Sends a `SIGTERM` to the running process after a 2-second delay, triggering a gr
 
 Only one installation runs at a time: while one is running a second restart request returns HTTP **409** (`status: "busy"`). If pip fails or times out the service is **not** restarted, the pending state is kept (the Settings banner stays), and a `system_update_status` Error notification carries the exact interpreter-based command to run by hand in a shell on the server; run it, then restart the service. Progress and the failure command are exposed as `dependency_install` on `GET /api/system/active-jobs`; pip's own output is never part of that response — it goes to the application log and the Error notification only.
 
-Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated.
+Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated. It also returns **409** while a backup restore is running (`A backup restore is in progress. ...`), because a kill mid-restore can leave `data/` half restored.
 
 **Requires:** a password step-up (see `POST /api/step-up`).
 
@@ -2384,7 +2384,7 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 
 ### `POST /api/system/force-restart`
 
-Identical to `POST /api/system/restart` except it skips the active-jobs check — it shares the same `execute_restart()` background task, so the same dependency-reinstall-before-shutdown behavior, single-installation lock, `installing` flag and abort-on-failure rule apply here too. Used by the Settings UI to restart even while a scheduler job is running.
+Identical to `POST /api/system/restart` except it skips the active-jobs check — it shares the same `execute_restart()` background task, so the same dependency-reinstall-before-shutdown behavior, single-installation lock, `installing` flag and abort-on-failure rule apply here too. Used by the Settings UI to restart even while a scheduler job is running. It is still refused with HTTP **409** while a backup restore is running.
 
 **Requires:** a password step-up (see `POST /api/step-up`).
 
@@ -2565,7 +2565,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
 | `POST` | `/api/backup/run` | Run an Automated Backup now |
 | `GET` | `/api/backup/status` | Last backup result + stored archive list |
-| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive; 409 if jobs running) |
+| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive; 409 if jobs running or a restore is already running) |
 | `GET` | `/api/settings/network-status` | Current routing health and mode |
 | `GET` | `/api/system/yahoo-api-stats` | Daily Yahoo Finance API call counts |
 | `GET` | `/api/system/yahoo-api-stats/{date_str}` | Per-day Yahoo Finance usage bucketed by 15-min interval and consuming job |
@@ -2575,8 +2575,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/system/active-jobs` | Currently executing scheduler jobs (busy indicator) |
 | `GET` | `/api/system/scheduler-jobs/{job_id}/runs` | Latest 20 scheduled/manual executions for a scheduler job |
 | `POST` | `/api/system/git-pull` | Pull latest code from git |
-| `POST` | `/api/system/restart` | Graceful application restart (409 if jobs running) |
-| `POST` | `/api/system/force-restart` | Graceful application restart, skips active-jobs check |
+| `POST` | `/api/system/restart` | Graceful application restart (409 if jobs running or a backup restore is running) |
+| `POST` | `/api/system/force-restart` | Graceful application restart, skips active-jobs check (409 during a backup restore) |
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |
 | `POST` | `/api/test-earnings-alert` | Test Nextcloud earnings alert |
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |

@@ -50,9 +50,23 @@ API_KEY_ROUTES = frozenset({
 })
 
 
+def restore_busy_response():
+    """409 while a backup restore swaps live files; a trigger or restart started then would write to, or kill the process holding, files being replaced."""
+    from scheduler_engine import restore_in_progress
+    if not restore_in_progress():
+        return None
+    return JSONResponse(status_code=409, content={
+        "status": "busy",
+        "message": "A backup restore is in progress. Wait for it to finish, then try again.",
+    })
+
+
 def job_busy_response(job_id: str):
-    """409 for a manual trigger while the job runs (scheduled or manual); the route returns it before queuing the task."""
+    """409 for a manual trigger while the job runs (scheduled or manual) or a restore is in progress; the route returns it before queuing the task."""
     from scheduler_engine import is_job_running, job_label
+    restoring = restore_busy_response()
+    if restoring is not None:
+        return restoring
     if not is_job_running(job_id):
         return None
     return JSONResponse(status_code=409, content={

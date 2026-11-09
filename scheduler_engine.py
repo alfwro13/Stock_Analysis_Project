@@ -47,6 +47,8 @@ scheduler.add_job = _tracked_add_job
 _active_jobs: dict[str, str] = {}
 _active_job_ids: dict[str, str] = {}
 _running_job_runs: dict[str, int] = {}
+_restore_in_progress = False
+RESTORE_ACTIVITY_NAME = "Backup & Recovery restore"
 _active_jobs_lock = _threading.Lock()
 _job_execution_context = _threading.local()
 
@@ -69,6 +71,10 @@ def get_active_jobs() -> dict[str, str]:
 def is_job_running(job_id: str) -> bool:
     with _active_jobs_lock:
         return _running_job_runs.get(job_id, 0) > 0
+
+def restore_in_progress() -> bool:
+    with _active_jobs_lock:
+        return _restore_in_progress
 
 def get_active_job_average_durations() -> dict[str, float | None]:
     with _active_jobs_lock:
@@ -266,9 +272,13 @@ def _record_job_duration(
 
 def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
     with _active_jobs_lock:
+        restoring = _restore_in_progress
         already_running = _running_job_runs.get(job_id, 0) > 0
-        if not (already_running and trigger_source == "manual"):
+        if not restoring and not (already_running and trigger_source == "manual"):
             _running_job_runs[job_id] = _running_job_runs.get(job_id, 0) + 1
+    if restoring:
+        logger.warning("Run of %s skipped: a backup restore is in progress.", job_id)
+        return None
     if already_running and trigger_source == "manual":
         logger.warning("Manual run of %s skipped: it is already running.", job_id)
         return None
@@ -1231,15 +1241,30 @@ def shutdown_scheduler():
 
 @_contextlib.contextmanager
 def scheduler_quiesced():
-    """Pauses job firing and yields the jobs already running — pause() leaves them alone, and they hold the connections a database swap strands."""
-    paused = scheduler.state == STATE_RUNNING
-    if paused:
-        scheduler.pause()
+    """Claims the restore slot atomically with the running-jobs check, then pauses firing; yields what blocked the claim (nothing is touched then)."""
+    global _restore_in_progress
+    with _active_jobs_lock:
+        if _restore_in_progress:
+            running = {RESTORE_ACTIVITY_NAME: ""}
+        else:
+            running = dict(_active_jobs)
+            for run_job_id in _running_job_runs:
+                running.setdefault(job_label(run_job_id), "")
+        claimed = not running
+        if claimed:
+            _restore_in_progress = True
+    paused = False
     try:
-        yield get_active_jobs()
+        if claimed and scheduler.state == STATE_RUNNING:
+            scheduler.pause()
+            paused = True
+        yield running
     finally:
         if paused and scheduler.state == STATE_PAUSED:
             scheduler.resume()
+        if claimed:
+            with _active_jobs_lock:
+                _restore_in_progress = False
 
 
 # Sub-module re-exports — placed after all primary definitions so the sub-modules can
