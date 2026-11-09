@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 import sqlite3
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import load_config
@@ -12,7 +13,7 @@ from constants import (
     NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS,
     NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS,
 )
-from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES, get_nextcloud_talk_today
+from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES, defer_write, get_nextcloud_talk_today, insert_notification, is_lock_error
 import nextcloud_talk
 
 logger = logging.getLogger(__name__)
@@ -218,14 +219,22 @@ def _route(source, message_type, message_text, nextcloud_text, level, conn, conf
 
     if routing["in_app"]:
         if conn is not None:
+            logged_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             try:
                 conn.execute(
-                    "INSERT INTO system_notifications (message_type, message_text, is_read) VALUES (?, ?, ?)",
-                    (message_type, message_text, message_type in AUTO_READ_MESSAGE_TYPES),
+                    "INSERT INTO system_notifications (timestamp, message_type, message_text, is_read) VALUES (?, ?, ?, ?)",
+                    (logged_at, message_type, message_text, message_type in AUTO_READ_MESSAGE_TYPES),
                 )
-                conn.commit()
             except Exception as e:
-                logger.error("notify: in-app write failed for %s: %s", source, e)
+                if is_lock_error(e):
+                    defer_write(f"in-app notification ({source})", lambda: insert_notification(message_type, message_text, logged_at))
+                else:
+                    logger.error("notify: in-app write failed for %s: %s", source, e)
+            else:
+                try:
+                    conn.commit()
+                except Exception as e:
+                    logger.error("notify: in-app write failed for %s: %s", source, e)
         else:
             _db_log_notification(message_type, message_text)
 

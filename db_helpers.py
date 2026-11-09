@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from config import load_config
 from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
-from database import get_connection
+from database import get_connection, replaying_deferred_write, write_or_defer
 from time_engine import parse_stored_utc, trading_days_since
 from utils import is_valid_ticker
 
@@ -1462,22 +1462,30 @@ def get_cached_fx_quote(pair: str):
             conn.close()
 
 
+_FX_QUOTE_UPSERT = """INSERT INTO market_pulse_cache (ticker, price, last_updated, fx_rate, fx_updated_at)
+    VALUES (?, ?, ?, ?, ?) ON CONFLICT(ticker) DO UPDATE SET
+    fx_rate = excluded.fx_rate, fx_updated_at = excluded.fx_updated_at"""
+_FX_QUOTE_NEWER_ONLY = " WHERE market_pulse_cache.fx_updated_at IS NULL OR excluded.fx_updated_at >= market_pulse_cache.fx_updated_at"
+
+
 def upsert_fx_quote(pair: str, rate: float, updated_at: float, conn=None):
-    owns_conn = conn is None
-    try:
-        if owns_conn:
-            conn = get_connection()
-        conn.execute(
-            """INSERT INTO market_pulse_cache (ticker, price, last_updated, fx_rate, fx_updated_at)
-            VALUES (?, ?, ?, ?, ?) ON CONFLICT(ticker) DO UPDATE SET
-            fx_rate = excluded.fx_rate, fx_updated_at = excluded.fx_updated_at""",
-            (pair, rate, updated_at, rate, updated_at),
-        )
-        if owns_conn:
-            conn.commit()
-    finally:
-        if owns_conn and conn:
-            conn.close()
+    """With no `conn` the write commits itself and, if the database stays locked, is retried later; a retried quote never replaces a newer one, so `fx_rate` and `fx_updated_at` stay paired."""
+    params = (pair, rate, updated_at, rate, updated_at)
+    if conn is not None:
+        conn.execute(_FX_QUOTE_UPSERT, params)
+        return
+
+    def write():
+        own_conn = None
+        try:
+            own_conn = get_connection()
+            own_conn.execute(_FX_QUOTE_UPSERT + (_FX_QUOTE_NEWER_ONLY if replaying_deferred_write() else ""), params)
+            own_conn.commit()
+        finally:
+            if own_conn:
+                own_conn.close()
+
+    write_or_defer(f"FX quote {pair}", write)
 
 
 def get_instrument_sessions() -> dict:

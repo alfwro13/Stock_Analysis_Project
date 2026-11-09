@@ -16,7 +16,7 @@ import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
 import memory_helpers
 from constants import MEMORY_SAMPLE_INTERVAL_MINUTES, SCHEDULER_RUN_HISTORY_LIMIT
-from database import get_accounts, get_connection, get_etf_predictor_configs
+from database import get_accounts, get_connection, get_etf_predictor_configs, replaying_deferred_write, write_or_defer
 from db_account_reminders import get_reminders
 from db_helpers import refresh_job_average_duration
 from news_feed_engine import run_news_feed_job
@@ -89,22 +89,34 @@ def log_sched_notification(msg_type: str, msg_text: str):
         context["error_detail"] = msg_text
     notify(current_job_source() or SCHEDULER_STATUS_SOURCE, msg_type, msg_text, level=level)
 
+_RUN_LOG_NEWER_ONLY = " WHERE excluded.last_run >= scheduler_run_log.last_run"
+
+
+def _run_log_guard() -> str:
+    return _RUN_LOG_NEWER_ONLY if replaying_deferred_write() else ""
+
+
 def record_job_run(job_id: str):
-    conn = None
+    ran_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+    def write():
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?) "
+                "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run" + _run_log_guard(),
+                (job_id, ran_at)
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?) "
-            "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run",
-            (job_id, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
-        )
-        conn.commit()
+        write_or_defer(f"Workflow Monitor run time of {job_id}", write)
     except Exception as e:
         logger.error("Failed to record job run for %s: %s", job_id, e)
-    finally:
-        if conn:
-            conn.close()
 
 def get_all_job_last_runs() -> dict:
     conn = None
@@ -222,30 +234,34 @@ def _record_job_duration(
     trigger_source: str,
     error_detail: str | None = None,
 ) -> None:
-    conn = None
+    def write():
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO scheduler_run_log (job_id, last_run, last_started, last_duration_sec, last_status) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run, last_started = excluded.last_started, "
+                "last_duration_sec = excluded.last_duration_sec, last_status = excluded.last_status" + _run_log_guard(),
+                (job_id, finished_iso, started_iso, duration_sec, status),
+            )
+            cursor.execute(
+                "INSERT INTO scheduler_run_history "
+                "(job_id, started_at, finished_at, duration_sec, trigger_source, status, error_detail) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (job_id, started_iso, finished_iso, duration_sec, trigger_source, status, error_detail),
+            )
+            refresh_job_average_duration(cursor, job_id)
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO scheduler_run_log (job_id, last_run, last_started, last_duration_sec, last_status) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run, last_started = excluded.last_started, "
-            "last_duration_sec = excluded.last_duration_sec, last_status = excluded.last_status",
-            (job_id, finished_iso, started_iso, duration_sec, status),
-        )
-        cursor.execute(
-            "INSERT INTO scheduler_run_history "
-            "(job_id, started_at, finished_at, duration_sec, trigger_source, status, error_detail) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (job_id, started_iso, finished_iso, duration_sec, trigger_source, status, error_detail),
-        )
-        refresh_job_average_duration(cursor, job_id)
-        conn.commit()
+        write_or_defer(f"Workflow Monitor run record of {job_id}", write)
     except Exception as e:
         logger.error("Failed to record duration for %s: %s", job_id, e)
-    finally:
-        if conn:
-            conn.close()
 
 
 def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):

@@ -25,6 +25,8 @@ from database import (
     log_pattern_detection,
     get_unresolved_pattern_detections,
     batch_update_pattern_detection_actuals,
+    replaying_deferred_write,
+    write_or_defer,
 )
 from indicators import compute_rsi, compute_volume_sma
 from notification_engine import notify
@@ -158,25 +160,35 @@ class PatternDetectionEngine:
             logger.warning("PatternDetectionEngine: failed to load %s: %s", ticker, e)
             return None
 
-    def _save_results(self, results: list[dict], stale: list[tuple[str, str]] = ()) -> None:
-        conn = None
+    def _load_previous(self, results: list[dict]) -> dict:
         previous_by_key: dict = {}
+        conn = None
+        try:
+            conn = get_connection()
+            for row in results:
+                prev = conn.execute(
+                    "SELECT pattern_type, phase, points_json FROM pattern_detection_results WHERE ticker=? AND pattern_family=?",
+                    (row["ticker"], row["pattern_family"]),
+                ).fetchone()
+                if prev:
+                    previous_by_key[(row["ticker"], row["pattern_family"])] = dict(prev)
+        except Exception as e:
+            logger.error("PatternDetectionEngine: failed to read previous results: %s", e)
+        finally:
+            if conn:
+                conn.close()
+        return previous_by_key
+
+    def _write_results(self, results: list[dict], stale: list[tuple[str, str]], save_started: str) -> None:
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            for row in results:
-                cursor.execute(
-                    "SELECT pattern_type, phase, points_json FROM pattern_detection_results WHERE ticker=? AND pattern_family=?",
-                    (row["ticker"], row["pattern_family"]),
-                )
-                prev = cursor.fetchone()
-                if prev:
-                    previous_by_key[(row["ticker"], row["pattern_family"])] = dict(prev)
-
+            replay = replaying_deferred_write()
             if stale:
                 cursor.executemany(
-                    "DELETE FROM pattern_detection_results WHERE ticker=? AND pattern_family=?",
-                    list(stale),
+                    "DELETE FROM pattern_detection_results WHERE ticker=? AND pattern_family=?" + (" AND scan_ts < ?" if replay else ""),
+                    [(ticker, family, save_started) if replay else (ticker, family) for ticker, family in stale],
                 )
 
             for row in results:
@@ -199,7 +211,7 @@ class PatternDetectionEngine:
                         volume_confirms=excluded.volume_confirms, rsi_divergence=excluded.rsi_divergence,
                         pattern_r2=excluded.pattern_r2, prior_trend_pct=excluded.prior_trend_pct,
                         scan_ts=excluded.scan_ts
-                    """,
+                    """ + (" WHERE excluded.scan_ts >= pattern_detection_results.scan_ts" if replay else ""),
                     (
                         row["ticker"], row["pattern_family"], row["pattern_type"], row["phase"],
                         points_json, lines_json,
@@ -209,11 +221,17 @@ class PatternDetectionEngine:
                     ),
                 )
             conn.commit()
-        except Exception as e:
-            logger.error("PatternDetectionEngine: failed to save results: %s", e)
         finally:
             if conn:
                 conn.close()
+
+    def _save_results(self, results: list[dict], stale: list[tuple[str, str]] = ()) -> None:
+        save_started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        previous_by_key = self._load_previous(results)
+        try:
+            write_or_defer("Pattern Detection results", lambda: self._write_results(results, stale, save_started))
+        except Exception as e:
+            logger.error("PatternDetectionEngine: failed to save results: %s", e)
 
         scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
