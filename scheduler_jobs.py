@@ -1068,7 +1068,7 @@ def run_risk_orchestrator_digest_job():
         if digest["message"] is None:
             log_sched_notification("Info", "Risk Orchestrator Digest: no Portfolio Heat Index data yet — skipping.")
         else:
-            notify("risk_orchestrator_digest", "Info", digest["message"])
+            notify("risk_orchestrator_digest", "Info", digest["message"], nextcloud_text=digest["talk_message"])
             log_sched_notification(
                 "Success",
                 f"Risk Orchestrator Digest sent — {digest['scope_count']} scope(s), "
