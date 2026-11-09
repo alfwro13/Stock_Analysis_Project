@@ -795,7 +795,7 @@ Trains the global XGBoost/RF soft-voting ensemble using the historical feature b
 
 ### `POST /api/ml/trigger-inference`
 
-Runs daily ML inference on all universe tickers (or portfolio/watchlist tickers if universe is empty): writes `ml_confidence_score` (`update_daily_ml_predictions()`) and `price_q10`/`price_q90` ML Quantile Bands (`score_quantile_predictions()`) — matching the scheduled `ml_inference_job`'s two-step behavior via `bg_execute_ml_inference()`. Runs asynchronously.
+Runs daily ML inference on all universe tickers (or portfolio/watchlist tickers if universe is empty): first refreshes every ticker's latest indicator row from the local Parquet history (`run_daily_quant_scan(..., scan_type='universe_refresh', read_only=True)`), then writes `ml_confidence_score` and `ml_scored_at` (`update_daily_ml_predictions()`, which raises the stale-features warning for unscored Portfolio/Watchlist tickers) and `price_q10`/`price_q90` ML Quantile Bands (`score_quantile_predictions()`) — matching the scheduled `ml_inference_job` via `bg_execute_ml_inference()`. Runs asynchronously.
 
 **Request body:** none  
 **Response:** standard background task response

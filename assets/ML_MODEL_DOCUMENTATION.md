@@ -218,7 +218,14 @@ z_score(feature, date) = (feature_value - mean(feature, date)) / std(feature, da
 
 Where mean and std are computed across **all tickers on the same date** — not across time. This forces the model to evaluate each stock relative to its peers on that specific trading day, neutralising absolute size and market-level bias. A stock with RSI 65 on a day when the whole market averages RSI 65 receives a z-score near 0. The same RSI 65 on a day when the market averages RSI 40 receives a strongly positive z-score — correctly identified as a genuine outlier.
 
-**Critical implementation note:** At inference time, z-scores must be computed across the full population of all tickers at the latest date — not just the requested ticker subset. Computing z-scores on a batch of 3–10 tickers collapses all scores to the base rate because every stock's z-score approaches 0 when the peer group is trivially small. `update_daily_ml_predictions()` therefore fetches ALL tickers with valid features at the latest date before z-scoring, regardless of the `tickers` parameter.
+**Critical implementation note:** At inference time, z-scores must be computed across the full population of all tickers on the same date — not just the requested ticker subset. Computing z-scores on a batch of 3–10 tickers collapses all scores to the base rate because every stock's z-score approaches 0 when the peer group is trivially small. `update_daily_ml_predictions()` therefore reads the newest complete row of EVERY stored ticker, regardless of the `tickers` parameter, and keeps only the rows `ml_features.inference_cross_section()` accepts:
+
+- **Fresh:** the row's date is within `constants.ML_FEATURE_MAX_AGE_TRADING_DAYS` trading days of today (`db_helpers.ml_fresh_cutoff_date()`, counted by `time_engine.trading_days_since()`, so a weekend or holiday does not age a row).
+- **Well covered:** the row's date holds at least `max(30, 25% of the training median tickers per date)` rows. A date below that is not z-scored at all: a handful of tickers on one date is not the market the model was trained on.
+
+Each run logs the rows used, the date range, the rows dropped for age or thin dates, and the ticker count per date. If no date qualifies, inference refuses to score and raises an Error notification.
+
+**The cross-section is built before scoring.** Daily ML Inference first runs `run_daily_quant_scan(tickers, scan_type='universe_refresh', read_only=True)` over the scored universe: it recomputes the latest indicator row of every ticker from the Parquet on disk (no Yahoo call, no throttle), so one recent date holds the full cross-section. The nightly Update Pipeline's universe history step is what keeps those files current. The refresh is a resumable scan state of its own (`quant_scan_states`, scan type `universe_refresh`), so it runs once per UTC day; a later same-day inference run reuses the rows it wrote. A ticker with no Parquet file, fewer than 200 bars or a delisted history keeps an old row, which the freshness limit then excludes.
 
 ### 5.3 Probability Calibration
 
@@ -289,7 +296,7 @@ count=3, mean=36.43, std=1.38, min=34.92, max=37.63
 count=184, mean=34.03, std=11.62, min=3.90, max=70.17
 ```
 
-`update_daily_ml_predictions()` therefore fetches ALL tickers at the latest date with complete features for z-scoring, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
+`update_daily_ml_predictions()` therefore z-scores every fresh, well-covered date in full, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
 
 ### Calibration data leakage — `ml_training_engine.py`
 `CalibratedClassifierCV` calibrates probability outputs using the same data the base model was already fitted on. This inflates confidence score calibration quality. **Status:** a known limitation. Confidence scores are used as ranking signals only. A full fix requires a three-way temporal split.
@@ -550,8 +557,14 @@ These bands are calibrated to the current score distribution (mean ~34, std ~11.
 
 ### Scheduled Runs
 The full pipeline runs via APScheduler:
-- **Daily:** `update_daily_ml_predictions()` after the daily quant scan completes
+- **Daily:** Daily ML Inference (`ml_inference_job`): universe indicator refresh from Parquet, then `update_daily_ml_predictions()` and `score_quantile_predictions()`, after the daily quant scan completes
 - **Weekly (weekend):** Full `run_historical_backfill()` + `train_global_ml_model()` + `update_daily_ml_predictions()`
+
+### Score freshness
+
+A score is written with `quant_signals.ml_scored_at` (UTC). The readers that carry the latest non-NULL score forward past a newer row that has none yet (Portfolio/Watchlist rows, Stock Detail) and the live ML pillar of Signal Pillar Confluence accept a score only when `ml_scored_at >= db_helpers.ml_fresh_since()` (the start of the day `ML_FEATURE_MAX_AGE_TRADING_DAYS` trading days back); an older or unstamped score shows as unavailable. Nothing is deleted or set to NULL in `quant_signals`, so a score still shows while a newer row waits for tonight's inference. A reconstruction `as_of` a past date does not apply the limit. `stock_signals.ml_confidence`, which has no history, is set to NULL for a requested ticker that was not scored and has no fresh score left.
+
+A requested ticker left unscored is returned by `update_daily_ml_predictions()`. When any Portfolio or Watchlist ticker is among them, `ml_inference_engine.alert_unscored_holdings()` sends one `ml_inference_stale_features` warning through the notification router naming up to 15 of them and the number of other universe tickers also without a fresh score. It warns again only for a newly unscored ticker and re-arms once every held and watched ticker is scored.
 
 ### Files Generated
 

@@ -56,8 +56,8 @@ def watchlist():
             (BARE, _stamp(seconds_ago=3600)),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO quant_signals (ticker, date, rsi_14, atr_pct, mom_1m, mom_3m, week52_pct, ml_confidence_score) "
-            "VALUES (?, ?, 55.0, 0.02, 0.04, 0.08, 0.75, 72.5)",
+            "INSERT OR REPLACE INTO quant_signals (ticker, date, rsi_14, atr_pct, mom_1m, mom_3m, week52_pct, ml_confidence_score, ml_scored_at) "
+            "VALUES (?, ?, 55.0, 0.02, 0.04, 0.08, 0.75, 72.5, datetime('now'))",
             (HELD, _day(-1)),
         )
         conn.execute(

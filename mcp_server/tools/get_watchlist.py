@@ -2,6 +2,7 @@ import time
 from typing import Any, Optional
 
 from accounts_engine import get_combined_holdings, native_currencies
+from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS
 from database import get_watchlist_tickers
 from db_accounts import get_all_holding_price_limits, get_watchlist_account
 from db_helpers import get_next_earnings_dates, parse_utc_epoch
@@ -28,7 +29,7 @@ _UNITS = {
     "trend_50d/trend_200d": "UP when the nightly price is above the 50- or 200-day average, else DOWN; null when the average or price is missing",
     "rsi_14": "0-100",
     "atr_pct, mom_1m, mom_3m, week52_pct": "fractions (0.05 = 5%); week52_pct is the position inside the 52-week range, 0 at the low and 1 at the high",
-    "ml_confidence": "0-100: the latest model probability for the ticker, with no timestamp of its own",
+    "ml_confidence": f"0-100: the latest model probability for the ticker; null once it is older than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days",
     "trap_phase": "the ticker's current Market Trap & Recovery Monitor phase, null when it has none",
     "pillar_confluence": "bullish or bearish when at least two of the technical, statistical and ML pillars agree over the last 5 trading days and none disagrees; null means no confluence, not missing data",
     "buy_recommendation": "present only for a bullish pillar confluence with the inputs for a reward:risk estimate; recommended is true when risk_reward (a ratio) reaches the Settings minimum",

@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -7,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from config import BASE_DIR
+from db_helpers import ml_fresh_cutoff_date
 from utils import sanitize_floats, write_text_atomic
 
 logger = logging.getLogger(__name__)
@@ -286,3 +288,21 @@ LATEST_FEATURES_QUERY = _FEATURE_SELECT + """
             AND qs2.rel_strength_20d IS NOT NULL
       )
 """
+
+
+def inference_cross_section(df: pd.DataFrame, today: date, min_tickers_per_date: int) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Rows of the latest-features frame that inference may score: not older than the feature age limit, on a date whose cross-section meets the coverage threshold (training z-scored every date against thousands of tickers)."""
+    cutoff = ml_fresh_cutoff_date(today).isoformat()
+    fresh = df[df['date'] >= cutoff]
+    date_counts = fresh.groupby('date').size()
+    usable_dates = date_counts[date_counts >= min_tickers_per_date].index
+    usable = fresh[fresh['date'].isin(usable_dates)].copy()
+    summary = {
+        'latest_rows': len(df),
+        'too_old': len(df) - len(fresh),
+        'thin_dates': len(fresh) - len(usable),
+        'date_counts': {d: int(n) for d, n in date_counts.sort_index(ascending=False).items()},
+        'min_date': usable['date'].min() if not usable.empty else None,
+        'max_date': usable['date'].max() if not usable.empty else None,
+    }
+    return usable, summary

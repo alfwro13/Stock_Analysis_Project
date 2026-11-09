@@ -197,7 +197,7 @@
 
                 <div class="settings-panel border-left-cyan">
                     <h4 class="settings-panel-header text-cyan">🔮 Daily ML Inference</h4>
-                    <p class="settings-desc-sm">Loads the trained model and performs rapid daily predictions on your portfolio and the market universe. Should run shortly after the Daily Quant Screener (Portfolio &amp; Watchlist).</p>
+                    <p class="settings-desc-sm">Refreshes the technical indicators of the whole market universe from the local price history, then loads the trained model and scores your portfolio and the market universe. A ticker whose newest indicators are more than a few trading days old gets no new score, and a warning names any held or watched ticker left unscored. Should run shortly after the Daily Quant Screener (Portfolio &amp; Watchlist).</p>
                     <div class="checkbox-group">
                         <input type="checkbox" id="ML_INFERENCE_ENABLED" {% if ml_inference.ENABLED %}checked{% endif %}>
                         <label for="ML_INFERENCE_ENABLED">Enable automated background execution</label>

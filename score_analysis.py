@@ -5,6 +5,7 @@ from typing import Optional
 import pandas as pd
 
 from database import get_connection, get_watchlist_tickers
+from db_helpers import ml_fresh_since
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +301,7 @@ def _statistical_signals_batch(tickers: list[str], conn, as_of: Optional[str] = 
 
 
 def _ml_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> dict[str, list[str]]:
-    """Only non-NULL ML observations count toward the five-observation window."""
+    """Only non-NULL ML observations count toward the five-observation window; a live (not as_of) window counts only while its newest score is fresh."""
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:
         return signals
@@ -313,7 +314,7 @@ def _ml_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> 
     params.append(_CONFLUENCE_WINDOW)
     rows = conn.execute(
         f"""WITH requested(ticker) AS (VALUES {requested})
-            SELECT h.ticker, h.date, h.ml_confidence_score FROM requested
+            SELECT h.ticker, h.date, h.ml_confidence_score, h.ml_scored_at FROM requested
             JOIN quant_signals h ON h.rowid IN (
                 SELECT rowid FROM quant_signals WHERE ticker = requested.ticker AND ml_confidence_score IS NOT NULL{as_of_sql}
                 ORDER BY date DESC LIMIT ?
@@ -321,9 +322,18 @@ def _ml_signals_batch(tickers: list[str], conn, as_of: Optional[str] = None) -> 
         params,
     ).fetchall()
 
+    fresh_since = None if as_of else ml_fresh_since()
+    stale: set[str] = set()
+    newest_seen: set[str] = set()
     for row in rows:
         row = dict(row)
         ticker = row["ticker"]
+        if fresh_since and ticker not in newest_seen:
+            newest_seen.add(ticker)
+            if row["ml_scored_at"] is None or row["ml_scored_at"] < fresh_since:
+                stale.add(ticker)
+        if ticker in stale:
+            continue
         score = row["ml_confidence_score"]
         if score > _ML_CONFIDENCE_BULLISH:
             signals[ticker].append("up")
