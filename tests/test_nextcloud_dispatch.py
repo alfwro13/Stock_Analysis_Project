@@ -449,6 +449,21 @@ class TestSendTextMessageStats:
         assert NC_ENV["NEXTCLOUD_CONVERSATION_TOKEN"] not in caplog.text
         assert NC_ENV["NEXTCLOUD_URL"] not in caplog.text
 
+    def test_failure_dict_receives_the_http_status_or_none(self):
+        import requests
+        from nextcloud_talk import send_text_message
+        rejected = MagicMock()
+        rejected.raise_for_status.side_effect = requests.exceptions.HTTPError("x", response=MagicMock(status_code=413))
+        with patch.dict(os.environ, NC_ENV, clear=False):
+            failure = {}
+            with patch("requests.post", return_value=rejected):
+                assert send_text_message("hello", {}, failure) is False
+            assert failure == {"status": 413}
+            failure = {}
+            with patch("requests.post", side_effect=requests.exceptions.ConnectionError("down")):
+                send_text_message("hello", {}, failure)
+            assert failure == {"status": None}
+
     def test_connection_error_is_counted_by_exception_class(self):
         import requests
         with patch.dict(os.environ, NC_ENV, clear=False), patch("requests.post", side_effect=requests.exceptions.ConnectionError("unreachable")):

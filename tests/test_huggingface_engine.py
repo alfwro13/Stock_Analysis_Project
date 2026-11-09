@@ -457,7 +457,7 @@ class TestRunCentralBankNlpAlert:
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=hawkish_score), \
              patch("notification_engine.nextcloud_talk.send_text_message",
-                   side_effect=lambda msg, cfg: dispatched.append(msg)), \
+                   side_effect=lambda msg, cfg, failure=None: dispatched.append(msg)), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news
@@ -475,7 +475,7 @@ class TestRunCentralBankNlpAlert:
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=dovish_score), \
              patch("notification_engine.nextcloud_talk.send_text_message",
-                   side_effect=lambda msg, cfg: dispatched.append(msg)), \
+                   side_effect=lambda msg, cfg, failure=None: dispatched.append(msg)), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news
@@ -493,7 +493,7 @@ class TestRunCentralBankNlpAlert:
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=neutral_score), \
              patch("notification_engine.nextcloud_talk.send_text_message",
-                   side_effect=lambda msg, cfg: dispatched.append(msg)), \
+                   side_effect=lambda msg, cfg, failure=None: dispatched.append(msg)), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news

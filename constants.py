@@ -110,6 +110,7 @@ MCP_REFUSAL_LOG_SECONDS     = 60               # a 429 is written to the audit l
 MCP_NOTIFY_COOLDOWN_SECONDS = 3600             # a lockout or off-range notification repeats for one address at most this often
 MCP_AUDIT_RETENTION_DAYS    = 90               # mcp_audit_log rows older than this are pruned by the maintenance job
 NEXTCLOUD_TALK_MAX_RETRIES  = 3                # re-sends of a Talk message that failed, after the first attempt
+NEXTCLOUD_TALK_RETRYABLE_STATUSES = (408, 429)  # the only 4xx answers worth a re-send; any other 4xx is a rejection no retry can change
 NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS = 300  # a failed message is retried no sooner than this after its last attempt, so a burst of alerts cannot use up its retries at once
 NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS = 7200    # a queued Talk message older than this is dropped as stale
 NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS = 21600  # the "Nextcloud Talk delivery is failing" notification repeats at most this often

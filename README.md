@@ -62,7 +62,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 * **Yield vs Nominal GDP** — the 10-year US Treasury and UK Gilt yield charted against nominal GDP growth on the Market Sentiment page, with a one-line summary in the Treasury and Gilt warning boxes; context for whether rising yields are growth-driven, not a signal.
 * **Market Reports** — seven cross-universe screeners (Quality Compounders, GARP Tenbaggers, Quality on Sale, Sector Trends, Relative Strength Leaders, Mean Reversion, Dividend Harvest).
 * **ETF Price Predictor** — configurable holdings-weighted + OLS next-session open predictor with tracked accuracy.
-* **Nextcloud Talk Integration** & **Unified Notification Settings** — rich push alerts routed per job/alert across log/in-app/Nextcloud channels. A failed Talk send is retried a few times without repeating the alert elsewhere, raises one in-app warning, and System Diagnostics shows the day's sent count and whether Talk is working.
+* **Nextcloud Talk Integration** & **Unified Notification Settings** — rich push alerts routed per job/alert across log/in-app/Nextcloud channels. A Talk send that fails because the server is unreachable is retried a few times (a rejection such as a wrong room token or an over-long message is not) without repeating the alert elsewhere, raises one in-app warning that names the likely cause, and System Diagnostics shows the day's sent count and whether Talk is working.
 
 **Platform & Infrastructure**
 * **Multi-Dimensional Data Engine** — 2-year daily, 1-day intraday, and deep fundamentals data via Yahoo Finance.

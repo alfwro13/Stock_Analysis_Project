@@ -210,6 +210,61 @@ class TestTalkRetry:
         assert routing == {"log_file": True, "in_app": True, "nextcloud_talk": False}
         assert "alert_type" not in ne.NOTIFICATION_SOURCES["nextcloud_talk_health"]
 
+    @staticmethod
+    def _answers(status):
+        def send(text, config, failure=None):
+            failure["status"] = status
+            return False
+        return send
+
+    @pytest.mark.parametrize("status", [400, 401, 403, 404, 413])
+    def test_a_4xx_rejection_is_not_queued_for_retry(self, clock, status):
+        with patch("notification_engine.nextcloud_talk.send_text_message", side_effect=self._answers(status)):
+            self._notify("a")
+        assert ne._pending_talk == []
+        assert len(_read(MARKER)) == 1
+
+    @pytest.mark.parametrize("status", [408, 429, 500, 502, 503, None])
+    def test_a_retryable_failure_is_queued(self, clock, status):
+        with patch("notification_engine.nextcloud_talk.send_text_message", side_effect=self._answers(status)):
+            self._notify("a")
+        assert len(ne._pending_talk) == 1
+
+    def test_a_queued_message_rejected_on_retry_is_dropped_without_further_sends(self, clock):
+        with patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
+            self._notify("a")
+        clock[0] += ne.NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS
+        with patch("notification_engine.load_config", return_value={}), \
+             patch("notification_engine.nextcloud_talk.send_text_message", side_effect=self._answers(413)) as send:
+            ne.notify("maintenance_job", "Info", f"tick {MARKER}")
+            clock[0] += ne.NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS
+            ne.notify("maintenance_job", "Info", f"tick {MARKER}")
+        assert send.call_count == 1
+        assert ne._pending_talk == []
+
+    def test_health_warning_for_413_blames_the_message_length_not_the_token(self, clock):
+        with patch("notification_engine.nextcloud_talk.send_text_message", side_effect=self._answers(413)):
+            self._notify("a")
+        text = _read(HEALTH_TEXT)[0]["message_text"]
+        assert "(HTTP 413)" in text and "length limit" in text
+        assert "token" not in text and "participant" not in text
+        assert "retried up to" not in text
+
+    @pytest.mark.parametrize("status", [401, 403, 404])
+    def test_health_warning_for_access_errors_names_the_token_and_participation(self, clock, status):
+        with patch("notification_engine.nextcloud_talk.send_text_message", side_effect=self._answers(status)):
+            self._notify("a")
+        text = _read(HEALTH_TEXT)[0]["message_text"]
+        assert f"(HTTP {status})" in text and "conversation token" in text and "participant" in text
+
+    def test_health_warning_for_an_outage_says_the_message_is_retried(self, clock):
+        with patch("notification_engine.nextcloud_talk.send_text_message", side_effect=self._answers(503)):
+            self._notify("a")
+        text = _read(HEALTH_TEXT)[0]["message_text"]
+        assert "(HTTP 503)" in text and "reachable" in text
+        assert f"retried up to {ne.NEXTCLOUD_TALK_MAX_RETRIES} times" in text
+        assert "participant" not in text
+
     def test_health_warning_survives_a_failing_stats_read(self, clock):
         with patch("notification_engine.get_nextcloud_talk_today", side_effect=RuntimeError("locked")), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
