@@ -7,8 +7,6 @@ import sys
 import threading
 import time
 
-import psutil
-
 import memory_helpers
 from config import BASE_DIR
 from constants import (
@@ -41,6 +39,10 @@ def _relay_child_output(stream) -> None:
             logger.info("training child: %s", line)
 
 
+def _mib_text(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.0f}"
+
+
 def _failure_reason(returncode: int, killed_by_watchdog: str | None) -> str:
     if killed_by_watchdog:
         return killed_by_watchdog
@@ -70,7 +72,7 @@ def run_training_child() -> None:
     relay.start()
     logger.info("Global Model Training child started (pid %d).", process.pid)
 
-    peak_rss_mib = 0.0
+    peak_rss_mib = None
     lowest_available_mib = float("inf")
     killed_by_watchdog = None
     try:
@@ -82,16 +84,13 @@ def run_training_child() -> None:
                 pass
             available_mib = memory_helpers.available_mib()
             lowest_available_mib = min(lowest_available_mib, available_mib)
-            try:
-                peak_rss_mib = max(peak_rss_mib, memory_helpers.rss_mib(process.pid))
-            except psutil.NoSuchProcess:
-                continue
+            peak_rss_mib = memory_helpers.peak_rss_mib(process.pid) or peak_rss_mib
             if available_mib < ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB and killed_by_watchdog is None:
                 killed_by_watchdog = (
                     f"stopped by the memory watchdog: only {available_mib:.0f} MiB RAM available "
                     f"(minimum {ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB} MiB)"
                 )
-                logger.error("Global Model Training child killed: %s; its sampled peak RSS was %.0f MiB.", killed_by_watchdog, peak_rss_mib)
+                logger.error("Global Model Training child killed: %s; its peak RSS was %s MiB.", killed_by_watchdog, _mib_text(peak_rss_mib))
                 process.kill()
     finally:
         if process.poll() is None:
@@ -100,9 +99,9 @@ def run_training_child() -> None:
     relay.join(timeout=5)
 
     logger.info(
-        "Global Model Training child finished: exit code %d after %.0f s, sampled peak RSS %.0f MiB, lowest available RAM %s MiB.",
-        returncode, time.monotonic() - started, peak_rss_mib,
-        "n/a" if lowest_available_mib == float("inf") else f"{lowest_available_mib:.0f}",
+        "Global Model Training child finished: exit code %d after %.0f s, peak RSS %s MiB, lowest available RAM %s MiB.",
+        returncode, time.monotonic() - started, _mib_text(peak_rss_mib),
+        _mib_text(None if lowest_available_mib == float("inf") else lowest_available_mib),
     )
     if returncode != 0:
         raise TrainingFailed(_failure_reason(returncode, killed_by_watchdog))

@@ -39,6 +39,19 @@ def test_rss_and_available_memory_readers_follow_psutil(monkeypatch):
     assert memory_helpers.available_mib() == 3 * 1024
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="VmHWM is read from /proc")
+def test_peak_rss_is_the_kernel_high_water_mark_and_missing_for_an_unknown_process():
+    import os
+
+    blob = bytearray(40 * 1024 * 1024)
+    blob[::4096] = b"x" * len(blob[::4096])
+    del blob
+    peak = memory_helpers.peak_rss_mib()
+    assert peak >= memory_helpers.rss_mib()
+    assert memory_helpers.peak_rss_mib(os.getpid()) == pytest.approx(peak, rel=0.05)
+    assert memory_helpers.peak_rss_mib(2**22 + 7) is None
+
+
 def test_sample_splits_rss_into_anon_and_file_on_linux():
     s = memory_helpers.sample()
     assert s["rss_anon_mib"] > 0

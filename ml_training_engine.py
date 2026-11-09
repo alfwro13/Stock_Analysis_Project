@@ -14,7 +14,10 @@ from sklearn.calibration import CalibratedClassifierCV
 import memory_helpers
 from model_compatibility_engine import dump_sklearn_artifact
 from database import get_connection, log_notification
-from constants import ML_TRAINING_ABORT_AVAILABLE_GB, PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
+from constants import (
+    ML_TRAINING_ABORT_AVAILABLE_GB, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB, PREDICTION_HORIZON_DAYS,
+    PREDICTION_RETURN_THRESHOLD,
+)
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
     CONTINUOUS_FEATURES, FUNDAMENTAL_FEATURES, TRAINING_HISTORY_QUERY, build_model_features,
@@ -79,11 +82,11 @@ def _search_iterations() -> Optional[int]:
 def _enough_memory_after_load(label: str) -> bool:
     """The pre-load gate cannot see the history's own footprint; 25 Oct 2026 passed it with 1.0 GB and died 39 s after the load."""
     avail_gb = memory_helpers.available_mib() / 1024
-    if avail_gb >= ML_TRAINING_ABORT_AVAILABLE_GB:
+    if avail_gb >= ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB:
         return True
     msg = (
         f"{label} aborted after loading the history: only {avail_gb:.1f} GB RAM available "
-        f"(minimum {ML_TRAINING_ABORT_AVAILABLE_GB} GB required). Free memory and retry."
+        f"(minimum {ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB} GB required). Free memory and retry."
     )
     logger.error(msg)
     log_notification("Error", msg)
@@ -91,7 +94,7 @@ def _enough_memory_after_load(label: str) -> bool:
 
 
 def _peak_rss_text() -> str:
-    peak = memory_helpers.sample()["rss_peak_mib"]
+    peak = memory_helpers.peak_rss_mib()
     return "" if peak is None else f" Peak RSS {peak:,.0f} MiB."
 
 

@@ -62,6 +62,29 @@ def test_an_unexpected_exit_code_is_reported(fast_poll):
             proc.run_training_child()
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="VmHWM is read from /proc")
+def test_the_finish_line_reports_a_memory_spike_that_ended_before_the_poll(fast_poll, caplog):
+    code = (
+        "import time\n"
+        "blob = bytearray(150 * 1024 * 1024)\n"
+        "blob[::4096] = b'x' * len(blob[::4096])\n"
+        "del blob\n"
+        "time.sleep(0.6)\n"
+    )
+    with patch.object(proc, "_CHILD_COMMAND", _child(code)), caplog.at_level(logging.INFO):
+        proc.run_training_child()
+
+    finish = next(r.getMessage() for r in caplog.records if "child finished" in r.getMessage())
+    assert float(finish.split("peak RSS ")[1].split(" MiB")[0]) >= 150
+
+
+def test_the_finish_line_says_n_a_when_the_peak_could_not_be_read(fast_poll, caplog):
+    with patch.object(proc, "_CHILD_COMMAND", _child("import time; time.sleep(0.3)")), \
+            patch.object(proc.memory_helpers, "peak_rss_mib", return_value=None), caplog.at_level(logging.INFO):
+        proc.run_training_child()
+    assert any("peak RSS n/a MiB" in r.getMessage() for r in caplog.records)
+
+
 def test_the_watchdog_kills_a_child_when_available_memory_falls_below_the_floor(fast_poll):
     low = proc.ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB - 100
     started = time.monotonic()
