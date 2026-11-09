@@ -97,7 +97,6 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `yfinance` | Underlying Yahoo Finance client, wrapped by `yahoo_engine.py` (the only sanctioned caller per AGENTS.md rule 12) | Yahoo response schema changes (`.info` keys, history columns) — the most failure-prone dependency in this list since it tracks an undocumented external API |
-| `multitasking` | Thread helper under `yfinance`'s `yf.download(threads=True)`; imported directly by `yahoo_engine.py`, which joins its finished threads and empties its global task list after every bulk download (`_release_download_threads()`). Floor `>=0.0.13` is the version production runs | The task list (`multitasking.get_list_of_tasks()`) is part of that cleanup: if a release stops appending to it, or removes finished threads itself, the cleanup becomes a no-op. After a bump run `tests/test_yahoo_engine.py -k release` and compare the `threads` and `anon` values of two `Memory periodic` lines a day apart |
 | `pandas` | DataFrame layer for nearly every engine | dtype inference changes, deprecated indexing APIs |
 | `pyarrow` | Parquet read/write for `data/historical/*.parquet` and `data/intraday/*.parquet` | Parquet format compatibility with existing on-disk files |
 | `requests` | HTTP client used directly by several engines (news, macro, insider, account scraper, Ghostfolio sync) | Session/adapter API, SSL default changes |
