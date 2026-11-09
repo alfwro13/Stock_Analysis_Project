@@ -10,6 +10,7 @@ from constants import (
     NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS,
     NEXTCLOUD_TALK_MAX_RETRIES,
     NEXTCLOUD_TALK_RETRY_MAX_AGE_SECONDS,
+    NEXTCLOUD_TALK_RETRYABLE_STATUSES,
     NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS,
 )
 from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES, get_nextcloud_talk_today
@@ -149,35 +150,57 @@ _pending_lock = threading.Lock()
 _health_warning = {"last": None}
 
 
+def _is_rejection(status: Optional[int]) -> bool:
+    return status is not None and 400 <= status < 500 and status not in NEXTCLOUD_TALK_RETRYABLE_STATUSES
+
+
 def _deliver_talk(source: str, text: str, config: dict) -> bool:
-    """True when the message was sent or Talk is not configured (nothing to retry); False when a real send failed."""
+    """True when the message was sent, Talk is not configured, or Talk rejected it for good (nothing to retry); False when a retryable send failed."""
+    failure: dict = {}
     try:
-        sent = bool(nextcloud_talk.send_text_message(text, config))
+        sent = bool(nextcloud_talk.send_text_message(text, config, failure))
     except Exception as e:
         logger.error("notify: Nextcloud dispatch failed for %s: %s", source, type(e).__name__)
         sent = False
     if sent or not nextcloud_talk.is_configured(config):
         return True
-    _warn_talk_failing(config)
+    status = failure.get("status")
+    _warn_talk_failing(config, status)
+    if _is_rejection(status):
+        logger.warning("notify: Nextcloud Talk rejected the message for %s (HTTP %s); it is not retried", source, status)
+        return True
     return False
 
 
-def _warn_talk_failing(config: dict) -> None:
+def _talk_failure_hint(status: Optional[int]) -> str:
+    if status == 413:
+        return "Talk refuses messages longer than its length limit; that message is recorded here but not delivered to Talk, and it is not retried."
+    if status in (401, 403, 404):
+        return ("Check the bot credentials, the conversation token and that the bot user is a participant of the room. "
+                "Talk rejected the message, so it is not retried.")
+    if _is_rejection(status):
+        return "Talk rejected the message, so it is not retried."
+    return (f"Check that the Nextcloud server is reachable; "
+            f"failed Talk messages are retried up to {NEXTCLOUD_TALK_MAX_RETRIES} times.")
+
+
+def _warn_talk_failing(config: dict, status: Optional[int] = None) -> None:
     now = time.monotonic()
     with _pending_lock:
         last = _health_warning["last"]
         if last is not None and now - last < NEXTCLOUD_TALK_HEALTH_WARNING_COOLDOWN_SECONDS:
             return
         _health_warning["last"] = now
-    try:
-        reason = get_nextcloud_talk_today().get("last_error")
-    except Exception:
-        reason = None
+    reason = f"HTTP {status}" if status else None
+    if reason is None:
+        try:
+            reason = get_nextcloud_talk_today().get("last_error")
+        except Exception:
+            reason = None
     _route(
         "nextcloud_talk_health", "Warning",
-        f"Nextcloud Talk delivery is failing{f' ({reason})' if reason else ''}. Alerts are still recorded here; "
-        f"failed Talk messages are retried up to {NEXTCLOUD_TALK_MAX_RETRIES} times. "
-        "Check the conversation token and that the bot user is a participant of the room.",
+        f"Nextcloud Talk delivery is failing{f' ({reason})' if reason else ''}. Alerts are still recorded here. "
+        f"{_talk_failure_hint(status)}",
         None, "warning", None, config,
     )
 

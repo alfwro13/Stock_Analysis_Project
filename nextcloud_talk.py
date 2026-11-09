@@ -95,7 +95,8 @@ def _record_attempt(ok: bool, error=None) -> None:
         logger.warning("Could not record the Nextcloud Talk attempt: %s", e)
 
 
-def send_text_message(message_text: str, config_data: dict) -> bool:
+def send_text_message(message_text: str, config_data: dict, failure: dict | None = None) -> bool:
+    # A caller that must tell a rejection from an outage passes a dict; it receives the HTTP status.
     url, token, user, pwd = _credentials(config_data)
 
     if not all([url, token, user, pwd]):
@@ -122,6 +123,8 @@ def send_text_message(message_text: str, config_data: dict) -> bool:
         # The exception text carries the request URL, which contains the conversation token.
         status = getattr(getattr(e, "response", None), "status_code", None)
         reason = f"HTTP {status}" if status else type(e).__name__
+        if failure is not None:
+            failure["status"] = status
         logger.error("Failed to send Nextcloud text message: %s", reason)
         _record_attempt(False, reason)
         return False
