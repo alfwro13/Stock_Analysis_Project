@@ -11,7 +11,7 @@ This feature powers the **Earnings Volatility** page and the **Earnings Volatili
 For a long-term investor, the more useful question isn't "is the options market mispricing this event" but "what has historically happened to the price in the days/weeks after this ticker's earnings, and does the model expect that to continue?" The engine answers three related things for each tracked ticker with earnings coming up:
 
 1. **Post-Earnings Drift** — a *signed* (directional) historical average move at 1, 5, and 20 trading days after each of the ticker's last 4 earnings reports, plus how many of those 4 events were positive.
-2. **ML Quantile Price Band** — the same general-purpose, non-earnings-conditioned 10-trading-day price band already shown on the Stock Detail and Predicted Movers pages, surfaced here as a secondary reference.
+2. **ML Quantile Price Band** — the same general-purpose, non-earnings-conditioned 10-trading-day price band already shown on the Stock Detail and Predicted Movers pages, surfaced here as a secondary reference, and left blank when the band was scored outside the `db_helpers.ml_fresh_since()` window.
 3. **Options Mispricing** — the Implied Move vs. Historical Move Edge Score, shown as a secondary section on the page (collapsed by default) because it is only actionable for options traders.
 
 ### ⚙️ 2. Post-Earnings Drift & the Prediction Accuracy Tracker

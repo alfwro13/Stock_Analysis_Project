@@ -267,7 +267,8 @@ return `None` (no signal) when a required input is missing, otherwise `{"entry_p
   hardcoded family list, so a new pattern family is automatically eligible with no changes here).
   If no qualifying confirmed pattern exists, falls back to the ML Quantile Regression Q90 band
   (`db_helpers.get_latest_quantile_bands()` — the same band already shown on the Position
-  Targets panel). `None` if neither is available.
+  Targets panel, and only while it was scored inside the `db_helpers.ml_fresh_since()` window).
+  `None` if neither is available.
 - **Gate:** `risk_reward = (take_profit - entry_price) / (entry_price - stop_price)`; `passes`
   is true when `risk_reward >= MIN_RISK_REWARD` (a new key in the existing `POSITION_SIZING`
   config block, default 1.5, editable in Settings → Position Sizing Defaults — no new panel).

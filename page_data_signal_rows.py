@@ -21,7 +21,9 @@ _SIGNAL_COLUMNS = """
                    q.macd, q.macd_signal, q.macd_hist, q.sma_200,
                    q.week52_pct, q.anomaly_score, q.vp_poc, q.vp_val, q.vp_vah,
                    q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
-                   q.price_q10, q.price_q90, q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
+                   CASE WHEN q.quantile_scored_at >= ? THEN q.price_q10 END AS price_q10,
+                   CASE WHEN q.quantile_scored_at >= ? THEN q.price_q90 END AS price_q90,
+                   q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
                    q.rel_strength_5d, q.rel_strength_20d, q.hist_vol_20, q.volume,
                    ap.industry, mu.index_membership,
                    tmeta.market_cap,
@@ -55,6 +57,7 @@ _SIGNAL_JOINS = """
 
 def _select_signal_rows(cursor, benchmark_symbol: str, tickers: list[str], extra_columns: str, extra_joins: str = ""):
     rows = []
+    fresh_since = ml_fresh_since()
     # Leave room for the benchmark parameter under SQLite's older 999-variable limit.
     for start in range(0, len(tickers), 900):
         batch = tickers[start:start + 900]
@@ -65,7 +68,7 @@ def _select_signal_rows(cursor, benchmark_symbol: str, tickers: list[str], extra
             {_SIGNAL_JOINS}
             {extra_joins}
             WHERE s.ticker IN ({placeholders})
-        """, (ml_fresh_since(), sentiment_fresh_since(), benchmark_symbol, *batch))
+        """, (fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, benchmark_symbol, *batch))
         rows.extend(cursor.fetchall())
     return rows
 

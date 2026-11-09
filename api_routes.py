@@ -42,7 +42,7 @@ from config import (
 from database import (
     get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
 )
-from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, sentiment_fresh_since
+from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, ml_fresh_since, sentiment_fresh_since
 from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
@@ -558,7 +558,8 @@ def get_screener_data(request: Request):
             q.date, q.close_price,
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200,
             q.volume_surge, q.bullish_cross,
-            q.ml_confidence_score, q.var_95, q.cvar_95, q.atr_pct,
+            CASE WHEN q.ml_scored_at >= ? THEN q.ml_confidence_score END AS ml_confidence_score,
+            q.var_95, q.cvar_95, q.atr_pct,
             q.week52_pct,
             qs_sent.sentiment_score,
             s.composite_score, s.overall_signal,
@@ -581,7 +582,7 @@ def get_screener_data(request: Request):
         if freetrade_only:
             query += " WHERE m.is_freetrade = 1"
 
-        cursor.execute(query, (sentiment_fresh_since(),))
+        cursor.execute(query, (sentiment_fresh_since(), ml_fresh_since()))
         rows = cursor.fetchall()
         today_str = time_engine.now_local().strftime('%Y-%m-%d')
         data = []

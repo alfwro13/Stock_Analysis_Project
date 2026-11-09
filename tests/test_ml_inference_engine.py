@@ -8,6 +8,7 @@ Covers:
     stamps ml_scored_at, clears the stock_signals mirror of an unscored ticker whose last score has aged out,
     and returns the requested tickers it left unscored
   • the Portfolio/Watchlist warning fires once per newly unscored held ticker and rearms when all are scored
+  • score_quantile_predictions stamps quantile_scored_at with every band it writes
 """
 
 import sys
@@ -281,3 +282,36 @@ class TestAlertUnscoredHoldings:
             ml_inference_engine.alert_unscored_holdings(None)
             ml_inference_engine.alert_unscored_holdings(["HELD1"])
             assert notify.call_count == 1
+
+
+class TestQuantileScoringStampsBands:
+    def test_each_written_band_carries_quantile_scored_at(self, fake_inference_df, tmp_path):
+        tickers = TestUpdateDailyMlPredictionsSyncsStockSignals._seed_universe()
+        fake_df = fake_inference_df(tickers, date_str=_session_date())
+        q10_model, q90_model = MagicMock(), MagicMock()
+        q10_model.predict.return_value = np.array([-0.05])
+        q90_model.predict.return_value = np.array([0.10])
+
+        from ml_inference_engine import score_quantile_predictions
+        with patch("ml_inference_engine.QUANTILE_Q10_PATH") as q10_path, \
+             patch("ml_inference_engine.QUANTILE_Q90_PATH") as q90_path, \
+             patch("ml_inference_engine.FEATURE_STATS_PATH", tmp_path / "absent.json"), \
+             patch("ml_inference_engine.load_sklearn_artifact", side_effect=[q10_model, q90_model]), \
+             patch("ml_inference_engine.pd.read_sql_query", return_value=fake_df):
+            q10_path.exists.return_value = True
+            q90_path.exists.return_value = True
+            score_quantile_predictions(tickers[:2])
+
+        conn = _db_module.get_connection()
+        try:
+            rows = {r["ticker"]: r for r in conn.execute(
+                "SELECT ticker, price_q10, price_q90, quantile_scored_at FROM quant_signals "
+                "WHERE ticker LIKE 'MLU%' AND date = ?", (_session_date(),))}
+        finally:
+            conn.close()
+        closes = fake_df.set_index("ticker")["close_price"]
+        for ticker in tickers[:2]:
+            assert rows[ticker]["price_q10"] == pytest.approx(closes[ticker] * 0.95)
+            assert rows[ticker]["price_q90"] == pytest.approx(closes[ticker] * 1.10)
+            assert rows[ticker]["quantile_scored_at"] is not None
+        assert rows[tickers[2]]["quantile_scored_at"] is None

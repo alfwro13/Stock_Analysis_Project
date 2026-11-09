@@ -166,6 +166,7 @@ def _unknown_stock(ticker):
 
 
 def load_stock_row(ticker):
+    fresh_since = ml_fresh_since()
     conn = None
     try:
         conn = get_connection()
@@ -192,7 +193,8 @@ def load_stock_row(ticker):
                    q.anomaly_score, q.close_price as quant_close_price, q.date AS quant_date,
                    q.vp_poc, q.vp_val, q.vp_vah, q.vp_entry_zone, q.vp_exit_zone,
                    q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
-                   q.price_q10, q.price_q90,
+                   CASE WHEN q.quantile_scored_at >= ? THEN q.price_q10 END AS price_q10,
+                   CASE WHEN q.quantile_scored_at >= ? THEN q.price_q90 END AS price_q90,
                    mu.industry, mu.index_membership,
                    cno.display_name as name_override,
                    tmeta.market_cap,
@@ -215,7 +217,7 @@ def load_stock_row(ticker):
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             WHERE s.ticker = ?
-        ''', (ml_fresh_since(), sentiment_fresh_since(), ticker))
+        ''', (fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, ticker))
         stock_data = cursor.fetchone()
 
         if stock_data:

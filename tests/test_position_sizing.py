@@ -218,7 +218,7 @@ def _seed_confirmed_pattern(ticker: str, family: str, pattern_type: str, measure
 def _seed_quantile_q90(ticker: str, date_: str, price_q90: float) -> None:
     conn = _db_module.get_connection()
     conn.execute(
-        "INSERT OR REPLACE INTO quant_signals (ticker, date, price_q10, price_q90) VALUES (?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO quant_signals (ticker, date, price_q10, price_q90, quantile_scored_at) VALUES (?, ?, ?, ?, datetime('now'))",
         (ticker, date_, price_q90 - 1, price_q90),
     )
     conn.commit()

@@ -73,8 +73,8 @@ do not appear on the accuracy page.
 `get_leaderboard(scope, sort_mode, limit=200)`:
 
 1. Resolve scope tickers.
-2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` (the
-   same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
+2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` scored
+   inside the `db_helpers.ml_fresh_since()` window (`quantile_scored_at`; the same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
    `ml_inference_engine.py`, `page_routes.py`, `market_pulse.py`).
 3. Resolve current price via `accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
    re-derive current price from `quant_signals.close_price`, which is the price *at prediction
