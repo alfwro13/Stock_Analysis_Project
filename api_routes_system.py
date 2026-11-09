@@ -18,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
-from api_deps import FiniteModel, limiter, reject_non_finite, require_step_up, _error_500
+from api_deps import FiniteModel, limiter, reject_non_finite, require_step_up, restore_busy_response, _error_500
 from backup_engine import check_local_backup_path, check_nfs_path, check_nfs_server
 
 from config import (
@@ -595,6 +595,9 @@ async def execute_restart():
 
 
 def _queue_restart(background_tasks: BackgroundTasks, message: str) -> JSONResponse:
+    restoring = restore_busy_response()
+    if restoring is not None:
+        return restoring
     if _dependency_install["state"] == "running":
         return JSONResponse(status_code=409, content={
             "status": "busy",

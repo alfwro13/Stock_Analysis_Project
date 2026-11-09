@@ -177,6 +177,30 @@ def test_other_trigger_endpoints_answer_409_busy_while_the_job_is_running(client
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("endpoint", ["/api/trap-monitor/run", "/api/bubble-radar/run", "/api/backup/run"])
+def test_trigger_endpoints_answer_409_while_a_restore_is_in_progress(client, endpoint):
+    with patch("scheduler_engine.restore_in_progress", return_value=True), \
+         patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+        resp = client.post(endpoint)
+    assert resp.status_code == 409
+    data = _json(resp)
+    assert data["status"] == "busy"
+    assert "restore is in progress" in data["message"]
+    add_task.assert_not_called()
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("endpoint", ["/api/system/restart", "/api/system/force-restart"])
+def test_restart_is_refused_while_a_restore_is_in_progress(client, step_up_headers, endpoint):
+    with patch("scheduler_engine.restore_in_progress", return_value=True), \
+         patch("api_routes_system.execute_restart", new=AsyncMock()) as mock_restart:
+        resp = client.post(endpoint, headers=step_up_headers)
+    assert resp.status_code == 409
+    assert "restore is in progress" in _json(resp)["message"]
+    mock_restart.assert_not_called()
+
+
+@pytest.mark.api
 def test_every_manual_job_route_checks_the_running_guard():
     """A route that queues run_manual_job must call job_busy_response in the same function."""
     import ast
