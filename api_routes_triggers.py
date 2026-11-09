@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from api_deps import job_busy_response, limiter, _error_500, require_step_up
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
-from database import get_connection, get_ml_inference_tickers, get_universe_tickers
+from database import get_connection, get_ml_inference_tickers, get_universe_tickers, log_notification
 from scheduler_engine import (
     run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
     reload_scheduler, run_sentiment_scan, run_index_scraper,
@@ -59,22 +59,6 @@ class RestoreBackupRequest(BaseModel):
 
 class BlacklistRemoveRequest(BaseModel):
     tickers: List[str] = Field(min_length=1, max_length=200)
-
-
-def log_notification(message_type: str, message_text: str) -> None:
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error("Failed to log notification: %s", e)
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 def bg_execute_quant_scan():

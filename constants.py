@@ -148,6 +148,10 @@ TABLE_VIEW_NAME_MAX_CHARS   = 100
 TABLE_FILTER_CONDITIONS_MAX = 50
 TABLE_FILTER_VALUE_MAX_CHARS = 200
 
+DB_WRITE_HOLD_WARN_SECONDS  = 5                # a SQLite write transaction held longer than this is logged at WARNING with its caller
+DB_DEFERRED_WRITE_RETRY_SECONDS = (30, 60, 120, 240, 480)  # waits before each retry of a write that hit "database is locked"; after the last failed retry the write is abandoned
+DB_DEFERRED_WRITE_QUEUE_MAX = 200              # writes waiting for a retry; past it a new one is dropped and logged, never blocked on
+
 MEMORY_SAMPLE_INTERVAL_MINUTES = 15            # Process Memory Telemetry cadence
 MEMORY_JOB_LOG_MIN_SECONDS  = 5                # a scheduled job gets a memory line when it ran at least this long
 MEMORY_JOB_LOG_MIN_DELTA_MIB = 50              # ... or when it moved the process RSS by at least this much
