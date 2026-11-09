@@ -23,7 +23,7 @@ import scheduler_jobs
 class TestRunMlInferenceWiresPredictedMovers:
     def test_logs_and_backfills_when_tickers_present(self):
         call_order = []
-        with patch("scheduler_jobs.get_universe_tickers", return_value=["AAPL"]), \
+        with patch("scheduler_jobs.get_ml_inference_tickers", return_value=["AAPL"]), \
              patch("scheduler_jobs.update_daily_ml_predictions"), \
              patch("scheduler_jobs.score_quantile_predictions"), \
              patch("predicted_movers_engine.backfill_actual_outcomes",
@@ -38,7 +38,7 @@ class TestRunMlInferenceWiresPredictedMovers:
         assert call_order == ["backfill", "log"]
 
     def test_skips_predicted_movers_when_no_tickers(self):
-        with patch("scheduler_jobs.get_universe_tickers", return_value=[]), \
+        with patch("scheduler_jobs.get_ml_inference_tickers", return_value=[]), \
              patch("scheduler_jobs.DataEngine") as mock_engine_cls, \
              patch("predicted_movers_engine.backfill_actual_outcomes") as mock_backfill, \
              patch("predicted_movers_engine.log_predictions") as mock_log, \
