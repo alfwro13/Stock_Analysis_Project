@@ -222,8 +222,8 @@ def _route(source, message_type, message_text, nextcloud_text, level, conn, conf
             logged_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             try:
                 conn.execute(
-                    "INSERT INTO system_notifications (timestamp, message_type, message_text, is_read) VALUES (?, ?, ?, ?)",
-                    (logged_at, message_type, message_text, message_type in AUTO_READ_MESSAGE_TYPES),
+                    "INSERT INTO system_notifications (message_type, message_text, is_read) VALUES (?, ?, ?)",
+                    (message_type, message_text, message_type in AUTO_READ_MESSAGE_TYPES),
                 )
             except Exception as e:
                 if is_lock_error(e):
