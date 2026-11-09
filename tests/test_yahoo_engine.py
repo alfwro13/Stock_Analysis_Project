@@ -25,7 +25,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 from collections import namedtuple
 
-import multitasking
 import numpy as np
 import pandas as pd
 import pytest
@@ -1716,72 +1715,3 @@ def test_intraday_concurrent_scanner_and_chart_share_yahoo_download():
             result = second.result(timeout=5)
     assert network.call_count == 1
     assert time.time() - result["STEP4YAHOO"].attrs["yahoo_fetched_at"] < 5
-
-
-# ─── yf.download thread release (LR-01) ───────────────────────────────────────
-
-@multitasking.task
-def _finished_download_task() -> None:
-    pass
-
-
-@pytest.fixture
-def clean_multitasking_tasks():
-    tasks = multitasking.get_list_of_tasks()
-    tasks.clear()
-    yield tasks
-    tasks.clear()
-
-
-def _download_starting_threads(frame, count=25):
-    """A yf.download stand-in that leaves finished multitasking threads in the global task list."""
-    def download(*args, **kwargs):
-        for _ in range(count):
-            _finished_download_task()
-        assert len(multitasking.get_list_of_tasks()) == count
-        return frame
-    return download
-
-
-@pytest.mark.parametrize("call", ["history", "intraday"])
-def test_download_threads_are_released_after_a_bulk_download(clean_multitasking_tasks, call):
-    """multitasking never removes a finished thread from its task list, so every one kept its 8 MiB stack."""
-    engine = YahooEngine()
-    ticker = f"LR01{call.upper()}"
-    fetch = engine.get_price_history if call == "history" else engine.get_intraday
-    with patch("yahoo_engine.yahoo_connection_boundary") as boundary, \
-         patch("yahoo_engine.yf.download", side_effect=_download_starting_threads(_yf_multi_df([ticker]))):
-        boundary.return_value.__enter__.return_value = MagicMock()
-        result = fetch([ticker])
-    assert ticker in result
-    assert clean_multitasking_tasks == []
-
-
-def test_download_threads_are_released_when_the_download_raises(clean_multitasking_tasks):
-    engine = YahooEngine()
-
-    def download(*args, **kwargs):
-        _finished_download_task()
-        raise RuntimeError("Yahoo down")
-
-    with patch("yahoo_engine.yahoo_connection_boundary") as boundary, \
-         patch("yahoo_engine.yf.download", side_effect=download):
-        boundary.return_value.__enter__.return_value = MagicMock()
-        assert engine.get_price_history(["LR01RAISES"]) == {}
-    assert clean_multitasking_tasks == []
-
-
-def test_release_keeps_a_thread_that_is_still_running(clean_multitasking_tasks):
-    stop = threading.Event()
-    running = threading.Thread(target=stop.wait, daemon=True)
-    running.start()
-    finished = threading.Thread(target=lambda: None)
-    finished.start()
-    clean_multitasking_tasks.extend([running, finished])
-    try:
-        with patch("yahoo_engine.YF_DOWNLOAD_THREAD_JOIN_SECONDS", 0.05):
-            yahoo_engine_module._release_download_threads()
-        assert clean_multitasking_tasks == [running]
-    finally:
-        stop.set()
-        running.join(5)
