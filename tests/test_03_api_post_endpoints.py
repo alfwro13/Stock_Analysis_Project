@@ -1823,7 +1823,7 @@ def test_bg_execute_ml_inference_runs_quantile_scoring_too():
     import api_routes_triggers
 
     with (
-        patch("api_routes_triggers.get_universe_tickers", return_value=["ZZINFER"]),
+        patch("api_routes_triggers.get_ml_inference_tickers", return_value=["ZZINFER"]),
         patch("api_routes_triggers.update_daily_ml_predictions") as mock_predict,
         patch("api_routes_triggers.score_quantile_predictions") as mock_quantile,
     ):

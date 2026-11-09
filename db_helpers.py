@@ -213,6 +213,14 @@ def get_portfolio_watchlist_tickers() -> List[str]:
     return sorted(held | watched)
 
 
+def get_ml_inference_tickers() -> List[str]:
+    """Universe plus held/watched tickers (a Built-in Account holding has no market_universe row); [] when the universe is empty so callers fall back."""
+    universe = get_universe_tickers()
+    if not universe:
+        return []
+    return sorted(set(universe) | set(get_portfolio_watchlist_tickers()))
+
+
 def get_mutual_fund_tickers(tickers: List[str]) -> set:
     """Subset of `tickers` classified MUTUALFUND — these have no intraday trading (one NAV
     print per day), so Yahoo Finance always returns empty for 5m bars. Checks asset_profiles

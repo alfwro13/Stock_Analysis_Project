@@ -12,7 +12,7 @@ from accounts_engine import refresh_all_trading_performance_caches, resnapshot_a
 from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
-from database import get_account, get_connection, get_universe_tickers
+from database import get_account, get_connection, get_ml_inference_tickers, get_universe_tickers
 from db_helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
@@ -541,7 +541,7 @@ def run_ml_inference():
     try:
         log_sched_notification("Scheduler", "Started Daily ML Inference...")
         logger.info("Daily ML Inference initiated.")
-        tickers = get_universe_tickers()
+        tickers = get_ml_inference_tickers()
         if not tickers:
             engine = DataEngine()
             tickers = engine.get_all_tickers()

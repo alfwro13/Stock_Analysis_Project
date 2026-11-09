@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from api_deps import job_busy_response, limiter, _error_500, require_step_up
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
-from database import get_connection, get_universe_tickers
+from database import get_connection, get_ml_inference_tickers, get_universe_tickers
 from scheduler_engine import (
     run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
     reload_scheduler, run_sentiment_scan, run_index_scraper,
@@ -109,7 +109,7 @@ def bg_execute_ml_training():
         log_sched_notification("Error", f"ML Global Training failed: {e}")
 
 def bg_execute_ml_inference():
-    tickers = get_universe_tickers()
+    tickers = get_ml_inference_tickers()
     if not tickers:
         engine = DataEngine()
         tickers = engine.get_all_tickers()

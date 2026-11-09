@@ -136,6 +136,7 @@ from db_etf import (  # noqa: E402
 from db_helpers import (  # noqa: E402
     log_score_event,
     get_universe_tickers,
+    get_ml_inference_tickers,
     get_stock_signal_tickers,
     get_mutual_fund_tickers,
     get_portfolio_watchlist_tickers,
@@ -223,6 +224,7 @@ __all__ = [
     "get_recent_prediction_errors",
     "log_score_event",
     "get_universe_tickers",
+    "get_ml_inference_tickers",
     "get_stock_signal_tickers",
     "get_mutual_fund_tickers",
     "get_portfolio_watchlist_tickers",

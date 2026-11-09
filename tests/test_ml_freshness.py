@@ -314,7 +314,7 @@ class TestUniverseRefreshIsReadOnly:
 class TestInferenceRunnersRefreshTheUniverseFirst:
     def test_scheduled_run_refreshes_then_scores_then_warns(self):
         calls = []
-        with patch("scheduler_jobs.get_universe_tickers", return_value=["AAPL"]), \
+        with patch("scheduler_jobs.get_ml_inference_tickers", return_value=["AAPL"]), \
              patch("scheduler_jobs.run_daily_quant_scan", side_effect=lambda *a, **k: calls.append(("scan", a, k))), \
              patch("scheduler_jobs.update_daily_ml_predictions", side_effect=lambda t: calls.append("score") or ["AAPL"]), \
              patch("scheduler_jobs.alert_unscored_holdings", side_effect=lambda u: calls.append(("alert", u))), \
@@ -328,7 +328,7 @@ class TestInferenceRunnersRefreshTheUniverseFirst:
     def test_manual_run_does_the_same(self):
         import api_routes_triggers
         calls = []
-        with patch("api_routes_triggers.get_universe_tickers", return_value=["AAPL"]), \
+        with patch("api_routes_triggers.get_ml_inference_tickers", return_value=["AAPL"]), \
              patch("api_routes_triggers.run_daily_quant_scan", side_effect=lambda *a, **k: calls.append("scan")), \
              patch("api_routes_triggers.update_daily_ml_predictions", side_effect=lambda t: calls.append("score") or []), \
              patch("api_routes_triggers.alert_unscored_holdings", side_effect=lambda u: calls.append("alert")), \

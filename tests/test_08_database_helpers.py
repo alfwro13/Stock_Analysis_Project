@@ -246,6 +246,51 @@ def test_get_universe_tickers_freetrade_only_mode_filters():
         conn.close()
 
 
+# ── get_ml_inference_tickers ──────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_get_ml_inference_tickers_adds_held_and_watched_outside_the_universe():
+    conn = _conn()
+    try:
+        conn.execute("INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('MLI_UNIV', 0)")
+        conn.commit()
+        with patch("db_helpers.load_config", return_value={"UI_PREFERENCES": {"FREETRADE_ONLY_MODE": False}}), \
+             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["MLI_HELD", "MLI_UNIV"]):
+            tickers = _db.get_ml_inference_tickers()
+        assert "MLI_UNIV" in tickers
+        assert "MLI_HELD" in tickers
+        assert tickers.count("MLI_UNIV") == 1
+        assert tickers == sorted(tickers)
+    finally:
+        conn.execute("DELETE FROM market_universe WHERE ticker = 'MLI_UNIV'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_ml_inference_tickers_keeps_held_when_freetrade_only_mode_filters_the_universe():
+    conn = _conn()
+    try:
+        conn.execute("INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('MLI_NON', 0)")
+        conn.execute("INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('MLI_FT', 1)")
+        conn.commit()
+        with patch("db_helpers.load_config", return_value={"UI_PREFERENCES": {"FREETRADE_ONLY_MODE": True}}), \
+             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["MLI_NON"]):
+            tickers = _db.get_ml_inference_tickers()
+        assert "MLI_FT" in tickers
+        assert "MLI_NON" in tickers
+    finally:
+        conn.execute("DELETE FROM market_universe WHERE ticker IN ('MLI_NON', 'MLI_FT')")
+        conn.commit()
+        conn.close()
+
+
+def test_get_ml_inference_tickers_is_empty_when_the_universe_is_empty():
+    with patch("db_helpers.get_universe_tickers", return_value=[]), \
+         patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["MLI_HELD"]):
+        assert _db.get_ml_inference_tickers() == []
+
+
 # ── get_mutual_fund_tickers ───────────────────────────────────────────────────
 
 @pytest.mark.db
