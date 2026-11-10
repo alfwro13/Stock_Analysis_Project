@@ -289,6 +289,25 @@ class TestStaleFrameGuard:
 # ── record_scan_snapshot() ────────────────────────────────────────────────────
 
 class TestRecordScanSnapshot:
+    @pytest.fixture(autouse=True)
+    def _remove_added_snapshots(self):
+        conn = None
+        try:
+            conn = _get_conn()
+            watermark = conn.execute("SELECT COALESCE(MAX(id), 0) FROM ai_contagion_snapshots").fetchone()[0]
+        finally:
+            if conn:
+                conn.close()
+        yield
+        conn = None
+        try:
+            conn = _get_conn()
+            conn.execute("DELETE FROM ai_contagion_snapshots WHERE id > ?", (watermark,))
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
     def test_inserts_row_when_no_alerts(self):
         conn = _get_conn()
         try:
@@ -457,6 +476,7 @@ class TestRunAiContagionJobDailyGate:
     def teardown_method(self):
         conn = _get_conn()
         conn.execute("DELETE FROM alert_state WHERE engine = 'AIContagion' AND ticker = 'SECTOR'")
+        conn.execute("DELETE FROM scheduler_run_log WHERE job_id = 'ai_contagion_job'")
         conn.commit()
         conn.close()
 
