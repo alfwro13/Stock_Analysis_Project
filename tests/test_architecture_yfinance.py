@@ -31,15 +31,15 @@ ALLOWED_EXCEPTIONS = {
 
 
 def _collect_py_files() -> list[Path]:
-    """All .py files in the project root, tests/, tools/, api/, db/ and mcp_server/ (recursive)."""
+    """All .py files in the project root, tests/ (recursive), tools/, api/, db/ and mcp_server/ (recursive)."""
     files = []
     for p in PROJECT_ROOT.iterdir():
         if p.suffix == ".py" and p.is_file():
             files.append(p)
-    # Also check the tests/ directory itself
+    # Also check the tests/ directory and its package folders (tests/db, tests/mcp_server)
     tests_dir = PROJECT_ROOT / "tests"
     if tests_dir.is_dir():
-        for p in tests_dir.glob("*.py"):
+        for p in tests_dir.rglob("*.py"):
             files.append(p)
     for package in ("tools", "api", "db"):
         package_dir = PROJECT_ROOT / package

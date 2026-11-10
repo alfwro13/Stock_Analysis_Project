@@ -1,5 +1,5 @@
 """
-tests/test_08_database_helpers.py  ── DATABASE HELPER FUNCTION TESTS
+tests/db/test_08_database_helpers.py  ── DATABASE HELPER FUNCTION TESTS
 
 Exercises the business logic in db/database.py helper functions:
   - log_score_event: upsert with COALESCE on close_price
@@ -8,13 +8,10 @@ Exercises the business logic in db/database.py helper functions:
   - batch_update_trap_phase_actuals: single-transaction multi-row update
 """
 
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
 from db import connection as _connection_layer
