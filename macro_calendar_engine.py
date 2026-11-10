@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
-from database import get_connection
+from database import get_connection, write_or_defer
 from time_engine import localize_naive_to_utc, parse_stored_utc
 from yahoo_engine import yahoo_engine
 
@@ -138,11 +138,7 @@ def fetch_and_process_calendar() -> List[Tuple]:
 
     return processed_events
 
-def upsert_calendar_events(events: List[Tuple]) -> None:
-    if not events:
-        logger.info("No high-impact events found matching criteria. Exiting.")
-        return
-
+def _write_calendar_events(events: List[Tuple]) -> None:
     conn = None
     try:
         conn = get_connection()
@@ -166,13 +162,15 @@ def upsert_calendar_events(events: List[Tuple]) -> None:
         ''', events)
         conn.commit()
         logger.info("Successfully upserted %s macro events.", cursor.rowcount)
-    except Exception as e:
-        logger.error("Database error during upsert: %s", e)
-        if conn:
-            conn.rollback()
     finally:
         if conn:
             conn.close()
+
+def upsert_calendar_events(events: List[Tuple]) -> None:
+    if not events:
+        logger.info("No high-impact events found matching criteria. Exiting.")
+        return
+    write_or_defer("Macro calendar events", lambda: _write_calendar_events(events))
 
 def reconcile_past_events() -> None:
     """Calculate post-release SPY gap for events passed in the last 7 days with no gap data."""

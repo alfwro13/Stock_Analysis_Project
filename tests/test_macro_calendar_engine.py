@@ -289,3 +289,40 @@ class TestUpsertCalendarEvents:
             upsert_calendar_events([_make_row(actual=None, actual_text=None)])
         row = _query(cal_db_path, "SELECT actual_text FROM macro_calendar WHERE event_id='abc'")
         assert row["actual_text"] == "6-0-3"
+
+
+class TestUpsertCalendarEventsUnderLock:
+    """A write that hits 'database is locked' is queued and retried, not dropped; other errors reach the job runner."""
+
+    @pytest.fixture
+    def deferred_queue(self, monkeypatch):
+        import database
+        monkeypatch.setattr(database, "_start_deferred_worker", lambda: None)
+        monkeypatch.setattr(database, "_deferred", [])
+        return database._deferred
+
+    def test_locked_batch_is_queued_and_written_on_retry(self, cal_db_path, deferred_queue):
+        import database
+        attempts = []
+
+        def _conn():
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return sqlite3.connect(cal_db_path)
+
+        with patch("macro_calendar_engine.get_connection", side_effect=_conn):
+            upsert_calendar_events([_make_row(forecast=3.1)])
+            assert len(deferred_queue) == 1
+            assert _query(cal_db_path, "SELECT * FROM macro_calendar WHERE event_id='abc'") is None
+            database._run_due_deferred(now=float("inf"))
+
+        assert deferred_queue == []
+        row = _query(cal_db_path, "SELECT forecast_val FROM macro_calendar WHERE event_id='abc'")
+        assert row["forecast_val"] == pytest.approx(3.1)
+
+    def test_non_lock_error_propagates_and_is_not_queued(self, cal_db_path, deferred_queue):
+        with patch("macro_calendar_engine.get_connection", side_effect=sqlite3.OperationalError("no such table: macro_calendar")):
+            with pytest.raises(sqlite3.OperationalError, match="no such table"):
+                upsert_calendar_events([_make_row()])
+        assert deferred_queue == []
