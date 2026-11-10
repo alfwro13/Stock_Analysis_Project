@@ -14,7 +14,7 @@ import time_engine
 import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db.helpers import parse_utc_epoch, resolve_live_price
-from db.accounts import (
+from db.account_store import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
     get_value_history, get_watchlist_account, get_watchlist_items, resolve_pending_topup, update_account,
@@ -675,8 +675,8 @@ def _price_map_with_quote_epochs(tickers: list) -> dict:
     """current_price_map()'s implementation: ticker -> (price, currency, epoch of the quote the price came from, or None)."""
     if not tickers:
         return {}
-    from account_scraper_engine import latest_price, parse_pension_account_id
-    from treasury_bill_engine import current_price_for_ticker, parse_tbill_buy_txn_id
+    from accounts.account_scraper_engine import latest_price, parse_pension_account_id
+    from accounts.treasury_bill_engine import current_price_for_ticker, parse_tbill_buy_txn_id
 
     result: dict[str, tuple] = {}
     market_tickers = []
@@ -934,7 +934,7 @@ def _equity_value_for_account(acc: dict, open_holdings: dict, prices: Optional[d
     holding), so `_equity_value` would always see an empty `open_holdings` and return 0."""
     if acc["account_type"] != "House":
         return _equity_value(open_holdings, prices)
-    from account_scraper_engine import latest_price
+    from accounts.account_scraper_engine import latest_price
     priced = latest_price(acc["id"])
     if not priced or not priced[0]:
         return 0.0
@@ -949,7 +949,7 @@ def _equity_value_for_account_with_breakdown(acc: dict, open_holdings: dict) -> 
     split from a single pass. House is always single-currency = acc['currency']."""
     if acc["account_type"] != "House":
         return _equity_value_with_breakdown(open_holdings)
-    from account_scraper_engine import latest_price
+    from accounts.account_scraper_engine import latest_price
     priced = latest_price(acc["id"])
     if not priced or not priced[0]:
         return 0.0, {}
@@ -1270,10 +1270,10 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
         return None
     transactions = get_transactions(account_id)
 
-    from account_scraper_engine import parse_pension_account_id
-    from account_scraper_engine import price_series as scraped_price_series
-    from db.accounts import get_treasury_bill_by_ticker
-    from treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
+    from accounts.account_scraper_engine import parse_pension_account_id
+    from accounts.account_scraper_engine import price_series as scraped_price_series
+    from db.account_store import get_treasury_bill_by_ticker
+    from accounts.treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
 
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(
         account_id, as_of_date=date_str, transactions=transactions
@@ -1357,10 +1357,10 @@ def backfill_value_history(account_id: int) -> int:
     if start_date > end_date:
         return 0
 
-    from account_scraper_engine import parse_pension_account_id
-    from account_scraper_engine import price_series as scraped_price_series
-    from db.accounts import get_treasury_bill_by_ticker
-    from treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
+    from accounts.account_scraper_engine import parse_pension_account_id
+    from accounts.account_scraper_engine import price_series as scraped_price_series
+    from db.account_store import get_treasury_bill_by_ticker
+    from accounts.treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
 
     tickers = sorted({t["ticker"] for t in transactions if t["ticker"]})
     price_series: dict[str, pd.Series] = {}
@@ -1427,7 +1427,7 @@ def backfill_value_history(account_id: int) -> int:
 def _backfill_house_value_history(account_id: int, acc: dict) -> int:
     """House has no transactions at all, so the date range comes from the scraped price history
     itself rather than from the earliest transaction (as the generic path above does)."""
-    from account_scraper_engine import price_series as scraped_price_series
+    from accounts.account_scraper_engine import price_series as scraped_price_series
     series = scraped_price_series(account_id)
     if series.empty:
         return 0
@@ -1477,7 +1477,7 @@ def sync_pension_opening_balance(account_id: int) -> None:
             update_account(account_id, opening_balance_txn_id=None)
         return
 
-    from account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import pension_ticker
     txn_date = acc["opened_date"] or acc["created_at"][:10]
     price = amount / units
     if existing_txn_id and get_transaction(existing_txn_id):
@@ -1518,8 +1518,8 @@ def record_pension_contribution(account_id: int, txn_date: str, amount: float, u
         return {"error": "Account not found."}
     if acc["account_type"] != "Pension":
         return {"error": "Only Pension accounts support contributions."}
-    from account_scraper_engine import pension_ticker
-    from account_scraper_engine import price_as_of as scraped_price_as_of
+    from accounts.account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import price_as_of as scraped_price_as_of
 
     price = unit_price if unit_price is not None else scraped_price_as_of(account_id, txn_date)
     if not price:
@@ -1536,14 +1536,14 @@ def record_pension_contribution(account_id: int, txn_date: str, amount: float, u
 
 
 def pension_units_as_of(account_id: int, date_str: str) -> float:
-    from account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import pension_ticker
     ticker = pension_ticker(account_id)
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id, as_of_date=date_str)
     return open_holdings.get(ticker, {}).get("shares", 0.0)
 
 
 def pension_display_label(acc: dict) -> str:
-    from account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import pension_ticker
     return acc.get("pension_ticker_label") or pension_ticker(acc["id"])
 
 
@@ -1582,7 +1582,7 @@ def scraped_price_performance(account_id: int) -> dict:
 def pension_benchmark_overlay(account_id: int, value_df: pd.DataFrame) -> Dict[str, pd.Series]:
     """Rebases each configured benchmark to the pension's own starting value so all lines are
     directly comparable on the same value chart, rather than plotted as a separate % return axis."""
-    from db.accounts import get_benchmark_tickers
+    from db.account_store import get_benchmark_tickers
     from data_engine import load_or_fetch_daily_history
     from macro_data_engine import get_uk_cpi_yoy_series
 
@@ -1660,8 +1660,8 @@ def record_pension_fee(
         return {"error": "Only Pension accounts support admin fees."}
     if (units_after is None) == (units_removed is None):
         return {"error": "Provide exactly one of units_after or units_removed."}
-    from account_scraper_engine import pension_ticker
-    from account_scraper_engine import price_as_of as scraped_price_as_of
+    from accounts.account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import price_as_of as scraped_price_as_of
 
     ticker = pension_ticker(account_id)
     units_before = pension_units_as_of(account_id, txn_date)

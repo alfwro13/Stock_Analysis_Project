@@ -3,9 +3,9 @@ from unittest.mock import patch
 
 import pytest
 
-import account_csv_import_engine
-import accounts_engine
-from accounts_engine import cash_balance
+from accounts import account_csv_import_engine
+from accounts import accounts_engine
+from accounts.accounts_engine import cash_balance
 from db.database import create_account
 
 

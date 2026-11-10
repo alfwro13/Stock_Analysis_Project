@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def run_earnings_alert():
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         config = load_config()
         earnings_cfg = config.get("NOTIFICATIONS", {}).get("EARNINGS_ALERTS", {})
         days_ahead = int(earnings_cfg.get("DAYS_AHEAD", 7))

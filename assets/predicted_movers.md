@@ -49,7 +49,7 @@ Represented in the Workflow Monitor: `ml_inference_job`'s `JOB_GRAPH` entry also
 The leaderboard has a three-way scope toggle (`portfolio_watchlist` is not a valid scope):
 
 - **Portfolio** — held tickers, `db.helpers.get_portfolio_tickers()`
-  (`accounts_engine.get_combined_holdings()`, ignored-ticker-filtered).
+  (`accounts.accounts_engine.get_combined_holdings()`, ignored-ticker-filtered).
 - **Watchlist** — Watchlist tickers you do **not** hold, `db.helpers.get_watchlist_only_tickers()`.
   A ticker that is both held and watched appears under Portfolio only, so each ticker is in exactly
   one list. `get_portfolio_watchlist_tickers()` (the union) still exists for other features.
@@ -76,7 +76,7 @@ do not appear on the accuracy page.
 2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` scored
    inside the `db.helpers.ml_fresh_since()` window (`quantile_scored_at`; the same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
    `ml_inference_engine.py`, `page_routes.py`, `market_pulse.py`).
-3. Resolve current price via `accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
+3. Resolve current price via `accounts.accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
    re-derive current price from `quant_signals.close_price`, which is the price *at prediction
    time*, not now). Rows with no resolvable current price are dropped.
 4. `predicted_mid = (price_q10 + price_q90) / 2`; `predicted_move_pct = (predicted_mid -

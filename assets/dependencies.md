@@ -105,8 +105,8 @@ and what should I test?" without grepping the whole codebase first.
 | `ta` | Technical indicators (RSI, MACD, SMA, OBV) in `indicators.py`, `quant_signals.py`, `anomaly_engine.py`, `bull_bear_trap_engine.py`, `crash_engine.py`, `moonshot_engine.py` | Indicator formula changes would silently shift scores — no dedicated regression test compares indicator values against a fixed expected output beyond `tests/test_indicators_equivalence.py` |
 | `exchange_calendars` | Holiday-aware trading-day calendar, used only inside `time_engine.py` per AGENTS.md rule 12 | New/changed exchange calendar codes (`time_engine._EXCHANGE_CALENDAR_CODES`) |
 | `fake-useragent` | Random User-Agent header generation in `sentiment_engine.py` | API surface (`UserAgent()` constructor / `.random` property) — verified compatible through 2.2.0 |
-| `python-slugify` | URL-safe label slugging in `ghostfolio_sync.py` | Minimal risk — pure string transform |
-| `lxml` | HTML parsing backend, used directly (`account_scraper_engine.py`'s `lxml.html`) and as `trafilatura`'s/`BeautifulSoup`'s parser | Parsing edge cases on malformed HTML |
+| `python-slugify` | URL-safe label slugging in `accounts/ghostfolio_sync.py` | Minimal risk — pure string transform |
+| `lxml` | HTML parsing backend, used directly (`accounts/account_scraper_engine.py`'s `lxml.html`) and as `trafilatura`'s/`BeautifulSoup`'s parser | Parsing edge cases on malformed HTML |
 | `cssselect` | CSS-selector support for `lxml.html` (Account Price Scraper) | Selector syntax edge cases |
 | `html5lib` | Fallback HTML5 parser (used transitively by `trafilatura`/`BeautifulSoup`) | Rarely invoked directly — low risk |
 | `trafilatura` | Full-text article extraction for the News Feed (`news_feed_engine.py`); it only parses HTML that `outbound_fetch_helpers.fetch_body()` has already downloaded and never fetches a URL itself | Extraction heuristics changing what counts as "article body" |
@@ -149,7 +149,7 @@ and what should I test?" without grepping the whole codebase first.
 
 ## Packages deliberately not installed
 
-- **`ghostfolio`** (the `ghostfolio` PyPI client) — never imported. `ghostfolio_sync.py`
+- **`ghostfolio`** (the `ghostfolio` PyPI client) — never imported. `accounts/ghostfolio_sync.py`
   talks to the Ghostfolio API with `requests`, so the integration does not need it.
 - **`shap`** — never imported, and nothing loads `models/xgb_explainer*.pkl`;
   those files are orphaned artifacts of a retired training step. Neither package is in

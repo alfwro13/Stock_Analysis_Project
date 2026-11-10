@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-import accounts_engine
+from accounts import accounts_engine
 from db.database import (
     get_connection,
     create_account,
@@ -437,7 +437,7 @@ def test_run_account_scraper_job_runner_is_wired():
     aid = create_account("ScraperJobRunnerWiringAcc", "GBP", account_type="House")
     update_account(aid, scraper_url="https://example.test/x.html", scraper_selector="#gf-price")
 
-    with patch("account_scraper_engine._fetch_body", return_value='<div id="gf-price">123456.0</div>'):
+    with patch("accounts.account_scraper_engine._fetch_body", return_value='<div id="gf-price">123456.0</div>'):
         scheduler_jobs._run_account_scraper_job(aid)
 
     from db.database import get_value_history
@@ -757,7 +757,7 @@ def test_backfill_value_history_prices_treasury_bill_by_accretion_not_flat_cost(
     """Regression test: a held TBILL-* ticker has no parquet file, so backfill_value_history must
     price it via treasury_bill_engine.accreted_price() (mirroring the live current_price_map()
     path) rather than silently falling back to flat cost basis for every backfilled snapshot."""
-    import treasury_bill_engine as tbe
+    from accounts import treasury_bill_engine as tbe
 
     aid = create_account("BackfillTbillAcc", "GBP", initial_cash=1000.0)
     result = tbe.buy_treasury_bill(aid, "2025-01-01", 1000.0, 900.0, "2025-01-31")
@@ -769,7 +769,7 @@ def test_backfill_value_history_prices_treasury_bill_by_accretion_not_flat_cost(
 
     from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
-    from db.accounts import get_treasury_bill_by_ticker
+    from db.account_store import get_treasury_bill_by_ticker
     bill_row = get_treasury_bill_by_ticker(ticker)
 
     snapshot_date = "2025-01-16"  # 15 of 30 days elapsed -> halfway accreted
@@ -1017,7 +1017,7 @@ def test_export_transactions_csv_shape_and_position_status():
 
 @pytest.mark.db
 def test_house_account_summary_equity_value_from_scraped_price():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseEquityAcc", "GBP", account_type="House")
     import_price_csv(aid, "date;marketPrice\n2026-02-01;487000\n")
 
@@ -1034,7 +1034,7 @@ def test_house_account_with_no_scraped_price_has_zero_equity():
 
 @pytest.mark.db
 def test_snapshot_all_accounts_writes_house_equity_from_scraped_price():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseSnapAcc", "GBP", account_type="House")
     import_price_csv(aid, "date;marketPrice\n2026-02-01;300000\n")
 
@@ -1048,7 +1048,7 @@ def test_snapshot_all_accounts_writes_house_equity_from_scraped_price():
 
 @pytest.mark.db
 def test_resnapshot_account_writes_house_equity_from_scraped_price():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseResnapAcc", "GBP", account_type="House")
     import_price_csv(aid, "date;marketPrice\n2026-02-01;250000\n")
 
@@ -1061,7 +1061,7 @@ def test_resnapshot_account_writes_house_equity_from_scraped_price():
 
 @pytest.mark.db
 def test_backfill_value_history_for_house_uses_scraped_price_series():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseBackfillAcc", "GBP", account_type="House")
     import_price_csv(aid, "date;marketPrice\n2026-01-01;400000\n2026-01-05;410000\n")
 
@@ -1076,7 +1076,7 @@ def test_backfill_value_history_for_house_uses_scraped_price_series():
 
 @pytest.mark.db
 def test_house_total_value_excludes_initial_cash_purchase_price_memo():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseTotalValueAcc", "GBP", account_type="House", initial_cash=300000.0)
     import_price_csv(aid, "date;marketPrice\n2026-02-01;350000\n")
 
@@ -1085,7 +1085,7 @@ def test_house_total_value_excludes_initial_cash_purchase_price_memo():
 
 @pytest.mark.db
 def test_snapshot_all_accounts_house_cash_ignores_initial_cash_purchase_price_memo():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseSnapInitCashAcc", "GBP", account_type="House", initial_cash=300000.0)
     import_price_csv(aid, "date;marketPrice\n2026-02-01;350000\n")
 
@@ -1099,7 +1099,7 @@ def test_snapshot_all_accounts_house_cash_ignores_initial_cash_purchase_price_me
 
 @pytest.mark.db
 def test_backfill_house_value_history_cash_ignores_initial_cash_purchase_price_memo():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("HouseBackfillInitCashAcc", "GBP", account_type="House", initial_cash=300000.0)
     import_price_csv(aid, "date;marketPrice\n2026-01-01;350000\n")
 
@@ -1112,7 +1112,7 @@ def test_backfill_house_value_history_cash_ignores_initial_cash_purchase_price_m
 
 @pytest.mark.db
 def test_pension_holdings_market_value_uses_scraped_price():
-    from account_scraper_engine import import_price_csv, pension_ticker
+    from accounts.account_scraper_engine import import_price_csv, pension_ticker
     aid = create_account("PensionHoldingsAcc", "GBP", account_type="Pension")
     import_price_csv(aid, "date;marketPrice\n2026-01-10;1.60\n")
     add_transaction(aid, "Buy", "2026-01-10", ticker=pension_ticker(aid), currency="GBP",
@@ -1125,7 +1125,7 @@ def test_pension_holdings_market_value_uses_scraped_price():
 
 @pytest.mark.db
 def test_pension_buy_with_update_cash_false_does_not_touch_cash_balance():
-    from account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import pension_ticker
     aid = create_account("PensionCashAcc", "GBP", account_type="Pension", initial_cash=0.0)
     add_transaction(aid, "Buy", "2026-01-10", ticker=pension_ticker(aid), currency="GBP",
                      quantity=100, unit_price=1.50, exchange_rate=1.0, update_cash=False)
@@ -1134,7 +1134,7 @@ def test_pension_buy_with_update_cash_false_does_not_touch_cash_balance():
 
 @pytest.mark.db
 def test_record_pension_contribution_computes_units_from_price():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("PensionPayInAcc", "GBP", account_type="Pension")
     import_price_csv(aid, "date;marketPrice\n2026-01-10;2.00\n")
 
@@ -1257,7 +1257,7 @@ def test_pension_ticker_label_round_trips_via_create_and_update():
 
 @pytest.mark.db
 def test_pension_display_label_falls_back_to_internal_ticker():
-    from account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import pension_ticker
     from db.database import get_account
     aid = create_account("PensionNoLabelAcc", "GBP", account_type="Pension")
     assert accounts_engine.pension_display_label(get_account(aid)) == pension_ticker(aid)
@@ -1304,7 +1304,7 @@ def test_account_summary_includes_holdings_count():
 
 @pytest.mark.db
 def test_scraped_price_performance_returns_none_without_enough_history():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     from datetime import datetime, timedelta, timezone
     
     today_str = datetime.now(timezone.utc).date().isoformat()
@@ -1328,7 +1328,7 @@ def test_scraped_price_performance_returns_none_with_no_history():
 
 @pytest.mark.db
 def test_scraped_price_performance_computes_pct_change_from_unit_price():
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
     aid = create_account("PensionPerfAcc", "GBP", account_type="Pension")
     import_price_csv(aid, "date;marketPrice\n2025-06-28;1.00\n2026-06-28;1.50\n")
     result = accounts_engine.scraped_price_performance(aid)
@@ -1696,8 +1696,8 @@ def test_oldest_quote_epoch_takes_the_oldest_and_ignores_unpriced_and_empty_inpu
 def test_analytic_prices_carry_no_quote_time_and_keep_the_two_item_price_shape():
     from unittest.mock import patch
 
-    with patch("treasury_bill_engine.current_price_for_ticker", return_value=(99.5, "GBP")), \
-            patch("treasury_bill_engine.parse_tbill_buy_txn_id", return_value=7):
+    with patch("accounts.treasury_bill_engine.current_price_for_ticker", return_value=(99.5, "GBP")), \
+            patch("accounts.treasury_bill_engine.parse_tbill_buy_txn_id", return_value=7):
         assert accounts_engine.oldest_quote_epoch(["TBILL-7"]) is None
         assert accounts_engine.current_price_map(["TBILL-7"]) == {"TBILL-7": (99.5, "GBP")}
 
@@ -1852,7 +1852,7 @@ def test_snapshot_all_accounts_isolates_per_account_failure():
             raise RuntimeError("price fetch failed")
         return original(acc, open_holdings)
 
-    with patch("accounts_engine._equity_value_for_account_with_breakdown", side_effect=_boom):
+    with patch("accounts.accounts_engine._equity_value_for_account_with_breakdown", side_effect=_boom):
         with pytest.raises(RuntimeError, match="BadAcc"):
             accounts_engine.snapshot_all_accounts()
 
@@ -2044,7 +2044,7 @@ def test_held_tickers_lightweight_includes_trading_account_tickers():
 @pytest.mark.db
 def test_held_tickers_lightweight_excludes_non_trading_accounts():
     pension_aid = create_account("LightweightPensionAcc", "GBP", account_type="Pension")
-    from account_scraper_engine import pension_ticker
+    from accounts.account_scraper_engine import pension_ticker
     accounts_engine.record_pension_contribution(pension_aid, "2026-01-01", 100.0, unit_price=1.0)
 
     tickers = accounts_engine.held_tickers_lightweight()
@@ -2182,7 +2182,7 @@ def test_list_scope_accounts_with_values_includes_builtin_trading_account():
     add_transaction(aid, "Buy", "2026-01-05", ticker="LSAV_T1", currency="GBP",
                      quantity=10, unit_price=80, exchange_rate=1.0)
 
-    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+    with patch("accounts.accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         accounts, total = accounts_engine.list_scope_accounts_with_values()
 
     assert any(a["id"] == f"acct:{aid}" for a in accounts)
@@ -2195,7 +2195,7 @@ def test_list_scope_accounts_with_values_excludes_non_trading_account():
 
     aid = create_account("ListScopeHouseAcc", "GBP", account_type="House")
 
-    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+    with patch("accounts.accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         accounts, _ = accounts_engine.list_scope_accounts_with_values()
 
     assert not any(a["id"] == f"acct:{aid}" for a in accounts)
@@ -2227,7 +2227,7 @@ def test_pension_benchmark_overlay_ticker_line_rebased_to_start_value():
     from unittest.mock import patch
 
     aid = create_account("PensionOverlayTickerAcc", "GBP", account_type="Pension")
-    from db.accounts import replace_benchmark_tickers
+    from db.account_store import replace_benchmark_tickers
     replace_benchmark_tickers(aid, [{"ticker": "URTH", "display_name": "MSCI World Index"}])
 
     value_df = pd.DataFrame(
@@ -2337,7 +2337,7 @@ def test_value_history_never_reads_a_parquet_outside_the_history_folder_for_an_u
 
 @pytest.mark.db
 def test_position_target_accounts_lists_trading_accounts_then_the_watchlist():
-    from db.accounts import get_watchlist_account
+    from db.account_store import get_watchlist_account
     asset = {"accounts": [
         {"id": "acct:7", "name": "Main", "shares": 4.0},
         {"id": "gf-uuid", "name": "Ghostfolio only", "shares": 1.0},

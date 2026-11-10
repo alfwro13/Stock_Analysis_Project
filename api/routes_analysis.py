@@ -62,7 +62,7 @@ def get_ai_contagion_status():
             })
         return JSONResponse(content={"status": "success", "snapshots": snapshots})
     except Exception as e:
-        logger.error(f"ai-contagion/status failed: {e}")
+        logger.error("ai-contagion/status failed: %s", e)
         return _error_500(e)
     finally:
         if conn:
@@ -81,7 +81,7 @@ def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
         background_tasks.add_task(run_manual_job, "ai_contagion_job", run_ai_contagion_job)
         return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
     except Exception as e:
-        logger.error(f"Failed to trigger AI Contagion scan: {e}")
+        logger.error("Failed to trigger AI Contagion scan: %s", e)
         return _error_500(e)
 
 
@@ -91,7 +91,7 @@ def get_trap_monitor_results(request: Request):
     """Returns all trap monitor scan results ordered by phase severity (most severe first).
     Also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     from db.database import get_watchlist_tickers
     from db.helpers import get_trap_monitor_results as read_trap_monitor_results
     try:
@@ -413,7 +413,7 @@ def get_pattern_detection_results(request: Request, family: Optional[str] = Quer
     also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
     from pattern_detection_engine import DETECTORS
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     from db.database import get_watchlist_tickers
     conn = None
     try:
@@ -657,7 +657,7 @@ def get_forensic_scores(request: Request):
     """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
     conn = None
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         engine = DataEngine()
         portfolio_tickers = {normalize_ticker(t) for t in get_combined_holdings().keys() if t}
         watchlist_tickers = {

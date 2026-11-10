@@ -351,14 +351,14 @@ class TestScopeTaggingMigration:
 
 class TestPortfolioAndWatchlistSplit:
     def test_overlap_belongs_to_portfolio_only(self):
-        with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
              patch("db.database.get_watchlist_tickers", return_value=[T_B, T_C]):
             assert db_helpers.get_portfolio_tickers() == sorted([T_A, T_B])
             assert db_helpers.get_watchlist_only_tickers() == [T_C]
 
     def test_ignored_ticker_excluded_from_both(self):
         config = {"IGNORED_TICKERS": [T_A, T_C]}
-        with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
              patch("db.database.get_watchlist_tickers", return_value=[T_C, "PM_D"]), \
              patch("db.helpers.load_config", return_value=config):
             assert db_helpers.get_portfolio_tickers() == [T_B]
@@ -367,14 +367,14 @@ class TestPortfolioAndWatchlistSplit:
 
 class TestGetPortfolioWatchlistTickers:
     def test_unions_holdings_and_watchlist(self):
-        with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}}), \
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value={T_A: {}}), \
              patch("db.database.get_watchlist_tickers", return_value=[T_B]):
             tickers = db_helpers.get_portfolio_watchlist_tickers()
         assert tickers == sorted([T_A, T_B])
 
     def test_ignored_ticker_excluded(self):
         config = {"IGNORED_TICKERS": [T_A]}
-        with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}}), \
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value={T_A: {}}), \
              patch("db.database.get_watchlist_tickers", return_value=[T_B]), \
              patch("db.helpers.load_config", return_value=config):
             tickers = db_helpers.get_portfolio_watchlist_tickers()

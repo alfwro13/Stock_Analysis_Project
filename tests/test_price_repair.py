@@ -340,6 +340,6 @@ class TestRefreshDownstream:
         order = []
         with patch("xray_engine.run_xray_precompute", side_effect=lambda: order.append("xray") or True), \
              patch("risk_orchestrator_engine.run_scan", side_effect=lambda: order.append("risk")), \
-             patch("accounts_engine.refresh_all_trading_performance_caches", side_effect=lambda: order.append("accounts")):
+             patch("accounts.accounts_engine.refresh_all_trading_performance_caches", side_effect=lambda: order.append("accounts")):
             assert _refresh_portfolio_caches() is True
         assert order == ["xray", "risk", "accounts"]

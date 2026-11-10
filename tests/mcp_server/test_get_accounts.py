@@ -34,7 +34,7 @@ class TestGetAccounts:
 
     def test_account_with_a_holding_valued_at_cost_nulls_the_dependent_figures_and_is_marked_missing(self, mcp_client, seeded_accounts):
         from db.database import add_transaction
-        import accounts_engine
+        from accounts import accounts_engine
         account_id = seeded_accounts["snapshot"]
         add_transaction(account_id, "Buy", "2026-01-06", ticker="ZZMCPNOPRICE", currency="GBP", quantity=5, unit_price=100, exchange_rate=1.0)
         accounts_engine.refresh_performance_cache(account_id)

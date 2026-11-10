@@ -182,9 +182,9 @@ def get_stock_signal_tickers() -> List[str]:
 
 def _held_and_watched_tickers() -> tuple[set, set]:
     """(held, watched) uppercased and ignored-ticker-filtered. Local imports avoid a circular
-    import: db/database.py imports this module at module level, and accounts_engine.py imports
+    import: db/database.py imports this module at module level, and accounts/accounts_engine.py imports
     db/database.py at module level."""
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     from db.database import get_watchlist_tickers
     from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 

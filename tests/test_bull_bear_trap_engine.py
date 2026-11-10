@@ -639,7 +639,7 @@ class TestGetTickerList:
         engine.proxy_tickers = []
         engine.monitor_portfolio = True
         holdings = {"AAPL": {}, "TBILL-606": {}}
-        with patch("accounts_engine.get_combined_holdings", return_value=holdings):
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value=holdings):
             tickers = engine._get_ticker_list()
         assert "AAPL" in tickers
         assert not any(t.startswith("TBILL-") for t in tickers)

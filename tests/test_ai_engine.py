@@ -727,7 +727,7 @@ class TestGeneratePrompt:
         with (
             patch("ai_engine.get_rate_to_base", return_value=1.0),
             patch("ai_engine.get_latest_regime", return_value=None),
-            patch("accounts_engine.get_combined_holdings", return_value={}),
+            patch("accounts.accounts_engine.get_combined_holdings", return_value={}),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, mode)
         assert result is not None

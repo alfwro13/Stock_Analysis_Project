@@ -49,7 +49,7 @@ def fetch_articles(
 
 
 def _build_ticker_source_map() -> Dict[str, str]:
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     config = load_config()
     ignored = {t.upper() for t in config.get("IGNORED_TICKERS", [])}
 
@@ -134,7 +134,7 @@ def _score_unscoredrows(conn) -> None:
     if not rows:
         return
 
-    logger.info(f"News Feed: scoring sentiment for {len(rows)} articles...")
+    logger.info("News Feed: scoring sentiment for %s articles...", len(rows))
     scored_rows = []
     for row in rows:
         text = " ".join(filter(None, [row["headline"], row["summary"]])).strip()
@@ -143,7 +143,7 @@ def _score_unscoredrows(conn) -> None:
         try:
             score = _score_text(analyzer, text)
         except Exception as e:
-            logger.debug(f"News Feed: sentiment scoring failed for article {row['id']}: {e}")
+            logger.debug("News Feed: sentiment scoring failed for article %s: %s", row['id'], e)
             continue
         scored_rows.append((round(score, 4), _label_from_score(score), row["id"]))
 
@@ -152,7 +152,7 @@ def _score_unscoredrows(conn) -> None:
         scored_rows,
     )
     conn.commit()
-    logger.info(f"News Feed: sentiment scored {len(scored_rows)}/{len(rows)} articles.")
+    logger.info("News Feed: sentiment scored %s/%s articles.", len(scored_rows), len(rows))
 
 
 def run_news_feed_job() -> int:
@@ -167,7 +167,7 @@ def run_news_feed_job() -> int:
         logger.warning("News Feed: no tickers found in portfolio/watchlist.")
         return 0
 
-    logger.info(f"News Feed: fetching news for {len(ticker_map)} tickers (cutoff={max_age_days}d, max={max_per_ticker}/ticker)")
+    logger.info("News Feed: fetching news for %s tickers (cutoff=%sd, max=%s/ticker)", len(ticker_map), max_age_days, max_per_ticker)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -228,7 +228,7 @@ def run_news_feed_job() -> int:
                             (full_text, article_id),
                         )
                         conn.commit()
-                    logger.info(f"News Feed: new article for {ticker} (body={'yes' if full_text else 'no'}): {headline[:60]}")
+                    logger.info("News Feed: new article for %s (body=%s): %s", ticker, 'yes' if full_text else 'no', headline[:60])
 
         cursor.execute(
             "DELETE FROM news_articles WHERE published_at < ?", (int(cutoff_ts),)
@@ -236,12 +236,12 @@ def run_news_feed_job() -> int:
         conn.commit()
         pruned = cursor.rowcount
         if pruned > 0:
-            logger.info(f"News Feed: pruned {pruned} expired articles.")
+            logger.info("News Feed: pruned %s expired articles.", pruned)
 
         _score_unscoredrows(conn)
 
     except Exception as e:
-        logger.error(f"News Feed job failed: {e}")
+        logger.error("News Feed job failed: %s", e)
     finally:
         conn.close()
 
@@ -259,5 +259,5 @@ def run_news_feed_job() -> int:
         if log_conn:
             log_conn.close()
 
-    logger.info(f"News Feed job complete. {total_inserted} new articles inserted.")
+    logger.info("News Feed job complete. %s new articles inserted.", total_inserted)
     return total_inserted

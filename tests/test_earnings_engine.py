@@ -91,7 +91,7 @@ class TestRunEarningsAlertGuards:
     def test_empty_portfolio_returns_early(self):
         cfg = _base_cfg()
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", return_value={}):
+             patch("accounts.accounts_engine.get_combined_holdings", return_value={}):
             ok, msg = run_earnings_alert()
         assert ok is True
         assert "no valid" in msg.lower()
@@ -99,7 +99,7 @@ class TestRunEarningsAlertGuards:
     def test_all_0p_tickers_returns_early(self):
         cfg = _base_cfg()
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", return_value=_combined(["0P0000ABC"])):
+             patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined(["0P0000ABC"])):
             ok, msg = run_earnings_alert()
         assert ok is True
         assert "no valid" in msg.lower()
@@ -113,7 +113,7 @@ class TestRunEarningsAlertGuards:
     def test_holdings_engine_error_returns_false(self):
         cfg = _base_cfg()
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", side_effect=RuntimeError("db gone")):
+             patch("accounts.accounts_engine.get_combined_holdings", side_effect=RuntimeError("db gone")):
             ok, msg = run_earnings_alert()
         assert ok is False
         assert "crash" in msg.lower()
@@ -124,7 +124,7 @@ class TestDailyAlertType:
     def _run(self, db_path, tickers, earnings_date_str, days_ahead=7):
         cfg = _base_cfg(alert_type="daily", days_ahead=days_ahead)
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", return_value=_combined(tickers)), \
+             patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined(tickers)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
@@ -189,7 +189,7 @@ class TestOnceAlertType:
     def _run(self, db_path, tickers, days_ahead=7):
         cfg = _base_cfg(alert_type="once", days_ahead=days_ahead)
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", return_value=_combined(tickers)), \
+             patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined(tickers)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
@@ -218,7 +218,7 @@ class TestReturnValues:
         _seed_signal(db_path, "AAPL", "Apple", today_str)
         cfg = _base_cfg()
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", return_value=_combined(["AAPL"])), \
+             patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined(["AAPL"])), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
@@ -232,7 +232,7 @@ class TestReturnValues:
         _seed_signal(db_path, "AAPL", "Apple", today_str)
         cfg = _base_cfg()
         with patch("earnings_engine.load_config", return_value=cfg), \
-             patch("accounts_engine.get_combined_holdings", return_value=_combined(["AAPL"])), \
+             patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined(["AAPL"])), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \

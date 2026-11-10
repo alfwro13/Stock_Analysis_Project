@@ -1,7 +1,7 @@
 """Pending account actions: the registry collector, GET /api/accounts/pending-actions, the tile field and the navbar badge."""
 import pytest
 
-import treasury_bill_engine as tbe
+from accounts import treasury_bill_engine as tbe
 from accounts.pending_actions import PENDING_ACTION_KINDS, pending_account_actions
 from db import database as _db
 from db.account_reminders import create_pending_reminder

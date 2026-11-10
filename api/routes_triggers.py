@@ -25,7 +25,7 @@ from scheduler_engine import (
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import RESTORE_BUSY_MESSAGE, RestoreBusy, get_backup_status, restore_backup, run_backup
-from ghostfolio_sync import GhostfolioSyncEngine
+from accounts.ghostfolio_sync import GhostfolioSyncEngine
 from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan

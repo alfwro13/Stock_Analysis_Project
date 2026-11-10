@@ -122,7 +122,7 @@ class AIPromptEngine:
     def _get_portfolio_context(self, ticker: str) -> Dict[str, Any]:
         """Extracts holdings, VWAP, and account splits for the specific ticker."""
         try:
-            from accounts_engine import get_combined_holdings
+            from accounts.accounts_engine import get_combined_holdings
             return get_combined_holdings().get(ticker, {})
         except Exception as e:
             logger.warning("Could not read portfolio context for %s: %s", ticker, e)

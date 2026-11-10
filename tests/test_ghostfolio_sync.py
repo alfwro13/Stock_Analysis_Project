@@ -34,7 +34,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ghostfolio_sync import GhostfolioSyncEngine
+from accounts.ghostfolio_sync import GhostfolioSyncEngine
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -56,8 +56,8 @@ def _engine_with_bearer(monkeypatch) -> GhostfolioSyncEngine:
     """Return a pre-authenticated engine without hitting the network."""
     monkeypatch.setenv("GHOSTFOLIO_URL", "http://ghost.local")
     monkeypatch.setenv("GHOSTFOLIO_TOKEN", "test-token")
-    with patch("ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
-         patch("ghostfolio_sync.GHOSTFOLIO_TOKEN", "test-token"):
+    with patch("accounts.ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
+         patch("accounts.ghostfolio_sync.GHOSTFOLIO_TOKEN", "test-token"):
         engine = GhostfolioSyncEngine()
     engine.headers = {"Authorization": "Bearer fake-bearer"}
     engine.active_account_ids = ["acc-1", "acc-2"]
@@ -120,9 +120,9 @@ class TestInit:
         active_account_ids must be set in __init__ so sync_portfolio() can be
         called without a prior discover_accounts() call.
         """
-        with patch("ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
-             patch("ghostfolio_sync.GHOSTFOLIO_TOKEN", "tok"), \
-             patch("ghostfolio_sync.GHOSTFOLIO_ACCOUNTS", {"active": ["acc-x"]}):
+        with patch("accounts.ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
+             patch("accounts.ghostfolio_sync.GHOSTFOLIO_TOKEN", "tok"), \
+             patch("accounts.ghostfolio_sync.GHOSTFOLIO_ACCOUNTS", {"active": ["acc-x"]}):
             engine = GhostfolioSyncEngine()
         assert hasattr(engine, "active_account_ids"), "active_account_ids must exist after __init__"
         assert engine.active_account_ids == ["acc-x"]
@@ -133,9 +133,9 @@ class TestInit:
         does not raise AttributeError when discover_accounts() was never called
         or failed at the outer exception level.
         """
-        with patch("ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
-             patch("ghostfolio_sync.GHOSTFOLIO_TOKEN", "tok"), \
-             patch("ghostfolio_sync.GHOSTFOLIO_ACCOUNTS", {"active": []}):
+        with patch("accounts.ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
+             patch("accounts.ghostfolio_sync.GHOSTFOLIO_TOKEN", "tok"), \
+             patch("accounts.ghostfolio_sync.GHOSTFOLIO_ACCOUNTS", {"active": []}):
             engine = GhostfolioSyncEngine()
         assert hasattr(engine, "discovered_accounts"), "discovered_accounts must exist after __init__"
         assert engine.discovered_accounts == []
@@ -215,8 +215,8 @@ class TestDiscoverAccounts:
         """discover_accounts() must skip accounts with isExcluded=True."""
         engine = _engine_with_bearer(monkeypatch)
         with patch("requests.get", return_value=_mock_resp(200, ACCOUNTS_RESP)), \
-             patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
-             patch("ghostfolio_sync.update_config_atomic"):
+             patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
+             patch("accounts.ghostfolio_sync.update_config_atomic"):
             accounts = engine.discover_accounts()
         ids = [a["id"] for a in accounts]
         assert "acc-1" in ids
@@ -230,8 +230,8 @@ class TestDiscoverAccounts:
         """
         engine = _engine_with_bearer(monkeypatch)
         with patch("requests.get", return_value=_mock_resp(200, ACCOUNTS_RESP)), \
-             patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
-             patch("ghostfolio_sync.update_config_atomic"):
+             patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
+             patch("accounts.ghostfolio_sync.update_config_atomic"):
             accounts = engine.discover_accounts()
         assert len(accounts) == 2
         for acc in accounts:
@@ -249,8 +249,8 @@ class TestDiscoverAccounts:
             captured.update(updates)
 
         with patch("requests.get", return_value=_mock_resp(200, ACCOUNTS_RESP)), \
-             patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
-             patch("ghostfolio_sync.update_config_atomic", side_effect=capture):
+             patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
+             patch("accounts.ghostfolio_sync.update_config_atomic", side_effect=capture):
             engine.discover_accounts()
 
         active = captured["GHOSTFOLIO_ACCOUNTS"]["active"]
@@ -263,8 +263,8 @@ class TestDiscoverAccounts:
         engine = _engine_with_bearer(monkeypatch)
         captured = {}
         with patch("requests.get", return_value=_mock_resp(200, ACCOUNTS_RESP)), \
-             patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": ["acc-1"]}}), \
-             patch("ghostfolio_sync.update_config_atomic", side_effect=lambda u: captured.update(u)):
+             patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": ["acc-1"]}}), \
+             patch("accounts.ghostfolio_sync.update_config_atomic", side_effect=lambda u: captured.update(u)):
             engine.discover_accounts()
         assert captured["GHOSTFOLIO_ACCOUNTS"]["active"] == ["acc-1"]
 
@@ -280,8 +280,8 @@ class TestDiscoverAccounts:
         engine = _engine_with_bearer(monkeypatch)
         calls = []
         with patch("requests.get", side_effect=lambda url, **kw: calls.append(url) or _mock_resp(200, {"accounts": []})), \
-             patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
-             patch("ghostfolio_sync.update_config_atomic"):
+             patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}), \
+             patch("accounts.ghostfolio_sync.update_config_atomic"):
             engine.discover_accounts()
         assert any("/api/v1/account" in url for url in calls), (
             "CONTRACT VIOLATION: Ghostfolio account list endpoint changed. "
@@ -310,7 +310,7 @@ class TestSyncPortfolio:
             return _mock_resp(200, {"holdings": []})
 
         with patch("requests.get", side_effect=fake_get), \
-             patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path):
+             patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", portfolio_path):
             result = engine.sync_portfolio()
 
         data = json.loads(portfolio_path.read_text())
@@ -444,7 +444,7 @@ class TestSyncPortfolio:
         portfolio_path = tmp_path / "portfolio.json"
         engine = _engine_with_bearer(monkeypatch)
         with patch("requests.get", return_value=_mock_resp(200, {"holdings": [HOLDING_AAPL]})), \
-             patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path):
+             patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", portfolio_path):
             engine.sync_portfolio()
         assert portfolio_path.exists(), "portfolio.json was not created"
         content = json.loads(portfolio_path.read_text())
@@ -476,7 +476,7 @@ class TestSyncPortfolio:
         """sync_portfolio() returns False immediately when active_account_ids is empty."""
         engine = _engine_with_bearer(monkeypatch)
         engine.active_account_ids = []
-        with patch("ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
+        with patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
             result = engine.sync_portfolio()
         assert result is False
 
@@ -518,7 +518,7 @@ class TestSyncPortfolio:
             return _mock_resp(200, {"holdings": []})
 
         with patch("requests.get", side_effect=fake_get), \
-             patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path):
+             patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", portfolio_path):
             result = engine.sync_portfolio()
 
         data = json.loads(portfolio_path.read_text())
@@ -529,7 +529,7 @@ class TestSyncPortfolio:
         """sync_portfolio() returns False when requests raises an exception."""
         engine = _engine_with_bearer(monkeypatch)
         with patch("requests.get", side_effect=Exception("connection refused")), \
-             patch("ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
+             patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
             result = engine.sync_portfolio()
         assert result is False
 
@@ -545,7 +545,7 @@ class TestSyncPortfolio:
             return _mock_resp(200, {"holdings": []})
 
         with patch("requests.get", side_effect=capture), \
-             patch("ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
+             patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
             engine.sync_portfolio()
 
         holding_calls = [u for u in called_urls if "portfolio/holdings" in u]
@@ -628,14 +628,14 @@ class TestTlsVerificationStaysOn:
     def test_discover_accounts_does_not_disable_verification(self, monkeypatch):
         engine = _engine_with_bearer(monkeypatch)
         with patch("requests.get", return_value=_mock_resp(200, {"accounts": []})) as get, \
-             patch("ghostfolio_sync.update_config_atomic"):
+             patch("accounts.ghostfolio_sync.update_config_atomic"):
             engine.discover_accounts()
         assert "verify" not in get.call_args.kwargs
 
     def test_sync_portfolio_does_not_disable_verification(self, monkeypatch, tmp_path):
         engine = _engine_with_bearer(monkeypatch)
         with patch("requests.get", return_value=_mock_resp(200, {"holdings": []})) as get, \
-             patch("ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
+             patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
             engine.sync_portfolio()
         assert get.call_count == 2
         assert all("verify" not in c.kwargs for c in get.call_args_list)
@@ -651,7 +651,7 @@ class TestTlsVerificationStaysOn:
 
         import urllib3
 
-        import ghostfolio_sync  # noqa: F401
+        from accounts import ghostfolio_sync  # noqa: F401
         import xray_engine  # noqa: F401
         ignored = [
             f for f in warnings.filters
@@ -668,13 +668,13 @@ class TestRunFullSync:
 
     @pytest.fixture(autouse=True)
     def _integration_enabled(self):
-        with patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": True}):
+        with patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": True}):
             yield
 
     def test_integration_disabled_returns_false_without_authenticating(self, monkeypatch):
         """run_full_sync() must skip entirely when GHOSTFOLIO_ENABLED is False."""
         engine = _engine_with_bearer(monkeypatch)
-        with patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": False}), \
+        with patch("accounts.ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": False}), \
              patch.object(engine, "authenticate") as mock_auth:
             result = engine.run_full_sync()
         assert result is False
@@ -682,8 +682,8 @@ class TestRunFullSync:
 
     def test_not_configured_returns_false(self, monkeypatch):
         """run_full_sync() must abort early when credentials are missing."""
-        with patch("ghostfolio_sync.GHOSTFOLIO_URL", ""), \
-             patch("ghostfolio_sync.GHOSTFOLIO_TOKEN", ""):
+        with patch("accounts.ghostfolio_sync.GHOSTFOLIO_URL", ""), \
+             patch("accounts.ghostfolio_sync.GHOSTFOLIO_TOKEN", ""):
             engine = GhostfolioSyncEngine()
         result = engine.run_full_sync()
         assert result is False
@@ -725,24 +725,24 @@ class TestRunFullSync:
 class TestPurgeGhostfolioFiles:
 
     def test_deletes_both_files_and_returns_count(self, tmp_path):
-        from ghostfolio_sync import purge_ghostfolio_files
+        from accounts.ghostfolio_sync import purge_ghostfolio_files
         portfolio_path = tmp_path / "portfolio.json"
         watchlist_path = tmp_path / "watchlist.json"
         portfolio_path.write_text("{}")
         watchlist_path.write_text("[]")
-        with patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path), \
-             patch("ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
+        with patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", portfolio_path), \
+             patch("accounts.ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
             deleted = purge_ghostfolio_files()
         assert deleted == 2
         assert not portfolio_path.exists()
         assert not watchlist_path.exists()
 
     def test_missing_files_returns_zero(self, tmp_path):
-        from ghostfolio_sync import purge_ghostfolio_files
+        from accounts.ghostfolio_sync import purge_ghostfolio_files
         portfolio_path = tmp_path / "portfolio.json"
         watchlist_path = tmp_path / "watchlist.json"
-        with patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path), \
-             patch("ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
+        with patch("accounts.ghostfolio_sync.PORTFOLIO_PATH", portfolio_path), \
+             patch("accounts.ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
             deleted = purge_ghostfolio_files()
         assert deleted == 0
 

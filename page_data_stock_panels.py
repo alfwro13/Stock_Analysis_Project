@@ -6,7 +6,7 @@ import pandas as pd
 import time_engine
 from config import HISTORICAL_DIR, INTRADAY_DIR
 from db.database import get_connection
-from db.accounts import get_holding_price_limits_for_ticker
+from db.account_store import get_holding_price_limits_for_ticker
 from utils import measure_request_stage, safe_ticker_filename
 from visuals import (
     create_macro_chart,
@@ -37,7 +37,7 @@ def earnings_timing(stock_data, ticker):
 
 
 def position_targets(ticker, stock_data, user_asset, is_in_watchlist):
-    from accounts_engine import current_price_map, position_target_accounts
+    from accounts.accounts_engine import current_price_map, position_target_accounts
 
     portfolio_math = None
     if user_asset and stock_data.get('current_price'):

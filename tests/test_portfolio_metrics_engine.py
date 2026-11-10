@@ -1,7 +1,7 @@
 import pytest
 
-import accounts_engine
-import portfolio_metrics_engine
+from accounts import accounts_engine
+from accounts import portfolio_metrics_engine
 from db.database import (
     get_connection,
     create_account,
@@ -154,7 +154,7 @@ def test_holdings_with_metrics_all_accounts_tbill_row_gets_fixed_income_and_accr
     """Treasury Bill rows have no stock_signals/market_pulse_cache row (synthetic ticker,
     deliberately excluded from the Yahoo-fetch universe), so asset_class/market_change_24h/pct
     must come from the bill's own known accretion rate instead of falling through to None."""
-    import treasury_bill_engine
+    from accounts import treasury_bill_engine
     from datetime import datetime, timedelta, timezone
 
     conn = None
@@ -199,7 +199,7 @@ def test_set_holding_price_limit_partial_update_preserves_other_field():
     portfolio_metrics_engine.set_holding_price_limit(aid, "ZZLIMIT", low_limit=10.0)
     portfolio_metrics_engine.set_holding_price_limit(aid, "ZZLIMIT", high_limit=20.0)
 
-    from db.accounts import get_all_holding_price_limits
+    from db.account_store import get_all_holding_price_limits
     limits = get_all_holding_price_limits()[(aid, "ZZLIMIT")]
     assert limits["low_limit"] == 10.0
     assert limits["high_limit"] == 20.0
@@ -209,7 +209,7 @@ def test_set_holding_price_limit_partial_update_preserves_other_field():
 def test_get_holding_price_limits_for_ticker_scoped_to_one_ticker():
     """Set Targets panel on the Stock Detail page reads only its own ticker's rows, not the
     whole-portfolio batch get_all_holding_price_limits() dict."""
-    from db.accounts import get_holding_price_limits_for_ticker
+    from db.account_store import get_holding_price_limits_for_ticker
 
     aid1 = create_account("TargetScopeAcc1", "GBP")
     aid2 = create_account("TargetScopeAcc2", "GBP")
@@ -366,7 +366,7 @@ def test_account_metrics_list_only_includes_trading_accounts():
 
 @pytest.mark.db
 def test_other_accounts_list_includes_pension_and_house(monkeypatch):
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
 
     pension_aid = create_account("OtherAcctsPension", "GBP", account_type="Pension")
     import_price_csv(pension_aid, "date;marketPrice\n2026-06-01;1.50\n")
@@ -398,7 +398,7 @@ def test_other_accounts_list_house_current_value_excludes_initial_cash():
     """Regression test: current_value must use equity_value, not total_value() — total_value()
     adds cash_balance(), which for House starts from initial_cash (the purchase price memo, not
     real cash) and would double-count it against the scraped valuation."""
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
 
     aid = create_account("OtherAcctsHousePhantomCash", "GBP", account_type="House", initial_cash=300000.0)
     import_price_csv(aid, "date;marketPrice\n2026-06-01;350000\n")
@@ -939,70 +939,70 @@ def test_cached_portfolio_totals_bypasses_the_cache_when_the_fingerprint_is_unre
 
 @pytest.mark.db
 def test_every_ledger_writer_bumps_the_ledger_revision():
-    from db import accounts as db_accounts
+    from db import account_store
 
     def bumped(action):
-        before = db_accounts.ledger_revision()
+        before = account_store.ledger_revision()
         action()
-        return db_accounts.ledger_revision() > before
+        return account_store.ledger_revision() > before
 
     aid = None
 
     def make_account():
         nonlocal aid
-        aid = db_accounts.create_account("LedgerRevisionAcc", "GBP")
+        aid = account_store.create_account("LedgerRevisionAcc", "GBP")
 
     assert bumped(make_account)
     txn_id = None
 
     def add():
         nonlocal txn_id
-        txn_id = db_accounts.add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLEDREV", currency="GBP",
+        txn_id = account_store.add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLEDREV", currency="GBP",
                                              quantity=1, unit_price=10, exchange_rate=1.0)
 
     assert bumped(add)
-    assert bumped(lambda: db_accounts.update_transaction(txn_id, quantity=2))
-    assert bumped(lambda: db_accounts.update_account(aid, initial_cash=5.0))
+    assert bumped(lambda: account_store.update_transaction(txn_id, quantity=2))
+    assert bumped(lambda: account_store.update_account(aid, initial_cash=5.0))
     bill_id = None
 
     def make_bill():
         nonlocal bill_id
-        bill_id = db_accounts.create_treasury_bill(aid, txn_id, "TBILL-LEDREV", 100.0, 99.0, "2026-01-05", "2026-04-05")
+        bill_id = account_store.create_treasury_bill(aid, txn_id, "TBILL-LEDREV", 100.0, 99.0, "2026-01-05", "2026-04-05")
 
     assert bumped(make_bill)
-    assert bumped(lambda: db_accounts.confirm_treasury_bill_ytm(bill_id, 101.0, 4.0))
-    assert bumped(lambda: db_accounts.delete_treasury_bill(bill_id))
-    assert bumped(lambda: db_accounts.delete_transaction(txn_id))
-    assert bumped(lambda: db_accounts.soft_delete_account(aid))
+    assert bumped(lambda: account_store.confirm_treasury_bill_ytm(bill_id, 101.0, 4.0))
+    assert bumped(lambda: account_store.delete_treasury_bill(bill_id))
+    assert bumped(lambda: account_store.delete_transaction(txn_id))
+    assert bumped(lambda: account_store.soft_delete_account(aid))
 
 
 @pytest.mark.db
 def test_snapshot_writers_bump_only_the_snapshot_revision():
     """The nightly snapshot writes many rows while the 01:00-01:35 batch jobs run; counting them as ledger edits made a poll in that window recompute portfolio-totals inline (LR-10)."""
-    from db import accounts as db_accounts
+    from db import account_store
 
-    aid = db_accounts.create_account("SnapshotRevisionAcc", "GBP")
+    aid = account_store.create_account("SnapshotRevisionAcc", "GBP")
     try:
         for write in (
-            lambda: db_accounts.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0),
-            lambda: db_accounts.upsert_value_snapshot_currency(aid, "2026-01-05", "GBP", 1.0, 1.0, 1.0),
+            lambda: account_store.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0),
+            lambda: account_store.upsert_value_snapshot_currency(aid, "2026-01-05", "GBP", 1.0, 1.0, 1.0),
         ):
-            ledger_before, snapshot_before = db_accounts.ledger_revision(), db_accounts.snapshot_revision()
+            ledger_before, snapshot_before = account_store.ledger_revision(), account_store.snapshot_revision()
             write()
-            assert db_accounts.snapshot_revision() > snapshot_before
-            assert db_accounts.ledger_revision() == ledger_before
+            assert account_store.snapshot_revision() > snapshot_before
+            assert account_store.ledger_revision() == ledger_before
     finally:
-        db_accounts.soft_delete_account(aid)
+        account_store.soft_delete_account(aid)
 
 
 @pytest.mark.db
 def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh_when_a_snapshot_lands(counted_totals, queued_refreshes):
-    from db import accounts as db_accounts
+    from db import account_store
 
     aid = create_account("TotalsCacheSnapshotAcc", "GBP")
     try:
         first = portfolio_metrics_engine.cached_portfolio_totals()
-        db_accounts.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0)
+        account_store.upsert_value_snapshot(aid, "2026-01-05", 1.0, 1.0, 0.0, 0.0)
         assert portfolio_metrics_engine.cached_portfolio_totals() == first
         assert len(counted_totals) == 1
         assert len(queued_refreshes) == 1
@@ -1012,4 +1012,4 @@ def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh
         portfolio_metrics_engine.cached_portfolio_totals()
         assert len(counted_totals) == 2
     finally:
-        db_accounts.soft_delete_account(aid)
+        account_store.soft_delete_account(aid)

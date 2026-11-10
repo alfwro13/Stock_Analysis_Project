@@ -29,7 +29,7 @@ sys.path.insert(0, str(project_root))
 
 from fastapi.testclient import TestClient
 
-from accounts_engine import get_combined_holdings
+from accounts.accounts_engine import get_combined_holdings
 from db.database import get_accounts, get_connection, get_watchlist_tickers
 from main import app
 

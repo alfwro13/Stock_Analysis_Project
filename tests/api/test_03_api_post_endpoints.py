@@ -870,7 +870,7 @@ def test_refresh_single_completes_analysis_before_reporting_fx_failure(client, m
     def failed(currencies):
         raise RuntimeError("FX refresh failed for USDGBP=X; last-good cached data retained.")
     monkeypatch.setattr("portfolio_service.refresh_fx_rates", failed)
-    monkeypatch.setattr("accounts_engine.native_currencies", lambda tickers: {"AAPL": "USD"})
+    monkeypatch.setattr("accounts.accounts_engine.native_currencies", lambda tickers: {"AAPL": "USD"})
     with patch("api.routes.update_single_profile"), \
          patch("api.routes.DataEngine") as MockDE, \
          patch("api.routes.QuantEngine"), \

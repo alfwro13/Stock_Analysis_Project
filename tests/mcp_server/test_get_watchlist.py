@@ -7,7 +7,7 @@ import pytest
 
 import yahoo_engine
 from db.database import add_transaction, create_account, get_connection
-from db.accounts import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
+from db.account_store import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
 
 from .helpers import ACCOUNT_TABLES, call, table_counts, tool_data
 

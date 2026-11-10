@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-import account_scraper_engine as scraper
+from accounts import account_scraper_engine as scraper
 import outbound_fetch_helpers as fetch_helpers
 from db.database import create_account, get_price_history
 

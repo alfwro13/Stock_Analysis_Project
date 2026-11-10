@@ -23,8 +23,8 @@ def _combined(*tickers):
 def test_in_scope_fx_pairs_cover_account_and_native_currencies_but_not_the_base_or_universe_members():
     from data_engine import DataEngine
 
-    with patch("accounts_engine.load_config", return_value={"ACCOUNT_CURRENCIES": ["GBP", "USD"]}), \
-         patch("accounts_engine.native_currencies", return_value={"SAP.DE": "EUR", "VOD.L": "GBp"}):
+    with patch("accounts.accounts_engine.load_config", return_value={"ACCOUNT_CURRENCIES": ["GBP", "USD"]}), \
+         patch("accounts.accounts_engine.native_currencies", return_value={"SAP.DE": "EUR", "VOD.L": "GBp"}):
         pairs = DataEngine.in_scope_fx_pairs(["SAP.DE", "VOD.L"])
     assert pairs == ["EURGBP=X", "USDGBP=X"]
 
@@ -32,8 +32,8 @@ def test_in_scope_fx_pairs_cover_account_and_native_currencies_but_not_the_base_
 def test_in_scope_fx_pairs_skips_a_pair_already_in_the_universe():
     from data_engine import DataEngine
 
-    with patch("accounts_engine.load_config", return_value={"ACCOUNT_CURRENCIES": ["GBP", "USD"]}), \
-         patch("accounts_engine.native_currencies", return_value={}):
+    with patch("accounts.accounts_engine.load_config", return_value={"ACCOUNT_CURRENCIES": ["GBP", "USD"]}), \
+         patch("accounts.accounts_engine.native_currencies", return_value={}):
         assert DataEngine.in_scope_fx_pairs(["USDGBP=X", "AAPL"]) == []
 
 
@@ -136,7 +136,7 @@ def test_get_all_tickers_deduplicates_portfolio_and_watchlist():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("AAPL")):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("AAPL")):
         tickers = engine.get_all_tickers()
 
     assert tickers.count("AAPL") == 1
@@ -152,7 +152,7 @@ def test_get_all_tickers_normalises_case():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("aapl")):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("aapl")):
         tickers = engine.get_all_tickers()
 
     assert "AAPL" in tickers
@@ -167,7 +167,7 @@ def test_get_all_tickers_excludes_ignored():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["TSLA"]}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("TSLA", "AAPL")):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("TSLA", "AAPL")):
         tickers = engine.get_all_tickers()
 
     assert "TSLA" not in tickers
@@ -185,7 +185,7 @@ def test_get_all_tickers_excludes_tbill_synthetic_tickers():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("TBILL-606", "AAPL")):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("TBILL-606", "AAPL")):
         tickers = engine.get_all_tickers()
 
     assert "TBILL-606" not in tickers
@@ -201,7 +201,7 @@ def test_get_all_tickers_empty_inputs_returns_empty_list():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}), \
+         patch("accounts.accounts_engine.get_combined_holdings", return_value={}), \
          patch("data_engine.get_registry_spot_future_tickers", return_value=[]):
         tickers = engine.get_all_tickers()
 
@@ -219,7 +219,7 @@ def test_get_all_tickers_includes_market_registry_tickers():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}), \
+         patch("accounts.accounts_engine.get_combined_holdings", return_value={}), \
          patch("data_engine.get_registry_spot_future_tickers", return_value=["^GSPC", "ES=F"]):
         tickers = engine.get_all_tickers()
 
@@ -236,7 +236,7 @@ def test_get_all_tickers_excludes_ignored_registry_tickers():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["^GSPC"]}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}), \
+         patch("accounts.accounts_engine.get_combined_holdings", return_value={}), \
          patch("data_engine.get_registry_spot_future_tickers", return_value=["^GSPC"]):
         tickers = engine.get_all_tickers()
 
@@ -253,7 +253,7 @@ def test_get_all_tickers_excludes_non_yahoo_registry_series_from_every_source():
     engine.account_tickers = ["UK10YG", "TBILL-606"]
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("UK10YG", "AAPL")), \
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("UK10YG", "AAPL")), \
          patch("data_engine.get_registry_spot_future_tickers", return_value=["^GSPC", "UK10YG"]):
         tickers = engine.get_all_tickers()
 
@@ -268,7 +268,7 @@ def test_get_all_tickers_with_the_seeded_registry_never_includes_uk10yg():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value={}):
         tickers = engine.get_all_tickers()
 
     assert "UK10YG" not in tickers
@@ -284,7 +284,7 @@ def test_get_all_tickers_result_is_sorted():
     engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("ZM", "AAPL")):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("ZM", "AAPL")):
         tickers = engine.get_all_tickers()
 
     assert tickers == sorted(tickers)
@@ -300,7 +300,7 @@ def test_get_all_tickers_includes_account_transaction_tickers():
     engine.account_tickers = ["XUKX.L", "IGLG.L"]
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value={}):
         tickers = engine.get_all_tickers()
 
     assert "XUKX.L" in tickers
@@ -316,7 +316,7 @@ def test_get_all_tickers_deduplicates_account_tickers_with_portfolio():
     engine.account_tickers = ["AAPL", "MSFT"]
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
-         patch("accounts_engine.get_combined_holdings", return_value=_combined("AAPL")):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value=_combined("AAPL")):
         tickers = engine.get_all_tickers()
 
     assert tickers.count("AAPL") == 1
@@ -332,7 +332,7 @@ def test_get_all_tickers_excludes_ignored_account_tickers():
     engine.account_tickers = ["XUKX.L", "BADTICKER"]
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["BADTICKER"]}), \
-         patch("accounts_engine.get_combined_holdings", return_value={}):
+         patch("accounts.accounts_engine.get_combined_holdings", return_value={}):
         tickers = engine.get_all_tickers()
 
     assert "BADTICKER" not in tickers

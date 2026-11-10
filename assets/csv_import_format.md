@@ -3,8 +3,8 @@
 `POST /api/accounts/{id}/import-csv` (UI: Accounts page → **Import from CSV**) accepts a
 GIA/broker-style "activity export" CSV and loads it into one built-in account's transaction
 ledger. This is the second bulk-import path alongside **Import from Ghostfolio**
-(`accounts_engine.import_ghostfolio_activities`); see `import_csv_activities` /
-`_map_csv_row` in `account_csv_import_engine.py` for the implementation.
+(`accounts.accounts_engine.import_ghostfolio_activities`); see `import_csv_activities` /
+`_map_csv_row` in `accounts/account_csv_import_engine.py` for the implementation.
 
 ## Column matching
 

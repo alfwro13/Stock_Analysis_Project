@@ -7,8 +7,8 @@ import time_engine
 from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
-from account_reminders_engine import create_due_reminder, reminder_job_display_name
-from accounts_engine import refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts
+from accounts.account_reminders_engine import create_due_reminder, reminder_job_display_name
+from accounts.accounts_engine import refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts
 from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
@@ -18,8 +18,8 @@ from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import backfill_earnings_drift_outcomes, format_failure_reasons, log_near_earnings_predictions, run_earnings_vol_scan
 from market_session_helpers import is_quote_settled
-from freetrade_engine import sync_freetrade_universe
-from ghostfolio_sync import GhostfolioSyncEngine
+from accounts.freetrade_engine import sync_freetrade_universe
+from accounts.ghostfolio_sync import GhostfolioSyncEngine
 from huggingface_engine import update_all_sentiment, run_central_bank_nlp_alert
 from intraday_bottom_engine import IntradayBottomEngine
 from intraday_orchestrator import IntradayOrchestrator
@@ -27,7 +27,7 @@ from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from maintenance_engine import MaintenanceEngine
 from notification_engine import notify
-from portfolio_metrics_engine import queue_portfolio_totals_refresh
+from accounts.portfolio_metrics_engine import queue_portfolio_totals_refresh
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import alert_unscored_holdings, update_daily_ml_predictions, score_quantile_predictions
 from ml_training_process import run_training_child
@@ -37,7 +37,7 @@ from risk_engine import update_all_tail_risks
 from sentiment_engine import run_nextcloud_alert
 from system_check_engine import run_system_checks
 from treasury_auction_engine import check_auction_results
-from treasury_bill_engine import sweep_matured_bills
+from accounts.treasury_bill_engine import sweep_matured_bills
 from universe_deep_sync_engine import run_universe_deep_sync
 from universe_engine import update_market_universe
 from xray_engine import run_xray_precompute
@@ -1444,7 +1444,7 @@ def _run_account_scraper_job(account_id: int) -> None:
     job_name = f"Account Price Scraper — {acc['name'] if acc else account_id}"
     _mark_job_started(job_name, job_id)
     try:
-        from account_scraper_engine import run_scrape_for_account
+        from accounts.account_scraper_engine import run_scrape_for_account
         result = run_scrape_for_account(account_id)
         if result.get("status") != "success":
             log_sched_notification("Warning", f"{job_name}: {result.get('message', 'unknown error')}")

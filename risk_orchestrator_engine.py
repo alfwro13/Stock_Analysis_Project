@@ -254,7 +254,7 @@ def persist_ticker_contributions(rows: list) -> None:
 
 def run_scan() -> dict:
     """Computes and persists the "all" scope PHI, one PHI per Trading account, and ticker tiers."""
-    from accounts_engine import list_scope_accounts_with_values
+    from accounts.accounts_engine import list_scope_accounts_with_values
 
     config = load_config()
     scopes_computed = 0

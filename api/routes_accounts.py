@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from accounts_engine import (
+from accounts.accounts_engine import (
     _ticker_known, _has_stock_signals_row, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, derive_account_holdings, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, held_tickers_lightweight,
@@ -15,12 +15,12 @@ from accounts_engine import (
     sync_house_purchase_price, sync_pension_opening_balance,
     tickers_needing_refresh, watchlist_summary,
 )
-from account_csv_import_engine import import_csv_activities
+from accounts.account_csv_import_engine import import_csv_activities
 from accounts.pending_actions import pending_account_actions
-from account_scraper_engine import (
+from accounts.account_scraper_engine import (
     config_error, header_error, import_price_csv, price_as_of, run_scrape_for_account, test_scrape,
 )
-from portfolio_metrics_engine import (
+from accounts.portfolio_metrics_engine import (
     account_metrics_list, cached_portfolio_totals, holdings_with_metrics_all_accounts,
     invalidate_portfolio_totals_cache, other_accounts_list, queue_portfolio_totals_refresh,
     set_holding_price_limit,
@@ -62,7 +62,7 @@ from scheduler_engine import (
     run_account_value_snapshot, run_manual_job, run_treasury_bill_maturity_sweep,
     unregister_account_reminder_job, unregister_account_scraper_job, unregister_account_topup_job,
 )
-from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
+from accounts.treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
 from utils import (
     INVALID_TICKER_MESSAGE, attachment_content_disposition, has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch,
     is_iso_date, is_valid_ticker, measure_request_stage, normalize_ticker,
@@ -956,7 +956,7 @@ def api_set_holding_price_limit(request: Request, body: HoldingPriceLimitBody):
 def _run_refresh_now(tickers: list) -> None:
     try:
         fetch_and_save_pulse(tickers)
-        from accounts_engine import native_currencies
+        from accounts.accounts_engine import native_currencies
         from portfolio_service import refresh_fx_rates
         fx_error = None
         try:

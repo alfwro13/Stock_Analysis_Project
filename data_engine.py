@@ -47,7 +47,7 @@ class DataEngine:
         return df
 
     def get_all_tickers(self) -> List[str]:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         tickers: Set[str] = set(get_combined_holdings().keys())
 
         if isinstance(self.watchlist.get("watchlist"), list):
@@ -74,7 +74,7 @@ class DataEngine:
 
     @staticmethod
     def in_scope_fx_pairs(tickers: List[str]) -> List[str]:
-        from accounts_engine import in_scope_currencies
+        from accounts.accounts_engine import in_scope_currencies
         from portfolio_service import fx_pair
 
         pairs = {fx_pair(currency) for currency in in_scope_currencies(tickers)}

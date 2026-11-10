@@ -65,7 +65,7 @@ class TestGetTickerList:
         engine = PatternDetectionEngine(_CFG)
         engine.monitor_portfolio = True
         holdings = {"AAPL": {}, "TBILL-606": {}}
-        with patch("accounts_engine.get_combined_holdings", return_value=holdings):
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value=holdings):
             tickers = engine._get_ticker_list()
         assert "AAPL" in tickers
         assert not any(t.startswith("TBILL-") for t in tickers)
@@ -616,7 +616,7 @@ class TestResultsAPIDirectionAndScope:
         engine = PatternDetectionEngine(_CFG)
         engine._save_results([TestSaveResults._row(ticker, family="double_top_bottom", pattern_type="double_bottom")])
         try:
-            with patch("accounts_engine.get_combined_holdings", return_value={ticker: {"ticker": ticker}}), \
+            with patch("accounts.accounts_engine.get_combined_holdings", return_value={ticker: {"ticker": ticker}}), \
                  patch("db.database.get_watchlist_tickers", return_value=[]):
                 resp = client.get(
                     "/api/pattern-detection/results"

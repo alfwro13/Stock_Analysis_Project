@@ -13,8 +13,8 @@ from db.database import (
     log_notification as _db_log_notification,
 )
 from db.helpers import add_ticker_note, get_ticker_notes, prune_nextcloud_talk_stats
-from ghostfolio_sync import purge_ghostfolio_files
-from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, in_scope_currencies
+from accounts.ghostfolio_sync import purge_ghostfolio_files
+from accounts.accounts_engine import get_combined_holdings, resolve_watchlist_metadata, in_scope_currencies
 from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS

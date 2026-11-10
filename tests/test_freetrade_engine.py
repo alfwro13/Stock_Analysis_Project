@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from freetrade_engine import resolve_ticker
+from accounts.freetrade_engine import resolve_ticker
 
 FT_CONFIG = {
     "US_MICS": ["XNAS", "XNYS", "BATS"],
@@ -41,8 +41,8 @@ class TestMutualFundExchange:
 
     def test_isin_not_in_cache_http_success_resolves_symbol(self):
         cache = {}
-        with patch("freetrade_engine.yahoo_engine.search_by_isin", return_value="VANEA.L"), \
-             patch("freetrade_engine.time.sleep"):
+        with patch("accounts.freetrade_engine.yahoo_engine.search_by_isin", return_value="VANEA.L"), \
+             patch("accounts.freetrade_engine.time.sleep"):
             ticker, mapped = resolve_ticker("VANEA", "IE00B3RBWM25", "MUTUAL_FUND_EXCHANGE", cache, FT_CONFIG)
 
         assert ticker == "VANEA.L"
@@ -51,8 +51,8 @@ class TestMutualFundExchange:
 
     def test_isin_not_in_cache_http_failure_falls_back_to_dot_l(self):
         cache = {}
-        with patch("freetrade_engine.yahoo_engine.search_by_isin", side_effect=Exception("timeout")), \
-             patch("freetrade_engine.time.sleep"):
+        with patch("accounts.freetrade_engine.yahoo_engine.search_by_isin", side_effect=Exception("timeout")), \
+             patch("accounts.freetrade_engine.time.sleep"):
             ticker, mapped = resolve_ticker("ACWI", "IE00B6R52259", "MUTUAL_FUND_EXCHANGE", cache, FT_CONFIG)
 
         assert ticker == "ACWI.L"

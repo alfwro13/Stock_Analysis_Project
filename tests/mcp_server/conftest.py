@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-import accounts_engine
+from accounts import accounts_engine
 from db import mcp_keys as db_mcp_keys
 from db.database import add_transaction, create_account, get_connection
 
@@ -114,7 +114,7 @@ _PRICE_EPOCH_B = "2026-10-01 09:00:00"
 @pytest.fixture
 def holdings_book(monkeypatch):
     monkeypatch.setattr(accounts_engine, "get_rate_to_base", _fake_rate)
-    monkeypatch.setattr("portfolio_metrics_engine.get_rate_to_base", _fake_rate)
+    monkeypatch.setattr("accounts.portfolio_metrics_engine.get_rate_to_base", _fake_rate)
     live_epoch = time.time() - 120
     conn = get_connection()
     try:

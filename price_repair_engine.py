@@ -153,7 +153,7 @@ def _restore_repairs(previous):
 
 
 def _refresh_portfolio_caches():
-    from accounts_engine import refresh_all_trading_performance_caches
+    from accounts.accounts_engine import refresh_all_trading_performance_caches
     from risk_orchestrator_engine import run_scan
     from xray_engine import run_xray_precompute
 

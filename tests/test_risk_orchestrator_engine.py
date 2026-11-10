@@ -213,7 +213,7 @@ class TestGetTickerRiskContributions:
 class TestRunScan:
     def test_skips_scopes_with_no_holdings(self):
         with patch("risk_orchestrator_engine.assemble_xray_report", side_effect=RuntimeError("no holdings")), \
-             patch("accounts_engine.list_scope_accounts_with_values", return_value=([], 0.0)):
+             patch("accounts.accounts_engine.list_scope_accounts_with_values", return_value=([], 0.0)):
             result = run_scan()
         assert result["scopes_computed"] == 0
         assert result["scopes_skipped"] == 1
@@ -612,7 +612,7 @@ class TestUnavailableScoresRoundTrip:
         report = {"risk_metrics": {**_RISK_METRICS, "max_pairwise_correlation": None}, "portfolio_total_value": 10000.0,
                   "holdings": []}
         with patch("risk_orchestrator_engine.assemble_xray_report", return_value=report), \
-             patch("accounts_engine.list_scope_accounts_with_values", return_value=([], 0.0)):
+             patch("accounts.accounts_engine.list_scope_accounts_with_values", return_value=([], 0.0)):
             result = run_scan()
         assert result["scopes_computed"] == 1 and result["scopes_unavailable"] == 1
         row = next(r for r in get_critical_scopes() if r["scope"] == "all")

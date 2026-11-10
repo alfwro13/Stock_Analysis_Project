@@ -91,7 +91,7 @@ All four are rendered client-side with Plotly (`static/js/performance_analytics.
 ## Relationship to X-ray and Monte Carlo
 
 - **X-ray** (`/portfolio` → X-ray panel) computes Sharpe ratio, historical VaR/CVaR, skewness/kurtosis, beta, volatility, and Calmar Ratio and Max Drawdown — all from the same `xray_returns_cache`-derived return series the Tearsheet uses. The Tearsheet does not recompute any of these; it only adds metrics X-ray doesn't have.
-- **Monte Carlo Wealth Simulator** (`/monte-carlo`) is forward-looking — it projects future wealth via correlated GBM simulation. The Tearsheet is backward-looking — it summarises historical performance. They share no calculations, but do share the account-tile picker component (`accounts_engine.list_scope_accounts_with_values()`, extracted in this change so both pages' account pickers stay in sync).
+- **Monte Carlo Wealth Simulator** (`/monte-carlo`) is forward-looking — it projects future wealth via correlated GBM simulation. The Tearsheet is backward-looking — it summarises historical performance. They share no calculations, but do share the account-tile picker component (`accounts.accounts_engine.list_scope_accounts_with_values()`, extracted in this change so both pages' account pickers stay in sync).
 
 ## Data sources
 
@@ -107,7 +107,7 @@ This feature has no database table and no scheduled job of its own — it reads 
 
 `GET /api/performance-analytics/report?account_id=all|<ghostfolio-uuid>|acct:{id}` — returns `{"status": "success", "account_id": ..., "annualized_return": ..., "metrics": {...}, "charts": {...}, "data_warnings": [...]}` (`metrics`/`charts` are `null` if fewer than 30 overlapping cached days exist).
 
-`GET /api/performance-analytics/accounts` — account-tile list + total value for the scope picker, shared with `GET /api/monte-carlo/accounts` via `accounts_engine.list_scope_accounts_with_values()`.
+`GET /api/performance-analytics/accounts` — account-tile list + total value for the scope picker, shared with `GET /api/monte-carlo/accounts` via `accounts.accounts_engine.list_scope_accounts_with_values()`.
 
 Full schema: see `assets/api_reference.md`.
 

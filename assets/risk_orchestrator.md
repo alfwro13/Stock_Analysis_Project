@@ -27,7 +27,7 @@ the daily rollup (§7) and critical escalations (§8).
 Reuses `xray_engine.resolve_scope_holdings()`'s existing scope strings rather than inventing
 a new one: `"all"` (every configured source combined) or `"acct:{id}"` (one built-in Trading
 account). `risk_orchestrator_engine.run_scan()` computes the `"all"` scope plus one scope per
-account returned by `accounts_engine.list_scope_accounts_with_values()` (the same Trading-
+account returned by `accounts.accounts_engine.list_scope_accounts_with_values()` (the same Trading-
 account picker shared with the Portfolio Tearsheet and Monte Carlo Wealth Simulator).
 
 ## 2. Formula

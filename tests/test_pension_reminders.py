@@ -141,10 +141,10 @@ def test_reminder_of_another_account_is_not_found(client, pension):
 @pytest.mark.db
 def test_job_runner_stages_a_labelled_pending_item_and_notifies(client, pension):
     import scheduler_jobs
-    from account_reminders_engine import labelled_pending_reminders
+    from accounts.account_reminders_engine import labelled_pending_reminders
 
     reminder_id = _add_reminder(client, pension, enabled=True)
-    with patch("account_reminders_engine.time_engine.now_local", lambda: datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc)), \
+    with patch("accounts.account_reminders_engine.time_engine.now_local", lambda: datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc)), \
             patch("scheduler_jobs.notify") as notify_mock:
         scheduler_jobs._run_account_reminder_job(reminder_id)
 
@@ -158,11 +158,11 @@ def test_job_runner_stages_a_labelled_pending_item_and_notifies(client, pension)
 @pytest.mark.db
 def test_job_runner_stacks_missed_months_and_ignores_a_double_fire(client, pension):
     import scheduler_jobs
-    from account_reminders_engine import labelled_pending_reminders
+    from accounts.account_reminders_engine import labelled_pending_reminders
 
     reminder_id = _add_reminder(client, pension, reminder_type="admin_fee", enabled=True)
     clock = {"now": datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc)}
-    with patch("account_reminders_engine.time_engine.now_local", lambda: clock["now"]), \
+    with patch("accounts.account_reminders_engine.time_engine.now_local", lambda: clock["now"]), \
             patch("scheduler_jobs.notify") as notify_mock:
         scheduler_jobs._run_account_reminder_job(reminder_id)
         scheduler_jobs._run_account_reminder_job(reminder_id)
@@ -177,7 +177,7 @@ def test_job_runner_stacks_missed_months_and_ignores_a_double_fire(client, pensi
 @pytest.mark.db
 def test_job_runner_does_nothing_for_a_disabled_reminder(client, pension):
     import scheduler_jobs
-    from account_reminders_engine import labelled_pending_reminders
+    from accounts.account_reminders_engine import labelled_pending_reminders
 
     reminder_id = _add_reminder(client, pension, enabled=False)
     with patch("scheduler_jobs.notify") as notify_mock:
@@ -220,7 +220,7 @@ def test_dismiss_resolves_once_and_only_for_its_own_account(client, pension):
     assert resp.status_code == 400
     assert "already been dismissed" in _json(resp)["message"]
 
-    from account_reminders_engine import labelled_pending_reminders
+    from accounts.account_reminders_engine import labelled_pending_reminders
     assert labelled_pending_reminders(pension) == []
 
 
@@ -257,7 +257,7 @@ def test_admin_fee_with_pending_id_resolves_the_reminder(client, pension):
 
 @pytest.mark.api
 def test_recording_the_wrong_kind_of_task_is_refused_before_any_transaction(client, pension):
-    from accounts_engine import pension_units_as_of
+    from accounts.accounts_engine import pension_units_as_of
     reminder_id = _add_reminder(client, pension, reminder_type="admin_fee")
     pending_id = _stage_pending(pension, reminder_id, "admin_fee")
 

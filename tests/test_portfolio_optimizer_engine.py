@@ -21,7 +21,7 @@ import pytest
 
 from db import database as db
 from db.database import create_account, add_transaction
-from db.accounts import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
+from db.account_store import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
 from xray_engine import BENCHMARK_SYMBOL
 from portfolio_optimizer_engine import (
     MIN_TICKERS_WARNING,
