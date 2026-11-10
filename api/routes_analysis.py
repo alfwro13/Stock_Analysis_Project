@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import List, Optional
 
 import pandas as pd
@@ -22,7 +23,7 @@ from data_engine import DataEngine
 from fundamentals_helpers import ALTMAN_Z_DISTRESS
 from regime_engine import current_hmm_regime, macro_conditions_snapshot, market_stress_snapshot
 from scheduler_engine import run_manual_job
-from utils import INVALID_TICKER_MESSAGE, is_valid_ticker, normalize_ticker, safe_ticker_filename
+from utils import INVALID_TICKER_MESSAGE, contained_ticker_path, is_valid_ticker, normalize_ticker
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -502,8 +503,8 @@ def get_pattern_detection_chart(request: Request, ticker: str):
     conn = None
     try:
         ticker = normalize_ticker(ticker)
-        safe_ticker = safe_ticker_filename(ticker)
-        if not safe_ticker:
+        path = contained_ticker_path(HISTORICAL_DIR, ticker, ".parquet")
+        if not path:
             return JSONResponse(content={"status": "error", "message": "Invalid ticker."}, status_code=400)
         conn = get_connection()
         cursor = conn.cursor()
@@ -521,8 +522,7 @@ def get_pattern_detection_chart(request: Request, ticker: str):
             pattern["direction"] = module.PATTERN_TYPES.get(pattern["pattern_type"]) if module else None
             patterns.append(pattern)
 
-        path = HISTORICAL_DIR / f"{safe_ticker}.parquet"
-        if not path.exists():
+        if not os.path.exists(path):
             return JSONResponse(content={"status": "error", "message": "No price history on file for this ticker."}, status_code=404)
         df = pd.read_parquet(path, columns=["Close"]).dropna().tail(180)
         series = {
