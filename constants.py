@@ -186,3 +186,5 @@ ML_FEATURE_MAX_AGE_TRADING_DAYS = 3  # newest quant_signals row inference accept
 SENTIMENT_CHART_FIGSIZE    = (12, 6)  # matplotlib figure size for Nextcloud alert chart
 SENTIMENT_CHART_DPI        = 300      # export resolution for Nextcloud alert chart
 SENTIMENT_VISUAL_CACHE_TTL_SECONDS = 3600  # Macro Sentiment charts and Fear & Greed value; every rebuild makes a live CNN request
+
+FREETRADE_IGNORED_MICS = frozenset({"XAMS", "XBRU", "XWBO", "XSTO", "XHEL", "XPAR", "MTAA", "XETR", "XLIS"})  # exchanges the app does not cover; the Freetrade sync skips them without a warning

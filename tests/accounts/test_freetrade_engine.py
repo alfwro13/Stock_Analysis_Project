@@ -12,11 +12,13 @@ Covers resolve_ticker() for all 5 routing branches:
   - Internal dot becomes a hyphen on every branch (e.g. BT.A → BT-A.L, not BT.A.L)
 """
 
+import logging
 from unittest.mock import patch, MagicMock
 
+import pandas as pd
 import pytest
 
-from accounts.freetrade_engine import resolve_ticker
+from accounts.freetrade_engine import resolve_ticker, sync_freetrade_universe
 
 FT_CONFIG = {
     "US_MICS": ["XNAS", "XNYS", "BATS"],
@@ -133,3 +135,26 @@ class TestLondonEquities:
         ticker, mapped = resolve_ticker("  BP  ", None, "XLON", {}, FT_CONFIG)
         assert ticker == "BP.L"
         assert mapped is True
+
+
+class TestUnmappedMicWarning:
+    def test_ignored_mics_are_silent_and_unknown_mics_are_reported(self, caplog):
+        feed = pd.DataFrame({
+            "Symbol": ["AIR", "SAP", "NEW"],
+            "ISIN": ["FR1", "DE1", "XX1"],
+            "MIC": ["XPAR", "XETR", "XZZZ"],
+            "Title": ["a", "b", "c"],
+            "Subtitle": ["", "", ""],
+        })
+        with patch("accounts.freetrade_engine.pd.read_csv", return_value=feed), \
+             patch("accounts.freetrade_engine.load_isin_cache", return_value={}), \
+             patch("accounts.freetrade_engine.save_isin_cache"), \
+             patch("accounts.freetrade_engine.load_blacklist", return_value=set()), \
+             patch("accounts.freetrade_engine.load_config", return_value={"FREETRADE_MAPPINGS": FT_CONFIG}), \
+             caplog.at_level(logging.WARNING, logger="accounts.freetrade_engine"):
+            sync_freetrade_universe()
+
+        warning = next(r.getMessage() for r in caplog.records if "Unmapped Freetrade MICs" in r.getMessage())
+        assert "XZZZ" in warning
+        assert "XPAR" not in warning and "XETR" not in warning
+
