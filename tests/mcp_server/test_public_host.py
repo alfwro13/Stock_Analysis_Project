@@ -459,7 +459,7 @@ class TestConfigKeys:
             config.validate_mcp_remote_cidrs(value)
 
     def test_the_settings_schema_accepts_and_normalises_the_keys(self):
-        from api_routes_system import SettingsConfig
+        from api.routes_system import SettingsConfig
         model = SettingsConfig(MCP_REMOTE_ENABLED=True, MCP_PUBLIC_HOST="MCP.Awroblew.biz", MCP_REMOTE_ALLOWED_CIDRS=["160.79.104.0/21"])
         assert model.model_dump(exclude_none=True) == {
             "MCP_REMOTE_ENABLED": True, "MCP_PUBLIC_HOST": "mcp.awroblew.biz", "MCP_REMOTE_ALLOWED_CIDRS": ["160.79.104.0/21"],
@@ -490,9 +490,9 @@ class TestPublicHostOverlap:
         assert not config.mcp_public_host_overlaps_allowed_hosts("mcp.awroblew.biz", ["*"])
 
     def test_the_settings_route_refuses_a_public_host_that_is_an_allowed_host(self, client, step_up_headers, monkeypatch):
-        monkeypatch.setattr("api_routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz", "localhost"]})
+        monkeypatch.setattr("api.routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz", "localhost"]})
         written = []
-        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        monkeypatch.setattr("api.routes_system.update_config_atomic", written.append)
         for body in ({"MCP_PUBLIC_HOST": "Stock.Awroblew.biz"}, {"MCP_PUBLIC_HOST": "localhost"}):
             response = client.post("/api/settings", json=body, headers=step_up_headers)
             assert response.status_code == 422, body
@@ -501,28 +501,28 @@ class TestPublicHostOverlap:
         assert written == []
 
     def test_the_settings_route_refuses_adding_the_stored_public_host_to_allowed_hosts(self, client, step_up_headers, monkeypatch):
-        monkeypatch.setattr("api_routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "mcp.awroblew.biz", "ALLOWED_HOSTS": ["stock.awroblew.biz"]})
+        monkeypatch.setattr("api.routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "mcp.awroblew.biz", "ALLOWED_HOSTS": ["stock.awroblew.biz"]})
         written = []
-        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        monkeypatch.setattr("api.routes_system.update_config_atomic", written.append)
         response = client.post("/api/settings", json={"ALLOWED_HOSTS": ["stock.awroblew.biz", "mcp.awroblew.biz"]}, headers=step_up_headers)
         assert response.status_code == 422
         assert written == []
 
     def test_one_save_that_sends_both_fields_is_checked_together(self, client, step_up_headers, monkeypatch):
-        monkeypatch.setattr("api_routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz"]})
+        monkeypatch.setattr("api.routes_system.load_config", lambda: {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz"]})
         written = []
-        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
+        monkeypatch.setattr("api.routes_system.update_config_atomic", written.append)
         response = client.post("/api/settings", json={"MCP_PUBLIC_HOST": "mcp.awroblew.biz", "ALLOWED_HOSTS": ["mcp.awroblew.biz"]}, headers=step_up_headers)
         assert response.status_code == 422
         assert written == []
 
     def test_the_settings_route_accepts_a_separate_public_host_and_an_unchanged_overlap(self, client, step_up_headers, monkeypatch):
         stored = {"MCP_PUBLIC_HOST": "", "ALLOWED_HOSTS": ["stock.awroblew.biz", "*.lan.example"]}
-        monkeypatch.setattr("api_routes_system.load_config", lambda: stored)
+        monkeypatch.setattr("api.routes_system.load_config", lambda: stored)
         written = []
-        monkeypatch.setattr("api_routes_system.update_config_atomic", written.append)
-        monkeypatch.setattr("api_routes_system.reload_scheduler", lambda: None)
-        monkeypatch.setattr("api_routes_system._configure_file_logging", lambda cfg: None)
+        monkeypatch.setattr("api.routes_system.update_config_atomic", written.append)
+        monkeypatch.setattr("api.routes_system.reload_scheduler", lambda: None)
+        monkeypatch.setattr("api.routes_system._configure_file_logging", lambda cfg: None)
         for body in ({"MCP_PUBLIC_HOST": "mcp.awroblew.biz"}, {"MCP_PUBLIC_HOST": "mcp.lan.example"}):
             assert client.post("/api/settings", json=body, headers=step_up_headers).status_code == 200, body
         stored = {"MCP_PUBLIC_HOST": "stock.awroblew.biz", "ALLOWED_HOSTS": ["stock.awroblew.biz"]}

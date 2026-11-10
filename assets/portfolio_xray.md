@@ -142,7 +142,7 @@ If the cache has not yet run, the X-ray still loads — the allocation charts an
 | `db_schema.py` | Schema for the three X-ray cache tables (`xray_risk_cache`, `xray_correlation_matrix`, `xray_dividend_cache`) (re-exported from `database.py`) |
 | `scheduler_jobs.py` | `run_xray_risk_cache_job()` wrapper |
 | `scheduler_engine.py` | Always-on CronTrigger registration in `reload_scheduler()` |
-| `api_routes.py` | `GET /api/xray?account_id=` (report) · `POST /api/xray/trigger` (manual trigger) |
+| `api/routes.py` | `GET /api/xray?account_id=` (report) · `POST /api/xray/trigger` (manual trigger) |
 | `templates/portfolio.html` | Plotly CDN, X-ray link in summary bar, panel `<div>`, all chart/render JavaScript |
 | `static/css/styles.css` | All X-ray CSS (appended at end of file under `Portfolio X-ray Panel` comment) |
 

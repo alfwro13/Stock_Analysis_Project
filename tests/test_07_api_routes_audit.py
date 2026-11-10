@@ -1,7 +1,7 @@
 """
-tests/test_07_api_routes_audit.py  ── api_routes.py Audit Regression Tests
+tests/test_07_api_routes_audit.py  ── api/routes.py Audit Regression Tests
 
-Covers the bugs found and fixed in the June 2026 api_routes.py audit:
+Covers the bugs found and fixed in the June 2026 api/routes.py audit:
 
 1. Anomaly datetime comparison — /api/system/metrics must not crash when a
    anomaly model's trained-at sidecar holds a naive (no tzinfo) or missing 'trained_at'.
@@ -206,14 +206,14 @@ class TestIntradayChartPlaceholders:
 
     def _get_chart_html(self, client, ticker: str = "FAKEXYZ") -> str:
         """Fetch the intraday chart endpoint for a ticker that has no parquet file."""
-        with patch("api_routes.pd.read_parquet", side_effect=FileNotFoundError):
+        with patch("api.routes.pd.read_parquet", side_effect=FileNotFoundError):
             resp = client.get(f"/api/intraday-chart/{ticker}")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
         return _json(resp).get("html", "")
 
     def _get_chart_html_error(self, client, ticker: str = "FAKEXYZ") -> str:
         """Simulate a generic parquet read error (not FileNotFoundError)."""
-        with patch("api_routes.pd.read_parquet", side_effect=Exception("corrupt")):
+        with patch("api.routes.pd.read_parquet", side_effect=Exception("corrupt")):
             resp = client.get(f"/api/intraday-chart/{ticker}")
         assert resp.status_code == 200
         return _json(resp).get("html", "")
@@ -251,14 +251,14 @@ class TestIntradayChartPlaceholders:
         assert "unavailable" in html.lower()
 
     def test_gap_notice_shown_when_ticker_persistently_gapped(self, client):
-        with patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=True):
+        with patch("api.routes.yahoo_engine.is_intraday_gap_alerted", return_value=True):
             html = self._get_chart_html(client)
         assert "box-warning" in html
         assert "no fresh intraday data" in html.lower()
         assert "style=" not in html
 
     def test_gap_notice_absent_when_not_gapped(self, client):
-        with patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=False):
+        with patch("api.routes.yahoo_engine.is_intraday_gap_alerted", return_value=False):
             html = self._get_chart_html(client)
         assert "box-warning" not in html
 
@@ -404,40 +404,40 @@ class TestNormaliseConstituents:
 
     @staticmethod
     def _item(ticker: str, weight: float):
-        from api_routes_analysis import EtfConstituentItem
+        from api.routes_analysis import EtfConstituentItem
         return EtfConstituentItem(ticker=ticker, weight=weight)
 
     def test_weights_normalised_to_sum_one(self):
-        from api_routes_analysis import _normalise_constituents
+        from api.routes_analysis import _normalise_constituents
         items = [self._item("AAPL", 60.0), self._item("MSFT", 40.0)]
         result = _normalise_constituents(items)
         assert abs(sum(r["weight"] for r in result) - 1.0) < 1e-9
 
     def test_weight_proportions_preserved(self):
-        from api_routes_analysis import _normalise_constituents
+        from api.routes_analysis import _normalise_constituents
         items = [self._item("AAPL", 60.0), self._item("MSFT", 40.0)]
         result = _normalise_constituents(items)
         assert abs(result[0]["weight"] - 0.6) < 1e-9
         assert abs(result[1]["weight"] - 0.4) < 1e-9
 
     def test_zero_total_returns_empty(self):
-        from api_routes_analysis import _normalise_constituents
+        from api.routes_analysis import _normalise_constituents
         items = [self._item("AAPL", 0.0), self._item("MSFT", 0.0)]
         assert _normalise_constituents(items) == []
 
     def test_negative_total_returns_empty(self):
-        from api_routes_analysis import _normalise_constituents
+        from api.routes_analysis import _normalise_constituents
         items = [self._item("AAPL", -5.0), self._item("MSFT", -3.0)]
         assert _normalise_constituents(items) == []
 
     def test_ticker_uppercased_and_stripped(self):
-        from api_routes_analysis import _normalise_constituents
+        from api.routes_analysis import _normalise_constituents
         items = [self._item("  aapl  ", 1.0)]
         result = _normalise_constituents(items)
         assert result[0]["ticker"] == "AAPL"
 
     def test_already_normalised_passes_through(self):
-        from api_routes_analysis import _normalise_constituents
+        from api.routes_analysis import _normalise_constituents
         items = [self._item("SPY", 0.5), self._item("QQQ", 0.5)]
         result = _normalise_constituents(items)
         assert abs(sum(r["weight"] for r in result) - 1.0) < 1e-9
@@ -446,15 +446,15 @@ class TestNormaliseConstituents:
 
 @pytest.mark.parametrize("ticker", ["../escape", "A/B", "", "A" * 21])
 def test_intraday_refresh_rejects_unsafe_ticker(client, ticker):
-    with patch("api_routes.load_or_fetch_intraday_history") as fetch:
+    with patch("api.routes.load_or_fetch_intraday_history") as fetch:
         response = client.post("/api/intraday-chart/refresh", json={"ticker": ticker})
     assert response.status_code == 422
     fetch.assert_not_called()
 
 
 def test_intraday_refresh_keeps_chart_on_failed_fetch(client):
-    with patch("api_routes.load_or_fetch_intraday_history", return_value=None), \
-         patch("api_routes.create_intraday_chart") as chart:
+    with patch("api.routes.load_or_fetch_intraday_history", return_value=None), \
+         patch("api.routes.create_intraday_chart") as chart:
         response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTFAIL"})
     assert response.status_code == 200
     assert response.json() == {"html": "", "refresh_failed": True}
@@ -464,10 +464,10 @@ def test_intraday_refresh_keeps_chart_on_failed_fetch(client):
 def test_intraday_refresh_does_not_rebuild_unchanged_chart(client):
     import pandas as pd
 
-    with patch("api_routes.load_or_fetch_intraday_history", return_value=pd.DataFrame({"Close": [1]})), \
-         patch("api_routes.intraday_chart_revision", return_value="same"), \
-         patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
-         patch("api_routes.create_intraday_chart") as chart:
+    with patch("api.routes.load_or_fetch_intraday_history", return_value=pd.DataFrame({"Close": [1]})), \
+         patch("api.routes.intraday_chart_revision", return_value="same"), \
+         patch("api.routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
+         patch("api.routes.create_intraday_chart") as chart:
         response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTSAME", "revision": "same"})
     assert response.json() == {"html": "", "revision": "same", "unchanged": True}
     chart.assert_not_called()
@@ -479,11 +479,11 @@ def test_intraday_refresh_returns_changed_chart(client, tmp_path):
     df = pd.DataFrame({"Open": [1], "High": [2], "Low": [1], "Close": [2], "Volume": [10]},
                       index=pd.to_datetime(["2026-10-02 14:00"]))
     df.to_parquet(tmp_path / "CHARTNEW_intraday.parquet")
-    with patch("api_routes.load_or_fetch_intraday_history", return_value=df), \
-         patch("api_routes.INTRADAY_DIR", tmp_path), \
-         patch("api_routes.HISTORICAL_DIR", tmp_path), \
-         patch("api_routes.intraday_chart_revision", return_value="new"), \
-         patch("api_routes.create_intraday_chart", return_value="<div>new chart</div>") as chart:
+    with patch("api.routes.load_or_fetch_intraday_history", return_value=df), \
+         patch("api.routes.INTRADAY_DIR", tmp_path), \
+         patch("api.routes.HISTORICAL_DIR", tmp_path), \
+         patch("api.routes.intraday_chart_revision", return_value="new"), \
+         patch("api.routes.create_intraday_chart", return_value="<div>new chart</div>") as chart:
         response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTNEW", "revision": "old"})
     assert response.json()["revision"] == "new"
     assert "new chart" in response.json()["html"]
@@ -501,9 +501,9 @@ def test_fresh_intraday_polling_fetch_counts_and_latency(client, tmp_path):
     with patch("data_engine.INTRADAY_DIR", tmp_path), \
          patch("page_helpers.INTRADAY_DIR", tmp_path), \
          patch("page_helpers.HISTORICAL_DIR", tmp_path), \
-         patch("api_routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
+         patch("api.routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
          patch("data_engine.yahoo_engine.get_intraday") as network, \
-         patch("api_routes.create_intraday_chart") as chart:
+         patch("api.routes.create_intraday_chart") as chart:
         revision = intraday_chart_revision(ticker)
         durations = []
         for _ in range(5):
@@ -521,9 +521,9 @@ def test_intraday_failed_chart_read_preserves_browser_chart(client):
     import pandas as pd
     from fastapi.responses import JSONResponse
 
-    with patch("api_routes.load_or_fetch_intraday_history", return_value=pd.DataFrame({"Close": [1]})), \
-         patch("api_routes.intraday_chart_revision", return_value="read-failure"), \
-         patch("api_routes.get_intraday_chart", return_value=JSONResponse({"html": "placeholder", "available": False})):
+    with patch("api.routes.load_or_fetch_intraday_history", return_value=pd.DataFrame({"Close": [1]})), \
+         patch("api.routes.intraday_chart_revision", return_value="read-failure"), \
+         patch("api.routes.get_intraday_chart", return_value=JSONResponse({"html": "placeholder", "available": False})):
         response = client.post("/api/intraday-chart/refresh", json={"ticker": "CHARTREAD"})
     assert response.json() == {"html": "", "refresh_failed": True}
 
@@ -544,10 +544,10 @@ def test_intraday_refresh_wait_does_not_delay_home_assistant(client, tmp_path):
         return {"STEP4HA": df}
 
     with patch("data_engine.INTRADAY_DIR", tmp_path), \
-         patch("api_routes.INTRADAY_DIR", tmp_path), \
-         patch("api_routes.HISTORICAL_DIR", tmp_path), \
+         patch("api.routes.INTRADAY_DIR", tmp_path), \
+         patch("api.routes.HISTORICAL_DIR", tmp_path), \
          patch("data_engine.yahoo_engine.get_intraday", side_effect=blocked_fetch) as network, \
-         patch("api_routes.create_intraday_chart", return_value="<div>chart</div>"):
+         patch("api.routes.create_intraday_chart", return_value="<div>chart</div>"):
         with ThreadPoolExecutor(max_workers=2) as pool:
             intraday = pool.submit(client.post, "/api/intraday-chart/refresh", json={"ticker": "STEP4HA"})
             try:

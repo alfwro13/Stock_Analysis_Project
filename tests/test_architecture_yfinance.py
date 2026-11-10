@@ -18,20 +18,20 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 # Files that are allowed to import yfinance directly (with reason):
 #   yahoo_engine.py    — the gateway itself; it must import yfinance
-#   api_routes.py      — IPv6/network diagnostic endpoint that tests the raw session
+#   api/routes.py      — IPv6/network diagnostic endpoint that tests the raw session
 #   network_engine.py  — lazy `from yfinance.data import YfData` inside a function body
 #                        to clear the singleton crumb cache after a session replacement;
 #                        can't move to yahoo_engine because yahoo_engine already imports
 #                        yahoo_connection_boundary from this module (circular import).
 ALLOWED_EXCEPTIONS = {
     "yahoo_engine.py",
-    "api_routes.py",
-    "network_engine.py",
+    "api/routes.py",
+    "tools/network_engine.py",
 }
 
 
 def _collect_py_files() -> list[Path]:
-    """All .py files in the project root (non-recursive subdirs excluded)."""
+    """All .py files in the project root, tests/, tools/ and api/."""
     files = []
     for p in PROJECT_ROOT.iterdir():
         if p.suffix == ".py" and p.is_file():
@@ -41,11 +41,10 @@ def _collect_py_files() -> list[Path]:
     if tests_dir.is_dir():
         for p in tests_dir.glob("*.py"):
             files.append(p)
-    # And tools/ sub-package
-    tools_dir = PROJECT_ROOT / "tools"
-    if tools_dir.is_dir():
-        for p in tools_dir.glob("*.py"):
-            files.append(p)
+    for package in ("tools", "api"):
+        package_dir = PROJECT_ROOT / package
+        if package_dir.is_dir():
+            files.extend(package_dir.glob("*.py"))
     return sorted(files)
 
 
@@ -102,10 +101,11 @@ def pytest_generate_tests(metafunc):
 def test_no_direct_yfinance_import(py_file: Path):
     """
     Every .py file must route Yahoo Finance calls through yahoo_engine.
-    Allowed exceptions: yahoo_engine.py (the gateway) and api_routes.py (IPv6 diagnostic).
+    Allowed exceptions: yahoo_engine.py (the gateway) and api/routes.py (IPv6 diagnostic).
     """
-    if py_file.name in ALLOWED_EXCEPTIONS:
-        pytest.skip(f"{py_file.name} is a documented exception")
+    relative = py_file.relative_to(PROJECT_ROOT).as_posix()
+    if relative in ALLOWED_EXCEPTIONS:
+        pytest.skip(f"{relative} is a documented exception")
 
     violations = _has_direct_yfinance_import(py_file)
 

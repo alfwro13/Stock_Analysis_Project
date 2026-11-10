@@ -76,7 +76,7 @@ class TestAuth:
         assert response.status_code == 401
 
     def test_mcp_is_not_an_api_key_route(self):
-        from api_deps import API_KEY_ROUTES
+        from api.deps import API_KEY_ROUTES
         assert not [route for route in API_KEY_ROUTES if route[1].startswith("/mcp")]
 
     @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete", "options", "head"])

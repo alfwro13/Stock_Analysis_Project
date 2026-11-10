@@ -117,7 +117,7 @@ def main():
         patch("main.start_model_compatibility_guard"),
         patch("main.resume_interrupted_scans"),
         patch("utils.notify_requirements_drift"),
-        patch("api_routes_accounts.fetch_and_save_pulse"),
+        patch("api.routes_accounts.fetch_and_save_pulse"),
         patch("yahoo_engine.yf.download", side_effect=RuntimeError("baseline offline")),
         patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("baseline offline")),
         patch("yahoo_engine.yahoo_engine.get_fx_rate", return_value=1.0),
@@ -154,7 +154,7 @@ def main():
                     release.wait(10)
                     return {}
 
-                with patch("api_routes.yahoo_engine.get_intraday", side_effect=stalled_intraday):
+                with patch("api.routes.yahoo_engine.get_intraday", side_effect=stalled_intraday):
                     with ThreadPoolExecutor(max_workers=2) as pool:
                         pending = pool.submit(sample_intraday, client, us)
                         if not entered.wait(10):

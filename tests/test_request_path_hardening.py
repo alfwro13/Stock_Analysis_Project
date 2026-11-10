@@ -72,7 +72,7 @@ def test_settings_rejects_invalid_values(client, step_up_headers):
 
 
 def test_scraper_allowed_hosts_accepts_exact_hosts_and_an_empty_list():
-    from api_routes_system import SettingsConfig
+    from api.routes_system import SettingsConfig
     assert SettingsConfig(SCRAPER_ALLOWED_HOSTS=[]).SCRAPER_ALLOWED_HOSTS == []
     hosts = ["192.168.1.71", "ha.lan", "fd00::71"]
     assert SettingsConfig(SCRAPER_ALLOWED_HOSTS=hosts).SCRAPER_ALLOWED_HOSTS == hosts

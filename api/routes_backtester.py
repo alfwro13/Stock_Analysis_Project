@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import list_scope_accounts_with_values
-from api_deps import _error_500, limiter, refuse_writes_during_restore
+from api.deps import _error_500, limiter, refuse_writes_during_restore
 from config import BASE_CURRENCY
 from strategy_backtest_data import (
     COST_PRESETS,

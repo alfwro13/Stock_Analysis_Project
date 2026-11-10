@@ -64,14 +64,14 @@ def test_portfolio_page_shows_builtin_holdings(client):
 @pytest.mark.pages
 def test_portfolio_page_triggers_background_refresh_for_stale_held_ticker(client):
     """Loading /portfolio must itself trigger a live price refresh for a stale held ticker, the
-    same way the Home Assistant-polled JSON endpoints already do (api_routes_accounts.py's
+    same way the Home Assistant-polled JSON endpoints already do (api/routes_accounts.py's
     maybe_trigger_price_refresh) — previously the page only ever showed whatever a background
     scan had last written, so it could sit on yesterday's close until that scan next ran."""
     aid = create_account("Integ PageRefresh", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPGREFRESH", company_name="Page Refresh Co",
                      currency="GBP", quantity=2, unit_price=50, exchange_rate=1.0)
 
-    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+    with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
          patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/portfolio")
     assert resp.status_code == 200

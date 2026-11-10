@@ -37,7 +37,7 @@ The bearer key must not travel over plain `http` beyond the machine running the 
 | Disabled (Local/LAN Access) | The Settings toggle (`MCP_LAN_ENABLED` in `config.json`, default off) is checked first, on every host except `MCP_PUBLIC_HOST`: while it is off every `/mcp` request there answers `503` whatever it carries, and keys can be neither created nor deleted (`409`). The public host is not affected by it; its own switch is `MCP_REMOTE_ENABLED`. Turning Local/LAN Access on needs a password step-up; turning it off does not. |
 | No key | While no key exists every `/mcp` request answers `401` (fail closed). The log records that no key exists, never a presented value. |
 | Missing or wrong key | `401` with `WWW-Authenticate: Bearer`. The same reply for unset, missing and wrong, so it does not tell a caller which. |
-| Home Assistant `X-API-Key` | `403` on `/mcp`, even next to a valid Bearer key. `/mcp` is not in `api_deps.API_KEY_ROUTES` and must never be added. |
+| Home Assistant `X-API-Key` | `403` on `/mcp`, even next to a valid Bearer key. `/mcp` is not in `api.deps.API_KEY_ROUTES` and must never be added. |
 | Session cookie | Does not authenticate `/mcp`. |
 | Other routes | A Bearer MCP key there is ignored; the request is treated as unauthenticated (`302` to `/login`). |
 | Methods | `POST` only. `GET`, `DELETE` and the rest answer `405` with `Allow: POST` after authentication. |
@@ -212,7 +212,7 @@ Streamable HTTP in stateless JSON mode: each `POST /mcp` is one JSON-RPC request
 | `mcp_server/oauth_routes.py` | The five public OAuth routes (`ROUTES`, `PATHS`): metadata documents, authorize, token, revoke, with the form parsing, client authentication, lockout and audit rows. |
 | `db_mcp_oauth.py` | The SQL for the four `mcp_oauth_*` tables. |
 | `mcp_server/events.py` | The six MCP Remote Access notifications: the dedup (`limits.notify_due`) and the hand-off to `notification_engine.notify()` on a one-thread executor. |
-| `api_routes_mcp_remote.py` | The Settings routes under `/api/mcp-remote` (status, enable, client, pairing window, approve, deny). |
+| `api/routes_mcp_remote.py` | The Settings routes under `/api/mcp-remote` (status, enable, client, pairing window, approve, deny). |
 | `templates/oauth_approve.html`, `static/css/oauth_approve.css`, `static/js/oauth_approve.js` | The public waiting page; the server inlines the CSS and JS into the page. |
 | `static/js/settings_mcp_remote.js` | The Remote Access panel of the Settings card. |
 | `mcp_server/public_host.py` | `PublicHostGuard` (the outermost middleware: the eight public routes, `404` for everything else, the client-address check) and the route sets. |

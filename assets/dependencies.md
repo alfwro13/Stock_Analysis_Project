@@ -88,7 +88,7 @@ and what should I test?" without grepping the whole codebase first.
 | `uvicorn` | ASGI server that runs `main.py` | Startup flags, worker/reload behaviour |
 | `mcp` | Official Model Context Protocol SDK (2.x), serving the read-only MCP Server at `/mcp` (`mcp_server/`: `MCPServer`, Streamable HTTP in stateless JSON mode). Brings `httpx2`, `mcp-types`, `sse-starlette`, `jsonschema`, `pyjwt[crypto]` (so `cryptography`), `truststore`, `opentelemetry-api`. Capped `<3` | The server class and the protocol revisions change between majors (v1's `FastMCP` became `MCPServer` in v2, and v1 now only gets security fixes). A minor bump can also change the Host/Origin check, the stateless-mode behaviour (a `GET` is held open instead of refused, which `mcp_server.transport._Endpoint` works around) or the `session_manager.run()` once-only rule. After a bump run `tests/mcp_server/` and connect Claude Code once with `claude mcp list` |
 | `starlette-csrf` | CSRF middleware wrapping all POST endpoints (`main.py`) | Any CSRF bypass or token-validation change is a security-relevant upgrade — test login + a POST action manually |
-| `slowapi` | Rate limiting (`api_deps.py` limiter used across all `api_routes*.py`) | Rate-limit key function / storage backend signature |
+| `slowapi` | Rate limiting (`api/deps.py` limiter used across all `api/routes*.py`) | Rate-limit key function / storage backend signature |
 | `python-multipart` | Multipart form parsing (file uploads — CSV imports) | Form-parsing edge cases (large files, encoding) |
 | `python-dotenv` | Loads `.env` secrets at startup | `.env` parsing rules |
 
@@ -126,7 +126,7 @@ and what should I test?" without grepping the whole codebase first.
 | Package | Used for | What could break |
 |---|---|---|
 | `apscheduler` | The only sanctioned scheduler per AGENTS.md rule 12 (`scheduler_engine.py`) | `CronTrigger`/job-store API changes — test that scheduled jobs still register (`tests/test_scheduler_engine.py`'s manifest-completeness check) |
-| `pip` | The installer behind the reinstall that runs before a restart when packages are out of date (`api_routes_system.py`) and the startup drift check (`utils.py`). Floor `>=26.2` clears published advisories; the reinstall passes `--require-hashes` and `--resume-retries`, which needs pip 25.1 or newer | Nothing at runtime; the next `pip install --require-hashes -r requirements.lock` upgrades it. A large upgrade (torch pulls several GB of CUDA wheels) is bounded by `constants.DEPENDENCY_INSTALL_TIMEOUT_SECONDS` |
+| `pip` | The installer behind the reinstall that runs before a restart when packages are out of date (`api/routes_system.py`) and the startup drift check (`utils.py`). Floor `>=26.2` clears published advisories; the reinstall passes `--require-hashes` and `--resume-retries`, which needs pip 25.1 or newer | Nothing at runtime; the next `pip install --require-hashes -r requirements.lock` upgrades it. A large upgrade (torch pulls several GB of CUDA wheels) is bounded by `constants.DEPENDENCY_INSTALL_TIMEOUT_SECONDS` |
 | `psutil` | System diagnostics (CPU/memory/disk) surfaced in Settings → System Diagnostics (`system_check_engine.py`, `memory_helpers.py` for Process Memory Telemetry and the memory readers of `ml_training_engine.py`, `ml_training_process.py` for the training child's watchdog) | Platform-specific metric availability |
 
 ## ML / AI

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from api_deps import FiniteModel, job_busy_response, limiter, _error_500
+from api.deps import FiniteModel, job_busy_response, limiter, _error_500
 from constants import ETF_CONSTITUENTS_MAX
 
 from config import HISTORICAL_DIR

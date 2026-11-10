@@ -2338,7 +2338,7 @@ def test_intraday_timing_measures_stubbed_upstream(client):
         time.sleep(0.03)
         return {}
 
-    with patch("api_routes.yahoo_engine.get_intraday", side_effect=stalled_fetch):
+    with patch("api.routes.yahoo_engine.get_intraday", side_effect=stalled_fetch):
         response = client.post("/api/intraday-chart/refresh", json={"ticker": "TSTTIMING"})
     assert response.status_code == 200
     timing = response.headers["Server-Timing"]
@@ -2382,20 +2382,20 @@ def _stub_connection(rows=None, row=None):
 @pytest.mark.parametrize(
     "method,path,patch_target,stub_result",
     [
-        ("post", "/api/intraday-chart/refresh", "api_routes.yahoo_engine.get_intraday", {}),
+        ("post", "/api/intraday-chart/refresh", "api.routes.yahoo_engine.get_intraday", {}),
         ("get", "/portfolio", "price_history_helpers.get_period_anchor_closes", {}),
-        ("get", "/api/accounts/portfolio-totals", "api_routes_accounts.cached_portfolio_totals", {}),
+        ("get", "/api/accounts/portfolio-totals", "api.routes_accounts.cached_portfolio_totals", {}),
         ("get", "/api/markets", "markets_engine.assemble_markets_payload", {"regions": []}),
         ("get", "/api/system/market-status", "system_check_engine.run_system_checks", []),
-        ("get", "/api/universe/profiler-status", "api_routes_triggers.get_profiler_queue_breakdown", {"pending_count": 3}),
+        ("get", "/api/universe/profiler-status", "api.routes_triggers.get_profiler_queue_breakdown", {"pending_count": 3}),
         ("get", "/index/%5EGSPC", "page_routes_macro.intraday_chart_revision", ""),
         ("get", "/market-sentiment", "page_routes_macro.get_latest_regime", {}),
-        ("get", "/api/system/metrics", "api_routes_system.get_all_job_last_runs", {}),
-        ("get", "/api/notifications/latest", "api_routes_system.get_connection", _stub_connection()),
-        ("post", "/api/system/git-pull", "api_routes_system.subprocess.run", MagicMock(returncode=0, stdout="sha\n", stderr="")),
-        ("get", "/api/freshness", "api_routes.get_connection", _stub_connection(row={"max_date": None})),
-        ("get", "/api/fx-drag?period=lifetime", "api_routes.portfolio_lifetime_fx_breakdown", []),
-        ("get", "/api/portfolio-optimizer/candidates", "api_routes._po_list_candidates", {"status": "success"}),
+        ("get", "/api/system/metrics", "api.routes_system.get_all_job_last_runs", {}),
+        ("get", "/api/notifications/latest", "api.routes_system.get_connection", _stub_connection()),
+        ("post", "/api/system/git-pull", "api.routes_system.subprocess.run", MagicMock(returncode=0, stdout="sha\n", stderr="")),
+        ("get", "/api/freshness", "api.routes.get_connection", _stub_connection(row={"max_date": None})),
+        ("get", "/api/fx-drag?period=lifetime", "api.routes.portfolio_lifetime_fx_breakdown", []),
+        ("get", "/api/portfolio-optimizer/candidates", "api.routes._po_list_candidates", {"status": "success"}),
         ("get", "/api/alert-referee/status", "alert_referee_engine.get_referee_summary", {}),
         ("get", "/settings", "page_routes.get_unread_count", 0),
         ("get", "/glossary", "page_routes._render_asset_docs", []),
@@ -2446,8 +2446,8 @@ def test_blocked_request_does_not_stall_unrelated_request(
 @pytest.mark.parametrize(
     "module_file",
     [
-        "api_routes.py", "api_routes_accounts.py", "api_routes_analysis.py", "api_routes_auth.py",
-        "api_routes_backtester.py", "api_routes_system.py", "api_routes_triggers.py", "page_routes.py",
+        "api/routes.py", "api/routes_accounts.py", "api/routes_analysis.py", "api/routes_auth.py",
+        "api/routes_backtester.py", "api/routes_system.py", "api/routes_triggers.py", "page_routes.py",
         "page_routes_etf.py",
     ],
 )

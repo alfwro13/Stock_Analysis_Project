@@ -49,7 +49,7 @@ def _assert_success(resp, endpoint: str):
 @pytest.mark.api
 @pytest.mark.parametrize("ticker", ["UK10YG", "TBILL-606"])
 def test_post_index_refresh_rejects_non_yahoo_tickers_before_any_fetch(client, ticker):
-    with patch("api_routes.fetch_and_save_pulse") as pulse, patch("api_routes.DataEngine") as engine:
+    with patch("api.routes.fetch_and_save_pulse") as pulse, patch("api.routes.DataEngine") as engine:
         resp = client.post("/api/index/refresh", json={"ticker": ticker})
     assert resp.status_code == 422
     assert _json(resp)["status"] == "error"
@@ -59,11 +59,11 @@ def test_post_index_refresh_rejects_non_yahoo_tickers_before_any_fetch(client, t
 
 @pytest.mark.api
 def test_post_index_refresh_still_refreshes_a_yahoo_index(client):
-    with patch("api_routes.fetch_and_save_pulse") as pulse, \
-         patch("api_routes.DataEngine") as engine, \
-         patch("api_routes.QuantEngine"), \
-         patch("api_routes.update_all_tail_risks"), \
-         patch("api_routes.update_all_sentiment"):
+    with patch("api.routes.fetch_and_save_pulse") as pulse, \
+         patch("api.routes.DataEngine") as engine, \
+         patch("api.routes.QuantEngine"), \
+         patch("api.routes.update_all_tail_risks"), \
+         patch("api.routes.update_all_sentiment"):
         engine.return_value.fetch_and_save_data.return_value = True
         resp = client.post("/api/index/refresh", json={"ticker": "^GSPC"})
     _assert_success(resp, "/api/index/refresh")
@@ -193,7 +193,7 @@ def test_trigger_endpoints_answer_409_while_a_restore_is_in_progress(client, end
 @pytest.mark.parametrize("endpoint", ["/api/system/restart", "/api/system/force-restart"])
 def test_restart_is_refused_while_a_restore_is_in_progress(client, step_up_headers, endpoint):
     with patch("scheduler_engine.restore_in_progress", return_value=True), \
-         patch("api_routes_system.execute_restart", new=AsyncMock()) as mock_restart:
+         patch("api.routes_system.execute_restart", new=AsyncMock()) as mock_restart:
         resp = client.post(endpoint, headers=step_up_headers)
     assert resp.status_code == 409
     assert "restore is in progress" in _json(resp)["message"]
@@ -227,10 +227,10 @@ def test_account_reads_still_work_during_a_restore(client):
 
 @pytest.mark.api
 def test_every_accounts_route_that_queues_a_task_sits_behind_the_restore_refusal():
-    import api_routes_accounts
-    from api_deps import refuse_writes_during_restore
+    import api.routes_accounts
+    from api.deps import refuse_writes_during_restore
 
-    assert any(d.dependency is refuse_writes_during_restore for d in api_routes_accounts.accounts_router.dependencies)
+    assert any(d.dependency is refuse_writes_during_restore for d in api.routes_accounts.accounts_router.dependencies)
 
 
 @pytest.mark.api
@@ -238,7 +238,7 @@ def test_every_accounts_route_that_queues_a_task_sits_behind_the_restore_refusal
 def test_a_queued_restart_holds_the_restore_off_until_it_is_released(client, step_up_headers, endpoint, restart_env):
     import scheduler_engine
 
-    with patch("api_routes_system.execute_restart", new=AsyncMock()):
+    with patch("api.routes_system.execute_restart", new=AsyncMock()):
         resp = client.post(endpoint, headers=step_up_headers)
     assert resp.status_code == 200
     try:
@@ -256,7 +256,7 @@ def test_a_restart_that_loses_the_race_to_a_restore_is_refused(client, step_up_h
 
     with patch("scheduler_engine.restore_in_progress", return_value=False), \
          patch("scheduler_engine.claim_restart", return_value=False), \
-         patch("api_routes_system.execute_restart", new=AsyncMock()) as mock_restart:
+         patch("api.routes_system.execute_restart", new=AsyncMock()) as mock_restart:
         resp = client.post("/api/system/force-restart", headers=step_up_headers)
     assert resp.status_code == 409
     assert "restore is in progress" in _json(resp)["message"]
@@ -268,7 +268,7 @@ def test_every_manual_job_route_checks_the_running_guard():
     """A route that queues run_manual_job must call job_busy_response in the same function."""
     import ast
     unguarded = []
-    for path in sorted(Path(__file__).parent.parent.glob("api_routes*.py")):
+    for path in sorted(Path(__file__).parent.parent.glob("api/routes*.py")):
         for fn in ast.walk(ast.parse(path.read_text())):
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -553,7 +553,7 @@ def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(clie
         "GHOSTFOLIO_ACCOUNTS": {"discovered": [{"id": "acc-1", "name": "Test", "currency": "GBP"}], "active": ["acc-1"]},
         "SCHEDULING": {"GHOSTFOLIO_SYNC": {"ENABLED": True, "FREQUENCY": "mon-fri", "INTERVAL_HOURS": 0, "TIME": "06:00"}},
     }
-    with patch("api_routes_system.purge_ghostfolio_files") as mock_purge:
+    with patch("api.routes_system.purge_ghostfolio_files") as mock_purge:
         resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     assert _json(resp).get("status") == "success"
@@ -568,7 +568,7 @@ def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(clie
 def test_post_settings_ghostfolio_enabled_does_not_purge(client, step_up_headers):
     """POST /api/settings with GHOSTFOLIO_ENABLED=True must not touch portfolio.json/watchlist.json."""
     payload = {"GHOSTFOLIO_ENABLED": True}
-    with patch("api_routes_system.purge_ghostfolio_files") as mock_purge:
+    with patch("api.routes_system.purge_ghostfolio_files") as mock_purge:
         resp = client.post("/api/settings", json=payload, headers=step_up_headers)
     assert resp.status_code == 200
     assert _json(resp).get("status") == "success"
@@ -599,10 +599,10 @@ def test_post_watchlist_add_with_mock(client):
     import database as _db
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
-        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api_routes.update_single_profile"),
-        patch("api_routes.fetch_and_save_single_ticker"),
-        patch("api_routes.QuantEngine"),
+        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api.routes.update_single_profile"),
+        patch("api.routes.fetch_and_save_single_ticker"),
+        patch("api.routes.QuantEngine"),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -619,10 +619,10 @@ def test_post_watchlist_add_unknown_ticker_triggers_yahoo_fetch(client):
     import database as _db
     fake_meta = {"company_name": "Zzz Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
-        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api_routes.update_single_profile") as mock_profile,
-        patch("api_routes.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api_routes.QuantEngine"),
+        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api.routes.update_single_profile") as mock_profile,
+        patch("api.routes.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api.routes.QuantEngine"),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "ZZZNOTREAL3"})
     assert resp.status_code == 200
@@ -649,10 +649,10 @@ def test_post_watchlist_add_known_ticker_skips_yahoo_fetch(client):
 
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
-        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api_routes.update_single_profile") as mock_profile,
-        patch("api_routes.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api_routes.QuantEngine"),
+        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api.routes.update_single_profile") as mock_profile,
+        patch("api.routes.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api.routes.QuantEngine"),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -684,10 +684,10 @@ def test_post_watchlist_add_missing_stock_signals_row_triggers_analyze(client):
     fake_meta = {"company_name": "Analyze Me Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     mock_engine = MagicMock()
     with (
-        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api_routes.update_single_profile") as mock_profile,
-        patch("api_routes.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api_routes.QuantEngine", return_value=mock_engine),
+        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api.routes.update_single_profile") as mock_profile,
+        patch("api.routes.fetch_and_save_single_ticker") as mock_fetch,
+        patch("api.routes.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "ZZANALYZEME"})
     assert resp.status_code == 200
@@ -723,10 +723,10 @@ def test_post_watchlist_add_existing_stock_signals_row_skips_analyze(client):
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     mock_engine = MagicMock()
     with (
-        patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api_routes.update_single_profile"),
-        patch("api_routes.fetch_and_save_single_ticker"),
-        patch("api_routes.QuantEngine", return_value=mock_engine),
+        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("api.routes.update_single_profile"),
+        patch("api.routes.fetch_and_save_single_ticker"),
+        patch("api.routes.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -811,7 +811,7 @@ def test_post_options_payoff_caps_the_number_of_legs(client):
 
 @pytest.mark.api
 def test_post_options_payoff_is_rate_limited_to_sixty_per_minute(client):
-    from api_deps import limiter
+    from api.deps import limiter
     limiter.reset()
     leg = {"type": "call", "strike": 155.0, "premium": 3.5, "position": "long", "quantity": 1}
     try:
@@ -838,7 +838,7 @@ def test_post_options_payoff_invalid_input(client):
 @pytest.mark.api
 def test_post_market_pulse_with_mocked_fetch(client):
     """POST /api/market-pulse must return 200 (fetch is mocked to avoid network calls)."""
-    with patch("api_routes.fetch_and_save_pulse") as mock_fetch:
+    with patch("api.routes.fetch_and_save_pulse") as mock_fetch:
         mock_fetch.return_value = None
         resp = client.post("/api/market-pulse", json={"tickers": ["AAPL", "MSFT"]})
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
@@ -849,12 +849,12 @@ def test_post_market_pulse_with_mocked_fetch(client):
 @pytest.mark.api
 def test_post_data_refresh_single_with_mock(client):
     """POST /api/data/refresh-single must not crash (heavy deps mocked)."""
-    with patch("api_routes.update_single_profile"), \
-         patch("api_routes.DataEngine") as MockDE, \
-         patch("api_routes.QuantEngine") as MockQE, \
-         patch("api_routes.update_daily_ml_predictions"), \
-         patch("api_routes.update_all_tail_risks"), \
-         patch("api_routes.update_all_sentiment"):
+    with patch("api.routes.update_single_profile"), \
+         patch("api.routes.DataEngine") as MockDE, \
+         patch("api.routes.QuantEngine") as MockQE, \
+         patch("api.routes.update_daily_ml_predictions"), \
+         patch("api.routes.update_all_tail_risks"), \
+         patch("api.routes.update_all_sentiment"):
         instance = MockDE.return_value
         instance.fetch_and_save_data.return_value = True
         resp = client.post("/api/data/refresh-single", json={"ticker": "AAPL"})
@@ -870,12 +870,12 @@ def test_refresh_single_completes_analysis_before_reporting_fx_failure(client, m
         raise RuntimeError("FX refresh failed for USDGBP=X; last-good cached data retained.")
     monkeypatch.setattr("portfolio_service.refresh_fx_rates", failed)
     monkeypatch.setattr("accounts_engine.native_currencies", lambda tickers: {"AAPL": "USD"})
-    with patch("api_routes.update_single_profile"), \
-         patch("api_routes.DataEngine") as MockDE, \
-         patch("api_routes.QuantEngine"), \
-         patch("api_routes.update_daily_ml_predictions", side_effect=lambda tickers: calls.append("ml")), \
-         patch("api_routes.update_all_tail_risks", side_effect=lambda tickers: calls.append("tail_risk")), \
-         patch("api_routes.update_all_sentiment", side_effect=lambda tickers: calls.append("sentiment")):
+    with patch("api.routes.update_single_profile"), \
+         patch("api.routes.DataEngine") as MockDE, \
+         patch("api.routes.QuantEngine"), \
+         patch("api.routes.update_daily_ml_predictions", side_effect=lambda tickers: calls.append("ml")), \
+         patch("api.routes.update_all_tail_risks", side_effect=lambda tickers: calls.append("tail_risk")), \
+         patch("api.routes.update_all_sentiment", side_effect=lambda tickers: calls.append("sentiment")):
         MockDE.return_value.fetch_and_save_data.return_value = True
         resp = client.post("/api/data/refresh-single", json={"ticker": "AAPL"})
     assert resp.status_code == 500
@@ -939,11 +939,11 @@ class TestImportServerJobGuard:
 
     @pytest.fixture(autouse=True)
     def _csv_dir(self, tmp_path, monkeypatch):
-        import api_routes_triggers
-        from api_deps import limiter
+        import api.routes_triggers
+        from api.deps import limiter
         from database import get_connection
         limiter.reset()
-        monkeypatch.setattr(api_routes_triggers, "IMPORT_DIR", tmp_path)
+        monkeypatch.setattr(api.routes_triggers, "IMPORT_DIR", tmp_path)
         (tmp_path / "guard.csv").write_text(
             "ticker,company_name,sector,industry,currency,country,exchange\n"
             f"{self.TICKER},Guard Co,Technology,Software,GBP,UK,LSE\n"
@@ -1011,11 +1011,11 @@ class TestImportServerTickerValidation:
 
     @pytest.fixture(autouse=True)
     def _csv_dir(self, tmp_path, monkeypatch):
-        import api_routes_triggers
-        from api_deps import limiter
+        import api.routes_triggers
+        from api.deps import limiter
         from database import get_connection
         limiter.reset()
-        monkeypatch.setattr(api_routes_triggers, "IMPORT_DIR", tmp_path)
+        monkeypatch.setattr(api.routes_triggers, "IMPORT_DIR", tmp_path)
         header = "ticker,company_name,sector,industry,currency,country,exchange\n"
         rows = "".join(f'"{t}",Co,Technology,Software,GBP,UK,LSE\n' for t in self.GOOD + [self.PADDED] + self.BAD)
         (tmp_path / "mixed.csv").write_text(header + rows)
@@ -1523,7 +1523,7 @@ def test_backup_restore_rejects_path_traversal(client, step_up_headers):
 @pytest.mark.api
 def test_backup_restore_success(client, step_up_headers):
     """POST /api/backup/restore with a valid filename must return status=success when the engine succeeds."""
-    with patch("api_routes_triggers.restore_backup", return_value={"status": "success", "message": "Restore completed."}):
+    with patch("api.routes_triggers.restore_backup", return_value={"status": "success", "message": "Restore completed."}):
         resp = client.post(
             "/api/backup/restore",
             json={"filename": "backup_20260101_000000.tar.gz"},
@@ -1536,7 +1536,7 @@ def test_backup_restore_success(client, step_up_headers):
 @pytest.mark.api
 def test_backup_restore_engine_error_returns_500(client, step_up_headers):
     """POST /api/backup/restore must surface an engine-level failure as a 500 with status=error."""
-    with patch("api_routes_triggers.restore_backup", return_value={"status": "error", "message": "Backup file not found"}):
+    with patch("api.routes_triggers.restore_backup", return_value={"status": "error", "message": "Backup file not found"}):
         resp = client.post(
             "/api/backup/restore",
             json={"filename": "backup_missing.tar.gz"},
@@ -1549,7 +1549,7 @@ def test_backup_restore_engine_error_returns_500(client, step_up_headers):
 @pytest.mark.api
 def test_git_pull_flags_requirements_lock_change(client, step_up_headers):
     """POST /api/system/git-pull must flag requirements_changed when requirements.lock appears in the pulled diff."""
-    import api_routes_system
+    import api.routes_system
 
     def fake_run(cmd, **kwargs):
         if cmd[:2] == ["git", "rev-parse"]:
@@ -1560,19 +1560,19 @@ def test_git_pull_flags_requirements_lock_change(client, step_up_headers):
             return MagicMock(returncode=0, stdout="requirements.lock\nmain.py\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
-    api_routes_system._requirements_changed_pending = False
-    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+    api.routes_system._requirements_changed_pending = False
+    with patch("api.routes_system.subprocess.run", side_effect=fake_run):
         resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
     body = _json(resp)
     assert body["requirements_changed"] is True
-    assert api_routes_system._requirements_changed_pending is True
-    api_routes_system._requirements_changed_pending = False
+    assert api.routes_system._requirements_changed_pending is True
+    api.routes_system._requirements_changed_pending = False
 
 
 @pytest.mark.api
 def test_git_pull_warns_when_scikit_learn_pin_changes(client, step_up_headers):
-    import api_routes_system
+    import api.routes_system
 
     def fake_run(cmd, **kwargs):
         if cmd[:2] == ["git", "rev-parse"]:
@@ -1583,12 +1583,12 @@ def test_git_pull_warns_when_scikit_learn_pin_changes(client, step_up_headers):
             return MagicMock(returncode=0, stdout="requirements.lock\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
-    api_routes_system._requirements_changed_pending = False
-    api_routes_system._sklearn_change_pending = None
+    api.routes_system._requirements_changed_pending = False
+    api.routes_system._sklearn_change_pending = None
     with (
-        patch("api_routes_system.subprocess.run", side_effect=fake_run),
+        patch("api.routes_system.subprocess.run", side_effect=fake_run),
         patch(
-            "api_routes_system.Path.read_text",
+            "api.routes_system.Path.read_text",
             side_effect=["scikit-learn==1.9.0\n", "scikit-learn==1.9.1\n"],
         ),
     ):
@@ -1605,14 +1605,14 @@ def test_git_pull_warns_when_scikit_learn_pin_changes(client, step_up_headers):
 
     status = _json(client.get("/api/system/active-jobs"))
     assert status["scikit_learn_change_pending"] == body["scikit_learn_change"]
-    api_routes_system._requirements_changed_pending = False
-    api_routes_system._sklearn_change_pending = None
+    api.routes_system._requirements_changed_pending = False
+    api.routes_system._sklearn_change_pending = None
 
 
 @pytest.mark.api
 def test_git_pull_does_not_flag_unrelated_changes(client, step_up_headers):
     """POST /api/system/git-pull must not flag requirements_changed when requirements.lock wasn't touched; the input file alone changes nothing that is installed."""
-    import api_routes_system
+    import api.routes_system
 
     def fake_run(cmd, **kwargs):
         if cmd[:2] == ["git", "rev-parse"]:
@@ -1623,24 +1623,24 @@ def test_git_pull_does_not_flag_unrelated_changes(client, step_up_headers):
             return MagicMock(returncode=0, stdout="main.py\nrequirements.txt\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
-    api_routes_system._requirements_changed_pending = False
-    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+    api.routes_system._requirements_changed_pending = False
+    with patch("api.routes_system.subprocess.run", side_effect=fake_run):
         resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
     assert _json(resp)["requirements_changed"] is False
-    assert api_routes_system._requirements_changed_pending is False
+    assert api.routes_system._requirements_changed_pending is False
 
 
 @pytest.mark.api
 def test_active_jobs_reports_requirements_changed_pending(client):
     """GET /api/system/active-jobs must surface the pending pip-install flag."""
-    import api_routes_system
+    import api.routes_system
 
-    api_routes_system._requirements_changed_pending = True
+    api.routes_system._requirements_changed_pending = True
     resp = client.get("/api/system/active-jobs")
     assert resp.status_code == 200
     assert _json(resp)["requirements_changed_pending"] is True
-    api_routes_system._requirements_changed_pending = False
+    api.routes_system._requirements_changed_pending = False
 
 
 @pytest.mark.api
@@ -1655,10 +1655,10 @@ def test_active_jobs_reports_requirements_changed_pending(client):
 )
 def test_active_jobs_restart_pending_compares_running_and_disk_commit(client, monkeypatch, running_head, current_head, expected):
     """GET /api/system/active-jobs flags restart_pending only when both commits are known and differ."""
-    import api_routes_system
+    import api.routes_system
 
-    monkeypatch.setattr(api_routes_system, "_RUNNING_HEAD", running_head)
-    monkeypatch.setattr(api_routes_system, "_git_head", lambda: current_head)
+    monkeypatch.setattr(api.routes_system, "_RUNNING_HEAD", running_head)
+    monkeypatch.setattr(api.routes_system, "_git_head", lambda: current_head)
     resp = client.get("/api/system/active-jobs")
     assert resp.status_code == 200
     assert _json(resp)["restart_pending"] is expected
@@ -1667,7 +1667,7 @@ def test_active_jobs_restart_pending_compares_running_and_disk_commit(client, mo
 @pytest.mark.api
 def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client, step_up_headers, monkeypatch):
     """A second Pull Latest click reporting 'Already up to date' must not clear the restart-pending state."""
-    import api_routes_system
+    import api.routes_system
 
     def fake_run(cmd, **kwargs):
         if cmd[:2] == ["git", "rev-parse"]:
@@ -1678,8 +1678,8 @@ def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client,
             return MagicMock(returncode=0, stdout="", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
-    monkeypatch.setattr(api_routes_system, "_RUNNING_HEAD", "oldsha")
-    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+    monkeypatch.setattr(api.routes_system, "_RUNNING_HEAD", "oldsha")
+    with patch("api.routes_system.subprocess.run", side_effect=fake_run):
         pull = client.post("/api/system/git-pull", headers=step_up_headers)
         status = client.get("/api/system/active-jobs")
     assert pull.status_code == 200
@@ -1694,11 +1694,11 @@ def test_restart_pending_survives_second_pull_that_is_already_up_to_date(client,
     ],
 )
 def test_git_head_returns_none_when_git_unavailable(outcome):
-    import api_routes_system
+    import api.routes_system
 
     kwargs = {"side_effect": outcome} if isinstance(outcome, Exception) else {"return_value": outcome}
-    with patch("api_routes_system.subprocess.run", **kwargs):
-        assert api_routes_system._git_head() is None
+    with patch("api.routes_system.subprocess.run", **kwargs):
+        assert api.routes_system._git_head() is None
 
 
 @pytest.mark.api
@@ -1719,14 +1719,14 @@ def test_active_jobs_reports_average_duration_per_running_job(client):
 
 @pytest.fixture
 def restart_env(tmp_path, monkeypatch):
-    import api_routes_system
+    import api.routes_system
 
-    monkeypatch.setattr(api_routes_system, "_pip_tmp_dir", lambda: tmp_path / "pip_tmp")
-    monkeypatch.setattr(api_routes_system, "_requirements_changed_pending", False)
-    monkeypatch.setattr(api_routes_system, "check_requirements_drift", lambda: [])
-    monkeypatch.setitem(api_routes_system._dependency_install, "state", "idle")
-    monkeypatch.setitem(api_routes_system._dependency_install, "command", None)
-    yield api_routes_system
+    monkeypatch.setattr(api.routes_system, "_pip_tmp_dir", lambda: tmp_path / "pip_tmp")
+    monkeypatch.setattr(api.routes_system, "_requirements_changed_pending", False)
+    monkeypatch.setattr(api.routes_system, "check_requirements_drift", lambda: [])
+    monkeypatch.setitem(api.routes_system._dependency_install, "state", "idle")
+    monkeypatch.setitem(api.routes_system._dependency_install, "command", None)
+    yield api.routes_system
     import scheduler_engine
     scheduler_engine._pending_restarts = 0
 
@@ -1735,10 +1735,10 @@ def _run_execute_restart(module, pip_result=None, pip_side_effect=None):
     import asyncio
 
     with (
-        patch("api_routes_system.subprocess.run", return_value=pip_result, side_effect=pip_side_effect) as mock_run,
-        patch("api_routes_system.notify") as mock_notify,
-        patch("api_routes_system.asyncio.sleep", new=AsyncMock()),
-        patch("api_routes_system.os.kill") as mock_kill,
+        patch("api.routes_system.subprocess.run", return_value=pip_result, side_effect=pip_side_effect) as mock_run,
+        patch("api.routes_system.notify") as mock_notify,
+        patch("api.routes_system.asyncio.sleep", new=AsyncMock()),
+        patch("api.routes_system.os.kill") as mock_kill,
     ):
         asyncio.run(module.execute_restart())
     return mock_run, mock_notify, mock_kill
@@ -1872,7 +1872,7 @@ def test_execute_restart_does_not_start_a_second_pip_while_one_is_running(restar
 @pytest.mark.api
 def test_restart_reports_installing_when_dependencies_must_be_reinstalled(client, step_up_headers, restart_env):
     restart_env._requirements_changed_pending = True
-    with patch("api_routes_system.execute_restart", new=AsyncMock()):
+    with patch("api.routes_system.execute_restart", new=AsyncMock()):
         resp = client.post("/api/system/restart", headers=step_up_headers)
 
     assert resp.status_code == 200
@@ -1883,7 +1883,7 @@ def test_restart_reports_installing_when_dependencies_must_be_reinstalled(client
 
 @pytest.mark.api
 def test_restart_keeps_quick_restart_message_when_nothing_to_install(client, step_up_headers, restart_env):
-    with patch("api_routes_system.execute_restart", new=AsyncMock()):
+    with patch("api.routes_system.execute_restart", new=AsyncMock()):
         resp = client.post("/api/system/force-restart", headers=step_up_headers)
 
     assert resp.status_code == 200
@@ -1895,7 +1895,7 @@ def test_restart_keeps_quick_restart_message_when_nothing_to_install(client, ste
 @pytest.mark.api
 def test_restart_is_refused_while_dependencies_are_installing(client, step_up_headers, restart_env):
     restart_env._dependency_install["state"] = "running"
-    with patch("api_routes_system.execute_restart", new=AsyncMock()) as mock_restart:
+    with patch("api.routes_system.execute_restart", new=AsyncMock()) as mock_restart:
         resp = client.post("/api/system/force-restart", headers=step_up_headers)
 
     assert resp.status_code == 409
@@ -1934,14 +1934,14 @@ def test_bg_execute_ml_inference_runs_quantile_scoring_too():
     behavior (update_daily_ml_predictions + score_quantile_predictions), not just the first
     half — the missing second call previously left price_q10/price_q90 stuck stale until the
     next scheduled run, even after a manual trigger reported success (found 2026-07-10)."""
-    import api_routes_triggers
+    import api.routes_triggers
 
     with (
-        patch("api_routes_triggers.get_ml_inference_tickers", return_value=["ZZINFER"]),
-        patch("api_routes_triggers.update_daily_ml_predictions") as mock_predict,
-        patch("api_routes_triggers.score_quantile_predictions") as mock_quantile,
+        patch("api.routes_triggers.get_ml_inference_tickers", return_value=["ZZINFER"]),
+        patch("api.routes_triggers.update_daily_ml_predictions") as mock_predict,
+        patch("api.routes_triggers.score_quantile_predictions") as mock_quantile,
     ):
-        api_routes_triggers.bg_execute_ml_inference()
+        api.routes_triggers.bg_execute_ml_inference()
 
     mock_predict.assert_called_once_with(["ZZINFER"])
     mock_quantile.assert_called_once_with(["ZZINFER"])
@@ -1951,21 +1951,21 @@ def test_bg_execute_ml_training_runs_the_same_child_process_as_the_scheduled_job
     """The manual "Run Training Now" trigger must match the scheduled ml_training_job: one child
     process that trains the classifier and then the quantile models (the missing-second-call
     pattern of bg_execute_ml_inference, found in the 2026-07-10 audit pass)."""
-    import api_routes_triggers
+    import api.routes_triggers
 
-    with patch("api_routes_triggers.run_training_child") as mock_child:
-        api_routes_triggers.bg_execute_ml_training()
+    with patch("api.routes_triggers.run_training_child") as mock_child:
+        api.routes_triggers.bg_execute_ml_training()
 
     mock_child.assert_called_once_with()
 
 
 def test_bg_execute_ml_training_reports_a_failed_child_as_an_error():
-    import api_routes_triggers
+    import api.routes_triggers
     from ml_training_process import TrainingFailed
 
-    with patch("api_routes_triggers.run_training_child", side_effect=TrainingFailed("exited with code 7")), \
-            patch("api_routes_triggers.log_sched_notification") as notify:
-        api_routes_triggers.bg_execute_ml_training()
+    with patch("api.routes_triggers.run_training_child", side_effect=TrainingFailed("exited with code 7")), \
+            patch("api.routes_triggers.log_sched_notification") as notify:
+        api.routes_triggers.bg_execute_ml_training()
 
     notify.assert_called_once_with("Error", "ML Global Training failed: exited with code 7")
 
@@ -2028,7 +2028,7 @@ def test_post_learn_answer_unknown_term_key_returns_400(client):
 
 @pytest.mark.api
 def test_post_learn_preference_persists_unlock_all_flag(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/learn/preference", json={"unlock_all": True})
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
@@ -2037,7 +2037,7 @@ def test_post_learn_preference_persists_unlock_all_flag(client):
 
 @pytest.mark.api
 def test_post_learn_preference_persists_study_all_flag(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/learn/preference", json={"study_all": True})
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
@@ -2046,7 +2046,7 @@ def test_post_learn_preference_persists_study_all_flag(client):
 
 @pytest.mark.api
 def test_post_learn_preference_with_both_fields_persists_both(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/learn/preference", json={"unlock_all": False, "study_all": True})
     assert resp.status_code == 200
     mock_update.assert_called_once_with(
@@ -2056,7 +2056,7 @@ def test_post_learn_preference_with_both_fields_persists_both(client):
 
 @pytest.mark.api
 def test_post_ui_preferences_columns_persists_portfolio_scope(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/ui-preferences/columns", json={
             "scope": "portfolio",
             "hidden_core_columns": ["sentiment"],
@@ -2072,7 +2072,7 @@ def test_post_ui_preferences_columns_persists_portfolio_scope(client):
 
 @pytest.mark.api
 def test_post_ui_preferences_columns_persists_watchlist_scope(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/ui-preferences/columns", json={
             "scope": "watchlist",
             "hidden_core_columns": [],
@@ -2094,7 +2094,7 @@ def test_post_ui_preferences_columns_rejects_invalid_scope(client):
 
 @pytest.mark.api
 def test_post_ui_preferences_views_persists_portfolio_scope(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/ui-preferences/views", json={
             "scope": "portfolio",
             "views": [{"name": "My View", "columns": ["ticker", "price", "score"]}],
@@ -2111,7 +2111,7 @@ def test_ui_preferences_columns_accept_the_largest_registry_column_list(client):
     from constants import TABLE_COLUMN_KEYS_MAX
     from table_columns_helpers import all_columns_for_page
     assert max(len(all_columns_for_page(p)) for p in ("portfolio", "watchlist")) <= TABLE_COLUMN_KEYS_MAX
-    with patch("api_routes.update_config_atomic"):
+    with patch("api.routes.update_config_atomic"):
         resp = client.post("/api/ui-preferences/columns", json={
             "scope": "portfolio", "column_order": ["ticker"] * TABLE_COLUMN_KEYS_MAX,
         })
@@ -2123,7 +2123,7 @@ def test_ui_preferences_columns_reject_oversize_lists_and_keys(client):
     from constants import TABLE_COLUMN_KEY_MAX_CHARS, TABLE_COLUMN_KEYS_MAX
     too_long_list = ["ticker"] * (TABLE_COLUMN_KEYS_MAX + 1)
     too_long_key = "k" * (TABLE_COLUMN_KEY_MAX_CHARS + 1)
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         for body in (
             {"scope": "portfolio", "hidden_core_columns": too_long_list},
             {"scope": "portfolio", "shown_optional_columns": too_long_list},
@@ -2148,7 +2148,7 @@ def test_ui_preferences_views_reject_oversize_payloads(client):
         [{**view, "filter": {"logic": "AND", "conditions": [condition] * (TABLE_FILTER_CONDITIONS_MAX + 1)}}],
         [{**view, "filter": {"conditions": [{**condition, "value": "9" * (TABLE_FILTER_VALUE_MAX_CHARS + 1)}]}}],
     ]
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         for views in payloads:
             resp = client.post("/api/ui-preferences/views", json={"scope": "portfolio", "views": views})
             assert resp.status_code == 422
@@ -2158,7 +2158,7 @@ def test_ui_preferences_views_reject_oversize_payloads(client):
 @pytest.mark.api
 def test_ui_preferences_views_accept_the_cap(client):
     from constants import TABLE_VIEWS_MAX
-    with patch("api_routes.update_config_atomic"):
+    with patch("api.routes.update_config_atomic"):
         resp = client.post("/api/ui-preferences/views", json={
             "scope": "portfolio", "views": [{"name": f"V{i}", "columns": ["ticker"]} for i in range(TABLE_VIEWS_MAX)],
         })
@@ -2167,7 +2167,7 @@ def test_ui_preferences_views_accept_the_cap(client):
 
 @pytest.mark.api
 def test_post_ui_preferences_views_persists_watchlist_scope(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/ui-preferences/views", json={"scope": "watchlist", "views": []})
     assert resp.status_code == 200
     mock_update.assert_called_once_with({"UI_PREFERENCES": {"WATCHLIST_VIEWS": []}})
@@ -2182,7 +2182,7 @@ def test_post_ui_preferences_views_rejects_invalid_scope(client):
 
 @pytest.mark.api
 def test_post_ui_preferences_views_persists_filter_conditions(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/ui-preferences/views", json={
             "scope": "portfolio",
             "views": [{
@@ -2205,7 +2205,7 @@ def test_post_ui_preferences_views_persists_filter_conditions(client):
 @pytest.mark.api
 def test_post_ui_preferences_views_persists_or_logic(client):
     """The Low Target / High Target 'has a target set' use case needs OR, not AND."""
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         resp = client.post("/api/ui-preferences/views", json={
             "scope": "watchlist",
             "views": [{
@@ -2225,7 +2225,7 @@ def test_post_ui_preferences_views_persists_or_logic(client):
 
 @pytest.mark.api
 def test_post_ui_preferences_views_defaults_filter_logic_to_and(client):
-    with patch("api_routes.update_config_atomic") as mock_update:
+    with patch("api.routes.update_config_atomic") as mock_update:
         client.post("/api/ui-preferences/views", json={
             "scope": "portfolio",
             "views": [{"name": "V", "columns": ["ticker"], "filter": {"conditions": []}}],
@@ -2281,7 +2281,7 @@ def test_post_learn_session_with_study_all_includes_locked_levels(client):
 @pytest.mark.parametrize("scope", ["portfolio", "watchlist"])
 def test_post_column_order_persists_normalized_order(client, scope):
     from table_columns_helpers import normalize_column_order
-    with patch("api_routes.update_config_atomic") as update:
+    with patch("api.routes.update_config_atomic") as update:
         response = client.post("/api/ui-preferences/columns", json={
             "scope": scope, "column_order": ["score", "price", "score", "unknown"]})
     assert response.status_code == 200
@@ -2295,7 +2295,7 @@ def test_post_view_preserves_order_visibility_and_filter(client, scope):
     view = {"name": "Ordered", "columns": ["ticker", "score", "price"],
             "column_order": ["score", "price"],
             "filter": {"logic": "AND", "conditions": [{"key": "score", "operator": "gt", "value": "60"}]}}
-    with patch("api_routes.update_config_atomic") as update:
+    with patch("api.routes.update_config_atomic") as update:
         response = client.post("/api/ui-preferences/views", json={"scope": scope, "views": [view]})
     assert response.status_code == 200
     saved = update.call_args.args[0]["UI_PREFERENCES"][f"{scope.upper()}_VIEWS"][0]
@@ -2353,7 +2353,7 @@ def test_fx_refresh_base_currency_needs_no_network(client, monkeypatch, currency
 @pytest.mark.api
 def test_post_watchlist_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
     import database as _db
-    with patch("api_routes.resolve_watchlist_metadata") as mock_meta:
+    with patch("api.routes.resolve_watchlist_metadata") as mock_meta:
         resp = client.post("/api/watchlist/add", json={"ticker": "../X"})
     assert resp.status_code == 422
     assert "ticker" in _json(resp)["message"]
@@ -2380,7 +2380,7 @@ def test_git_pull_failure_does_not_return_git_output(client, step_up_headers):
             return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
         return MagicMock(returncode=1, stdout="", stderr="error: Your local changes to /opt/secret/path would be overwritten")
 
-    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+    with patch("api.routes_system.subprocess.run", side_effect=fake_run):
         resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 500
     assert "/opt/secret/path" not in resp.text
@@ -2395,7 +2395,7 @@ def test_git_pull_success_lists_changed_files_without_git_output(client, step_up
             return MagicMock(returncode=0, stdout="main.py\nstatic/js/app.js\n", stderr="")
         return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
 
-    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+    with patch("api.routes_system.subprocess.run", side_effect=fake_run):
         resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
     message = _json(resp)["message"]
@@ -2414,7 +2414,7 @@ def test_git_pull_reports_already_up_to_date_when_head_unchanged(client, step_up
             return MagicMock(returncode=0, stdout="", stderr="")
         return MagicMock(returncode=0, stdout="samesha\n", stderr="")
 
-    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+    with patch("api.routes_system.subprocess.run", side_effect=fake_run):
         resp = client.post("/api/system/git-pull", headers=step_up_headers)
     assert resp.status_code == 200
     body = _json(resp)
@@ -2424,7 +2424,7 @@ def test_git_pull_reports_already_up_to_date_when_head_unchanged(client, step_up
 
 @pytest.mark.api
 def test_yahoo_ipv6_test_hides_unclassified_error_text(client):
-    with patch("api_routes_system.cffi_requests.Session"), \
+    with patch("api.routes_system.cffi_requests.Session"), \
             patch("yahoo_engine.fetch_diagnostic_history", side_effect=RuntimeError("curl: (35) TLS handshake to 10.0.0.9 failed")):
         resp = client.post("/api/settings/test-yahoo-ipv6", json={"ipv6_address": "2001:db8::1"})
     assert resp.status_code == 502

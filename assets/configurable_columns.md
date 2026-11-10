@@ -224,7 +224,7 @@ column visibility:**
   sent to the server. Restored on page load via `AdvancedFilter.init()`'s own call to
   `applyFilter(loadFromStorage(), false)` (the trailing `false` skips re-writing what was
   just read).
-- **Saved with a View**: `TableView.filter` (`api_routes.py`, `Optional[TableFilterSpec]`
+- **Saved with a View**: `TableView.filter` (`api/routes.py`, `Optional[TableFilterSpec]`
   — `{logic: "AND"|"OR", conditions: [TableFilterCondition, ...]}`) travels through the
   exact same `POST /api/ui-preferences/views` full-list replacement `columns` already
   uses — no new endpoint. `model_dump(exclude_none=True)` keeps a filter-less view's

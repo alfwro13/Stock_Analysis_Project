@@ -40,7 +40,7 @@ templates.env.globals["css_version"] = CSS_VERSION
 def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_id: str = "all", embed: bool = False, embed_token: str = "", xray: bool = False):
     from xray_engine import BENCHMARK_SYMBOL
     from accounts_engine import current_price_map, get_combined_holdings
-    from api_routes_accounts import maybe_trigger_price_refresh
+    from api.routes_accounts import maybe_trigger_price_refresh
     from db_accounts import get_all_holding_price_limits
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 

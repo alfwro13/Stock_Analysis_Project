@@ -396,7 +396,7 @@ class TestRegistryIntegrity:
         pattern = re.compile(r'\bnotify\(\s*"(\w+)",\s*"([^"]+)"')
         root = Path(__file__).parent.parent
         mismatches = []
-        for path in [*root.glob("*.py"), *(root / "tools").glob("*.py")]:
+        for path in [*root.glob("*.py"), *(root / "tools").glob("*.py"), *(root / "api").glob("*.py")]:
             for source, message_type in pattern.findall(path.read_text(encoding="utf-8")):
                 alert_type = ne.NOTIFICATION_SOURCES.get(source, {}).get("alert_type")
                 if alert_type and message_type != alert_type:

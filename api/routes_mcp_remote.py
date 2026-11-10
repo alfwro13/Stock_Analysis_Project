@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path as PathParam, Reques
 from pydantic import BaseModel
 
 import config
-from api_deps import limiter, require_step_up
+from api.deps import limiter, require_step_up
 from config import load_config, update_config_atomic
 from mcp_server import audit, limits, oauth
 from mcp_server.public_host import forwarded_trust, is_proxy_like

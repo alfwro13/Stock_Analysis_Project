@@ -1,4 +1,4 @@
-# api_routes.py
+# api/routes.py
 import asyncio
 import os
 import time_engine
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from api_deps import FiniteModel, job_busy_response, limiter, refuse_writes_during_restore, _error_500
+from api.deps import FiniteModel, job_busy_response, limiter, refuse_writes_during_restore, _error_500
 from constants import (
     OPTION_LEGS_MAX, TABLE_COLUMN_KEY_MAX_CHARS, TABLE_COLUMN_KEYS_MAX, TABLE_FILTER_CONDITIONS_MAX,
     TABLE_FILTER_VALUE_MAX_CHARS, TABLE_VIEW_NAME_MAX_CHARS, TABLE_VIEWS_MAX,
@@ -1242,13 +1242,13 @@ async def api_portfolio_optimizer_run(request: Request, req: PortfolioOptimizerR
 
 
 # --- Sub-router registrations ---
-from api_routes_auth import auth_router
-from api_routes_mcp_remote import mcp_remote_router
-from api_routes_triggers import triggers_router
-from api_routes_system import system_router
-from api_routes_analysis import analysis_router
-from api_routes_accounts import accounts_router
-from api_routes_backtester import backtester_router
+from api.routes_auth import auth_router
+from api.routes_mcp_remote import mcp_remote_router
+from api.routes_triggers import triggers_router
+from api.routes_system import system_router
+from api.routes_analysis import analysis_router
+from api.routes_accounts import accounts_router
+from api.routes_backtester import backtester_router
 
 api_router.include_router(auth_router)
 api_router.include_router(mcp_remote_router)

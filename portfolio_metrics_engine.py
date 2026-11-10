@@ -192,7 +192,7 @@ def holdings_with_metrics_all_accounts() -> dict:
 
 
 def set_holding_price_limit(account_id: int, ticker: str, **fields) -> None:
-    """Thin wrapper so api_routes_accounts.py never calls db_accounts directly, matching the
+    """Thin wrapper so api/routes_accounts.py never calls db_accounts directly, matching the
     existing convention (list-with-metrics/portfolio-totals routes always call the engine layer).
     Only forwards the kwarg(s) the caller actually passed, so setting one limit never clears the
     other — see db_accounts.upsert_holding_price_limit()'s partial-update semantics."""
