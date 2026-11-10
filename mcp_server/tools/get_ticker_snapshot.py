@@ -4,7 +4,7 @@ from typing import Annotated, Any, Optional
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
-from accounts_engine import current_price_map, get_combined_holdings, native_currencies, oldest_quote_epoch, position_target_accounts
+from accounts.accounts_engine import current_price_map, get_combined_holdings, native_currencies, oldest_quote_epoch, position_target_accounts
 from constants import MCP_TICKER_MAX_CHARS, ML_FEATURE_MAX_AGE_TRADING_DAYS
 from db.database import get_watchlist_tickers
 from db.account_store import get_holding_price_limits_for_ticker

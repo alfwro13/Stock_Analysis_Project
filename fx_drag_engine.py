@@ -102,7 +102,7 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
         return []
 
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         portfolio = get_combined_holdings()
     except Exception as e:
         logger.error("Failed to load portfolio holdings: %s", e)
@@ -188,7 +188,7 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
         return []
 
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         portfolio = get_combined_holdings()
     except Exception as e:
         logger.error("Failed to load portfolio holdings: %s", e)

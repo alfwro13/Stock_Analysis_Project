@@ -16,7 +16,7 @@ DB table: `pairs_spread_results`
 
 The page has a scope toggle, and every scan (scheduled or on-demand) is tagged with one:
 
-- **Portfolio + Watchlist** (`SCOPE_PORTFOLIO_WATCHLIST`) — `accounts_engine.get_combined_holdings().keys()`
+- **Portfolio + Watchlist** (`SCOPE_PORTFOLIO_WATCHLIST`) — `accounts.accounts_engine.get_combined_holdings().keys()`
   ∪ `db.database.get_watchlist_tickers()`. Small, fast, runs on the nightly schedule, fires alerts.
   Mirrors `insider_engine.py`'s portfolio+watchlist union — not Trap Monitor's proxy-basket
   pattern, since Pairs Spread Monitor has no concept of a fixed proxy basket.

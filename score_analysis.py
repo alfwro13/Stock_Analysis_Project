@@ -37,7 +37,7 @@ def _build_ticker_accounts_map(combined_holdings: dict) -> dict[str, list[str]]:
 
 def get_score_analysis(filter_name: str = "all") -> dict:
     """Forward-returns analysis from score_history; filter_name: 'all' | 'portfolio' | 'watchlist'."""
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     filter_tickers: Optional[list] = None
     ticker_accounts: dict[str, list[str]] = {}
     if filter_name == "portfolio":

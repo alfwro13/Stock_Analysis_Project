@@ -1,7 +1,7 @@
 import time
 from typing import Any, Optional
 
-from accounts_engine import get_combined_holdings, native_currencies
+from accounts.accounts_engine import get_combined_holdings, native_currencies
 from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS
 from db.database import get_watchlist_tickers
 from db.account_store import get_all_holding_price_limits, get_watchlist_account

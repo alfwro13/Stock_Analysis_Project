@@ -775,8 +775,8 @@ def get_all_account_tickers() -> list:
     """Distinct tickers backing an actual open/closed holding (Buy/Sell only — Interest/Dividend/
     Fee/Cash rows can carry non-ticker values, e.g. a CSV-imported transaction GUID) across
     non-deleted accounts. Excludes the Pension synthetic 'PENSION-{id}' ticker
-    (account_scraper_engine.py) and the Treasury Bill synthetic 'TBILL-{id}' ticker
-    (treasury_bill_engine.py), neither of which has a Yahoo Finance listing."""
+    (accounts/account_scraper_engine.py) and the Treasury Bill synthetic 'TBILL-{id}' ticker
+    (accounts/treasury_bill_engine.py), neither of which has a Yahoo Finance listing."""
     conn = None
     try:
         conn = get_connection()

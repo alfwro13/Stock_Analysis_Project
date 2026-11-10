@@ -130,7 +130,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
 
     etf_pnl = None
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         position = get_combined_holdings().get(cfg["etf_ticker"])
         if position and prediction.get("status") == "success":
             shares = float(position.get("global_shares", 0))

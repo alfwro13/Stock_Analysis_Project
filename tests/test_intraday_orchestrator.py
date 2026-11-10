@@ -158,7 +158,7 @@ class TestGetPortfolioTickers:
 
     def test_excludes_tbill_synthetic_tickers(self):
         combined = {"TBILL-606": {"ticker": "TBILL-606"}, "AAPL": {"ticker": "AAPL"}}
-        with patch("accounts_engine.get_combined_holdings", return_value=combined):
+        with patch("accounts.accounts_engine.get_combined_holdings", return_value=combined):
             tickers = IntradayOrchestrator().get_portfolio_tickers()
 
         assert "TBILL-606" not in tickers

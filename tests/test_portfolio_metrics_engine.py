@@ -1,7 +1,7 @@
 import pytest
 
-import accounts_engine
-import portfolio_metrics_engine
+from accounts import accounts_engine
+from accounts import portfolio_metrics_engine
 from db.database import (
     get_connection,
     create_account,
@@ -154,7 +154,7 @@ def test_holdings_with_metrics_all_accounts_tbill_row_gets_fixed_income_and_accr
     """Treasury Bill rows have no stock_signals/market_pulse_cache row (synthetic ticker,
     deliberately excluded from the Yahoo-fetch universe), so asset_class/market_change_24h/pct
     must come from the bill's own known accretion rate instead of falling through to None."""
-    import treasury_bill_engine
+    from accounts import treasury_bill_engine
     from datetime import datetime, timedelta, timezone
 
     conn = None
@@ -366,7 +366,7 @@ def test_account_metrics_list_only_includes_trading_accounts():
 
 @pytest.mark.db
 def test_other_accounts_list_includes_pension_and_house(monkeypatch):
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
 
     pension_aid = create_account("OtherAcctsPension", "GBP", account_type="Pension")
     import_price_csv(pension_aid, "date;marketPrice\n2026-06-01;1.50\n")
@@ -398,7 +398,7 @@ def test_other_accounts_list_house_current_value_excludes_initial_cash():
     """Regression test: current_value must use equity_value, not total_value() — total_value()
     adds cash_balance(), which for House starts from initial_cash (the purchase price memo, not
     real cash) and would double-count it against the scraped valuation."""
-    from account_scraper_engine import import_price_csv
+    from accounts.account_scraper_engine import import_price_csv
 
     aid = create_account("OtherAcctsHousePhantomCash", "GBP", account_type="House", initial_cash=300000.0)
     import_price_csv(aid, "date;marketPrice\n2026-06-01;350000\n")

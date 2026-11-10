@@ -6,7 +6,7 @@ from typing import Optional
 
 import numpy as np
 
-from accounts_engine import current_price_map
+from accounts.accounts_engine import current_price_map
 from constants import PREDICTION_HORIZON_DAYS
 from db.database import get_connection
 from db.helpers import (

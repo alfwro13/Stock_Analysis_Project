@@ -49,7 +49,7 @@ def fetch_articles(
 
 
 def _build_ticker_source_map() -> Dict[str, str]:
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     config = load_config()
     ignored = {t.upper() for t in config.get("IGNORED_TICKERS", [])}
 

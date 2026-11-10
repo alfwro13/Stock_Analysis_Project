@@ -72,7 +72,7 @@ def test_portfolio_page_triggers_background_refresh_for_stale_held_ticker(client
                      currency="GBP", quantity=2, unit_price=50, exchange_rate=1.0)
 
     with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
+         patch("accounts.accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/portfolio")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -126,9 +126,9 @@ def test_same_ticker_coexistence_sums(client, tmp_path, monkeypatch):
                           "buy_price": 100.0, "total_investment": 200.0}],
         }
     }))
-    monkeypatch.setattr("accounts_engine.PORTFOLIO_PATH", portfolio_json_path)
+    monkeypatch.setattr("accounts.accounts_engine.PORTFOLIO_PATH", portfolio_json_path)
     from config import load_config
-    monkeypatch.setattr("accounts_engine.load_config", lambda: {**load_config(), "GHOSTFOLIO_ENABLED": True})
+    monkeypatch.setattr("accounts.accounts_engine.load_config", lambda: {**load_config(), "GHOSTFOLIO_ENABLED": True})
 
     aid = create_account("Integ Coex", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCOEX", company_name="Coex Co",
@@ -433,7 +433,7 @@ def test_watchlist_scope_limits_sql_and_fx_to_watchlist_tickers(client, monkeypa
 
 @pytest.mark.pages
 def test_portfolio_scope_limits_sql_and_fx_to_displayed_holdings(client, tmp_path, monkeypatch):
-    import accounts_engine
+    from accounts import accounts_engine
     import page_routes_portfolio
     from config import load_config
 
@@ -545,7 +545,7 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
             conn.close()
     upsert_fx_quote("USDGBP=X", 0.8, time.time() - 3600)
     holdings = {ticker: {"ticker": ticker, "global_shares": 2.0, "global_buy_price": 50.0, "accounts": []}}
-    monkeypatch.setattr("accounts_engine.get_combined_holdings", lambda: holdings)
+    monkeypatch.setattr("accounts.accounts_engine.get_combined_holdings", lambda: holdings)
     monkeypatch.setattr(data_engine, "HISTORICAL_DIR", tmp_path)
     monkeypatch.setattr(daily_history_writer, "HISTORICAL_DIR", tmp_path)
     monkeypatch.setattr(refresh_helpers, "request_cache_refresh", refresh_helpers.submit_cache_refresh)
@@ -585,7 +585,7 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
 def test_missing_fx_marks_portfolio_total_unavailable(client, monkeypatch):
     ticker = "ZZSTEP3MISSING"
     _seed_stock_signal(ticker, 100.0, "BRL")
-    monkeypatch.setattr("accounts_engine.get_combined_holdings", lambda: {
+    monkeypatch.setattr("accounts.accounts_engine.get_combined_holdings", lambda: {
         ticker: {"ticker": ticker, "global_shares": 2.0, "global_buy_price": 50.0, "accounts": []}
     })
     response = client.get("/portfolio")

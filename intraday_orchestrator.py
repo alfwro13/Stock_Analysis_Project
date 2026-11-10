@@ -16,7 +16,7 @@ import markets_engine
 from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, safe_ticker_filename, write_parquet_atomic
 from db.database import get_connection, get_mutual_fund_tickers
 from db.helpers import ml_fresh_since, sentiment_fresh_since
-import accounts_engine
+from accounts import accounts_engine
 from db.account_store import get_all_holding_price_limits, get_accounts
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
@@ -97,7 +97,7 @@ class IntradayOrchestrator:
         self._corp_action_cache: Dict[tuple, bool] = {}
 
     def get_portfolio_tickers(self) -> List[str]:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         try:
             return [
                 normalize_ticker(t) for t in get_combined_holdings().keys()

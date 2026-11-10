@@ -37,7 +37,7 @@ def earnings_timing(stock_data, ticker):
 
 
 def position_targets(ticker, stock_data, user_asset, is_in_watchlist):
-    from accounts_engine import current_price_map, position_target_accounts
+    from accounts.accounts_engine import current_price_map, position_target_accounts
 
     portfolio_math = None
     if user_asset and stock_data.get('current_price'):

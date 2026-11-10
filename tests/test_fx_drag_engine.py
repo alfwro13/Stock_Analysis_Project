@@ -314,7 +314,7 @@ class TestPortfolioBreakdowns:
         holdings = {"AAPL": {"ticker": "AAPL", "global_shares": 10.0, "global_buy_price": 90.0}}
         with (
             patch.object(fx_drag_engine, "HISTORICAL_DIR", tmp_path),
-            patch("accounts_engine.get_combined_holdings", return_value=holdings),
+            patch("accounts.accounts_engine.get_combined_holdings", return_value=holdings),
             patch.object(fx_drag_engine, "_get_usd_tickers_from_db", return_value={"AAPL"}),
             patch("fx_drag_engine._load_usdgbp_series", return_value=usdgbp),
             patch.object(fx_drag_engine, "_lifetime_buy_stats", return_value=(100.0, 1.25, 1, "2024-01-02")),

@@ -235,7 +235,7 @@ def earnings_volatility_page(request: Request):
     for row in earnings_data:
         row["quant_band"] = quant_bands.get(row["ticker"])
 
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     portfolio_tickers = {str(t).upper() for t in get_combined_holdings().keys()}
     watchlist_tickers = {str(t).upper() for t in get_watchlist_tickers()}
 

@@ -91,7 +91,7 @@ def get_trap_monitor_results(request: Request):
     """Returns all trap monitor scan results ordered by phase severity (most severe first).
     Also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     from db.database import get_watchlist_tickers
     from db.helpers import get_trap_monitor_results as read_trap_monitor_results
     try:
@@ -413,7 +413,7 @@ def get_pattern_detection_results(request: Request, family: Optional[str] = Quer
     also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
     from pattern_detection_engine import DETECTORS
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     from db.database import get_watchlist_tickers
     conn = None
     try:
@@ -657,7 +657,7 @@ def get_forensic_scores(request: Request):
     """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
     conn = None
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         engine = DataEngine()
         portfolio_tickers = {normalize_ticker(t) for t in get_combined_holdings().keys() if t}
         watchlist_tickers = {

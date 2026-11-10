@@ -1317,7 +1317,7 @@ class TestRunXrayPrecomputeExcludesSyntheticTickers:
     Treasury Bill section) — run_xray_precompute() must not pass them to yfinance."""
 
     def test_tbill_ticker_excluded_from_compute_and_cache_symbols(self):
-        import treasury_bill_engine as tbe
+        from accounts import treasury_bill_engine as tbe
 
         _seed_stock_signal(T1, 100.0, "GBP")
         _seed_asset_profile(T1, "Technology", "United States")
@@ -1360,7 +1360,7 @@ class TestTreasuryBillXrayClassification:
     "EQUITY" classification, and must never trigger the "not in risk cache" data warning."""
 
     def test_tbill_holding_classified_as_cash_and_equivalents(self):
-        import treasury_bill_engine as tbe
+        from accounts import treasury_bill_engine as tbe
 
         _seed_stock_signal(T1, 100.0, "GBP")
         _seed_asset_profile(T1, "Technology", "United States")
@@ -1378,7 +1378,7 @@ class TestTreasuryBillXrayClassification:
         assert tbill_holding["instrument_type"] == "Cash & Equivalents"
 
     def test_tbill_holding_never_triggers_uncovered_risk_cache_warning(self):
-        import treasury_bill_engine as tbe
+        from accounts import treasury_bill_engine as tbe
 
         _seed_stock_signal(T1, 100.0, "GBP")
         _seed_asset_profile(T1, "Technology", "United States")
@@ -1394,7 +1394,7 @@ class TestTreasuryBillXrayClassification:
         assert not any(bill["ticker"] in w for w in result["data_warnings"])
 
     def test_tbill_sector_and_geo_bucketed_as_cash_and_equivalents(self):
-        import treasury_bill_engine as tbe
+        from accounts import treasury_bill_engine as tbe
 
         aid = create_account("XrayTBillBucketAcc", "GBP")
         tbe.buy_treasury_bill(aid, "2026-01-05", 1000.0, 996.16, "2026-02-02")

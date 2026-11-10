@@ -5,7 +5,7 @@ from page_helpers import get_unread_count, get_portfolio_heat_row
 
 
 def trading_account_context(acc, chart_period_cookie):
-    from accounts_engine import (
+    from accounts.accounts_engine import (
         account_summary, cash_history, closed_positions, filter_value_history_by_period,
         holdings_with_market_value, is_unresolved_ticker, refresh_performance_cache,
         stale_pricing_warning, transaction_total_base, VALUE_CHART_PERIODS,
@@ -13,7 +13,7 @@ def trading_account_context(acc, chart_period_cookie):
     from db.database import (
         get_performance_cache, get_transactions, get_unresolved_pending_topups, get_value_history,
     )
-    from treasury_bill_engine import bills_pending_ytm_confirmation, list_treasury_bills
+    from accounts.treasury_bill_engine import bills_pending_ytm_confirmation, list_treasury_bills
 
     account_id = acc["id"]
     activities = get_transactions(account_id)
@@ -55,8 +55,8 @@ def trading_account_context(acc, chart_period_cookie):
 
 
 def pension_account_context(acc):
-    from account_reminders_engine import labelled_pending_reminders
-    from accounts_engine import (
+    from accounts.account_reminders_engine import labelled_pending_reminders
+    from accounts.accounts_engine import (
         account_summary, pension_activities, pension_benchmark_overlay, pension_display_label,
         scraped_price_performance,
     )

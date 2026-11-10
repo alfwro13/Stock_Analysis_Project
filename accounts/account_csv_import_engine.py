@@ -6,8 +6,8 @@ import math
 from datetime import datetime
 from typing import Optional
 
-import accounts_engine
-from accounts_engine import fx_rate_on_date
+from accounts import accounts_engine
+from accounts.accounts_engine import fx_rate_on_date
 from config import BASE_CURRENCY
 from constants import CSV_IMPORT_MAX_ROWS, CSV_IMPORT_MAX_TICKERS
 from db.database import get_connection

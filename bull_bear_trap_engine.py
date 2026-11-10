@@ -384,7 +384,7 @@ class TrapEngine:
         tickers: set[str] = set(self.proxy_tickers)
         if self.monitor_portfolio:
             try:
-                from accounts_engine import get_combined_holdings
+                from accounts.accounts_engine import get_combined_holdings
                 from utils import is_excluded_from_yahoo_fetch
                 for t in get_combined_holdings().keys():
                     if not is_excluded_from_yahoo_fetch(t, self.ignored_tickers):

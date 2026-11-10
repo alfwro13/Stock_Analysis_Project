@@ -29,7 +29,7 @@ from config import (
 )
 from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
 from db.database import get_connection, get_nextcloud_talk_today, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
-from ghostfolio_sync import purge_ghostfolio_files
+from accounts.ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging, resolve_log_dir
 from market_pulse import get_cached_pulse_from_db, proxy_tickers_needing_refresh, registry_tickers_needing_refresh, reload_ticker_registry
 from market_pulse_write import fetch_and_save_pulse

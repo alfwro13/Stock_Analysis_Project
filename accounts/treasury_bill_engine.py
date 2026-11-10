@@ -145,7 +145,7 @@ def sweep_matured_bills() -> dict:
     """Daily job body: closes every Treasury Bill whose maturity date has arrived by posting the
     par-value Sell leg, and fires a reminder — never an automatic re-purchase, since the actual
     next yield isn't known until Friday's DMO tender — for any bill flagged to auto-reinvest."""
-    from accounts_engine import resnapshot_account
+    from accounts.accounts_engine import resnapshot_account
 
     today = datetime.now(timezone.utc).date().isoformat()
     matured = 0

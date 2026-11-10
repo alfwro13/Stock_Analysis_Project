@@ -912,7 +912,7 @@ def test_create_transfer_moves_cash_between_accounts(client):
 
     from db import database as _db
     assert _db.get_account(src) is not None
-    import accounts_engine
+    from accounts import accounts_engine
     assert accounts_engine.cash_balance(src) == 750.0
     assert accounts_engine.cash_balance(dst) == 250.0
     _db.soft_delete_account(src)
@@ -1342,7 +1342,7 @@ def test_add_watchlist_item_existing_stock_signals_row_skips_analyze(client):
 
 
 def _patch_scraper_body(text: str):
-    return patch("account_scraper_engine._fetch_body", return_value=text)
+    return patch("accounts.account_scraper_engine._fetch_body", return_value=text)
 
 
 @pytest.mark.api
@@ -1850,7 +1850,7 @@ def test_treasury_bill_edit_after_maturity_corrects_cash_via_api(client):
     })
     bill_id = _json(resp)["bill_id"]
 
-    import treasury_bill_engine as tbe
+    from accounts import treasury_bill_engine as tbe
     tbe.sweep_matured_bills()
 
     resp = client.post(f"/api/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm", json={"confirmed_ytm": 4.0})
@@ -1858,7 +1858,7 @@ def test_treasury_bill_edit_after_maturity_corrects_cash_via_api(client):
     corrected_face_value = _json(resp)["face_value"]
     assert corrected_face_value != 501.43
 
-    from accounts_engine import cash_balance
+    from accounts.accounts_engine import cash_balance
     assert cash_balance(account_id) == pytest.approx(2000.0 - 500.0 + corrected_face_value)
 
     from db import database as _db
@@ -2255,7 +2255,7 @@ def test_autotopup_job_runner_creates_pending_not_a_transaction(client):
     assert len(pending) == 1
     assert pending[0]["expected_amount"] == 200.0
 
-    from accounts_engine import account_summary
+    from accounts.accounts_engine import account_summary
     assert account_summary(account_id)["cash_balance"] == 500.0   # unchanged until confirmed
 
     _db.soft_delete_account(account_id)
@@ -2273,7 +2273,7 @@ def test_autotopup_confirm_posts_cash_transaction_and_updates_balance(client):
     assert resp.status_code == 200
     txn_id = _json(resp)["txn_id"]
 
-    from accounts_engine import account_summary
+    from accounts.accounts_engine import account_summary
     assert account_summary(account_id)["cash_balance"] == 1252.0
 
     pending = _db.get_pending_topup(pending_id)
@@ -2333,7 +2333,7 @@ def test_autotopup_dismiss_does_not_post_a_transaction(client):
     resp = client.post(f"/api/accounts/{account_id}/autotopup/dismiss", json={"pending_id": pending_id})
     assert resp.status_code == 200
 
-    from accounts_engine import account_summary
+    from accounts.accounts_engine import account_summary
     assert account_summary(account_id)["cash_balance"] == 1000.0
     assert _db.get_pending_topup(pending_id)["status"] == "dismissed"
 
@@ -2545,7 +2545,7 @@ def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client)
         })
 
     with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
+         patch("accounts.accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2578,7 +2578,7 @@ def test_holdings_list_does_not_trigger_refresh_for_cached_ticker_when_market_cl
     conn.close()
 
     with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
+         patch("accounts.accounts_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_not_called()
@@ -2601,7 +2601,7 @@ def test_holdings_list_bootstraps_missing_ticker_even_when_market_closed(client)
         })
 
     with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
+         patch("accounts.accounts_engine.market_session_helpers.get_exchange_session_state", return_value="closed"):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2623,7 +2623,7 @@ def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(clie
         })
 
     with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
+         patch("accounts.accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/portfolio-totals")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2648,7 +2648,7 @@ def test_price_refresh_is_followed_by_a_portfolio_totals_refresh(client):
     order = []
     with patch("api.routes_accounts.fetch_and_save_pulse", side_effect=lambda *a, **k: order.append("fetch")), \
          patch("api.routes_accounts.queue_portfolio_totals_refresh", side_effect=lambda: order.append("refresh")), \
-         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
+         patch("accounts.accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/portfolio-totals")
     assert resp.status_code == 200
     assert order == ["fetch", "refresh"]
@@ -2680,7 +2680,7 @@ def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(cli
         })
 
     with patch("api.routes_accounts.fetch_and_save_pulse") as mock_fetch, \
-         patch("accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
+         patch("accounts.accounts_engine.market_session_helpers.is_exchange_open", return_value=True):
         resp = client.get("/api/accounts/list-with-metrics")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -2855,7 +2855,7 @@ def test_refresh_now_awaits_fx_and_reports_fx_failure(client, monkeypatch):
     refreshed_accounts = []
     monkeypatch.setattr("api.routes_accounts.get_accounts", lambda: [{"id": 7, "account_type": "Trading"}])
     monkeypatch.setattr("api.routes_accounts.refresh_performance_cache", refreshed_accounts.append)
-    monkeypatch.setattr("accounts_engine.native_currencies", lambda tickers: {"ZZFX": "USD"})
+    monkeypatch.setattr("accounts.accounts_engine.native_currencies", lambda tickers: {"ZZFX": "USD"})
     def refresh(currencies):
         completed.extend(currencies)
     monkeypatch.setattr("portfolio_service.refresh_fx_rates", refresh)
@@ -3220,7 +3220,7 @@ def test_price_history_import_csv_body_over_the_cap_returns_422(client):
 @pytest.mark.api
 def test_price_history_import_csv_over_the_row_cap_returns_422(client):
     account_id = _create_account(client, account_type="Pension")
-    with patch("account_scraper_engine.PRICE_CSV_MAX_ROWS", 1):
+    with patch("accounts.account_scraper_engine.PRICE_CSV_MAX_ROWS", 1):
         resp = client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
             "csv_text": "date;marketPrice\n2026-01-01;1\n2026-01-02;2\n",
         })
@@ -3295,7 +3295,7 @@ def test_pension_benchmark_config_rejects_an_unsafe_ticker_and_keeps_the_saved_l
 @pytest.mark.api
 def test_portfolio_totals_route_reuses_its_answer_until_refresh_now(client):
     from db import database as _db
-    import portfolio_metrics_engine
+    from accounts import portfolio_metrics_engine
 
     calls = []
 
@@ -3305,7 +3305,7 @@ def test_portfolio_totals_route_reuses_its_answer_until_refresh_now(client):
 
     portfolio_metrics_engine.invalidate_portfolio_totals_cache()
     try:
-        with patch("portfolio_metrics_engine.portfolio_totals", stub):
+        with patch("accounts.portfolio_metrics_engine.portfolio_totals", stub):
             first = _json(client.get("/api/accounts/portfolio-totals"))
             second = _json(client.get("/api/accounts/portfolio-totals"))
             assert len(calls) == 1

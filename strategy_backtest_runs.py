@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 import time_engine
-from accounts_engine import native_currencies
+from accounts.accounts_engine import native_currencies
 from config import BACKTEST_RUNS_DIR, load_config
 from db.database import get_connection
 from portfolio_optimizer_engine import cap_infeasible_warning, cap_is_infeasible

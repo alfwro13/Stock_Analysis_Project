@@ -27,7 +27,7 @@ def get_tickers_from_json(filepath: str) -> list:
 def run_insider_alert():
     """Scrapes recent SEC Form 4 filings for massive insider buying and aligns with quant scores."""
     try:
-        from accounts_engine import get_combined_holdings
+        from accounts.accounts_engine import get_combined_holdings
         from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
         logger.info("Starting Insider Trading Alert Check...")
 

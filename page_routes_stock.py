@@ -51,7 +51,7 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
     from db.etf import get_etf_predictor_config_by_ticker
     etf_predictor_config = get_etf_predictor_config_by_ticker(ticker)
 
-    from accounts_engine import get_combined_holdings
+    from accounts.accounts_engine import get_combined_holdings
     user_asset = get_combined_holdings().get(ticker)
     portfolio_math, target_accounts, holding_price_limits = position_targets(ticker, stock_data, user_asset, is_in_watchlist)
     ticker_notes = ticker_notes_for_display(ticker)

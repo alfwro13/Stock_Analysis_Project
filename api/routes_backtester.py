@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
-from accounts_engine import list_scope_accounts_with_values
+from accounts.accounts_engine import list_scope_accounts_with_values
 from api.deps import _error_500, limiter, refuse_writes_during_restore
 from config import BASE_CURRENCY
 from strategy_backtest_data import (

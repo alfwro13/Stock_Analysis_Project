@@ -62,7 +62,7 @@ class TestBuildTickerSourceMap:
         combined = {t: {"ticker": t} for t in portfolio_tickers}
         cfg = {"IGNORED_TICKERS": ignored or []}
         with (
-            patch("accounts_engine.get_combined_holdings", return_value=combined),
+            patch("accounts.accounts_engine.get_combined_holdings", return_value=combined),
             patch("news_feed_engine.get_watchlist_tickers", return_value=watchlist_tickers),
             patch("news_feed_engine.load_config", return_value=cfg),
         ):

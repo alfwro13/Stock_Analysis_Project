@@ -775,7 +775,7 @@ def test_trap_monitor_results_empty_on_fresh_db(client):
 @pytest.mark.api
 def test_trap_monitor_results_includes_scope_ticker_sets(client):
     """Response must carry portfolio_tickers/watchlist_tickers so the page's Scope filter works."""
-    with patch("accounts_engine.get_combined_holdings", return_value={"AAPL": {}}), \
+    with patch("accounts.accounts_engine.get_combined_holdings", return_value={"AAPL": {}}), \
          patch("db.database.get_watchlist_tickers", return_value=["MSFT"]):
         resp = client.get("/api/trap-monitor/results")
     data = _json(resp)
@@ -1405,9 +1405,9 @@ def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disa
     _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="MCTEST", currency="GBP",
                          quantity=10, unit_price=80, exchange_rate=1.0)
 
-    # list_scope_accounts_with_values() (accounts_engine.py) is the shared account-tile
+    # list_scope_accounts_with_values() (accounts/accounts_engine.py) is the shared account-tile
     # builder behind this endpoint — patch its own load_config, not api.routes'.
-    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+    with patch("accounts.accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/monte-carlo/accounts")
 
     conn = _db.get_connection()
@@ -1458,7 +1458,7 @@ def test_performance_analytics_accounts_uses_builtin_trading_accounts_when_ghost
     _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="PAETEST", currency="GBP",
                          quantity=10, unit_price=80, exchange_rate=1.0)
 
-    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+    with patch("accounts.accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/performance-analytics/accounts")
 
     conn = _db.get_connection()
@@ -1515,7 +1515,7 @@ def test_portfolio_optimizer_accounts_returns_200(client):
     _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="POATEST", currency="GBP",
                          quantity=10, unit_price=80, exchange_rate=1.0)
 
-    with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+    with patch("accounts.accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/portfolio-optimizer/accounts")
 
     assert resp.status_code == 200

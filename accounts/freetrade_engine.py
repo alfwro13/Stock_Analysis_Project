@@ -1,4 +1,3 @@
-# freetrade_engine.py
 import json
 import os
 import time

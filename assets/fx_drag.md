@@ -23,7 +23,7 @@ Key functions:
 | `_lifetime_buy_stats(ticker)` | Scans every Buy transaction for `ticker` across all built-in accounts and returns `(vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy)` |
 | `portfolio_lifetime_fx_breakdown()` | Lifetime mode: aggregates Buy transactions from `account_transactions` (all accounts), derives per-ticker purchase GBPUSD, computes full decomposition |
 
-`db.account_store.get_accounts()` / `db.account_store.get_transactions(account_id)` are called by the lifetime function to read the built-in ledger — the same source `accounts_engine.get_combined_holdings()` and `_ledger_for_account()` use, per AGENTS.md rule 14 (Built-in Accounts is the primary portfolio source; Ghostfolio is opt-in only).
+`db.account_store.get_accounts()` / `db.account_store.get_transactions(account_id)` are called by the lifetime function to read the built-in ledger — the same source `accounts.accounts_engine.get_combined_holdings()` and `_ledger_for_account()` use, per AGENTS.md rule 14 (Built-in Accounts is the primary portfolio source; Ghostfolio is opt-in only).
 
 ## Math
 
@@ -68,7 +68,7 @@ vwap_buy_usd            = total_usd / total_qty
 weighted_avg_gbpusd_buy = total_usd / total_gbp
 ```
 
-`unit_price` is the USD price paid per share; `exchange_rate` is the trade's own USD→GBP rate (auto-filled from `accounts_engine.fx_rate_on_date()` when the transaction was entered without one). The ratio `total_usd / total_gbp` recovers the implied GBP/USD rate at the time of the trade — no separate exchange-rate lookup needed.
+`unit_price` is the USD price paid per share; `exchange_rate` is the trade's own USD→GBP rate (auto-filled from `accounts.accounts_engine.fx_rate_on_date()` when the transaction was entered without one). The ratio `total_usd / total_gbp` recovers the implied GBP/USD rate at the time of the trade — no separate exchange-rate lookup needed.
 
 Then:
 
@@ -78,7 +78,7 @@ fx_pct        = (weighted_avg_gbpusd_buy / gbpusd_now - 1) × 100
 total_gbp_pct = ((1 + equity_pct/100) × (1 + fx_pct/100) - 1) × 100
 ```
 
-`gbpusd_now` is `1 / USDGBP` on the ticker's last price-bar date (same 3-day limit). The buy-side rate comes from the transactions' stored `exchange_rate`, which `accounts_engine.fx_rate_on_date()` fills from the same `USDGBP=X` history, so both sides of the comparison share a source.
+`gbpusd_now` is `1 / USDGBP` on the ticker's last price-bar date (same 3-day limit). The buy-side rate comes from the transactions' stored `exchange_rate`, which `accounts.accounts_engine.fx_rate_on_date()` fills from the same `USDGBP=X` history, so both sides of the comparison share a source.
 
 ### Transaction filters
 
@@ -89,7 +89,7 @@ Only `account_transactions` rows matching all of the following are included:
 
 ### Approximation
 
-Uses all historical Buy rows. For positions with partial sells, the ledger-derived VWAP may differ slightly from the account's official average-cost (which deducts sold lots via `accounts_engine._ledger_for_account`). For a buy-and-hold portfolio the difference is zero.
+Uses all historical Buy rows. For positions with partial sells, the ledger-derived VWAP may differ slightly from the account's official average-cost (which deducts sold lots via `accounts.accounts_engine._ledger_for_account`). For a buy-and-hold portfolio the difference is zero.
 
 ## Data sources
 
@@ -97,7 +97,7 @@ Uses all historical Buy rows. For positions with partial sells, the ledger-deriv
 |------|--------|
 | Stock price history | `data/historical/{ticker}.parquet` (2-year daily OHLCV) |
 | USD→GBP history | Cached `USDGBP=X` daily history (`data/historical/USDGBP=X.parquet`, via `data_engine.load_or_fetch_daily_history`) |
-| USD position list | `accounts_engine.get_combined_holdings()` + `stock_signals.currency` column in SQLite |
+| USD position list | `accounts.accounts_engine.get_combined_holdings()` + `stock_signals.currency` column in SQLite |
 | Lifetime buy history | `account_transactions` table (all accounts), via `db.account_store.get_accounts()` / `get_transactions()` |
 
 No new data pipeline or scheduled job is required.

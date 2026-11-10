@@ -392,8 +392,8 @@ def ignored_tickers_set(config: Optional[dict] = None) -> set:
 def is_synthetic_ticker(ticker: str) -> bool:
     """True for a structurally unfetchable synthetic ticker (TBILL-*, PENSION-*) that has no
     real Yahoo Finance listing and must never reach a Yahoo-touching call."""
-    from treasury_bill_engine import parse_tbill_buy_txn_id
-    from account_scraper_engine import parse_pension_account_id
+    from accounts.treasury_bill_engine import parse_tbill_buy_txn_id
+    from accounts.account_scraper_engine import parse_pension_account_id
     return parse_tbill_buy_txn_id(ticker) is not None or parse_pension_account_id(ticker) is not None
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-import treasury_bill_engine as tbe
+from accounts import treasury_bill_engine as tbe
 from db.database import create_account, get_account, get_connection
 
 
@@ -12,7 +12,7 @@ def test_buy_treasury_bill_creates_unique_ticker_and_spends_cash():
     assert result["ticker"] == f"TBILL-{result['txn_id']}"
 
     acc = get_account(aid)
-    from accounts_engine import cash_balance
+    from accounts.accounts_engine import cash_balance
     assert cash_balance(aid) == pytest.approx(2000.0 - 996.16)
 
 
@@ -205,7 +205,7 @@ def test_confirm_ytm_on_matured_bill_corrects_sell_transaction_and_cash():
     """Regression guard for the flagged edge case: editing a bill's valuation after it has already
     matured must correct the posted maturity Sell too, not just the treasury_bills row, otherwise
     the account's cash balance would silently disagree with the corrected face value."""
-    from accounts_engine import cash_balance
+    from accounts.accounts_engine import cash_balance
     from db.database import get_transaction
 
     aid = create_account("TBillEditMaturedAcc", "GBP", initial_cash=2000.0)
@@ -234,7 +234,7 @@ def test_two_concurrent_bills_do_not_blend_cost_basis():
     r2 = tbe.buy_treasury_bill(aid, "2026-07-08", 2000.0, 1990.00, "2026-08-05")
     assert r1["ticker"] != r2["ticker"]
 
-    from accounts_engine import holdings_with_market_value
+    from accounts.accounts_engine import holdings_with_market_value
     holdings = {h["ticker"]: h for h in holdings_with_market_value(aid)}
     assert holdings[r1["ticker"]]["buy_price"] == pytest.approx(996.16)
     assert holdings[r2["ticker"]]["buy_price"] == pytest.approx(1990.00)
@@ -242,7 +242,7 @@ def test_two_concurrent_bills_do_not_blend_cost_basis():
 
 @pytest.mark.db
 def test_current_price_map_dispatches_tbill_ticker_to_accretion():
-    from accounts_engine import current_price_map
+    from accounts.accounts_engine import current_price_map
     aid = create_account("TBillPriceMapAcc", "GBP", initial_cash=2000.0)
     result = tbe.buy_treasury_bill(aid, "2026-07-01", 1000.0, 996.16, "2026-07-29")
     priced = current_price_map([result["ticker"]])
@@ -259,7 +259,7 @@ def test_sweep_matured_bills_closes_position_and_credits_cash():
 
     tbe.sweep_matured_bills()
 
-    from accounts_engine import cash_balance, holdings_with_market_value
+    from accounts.accounts_engine import cash_balance, holdings_with_market_value
     assert cash_balance(aid) == pytest.approx(2000.0 - 996.16 + 1000.0)
     open_tickers = {h["ticker"] for h in holdings_with_market_value(aid)}
     assert result["ticker"] not in open_tickers
@@ -287,7 +287,7 @@ def test_sweep_matured_bills_fires_reminder_notification_when_auto_reinvest():
     aid = create_account("TBillReminderAcc", "GBP", initial_cash=2000.0)
     tbe.buy_treasury_bill(aid, "2026-05-01", 1000.0, 996.16, "2026-05-29", auto_reinvest=True)
 
-    with patch("treasury_bill_engine.notify") as mock_notify:
+    with patch("accounts.treasury_bill_engine.notify") as mock_notify:
         tbe.sweep_matured_bills()
     mock_notify.assert_called_once()
     args, _kwargs = mock_notify.call_args
@@ -300,7 +300,7 @@ def test_sweep_matured_bills_no_reminder_without_auto_reinvest():
     aid = create_account("TBillNoReminderAcc", "GBP", initial_cash=2000.0)
     result = tbe.buy_treasury_bill(aid, "2026-05-01", 1000.0, 996.16, "2026-05-29", auto_reinvest=False)
 
-    with patch("treasury_bill_engine.notify") as mock_notify:
+    with patch("accounts.treasury_bill_engine.notify") as mock_notify:
         tbe.sweep_matured_bills()
     assert all(call.args[0] != "treasury_bill_reminder" for call in mock_notify.call_args_list)
     bill = tbe.get_treasury_bill(result["bill_id"])
@@ -318,7 +318,7 @@ def test_run_treasury_bill_maturity_sweep_job_runner_is_wired():
 
     scheduler_jobs.run_treasury_bill_maturity_sweep()
 
-    from accounts_engine import cash_balance
+    from accounts.accounts_engine import cash_balance
     assert cash_balance(aid) == pytest.approx(2000.0 - 996.16 + 1000.0)
 
     conn = get_connection()
