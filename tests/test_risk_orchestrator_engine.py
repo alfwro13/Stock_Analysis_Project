@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import scheduler_jobs
 from constants import RISK_DIGEST_TALK_TOP_MOVERS
-from database import get_connection
+from db.database import get_connection
 from risk_orchestrator_engine import (
     _sub_score,
     _tier_for,
@@ -627,7 +627,7 @@ class TestUnavailableScoresRoundTrip:
         mock_notify.assert_not_called()
 
     def test_migration_makes_the_score_nullable_and_clears_scores_computed_from_a_missing_input(self):
-        from db_schema import migrate_db
+        from db.schema import migrate_db
         conn = get_connection()
         try:
             conn.execute("DROP TABLE portfolio_heat_index")

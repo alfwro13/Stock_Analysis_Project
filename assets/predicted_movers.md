@@ -48,12 +48,12 @@ Represented in the Workflow Monitor: `ml_inference_job`'s `JOB_GRAPH` entry also
 
 The leaderboard has a three-way scope toggle (`portfolio_watchlist` is not a valid scope):
 
-- **Portfolio** — held tickers, `db_helpers.get_portfolio_tickers()`
+- **Portfolio** — held tickers, `db.helpers.get_portfolio_tickers()`
   (`accounts_engine.get_combined_holdings()`, ignored-ticker-filtered).
-- **Watchlist** — Watchlist tickers you do **not** hold, `db_helpers.get_watchlist_only_tickers()`.
+- **Watchlist** — Watchlist tickers you do **not** hold, `db.helpers.get_watchlist_only_tickers()`.
   A ticker that is both held and watched appears under Portfolio only, so each ticker is in exactly
   one list. `get_portfolio_watchlist_tickers()` (the union) still exists for other features.
-- **Universe** — the full market universe via `db_helpers.get_universe_tickers()`.
+- **Universe** — the full market universe via `db.helpers.get_universe_tickers()`.
 
 The **accuracy page** has a Portfolio / Watchlist toggle and no Universe option —
 `predicted_movers_history` is only ever populated for Portfolio and Watchlist tickers
@@ -65,7 +65,7 @@ watching.
 Each history row carries the `scope` its ticker belonged to **when the row was logged**
 (`portfolio` or `watchlist`), so a ticker later moved between lists keeps its earlier predictions in
 the list they were made for. Rows that pre-date the column were tagged once by current membership
-(`db_schema._tag_predicted_movers_history_scope()`); rows of tickers in neither list stay untagged and
+(`db.schema._tag_predicted_movers_history_scope()`); rows of tickers in neither list stay untagged and
 do not appear on the accuracy page.
 
 ## 3. Leaderboard ranking
@@ -74,7 +74,7 @@ do not appear on the accuracy page.
 
 1. Resolve scope tickers.
 2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` scored
-   inside the `db_helpers.ml_fresh_since()` window (`quantile_scored_at`; the same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
+   inside the `db.helpers.ml_fresh_since()` window (`quantile_scored_at`; the same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
    `ml_inference_engine.py`, `page_routes.py`, `market_pulse.py`).
 3. Resolve current price via `accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
    re-derive current price from `quant_signals.close_price`, which is the price *at prediction
@@ -132,7 +132,7 @@ ticker will show 0 resolved predictions — expected, not a bug.
 
 Like Pairs Spread Monitor, company names are not stored on either table — both
 `GET /api/predicted-movers/leaderboard` and `GET /api/predicted-movers/accuracy` join them in at
-read time via `db_helpers.get_company_names()`.
+read time via `db.helpers.get_company_names()`.
 
 ## 6. Deliberate simplifications
 

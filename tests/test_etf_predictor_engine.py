@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 from etf_predictor_engine import (
     detect_fx_pair,
     fetch_shared_prediction_data,

@@ -2,7 +2,7 @@
 import os
 import json
 from pathlib import Path
-from database import get_connection
+from db.database import get_connection
 
 PORTFOLIO_PATH = Path("data/portfolio.json")
 WATCHLIST_PATH = Path("data/watchlist.json")

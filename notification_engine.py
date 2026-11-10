@@ -14,7 +14,7 @@ from constants import (
     NEXTCLOUD_TALK_RETRYABLE_STATUSES,
     NEXTCLOUD_TALK_RETRY_MIN_INTERVAL_SECONDS,
 )
-from database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES, defer_write, get_nextcloud_talk_today, insert_notification, is_lock_error
+from db.database import log_notification as _db_log_notification, AUTO_READ_MESSAGE_TYPES, defer_write, get_nextcloud_talk_today, insert_notification, is_lock_error
 import nextcloud_talk
 
 logger = logging.getLogger(__name__)

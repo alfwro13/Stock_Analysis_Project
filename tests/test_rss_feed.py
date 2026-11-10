@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config as _cfg_module
-import database as _db_module
+from db import database as _db_module
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

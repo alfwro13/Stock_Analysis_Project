@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from api.deps import job_busy_response, limiter, _error_500, require_step_up
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
-from database import get_connection, get_ml_inference_tickers, get_universe_tickers, log_notification
+from db.database import get_connection, get_ml_inference_tickers, get_universe_tickers, log_notification
 from scheduler_engine import (
     run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
     reload_scheduler, run_sentiment_scan, run_index_scraper,

@@ -46,7 +46,7 @@ def _seed_sector_peers(num_peers: int):
     (rank 1 = strongest) so _get_sector_peer_context can read the standing.
     Returns the list of tickers seeded.
     """
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     cur = conn.cursor()
     tickers = SECTOR_TICKERS[:num_peers]
@@ -74,7 +74,7 @@ def _seed_sector_peers(num_peers: int):
 
 def _seed_options_row(ticker: str, last_updated: str):
     """Insert one row into earnings_volatility with a controllable last_updated."""
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     conn.execute(
         """INSERT OR REPLACE INTO earnings_volatility
@@ -89,7 +89,7 @@ def _seed_options_row(ticker: str, last_updated: str):
 
 def _seed_core_stock(ticker: str):
     """Insert minimal stock_signals + quant_signals rows for generate_prompt."""
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     conn.execute(
         """INSERT OR REPLACE INTO stock_signals
@@ -163,7 +163,7 @@ class TestFormatters:
 
 class TestMacroContextUnavailableUkThreat:
     def test_null_uk_threat_level_reads_na_not_none(self):
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             conn.execute(
@@ -187,7 +187,7 @@ class TestMacroContextUnavailableUkThreat:
         assert "None" not in text
 
     def test_null_us_threat_level_reads_na_not_none(self):
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             conn.execute(
@@ -297,7 +297,7 @@ class TestSectorPeerOverlap:
 
     def test_unscored_ticker_returns_insufficient_data(self):
         """A ticker with no scored Sector-Relative Momentum row → 'insufficient peer data' message."""
-        import database as db
+        from db import database as db
         conn = db.get_connection()
         conn.execute(
             """INSERT OR REPLACE INTO sector_relative_momentum_results
@@ -559,7 +559,7 @@ XRAY_TICKER = "AI_XRAY_TEST"
 
 
 def _seed_xray_data(ticker: str):
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     conn.execute(
         """INSERT OR REPLACE INTO xray_risk_cache

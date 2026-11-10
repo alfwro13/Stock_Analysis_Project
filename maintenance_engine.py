@@ -8,17 +8,17 @@ from config import (
     HISTORICAL_DIR,
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 )
-from database import (
+from db.database import (
     add_watchlist_item, get_connection, get_watchlist_account, get_watchlist_tickers,
     log_notification as _db_log_notification,
 )
-from db_helpers import add_ticker_note, get_ticker_notes, prune_nextcloud_talk_stats
+from db.helpers import add_ticker_note, get_ticker_notes, prune_nextcloud_talk_stats
 from ghostfolio_sync import purge_ghostfolio_files
 from accounts_engine import get_combined_holdings, resolve_watchlist_metadata, in_scope_currencies
 from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
-import db_mcp_audit
+from db import mcp_audit as db_mcp_audit
 from constants import (
     MCP_AUDIT_RETENTION_DAYS, NEXTCLOUD_TALK_STATS_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
 )

@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import pandas as pd
 
 from config import HISTORICAL_DIR
-from database import upsert_instrument_session
+from db.database import upsert_instrument_session
 from market_session_helpers import cached_registry_exchange_map, has_reported_session, reported_session, resolve_ticker_exchange, stored_sessions
 from price_repair_engine import apply_saved_repairs
 from utils import is_daily_bar_still_forming, is_excluded_from_yahoo_fetch, safe_ticker_filename, write_parquet_atomic

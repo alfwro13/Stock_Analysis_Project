@@ -1,7 +1,7 @@
 import re
 from contextlib import contextmanager
 
-from database import get_connection
+from db.database import get_connection
 
 MCP_KEY = "test-mcp-key-do-not-use-in-production"
 RPC_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}

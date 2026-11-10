@@ -29,7 +29,7 @@ from constants import (
     MACRO_XGB_MAX_DEPTH,
     MACRO_XGB_N_ESTIMATORS,
 )
-from database import get_connection
+from db.database import get_connection
 from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
 
 logger = logging.getLogger(__name__)

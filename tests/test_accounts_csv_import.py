@@ -6,7 +6,7 @@ import pytest
 import account_csv_import_engine
 import accounts_engine
 from accounts_engine import cash_balance
-from database import create_account
+from db.database import create_account
 
 
 _HEADER = (
@@ -375,7 +375,7 @@ def test_import_skips_a_bad_currency_row_and_stores_nothing_for_it():
     assert result["skipped_rows"] == [{
         "date": "01/02/2021", "ticker": "AAPL", "reason": "currency is not a 3-letter code",
     }]
-    from database import get_transactions
+    from db.database import get_transactions
     assert get_transactions(aid) == []
 
 
@@ -437,7 +437,7 @@ def test_import_skips_a_non_finite_row_and_stores_nothing_for_it():
     assert result["skipped_rows"] == [{
         "date": "01/02/2021", "ticker": "AAPL", "reason": "a number in the row is not finite",
     }]
-    from database import get_transactions
+    from db.database import get_transactions
     assert get_transactions(aid) == []
 
 
@@ -448,7 +448,7 @@ def test_import_rejects_a_csv_over_the_row_cap(monkeypatch):
     csv_text = _csv(*["Top up,TOP_UP,01/02/2021,GBP,10.00,,,,,,,,,,,,,,,,,,,,,"] * 3)
     result = account_csv_import_engine.import_csv_activities(aid, csv_text)
     assert result == {"error": "CSV has more than 2 rows."}
-    from database import get_transactions
+    from db.database import get_transactions
     assert get_transactions(aid) == []
 
 
@@ -502,5 +502,5 @@ def test_import_skips_an_unsafe_ticker_row_and_stores_nothing_for_it():
     assert result["skipped_rows"] == [{
         "date": "01/02/2021", "ticker": "../X", "reason": "ticker is not a valid ticker symbol",
     }]
-    from database import get_transactions
+    from db.database import get_transactions
     assert get_transactions(aid) == []

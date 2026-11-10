@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 import alert_referee_engine as are
 
 _ENGINE = are.CONFLUENCE_ENGINE

@@ -31,7 +31,7 @@ from constants import (
     MACRO_SEVERE_VOL_THRESHOLD,
     MACRO_VIX_DEFAULT,
 )
-from database import get_connection
+from db.database import get_connection
 
 SECTIONS = ("data", "vix", "training", "inference", "distribution")
 

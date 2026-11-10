@@ -9,8 +9,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import glossary_learn_engine as engine
-import database as _db
-import db_schema
+from db import database as _db
+from db import schema as db_schema
 
 
 NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)

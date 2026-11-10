@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import database
+from db import database
 import news_feed_engine
 import outbound_fetch_helpers
 from news_feed_engine import (

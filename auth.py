@@ -199,7 +199,7 @@ _THROTTLE_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def login_lockout_remaining() -> int:
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -216,7 +216,7 @@ def login_lockout_remaining() -> int:
 
 
 def record_login_failure(context: str, client: str, known_user: bool) -> int:
-    from database import get_connection
+    from db.database import get_connection
     now = datetime.now(timezone.utc)
     conn = None
     try:
@@ -255,7 +255,7 @@ def record_login_failure(context: str, client: str, known_user: bool) -> int:
 
 
 def clear_login_failures() -> None:
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()

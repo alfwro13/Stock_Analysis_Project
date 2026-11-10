@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 import accounts_engine
-from database import (
+from db.database import (
     get_connection,
     create_account,
     add_transaction,
@@ -308,7 +308,7 @@ def test_run_account_value_snapshot_job_runner_is_wired():
     aid = create_account("JobRunnerWiringAcc", "GBP", initial_cash=42.0)
     scheduler_jobs.run_account_value_snapshot()
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history, "run_account_value_snapshot did not write a snapshot row"
     assert history[-1]["cash_value"] == 42.0
@@ -320,7 +320,7 @@ def test_run_account_value_snapshot_also_refreshes_performance_cache():
     otherwise period-return baselines stay frozen at the last cron tick (~21:59 UTC) until the
     07:00 UTC window reopens, which is stale data an always-polling HA integration would surface."""
     import scheduler_jobs
-    from database import get_performance_cache
+    from db.database import get_performance_cache
     aid = create_account("SnapshotAlsoRefreshesCacheAcc", "GBP", initial_cash=99.0)
     scheduler_jobs.run_account_value_snapshot()
 
@@ -417,7 +417,7 @@ def test_run_account_performance_refresh_job_runner_is_wired():
     accounts_engine.refresh_all_trading_performance_caches — a regression guard for the job
     runner's import wiring, not just the engine function in isolation."""
     import scheduler_jobs
-    from database import get_performance_cache
+    from db.database import get_performance_cache
     aid = create_account("PerfRefreshWiringAcc", "GBP", initial_cash=100.0)
     scheduler_jobs.run_account_performance_refresh_job()
 
@@ -433,14 +433,14 @@ def test_run_account_scraper_job_runner_is_wired():
     the runner's import wiring, not just the engine functions in isolation."""
     from unittest.mock import patch
     import scheduler_jobs
-    from database import update_account
+    from db.database import update_account
     aid = create_account("ScraperJobRunnerWiringAcc", "GBP", account_type="House")
     update_account(aid, scraper_url="https://example.test/x.html", scraper_selector="#gf-price")
 
     with patch("account_scraper_engine._fetch_body", return_value='<div id="gf-price">123456.0</div>'):
         scheduler_jobs._run_account_scraper_job(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history, "_run_account_scraper_job did not trigger a resnapshot"
     assert history[-1]["equity_value"] == 123456.0
@@ -567,7 +567,7 @@ def test_snapshot_all_accounts_writes_row_per_account():
 
     accounts_engine.snapshot_all_accounts()
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history, "expected at least one snapshot row"
     today = history[-1]
@@ -599,7 +599,7 @@ def test_snapshot_all_accounts_excludes_pension_cash_balance():
 
     accounts_engine.snapshot_all_accounts()
 
-    from database import get_value_history
+    from db.database import get_value_history
     today = get_value_history(aid)[-1]
     assert today["cash_value"] == 0.0
     assert today["total_value"] == today["equity_value"]
@@ -660,7 +660,7 @@ def test_backfill_value_history_writes_rows_from_parquet(monkeypatch, tmp_path):
     written = accounts_engine.backfill_value_history(aid)
     assert written > 0
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
     assert "2025-01-03" in history
     assert history["2025-01-03"]["equity_value"] == 204.0          # 2 * 102 (Close on 2025-01-03)
@@ -705,7 +705,7 @@ def test_backfill_value_history_gbp_pence_holding_not_double_converted(monkeypat
 
     accounts_engine.backfill_value_history(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
     assert history["2025-01-03"]["equity_value"] == 20.04         # 2 shares * 1002p -> £10.02/share
 
@@ -730,7 +730,7 @@ def test_backfill_value_history_uses_native_currency_not_transaction_currency(mo
 
     accounts_engine.backfill_value_history(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
     assert history["2025-01-03"]["equity_value"] == 176.04  # 2 * 8802p -> £88.02/share, not £8802
 
@@ -767,9 +767,9 @@ def test_backfill_value_history_prices_treasury_bill_by_accretion_not_flat_cost(
     written = accounts_engine.backfill_value_history(aid)
     assert written > 0
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
-    from db_accounts import get_treasury_bill_by_ticker
+    from db.accounts import get_treasury_bill_by_ticker
     bill_row = get_treasury_bill_by_ticker(ticker)
 
     snapshot_date = "2025-01-16"  # 15 of 30 days elapsed -> halfway accreted
@@ -835,7 +835,7 @@ def test_create_transfer_creates_linked_pair_with_correct_cash_effect():
     assert accounts_engine.cash_balance(aid_a) == 1000.0 - 300.0 - 5.0
     assert accounts_engine.cash_balance(aid_b) == 200.0 + 300.0
 
-    from database import get_transaction
+    from db.database import get_transaction
     out_txn = get_transaction(result["out_txn_id"])
     in_txn = get_transaction(result["in_txn_id"])
     assert out_txn["txn_type"] == "Transfer"
@@ -865,7 +865,7 @@ def test_delete_transaction_with_pair_removes_both_legs():
     aid_b = create_account("DeletePairDst", "GBP", initial_cash=0.0)
     result = accounts_engine.create_transfer(aid_a, aid_b, 100.0, "2026-01-10")
 
-    from database import get_transaction, get_transactions
+    from db.database import get_transaction, get_transactions
     assert accounts_engine.delete_transaction_with_pair(result["out_txn_id"]) is True
     assert get_transaction(result["out_txn_id"]) is None
     assert get_transaction(result["in_txn_id"]) is None
@@ -879,7 +879,7 @@ def test_delete_transaction_with_pair_on_non_transfer_deletes_only_itself():
     tid = add_transaction(aid, "Cash", "2026-01-05", unit_price=100)
     assert accounts_engine.delete_transaction_with_pair(tid) is True
 
-    from database import get_transaction
+    from db.database import get_transaction
     assert get_transaction(tid) is None
 
 
@@ -904,7 +904,7 @@ def test_resnapshot_account_writes_todays_row_with_contributions():
 
     accounts_engine.resnapshot_account(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history, "expected at least one snapshot row"
     today = history[-1]
@@ -920,7 +920,7 @@ def test_transaction_total_base_handles_pence_and_cash_rows():
                               quantity=10, unit_price=250, exchange_rate=0.01, price_in_pence=True)
     cash_id = add_transaction(aid, "Cash", "2026-01-06", unit_price=100)
 
-    from database import get_transaction
+    from db.database import get_transaction
     assert accounts_engine.transaction_total_base(get_transaction(buy_id)) == 25.0       # 10 * 250 * 0.01
     assert accounts_engine.transaction_total_base(get_transaction(cash_id)) == 100.0      # qty defaults to 1
 
@@ -1040,7 +1040,7 @@ def test_snapshot_all_accounts_writes_house_equity_from_scraped_price():
 
     accounts_engine.snapshot_all_accounts()
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history[-1]["equity_value"] == 300000.0
     assert history[-1]["cash_value"] == 0.0
@@ -1054,7 +1054,7 @@ def test_resnapshot_account_writes_house_equity_from_scraped_price():
 
     accounts_engine.resnapshot_account(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history[-1]["equity_value"] == 250000.0
 
@@ -1068,7 +1068,7 @@ def test_backfill_value_history_for_house_uses_scraped_price_series():
     written = accounts_engine.backfill_value_history(aid)
     assert written > 0
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
     assert history["2026-01-01"]["equity_value"] == 400000.0
     assert history["2026-01-06"]["equity_value"] == 410000.0   # carries forward last known price
@@ -1091,7 +1091,7 @@ def test_snapshot_all_accounts_house_cash_ignores_initial_cash_purchase_price_me
 
     accounts_engine.snapshot_all_accounts()
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert history[-1]["cash_value"] == 0.0
     assert history[-1]["total_value"] == 350000.0
@@ -1105,7 +1105,7 @@ def test_backfill_house_value_history_cash_ignores_initial_cash_purchase_price_m
 
     accounts_engine.backfill_value_history(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     history = get_value_history(aid)
     assert all(row["cash_value"] == 0.0 for row in history)
 
@@ -1231,7 +1231,7 @@ def test_pension_units_as_of_reflects_ledger_at_date():
 @pytest.mark.db
 def test_pension_start_date_round_trips_via_create_and_update():
     aid = create_account("PensionStartDateAcc", "GBP", account_type="Pension", pension_start_date="2015-03-01")
-    from database import get_account, update_account
+    from db.database import get_account, update_account
     assert get_account(aid)["pension_start_date"] == "2015-03-01"
     update_account(aid, pension_start_date="2016-04-01")
     assert get_account(aid)["pension_start_date"] == "2016-04-01"
@@ -1240,7 +1240,7 @@ def test_pension_start_date_round_trips_via_create_and_update():
 @pytest.mark.db
 def test_opening_balance_units_round_trips_via_create_and_update():
     aid = create_account("OpeningBalanceUnitsAcc", "GBP", account_type="Pension", opening_balance_units=3125.5)
-    from database import get_account, update_account
+    from db.database import get_account, update_account
     assert get_account(aid)["opening_balance_units"] == 3125.5
     update_account(aid, opening_balance_units=4000.0)
     assert get_account(aid)["opening_balance_units"] == 4000.0
@@ -1249,7 +1249,7 @@ def test_opening_balance_units_round_trips_via_create_and_update():
 @pytest.mark.db
 def test_pension_ticker_label_round_trips_via_create_and_update():
     aid = create_account("PensionLabelAcc", "GBP", account_type="Pension", pension_ticker_label="My Workplace Pension")
-    from database import get_account, update_account
+    from db.database import get_account, update_account
     assert get_account(aid)["pension_ticker_label"] == "My Workplace Pension"
     update_account(aid, pension_ticker_label="Renamed Pension")
     assert get_account(aid)["pension_ticker_label"] == "Renamed Pension"
@@ -1258,7 +1258,7 @@ def test_pension_ticker_label_round_trips_via_create_and_update():
 @pytest.mark.db
 def test_pension_display_label_falls_back_to_internal_ticker():
     from account_scraper_engine import pension_ticker
-    from database import get_account
+    from db.database import get_account
     aid = create_account("PensionNoLabelAcc", "GBP", account_type="Pension")
     assert accounts_engine.pension_display_label(get_account(aid)) == pension_ticker(aid)
 
@@ -1268,7 +1268,7 @@ def test_pension_display_label_falls_back_to_internal_ticker():
 
 @pytest.mark.db
 def test_watchlist_summary_buckets_by_quote_type():
-    from database import add_watchlist_item, get_watchlist_account
+    from db.database import add_watchlist_item, get_watchlist_account
     wl = get_watchlist_account()
     add_watchlist_item(wl["id"], "AAPL", quote_type="EQUITY")
     add_watchlist_item(wl["id"], "MSFT", quote_type="EQUITY")
@@ -1281,13 +1281,13 @@ def test_watchlist_summary_buckets_by_quote_type():
     assert result["by_type"] == {"equity": 2, "etf": 1, "fund": 1, "other": 1}
 
     for ticker in ("AAPL", "MSFT", "VUSA.L", "FUNDX", "WEIRD"):
-        from database import remove_watchlist_ticker
+        from db.database import remove_watchlist_ticker
         remove_watchlist_ticker(wl["id"], ticker)
 
 
 @pytest.mark.db
 def test_watchlist_summary_empty():
-    from database import get_watchlist_account
+    from db.database import get_watchlist_account
     wl = get_watchlist_account()
     result = accounts_engine.watchlist_summary(wl["id"])
     assert result == {"count": 0, "by_type": {"equity": 0, "etf": 0, "fund": 0, "other": 0}}
@@ -1357,7 +1357,7 @@ def test_pension_value_snapshot_excludes_cash_balance():
 
     accounts_engine.resnapshot_account(aid)
 
-    from database import get_value_history
+    from db.database import get_value_history
     today = get_value_history(aid)[-1]
     assert today["cash_value"] == 0.0
     assert today["total_value"] == today["equity_value"]
@@ -1367,7 +1367,7 @@ def test_pension_value_snapshot_excludes_cash_balance():
 def test_sync_pension_opening_balance_creates_holding():
     """Regression: opening_balance_units/initial_cash were stored but never materialized into the
     ledger, so units_as_of stayed 0 and Admin Fee could never deduct from a pre-existing balance."""
-    from database import get_account, get_transactions, update_account
+    from db.database import get_account, get_transactions, update_account
     aid = create_account("SyncOpeningBalanceAcc", "GBP", account_type="Pension")
     update_account(aid, initial_cash=70000.0, opening_balance_units=70000.0, opened_date="2024-01-01")
 
@@ -1387,7 +1387,7 @@ def test_sync_pension_opening_balance_creates_holding():
 
 @pytest.mark.db
 def test_sync_pension_opening_balance_updates_in_place_not_duplicated():
-    from database import get_account, get_transactions, update_account
+    from db.database import get_account, get_transactions, update_account
     aid = create_account("SyncOpeningBalanceUpdateAcc", "GBP", account_type="Pension")
     update_account(aid, initial_cash=1000.0, opening_balance_units=1000.0, opened_date="2024-01-01")
     accounts_engine.sync_pension_opening_balance(aid)
@@ -1406,7 +1406,7 @@ def test_sync_pension_opening_balance_updates_in_place_not_duplicated():
 
 @pytest.mark.db
 def test_sync_pension_opening_balance_removed_when_fields_cleared():
-    from database import get_account, update_account
+    from db.database import get_account, update_account
     aid = create_account("SyncOpeningBalanceClearAcc", "GBP", account_type="Pension")
     update_account(aid, initial_cash=1000.0, opening_balance_units=1000.0, opened_date="2024-01-01")
     accounts_engine.sync_pension_opening_balance(aid)
@@ -1421,7 +1421,7 @@ def test_sync_pension_opening_balance_removed_when_fields_cleared():
 
 @pytest.mark.db
 def test_sync_pension_opening_balance_noop_for_house_account():
-    from database import get_account
+    from db.database import get_account
     aid = create_account("SyncOpeningBalanceHouseAcc", "GBP", account_type="House")
     accounts_engine.sync_pension_opening_balance(aid)
     assert get_account(aid)["opening_balance_txn_id"] is None
@@ -1429,7 +1429,7 @@ def test_sync_pension_opening_balance_noop_for_house_account():
 
 @pytest.mark.db
 def test_sync_house_purchase_price_seeds_first_price_history_row():
-    from database import get_price_history, update_account
+    from db.database import get_price_history, update_account
     aid = create_account("SyncHousePurchaseAcc", "GBP", account_type="House")
     update_account(aid, initial_cash=300000.0, opened_date="2020-03-15")
 
@@ -1444,7 +1444,7 @@ def test_sync_house_purchase_price_seeds_first_price_history_row():
 
 @pytest.mark.db
 def test_sync_house_purchase_price_updates_in_place_not_duplicated():
-    from database import get_price_history, update_account
+    from db.database import get_price_history, update_account
     aid = create_account("SyncHousePurchaseUpdateAcc", "GBP", account_type="House")
     update_account(aid, initial_cash=300000.0, opened_date="2020-03-15")
     accounts_engine.sync_house_purchase_price(aid)
@@ -1460,7 +1460,7 @@ def test_sync_house_purchase_price_updates_in_place_not_duplicated():
 
 @pytest.mark.db
 def test_sync_house_purchase_price_noop_for_pension_account_or_unset_cash():
-    from database import get_price_history
+    from db.database import get_price_history
     aid = create_account("SyncHousePurchaseNoopAcc", "GBP", account_type="Pension")
     accounts_engine.sync_house_purchase_price(aid)
     assert get_price_history(aid) == []
@@ -1488,7 +1488,7 @@ def test_filter_value_history_by_period():
 
 @pytest.mark.db
 def test_reconcile_cash_books_signed_adjustment():
-    from database import get_transactions
+    from db.database import get_transactions
     aid = create_account("ReconcileAcc", "GBP", initial_cash=1000.0)
 
     result = accounts_engine.reconcile_cash(aid, 990.0)
@@ -1668,7 +1668,7 @@ def test_oldest_quote_epoch_is_the_cache_time_when_the_cache_price_is_used():
 
 @pytest.mark.db
 def test_oldest_quote_epoch_is_the_stock_signals_time_when_the_fallback_price_is_used():
-    from db_helpers import parse_utc_epoch
+    from db.helpers import parse_utc_epoch
 
     stored = "2026-10-01 09:00:00"
     _seed_stock_signal("ZZQFALL", 100.0, "GBP", last_updated=stored)
@@ -1682,7 +1682,7 @@ def test_oldest_quote_epoch_is_the_stock_signals_time_when_the_fallback_price_is
 
 @pytest.mark.db
 def test_oldest_quote_epoch_takes_the_oldest_and_ignores_unpriced_and_empty_input():
-    from db_helpers import parse_utc_epoch
+    from db.helpers import parse_utc_epoch
 
     _seed_stock_signal("ZZQOLD", 10.0, "GBP", last_updated="2026-10-01 09:00:00")
     _seed_stock_signal("ZZQNEW", 10.0, "GBP", last_updated="2026-10-05 09:00:00")
@@ -1737,7 +1737,7 @@ def test_period_returns_none_with_no_snapshot_history():
 
 @pytest.mark.db
 def test_period_returns_excludes_deposit_effect():
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     aid = create_account("PeriodReturnAcc", "GBP", initial_cash=1000.0)
@@ -1757,7 +1757,7 @@ def test_period_returns_are_currency_not_percent():
     a huge percentage — this is the whole reason period_returns returns currency, not %. If this
     were still dividing by start_value, a real gain of £500 on a £10 baseline would read as
     +5000.0 instead of +500.0."""
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     aid = create_account("CurrencyReturnAcc", "GBP", initial_cash=10.0)
@@ -1775,7 +1775,7 @@ def test_period_returns_are_currency_not_percent():
 
 @pytest.mark.db
 def test_period_returns_falls_back_to_earliest_snapshot_for_young_account():
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     aid = create_account("YoungAcc", "GBP", initial_cash=1000.0)
@@ -1795,7 +1795,7 @@ def test_period_returns_computes_live_when_target_is_newer_than_latest_snapshot(
     consecutive missed runs), period_returns() must compute that day live from parquet/ledger via
     _value_as_of_date() rather than either silently using an older stale baseline or giving up and
     returning None -- a live-computed baseline is strictly better than both."""
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     aid = create_account("RecentGapAcc", "GBP", initial_cash=1000.0)
@@ -1815,7 +1815,7 @@ def test_period_returns_none_when_gap_is_in_older_history():
     case above) — e.g. a genuinely missed nightly run weeks ago, with normal snapshots both before
     and after it — must still surface as None for the window it falls in, since no live-fallback
     applies once a more recent snapshot already exists."""
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     aid = create_account("OlderGapAcc", "GBP", initial_cash=1000.0)
@@ -1882,7 +1882,7 @@ def test_money_weighted_return_flat_when_value_matches_contributions():
 
 @pytest.mark.db
 def test_refresh_performance_cache_writes_a_row_get_performance_cache_returns():
-    from database import get_performance_cache
+    from db.database import get_performance_cache
 
     aid = create_account("RefreshCacheAcc", "GBP", initial_cash=1000.0)
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZREFRESH", currency="GBP",
@@ -1904,7 +1904,7 @@ def test_refresh_performance_cache_writes_a_row_get_performance_cache_returns():
 
 @pytest.mark.db
 def test_refresh_performance_cache_counts_holdings_valued_at_cost():
-    from database import get_performance_cache
+    from db.database import get_performance_cache
 
     aid = create_account("CacheAtCostAcc", "GBP", initial_cash=1000.0)
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCACHEPRICED", currency="GBP",
@@ -1920,7 +1920,7 @@ def test_refresh_performance_cache_counts_holdings_valued_at_cost():
 
 @pytest.mark.db
 def test_refresh_performance_cache_reads_the_account_once(monkeypatch):
-    from database import get_performance_cache, upsert_value_snapshot
+    from db.database import get_performance_cache, upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     _seed_stock_signal("ZZPERFONCE", 12.0, "GBP")
@@ -1957,7 +1957,7 @@ def test_refresh_performance_cache_reads_the_account_once(monkeypatch):
 
 @pytest.mark.db
 def test_shared_inputs_give_the_same_returns_and_contributions(monkeypatch):
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
     _seed_stock_signal("ZZRETINPUTS", 15.0, "GBP")
@@ -1997,7 +1997,7 @@ def test_backfill_currency_breakdown_matches_total_equity_across_two_currencies(
 
     accounts_engine.backfill_value_history(aid)
 
-    from database import get_value_history, get_value_history_currency
+    from db.database import get_value_history, get_value_history_currency
     total_history = {row["snapshot_date"]: row for row in get_value_history(aid)}
     currency_history = get_value_history_currency(aid)
     assert currency_history
@@ -2014,7 +2014,7 @@ def test_backfill_currency_breakdown_matches_total_equity_across_two_currencies(
 @pytest.mark.db
 def test_migrate_db_creates_account_value_history_currency_table():
     import sqlite3
-    import db_schema
+    from db import schema as db_schema
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -2227,7 +2227,7 @@ def test_pension_benchmark_overlay_ticker_line_rebased_to_start_value():
     from unittest.mock import patch
 
     aid = create_account("PensionOverlayTickerAcc", "GBP", account_type="Pension")
-    from db_accounts import replace_benchmark_tickers
+    from db.accounts import replace_benchmark_tickers
     replace_benchmark_tickers(aid, [{"ticker": "URTH", "display_name": "MSCI World Index"}])
 
     value_df = pd.DataFrame(
@@ -2302,7 +2302,7 @@ def test_holdings_without_an_fx_rate_are_valued_at_cost_like_unpriced_holdings(m
 
 def _insert_raw_transaction(account_id: int, ticker: str) -> None:
     """add_transaction() refuses an unsafe ticker, so a row stored before that guard is inserted directly."""
-    from database import get_connection
+    from db.database import get_connection
     conn = get_connection()
     try:
         conn.execute(
@@ -2331,13 +2331,13 @@ def test_value_history_never_reads_a_parquet_outside_the_history_folder_for_an_u
     result = accounts_engine._value_as_of_date(aid, "2025-01-03")
     assert result["equity_value"] != 204.0
     accounts_engine.backfill_value_history(aid)
-    from database import get_value_history
+    from db.database import get_value_history
     assert all(row["equity_value"] != 204.0 for row in get_value_history(aid))
 
 
 @pytest.mark.db
 def test_position_target_accounts_lists_trading_accounts_then_the_watchlist():
-    from db_accounts import get_watchlist_account
+    from db.accounts import get_watchlist_account
     asset = {"accounts": [
         {"id": "acct:7", "name": "Main", "shares": 4.0},
         {"id": "gf-uuid", "name": "Ghostfolio only", "shares": 1.0},

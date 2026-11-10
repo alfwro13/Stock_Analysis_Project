@@ -9,7 +9,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, Optional
 
-from database import get_connection, init_db
+from db.database import get_connection, init_db
 import time_engine
 from log_config import redact_secrets
 

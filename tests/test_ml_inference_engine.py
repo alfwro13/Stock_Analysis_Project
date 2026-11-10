@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db_module
+from db import database as _db_module
 import time_engine
 from ml_features import LATEST_FEATURES_QUERY
 

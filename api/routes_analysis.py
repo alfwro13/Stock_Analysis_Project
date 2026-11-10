@@ -15,7 +15,7 @@ from api.deps import FiniteModel, job_busy_response, limiter, _error_500
 from constants import ETF_CONSTITUENTS_MAX
 
 from config import HISTORICAL_DIR
-from database import get_connection
+from db.database import get_connection
 from ai_engine import AIPromptEngine
 from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
@@ -92,8 +92,8 @@ def get_trap_monitor_results(request: Request):
     Also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
     from accounts_engine import get_combined_holdings
-    from database import get_watchlist_tickers
-    from db_helpers import get_trap_monitor_results as read_trap_monitor_results
+    from db.database import get_watchlist_tickers
+    from db.helpers import get_trap_monitor_results as read_trap_monitor_results
     try:
         rows = read_trap_monitor_results()
         from bull_bear_trap_engine import _phase_severity
@@ -131,7 +131,7 @@ def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
 @limiter.limit("20/minute")
 def get_trap_monitor_accuracy(request: Request):
     """Returns per-phase prediction accuracy at 14-day and 30-day horizons."""
-    from database import get_trap_phase_accuracy
+    from db.database import get_trap_phase_accuracy
     data = get_trap_phase_accuracy()
     return JSONResponse(content={"status": "success", **data})
 
@@ -304,7 +304,7 @@ def get_risk_orchestrator_pretrade_check(
     `value` (BASE_CURRENCY) of `ticker` to `scope`, using the same VaR/correlation/drawdown
     thresholds as the Portfolio Heat Index. Every call is logged to pretrade_check_log."""
     from risk_orchestrator_engine import evaluate_pretrade_check
-    from db_helpers import log_pretrade_check
+    from db.helpers import log_pretrade_check
 
     ticker = normalize_ticker(ticker)
     try:
@@ -333,7 +333,7 @@ def get_pairs_spread_results(
     scope: str = Query(default="portfolio_watchlist", pattern=r"^(portfolio_watchlist|universe)$"),
 ):
     """Returns all monitored pairs from the latest scan for `scope`, ordered by absolute z-score (most divergent first), enriched with company names."""
-    from db_helpers import get_company_names
+    from db.helpers import get_company_names
     conn = None
     try:
         conn = get_connection()
@@ -414,7 +414,7 @@ def get_pattern_detection_results(request: Request, family: Optional[str] = Quer
     without a second round-trip."""
     from pattern_detection_engine import DETECTORS
     from accounts_engine import get_combined_holdings
-    from database import get_watchlist_tickers
+    from db.database import get_watchlist_tickers
     conn = None
     try:
         conn = get_connection()
@@ -486,7 +486,7 @@ def run_pattern_detection_backfill(request: Request, background_tasks: Backgroun
 @limiter.limit("20/minute")
 def get_pattern_detection_accuracy_route(request: Request, family: Optional[str] = Query(None)):
     """Returns per-family, per-pattern-type prediction accuracy at 14-day and 30-day horizons."""
-    from database import get_pattern_detection_accuracy
+    from db.database import get_pattern_detection_accuracy
     data = get_pattern_detection_accuracy(family)
     return JSONResponse(content={"status": "success", **data})
 
@@ -1020,7 +1020,7 @@ def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
 @limiter.limit("20/minute")
 def list_etf_predictors(request: Request):
     try:
-        from database import get_etf_predictor_configs
+        from db.database import get_etf_predictor_configs
         configs = get_etf_predictor_configs()
         return JSONResponse(content={"status": "success", "configs": configs})
     except Exception as e:
@@ -1050,7 +1050,7 @@ def _etf_no_data_warnings(etf_ticker: str, constituents: Optional[List[dict]]) -
 @limiter.limit("10/minute")
 def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
     try:
-        from database import create_etf_predictor_config
+        from db.database import create_etf_predictor_config
         from scheduler_engine import register_etf_predictor_jobs
         if not body.constituents:
             return JSONResponse(status_code=422, content={"status": "error", "message": "At least one constituent required."})
@@ -1089,7 +1089,7 @@ def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
 @limiter.limit("10/minute")
 def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorConfigBody):
     try:
-        from database import update_etf_predictor_config, get_etf_predictor_config
+        from db.database import update_etf_predictor_config, get_etf_predictor_config
         from scheduler_engine import register_etf_predictor_jobs, unregister_etf_predictor_jobs
         config = get_etf_predictor_config(config_id)
         if config is None:
@@ -1130,7 +1130,7 @@ def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorCon
 @limiter.limit("10/minute")
 def delete_etf_predictor(request: Request, config_id: int):
     try:
-        from database import soft_delete_etf_predictor_config, get_etf_predictor_config
+        from db.database import soft_delete_etf_predictor_config, get_etf_predictor_config
         from scheduler_engine import unregister_etf_predictor_jobs
         if get_etf_predictor_config(config_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
@@ -1146,7 +1146,7 @@ def delete_etf_predictor(request: Request, config_id: int):
 @limiter.limit("5/minute")
 def run_etf_predictor(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
-        from database import get_etf_predictor_config
+        from db.database import get_etf_predictor_config
         from scheduler_engine import run_etf_predictor_job
         if get_etf_predictor_config(config_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
@@ -1166,7 +1166,7 @@ def run_etf_predictor(request: Request, config_id: int, background_tasks: Backgr
 @limiter.limit("5/minute")
 def fill_etf_predictor_actuals(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
-        from database import get_etf_predictor_config
+        from db.database import get_etf_predictor_config
         from scheduler_engine import run_etf_predictor_fill_actuals_job
         if get_etf_predictor_config(config_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
@@ -1186,7 +1186,7 @@ def fill_etf_predictor_actuals(request: Request, config_id: int, background_task
 @limiter.limit("20/minute")
 def get_etf_predictor_predictions(request: Request, config_id: int):
     try:
-        from database import get_etf_accuracy, get_etf_predictor_config
+        from db.database import get_etf_accuracy, get_etf_predictor_config
         if get_etf_predictor_config(config_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
         return JSONResponse(content={"status": "success", **get_etf_accuracy(config_id)})

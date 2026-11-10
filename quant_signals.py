@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 import ta
 
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
-from database import get_connection, log_score_event
+from db.database import get_connection, log_score_event
 from fundamentals_helpers import calculate_peter_lynch_peg
 from pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,

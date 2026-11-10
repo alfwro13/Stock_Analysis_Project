@@ -3,7 +3,7 @@ import math
 from typing import Dict, List, Optional, Any
 
 from config import load_config, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
-from database import get_connection
+from db.database import get_connection
 from xray_engine import GhostfolioXRayClient, _builtin_account_holdings
 from fundamentals_helpers import get_instrument_type
 

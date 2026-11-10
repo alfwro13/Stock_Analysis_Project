@@ -296,13 +296,13 @@ class TestUpsertCalendarEventsUnderLock:
 
     @pytest.fixture
     def deferred_queue(self, monkeypatch):
-        import database
+        from db import database
         monkeypatch.setattr(database, "_start_deferred_worker", lambda: None)
         monkeypatch.setattr(database, "_deferred", [])
         return database._deferred
 
     def test_locked_batch_is_queued_and_written_on_retry(self, cal_db_path, deferred_queue):
-        import database
+        from db import database
         attempts = []
 
         def _conn():

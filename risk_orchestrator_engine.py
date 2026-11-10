@@ -6,7 +6,7 @@ from typing import Optional
 
 from config import load_config
 from constants import RISK_DIGEST_TALK_TOP_MOVERS
-from database import get_connection, get_portfolio_watchlist_tickers
+from db.database import get_connection, get_portfolio_watchlist_tickers
 from price_history_helpers import pct_from_anchor
 from xray_engine import assemble_xray_report, simulate_scope_with_hypothetical_holding
 

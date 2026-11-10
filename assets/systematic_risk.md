@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS macro_regimes (
     uk_yield_velocity REAL,      -- 3-day UK gilt rate of change, in basis points
     uk_threat_level TEXT         -- GREEN, YELLOW, or RED
     -- plus market-turbulence/regime-label columns written by calculate_market_regime()
-    -- and classify_macro_regime() — see db_schema.py for the full column set.
+    -- and classify_macro_regime() — see db/schema.py for the full column set.
 );
 
 -- Table storing individual asset profiles with the yield-sensitivity correlation

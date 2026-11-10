@@ -35,7 +35,7 @@ def _post_txn(client, account_id, txn_type, ticker, quantity):
 
 
 def _drop_limit_rows(account_id):
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -54,7 +54,7 @@ def test_create_account_returns_id(client):
     assert data["status"] == "success"
     assert "id" in data
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(data["id"])
 
 
@@ -67,7 +67,7 @@ def test_list_accounts_includes_created(client):
     assert data["status"] == "success"
     assert any(a["id"] == account_id for a in data["accounts"])
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -80,7 +80,7 @@ def test_update_account(client):
     assert resp.status_code == 200
     assert _json(resp)["status"] == "success"
 
-    import database as _db
+    from db import database as _db
     acc = _db.get_account(account_id)
     assert acc["name"] == "Renamed Account"
     assert acc["currency"] == "USD"
@@ -94,13 +94,13 @@ def test_create_account_defaults_to_trading_type(client):
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
     assert acc["account_type"] == "Trading"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_create_account_with_each_valid_account_type(client):
-    import database as _db
+    from db import database as _db
     for account_type in ("Trading", "House", "Pension"):
         account_id = _create_account(client, name=f"{account_type} Acc", account_type=account_type)
         resp = client.get("/api/accounts")
@@ -127,13 +127,13 @@ def test_update_account_rejects_converting_into_watchlist(client):
     assert resp.status_code == 400
     assert _json(resp)["status"] == "error"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_update_account_rejects_converting_watchlist_out(client):
-    import database as _db
+    from db import database as _db
     wl = _db.get_watchlist_account()
     resp = client.put(f"/api/accounts/{wl['id']}", json={
         "name": wl["name"], "currency": wl["currency"], "account_type": "Trading",
@@ -144,7 +144,7 @@ def test_update_account_rejects_converting_watchlist_out(client):
 
 @pytest.mark.api
 def test_delete_watchlist_account_rejected(client):
-    import database as _db
+    from db import database as _db
     wl = _db.get_watchlist_account()
     resp = client.delete(f"/api/accounts/{wl['id']}")
     assert resp.status_code == 400
@@ -170,7 +170,7 @@ def test_update_account_rejects_invalid_account_type(client):
     assert resp.status_code == 400
     assert _json(resp)["status"] == "error"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -178,7 +178,7 @@ def test_update_account_rejects_invalid_account_type(client):
 def test_create_and_update_account_opened_date_roundtrip(client):
     account_id = _create_account(client, opened_date="2020-03-15")
 
-    import database as _db
+    from db import database as _db
     assert _db.get_account(account_id)["opened_date"] == "2020-03-15"
 
     resp = client.put(f"/api/accounts/{account_id}", json={
@@ -229,7 +229,7 @@ def test_value_history_unknown_account_returns_404(client):
 @pytest.mark.api
 def test_value_history_filters_by_period(client):
     from datetime import datetime, timedelta, timezone
-    import database as _db
+    from db import database as _db
 
     account_id = _create_account(client)
     today = datetime.now(timezone.utc).date()
@@ -264,7 +264,7 @@ def test_live_performance_rejects_non_trading_account_type(client):
 
 @pytest.mark.api
 def test_live_performance_returns_cached_row_without_recomputing(client):
-    import database as _db
+    from db import database as _db
 
     account_id = _create_account(client)
     _db.upsert_performance_cache(
@@ -286,7 +286,7 @@ def test_live_performance_returns_cached_row_without_recomputing(client):
 
 @pytest.mark.api
 def test_live_performance_computes_on_first_view_when_no_cache_row_yet(client):
-    import database as _db
+    from db import database as _db
 
     account_id = _create_account(client)
     assert _db.get_performance_cache(account_id) is None
@@ -310,7 +310,7 @@ def test_reconcile_cash_unknown_account_returns_404(client):
 
 @pytest.mark.api
 def test_reconcile_cash_books_adjustment(client):
-    import database as _db
+    from db import database as _db
 
     account_id = _create_account(client)
     resp = client.post(f"/api/accounts/{account_id}/reconcile-cash", json={"actual_balance": 1005.0})
@@ -329,7 +329,7 @@ def test_reconcile_cash_books_adjustment(client):
 
 @pytest.mark.api
 def test_reconcile_cash_noop_when_already_balanced(client):
-    import database as _db
+    from db import database as _db
 
     account_id = _create_account(client)
     resp = client.post(f"/api/accounts/{account_id}/reconcile-cash", json={"actual_balance": 1000.0})
@@ -352,7 +352,7 @@ def test_create_transaction_rejects_invalid_txn_type(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -378,7 +378,7 @@ def test_create_transaction_rejects_unstorable_date_or_currency(client, field, v
     assert fragment in _json(resp)["message"]
     mock_profile.assert_not_called()
 
-    import database as _db
+    from db import database as _db
     assert _db.get_transactions(account_id) == []
     _db.soft_delete_account(account_id)
 
@@ -399,7 +399,7 @@ def test_update_transaction_rejects_unstorable_date_or_currency(client):
         assert resp.status_code == 422, field
         assert field in _json(resp)["message"]
 
-    import database as _db
+    from db import database as _db
     txn = _db.get_transaction(txn_id)
     assert txn["txn_date"] == "2026-01-15"
     assert txn["currency"] == "USD"
@@ -414,7 +414,7 @@ def test_create_transaction_falls_back_to_the_account_currency_when_blank(client
         "quantity": 1, "unit_price": 50.0, "exchange_rate": 1.0,
     })
     assert resp.status_code == 200
-    import database as _db
+    from db import database as _db
     assert _db.get_transaction(_json(resp)["id"])["currency"] == "GBP"
     _db.soft_delete_account(account_id)
 
@@ -427,7 +427,7 @@ def test_create_account_rejects_unstorable_currency_and_opened_date(client):
     ):
         resp = client.post("/api/accounts", json=body)
         assert resp.status_code == 422, body
-    import database as _db
+    from db import database as _db
     assert not any(a["name"] in ("BadCcyAcc", "BadOpenedAcc") for a in _db.get_accounts())
 
 
@@ -441,7 +441,7 @@ def test_create_transfer_rejects_a_malformed_date(client):
     assert resp.status_code == 422
     assert "txn_date" in _json(resp)["message"]
 
-    import database as _db
+    from db import database as _db
     assert _db.get_transactions(src) == []
     _db.soft_delete_account(src)
     _db.soft_delete_account(dst)
@@ -483,7 +483,7 @@ def test_create_and_list_buy_transaction(client):
     list_resp = _json(client.get(f"/api/accounts/{account_id}/transactions"))
     assert any(t["id"] == txn_id and t["ticker"] == "AAPL" and t["exchange_rate"] == 0.8 for t in list_resp["transactions"])
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -499,7 +499,7 @@ def test_create_transaction_with_explicit_fee_currency_and_rate(client):
     assert resp.status_code == 200
     txn_id = _json(resp)["id"]
 
-    import database as _db
+    from db import database as _db
     txn = _db.get_transaction(txn_id)
     assert txn["fee_currency"] == "GBP"
     assert txn["fee_exchange_rate"] == 1.0
@@ -520,7 +520,7 @@ def test_create_transaction_fee_currency_defaults_to_trade_currency(client):
     assert resp.status_code == 200
     txn_id = _json(resp)["id"]
 
-    import database as _db
+    from db import database as _db
     txn = _db.get_transaction(txn_id)
     assert txn["fee_currency"] == "USD"
     assert txn["fee_exchange_rate"] == 0.8
@@ -540,7 +540,7 @@ def test_create_transaction_preserves_gbp_pence_currency_case(client):
     assert resp.status_code == 200
     txn_id = _json(resp)["id"]
 
-    import database as _db
+    from db import database as _db
     txn = _db.get_transaction(txn_id)
     assert txn["currency"] == "GBp"
     assert bool(txn["price_in_pence"]) is True
@@ -558,7 +558,7 @@ def test_create_transaction_with_unknown_ticker_triggers_profile_update(client):
         assert resp.status_code == 200
         mock_profile.assert_called_once_with("ZZZNOTREAL")
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -578,7 +578,7 @@ def test_create_transaction_with_unknown_ticker_triggers_price_fetch(client):
         assert resp.status_code == 200
         mock_fetch.assert_called_once_with("ZZZNOTREAL2")
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -587,7 +587,7 @@ def test_create_transaction_known_ticker_without_signals_row_triggers_analyze(cl
     """A ticker already in asset_profiles (from the universe scrape) but with no stock_signals row
     must still get a fundamentals fetch and an analyze_ticker() call queued on Buy — otherwise it
     never appears on the Portfolio page, which renders FROM stock_signals."""
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client)
 
     conn = _db.get_connection()
@@ -643,7 +643,7 @@ def test_create_transaction_synthetic_ticker_never_reaches_yahoo(client):
     mock_fetch.assert_not_called()
     mock_engine.analyze_ticker.assert_not_called()
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -662,7 +662,7 @@ def test_create_transaction_blank_exchange_rate_is_auto_filled(client):
     txn_id = _json(resp)["id"]
     mock_fx.assert_called_once_with("USD", "2026-01-15")
 
-    import database as _db
+    from db import database as _db
     txn = _db.get_transaction(txn_id)
     assert txn["exchange_rate"] == 1.27
     _db.soft_delete_account(account_id)
@@ -685,7 +685,7 @@ def test_update_transaction(client):
     assert resp.status_code == 200
     assert _json(resp)["status"] == "success"
 
-    import database as _db
+    from db import database as _db
     txn = _db.get_transaction(txn_id)
     assert txn["quantity"] == 8
     _db.soft_delete_account(account_id)
@@ -701,7 +701,7 @@ def test_create_and_update_transaction_isin_roundtrip(client):
         })
     txn_id = _json(create_resp)["id"]
 
-    import database as _db
+    from db import database as _db
     assert _db.get_transaction(txn_id)["isin"] == "GB0003452173"
 
     resp = client.put(f"/api/accounts/{account_id}/transactions/{txn_id}", json={
@@ -728,7 +728,7 @@ def test_update_transaction_for_wrong_account_returns_404(client):
     })
     assert resp.status_code == 404
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_a)
     _db.soft_delete_account(account_b)
 
@@ -749,7 +749,7 @@ def test_delete_transaction(client):
     list_resp = _json(client.get(f"/api/accounts/{account_id}/transactions"))
     assert not any(t["id"] == txn_id for t in list_resp["transactions"])
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -759,7 +759,7 @@ def test_delete_transaction_nonexistent_returns_404(client):
     resp = client.delete(f"/api/accounts/{account_id}/transactions/999996")
     assert resp.status_code == 404
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -810,7 +810,7 @@ def test_create_account_triggers_backfill_in_background(client):
         account_id = _create_account(client, name="BackfillTriggerAcc")
     mock_resnapshot.assert_called_once_with(account_id)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -836,7 +836,7 @@ def test_import_csv_returns_counts(client):
     assert data["skipped_rows"] == []
     mock_import.assert_called_once_with(account_id, "Title,Type,Timestamp\nTop up,TOP_UP,01/02/2021\n")
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -867,7 +867,7 @@ def test_import_csv_reports_skipped_rows_with_date_and_ticker(client):
     assert "ZZZNOPE" in notify_args[2]
     assert "2021-02-01" in notify_args[2]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -886,7 +886,7 @@ def test_import_csv_missing_column_returns_422(client):
     assert resp.status_code == 422
     assert _json(resp)["status"] == "error"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -913,7 +913,7 @@ def test_create_transfer_moves_cash_between_accounts(client):
     assert data["status"] == "success"
     assert "out_txn_id" in data and "in_txn_id" in data
 
-    import database as _db
+    from db import database as _db
     assert _db.get_account(src) is not None
     import accounts_engine
     assert accounts_engine.cash_balance(src) == 750.0
@@ -930,7 +930,7 @@ def test_create_transfer_rejects_unknown_destination(client):
     })
     assert resp.status_code == 404
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(src)
 
 
@@ -943,7 +943,7 @@ def test_create_transfer_rejects_nonpositive_amount(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(src)
     _db.soft_delete_account(dst)
 
@@ -956,7 +956,7 @@ def test_create_transaction_rejects_transfer_type(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(aid)
 
 
@@ -971,7 +971,7 @@ def test_delete_transaction_cascades_transfer_pair(client):
     resp = client.delete(f"/api/accounts/{src}/transactions/{xfer['out_txn_id']}")
     assert resp.status_code == 200
 
-    import database as _db
+    from db import database as _db
     assert _db.get_transaction(xfer["out_txn_id"]) is None
     assert _db.get_transaction(xfer["in_txn_id"]) is None
     _db.soft_delete_account(src)
@@ -991,7 +991,7 @@ def test_update_transaction_rejects_transfer_edit(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(src)
     _db.soft_delete_account(dst)
 
@@ -1006,7 +1006,7 @@ def test_create_transaction_triggers_resnapshot_in_background(client):
     assert resp.status_code == 200
     mock_resnapshot.assert_called_once_with(account_id)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1025,7 +1025,7 @@ def test_update_transaction_triggers_resnapshot_in_background(client):
     assert resp.status_code == 200
     mock_resnapshot.assert_called_once_with(account_id)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1042,7 +1042,7 @@ def test_delete_transaction_triggers_resnapshot_in_background(client):
     assert resp.status_code == 200
     mock_resnapshot.assert_called_once_with(account_id)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1060,7 +1060,7 @@ def test_create_transfer_triggers_resnapshot_for_both_accounts(client):
     mock_resnapshot.assert_any_call(dst)
     assert mock_resnapshot.call_count == 2
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(src)
     _db.soft_delete_account(dst)
 
@@ -1080,13 +1080,13 @@ def test_export_transactions_returns_csv(client):
     assert resp.text.startswith("Title,Type,Timestamp,Account Currency")
     assert ",TOP_UP," in resp.text
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_export_transactions_hostile_account_name_cannot_alter_the_header(client):
-    from database import update_account, soft_delete_account
+    from db.database import update_account, soft_delete_account
     account_id = _create_account(client, name="HostileExportAcc")
     try:
         assert update_account(account_id, name='Evil"; x=y\r\nSet-Cookie: a=b\u00e9' + "z" * 300)
@@ -1114,7 +1114,7 @@ def test_account_name_is_capped_on_create_and_update(client):
         resp = client.put(f"/api/accounts/{account_id}", json={"name": too_long, "currency": "GBP"})
         assert resp.status_code == 422
     finally:
-        import database as _db
+        from db import database as _db
         _db.soft_delete_account(account_id)
 
 
@@ -1137,14 +1137,14 @@ def test_fx_rate_endpoint_returns_rate(client):
 
 @pytest.mark.api
 def test_watchlist_account_auto_created_and_singular(client):
-    import database as _db
+    from db import database as _db
     wl = _db.get_watchlist_account()
     assert wl is not None
     assert wl["account_type"] == "Watchlist"
     accounts = _db.get_accounts()
     assert sum(1 for a in accounts if a["account_type"] == "Watchlist") == 1
 
-    from db_schema import _ensure_watchlist_account
+    from db.schema import _ensure_watchlist_account
     _ensure_watchlist_account()
     accounts_after = _db.get_accounts()
     assert sum(1 for a in accounts_after if a["account_type"] == "Watchlist") == 1
@@ -1172,7 +1172,7 @@ def test_ticker_search_requires_query(client):
 
 @pytest.mark.api
 def test_watchlist_items_add_list_and_bulk_delete(client):
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
     with (
@@ -1205,7 +1205,7 @@ def test_watchlist_items_add_list_and_bulk_delete(client):
 
 @pytest.mark.api
 def test_watchlist_item_readd_is_idempotent(client):
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
     with (
@@ -1232,7 +1232,7 @@ def test_watchlist_items_endpoints_reject_non_watchlist_account(client):
     resp = client.post(f"/api/accounts/{account_id}/watchlist-items", json={"ticker": "AAPL"})
     assert resp.status_code == 400
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1240,7 +1240,7 @@ def test_watchlist_items_endpoints_reject_non_watchlist_account(client):
 def test_add_watchlist_item_unknown_ticker_triggers_yahoo_fetch(client):
     """A ticker with no existing asset_profiles row must get an immediate profile + price-history
     fetch queued when added via the Accounts page, matching the Buy-transaction behaviour."""
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
     with (
@@ -1265,7 +1265,7 @@ def test_add_watchlist_item_missing_stock_signals_row_triggers_analyze(client):
     """A ticker that's already 'known' (asset_profiles exists) but has no stock_signals row yet
     must still get an immediate analyze_ticker() call queued when added via the Accounts page —
     otherwise it silently never appears on the Watchlist page."""
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
     conn = _db.get_connection()
@@ -1307,7 +1307,7 @@ def test_add_watchlist_item_missing_stock_signals_row_triggers_analyze(client):
 @pytest.mark.api
 def test_add_watchlist_item_existing_stock_signals_row_skips_analyze(client):
     """A ticker that already has a stock_signals row must not re-trigger analyze_ticker()."""
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
 
     conn = _db.get_connection()
@@ -1356,14 +1356,14 @@ def test_scraper_config_endpoints_reject_trading_account(client):
     })
     assert resp.status_code == 400
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_scraper_test_endpoint_does_not_persist(client):
     account_id = _create_account(client, account_type="House")
-    import database as _db
+    from db import database as _db
     before = _db.get_price_history(account_id)   # House creation seeds a purchase-value row — not the Test action's concern
 
     with _patch_scraper_body('<div id="gf-price">487000</div>'):
@@ -1391,7 +1391,7 @@ def test_scraper_save_and_run_now_round_trip(client):
     assert resp.status_code == 200
     assert _json(resp)["price"] == 512345.0
 
-    import database as _db
+    from db import database as _db
     history = _db.get_price_history(account_id)
     assert history and history[-1]["price"] == 512345.0
 
@@ -1408,7 +1408,7 @@ def _headers_sent(mock_fetch) -> dict:
 
 @pytest.mark.api
 def test_scraper_headers_are_write_only_and_kept_when_omitted(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client, account_type="House")
     base = {"scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price"}
     try:
@@ -1450,7 +1450,7 @@ def test_scraper_headers_are_write_only_and_kept_when_omitted(client):
 
 @pytest.mark.api
 def test_scraper_config_rejects_http_url_and_disallowed_headers(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client, account_type="House")
     base = {"scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price"}
     try:
@@ -1472,7 +1472,7 @@ def test_scraper_config_rejects_http_url_and_disallowed_headers(client):
 
 @pytest.mark.api
 def test_scraper_test_endpoint_refuses_a_loopback_target_without_connecting(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client, account_type="House")
     try:
         with patch("outbound_fetch_helpers._get_pinned") as pinned:
@@ -1488,7 +1488,7 @@ def test_scraper_test_endpoint_refuses_a_loopback_target_without_connecting(clie
 
 @pytest.mark.api
 def test_scraper_headers_empty_object_clears_stored_headers(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client, account_type="House")
     base = {"scraper_url": "https://example.test/house.html", "scraper_selector": "#gf-price"}
     try:
@@ -1504,7 +1504,7 @@ def test_scraper_headers_empty_object_clears_stored_headers(client):
 
 @pytest.mark.pages
 def test_account_detail_page_does_not_embed_scraper_headers(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client, account_type="House")
     try:
         client.put(f"/api/accounts/{account_id}/scraper-config", json={
@@ -1535,7 +1535,7 @@ def test_scraper_config_save_with_disabled_unregisters_job(client):
     live_ids = {j.id for j in scheduler_engine.scheduler.get_jobs()}
     assert f"account_scraper_{account_id}_job" not in live_ids
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1549,7 +1549,7 @@ def test_price_history_import_csv_endpoint(client):
     data = _json(resp)
     assert data["imported"] == 2
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1573,7 +1573,7 @@ def test_pension_contribution_and_fee_endpoints(client):
     fee_data = _json(resp)
     assert fee_data["units_removed"] == 2.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1593,7 +1593,7 @@ def test_pension_fee_endpoint_accepts_units_removed_directly(client):
     assert resp.status_code == 200
     assert _json(resp)["units_removed"] == 2.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1615,7 +1615,7 @@ def test_pension_fee_endpoint_rejects_neither_or_both_units_args(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1643,7 +1643,7 @@ def test_pension_benchmark_config_defaults_on_create(client):
     tickers = {t["ticker"]: t["display_name"] for t in data["tickers"]}
     assert tickers == {"URTH": "MSCI World Index", "VWRL.L": "FTSE All-World Index"}
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1664,7 +1664,7 @@ def test_pension_benchmark_config_save_roundtrip(client):
     assert data["tickers"][0]["ticker"] == "SPY"
     assert data["tickers"][0]["display_name"] == "S&P 500"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1697,7 +1697,7 @@ def test_treasury_bill_buy_and_list_endpoints(client):
     assert bills[0]["face_value"] == 1000.0
     assert bills[0]["status"] == "Open"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1713,7 +1713,7 @@ def test_treasury_bill_buy_stores_and_returns_indicative_ytm(client):
     bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
     assert bills[0]["indicative_ytm"] == pytest.approx(3.72)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1726,7 +1726,7 @@ def test_treasury_bill_buy_rejects_purchase_price_above_face_value(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1739,7 +1739,7 @@ def test_treasury_bill_buy_rejects_maturity_before_purchase(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1752,7 +1752,7 @@ def test_treasury_bill_endpoints_reject_non_trading_account(client):
     })
     assert resp.status_code == 400
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1775,7 +1775,7 @@ def test_treasury_bill_toggle_auto_reinvest_and_delete(client):
     bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
     assert bills == []
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1798,7 +1798,7 @@ def test_treasury_bill_confirm_ytm_with_real_rate_recomputes_face_value(client):
     assert bills[0]["ytm_confirmed"] == 1
     assert bills[0]["indicative_ytm"] == 4.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1820,7 +1820,7 @@ def test_treasury_bill_confirm_ytm_keep_estimate_leaves_face_value_unchanged(cli
     bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
     assert bills[0]["ytm_confirmed"] == 1
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1840,7 +1840,7 @@ def test_treasury_bill_edit_endpoint_accepts_direct_face_value(client):
     bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
     assert bills[0]["face_value"] == 502.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1864,7 +1864,7 @@ def test_treasury_bill_edit_after_maturity_corrects_cash_via_api(client):
     from accounts_engine import cash_balance
     assert cash_balance(account_id) == pytest.approx(2000.0 - 500.0 + corrected_face_value)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1885,10 +1885,10 @@ def test_generic_transaction_endpoints_reject_tbill_ticker(client):
     resp = client.delete(f"/api/accounts/{account_id}/transactions/{txn_id}")
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1905,7 +1905,7 @@ def test_price_at_date_endpoint(client):
     resp = client.get(f"/api/accounts/{account_id}/price-history/at-date?date=2025-01-01")
     assert _json(resp)["price"] is None
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1915,7 +1915,7 @@ def test_price_at_date_endpoint_rejects_trading_account(client):
     resp = client.get(f"/api/accounts/{account_id}/price-history/at-date?date=2026-01-05")
     assert resp.status_code == 400
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1929,7 +1929,7 @@ def test_pension_units_as_of_endpoint(client):
     assert resp.status_code == 200
     assert _json(resp)["units"] == 500.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1953,7 +1953,7 @@ def test_pension_start_date_create_and_update_roundtrip(client):
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
     assert acc["pension_start_date"] == "2016-04-01"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -1977,7 +1977,7 @@ def test_opening_balance_units_create_and_update_roundtrip(client):
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
     assert acc["opening_balance_units"] == 4000.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2001,7 +2001,7 @@ def test_pension_ticker_label_create_and_update_roundtrip(client):
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
     assert acc["pension_ticker_label"] == "Renamed Pension"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2016,7 +2016,7 @@ def test_list_accounts_includes_scraper_last_status(client):
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
     assert acc["scraper_last_status"] is None   # scraper job has never run yet
 
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     conn.execute(
         "INSERT INTO scheduler_run_log (job_id, last_run, last_status) VALUES (?, datetime('now'), 'success')",
@@ -2060,7 +2060,7 @@ def test_list_accounts_includes_current_balance_for_pension_and_house(client):
     assert house_acc["current_balance"] == 300000.0  # House's purchase value seeds account_price_history
     assert "current_balance" not in trading_acc
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(pension_id)
     _db.soft_delete_account(house_id)
     _db.soft_delete_account(trading_id)
@@ -2080,13 +2080,13 @@ def test_list_accounts_includes_holdings_count_equity_value_cash_balance_for_tra
     assert "equity_value" in acc
     assert "cash_balance" in acc
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(trading_id)
 
 
 @pytest.mark.api
 def test_list_accounts_includes_watchlist_count_and_breakdown(client):
-    import database as _db
+    from db import database as _db
     wl = _db.get_watchlist_account()
     _db.add_watchlist_item(wl["id"], "AAPL", quote_type="EQUITY")
     _db.add_watchlist_item(wl["id"], "VUSA.L", quote_type="ETF")
@@ -2113,7 +2113,7 @@ def test_creating_pension_account_with_opening_balance_creates_real_holding(clie
     resp = client.get(f"/api/accounts/{account_id}/pension/units-as-of?date=2024-01-01")
     assert _json(resp)["units"] == 70000.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2132,7 +2132,7 @@ def test_editing_pension_opening_balance_updates_holding_not_duplicates(client):
     assert len(buys) == 1
     assert buys[0]["unit_price"] == 2.0
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2144,7 +2144,7 @@ def test_creating_house_account_seeds_purchase_price_history(client):
     })
     account_id = _json(resp)["id"]
 
-    import database as _db
+    from db import database as _db
     history = _db.get_price_history(account_id)
     assert len(history) == 1
     assert history[0]["price_date"] == "2020-03-15"
@@ -2163,7 +2163,7 @@ def test_editing_house_purchase_value_updates_price_history_in_place(client):
         "initial_cash": 325000.0, "opened_date": "2020-03-15",
     })
 
-    import database as _db
+    from db import database as _db
     history = _db.get_price_history(account_id)
     assert len(history) == 1
     assert history[0]["price"] == 325000.0
@@ -2186,7 +2186,7 @@ def test_update_account_rejects_changing_account_type_between_real_types(client)
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
     assert acc["account_type"] == "Trading"   # unchanged
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2198,7 +2198,7 @@ def test_autotopup_config_rejects_non_trading_account(client):
     })
     assert resp.status_code == 400
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2213,7 +2213,7 @@ def test_autotopup_config_validates_required_fields_when_enabling(client):
     })
     assert resp.status_code == 400
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2234,7 +2234,7 @@ def test_autotopup_config_save_registers_and_unregister_disable(client):
     live_ids = {j.id for j in scheduler_engine.scheduler.get_jobs()}
     assert f"account_autotopup_{account_id}_job" not in live_ids
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2253,7 +2253,7 @@ def test_autotopup_job_runner_creates_pending_not_a_transaction(client):
     with patch("scheduler_jobs.notify"):
         scheduler_jobs._run_account_topup_job(account_id)
 
-    import database as _db
+    from db import database as _db
     pending = _db.get_unresolved_pending_topups(account_id)
     assert len(pending) == 1
     assert pending[0]["expected_amount"] == 200.0
@@ -2267,7 +2267,7 @@ def test_autotopup_job_runner_creates_pending_not_a_transaction(client):
 @pytest.mark.api
 def test_autotopup_confirm_posts_cash_transaction_and_updates_balance(client):
     account_id = _create_account(client, initial_cash=1000.0)
-    import database as _db
+    from db import database as _db
     pending_id = _db.create_pending_topup(account_id, "2026-06-26", 250.0)
 
     resp = client.post(f"/api/accounts/{account_id}/autotopup/confirm", json={
@@ -2291,7 +2291,7 @@ def test_autotopup_confirm_posts_cash_transaction_and_updates_balance(client):
 @pytest.mark.api
 def test_autotopup_confirm_rejects_already_resolved_pending(client):
     account_id = _create_account(client)
-    import database as _db
+    from db import database as _db
     pending_id = _db.create_pending_topup(account_id, "2026-06-26", 100.0)
     client.post(f"/api/accounts/{account_id}/autotopup/dismiss", json={"pending_id": pending_id})
 
@@ -2310,7 +2310,7 @@ def test_autotopup_confirm_rejects_pending_id_belonging_to_another_account(clien
     the Trading-type gate."""
     account_a = _create_account(client, initial_cash=0.0)
     account_b = _create_account(client, initial_cash=0.0)
-    import database as _db
+    from db import database as _db
     pending_id = _db.create_pending_topup(account_a, "2026-06-26", 100.0)
 
     resp = client.post(f"/api/accounts/{account_b}/autotopup/confirm", json={
@@ -2330,7 +2330,7 @@ def test_autotopup_confirm_rejects_pending_id_belonging_to_another_account(clien
 @pytest.mark.api
 def test_autotopup_dismiss_does_not_post_a_transaction(client):
     account_id = _create_account(client, initial_cash=1000.0)
-    import database as _db
+    from db import database as _db
     pending_id = _db.create_pending_topup(account_id, "2026-06-26", 250.0)
 
     resp = client.post(f"/api/accounts/{account_id}/autotopup/dismiss", json={"pending_id": pending_id})
@@ -2346,7 +2346,7 @@ def test_autotopup_dismiss_does_not_post_a_transaction(client):
 @pytest.mark.api
 def test_autotopup_pending_topups_stack_and_resolve_independently(client):
     account_id = _create_account(client)
-    import database as _db
+    from db import database as _db
     pid1 = _db.create_pending_topup(account_id, "2026-05-26", 100.0)
     pid2 = _db.create_pending_topup(account_id, "2026-06-26", 100.0)
 
@@ -2363,7 +2363,7 @@ def test_autotopup_pending_topups_stack_and_resolve_independently(client):
 @pytest.mark.api
 def test_list_accounts_includes_pending_topups_for_trading(client):
     account_id = _create_account(client)
-    import database as _db
+    from db import database as _db
     _db.create_pending_topup(account_id, "2026-06-26", 100.0)
 
     resp = client.get("/api/accounts")
@@ -2392,15 +2392,15 @@ def test_portfolio_totals_happy_path_with_trading_account(client):
         assert key in data, f"Missing '{key}' in portfolio-totals response: {data}"
     assert data["account_count"] >= 1
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_ha_reads_use_persisted_fx_quote_instead_of_awaiting_yahoo(client):
     import time
-    import database as _db
-    from db_helpers import upsert_fx_quote
+    from db import database as _db
+    from db.helpers import upsert_fx_quote
     from yahoo_engine import yahoo_engine
 
     conn = None
@@ -2431,7 +2431,7 @@ def test_ha_reads_use_persisted_fx_quote_instead_of_awaiting_yahoo(client):
 
 @pytest.mark.api
 def test_portfolio_totals_zero_trading_accounts_returns_all_zero_shape(client):
-    import database as _db
+    from db import database as _db
     for acc in _db.get_accounts():
         if acc["account_type"] == "Trading":
             _db.soft_delete_account(acc["id"])
@@ -2514,7 +2514,7 @@ def test_refresh_now_invokes_background_task_functions(client):
     mock_notify.assert_called_once()
     assert mock_notify.call_args[0][0] == "ha_refresh_now_status"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2554,7 +2554,7 @@ def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client)
     mock_fetch.assert_called_once()
     assert "ZZTRIGGERREF" in mock_fetch.call_args[0][0]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2569,7 +2569,7 @@ def test_holdings_list_does_not_trigger_refresh_for_cached_ticker_when_market_cl
             "update_cash": True,
         })
     import time
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     conn.execute(
         "INSERT OR REPLACE INTO market_pulse_cache "
@@ -2586,7 +2586,7 @@ def test_holdings_list_does_not_trigger_refresh_for_cached_ticker_when_market_cl
     assert resp.status_code == 200
     mock_fetch.assert_not_called()
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2610,7 +2610,7 @@ def test_holdings_list_bootstraps_missing_ticker_even_when_market_closed(client)
     mock_fetch.assert_called_once()
     assert "ZZBOOTSTRAPREF" in mock_fetch.call_args[0][0]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2632,7 +2632,7 @@ def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(clie
     mock_fetch.assert_called_once()
     assert "ZZPTTRIGGERREF" in mock_fetch.call_args[0][0]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2656,7 +2656,7 @@ def test_price_refresh_is_followed_by_a_portfolio_totals_refresh(client):
     assert resp.status_code == 200
     assert order == ["fetch", "refresh"]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2689,7 +2689,7 @@ def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(cli
     mock_fetch.assert_called_once()
     assert "ZZLWMTRIGGERREF" in mock_fetch.call_args[0][0]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2712,7 +2712,7 @@ def test_refresh_now_excludes_treasury_bill_synthetic_ticker(client):
     portfolio_call_tickers = mock_fetch.call_args_list[0].args[0]
     assert not any(t.startswith("TBILL-") for t in portfolio_call_tickers)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2730,7 +2730,7 @@ def test_refresh_now_notifies_error_on_failure(client):
     assert mock_notify.call_args[0][0] == "ha_refresh_now_status"
     assert mock_notify.call_args[0][1] == "Error"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2754,13 +2754,13 @@ def test_accounts_list_with_metrics_happy_path_with_trading_account(client):
     ):
         assert key in row, f"Missing '{key}' in list-with-metrics account row: {row}"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_accounts_list_with_metrics_zero_trading_accounts_returns_empty_list(client):
-    import database as _db
+    from db import database as _db
     for acc in _db.get_accounts():
         if acc["account_type"] == "Trading":
             _db.soft_delete_account(acc["id"])
@@ -2799,7 +2799,7 @@ def test_api_holdings_list_status_success(client):
     ):
         assert key in row, f"Missing '{key}' in holdings-list row: {row}"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2820,7 +2820,7 @@ def test_api_other_accounts_list_status_success(client):
         assert key in row, f"Missing '{key}' in other-accounts-list row: {row}"
     assert row["account_type"] == "Pension"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2842,13 +2842,13 @@ def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
     assert resp2.status_code == 200
     assert _json(resp2)["status"] == "success"
 
-    from db_accounts import get_all_holding_price_limits
+    from db.accounts import get_all_holding_price_limits
     limits = get_all_holding_price_limits()[(account_id, "ZZLIMITAPI")]
     assert limits["low_limit"] == 10.0
     assert limits["high_limit"] == 20.0
 
     _drop_limit_rows(account_id)
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -2995,7 +2995,7 @@ def test_create_transaction_without_an_available_exchange_rate_is_rejected(clien
         })
     assert resp.status_code == 422
     assert "exchange rate" in _json(resp)["message"]
-    import database as _db
+    from db import database as _db
     assert _db.get_transactions(account_id) == []
     _db.soft_delete_account(account_id)
 
@@ -3044,12 +3044,12 @@ def test_holding_price_limit_accepts_null_to_clear_a_limit(client):
     assert resp.status_code == 200
     mock_set.assert_called_once_with(account_id, "ZZNULL", low_limit=None)
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 def _stored_limits(account_id):
-    from db_accounts import get_all_holding_price_limits
+    from db.accounts import get_all_holding_price_limits
     return {t: v for (a, t), v in get_all_holding_price_limits().items() if a == account_id}
 
 
@@ -3065,7 +3065,7 @@ def test_holding_price_limit_unknown_account_is_404_and_stores_nothing(client):
 
 @pytest.mark.api
 def test_holding_price_limit_soft_deleted_account_is_404(client):
-    import database as _db
+    from db import database as _db
     with patch("api.routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitDeletedAcc")
     _post_txn(client, account_id, "Buy", "ZZDELETED", 5)
@@ -3080,7 +3080,7 @@ def test_holding_price_limit_soft_deleted_account_is_404(client):
 
 @pytest.mark.api
 def test_holding_price_limit_pension_account_is_400(client):
-    import database as _db
+    from db import database as _db
     with patch("api.routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitPensionAcc", account_type="Pension")
 
@@ -3094,7 +3094,7 @@ def test_holding_price_limit_pension_account_is_400(client):
 
 @pytest.mark.api
 def test_holding_price_limit_ticker_not_held_is_404_and_stores_nothing(client):
-    import database as _db
+    from db import database as _db
     with patch("api.routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitNotHeldAcc")
     _post_txn(client, account_id, "Buy", "ZZHELD", 5)
@@ -3109,7 +3109,7 @@ def test_holding_price_limit_ticker_not_held_is_404_and_stores_nothing(client):
 
 @pytest.mark.api
 def test_holding_price_limit_fully_sold_position_is_404(client):
-    import database as _db
+    from db import database as _db
     with patch("api.routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitSoldAcc")
     _post_txn(client, account_id, "Buy", "ZZSOLD", 5)
@@ -3125,7 +3125,7 @@ def test_holding_price_limit_fully_sold_position_is_404(client):
 
 @pytest.mark.api
 def test_holding_price_limit_normalises_ticker_before_storing(client):
-    import database as _db
+    from db import database as _db
     with patch("api.routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitCaseAcc")
     _post_txn(client, account_id, "Buy", "ZZCASE", 5)
@@ -3141,7 +3141,7 @@ def test_holding_price_limit_normalises_ticker_before_storing(client):
 
 @pytest.mark.api
 def test_holding_price_limit_watchlist_requires_a_watched_ticker(client):
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
     _db.add_watchlist_item(wl_id, "ZZWATCHED", "Watched Co", "USD", "EQUITY", "NYSE")
     try:
@@ -3158,7 +3158,7 @@ def test_holding_price_limit_watchlist_requires_a_watched_ticker(client):
         assert "ZZUNWATCHED" not in _stored_limits(wl_id)
     finally:
         _db.remove_watchlist_ticker(wl_id, "ZZWATCHED")
-        from database import get_connection
+        from db.database import get_connection
         conn = get_connection()
         try:
             conn.execute("DELETE FROM holding_price_limits WHERE account_id = ? AND ticker LIKE 'ZZ%'", (wl_id,))
@@ -3203,7 +3203,7 @@ def test_import_csv_over_the_size_cap_returns_413_without_parsing(client):
     assert _json(resp)["status"] == "error"
     mock_import.assert_not_called()
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -3216,7 +3216,7 @@ def test_price_history_import_csv_body_over_the_cap_returns_422(client):
     })
     assert resp.status_code == 422
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -3230,7 +3230,7 @@ def test_price_history_import_csv_over_the_row_cap_returns_422(client):
     assert resp.status_code == 422
     assert "more than 1 rows" in _json(resp)["message"]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
@@ -3247,7 +3247,7 @@ def test_create_transaction_rejects_an_unsafe_ticker_before_any_yahoo_work(clien
     assert "ticker" in _json(resp)["message"]
     mock_profile.assert_not_called()
 
-    import database as _db
+    from db import database as _db
     assert _db.get_transactions(account_id) == []
     _db.soft_delete_account(account_id)
 
@@ -3264,14 +3264,14 @@ def test_update_transaction_rejects_an_unsafe_ticker(client):
     assert resp.status_code == 422
     assert "ticker" in _json(resp)["message"]
 
-    import database as _db
+    from db import database as _db
     assert _db.get_transaction(txn_id)["ticker"] == "MSFT"
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_watchlist_items_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
-    import database as _db
+    from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
     with patch("api.routes_accounts.resolve_watchlist_metadata") as mock_meta:
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "../X"})
@@ -3291,13 +3291,13 @@ def test_pension_benchmark_config_rejects_an_unsafe_ticker_and_keeps_the_saved_l
     tickers = {t["ticker"] for t in _json(client.get(f"/api/accounts/{account_id}/benchmark-config"))["tickers"]}
     assert "../X" not in tickers and "URTH" in tickers
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_account(account_id)
 
 
 @pytest.mark.api
 def test_portfolio_totals_route_reuses_its_answer_until_refresh_now(client):
-    import database as _db
+    from db import database as _db
     import portfolio_metrics_engine
 
     calls = []
@@ -3335,7 +3335,7 @@ def _post_dividend(client, account_id, ticker, **extra):
 
 @pytest.mark.api
 def test_dividend_is_rejected_for_a_ticker_never_held_in_the_account(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client)
     other_id = _create_account(client, name="Other Dividend Account")
     try:
@@ -3352,7 +3352,7 @@ def test_dividend_is_rejected_for_a_ticker_never_held_in_the_account(client):
 
 @pytest.mark.api
 def test_dividend_is_accepted_for_open_and_closed_positions_case_insensitively(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client)
     try:
         _post_txn(client, account_id, "Buy", "ZZDIVOPEN", 5)
@@ -3366,7 +3366,7 @@ def test_dividend_is_accepted_for_open_and_closed_positions_case_insensitively(c
 
 @pytest.mark.api
 def test_dividend_edit_cannot_move_to_an_unheld_ticker_but_unchanged_ticker_stays_editable(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client)
     try:
         _post_txn(client, account_id, "Buy", "ZZDIVEDIT", 5)
@@ -3390,7 +3390,7 @@ def test_dividend_edit_cannot_move_to_an_unheld_ticker_but_unchanged_ticker_stay
 
 @pytest.mark.api
 def test_held_tickers_endpoint_lists_buy_sell_tickers_only(client):
-    import database as _db
+    from db import database as _db
     account_id = _create_account(client)
     try:
         for ticker in ("ZZHELDB", "ZZHELDA"):

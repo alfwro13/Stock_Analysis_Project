@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from database import create_account, get_connection, get_performance_cache
+from db.database import create_account, get_connection, get_performance_cache
 from intraday_orchestrator import IntradayOrchestrator, format_currency, build_stock_url
 
 

@@ -12,9 +12,9 @@ from pathlib import Path, PurePosixPath
 from typing import Optional
 from urllib.parse import quote
 
-import db_mcp_oauth
+from db import mcp_oauth as db_mcp_oauth
 from config import BASE_DIR, DATA_DIR, DB_PATH, load_config
-from database import DatabaseInUse, database_swap_gate, get_connection
+from db.database import DatabaseInUse, database_swap_gate, get_connection
 from notification_engine import notify
 
 logger = logging.getLogger(__name__)

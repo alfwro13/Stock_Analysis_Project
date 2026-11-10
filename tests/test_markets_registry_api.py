@@ -30,7 +30,7 @@ _SAMPLE_BODY = {
 
 
 def _cleanup(ticker: str):
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     conn.execute("DELETE FROM market_ticker_registry WHERE ticker = ?", (ticker,))
     conn.commit()
@@ -45,7 +45,7 @@ def test_create_ticker_registry_row(client):
     try:
         assert resp.status_code == 200
         assert _json(resp).get("status") == "success"
-        import database as _db
+        from db import database as _db
         row = _db.get_ticker_registry_row("^TSTIDX")
         assert row is not None
         assert row["display_name"] == "Test Index"
@@ -89,7 +89,7 @@ def test_create_accepts_recognized_exchange(client):
     resp = client.post("/api/markets/registry", json={**_SAMPLE_BODY, "exchange": "KRX"})
     try:
         assert resp.status_code == 200
-        import database as _db
+        from db import database as _db
         row = _db.get_ticker_registry_row("^TSTIDX")
         assert row["exchange"] == "KRX"
     finally:
@@ -102,7 +102,7 @@ def test_update_rejects_unrecognized_exchange(client):
     try:
         resp = client.put("/api/markets/registry/^TSTIDX", json={**_SAMPLE_BODY, "exchange": "krx"})
         assert resp.status_code == 422
-        import database as _db
+        from db import database as _db
         row = _db.get_ticker_registry_row("^TSTIDX")
         assert row["exchange"] == "LSE"
     finally:
@@ -116,7 +116,7 @@ def test_update_ticker_registry_row(client):
         updated = {**_SAMPLE_BODY, "display_name": "Updated Test Index"}
         resp = client.put("/api/markets/registry/^TSTIDX", json=updated)
         assert resp.status_code == 200
-        import database as _db
+        from db import database as _db
         row = _db.get_ticker_registry_row("^TSTIDX")
         assert row["display_name"] == "Updated Test Index"
     finally:
@@ -135,7 +135,7 @@ def test_delete_ticker_registry_row_soft_deletes(client):
     try:
         resp = client.delete("/api/markets/registry/^TSTIDX")
         assert resp.status_code == 200
-        import database as _db
+        from db import database as _db
         row = _db.get_ticker_registry_row("^TSTIDX")
         assert row is not None
         assert row["enabled"] == 0
@@ -169,7 +169,7 @@ def test_create_rejects_an_unsafe_ticker_or_future_ticker(client):
         resp = client.post("/api/markets/registry", json=body)
         assert resp.status_code == 422, body
         assert "ticker" in _json(resp)["message"]
-    import database as _db
+    from db import database as _db
     assert _db.get_ticker_registry_row("^TSTIDX") is None
     assert _db.get_ticker_registry_row("../X") is None
 
@@ -180,7 +180,7 @@ def test_update_rejects_an_unsafe_future_ticker_and_keeps_the_row(client):
     try:
         resp = client.put("/api/markets/registry/^TSTIDX", json={**_SAMPLE_BODY, "future_ticker": "../X"})
         assert resp.status_code == 422
-        import database as _db
+        from db import database as _db
         assert _db.get_ticker_registry_row("^TSTIDX")["future_ticker"] is None
     finally:
         _cleanup("^TSTIDX")

@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 import candlestick_trigger_engine
 import double_top_bottom_engine
 import flag_engine
@@ -74,7 +74,7 @@ class TestGetTickerList:
         engine = PatternDetectionEngine(_CFG)
         engine.monitor_portfolio = False
         assert engine.monitor_watchlist is False
-        with patch("database.get_watchlist_tickers", return_value=["NVDA"]) as mock_wl:
+        with patch("db.database.get_watchlist_tickers", return_value=["NVDA"]) as mock_wl:
             tickers = engine._get_ticker_list()
         mock_wl.assert_not_called()
         assert "NVDA" not in tickers
@@ -83,7 +83,7 @@ class TestGetTickerList:
         engine = PatternDetectionEngine(_CFG)
         engine.monitor_portfolio = False
         engine.monitor_watchlist = True
-        with patch("database.get_watchlist_tickers", return_value=["nvda"]):
+        with patch("db.database.get_watchlist_tickers", return_value=["nvda"]):
             tickers = engine._get_ticker_list()
         assert "NVDA" in tickers
 
@@ -617,7 +617,7 @@ class TestResultsAPIDirectionAndScope:
         engine._save_results([TestSaveResults._row(ticker, family="double_top_bottom", pattern_type="double_bottom")])
         try:
             with patch("accounts_engine.get_combined_holdings", return_value={ticker: {"ticker": ticker}}), \
-                 patch("database.get_watchlist_tickers", return_value=[]):
+                 patch("db.database.get_watchlist_tickers", return_value=[]):
                 resp = client.get(
                     "/api/pattern-detection/results"
                 )

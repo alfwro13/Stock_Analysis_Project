@@ -18,11 +18,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import database as db
+from db import database as db
 import strategy_backtest_data as sbd
 import strategy_backtest_reads as sbq
 import strategy_backtest_runs as sbr
-from database import add_transaction, create_account
+from db.database import add_transaction, create_account
 from strategy_backtest_engine import InsufficientHistory
 from xray_engine import resolve_scope_holdings
 

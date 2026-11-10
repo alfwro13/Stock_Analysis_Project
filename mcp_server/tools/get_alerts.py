@@ -7,7 +7,7 @@ from pydantic import Field
 from alert_referee_engine import CONFLUENCE_ENGINE, TRAP_MONITOR_ENGINE, get_recent_evaluations
 from bull_bear_trap_engine import ALERT_PHASES, phase_label
 from constants import MCP_ALERT_TEXT_MAX_CHARS, MCP_ALERTS_MAX_DAYS, MCP_ALERTS_MAX_ROWS
-from db_helpers import get_recent_alert_notifications, get_trap_monitor_results, parse_utc_epoch
+from db.helpers import get_recent_alert_notifications, get_trap_monitor_results, parse_utc_epoch
 from utils import clean_display_text
 
 from ..envelope import envelope, iso_from_stored_utc

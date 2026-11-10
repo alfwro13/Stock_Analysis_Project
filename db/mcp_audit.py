@@ -1,7 +1,7 @@
 import logging
 from typing import List, Tuple
 
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 

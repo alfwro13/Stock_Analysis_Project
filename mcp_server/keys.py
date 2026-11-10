@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Optional
 
-import db_mcp_keys
+from db import mcp_keys as db_mcp_keys
 import time_engine
 from constants import MCP_KEYS_MAX, MCP_KEY_LAST_USED_WRITE_SECONDS
 

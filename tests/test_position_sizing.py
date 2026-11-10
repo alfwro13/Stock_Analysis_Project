@@ -27,7 +27,7 @@ from typing import Optional
 
 import pytest
 
-import database as _db_module
+from db import database as _db_module
 from position_sizing import calculate_position_size, passes_risk_reward_gate, passes_risk_reward_gate_batch
 
 

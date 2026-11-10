@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
-from database import get_connection, get_auction_summary
+from db.database import get_connection, get_auction_summary
 from model_compatibility_engine import dump_sklearn_artifact
 from config import HISTORICAL_DIR
 from sentiment_engine import get_latest_fear_greed

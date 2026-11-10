@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 import market_pulse as _mp
 import market_pulse_write as _mw
 
@@ -980,7 +980,7 @@ class TestTickerRegistryAccessors:
         assert "^GSPC" in tickers
 
     def test_reload_ticker_registry_picks_up_new_row(self):
-        import db_helpers
+        from db import helpers as db_helpers
         db_helpers.upsert_ticker_registry_row(
             ticker="_TST_REG_TICK", display_name="Test Reg Tick", region="Europe",
             asset_type="Index", exchange="LSE", currency="GBP",
@@ -1000,7 +1000,7 @@ class TestTickerRegistryAccessors:
 
 @pytest.mark.parametrize("price", [0.81, 0.0, float("nan"), float("inf")])
 def test_live_fx_writer_preserves_successful_snapshot(price):
-    from db_helpers import get_cached_fx_quote, upsert_fx_quote
+    from db.helpers import get_cached_fx_quote, upsert_fx_quote
 
     ticker = "USDGBP=X"
     _clear_cache(ticker, "GBPUSD=X")
@@ -1018,7 +1018,7 @@ def test_live_fx_writer_preserves_successful_snapshot(price):
 
 
 def test_pulse_fx_success_then_failed_heartbeat_keeps_success_time():
-    from db_helpers import get_cached_fx_quote
+    from db.helpers import get_cached_fx_quote
 
     ticker = "USDGBP=X"
     _clear_cache(ticker, "GBPUSD=X")
@@ -1047,7 +1047,7 @@ def test_pulse_fx_success_then_failed_heartbeat_keeps_success_time():
 
 
 def test_legacy_pulse_heartbeat_is_not_successful_fx_quote():
-    from db_helpers import get_cached_fx_quote
+    from db.helpers import get_cached_fx_quote
 
     ticker = "USDGBP=X"
     _clear_cache(ticker, "GBPUSD=X")

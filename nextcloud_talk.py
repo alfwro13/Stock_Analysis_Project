@@ -2,7 +2,7 @@ import logging
 import os
 import requests
 
-from database import record_nextcloud_talk_attempt
+from db.database import record_nextcloud_talk_attempt
 
 logger = logging.getLogger(__name__)
 

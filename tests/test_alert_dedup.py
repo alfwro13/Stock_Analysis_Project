@@ -28,7 +28,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 
 
 # ── shared helpers ────────────────────────────────────────────────────────────
@@ -863,7 +863,7 @@ class TestDipRadarDisarmAlert:
     def test_disarm_stores_parseable_last_fired_utc(self):
         """last_fired_utc written by _disarm_alert must parse with %Y-%m-%d %H:%M:%S."""
         from intraday_bottom_engine import IntradayBottomEngine
-        import database as _db_mod
+        from db import database as _db_mod
         engine = IntradayBottomEngine.__new__(IntradayBottomEngine)
         engine._get_connection = lambda: _conn()
         # Arm first so there is a row to disarm

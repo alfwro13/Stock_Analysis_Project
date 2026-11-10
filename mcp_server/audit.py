@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-import db_mcp_audit
+from db import mcp_audit as db_mcp_audit
 from constants import MCP_ACTIVITY_ROWS, MCP_AUDIT_ADDRESS_MAX_CHARS, MCP_AUDIT_QUEUE_MAX, MCP_AUDIT_TEXT_MAX_CHARS, MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE
 from utils import clean_display_text
 

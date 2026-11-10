@@ -76,7 +76,7 @@ _tmpdb = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 TEST_DB_PATH = Path(_tmpdb.name)
 _tmpdb.close()
 
-import database as _db_module        # noqa: E402
+from db import database as _db_module        # noqa: E402
 _db_module.DB_PATH = TEST_DB_PATH    # redirect before init_db()
 
 import config as _config_module      # noqa: E402
@@ -85,7 +85,7 @@ _config_module.DB_PATH = TEST_DB_PATH
 # db_schema.WATCHLIST_PATH is bound at import time from config; point it at a
 # nonexistent path so init_db()'s one-time watchlist.json import is a no-op
 # during tests instead of pulling in the real data/watchlist.json.
-import db_schema as _db_schema_module  # noqa: E402
+from db import schema as _db_schema_module  # noqa: E402
 _db_schema_module.WATCHLIST_PATH = TEST_DB_PATH.with_suffix(".watchlist.json")
 
 # ── 3. Initialise the schema in the temp DB ───────────────────────────────────

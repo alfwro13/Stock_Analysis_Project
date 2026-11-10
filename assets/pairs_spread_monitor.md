@@ -17,10 +17,10 @@ DB table: `pairs_spread_results`
 The page has a scope toggle, and every scan (scheduled or on-demand) is tagged with one:
 
 - **Portfolio + Watchlist** (`SCOPE_PORTFOLIO_WATCHLIST`) — `accounts_engine.get_combined_holdings().keys()`
-  ∪ `database.get_watchlist_tickers()`. Small, fast, runs on the nightly schedule, fires alerts.
+  ∪ `db.database.get_watchlist_tickers()`. Small, fast, runs on the nightly schedule, fires alerts.
   Mirrors `insider_engine.py`'s portfolio+watchlist union — not Trap Monitor's proxy-basket
   pattern, since Pairs Spread Monitor has no concept of a fixed proxy basket.
-- **Universe** (`SCOPE_UNIVERSE`) — the full market universe via `db_helpers.get_universe_tickers()`
+- **Universe** (`SCOPE_UNIVERSE`) — the full market universe via `db.helpers.get_universe_tickers()`
   (the same `market_universe` table the nightly Quant Scan covers, ~thousands of tickers).
   **On-demand only** — no scheduled job, triggered from the page (`POST /api/pairs-spread/run-universe`
   → `scheduler_jobs.run_pairs_spread_universe_scan()` through `run_manual_job`, not an
@@ -35,7 +35,7 @@ exist in both scopes' result sets without a primary-key collision.
 ## 2. Pairing
 
 1. **Currency bucketing** — each ticker's currency is read from `stock_signals.currency` via
-   the shared `db_helpers.get_ticker_currency_map()` (also used by Trap Monitor), normalized so
+   the shared `db.helpers.get_ticker_currency_map()` (also used by Trap Monitor), normalized so
    `GBp` (LSE pence) and `GBP` collapse to the same bucket. Only tickers in the same currency
    bucket are ever paired; a ticker with no `stock_signals` row (not yet scanned) is dropped
    from the universe entirely.
@@ -79,7 +79,7 @@ Parquet, not SQLite, per the app's dual-storage rule) — `build_chart_series()`
 demand from parquet for the chart endpoint.
 
 Company names are **not** stored on `pairs_spread_results` — `GET /api/pairs-spread/results`
-joins them in at read time via `db_helpers.get_company_names()` (batch query against
+joins them in at read time via `db.helpers.get_company_names()` (batch query against
 `stock_signals.company_name`), consistent with how the rest of the app avoids duplicating
 slowly-changing reference data into every table that references a ticker.
 

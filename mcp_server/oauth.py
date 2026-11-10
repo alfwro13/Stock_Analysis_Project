@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import config
-import db_mcp_oauth
+from db import mcp_oauth as db_mcp_oauth
 from constants import (
     MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_CONNECTED_APPS_MAX, MCP_OAUTH_GRANT_DAYS,
     MCP_OAUTH_LAST_USED_WRITE_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_PENDING_MAX,

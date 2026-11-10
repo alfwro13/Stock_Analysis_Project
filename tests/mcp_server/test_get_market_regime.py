@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from database import get_connection
+from db.database import get_connection
 from mcp_server.tools import get_market_regime as tool
 
 from .helpers import call, table_counts, tool_data

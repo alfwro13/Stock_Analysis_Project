@@ -598,7 +598,7 @@ def test_post_settings_with_position_sizing(client, step_up_headers):
 @pytest.mark.api
 def test_post_watchlist_add_with_mock(client):
     """POST /api/watchlist/add inserts into watchlist_items (Yahoo profile/history calls mocked out)."""
-    import database as _db
+    from db import database as _db
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
         patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
@@ -618,7 +618,7 @@ def test_post_watchlist_add_with_mock(client):
 def test_post_watchlist_add_unknown_ticker_triggers_yahoo_fetch(client):
     """A ticker with no existing asset_profiles row must get an immediate profile + price-history
     fetch queued, not wait for the next nightly scan cycle."""
-    import database as _db
+    from db import database as _db
     fake_meta = {"company_name": "Zzz Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
         patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
@@ -638,7 +638,7 @@ def test_post_watchlist_add_unknown_ticker_triggers_yahoo_fetch(client):
 @pytest.mark.api
 def test_post_watchlist_add_known_ticker_skips_yahoo_fetch(client):
     """A ticker that already has an asset_profiles row must not re-trigger a background fetch."""
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute(
@@ -671,7 +671,7 @@ def test_post_watchlist_add_missing_stock_signals_row_triggers_analyze(client):
     (e.g. profile/parquet were fetched but the quant scan never ran) must still get an immediate
     analyze_ticker() call queued — otherwise it silently never appears on the Watchlist page,
     since that page's query filters FROM stock_signals."""
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute(
@@ -710,7 +710,7 @@ def test_post_watchlist_add_missing_stock_signals_row_triggers_analyze(client):
 @pytest.mark.api
 def test_post_watchlist_add_existing_stock_signals_row_skips_analyze(client):
     """A ticker that already has a stock_signals row must not re-trigger analyze_ticker()."""
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute(
@@ -747,7 +747,7 @@ def test_post_watchlist_add_existing_stock_signals_row_skips_analyze(client):
 @pytest.mark.api
 def test_post_watchlist_remove_with_mock(client):
     """POST /api/watchlist/remove deletes from watchlist_items."""
-    import database as _db
+    from db import database as _db
     wl = _db.get_watchlist_account()
     _db.add_watchlist_item(wl["id"], "MSFT", "Microsoft Corp.", "USD", "EQUITY", "NYSE")
 
@@ -943,7 +943,7 @@ class TestImportServerJobGuard:
     def _csv_dir(self, tmp_path, monkeypatch):
         import api.routes_triggers
         from api.deps import limiter
-        from database import get_connection
+        from db.database import get_connection
         limiter.reset()
         monkeypatch.setattr(api.routes_triggers, "IMPORT_DIR", tmp_path)
         (tmp_path / "guard.csv").write_text(
@@ -962,7 +962,7 @@ class TestImportServerJobGuard:
                 conn.close()
 
     def _universe_row(self):
-        from database import get_connection
+        from db.database import get_connection
         conn = None
         try:
             conn = get_connection()
@@ -1015,7 +1015,7 @@ class TestImportServerTickerValidation:
     def _csv_dir(self, tmp_path, monkeypatch):
         import api.routes_triggers
         from api.deps import limiter
-        from database import get_connection
+        from db.database import get_connection
         limiter.reset()
         monkeypatch.setattr(api.routes_triggers, "IMPORT_DIR", tmp_path)
         header = "ticker,company_name,sector,industry,currency,country,exchange\n"
@@ -1036,7 +1036,7 @@ class TestImportServerTickerValidation:
                 conn.close()
 
     def _stored(self):
-        from database import get_connection
+        from db.database import get_connection
         conn = None
         try:
             conn = get_connection()
@@ -1091,7 +1091,7 @@ class TestIntradayDipRadar:
     @pytest.fixture(autouse=True)
     def _clean_monitors(self):
         yield
-        from database import get_connection
+        from db.database import get_connection
         conn = None
         try:
             conn = get_connection()
@@ -1114,7 +1114,7 @@ class TestIntradayDipRadar:
         import sys
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        import database as _db
+        from db import database as _db
         from datetime import date
 
         client.post("/api/intraday-monitor/add", json={"ticker": "MSFT"})
@@ -1144,7 +1144,7 @@ class TestIntradayDipRadar:
         import sys
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        import database as _db
+        from db import database as _db
 
         client.post("/api/intraday-monitor/add", json={"ticker": "META"})
         client.post("/api/intraday-monitor/remove", json={"ticker": "META"})
@@ -1170,7 +1170,7 @@ class TestIntradayDipRadar:
         import sys
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        import database as _db
+        from db import database as _db
 
         client.post("/api/intraday-monitor/add", json={"ticker": "NVDA"})
         client.post("/api/intraday-monitor/add", json={"ticker": "NVDA"})
@@ -1368,7 +1368,7 @@ def test_portfolio_optimizer_run_returns_200_for_empty_scope(client):
     """POST /api/portfolio-optimizer/run must return 200 with status=error (not a 500) for a
     freshly created account with zero holdings — mirrors optimize_portfolio()'s
     RuntimeError-to-error-status contract for a real, holdings-free account id."""
-    import database as _db
+    from db import database as _db
 
     account_id = _db.create_account("POA Empty Test", "GBP")
     resp = client.post("/api/portfolio-optimizer/run", json={"account_id": f"acct:{account_id}"})
@@ -1384,7 +1384,7 @@ def test_portfolio_optimizer_run_full_report(client):
     import json as _json_mod
     import numpy as np
     import pandas as pd
-    import database as _db
+    from db import database as _db
     from xray_engine import BENCHMARK_SYMBOL
 
     conn = _db.get_connection()
@@ -1434,7 +1434,7 @@ def test_portfolio_optimizer_run_long_only_respects_cap(client):
     import json as _json_mod
     import numpy as np
     import pandas as pd
-    import database as _db
+    from db import database as _db
     from xray_engine import BENCHMARK_SYMBOL
 
     tickers = ("POAL1", "POAL2", "POAL3", "POAL4")
@@ -2003,7 +2003,7 @@ def test_post_learn_answer_creates_state_and_advances_box(client):
     assert data["box"] == 1
     assert data["term_key"] == "market-capitalisation"
 
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         row = conn.execute(
@@ -2256,7 +2256,7 @@ def test_post_ui_preferences_views_rejects_invalid_filter_logic(client):
 
 @pytest.mark.api
 def test_post_learn_session_with_study_all_includes_locked_levels(client):
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute("DELETE FROM learn_term_state")
@@ -2317,7 +2317,7 @@ def test_post_column_order_rejects_invalid_types(client, endpoint, payload):
 @pytest.mark.api
 @pytest.mark.parametrize("success", [True, False])
 def test_fx_refresh_awaits_force_attempt_and_retains_last_good(client, monkeypatch, success):
-    from db_helpers import get_cached_fx_quote, upsert_fx_quote
+    from db.helpers import get_cached_fx_quote, upsert_fx_quote
     from yahoo_engine import yahoo_engine
 
     upsert_fx_quote("CADGBP=X", 0.6, 1000)
@@ -2354,7 +2354,7 @@ def test_fx_refresh_base_currency_needs_no_network(client, monkeypatch, currency
 
 @pytest.mark.api
 def test_post_watchlist_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
-    import database as _db
+    from db import database as _db
     with patch("api.routes.resolve_watchlist_metadata") as mock_meta:
         resp = client.post("/api/watchlist/add", json={"ticker": "../X"})
     assert resp.status_code == 422
@@ -2365,7 +2365,7 @@ def test_post_watchlist_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(clie
 
 @pytest.mark.api
 def test_post_intraday_monitor_add_rejects_an_unsafe_ticker(client):
-    import database as _db
+    from db import database as _db
     resp = client.post("/api/intraday-monitor/add", json={"ticker": "../X"})
     assert resp.status_code == 422
     conn = _db.get_connection()

@@ -8,7 +8,7 @@ import pandas as pd
 from typing import Set, List, Dict, Any, Optional, Sequence
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
-from database import (
+from db.database import (
     get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers,
     get_stock_signal_tickers,
 )
@@ -410,7 +410,7 @@ _EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}
 
 def run_yfinance_smoke_test() -> bool:
     """Writes to the notifications table on failure so it's visible in the UI, not just server logs."""
-    from database import log_notification
+    from db.database import log_notification
     try:
         _result = yahoo_engine.get_price_history(["SPY"], period="5d", interval="1d")
         df = _result.get("SPY", pd.DataFrame())

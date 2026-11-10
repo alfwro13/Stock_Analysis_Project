@@ -20,8 +20,8 @@ def _live_job_ids():
 
 @pytest.fixture
 def pension(client):
-    import database as _db
-    from db_account_reminders import get_reminders
+    from db import database as _db
+    from db.account_reminders import get_reminders
     from scheduler_jobs import unregister_account_reminder_job
 
     account_id = _json(client.post("/api/accounts", json={
@@ -55,7 +55,7 @@ def _add_reminder(client, account_id, **overrides) -> int:
 
 
 def _stage_pending(account_id, reminder_id, reminder_type="pay_in", due_date="2026-11-01") -> int:
-    from db_account_reminders import create_pending_reminder
+    from db.account_reminders import create_pending_reminder
     return create_pending_reminder({"id": reminder_id, "account_id": account_id, "reminder_type": reminder_type}, due_date)
 
 
@@ -107,7 +107,7 @@ def test_reminder_validation_rejects_bad_input(client, pension, body):
 
 @pytest.mark.api
 def test_reminder_endpoints_reject_non_pension_account(client):
-    import database as _db
+    from db import database as _db
     trading_id = _json(client.post("/api/accounts", json={"name": "Reminder Trading", "currency": "GBP", "initial_cash": 0}))["id"]
     try:
         assert client.get(f"/api/accounts/{trading_id}/reminders").status_code == 400
@@ -119,7 +119,7 @@ def test_reminder_endpoints_reject_non_pension_account(client):
 
 @pytest.mark.api
 def test_reminder_of_another_account_is_not_found(client, pension):
-    import database as _db
+    from db import database as _db
     other_id = _db.create_account("Other Reminder Pension", "GBP", account_type="Pension")
     try:
         reminder_id = _add_reminder(client, other_id)
@@ -207,7 +207,7 @@ def test_dismiss_resolves_once_and_only_for_its_own_account(client, pension):
     reminder_id = _add_reminder(client, pension)
     pending_id = _stage_pending(pension, reminder_id)
 
-    import database as _db
+    from db import database as _db
     other_id = _db.create_account("Other Dismiss Pension", "GBP", account_type="Pension")
     try:
         resp = client.post(f"/api/accounts/{other_id}/reminders/pending/{pending_id}/dismiss")
@@ -235,7 +235,7 @@ def test_pay_in_with_pending_id_resolves_the_reminder_with_its_transaction(clien
     assert resp.status_code == 200, resp.text
     txn_id = _json(resp)["txn_id"]
 
-    from db_account_reminders import get_pending_reminder
+    from db.account_reminders import get_pending_reminder
     pending = get_pending_reminder(pending_id)
     assert (pending["status"], pending["txn_id"]) == ("done", txn_id)
 
@@ -251,7 +251,7 @@ def test_admin_fee_with_pending_id_resolves_the_reminder(client, pension):
     })
     assert resp.status_code == 200, resp.text
 
-    from db_account_reminders import get_pending_reminder
+    from db.account_reminders import get_pending_reminder
     assert get_pending_reminder(pending_id)["status"] == "done"
 
 
@@ -267,7 +267,7 @@ def test_recording_the_wrong_kind_of_task_is_refused_before_any_transaction(clie
     assert resp.status_code == 422
     assert pension_units_as_of(pension, "2026-11-30") == 0
 
-    from db_account_reminders import get_pending_reminder
+    from db.account_reminders import get_pending_reminder
     assert get_pending_reminder(pending_id)["status"] == "pending"
 
 

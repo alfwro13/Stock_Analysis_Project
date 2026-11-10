@@ -20,10 +20,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 import ai_engine
-import db_helpers
-import db_schema
+from db import helpers as db_helpers
+from db import schema as db_schema
 import market_pulse as _mp
 import page_data_signal_rows
 import page_data_stock
@@ -80,12 +80,12 @@ class TestOutageRowMigration:
 
 class TestFreshnessHelpers:
     def test_default_age_limit_is_three_days(self):
-        with patch("db_helpers.load_config", return_value={}):
+        with patch("db.helpers.load_config", return_value={}):
             assert db_helpers.sentiment_max_age_days() == 3
 
     def test_configured_age_limit_drives_the_cutoff(self):
         cfg = {"SCHEDULING": {"SENTIMENT_ENGINE": {"MAX_NEWS_AGE_DAYS": 5}}}
-        with patch("db_helpers.load_config", return_value=cfg):
+        with patch("db.helpers.load_config", return_value=cfg):
             assert db_helpers.sentiment_max_age_days() == 5
             cutoff = datetime.strptime(db_helpers.sentiment_fresh_since(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         expected = datetime.now(timezone.utc) - timedelta(days=5)

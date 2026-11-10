@@ -7,7 +7,7 @@ from starlette.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
 import config
-from database import get_connection
+from db.database import get_connection
 
 PUBLIC_HOST = "mcp.awroblew.biz"
 IN_RANGE = "160.79.104.5"

@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 import page_data_stock
-from database import add_transaction, create_account, get_connection
-from db_accounts import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
+from db.database import add_transaction, create_account, get_connection
+from db.accounts import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
 
 from .helpers import ACCOUNT_TABLES, EXPECTED_TOOLS, call, error_text, table_counts, tool_data
 

@@ -22,7 +22,7 @@ import ta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 import alert_referee_engine as are
 from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER, fill_trap_phase_actuals, phase_label
 
@@ -649,7 +649,7 @@ class TestGetTickerList:
         engine.proxy_tickers = []
         engine.monitor_portfolio = False
         assert engine.monitor_watchlist is False
-        with patch("database.get_watchlist_tickers", return_value=["NVDA"]) as mock_wl:
+        with patch("db.database.get_watchlist_tickers", return_value=["NVDA"]) as mock_wl:
             tickers = engine._get_ticker_list()
         mock_wl.assert_not_called()
         assert "NVDA" not in tickers
@@ -659,7 +659,7 @@ class TestGetTickerList:
         engine.proxy_tickers = []
         engine.monitor_portfolio = False
         engine.monitor_watchlist = True
-        with patch("database.get_watchlist_tickers", return_value=["nvda"]):
+        with patch("db.database.get_watchlist_tickers", return_value=["nvda"]):
             tickers = engine._get_ticker_list()
         assert "NVDA" in tickers
 
@@ -669,7 +669,7 @@ class TestGetTickerList:
         engine.monitor_portfolio = False
         engine.monitor_watchlist = True
         engine.ignored_tickers = {"NVDA"}
-        with patch("database.get_watchlist_tickers", return_value=["NVDA", "AMD"]):
+        with patch("db.database.get_watchlist_tickers", return_value=["NVDA", "AMD"]):
             tickers = engine._get_ticker_list()
         assert "NVDA" not in tickers
         assert "AMD" in tickers

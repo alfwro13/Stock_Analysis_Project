@@ -4,7 +4,7 @@ from ftplib import FTP
 from io import BytesIO
 from datetime import datetime, timezone
 
-from database import get_connection, log_notification
+from db.database import get_connection, log_notification
 from outbound_fetch_helpers import fetch_body
 from utils import is_valid_ticker
 

@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 import config
-import db_mcp_keys
-from database import get_connection
+from db import mcp_keys as db_mcp_keys
+from db.database import get_connection
 from .helpers import MCP_KEY, rpc
 
 

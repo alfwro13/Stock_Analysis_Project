@@ -750,7 +750,7 @@ class YahooEngine:
 
     def get_cached_fx_rate(self, pair: str, *, refresh=True, max_age=None) -> dict:
         from config import load_config
-        from db_helpers import get_cached_fx_quote
+        from db.helpers import get_cached_fx_quote
         from cache_refresh_helpers import request_cache_refresh
 
         policy = load_config()["PERFORMANCE"]
@@ -781,7 +781,7 @@ class YahooEngine:
 
     def _fetch_fx_rate(self, pair: str) -> Optional[float]:
         from config import load_config
-        from db_helpers import upsert_fx_quote
+        from db.helpers import upsert_fx_quote
 
         try:
             with _yf_singleton_lock:

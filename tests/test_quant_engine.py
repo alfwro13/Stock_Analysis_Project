@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database
+from db import database
 
 
 def _fake_ohlcv(n: int = 210) -> pd.DataFrame:

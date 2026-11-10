@@ -4,8 +4,8 @@ from typing import Optional
 
 import pandas as pd
 
-from database import get_connection, get_watchlist_tickers
-from db_helpers import ml_fresh_since
+from db.database import get_connection, get_watchlist_tickers
+from db.helpers import ml_fresh_since
 
 logger = logging.getLogger(__name__)
 

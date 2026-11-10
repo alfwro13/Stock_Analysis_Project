@@ -149,7 +149,7 @@ scheduler job (default Mon-Fri 19:25 local, ten minutes after `risk_orchestrator
 
 **Content.** Reads only already-persisted data — it does not recompute anything:
 - Current PHI (score + tier) and VaR% of equity per account scope, from `portfolio_heat_index`.
-- Any held or watched ticker (`db_helpers.get_portfolio_watchlist_tickers()`) whose `atr_stop_loss` rose since the prior trading day. `atr_stop_history` holds the whole scored universe, and a stop (`price − k·ATR`) rises with the price, so an unscoped comparison lists thousands of tickers on a rising day.
+- Any held or watched ticker (`db.helpers.get_portfolio_watchlist_tickers()`) whose `atr_stop_loss` rose since the prior trading day. `atr_stop_history` holds the whole scored universe, and a stop (`price − k·ATR`) rises with the price, so an unscoped comparison lists thousands of tickers on a rising day.
 
 **Two texts.** `build_daily_digest()` returns the full `message` (every rising stop, stored as the in-app row and logged) and a short `talk_message` (the Portfolio Heat Index lines, the number of rising stops and the `RISK_DIGEST_TALK_TOP_MOVERS` largest by percentage rise). The job passes the short one to `notify()` as `nextcloud_text`, so the Nextcloud Talk copy stays under Talk's 32,000-character limit.
 

@@ -1,9 +1,9 @@
 import logging
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from database import get_connection, get_watchlist_tickers
+from db.database import get_connection, get_watchlist_tickers
 from config import load_config
-from db_helpers import filter_equity_tickers
+from db.helpers import filter_equity_tickers
 from yahoo_engine import yahoo_engine
 from notification_engine import notify
 

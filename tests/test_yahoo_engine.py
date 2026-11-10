@@ -1551,9 +1551,9 @@ def test_yahoo_lock_wait_is_measured_for_active_request():
 @pytest.mark.parametrize("age,available,stale", [(20, True, False), (3600, True, True), (604801, False, True)])
 def test_persisted_fx_age_policy(age, available, stale, monkeypatch):
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
 
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -1576,7 +1576,7 @@ def test_persisted_fx_age_policy(age, available, stale, monkeypatch):
 
 def test_cached_fx_max_age_tightens_usable_window_but_never_widens_it():
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
 
     upsert_fx_quote("SEKNOK=X", 1.1, time.time() - 7200)
     engine = YahooEngine()
@@ -1590,7 +1590,7 @@ def test_cached_fx_max_age_tightens_usable_window_but_never_widens_it():
 
 def test_fx_cache_survives_engine_restart_and_reuses_inverse():
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
 
     upsert_fx_quote("CADNZD=X", 1.2, time.time())
     first = YahooEngine().get_cached_fx_rate("CADNZD=X", refresh=False)
@@ -1602,7 +1602,7 @@ def test_fx_cache_survives_engine_restart_and_reuses_inverse():
 
 def test_fx_failed_refresh_retains_quote_and_backs_off(monkeypatch):
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
     import cache_refresh_helpers as refresh_helpers
 
     engine = YahooEngine()
@@ -1621,7 +1621,7 @@ def test_simultaneous_cached_fx_readers_share_blocked_refresh(monkeypatch):
     import threading
     import time
     from concurrent.futures import ThreadPoolExecutor
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
     import cache_refresh_helpers as refresh_helpers
 
     engine = YahooEngine()
@@ -1657,7 +1657,7 @@ def test_missing_cached_fx_is_unavailable_without_network():
 def test_force_fx_refresh_awaits_and_persists_success():
     import threading
     from concurrent.futures import ThreadPoolExecutor
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
     import time
 
     engine = YahooEngine()
@@ -1680,7 +1680,7 @@ def test_force_fx_refresh_awaits_and_persists_success():
 
 def test_invalid_upstream_fx_does_not_replace_last_good_quote():
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
 
     engine = YahooEngine()
     upsert_fx_quote("AUDNZD=X", 1.1, time.time() - 3600)

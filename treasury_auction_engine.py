@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 import time_engine
-from database import get_connection
+from db.database import get_connection
 from notification_engine import notify
 
 logger = logging.getLogger(__name__)

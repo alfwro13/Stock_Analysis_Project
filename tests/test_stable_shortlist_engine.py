@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 import scheduler_jobs
 import stable_shortlist_engine as sse
 from stable_shortlist_engine import (

@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 from config import load_config
-from database import get_connection
+from db.database import get_connection
 from xray_engine import resolve_scope_holdings
 
 logger = logging.getLogger(__name__)

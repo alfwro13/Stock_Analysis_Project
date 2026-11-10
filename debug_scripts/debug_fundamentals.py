@@ -1,6 +1,6 @@
 import sys
 import logging
-from database import get_connection
+from db.database import get_connection
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)

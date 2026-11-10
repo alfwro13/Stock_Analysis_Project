@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Optional
 
 from data_engine import load_or_fetch_daily_history
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 

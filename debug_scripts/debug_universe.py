@@ -1,7 +1,7 @@
 import sys
 import logging
 from config import load_config
-from database import get_connection, get_universe_tickers
+from db.database import get_connection, get_universe_tickers
 from profile_engine import count_pending_profiles
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')

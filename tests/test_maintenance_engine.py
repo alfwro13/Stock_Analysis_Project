@@ -22,11 +22,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 from maintenance_engine import MaintenanceEngine
 from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS
-from db_accounts import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
-from db_helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
+from db.accounts import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
+from db.helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -587,7 +587,7 @@ class TestEnforceGhostfolioDisabled:
 
 
 def test_pulse_pruning_retains_usable_persisted_fx():
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
 
     upsert_fx_quote("ZARJPY=X", 8.0, time.time() - 3 * 86400)
     eng = _engine()

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from api.deps import FiniteModel, enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
 from config import BASE_DIR, load_config, update_config_atomic
 from constants import INVESTMENT_POLICY_MAX_CHARS, MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
-from database import get_connection
+from db.database import get_connection
 from mcp_server import keys as mcp_keys
 from mcp_server.auth import lan_enabled
 from mcp_server.resources import investment_policy

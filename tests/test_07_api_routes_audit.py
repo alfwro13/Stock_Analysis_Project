@@ -316,7 +316,7 @@ class TestAiContagionStatusEndpoint:
         conn.commit()
 
     def test_empty_snapshots_returns_empty_list(self, client):
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             self._cleanup(conn)
@@ -331,7 +331,7 @@ class TestAiContagionStatusEndpoint:
 
     def test_new_format_payload_parsed_correctly(self, client):
         import json
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             self._cleanup(conn)
@@ -349,7 +349,7 @@ class TestAiContagionStatusEndpoint:
 
     def test_legacy_list_payload_parsed_without_crash(self, client):
         import json
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             self._cleanup(conn)
@@ -365,7 +365,7 @@ class TestAiContagionStatusEndpoint:
         assert snap["severity_score"] == 0.0
 
     def test_null_payload_json_does_not_crash(self, client):
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             self._cleanup(conn)
@@ -381,7 +381,7 @@ class TestAiContagionStatusEndpoint:
 
     def test_response_shape_has_required_keys(self, client):
         import json
-        import database
+        from db import database
         conn = database.get_connection()
         try:
             self._cleanup(conn)

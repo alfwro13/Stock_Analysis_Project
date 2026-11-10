@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 

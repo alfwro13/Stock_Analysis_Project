@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from config import load_config
-from database import get_watchlist_tickers
+from db.database import get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
 from utils import normalize_ticker, safe_ticker_filename, time_request_call
 from constants import CSS_VERSION
@@ -45,10 +45,10 @@ def stock_detail(request: Request, ticker: str, embed: bool = False, embed_token
     sector_weightings = parse_json_field(stock_data, 'sector_weightings', ticker)
     days_to_earnings, volatility_date = earnings_timing(stock_data, ticker)
 
-    from db_helpers import get_latest_resolved_earnings_drift
+    from db.helpers import get_latest_resolved_earnings_drift
     latest_resolved_drift = get_latest_resolved_earnings_drift(ticker)
 
-    from db_etf import get_etf_predictor_config_by_ticker
+    from db.etf import get_etf_predictor_config_by_ticker
     etf_predictor_config = get_etf_predictor_config_by_ticker(ticker)
 
     from accounts_engine import get_combined_holdings

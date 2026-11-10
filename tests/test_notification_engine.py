@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import notification_engine as ne
-import database as _db
+from db import database as _db
 
 
 MARKER = "__notif_engine_test__"

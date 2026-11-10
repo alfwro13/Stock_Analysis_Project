@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import db_helpers
+from db import helpers as db_helpers
 from earnings_vol_engine import (
     _earnings_history_gap,
     _get_past_earnings_events,
@@ -205,7 +205,7 @@ def _fake_hist(n=40):
 
 def _run(db_path, tickers):
     with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-         patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+         patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
         return run_earnings_vol_scan(tickers)
 
 
@@ -215,7 +215,7 @@ class TestCachedEarningsDateFilter:
         far_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
         _seed(db_path, "MSFT", far_date)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_ticker_info") as mock_info, \
              patch("earnings_vol_engine.yahoo_engine.get_earnings_dates") as mock_dates, \
              patch("earnings_vol_engine.yahoo_engine.get_options_expirations") as mock_exp:
@@ -251,7 +251,7 @@ class TestCachedEarningsDateFilter:
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
         _seed(db_path, "AAPL", in_window)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_ticker_info") as mock_info, \
              patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
@@ -263,7 +263,7 @@ class TestCachedEarningsDateFilter:
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
         _seed(db_path, "AAPL", in_window)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.yahoo_engine.get_options_expirations", return_value=None):
@@ -275,7 +275,7 @@ class TestCachedEarningsDateFilter:
         _seed(db_path, "FGP.L", in_window)
         future_only = _fake_earnings_dates([pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=30)])
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=future_only), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              caplog.at_level("INFO", logger="earnings_vol_engine"):
@@ -288,7 +288,7 @@ class TestCachedEarningsDateFilter:
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
         _seed(db_path, "AAPL", in_window)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              caplog.at_level("WARNING", logger="earnings_vol_engine"):
@@ -299,7 +299,7 @@ class TestCachedEarningsDateFilter:
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
         _seed(db_path, "NEWB", in_window)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist(12)):
             failed = run_earnings_vol_scan(["NEWB"])
         assert failed == {"NEWB": "fewer than 20 daily bars of price history (12)"}
@@ -310,7 +310,7 @@ class TestCachedEarningsDateFilter:
         flat = _fake_hist()
         flat["Close"] = 50.0
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=flat):
             failed = run_earnings_vol_scan(["FLAT"])
         assert failed == {"FLAT": "price history has no measurable volatility"}
@@ -319,7 +319,7 @@ class TestCachedEarningsDateFilter:
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
         _seed(db_path, "BOOM", in_window)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.get_historical_earnings_drift", side_effect=KeyError("x")):
             failed = run_earnings_vol_scan(["BOOM"])
@@ -342,7 +342,7 @@ class TestCachedEarningsDateFilter:
             20: {"avg_pct": 1.0, "avg_abs_pct": 1.0, "up_count": 2, "sample_size": 4},
         }
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=fake_drift), \
              patch("earnings_vol_engine.get_implied_straddle_move", return_value=(None, 0, None)):
@@ -361,7 +361,7 @@ class TestCachedEarningsDateFilter:
         }
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_ticker_info") as mock_info, \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=fake_drift), \
@@ -397,7 +397,7 @@ class TestCachedEarningsDateFilter:
         }
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=fake_drift), \
              patch("earnings_vol_engine.get_implied_straddle_move", return_value=(None, 0, None)):
@@ -522,7 +522,7 @@ class TestLogNearEarningsPredictions:
         e_date = (date.today() + timedelta(days=2)).strftime("%Y-%m-%d")
         _seed(db_path, "LOGX", e_date)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=self._drift):
             logged = log_near_earnings_predictions(["LOGX"])
@@ -537,7 +537,7 @@ class TestLogNearEarningsPredictions:
         far_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
         _seed(db_path, "LOGFAR", far_date)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             logged = log_near_earnings_predictions(["LOGFAR"])
         assert logged == 0
 
@@ -546,7 +546,7 @@ class TestLogNearEarningsPredictions:
         _seed(db_path, "LOGREF", e_date)
         hist1 = _fake_hist()
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=hist1), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=self._drift):
             log_near_earnings_predictions(["LOGREF"])
@@ -555,7 +555,7 @@ class TestLogNearEarningsPredictions:
         hist2 = hist1.copy()
         hist2["Close"] = hist2["Close"] + 500.0
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=hist2), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=self._drift):
             logged2 = log_near_earnings_predictions(["LOGREF"])
@@ -569,7 +569,7 @@ class TestLogNearEarningsPredictions:
         e_date = (date.today() + timedelta(days=2)).strftime("%Y-%m-%d")
         _seed(db_path, "LOGRES", e_date)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=self._drift):
             log_near_earnings_predictions(["LOGRES"])
@@ -582,7 +582,7 @@ class TestLogNearEarningsPredictions:
         hist2 = _fake_hist().copy()
         hist2["Close"] = hist2["Close"] + 500.0
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=hist2), \
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=self._drift):
             log_near_earnings_predictions(["LOGRES"])
@@ -593,7 +593,7 @@ class TestLogNearEarningsPredictions:
 
 class TestBackfillEarningsDriftOutcomes:
     def test_returns_zero_when_no_pending_rows(self, db_path):
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             assert backfill_earnings_drift_outcomes() == 0
 
     def test_resolves_1d_and_5d_independently_while_20d_pending(self, db_path):
@@ -606,7 +606,7 @@ class TestBackfillEarningsDriftOutcomes:
         _seed_quant_signal_row(db_path, "BFX", d5, 108.0)
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             resolved = backfill_earnings_drift_outcomes()
 
         assert resolved == 2
@@ -623,7 +623,7 @@ class TestBackfillEarningsDriftOutcomes:
         _seed_quant_signal_row(db_path, "BFY", d1, 90.0)  # predicted up, actual down
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             backfill_earnings_drift_outcomes()
 
         row = _read_all(db_path, "SELECT direction_correct_1d FROM earnings_drift_predictions WHERE id=?", row_id)[0]
@@ -639,7 +639,7 @@ class TestBackfillEarningsDriftOutcomes:
         _seed_quant_signal_row(db_path, "BFZ2", d1b, 105.0)
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             resolved = backfill_earnings_drift_outcomes()
 
         assert resolved == 2
@@ -650,7 +650,7 @@ class TestBackfillEarningsDriftOutcomes:
         row_id = _seed_prediction(db_path, "BFPEND", past, 100.0, 2.0, future)
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             resolved = backfill_earnings_drift_outcomes()
 
         assert resolved == 0
@@ -660,7 +660,7 @@ class TestBackfillEarningsDriftOutcomes:
 
 class TestGetEarningsDriftAccuracySummary:
     def test_empty_table_returns_shape(self, db_path):
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             data = get_earnings_drift_accuracy_summary()
         assert data["by_ticker"] == []
         assert data["overall"]["total"] == 0
@@ -672,9 +672,9 @@ class TestGetEarningsDriftAccuracySummary:
         _seed_prediction(db_path, "ACCX", past, 100.0, 2.0, d1)
         _seed_quant_signal_row(db_path, "ACCX", d1, 105.0)
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             backfill_earnings_drift_outcomes()
-            with patch("db_helpers.get_company_names", return_value={"ACCX": "Test Co"}):
+            with patch("db.helpers.get_company_names", return_value={"ACCX": "Test Co"}):
                 data = get_earnings_drift_accuracy_summary()
         assert len(data["by_ticker"]) == 1
         assert data["by_ticker"][0]["ticker"] == "ACCX"
@@ -692,9 +692,9 @@ class TestGetEarningsDriftAccuracySummary:
         _seed_quant_signal_row(db_path, "EVX", d5, 108.0)
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             backfill_earnings_drift_outcomes()
-            with patch("db_helpers.get_company_names", return_value={}):
+            with patch("db.helpers.get_company_names", return_value={}):
                 data = get_earnings_drift_accuracy_summary()
 
         events = data["by_ticker"][0]["events"]
@@ -717,8 +717,8 @@ class TestGetEarningsDriftAccuracySummary:
         _seed_prediction(db_path, "MULTX", older, 50.0, 1.0, "2099-12-31")
         _seed_prediction(db_path, "MULTX", newer, 60.0, 1.5, "2099-12-31")
 
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_company_names", return_value={}):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_company_names", return_value={}):
             data = get_earnings_drift_accuracy_summary()
 
         events = data["by_ticker"][0]["events"]
@@ -727,7 +727,7 @@ class TestGetEarningsDriftAccuracySummary:
 
 class TestGetEarningsDriftEvents:
     def test_returns_empty_list_when_no_rows(self, db_path):
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             assert db_helpers.get_earnings_drift_events() == []
 
     def test_actual_pct_derived_from_price_and_pre_close(self, db_path):
@@ -737,7 +737,7 @@ class TestGetEarningsDriftEvents:
         _seed_quant_signal_row(db_path, "DHX", d1, 202.0)
 
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             backfill_earnings_drift_outcomes()
             events = db_helpers.get_earnings_drift_events()
 
@@ -748,7 +748,7 @@ class TestGetEarningsDriftEvents:
         past = (date.today() - timedelta(days=5)).strftime("%Y-%m-%d")
         _seed_prediction(db_path, "PENDX", past, 100.0, 1.0, "2099-12-31")
 
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             events = db_helpers.get_earnings_drift_events()
 
         assert len(events) == 1
@@ -758,14 +758,14 @@ class TestGetEarningsDriftEvents:
 
 class TestGetLatestResolvedEarningsDrift:
     def test_no_rows_returns_all_none(self, db_path):
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             result = db_helpers.get_latest_resolved_earnings_drift("NOPE")
         assert result == {1: None, 5: None, 20: None}
 
     def test_unresolved_horizon_returns_none_for_that_horizon(self, db_path):
         past = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
         _seed_resolved(db_path, "GLR1", past, dc1=1, dc5=None, dc20=None)
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             result = db_helpers.get_latest_resolved_earnings_drift("GLR1")
         assert result[1] == {"earnings_date": past, "direction_correct": 1}
         assert result[5] is None
@@ -776,7 +776,7 @@ class TestGetLatestResolvedEarningsDrift:
         newer = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
         _seed_resolved(db_path, "GLR2", older, dc1=0, dc5=0, dc20=0)
         _seed_resolved(db_path, "GLR2", newer, dc1=1, dc5=1, dc20=None)
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             result = db_helpers.get_latest_resolved_earnings_drift("GLR2")
         assert result[1] == {"earnings_date": newer, "direction_correct": 1}
         assert result[5] == {"earnings_date": newer, "direction_correct": 1}
@@ -785,6 +785,6 @@ class TestGetLatestResolvedEarningsDrift:
     def test_only_matches_requested_ticker(self, db_path):
         past = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
         _seed_resolved(db_path, "GLR3A", past, dc1=1)
-        with patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
+        with patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)):
             result = db_helpers.get_latest_resolved_earnings_drift("GLR3B")
         assert result == {1: None, 5: None, 20: None}

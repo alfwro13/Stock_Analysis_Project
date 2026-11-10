@@ -8,7 +8,7 @@ import argparse
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
-from database import get_connection
+from db.database import get_connection
 from config import load_config
 from yahoo_engine import yahoo_engine
 from profile_engine import load_blacklist

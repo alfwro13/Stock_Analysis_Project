@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from config import load_config
-from database import get_connection, log_notification
+from db.database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 

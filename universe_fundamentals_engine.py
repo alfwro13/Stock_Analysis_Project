@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from config import FUNDAMENTALS_DIR
 from yahoo_engine import yahoo_engine
-from database import get_connection, log_notification
+from db.database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
 from time_engine import parse_stored_utc
 from utils import epoch_to_iso_date, safe_ticker_filename

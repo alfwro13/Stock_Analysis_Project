@@ -12,7 +12,7 @@ import pandas as pd
 
 from config import load_config
 from constants import PRICE_CSV_MAX_ROWS
-from database import (
+from db.database import (
     add_price_history, get_account, get_latest_price, get_price_as_of, get_price_history,
     get_scraper_headers,
 )

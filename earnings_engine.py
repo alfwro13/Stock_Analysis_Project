@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime
-from database import get_connection
+from db.database import get_connection
 from config import load_config
-from db_helpers import get_next_earnings_dates
+from db.helpers import get_next_earnings_dates
 from time_engine import now_local
 from notification_engine import notify
 

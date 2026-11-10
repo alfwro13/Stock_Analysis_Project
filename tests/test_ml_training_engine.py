@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db_module
+from db import database as _db_module
 
 
 @pytest.fixture

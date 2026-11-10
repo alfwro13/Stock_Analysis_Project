@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # conftest.py redirects database.DB_PATH to the temp test file before this runs.
 # We use database.get_connection() so tests share the same redirected path.
-import database as _db
-import db_schema
+from db import database as _db
+from db import schema as db_schema
 import time_engine
 
 
@@ -483,8 +483,8 @@ def test_scheduler_run_log_upsert():
 def test_import_legacy_watchlist_json_enriches_from_stock_signals(tmp_path):
     """A ticker already cached in stock_signals gets its metadata carried into watchlist_items."""
     import json
-    import database as db_module
-    import db_schema
+    from db import database as db_module
+    from db import schema as db_schema
 
     temp_db_path = tmp_path / "migration_test.db"
     watchlist_path = tmp_path / "watchlist.json"
@@ -528,8 +528,8 @@ def test_import_legacy_watchlist_json_enriches_from_stock_signals(tmp_path):
 def test_import_legacy_watchlist_json_is_idempotent(tmp_path):
     """Running the import twice must not duplicate rows or error on a non-empty table."""
     import json
-    import database as db_module
-    import db_schema
+    from db import database as db_module
+    from db import schema as db_schema
 
     temp_db_path = tmp_path / "migration_test_2.db"
     watchlist_path = tmp_path / "watchlist.json"
@@ -748,6 +748,12 @@ def test_trap_monitor_results_primary_key_is_ticker():
 
 
 @pytest.mark.db
+def test_seeded_exchange_hours_file_is_the_one_time_engine_reads():
+    """The seeder and time_engine must point at the same data/exchange_hours.json."""
+    assert Path(db_schema._EXCHANGE_HOURS_PATH).resolve() == Path(time_engine._EXCHANGE_HOURS_PATH).resolve()
+
+
+@pytest.mark.db
 def test_seed_exchange_hours_json_backfills_new_fields_without_overwriting_existing(tmp_path):
     """A pre-existing exchange_hours.json (seeded before quote_delay_minutes was added to
     _DEFAULT_EXCHANGE_HOURS) must gain the new field on the next init_db() run, without
@@ -759,7 +765,7 @@ def test_seed_exchange_hours_json_backfills_new_fields_without_overwriting_exist
     }
     path.write_text(json.dumps(stale))
 
-    with patch("db_schema._EXCHANGE_HOURS_PATH", str(path)):
+    with patch("db.schema._EXCHANGE_HOURS_PATH", str(path)):
         db_schema._seed_exchange_hours_json()
 
     result = json.loads(path.read_text())
@@ -781,7 +787,7 @@ def test_seed_exchange_hours_json_refreshes_time_engine_cache_on_fresh_install(t
         time_engine.reload_exchange_registry()
         assert "KRX" not in time_engine.EXCHANGE_HOURS, "precondition: simulating the pre-seed fallback state"
 
-        with patch("db_schema._EXCHANGE_HOURS_PATH", str(path)):
+        with patch("db.schema._EXCHANGE_HOURS_PATH", str(path)):
             db_schema._seed_exchange_hours_json()
 
         assert "KRX" in time_engine.EXCHANGE_HOURS

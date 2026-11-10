@@ -1,7 +1,7 @@
 """get_accounts tool: snapshot and missing-snapshot Trading rows, Pension, soft-deleted and Ghostfolio accounts."""
 from unittest.mock import patch
 
-from database import get_performance_cache
+from db.database import get_performance_cache
 
 from .helpers import call, tool_data
 
@@ -33,7 +33,7 @@ class TestGetAccounts:
         assert data["as_of"] is not None
 
     def test_account_with_a_holding_valued_at_cost_nulls_the_dependent_figures_and_is_marked_missing(self, mcp_client, seeded_accounts):
-        from database import add_transaction
+        from db.database import add_transaction
         import accounts_engine
         account_id = seeded_accounts["snapshot"]
         add_transaction(account_id, "Buy", "2026-01-06", ticker="ZZMCPNOPRICE", currency="GBP", quantity=5, unit_price=100, exchange_rate=1.0)
@@ -77,7 +77,7 @@ class TestGetAccounts:
         assert any(f"account {account_id}:" in item for item in data["missing"])
 
     def test_priced_pension_reports_its_value(self, mcp_client, seeded_accounts):
-        from database import add_price_history
+        from db.database import add_price_history
         account_id = seeded_accounts["pension"]
         add_price_history(account_id, "2026-01-05", 2.0, "manual")
         _, rows = self._rows(mcp_client)
@@ -85,7 +85,7 @@ class TestGetAccounts:
         assert rows[account_id]["equity_value"] is not None
 
     def test_soft_deleted_accounts_are_not_exposed(self, mcp_client, seeded_accounts):
-        from database import soft_delete_account
+        from db.database import soft_delete_account
         soft_delete_account(seeded_accounts["no_snapshot"])
         _, rows = self._rows(mcp_client)
         assert seeded_accounts["no_snapshot"] not in rows

@@ -10,8 +10,8 @@ from transformers import pipeline
 
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from notification_engine import notify
-from database import get_connection
-from db_helpers import sentiment_max_age_days
+from db.database import get_connection
+from db.helpers import sentiment_max_age_days
 from config import load_config
 from constants import (
     NLP_FINBERT_MAX_TOKENS, NLP_FINBERT_REVISION, NLP_TEXT_TRUNCATE_CHARS,

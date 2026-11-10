@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from config import load_config
 from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
-from database import get_connection, replaying_deferred_write, write_or_defer
+from db.database import get_connection, replaying_deferred_write, write_or_defer
 from time_engine import parse_stored_utc, trading_days_since
 from utils import is_valid_ticker
 
@@ -182,10 +182,10 @@ def get_stock_signal_tickers() -> List[str]:
 
 def _held_and_watched_tickers() -> tuple[set, set]:
     """(held, watched) uppercased and ignored-ticker-filtered. Local imports avoid a circular
-    import: database.py imports this module at module level, and accounts_engine.py imports
-    database.py at module level."""
+    import: db/database.py imports this module at module level, and accounts_engine.py imports
+    db/database.py at module level."""
     from accounts_engine import get_combined_holdings
-    from database import get_watchlist_tickers
+    from db.database import get_watchlist_tickers
     from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch
 
     ignored = ignored_tickers_set(load_config())

@@ -7,7 +7,7 @@ import pytest
 
 from alert_referee_engine import CONFLUENCE_ENGINE, TRAP_MONITOR_ENGINE, get_recent_evaluations as real_get_recent_evaluations, log_veto_evaluation
 from constants import MCP_ALERT_TEXT_MAX_CHARS, MCP_ALERTS_MAX_DAYS, MCP_ALERTS_MAX_ROWS
-from database import get_connection
+from db.database import get_connection
 from notification_engine import ALERT_MESSAGE_TYPES
 
 from .helpers import call, emptied_tables, rpc, table_counts, tool_data

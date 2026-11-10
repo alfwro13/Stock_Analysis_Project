@@ -1,6 +1,6 @@
 import pytest
 
-from database import (
+from db.database import (
     create_account,
     get_account,
     get_accounts,
@@ -323,7 +323,7 @@ def test_update_transaction_refuses_an_unsafe_ticker():
 
 @pytest.mark.db
 def test_add_watchlist_item_refuses_an_unsafe_ticker():
-    from database import add_watchlist_item, get_watchlist_account, remove_watchlist_ticker
+    from db.database import add_watchlist_item, get_watchlist_account, remove_watchlist_ticker
 
     wl_id = get_watchlist_account()["id"]
     for bad in ("../X", "/X/Y", "", "A B"):

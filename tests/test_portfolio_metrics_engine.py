@@ -2,7 +2,7 @@ import pytest
 
 import accounts_engine
 import portfolio_metrics_engine
-from database import (
+from db.database import (
     get_connection,
     create_account,
     add_transaction,
@@ -48,7 +48,7 @@ def test_holdings_with_metrics_all_accounts_two_accounts_same_ticker_not_merged(
 
 @pytest.mark.db
 def test_holdings_with_metrics_all_accounts_zero_trading_accounts_returns_empty_list():
-    import database as _db
+    from db import database as _db
     for acc in _db.get_accounts():
         if acc["account_type"] == "Trading":
             _db.soft_delete_account(acc["id"])
@@ -199,7 +199,7 @@ def test_set_holding_price_limit_partial_update_preserves_other_field():
     portfolio_metrics_engine.set_holding_price_limit(aid, "ZZLIMIT", low_limit=10.0)
     portfolio_metrics_engine.set_holding_price_limit(aid, "ZZLIMIT", high_limit=20.0)
 
-    from db_accounts import get_all_holding_price_limits
+    from db.accounts import get_all_holding_price_limits
     limits = get_all_holding_price_limits()[(aid, "ZZLIMIT")]
     assert limits["low_limit"] == 10.0
     assert limits["high_limit"] == 20.0
@@ -209,7 +209,7 @@ def test_set_holding_price_limit_partial_update_preserves_other_field():
 def test_get_holding_price_limits_for_ticker_scoped_to_one_ticker():
     """Set Targets panel on the Stock Detail page reads only its own ticker's rows, not the
     whole-portfolio batch get_all_holding_price_limits() dict."""
-    from db_accounts import get_holding_price_limits_for_ticker
+    from db.accounts import get_holding_price_limits_for_ticker
 
     aid1 = create_account("TargetScopeAcc1", "GBP")
     aid2 = create_account("TargetScopeAcc2", "GBP")
@@ -286,7 +286,7 @@ def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
     regression test guards against), and none may fall back to a live-computed value that could
     diverge from the cache (fixed 2026-07-03 — see account_performance_cache realized_pnl/
     dividend_income/interest_income columns)."""
-    from database import get_performance_cache
+    from db.database import get_performance_cache
 
     _seed_stock_signal("ZZACCTMET", 120.0, "GBP")
     aid = create_account("AcctMetricsAcc", "GBP", initial_cash=1000.0)
@@ -323,7 +323,7 @@ def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
 
 @pytest.mark.db
 def test_account_metrics_list_without_refresh_returns_null_metrics_and_writes_nothing(monkeypatch):
-    from database import get_performance_cache
+    from db.database import get_performance_cache
 
     aid = create_account("AcctMetricsNoCacheAcc", "GBP", initial_cash=500.0)
     monkeypatch.setattr(portfolio_metrics_engine, "_trading_accounts", lambda: [accounts_engine.get_account(aid)])
@@ -464,7 +464,7 @@ def test_portfolio_gain_fx_decomposition_excludes_unpriced_holding():
 def test_portfolio_twr_fx_fewer_than_two_snapshots_returns_none():
     aid = create_account("TwrFxTooFewAcc", "GBP", initial_cash=100.0)
     accounts_engine.resnapshot_account(aid)
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -478,7 +478,7 @@ def test_portfolio_twr_fx_fewer_than_two_snapshots_returns_none():
 
 @pytest.mark.db
 def test_portfolio_twr_fx_geometric_linking_hand_computed():
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     aid = create_account("TwrFxHandCompAcc", "GBP")
     upsert_value_snapshot(aid, "2026-01-01", 100.0, 100.0, 0.0, 0.0)
     upsert_value_snapshot(aid, "2026-01-02", 110.0, 110.0, 0.0, 0.0)
@@ -490,7 +490,7 @@ def test_portfolio_twr_fx_geometric_linking_hand_computed():
 
 @pytest.mark.db
 def test_portfolio_twr_fx_skips_zero_start_subperiod():
-    from database import upsert_value_snapshot
+    from db.database import upsert_value_snapshot
     aid = create_account("TwrFxZeroStartAcc", "GBP")
     upsert_value_snapshot(aid, "2026-01-01", 0.0, 0.0, 0.0, 0.0)
     upsert_value_snapshot(aid, "2026-01-02", 100.0, 100.0, 0.0, 100.0)
@@ -502,7 +502,7 @@ def test_portfolio_twr_fx_skips_zero_start_subperiod():
 
 @pytest.mark.db
 def test_portfolio_twr_ex_fx_matches_twr_fx_when_only_base_currency():
-    from database import upsert_value_snapshot, upsert_value_snapshot_currency
+    from db.database import upsert_value_snapshot, upsert_value_snapshot_currency
     aid = create_account("TwrExFxBaseOnlyAcc", "GBP")
     upsert_value_snapshot(aid, "2026-01-01", 100.0, 0.0, 100.0, 0.0)
     upsert_value_snapshot(aid, "2026-01-02", 110.0, 0.0, 110.0, 0.0)
@@ -518,7 +518,7 @@ def test_portfolio_twr_ex_fx_matches_twr_fx_when_only_base_currency():
 
 @pytest.mark.db
 def test_portfolio_twr_ex_fx_differs_when_fx_rate_moves():
-    from database import upsert_value_snapshot, upsert_value_snapshot_currency
+    from db.database import upsert_value_snapshot, upsert_value_snapshot_currency
     aid = create_account("TwrExFxMovesAcc", "GBP")
     # Native equity value constant at 100 units of foreign currency; base value swings purely
     # because fx_rate itself moves from 1.0 -> 2.0 -> the ex-fx series should stay flat (0%),
@@ -569,7 +569,7 @@ def test_portfolio_totals_twr_fields_map_to_correct_fx_leg(monkeypatch):
     'twr_fx_pct' the FX-actual one — these were previously swapped in the same way as the gain
     fields, only detectable by asserting portfolio_totals()'s output against the two underlying
     functions directly rather than trusting the dict-literal assignment order."""
-    from database import upsert_value_snapshot, upsert_value_snapshot_currency
+    from db.database import upsert_value_snapshot, upsert_value_snapshot_currency
     aid = create_account("PortTotalsTwrMapAcc", "GBP")
     upsert_value_snapshot(aid, "2026-01-01", 100.0, 0.0, 100.0, 0.0)
     upsert_value_snapshot(aid, "2026-01-02", 200.0, 0.0, 200.0, 0.0)
@@ -590,7 +590,7 @@ def test_portfolio_twr_ex_fx_falls_back_to_actual_equity_when_currency_row_missi
     for a pre-existing account), the missing date must fall back to that date's actual equity_value
     rather than silently treating uncovered equity as 0 — the latter fabricates a near-total-loss
     sub-period that permanently collapses the whole chain-linked product to -100%."""
-    from database import upsert_value_snapshot, upsert_value_snapshot_currency
+    from db.database import upsert_value_snapshot, upsert_value_snapshot_currency
     aid = create_account("TwrExFxMissingCurrencyRowAcc", "GBP")
     upsert_value_snapshot(aid, "2026-01-01", 100.0, 0.0, 100.0, 0.0)
     upsert_value_snapshot(aid, "2026-01-02", 110.0, 0.0, 110.0, 0.0)  # no currency-breakdown row for this date
@@ -682,7 +682,7 @@ def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh
     counted_totals, queued_refreshes,
 ):
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
 
     _seed_stock_signal("ZZTCPRICE", 10.0, "GBP", "2026-01-05 10:00:00")
     aid = create_account("TotalsCachePriceAcc", "GBP")
@@ -834,7 +834,7 @@ def _connections_during(fn) -> int:
 
 @pytest.mark.db
 def test_totals_and_holdings_list_read_each_accounts_ledger_and_prices_once(monkeypatch):
-    import database as _db
+    from db import database as _db
 
     _seed_stock_signal("ZZLEDONCE", 12.0, "GBP")
     aid = create_account("LedgerOnceAcc", "GBP", initial_cash=500.0)
@@ -861,7 +861,7 @@ def test_home_assistant_figures_do_not_open_more_connections_for_more_holdings()
     """Every SQLite call releases the GIL, so a response that opens a connection per holding waits a thread-switch interval for each one behind a busy batch job: portfolio-totals took 1-15 s at 01:30 (LR-10)."""
     import time
     from config import BASE_CURRENCY
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
     from portfolio_service import persisted_fx_reads
 
     currency = "CHF" if BASE_CURRENCY != "CHF" else "EUR"
@@ -893,7 +893,7 @@ def test_home_assistant_figures_do_not_open_more_connections_for_more_holdings()
         many = measure()
         assert many == few
     finally:
-        import database as _db
+        from db import database as _db
         _db.soft_delete_account(aid_a)
         _db.soft_delete_account(aid_b)
         _delete_pulse_rows(pair)
@@ -939,7 +939,7 @@ def test_cached_portfolio_totals_bypasses_the_cache_when_the_fingerprint_is_unre
 
 @pytest.mark.db
 def test_every_ledger_writer_bumps_the_ledger_revision():
-    import db_accounts
+    from db import accounts as db_accounts
 
     def bumped(action):
         before = db_accounts.ledger_revision()
@@ -979,7 +979,7 @@ def test_every_ledger_writer_bumps_the_ledger_revision():
 @pytest.mark.db
 def test_snapshot_writers_bump_only_the_snapshot_revision():
     """The nightly snapshot writes many rows while the 01:00-01:35 batch jobs run; counting them as ledger edits made a poll in that window recompute portfolio-totals inline (LR-10)."""
-    import db_accounts
+    from db import accounts as db_accounts
 
     aid = db_accounts.create_account("SnapshotRevisionAcc", "GBP")
     try:
@@ -997,7 +997,7 @@ def test_snapshot_writers_bump_only_the_snapshot_revision():
 
 @pytest.mark.db
 def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh_when_a_snapshot_lands(counted_totals, queued_refreshes):
-    import db_accounts
+    from db import accounts as db_accounts
 
     aid = create_account("TotalsCacheSnapshotAcc", "GBP")
     try:

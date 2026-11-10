@@ -10,8 +10,8 @@ import accounts_engine
 from accounts_engine import fx_rate_on_date
 from config import BASE_CURRENCY
 from constants import CSV_IMPORT_MAX_ROWS, CSV_IMPORT_MAX_TICKERS
-from database import get_connection
-from db_accounts import add_transaction, get_transactions
+from db.database import get_connection
+from db.accounts import add_transaction, get_transactions
 from utils import is_currency_code, is_valid_ticker, normalize_ticker
 from yahoo_engine import yahoo_engine
 

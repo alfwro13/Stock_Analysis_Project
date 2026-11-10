@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import database as db
-from database import create_account, add_transaction
+from db import database as db
+from db.database import create_account, add_transaction
 from xray_engine import BENCHMARK_SYMBOL, annualized_return, native_max_drawdown
 from performance_analytics_engine import (
     assemble_performance_report,

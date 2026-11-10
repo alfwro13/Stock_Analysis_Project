@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 
 from config import load_config
-from database import get_connection
-from db_helpers import get_company_names, get_portfolio_watchlist_tickers
+from db.database import get_connection
+from db.helpers import get_company_names, get_portfolio_watchlist_tickers
 from fundamentals_helpers import get_instrument_type
 from price_history_helpers import load_daily_close, session_window_returns
 from time_engine import parse_stored_utc

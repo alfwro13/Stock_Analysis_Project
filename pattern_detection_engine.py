@@ -20,7 +20,7 @@ import volatility_squeeze_engine
 import wedge_engine
 from config import HISTORICAL_DIR, load_config
 from data_engine import load_or_fetch_daily_history
-from database import (
+from db.database import (
     get_connection,
     log_pattern_detection,
     get_unresolved_pattern_detections,
@@ -137,7 +137,7 @@ class PatternDetectionEngine:
                 logger.warning("PatternDetectionEngine: could not load portfolio tickers: %s", e)
         if self.monitor_watchlist:
             try:
-                from database import get_watchlist_tickers
+                from db.database import get_watchlist_tickers
                 from utils import is_excluded_from_yahoo_fetch
                 for t in get_watchlist_tickers():
                     if not is_excluded_from_yahoo_fetch(t, self.ignored_tickers):

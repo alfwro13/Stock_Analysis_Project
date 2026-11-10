@@ -66,7 +66,7 @@ def test_get_workflow_monitor_status_returns_200(client):
 
 @pytest.mark.api
 def test_get_scheduler_job_runs_returns_history(client):
-    import database
+    from db import database
 
     conn = None
     try:
@@ -183,7 +183,7 @@ def test_get_system_metrics_includes_auction_job_keys(client):
 @pytest.mark.api
 def test_get_system_metrics_reports_nextcloud_talk_counters(client):
     """The System Diagnostics Nextcloud Talk row reads today's sent/failed counters and a state of idle, ok or failing."""
-    from database import get_connection, record_nextcloud_talk_attempt
+    from db.database import get_connection, record_nextcloud_talk_attempt
     conn = get_connection()
     try:
         conn.execute("DELETE FROM nextcloud_talk_stats")
@@ -253,7 +253,7 @@ def test_get_yahoo_api_stats_detail_rejects_bad_date(client):
 
 @pytest.mark.api
 def test_get_yahoo_api_stats_detail_reflects_call_log_rows(client):
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     try:
         conn.execute(
@@ -347,7 +347,7 @@ def test_get_market_status_self_triggers_refresh_for_stale_registry_tickers(clie
 @pytest.mark.api
 def test_get_market_status_yahoo_ok_true_when_recent_success(client):
     with patch(
-        "database.get_yahoo_api_stats",
+        "db.database.get_yahoo_api_stats",
         return_value=[{"date": "2026-07-01", "total_calls": 10, "ipv4_calls": 10, "ipv6_calls": 0, "rate_limit_429": 0, "other_errors": 0}],
     ):
         resp = client.get("/api/system/market-status")
@@ -356,7 +356,7 @@ def test_get_market_status_yahoo_ok_true_when_recent_success(client):
 
 @pytest.mark.api
 def test_get_market_status_yahoo_ok_false_when_no_recent_calls(client):
-    with patch("database.get_yahoo_api_stats", return_value=[]):
+    with patch("db.database.get_yahoo_api_stats", return_value=[]):
         resp = client.get("/api/system/market-status")
     assert _json(resp)["yahoo_ok"] is False
 
@@ -364,7 +364,7 @@ def test_get_market_status_yahoo_ok_false_when_no_recent_calls(client):
 @pytest.mark.api
 def test_get_market_status_yahoo_ok_false_when_all_calls_errored(client):
     with patch(
-        "database.get_yahoo_api_stats",
+        "db.database.get_yahoo_api_stats",
         return_value=[{"date": "2026-07-01", "total_calls": 5, "ipv4_calls": 5, "ipv6_calls": 0, "rate_limit_429": 5, "other_errors": 0}],
     ):
         resp = client.get("/api/system/market-status")
@@ -407,7 +407,7 @@ def test_get_market_pulse_index_items_include_invert_color_and_asset_type(client
 @pytest.mark.api
 def test_get_market_pulse_dynamic_mode_returns_dynamic_selection(client):
     from unittest.mock import patch as _patch
-    with _patch("database.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
+    with _patch("db.database.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
          _patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
          _patch("api.routes_system.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}):
         resp = client.get("/api/market-pulse")
@@ -655,7 +655,7 @@ def test_intraday_monitor_analysis_returns_data_after_result_inserted(client):
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     reasons = ["Extreme Oversold (RSI: 21.5)", "Volume Capitulation detected"]
@@ -730,7 +730,7 @@ def test_news_feed_returns_inserted_article(client):
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -786,7 +786,7 @@ def test_trap_monitor_results_empty_on_fresh_db(client):
 def test_trap_monitor_results_includes_scope_ticker_sets(client):
     """Response must carry portfolio_tickers/watchlist_tickers so the page's Scope filter works."""
     with patch("accounts_engine.get_combined_holdings", return_value={"AAPL": {}}), \
-         patch("database.get_watchlist_tickers", return_value=["MSFT"]):
+         patch("db.database.get_watchlist_tickers", return_value=["MSFT"]):
         resp = client.get("/api/trap-monitor/results")
     data = _json(resp)
     assert data["portfolio_tickers"] == ["AAPL"], f"Unexpected portfolio_tickers: {data}"
@@ -874,7 +874,7 @@ def test_pretrade_check_returns_200_and_logs_verdict(client):
     assert data.get("status") == "success"
     assert data["check"]["verdict"] == "approve"
 
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         row = conn.execute(
@@ -907,7 +907,7 @@ def test_pretrade_check_without_verdict_returns_null_and_logs_unavailable(client
     assert data["status"] == "success"
     assert data["check"]["verdict"] is None and data["check"]["unavailable_inputs"] == ["VaR", "correlation"]
 
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         row = conn.execute(
@@ -1140,7 +1140,7 @@ def test_get_forensic_scores_returns_200(client):
 @pytest.mark.api
 def test_get_forensic_scores_flags_altman_only_in_distress_zone(client):
     """flag_altman is set below the Z' distress cutoff of 1.1, not in the grey zone above it."""
-    from database import get_connection
+    from db.database import get_connection
 
     conn = get_connection()
     try:
@@ -1219,7 +1219,7 @@ def test_market_regime_current_includes_us_uk_regime_labels(client):
     DB — regime_engine.get_latest_regime() (used by /market-sentiment) does a bare
     `SELECT * ... ORDER BY date DESC LIMIT 1` with no NULL guard on us_turbulence/uk_turbulence,
     so a partially-seeded row here previously broke that page's Jinja "%.2f" formatting."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -1306,7 +1306,7 @@ def test_macro_conditions_degrades_gracefully_with_no_macro_regimes_row(client):
 def test_macro_conditions_includes_seeded_threat_levels_and_auction_health(client):
     """Once macro_regimes and treasury_auction_results have rows, the endpoint must surface the
     raw GREEN/YELLOW/RED threat levels and correctly flag auction weakness."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -1399,7 +1399,7 @@ def test_monte_carlo_accounts_returns_200(client):
 def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disabled(client):
     """With Ghostfolio disabled, a built-in Trading account with holdings must still populate
     the account tiles and total (previously required an active Ghostfolio account)."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -1452,7 +1452,7 @@ def test_performance_analytics_accounts_returns_200(client):
 def test_performance_analytics_accounts_uses_builtin_trading_accounts_when_ghostfolio_disabled(client):
     """GET /api/performance-analytics/accounts shares the same account-tile builder as Monte
     Carlo — must also populate from a built-in Trading account with Ghostfolio disabled."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -1509,7 +1509,7 @@ def test_performance_analytics_report_returns_200(client):
 def test_portfolio_optimizer_accounts_returns_200(client):
     """GET /api/portfolio-optimizer/accounts shares the same account-tile builder as Monte
     Carlo/Tearsheet — must also populate from a built-in Trading account with Ghostfolio disabled."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -1538,8 +1538,8 @@ def test_portfolio_optimizer_accounts_returns_200(client):
 def test_portfolio_optimizer_candidates_returns_held_and_watchlist(client):
     """GET /api/portfolio-optimizer/candidates marks held tickers held=True and Watchlist-only
     tickers held=False with current_weight 0.0."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
 
     conn = _db.get_connection()
     try:
@@ -1626,7 +1626,7 @@ def test_alert_referee_read_failure_is_a_fixed_500_not_an_empty_result(client, p
 def test_alert_referee_log_filters_by_ticker_and_vetoed(client):
     """GET /api/alert-referee/log must honor ticker/vetoed query params and report has_more."""
     import alert_referee_engine as are
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -1659,7 +1659,7 @@ def test_alert_referee_log_filters_by_ticker_and_vetoed(client):
 @pytest.mark.api
 def test_fx_status_reads_persisted_fresh_stale_and_missing_quotes(client, monkeypatch):
     import time
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
     from yahoo_engine import yahoo_engine
 
     upsert_fx_quote("USDGBP=X", 0.75, time.time())

@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 import yahoo_engine
-from database import add_transaction, create_account, get_connection
-from db_accounts import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
+from db.database import add_transaction, create_account, get_connection
+from db.accounts import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
 
 from .helpers import ACCOUNT_TABLES, call, table_counts, tool_data
 
@@ -114,7 +114,7 @@ class TestRows:
         assert all(_row(data, t)["held"] is False for t in (WATCHED, NO_SIGNALS, STALE, BARE))
 
     def test_rows_match_the_watchlist_page_ticker_list(self, mcp_client, watchlist):
-        from database import get_watchlist_tickers
+        from db.database import get_watchlist_tickers
         data = _watchlist(mcp_client)
         assert [t["ticker"] for t in data["data"]["tickers"]] == list(dict.fromkeys(get_watchlist_tickers()))
 

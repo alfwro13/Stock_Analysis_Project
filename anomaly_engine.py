@@ -12,7 +12,7 @@ import ta
 from sklearn.ensemble import IsolationForest
 
 from config import ANOMALY_MODELS_DIR
-from database import get_connection
+from db.database import get_connection
 from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
 from utils import clamp_beta, safe_ticker_filename
 
