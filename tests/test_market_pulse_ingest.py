@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
+from db import connection as _connection_layer
 import market_pulse as _mp
 import market_pulse_write as _mw
 
@@ -766,7 +767,7 @@ class TestWriteLockNotHeldDuringFetch:
 
         def fetch_snapshot(ticker):
             held_during_fetch.append(
-                [e["caller"] for e in list(_db._open_writes.values()) if e["caller"].startswith("market_pulse_write.py")]
+                [e["caller"] for e in list(_connection_layer._open_writes.values()) if e["caller"].startswith("market_pulse_write.py")]
             )
             return _snapshot(101.0, regular_change=1.0, regular_change_pct=1.0, market_state="REGULAR")
 

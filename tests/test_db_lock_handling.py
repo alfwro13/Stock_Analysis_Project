@@ -1,5 +1,5 @@
 """
-tests/test_db_lock_handling.py — "database is locked" handling in db/database.py.
+tests/test_db_lock_handling.py — "database is locked" handling in db/connection.py.
 
 Covers the open-write registry that names the holder of the write lock in the log, the
 deferred-write queue that retries a write which lost the lock, and the writers that use it
@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
+from db import connection as _conn
 from db import helpers as db_helpers
 import notification_engine
 import scheduler_engine
@@ -31,9 +32,9 @@ _FOREVER = float("inf")
 
 @pytest.fixture
 def deferred_queue(monkeypatch):
-    monkeypatch.setattr(_db, "_start_deferred_worker", lambda: None)
-    monkeypatch.setattr(_db, "_deferred", [])
-    return _db._deferred
+    monkeypatch.setattr(_conn, "_start_deferred_worker", lambda: None)
+    monkeypatch.setattr(_conn, "_deferred", [])
+    return _conn._deferred
 
 
 def _raise_once_then(real):
@@ -49,7 +50,7 @@ def _raise_once_then(real):
 
 
 def _tracked_connection(timeout=0.05):
-    return sqlite3.connect(str(_db.DB_PATH), timeout=timeout, factory=_db._RetryingConnection)
+    return sqlite3.connect(str(_db.DB_PATH), timeout=timeout, factory=_conn._RetryingConnection)
 
 
 def _insert_score_row(conn, ticker):
@@ -67,13 +68,19 @@ def _delete_score_rows(*tickers):
 
 @pytest.mark.db
 class TestOpenWriteRegistry:
+    @pytest.mark.parametrize("module_name", ["db.connection", "db.database"])
+    def test_caller_skips_frames_of_the_connection_modules(self, module_name):
+        namespace = {"__name__": module_name, "_caller": _conn._caller}
+        exec("def inner():\n    return _caller()\n", namespace)
+        assert namespace["inner"]().startswith("test_db_lock_handling.py:test_caller_skips_frames_of_the_connection_modules:")
+
     def test_long_write_transaction_is_logged_with_its_caller(self, monkeypatch, caplog):
-        monkeypatch.setattr(_db, "DB_WRITE_HOLD_WARN_SECONDS", 0)
+        monkeypatch.setattr(_conn, "DB_WRITE_HOLD_WARN_SECONDS", 0)
         conn = _tracked_connection()
         try:
             _insert_score_row(conn, "TST_HOLD1")
-            assert id(conn) in _db._open_writes
-            with caplog.at_level(logging.WARNING, logger="db.database"):
+            assert id(conn) in _conn._open_writes
+            with caplog.at_level(logging.WARNING, logger="db.connection"):
                 conn.commit()
         finally:
             conn.close()
@@ -86,7 +93,7 @@ class TestOpenWriteRegistry:
         conn = _tracked_connection()
         try:
             _insert_score_row(conn, "TST_HOLD2")
-            with caplog.at_level(logging.WARNING, logger="db.database"):
+            with caplog.at_level(logging.WARNING, logger="db.connection"):
                 conn.commit()
         finally:
             conn.close()
@@ -97,10 +104,10 @@ class TestOpenWriteRegistry:
     def test_every_way_a_transaction_ends_clears_the_registry(self, release):
         conn = _tracked_connection()
         _insert_score_row(conn, "TST_HOLD3")
-        assert id(conn) in _db._open_writes
+        assert id(conn) in _conn._open_writes
         getattr(conn, release)()
         try:
-            assert id(conn) not in _db._open_writes
+            assert id(conn) not in _conn._open_writes
         finally:
             if release != "close":
                 conn.close()
@@ -110,17 +117,17 @@ class TestOpenWriteRegistry:
         conn = _tracked_connection()
         try:
             conn.execute("SELECT 1 FROM score_history LIMIT 1").fetchall()
-            assert id(conn) not in _db._open_writes
+            assert id(conn) not in _conn._open_writes
         finally:
             conn.close()
 
     def test_lock_error_names_the_holder(self, monkeypatch, caplog):
-        monkeypatch.setattr(_db, "_LOCK_RETRY_BASE_DELAY", 0.01)
+        monkeypatch.setattr(_conn, "_LOCK_RETRY_BASE_DELAY", 0.01)
         holder = _tracked_connection()
         waiter = _tracked_connection(timeout=0.05)
         try:
             _insert_score_row(holder, "TST_HOLD4")
-            with caplog.at_level(logging.WARNING, logger="db.database"):
+            with caplog.at_level(logging.WARNING, logger="db.connection"):
                 with pytest.raises(sqlite3.OperationalError, match="database is locked"):
                     _insert_score_row(waiter, "TST_HOLD5")
         finally:
@@ -133,12 +140,12 @@ class TestOpenWriteRegistry:
         assert "wait 1 of 4" in messages[0] and "wait 4 of 4" in messages[1]
 
     def test_lock_error_says_so_when_no_tracked_holder_exists(self, monkeypatch, caplog):
-        monkeypatch.setattr(_db, "_LOCK_RETRY_BASE_DELAY", 0.01)
+        monkeypatch.setattr(_conn, "_LOCK_RETRY_BASE_DELAY", 0.01)
         outsider = sqlite3.connect(str(_db.DB_PATH), timeout=0.1)
         waiter = _tracked_connection(timeout=0.05)
         try:
             outsider.execute("BEGIN IMMEDIATE")
-            with caplog.at_level(logging.WARNING, logger="db.database"):
+            with caplog.at_level(logging.WARNING, logger="db.connection"):
                 with pytest.raises(sqlite3.OperationalError):
                     _insert_score_row(waiter, "TST_HOLD6")
         finally:
@@ -151,18 +158,18 @@ class TestOpenWriteRegistry:
         conn = _tracked_connection()
         _insert_score_row(conn, "TST_HOLD7")
         key = id(conn)
-        assert key in _db._open_writes
+        assert key in _conn._open_writes
         del conn
         gc.collect()
-        assert "TST_HOLD7" not in _db._describe_open_writes()
-        assert key not in _db._open_writes
+        assert "TST_HOLD7" not in _conn._describe_open_writes()
+        assert key not in _conn._open_writes
         _delete_score_rows("TST_HOLD7")
 
 
 class TestDeferredWriteQueue:
     def test_write_that_succeeds_is_not_queued(self, deferred_queue):
         calls = []
-        assert _db.write_or_defer("probe", lambda: calls.append(1)) is True
+        assert _conn.write_or_defer("probe", lambda: calls.append(1)) is True
         assert calls == [1]
         assert deferred_queue == []
 
@@ -174,10 +181,10 @@ class TestDeferredWriteQueue:
             if len(calls) == 1:
                 raise _LOCKED
 
-        with caplog.at_level(logging.WARNING, logger="db.database"):
-            assert _db.write_or_defer("probe write", write) is False
+        with caplog.at_level(logging.WARNING, logger="db.connection"):
+            assert _conn.write_or_defer("probe write", write) is False
             assert len(deferred_queue) == 1
-            assert _db._run_due_deferred(now=_FOREVER) is None
+            assert _conn._run_due_deferred(now=_FOREVER) is None
         assert calls == [1, 1]
         assert deferred_queue == []
         texts = [r.getMessage() for r in caplog.records]
@@ -188,22 +195,22 @@ class TestDeferredWriteQueue:
         seen = []
 
         def write():
-            seen.append(_db.replaying_deferred_write())
+            seen.append(_conn.replaying_deferred_write())
             if len(seen) == 1:
                 raise _LOCKED
 
-        assert _db.replaying_deferred_write() is False
-        _db.write_or_defer("probe", write)
-        _db._run_due_deferred(now=_FOREVER)
+        assert _conn.replaying_deferred_write() is False
+        _conn.write_or_defer("probe", write)
+        _conn._run_due_deferred(now=_FOREVER)
         assert seen == [False, True]
-        assert _db.replaying_deferred_write() is False
+        assert _conn.replaying_deferred_write() is False
 
     def test_other_errors_propagate_and_are_never_queued(self, deferred_queue):
         def write():
             raise sqlite3.OperationalError("no such table: missing")
 
         with pytest.raises(sqlite3.OperationalError, match="no such table"):
-            _db.write_or_defer("probe", write)
+            _conn.write_or_defer("probe", write)
         assert deferred_queue == []
 
     def test_write_that_stays_locked_is_retried_then_abandoned(self, deferred_queue, caplog):
@@ -213,15 +220,15 @@ class TestDeferredWriteQueue:
             calls.append(1)
             raise _LOCKED
 
-        _db.write_or_defer("stuck write", write)
-        with caplog.at_level(logging.WARNING, logger="db.database"):
-            for _ in range(len(_db.DB_DEFERRED_WRITE_RETRY_SECONDS)):
-                _db._run_due_deferred(now=_FOREVER)
-        assert len(calls) == 1 + len(_db.DB_DEFERRED_WRITE_RETRY_SECONDS)
+        _conn.write_or_defer("stuck write", write)
+        with caplog.at_level(logging.WARNING, logger="db.connection"):
+            for _ in range(len(_conn.DB_DEFERRED_WRITE_RETRY_SECONDS)):
+                _conn._run_due_deferred(now=_FOREVER)
+        assert len(calls) == 1 + len(_conn.DB_DEFERRED_WRITE_RETRY_SECONDS)
         assert deferred_queue == []
         errors = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(errors) == 1 and "abandoned" in errors[0].getMessage() and "stuck write" in errors[0].getMessage()
-        assert sum("still blocked" in r.getMessage() for r in caplog.records) == len(_db.DB_DEFERRED_WRITE_RETRY_SECONDS) - 1
+        assert sum("still blocked" in r.getMessage() for r in caplog.records) == len(_conn.DB_DEFERRED_WRITE_RETRY_SECONDS) - 1
 
     def test_non_lock_failure_on_retry_abandons_at_once(self, deferred_queue, caplog):
         calls = []
@@ -230,24 +237,24 @@ class TestDeferredWriteQueue:
             calls.append(1)
             raise _LOCKED if len(calls) == 1 else RuntimeError("boom")
 
-        _db.write_or_defer("flaky write", write)
-        with caplog.at_level(logging.ERROR, logger="db.database"):
-            _db._run_due_deferred(now=_FOREVER)
+        _conn.write_or_defer("flaky write", write)
+        with caplog.at_level(logging.ERROR, logger="db.connection"):
+            _conn._run_due_deferred(now=_FOREVER)
         assert deferred_queue == []
         assert any("abandoned after 1 failed retries" in r.getMessage() and "boom" in r.getMessage() for r in caplog.records)
 
     def test_a_write_is_not_retried_before_it_is_due(self, deferred_queue):
         calls = []
-        _db.defer_write("later", lambda: calls.append(1))
-        wait = _db._run_due_deferred()
+        _conn.defer_write("later", lambda: calls.append(1))
+        wait = _conn._run_due_deferred()
         assert calls == []
-        assert 0 < wait <= _db.DB_DEFERRED_WRITE_RETRY_SECONDS[0]
+        assert 0 < wait <= _conn.DB_DEFERRED_WRITE_RETRY_SECONDS[0]
 
     def test_full_queue_drops_the_new_write_and_logs_it(self, deferred_queue, monkeypatch, caplog):
-        monkeypatch.setattr(_db, "DB_DEFERRED_WRITE_QUEUE_MAX", 2)
-        with caplog.at_level(logging.ERROR, logger="db.database"):
+        monkeypatch.setattr(_conn, "DB_DEFERRED_WRITE_QUEUE_MAX", 2)
+        with caplog.at_level(logging.ERROR, logger="db.connection"):
             for index in range(3):
-                _db.defer_write(f"write {index}", lambda: None)
+                _conn.defer_write(f"write {index}", lambda: None)
         assert [item["description"] for item in deferred_queue] == ["write 0", "write 1"]
         assert any("queue is full" in r.getMessage() and "write 2" in r.getMessage() for r in caplog.records)
 
@@ -277,7 +284,7 @@ class TestInAppNotifications:
                 assert self._rows(text) == []
                 with patch.object(_db, "datetime") as clock:
                     clock.now.side_effect = AssertionError("the original time must be reused")
-                    _db._run_due_deferred(now=_FOREVER)
+                    _conn._run_due_deferred(now=_FOREVER)
             rows = self._rows(text)
             assert len(rows) == 1 and rows[0]["message_type"] == "Success" and rows[0]["is_read"] == 1
             assert len(rows[0]["timestamp"]) == 19
@@ -301,7 +308,7 @@ class TestInAppNotifications:
         try:
             notification_engine._route("scheduler_status", "Error", text, None, "error", connection, {})
             assert len(deferred_queue) == 1 and not connection.committed
-            _db._run_due_deferred(now=_FOREVER)
+            _conn._run_due_deferred(now=_FOREVER)
             assert [row["message_type"] for row in self._rows(text)] == ["Error"]
         finally:
             self._cleanup(text)
@@ -338,11 +345,11 @@ class TestFxQuoteWrites:
             db_helpers.upsert_fx_quote(self.PAIR, 0.9, 2000.0)
             with patch.object(db_helpers, "get_connection", _raise_once_then(_db.get_connection)):
                 db_helpers.upsert_fx_quote(self.PAIR, 0.5, 1000.0)
-            _db._run_due_deferred(now=_FOREVER)
+            _conn._run_due_deferred(now=_FOREVER)
             assert db_helpers.get_cached_fx_quote(self.PAIR) == {"rate": 0.9, "updated_at": 2000.0}
             with patch.object(db_helpers, "get_connection", _raise_once_then(_db.get_connection)):
                 db_helpers.upsert_fx_quote(self.PAIR, 0.95, 3000.0)
-            _db._run_due_deferred(now=_FOREVER)
+            _conn._run_due_deferred(now=_FOREVER)
             assert db_helpers.get_cached_fx_quote(self.PAIR) == {"rate": 0.95, "updated_at": 3000.0}
         finally:
             self._cleanup()
@@ -352,7 +359,7 @@ class TestFxQuoteWrites:
             with patch.object(db_helpers, "get_connection", _raise_once_then(_db.get_connection)):
                 db_helpers.upsert_fx_quote(self.PAIR, 0.8, 4000.0)
             assert db_helpers.get_cached_fx_quote(self.PAIR) is None
-            _db._run_due_deferred(now=_FOREVER)
+            _conn._run_due_deferred(now=_FOREVER)
             assert db_helpers.get_cached_fx_quote(self.PAIR) == {"rate": 0.8, "updated_at": 4000.0}
         finally:
             self._cleanup()
@@ -401,7 +408,7 @@ class TestSchedulerRunRecords:
             scheduler_engine._record_job_duration(self.JOB, "2030-01-01 10:00:00", "2030-01-01 10:00:05", 5.0, "success", "scheduled")
             with patch.object(scheduler_engine, "get_connection", _raise_once_then(_db.get_connection)):
                 scheduler_engine._record_job_duration(self.JOB, "2029-01-01 10:00:00", "2029-01-01 10:00:05", 5.0, "error", "scheduled")
-            _db._run_due_deferred(now=_FOREVER)
+            _conn._run_due_deferred(now=_FOREVER)
             row = self._log_row()
             assert row["last_run"] == "2030-01-01 10:00:05" and row["last_status"] == "success"
             assert self._history_count() == 2
@@ -413,7 +420,7 @@ class TestSchedulerRunRecords:
             with patch.object(scheduler_engine, "get_connection", _raise_once_then(_db.get_connection)):
                 scheduler_engine._record_job_duration(self.JOB, "2031-01-01 10:00:00", "2031-01-01 10:00:07", 7.0, "success", "manual")
             assert self._log_row() is None
-            _db._run_due_deferred(now=_FOREVER)
+            _conn._run_due_deferred(now=_FOREVER)
             assert self._log_row()["last_run"] == "2031-01-01 10:00:07"
             assert self._history_count() == 1
         finally:
@@ -426,7 +433,7 @@ class TestSchedulerRunRecords:
             assert self._log_row() is None
             with patch.object(scheduler_engine, "datetime") as clock:
                 clock.now.side_effect = AssertionError("the original time must be reused")
-                _db._run_due_deferred(now=_FOREVER)
+                _conn._run_due_deferred(now=_FOREVER)
             assert self._log_row() is not None
         finally:
             self._cleanup()
@@ -468,7 +475,7 @@ class TestPatternDetectionSave:
             with patch.object(PatternDetectionEngine, "_write_results", _raise_once_then(PatternDetectionEngine._write_results)):
                 engine._save_results([self._row()])
                 assert self._saved() is None
-                _db._run_due_deferred(now=_FOREVER)
+                _conn._run_due_deferred(now=_FOREVER)
             assert self._saved()["phase"] == "CONFIRMED"
         finally:
             self._cleanup()
@@ -511,33 +518,33 @@ class TestSwapGate:
     @pytest.fixture(autouse=True)
     def _settled(self):
         gc.collect()
-        before = _db._live_connections
+        before = _conn._live_connections
         yield
         gc.collect()
-        assert _db._live_connections == before
+        assert _conn._live_connections == before
 
     def test_a_closed_connection_releases_its_slot(self):
-        before = _db._live_connections
+        before = _conn._live_connections
         conn = _db.get_connection()
-        assert _db._live_connections == before + 1
+        assert _conn._live_connections == before + 1
         conn.close()
-        assert _db._live_connections == before
+        assert _conn._live_connections == before
         gc.collect()
-        assert _db._live_connections == before
+        assert _conn._live_connections == before
 
     def test_an_unclosed_connection_releases_its_slot_when_collected(self):
-        before = _db._live_connections
+        before = _conn._live_connections
         conn = _db.get_connection()
         del conn
         gc.collect()
-        assert _db._live_connections == before
+        assert _conn._live_connections == before
 
     def test_a_failed_connect_does_not_leak_a_slot(self):
-        before = _db._live_connections
+        before = _conn._live_connections
         with patch.object(_db.sqlite3, "connect", side_effect=sqlite3.OperationalError("unable to open")):
             with pytest.raises(sqlite3.OperationalError):
                 _db.get_connection()
-        assert _db._live_connections == before
+        assert _conn._live_connections == before
 
     def test_the_gate_waits_for_an_open_connection_to_close(self):
         import threading
@@ -547,7 +554,7 @@ class TestSwapGate:
         entered = threading.Event()
 
         def _swap():
-            with _db.database_swap_gate(drain_timeout=5):
+            with _conn.database_swap_gate(drain_timeout=5):
                 entered.set()
 
         thread = threading.Thread(target=_swap)
@@ -561,10 +568,10 @@ class TestSwapGate:
     def test_the_gate_refuses_and_reopens_when_a_connection_stays_open(self):
         conn = _db.get_connection()
         try:
-            with pytest.raises(_db.DatabaseInUse):
-                with _db.database_swap_gate(drain_timeout=0.1):
+            with pytest.raises(_conn.DatabaseInUse):
+                with _conn.database_swap_gate(drain_timeout=0.1):
                     pytest.fail("the gate must not open while a connection is live")
-            assert not _db._swap_gate_closed
+            assert not _conn._swap_gate_closed
         finally:
             conn.close()
 
@@ -579,7 +586,7 @@ class TestSwapGate:
             opened.append(time.monotonic())
             conn.close()
 
-        with _db.database_swap_gate(drain_timeout=5):
+        with _conn.database_swap_gate(drain_timeout=5):
             thread = threading.Thread(target=_connect)
             thread.start()
             time.sleep(0.2)
@@ -589,14 +596,14 @@ class TestSwapGate:
         assert len(opened) == 1 and opened[0] >= released
 
     def test_a_connection_gives_up_with_a_clear_error_when_the_gate_stays_closed(self, monkeypatch):
-        monkeypatch.setattr(_db, "DB_SWAP_GATE_WAIT_SECONDS", 0.1)
-        with _db.database_swap_gate(drain_timeout=5):
-            with pytest.raises(_db.DatabaseSwapInProgress, match="being replaced by a backup restore"):
+        monkeypatch.setattr(_conn, "DB_SWAP_GATE_WAIT_SECONDS", 0.1)
+        with _conn.database_swap_gate(drain_timeout=5):
+            with pytest.raises(_conn.DatabaseSwapInProgress, match="being replaced by a backup restore"):
                 _db.get_connection()
 
     def test_the_gate_reopens_when_the_body_raises(self):
         with pytest.raises(KeyError):
-            with _db.database_swap_gate(drain_timeout=5):
+            with _conn.database_swap_gate(drain_timeout=5):
                 raise KeyError("boom")
-        assert not _db._swap_gate_closed
+        assert not _conn._swap_gate_closed
         _db.get_connection().close()

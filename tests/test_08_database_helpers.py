@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
+from db import connection as _connection_layer
 from db import helpers as db_helpers
 
 
@@ -654,7 +655,7 @@ def test_get_connection_retries_past_transient_lock():
     th = threading.Thread(target=_release)
     th.start()
     try:
-        conn = sqlite3.connect(str(_db.DB_PATH), timeout=0.1, factory=_db._RetryingConnection)
+        conn = sqlite3.connect(str(_db.DB_PATH), timeout=0.1, factory=_connection_layer._RetryingConnection)
         conn.execute("INSERT INTO score_history (ticker, date, score, signal) VALUES ('TST_LOCK2', '2099-01-02', 2, 'BUY')")
         conn.commit()
         row = conn.execute("SELECT score FROM score_history WHERE ticker='TST_LOCK2'").fetchone()

@@ -296,13 +296,13 @@ class TestUpsertCalendarEventsUnderLock:
 
     @pytest.fixture
     def deferred_queue(self, monkeypatch):
-        from db import database
-        monkeypatch.setattr(database, "_start_deferred_worker", lambda: None)
-        monkeypatch.setattr(database, "_deferred", [])
-        return database._deferred
+        from db import connection
+        monkeypatch.setattr(connection, "_start_deferred_worker", lambda: None)
+        monkeypatch.setattr(connection, "_deferred", [])
+        return connection._deferred
 
     def test_locked_batch_is_queued_and_written_on_retry(self, cal_db_path, deferred_queue):
-        from db import database
+        from db import connection
         attempts = []
 
         def _conn():
@@ -315,7 +315,7 @@ class TestUpsertCalendarEventsUnderLock:
             upsert_calendar_events([_make_row(forecast=3.1)])
             assert len(deferred_queue) == 1
             assert _query(cal_db_path, "SELECT * FROM macro_calendar WHERE event_id='abc'") is None
-            database._run_due_deferred(now=float("inf"))
+            connection._run_due_deferred(now=float("inf"))
 
         assert deferred_queue == []
         row = _query(cal_db_path, "SELECT forecast_val FROM macro_calendar WHERE event_id='abc'")

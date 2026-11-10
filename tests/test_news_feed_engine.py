@@ -17,6 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database
+from db import connection as _conn
 import news_feed_engine
 import outbound_fetch_helpers
 from news_feed_engine import (
@@ -168,7 +169,7 @@ class TestScoreUnscoredRows:
 
         def score_text(analyzer, text):
             held_while_scoring.append(
-                [e["caller"] for e in list(database._open_writes.values()) if e["caller"].startswith("news_feed_engine.py")]
+                [e["caller"] for e in list(_conn._open_writes.values()) if e["caller"].startswith("news_feed_engine.py")]
             )
             return 0.5
 

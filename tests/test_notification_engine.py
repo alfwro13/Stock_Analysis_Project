@@ -397,7 +397,7 @@ class TestRegistryIntegrity:
         constant = re.compile(r'^([A-Z_]+) = "([^"]+)"$', re.MULTILINE)
         root = Path(__file__).parent.parent
         mismatches = []
-        paths = [*root.glob("*.py"), *(root / "tools").glob("*.py"), *(root / "api").glob("*.py"),
+        paths = [*root.glob("*.py"), *(root / "tools").glob("*.py"), *(root / "api").glob("*.py"), *(root / "db").glob("*.py"),
                  *(root / "mcp_server").rglob("*.py")]
         for path in paths:
             text = path.read_text(encoding="utf-8")
