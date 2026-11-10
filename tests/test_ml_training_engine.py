@@ -187,6 +187,53 @@ def test_temporal_split_regions_are_ordered_and_embargoed():
     assert dates[60 - PREDICTION_HORIZON_DAYS] not in set(split.train_dates)
 
 
+def test_embargoed_row_indices_drop_the_label_horizon_from_every_region_but_the_last():
+    import ml_training_engine as engine
+    from constants import PREDICTION_HORIZON_DAYS
+
+    unique_dates = np.arange(100)
+    date_series = pd.Series(np.repeat(unique_dates, 2))
+
+    train, test = engine._embargoed_row_indices(date_series, unique_dates, [80])
+    assert date_series.iloc[train].max() == 80 - PREDICTION_HORIZON_DAYS - 1
+    assert date_series.iloc[test].min() == 80
+    assert len(test) == 2 * 20
+
+    train, calib, test = engine._embargoed_row_indices(date_series, unique_dates, [60, 80])
+    assert date_series.iloc[train].max() == 60 - PREDICTION_HORIZON_DAYS - 1
+    assert date_series.iloc[calib].min() == 60
+    assert date_series.iloc[calib].max() == 80 - PREDICTION_HORIZON_DAYS - 1
+    assert date_series.iloc[test].min() == 80
+
+
+def test_quantile_training_uses_the_embargoed_80_20_split(training_history, tmp_path):
+    import ml_training_engine as engine
+    from constants import PREDICTION_HORIZON_DAYS
+
+    captured = {}
+    real = engine._embargoed_row_indices
+    regressor_class = engine.XGBRegressor
+
+    def small_regressor(**kwargs):
+        return regressor_class(**{**kwargs, "n_estimators": 2, "max_depth": 2})
+
+    def spy(date_series, unique_dates, region_ends):
+        captured["ends"] = region_ends
+        captured["n_dates"] = len(unique_dates)
+        return real(date_series, unique_dates, region_ends)
+
+    with patch.object(engine, "_embargoed_row_indices", side_effect=spy), \
+         patch.object(engine, "QUANTILE_Q10_PATH", tmp_path / "q10.joblib"), \
+         patch.object(engine, "QUANTILE_Q90_PATH", tmp_path / "q90.joblib"), \
+         patch.object(engine, "log_notification"), \
+         patch.object(engine.memory_helpers, "available_mib", return_value=8 * 1024.0), \
+         patch.object(engine, "XGBRegressor", side_effect=small_regressor):
+        assert engine.train_quantile_models() is True
+
+    assert captured["ends"] == [int(captured["n_dates"] * 0.80)]
+    assert captured["n_dates"] > PREDICTION_HORIZON_DAYS
+
+
 def test_walk_forward_folds_keep_the_label_embargo_between_train_and_test():
     import ml_training_engine as engine
     from constants import PREDICTION_HORIZON_DAYS
@@ -220,6 +267,22 @@ def test_feature_stats_record_universe_size_and_feature_moments(tmp_path):
     assert stats["_meta"]["train_universe_size"] == 2
     assert set(stats["features"]) == set(engine.CONTINUOUS_FEATURES)
     assert stats["features"]["rsi_14"]["mean"] == pytest.approx(float(df["rsi_14"].mean()))
+
+
+@pytest.mark.parametrize("trainer, label", [("train_global_ml_model", "ML Training"), ("train_quantile_models", "Quantile training")])
+def test_training_refuses_to_start_below_the_pre_load_minimum_with_one_notification(trainer, label):
+    import ml_training_engine as engine
+    from constants import ML_TRAINING_ABORT_AVAILABLE_GB
+
+    with patch.object(engine.memory_helpers, "available_mib", return_value=(ML_TRAINING_ABORT_AVAILABLE_GB - 0.1) * 1024), \
+         patch.object(engine, "_load_training_history", side_effect=AssertionError("history must not be loaded")), \
+         patch.object(engine, "log_notification") as notify:
+        assert getattr(engine, trainer)() is False
+
+    errors = [c.args[1] for c in notify.call_args_list if c.args[0] == "Error"]
+    assert len(errors) == 1
+    assert errors[0].startswith(f"{label} aborted: only")
+    assert "Free memory and retry." in errors[0]
 
 
 @pytest.mark.parametrize("available_mib, enough", [(512.0, False), (1024.0, False), (1.4 * 1024, False), (1.5 * 1024, True), (4096.0, True)])

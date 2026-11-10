@@ -59,17 +59,23 @@ class _Split(NamedTuple):
     train_dates: pd.Series
 
 
+def _memory_gate(label: str, avail_gb: float, minimum_gb: float, when: str = "") -> bool:
+    if avail_gb >= minimum_gb:
+        return True
+    msg = (
+        f"{label} aborted{when}: only {avail_gb:.1f} GB RAM available "
+        f"(minimum {minimum_gb} GB required). Free memory and retry."
+    )
+    logger.error(msg)
+    log_notification("Error", msg)
+    return False
+
+
 def _search_iterations() -> Optional[int]:
     """Randomized-search budget for the RAM available now; None (after notifying) when training must not start."""
     avail_gb = memory_helpers.available_mib() / 1024
     throttle_gb = 1.5
-    if avail_gb < ML_TRAINING_ABORT_AVAILABLE_GB:
-        msg = (
-            f"ML Training aborted: only {avail_gb:.1f} GB RAM available "
-            f"(minimum {ML_TRAINING_ABORT_AVAILABLE_GB} GB required). Free memory and retry."
-        )
-        logger.error(msg)
-        log_notification("Error", msg)
+    if not _memory_gate("ML Training", avail_gb, ML_TRAINING_ABORT_AVAILABLE_GB):
         return None
     n_iter = 4 if avail_gb < throttle_gb else 10
     if avail_gb < throttle_gb:
@@ -81,16 +87,10 @@ def _search_iterations() -> Optional[int]:
 
 def _enough_memory_after_load(label: str) -> bool:
     """The pre-load gate cannot see the history's own footprint; 25 Oct 2026 passed it with 1.0 GB and died 39 s after the load."""
-    avail_gb = memory_helpers.available_mib() / 1024
-    if avail_gb >= ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB:
-        return True
-    msg = (
-        f"{label} aborted after loading the history: only {avail_gb:.1f} GB RAM available "
-        f"(minimum {ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB} GB required). Free memory and retry."
+    return _memory_gate(
+        label, memory_helpers.available_mib() / 1024, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB,
+        " after loading the history",
     )
-    logger.error(msg)
-    log_notification("Error", msg)
-    return False
 
 
 def _peak_rss_text() -> str:
@@ -135,16 +135,27 @@ def _save_feature_stats(df: pd.DataFrame) -> None:
     logger.info('✅ Feature statistics saved to %s', FEATURE_STATS_PATH)
 
 
-def _add_classifier_target(df: pd.DataFrame) -> pd.DataFrame:
-    """Entry proxy is close[T+1], exit close[T+PREDICTION_HORIZON_DAYS]; a 10-day horizon has a better signal-to-noise ratio than 5."""
+def _add_forward_return(df: pd.DataFrame) -> pd.Series:
+    """Entry proxy is close[T+1], exit close[T+PREDICTION_HORIZON_DAYS]; a 10-day horizon has a better signal-to-noise ratio than 5. Drops rows without a resolved exit."""
     df['next_close']   = df.groupby('ticker')['close_price'].shift(-1)
     df['future_close'] = df.groupby('ticker')['close_price'].shift(-PREDICTION_HORIZON_DAYS)
     df.dropna(subset=['next_close', 'future_close'], inplace=True)
+    return (df['future_close'] - df['next_close']) / df['next_close']
 
-    df['target'] = (
-        (df['future_close'] - df['next_close']) / df['next_close'] > PREDICTION_RETURN_THRESHOLD
-    ).astype(int)
+
+def _add_classifier_target(df: pd.DataFrame) -> pd.DataFrame:
+    df['target'] = (_add_forward_return(df) > PREDICTION_RETURN_THRESHOLD).astype(int)
     return df
+
+
+def _embargoed_row_indices(date_series: pd.Series, unique_dates: np.ndarray, region_ends: List[int]) -> List[List[int]]:
+    """Row positions of the consecutive date regions ending at `region_ends` plus the remainder; every region but the last drops its final PREDICTION_HORIZON_DAYS dates so forward labels cannot bleed into the next region."""
+    starts = [0] + region_ends
+    stops = [end - PREDICTION_HORIZON_DAYS for end in region_ends] + [len(unique_dates)]
+    return [
+        date_series.index[date_series.isin(set(unique_dates[start:stop]))].tolist()
+        for start, stop in zip(starts, stops)
+    ]
 
 
 def _log_class_distribution(df: pd.DataFrame) -> None:
@@ -175,16 +186,7 @@ def _temporal_split(df: pd.DataFrame) -> _Split:
     train_end = int(n_dates * 0.60)
     calib_end = int(n_dates * 0.80)
 
-    # Purge the last PREDICTION_HORIZON_DAYS dates from each partition so
-    # their forward labels cannot bleed into the next region — same embargo
-    # concept applied to the outer split that already exists inside CV folds.
-    train_dates = set(unique_dates[:train_end - PREDICTION_HORIZON_DAYS])
-    calib_dates = set(unique_dates[train_end:calib_end - PREDICTION_HORIZON_DAYS])
-    test_dates  = set(unique_dates[calib_end:])
-
-    train_idx = date_series.index[date_series.isin(train_dates)].tolist()
-    calib_idx = date_series.index[date_series.isin(calib_dates)].tolist()
-    test_idx  = date_series.index[date_series.isin(test_dates)].tolist()
+    train_idx, calib_idx, test_idx = _embargoed_row_indices(date_series, unique_dates, [train_end, calib_end])
 
     split = _Split(
         X_train=X_full.iloc[train_idx], y_train=y_full.iloc[train_idx],
@@ -402,14 +404,7 @@ def train_quantile_models() -> bool:
     """Q10/Q90 XGBoost regressors on the classifier's feature pipeline with a clipped 10-day return target (inference converts it to prices). False when training did not finish."""
     logger.info("Initiating Quantile Regression model training (Q10 / Q90)...")
 
-    _avail_gb = memory_helpers.available_mib() / 1024
-    if _avail_gb < ML_TRAINING_ABORT_AVAILABLE_GB:
-        msg = (
-            f"Quantile training aborted: only {_avail_gb:.1f} GB RAM available "
-            f"(minimum {ML_TRAINING_ABORT_AVAILABLE_GB} GB required)."
-        )
-        logger.error(msg)
-        log_notification("Error", msg)
+    if not _memory_gate("Quantile training", memory_helpers.available_mib() / 1024, ML_TRAINING_ABORT_AVAILABLE_GB):
         return False
 
     try:
@@ -425,13 +420,7 @@ def train_quantile_models() -> bool:
         df = build_model_features(df)
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
-        # Continuous return target (not binary)
-        df['next_close']   = df.groupby('ticker')['close_price'].shift(-1)
-        df['future_close'] = df.groupby('ticker')['close_price'].shift(-PREDICTION_HORIZON_DAYS)
-        df.dropna(subset=['next_close', 'future_close'], inplace=True)
-        df['return_target'] = (
-            (df['future_close'] - df['next_close']) / df['next_close']
-        ).clip(-1.0, 1.0)
+        df['return_target'] = _add_forward_return(df).clip(-1.0, 1.0)
 
         if len(df) < 1000:
             logger.warning('Insufficient training samples (%s) for quantile training.', len(df))
@@ -444,16 +433,9 @@ def train_quantile_models() -> bool:
         X_full = df[FEATURE_COLS]
         y_full = df['return_target']
 
-        # 80/20 temporal split with embargo — no calibration step for regression
         unique_dates = np.sort(df['date'].unique())
         date_series  = df['date'].reset_index(drop=True)
-        n_dates      = len(unique_dates)
-        train_end    = int(n_dates * 0.80)
-        train_dates  = set(unique_dates[:train_end - PREDICTION_HORIZON_DAYS])
-        test_dates   = set(unique_dates[train_end:])
-
-        train_idx = date_series.index[date_series.isin(train_dates)].tolist()
-        test_idx  = date_series.index[date_series.isin(test_dates)].tolist()
+        train_idx, test_idx = _embargoed_row_indices(date_series, unique_dates, [int(len(unique_dates) * 0.80)])
 
         X_train = X_full.iloc[train_idx]
         y_train = y_full.iloc[train_idx]
