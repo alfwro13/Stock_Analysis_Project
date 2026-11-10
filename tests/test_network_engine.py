@@ -341,6 +341,27 @@ class TestPatchSessionWithRetries:
             with pytest.raises(ne._TransientHTTPError, match="second-ctx"):
                 session.request("GET", "http://example.com")
 
+    def test_worker_thread_warning_names_the_calling_context(self, caplog):
+        # yfinance issues the request on its own worker thread, which never set the thread-local
+        # context; the warning must still name the call instead of 'unknown'.
+        session = MagicMock()
+        ok_response = MagicMock(status_code=200)
+        original = MagicMock(side_effect=[Exception("curl: (28) Operation timed out"), ok_response])
+        session.request = original
+        ne._patch_session_with_retries(session, "history:AAPL", timeout=5, max_retries=2)
+        results = []
+
+        def worker():
+            results.append(session.request("GET", "http://example.com"))
+
+        with patch("tools.network_engine.time.sleep"), caplog.at_level(logging.WARNING, logger="tools.network_engine"):
+            thread = threading.Thread(target=worker)
+            thread.start()
+            thread.join()
+        assert results == [ok_response]
+        assert "during 'history:AAPL'" in caplog.text
+        assert "unknown" not in caplog.text
+
     def test_retry_sleep_releases_and_reacquires_lock(self):
         session = MagicMock()
         ok_response = MagicMock(status_code=200)

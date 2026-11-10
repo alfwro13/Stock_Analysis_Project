@@ -47,7 +47,8 @@ _session_cache: dict[str, cffi_requests.Session] = {}
 _session_cache_lock = threading.Lock()
 
 # Per-thread action_context/lock for the currently-in-flight call on a (possibly reused) session —
-# see _patch_session_with_retries.
+# see _patch_session_with_retries. yfinance runs the request on its own worker thread, which never
+# sets these, so the wrapper falls back to the context stored on the session itself.
 _retry_context = threading.local()
 
 _stats_queue: "_queue_module.Queue" = _queue_module.Queue()
@@ -267,6 +268,7 @@ def _patch_session_with_retries(
     # it dynamically rather than closing over a single caller's action_context/lock forever.
     _retry_context.action_context = action_context
     _retry_context.lock = lock
+    session._retry_action_context = action_context
     if "_retry_patched" in session.__dict__:
         return
 
@@ -274,7 +276,7 @@ def _patch_session_with_retries(
     base_delay = 2.0
 
     def wrapped_request(method, url, **kwargs):
-        action_context = getattr(_retry_context, "action_context", "unknown")
+        action_context = getattr(_retry_context, "action_context", None) or session._retry_action_context
         lock = getattr(_retry_context, "lock", None)
         kwargs.setdefault("timeout", timeout)
         for attempt in range(max_retries + 1):
