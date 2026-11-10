@@ -177,12 +177,19 @@ def _maybe_restore_latch() -> None:
 
 def _clear_yfinance_crumb() -> None:
     # YfData singleton binds crumb to old session cookies; clear it so the next fetch re-authenticates.
+    # A 429 on the crumb request itself lands here on the thread that already holds _cookie_lock, a
+    # non-reentrant Lock, so waiting for it would deadlock that thread and every Yahoo caller behind it.
     try:
         from yfinance.data import YfData
         for inst in YfData._instances.values():
-            with inst._cookie_lock:
+            if not inst._cookie_lock.acquire(blocking=False):
+                logger.debug("yfinance crumb cache left as is: its lock is held (a crumb fetch is in progress).")
+                continue
+            try:
                 inst._crumb = None
                 inst._cookie = None
+            finally:
+                inst._cookie_lock.release()
         logger.debug("Cleared yfinance crumb cache after session change.")
     except Exception as e:
         logger.debug("Could not clear yfinance crumb cache: %s", e)

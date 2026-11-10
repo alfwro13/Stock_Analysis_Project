@@ -770,15 +770,14 @@ class YahooEngine:
         }
 
     def get_fx_rate(self, pair: str, *, force=False) -> Optional[float]:
-        from cache_refresh_helpers import submit_cache_refresh
+        from cache_refresh_helpers import await_cache_refresh
 
         key = f"fx_rate:{pair}"
         if not force:
             cached = self._get(key)
             if cached is not None:
                 return cached
-        future = submit_cache_refresh("fx:" + pair, lambda: self._fetch_fx_rate(pair), force=force)
-        return future.result() if future is not None else None
+        return await_cache_refresh("fx:" + pair, lambda: self._fetch_fx_rate(pair), force=force)
 
     def _fetch_fx_rate(self, pair: str) -> Optional[float]:
         from config import load_config

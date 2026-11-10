@@ -2,8 +2,10 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from config import load_config
+from constants import CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cache-refresh")
@@ -62,6 +64,17 @@ def _submit(key, refresh, *, force, awaited):
 
 def submit_cache_refresh(key, refresh, *, force=False):
     return _submit(key, refresh, force=force, awaited=True)
+
+
+def await_cache_refresh(key, refresh, *, force=False):
+    future = submit_cache_refresh(key, refresh, force=force)
+    if future is None:
+        return None
+    try:
+        return future.result(timeout=CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS)
+    except FutureTimeoutError:
+        logger.warning("Cache refresh %s still running after %ds; continuing without its result.", key, CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS)
+        return None
 
 
 def request_cache_refresh(key, refresh):

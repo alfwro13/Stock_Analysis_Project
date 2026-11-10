@@ -325,7 +325,7 @@ def daily_history_cache_revision(ticker: str, *, refresh_stale: bool = False):
 
 def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_only: bool = False, columns: Optional[list] = None) -> Optional[pd.DataFrame]:
     """read_only returns what is on disk and never fetches or queues a refresh: for batch readers over a universe-wide ticker set, whose inputs a scheduled step refreshes. columns limits the parquet read; a fetch on a missing file still returns every column."""
-    from cache_refresh_helpers import submit_cache_refresh
+    from cache_refresh_helpers import await_cache_refresh
 
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker:
@@ -355,15 +355,14 @@ def load_or_fetch_daily_history(ticker: str, *, cache_only: bool = False, read_o
     if df is not None:
         return df
     try:
-        future = submit_cache_refresh("daily:" + ticker, lambda: fetch_daily_history(ticker))
-        return future.result() if future is not None else None
+        return await_cache_refresh("daily:" + ticker, lambda: fetch_daily_history(ticker))
     except Exception as e:
         logger.error("Failed to fetch fallback history for %s: %s", ticker, e)
         return None
 
 
 def load_or_fetch_intraday_history(ticker: str):
-    from cache_refresh_helpers import submit_cache_refresh
+    from cache_refresh_helpers import await_cache_refresh
 
     safe_ticker = safe_ticker_filename(ticker)
     if not safe_ticker or is_excluded_from_yahoo_fetch(ticker):
@@ -404,8 +403,7 @@ def load_or_fetch_intraday_history(ticker: str):
         write_parquet_atomic(df, path)
         return df
 
-    future = submit_cache_refresh("intraday:1d:5m:" + ticker, refresh)
-    return future.result() if future is not None else None
+    return await_cache_refresh("intraday:1d:5m:" + ticker, refresh)
 
 
 _EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}

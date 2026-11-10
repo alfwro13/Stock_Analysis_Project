@@ -1039,6 +1039,19 @@ class TestGetFxRate:
         with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("net")):
             assert self.eng.get_fx_rate("GBPUSD=X") is None
 
+    def test_returns_none_when_the_fetch_does_not_finish_in_time(self, monkeypatch):
+        import threading
+        import cache_refresh_helpers as refresh_helpers
+
+        release = threading.Event()
+        monkeypatch.setattr(refresh_helpers, "CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS", 0.2)
+        try:
+            with patch.object(self.eng, "_fetch_fx_rate", side_effect=lambda pair: release.wait(10) or 1.1):
+                assert self.eng.get_fx_rate("ZZSTUCK=X") is None
+        finally:
+            release.set()
+            refresh_helpers._pending["fx:ZZSTUCK=X"].result(timeout=10)
+
 
 class _FundsDataAccessedAfterClose:
     """Simulates yfinance's lazy top_holdings/sector_weightings properties, which trigger their
