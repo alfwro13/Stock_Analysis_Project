@@ -407,8 +407,7 @@ def test_get_market_pulse_index_items_include_invert_color_and_asset_type(client
 @pytest.mark.api
 def test_get_market_pulse_dynamic_mode_returns_dynamic_selection(client):
     from unittest.mock import patch as _patch
-    with _patch("db.database.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
-         _patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
+    with _patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
          _patch("api.routes_system.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}):
         resp = client.get("/api/market-pulse")
     data = _json(resp)["data"]

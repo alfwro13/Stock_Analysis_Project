@@ -10,7 +10,7 @@ from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 
 import backup_engine
 import scheduler_engine
-from db import database
+from db import connection as _conn
 from db.database import database_swap_gate, get_connection
 
 
@@ -555,13 +555,13 @@ class TestRestoreBackup:
         real_swap = backup_engine._swap_database
 
         def _swap(staged):
-            seen.append(database._swap_gate_closed)
+            seen.append(_conn._swap_gate_closed)
             real_swap(staged)
 
         with patch("backup_engine.load_config", return_value=_cfg()), patch("backup_engine._swap_database", side_effect=_swap):
             assert backup_engine.restore_backup(path.name)["status"] == "success"
         assert seen == [True]
-        assert not database._swap_gate_closed
+        assert not _conn._swap_gate_closed
 
     def test_the_gate_reopens_when_the_swap_fails(self, app_tree):
         path = _craft_archive(
@@ -571,7 +571,7 @@ class TestRestoreBackup:
         with patch("backup_engine.load_config", return_value=_cfg()), \
              patch("backup_engine._swap_database", side_effect=OSError("disk gone")):
             assert backup_engine.restore_backup(path.name)["status"] == "error"
-        assert not database._swap_gate_closed
+        assert not _conn._swap_gate_closed
         get_connection().close()
 
     def test_trusted_archive_without_a_database_is_recorded_in_the_live_history(self, app_tree):

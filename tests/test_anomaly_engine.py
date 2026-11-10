@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as db
+from db import connection as _conn
 from anomaly_engine import AnomalyEngine, read_trained_at
 
 
@@ -392,7 +393,7 @@ class TestBackfillAll:
 
         def spy(ticker, *args, **kwargs):
             held_before_ticker.append(
-                [e["caller"] for e in list(db._open_writes.values()) if e["caller"].startswith("anomaly_engine.py")]
+                [e["caller"] for e in list(_conn._open_writes.values()) if e["caller"].startswith("anomaly_engine.py")]
             )
             return original(ticker, *args, **kwargs)
 
