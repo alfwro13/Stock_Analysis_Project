@@ -82,7 +82,7 @@ While a backup restore is running (`POST /api/backup/restore`) the same refusal 
 
 ### Request input limits
 
-Request models in `api/routes_accounts.py`, `api/routes.py` and the `POST /api/settings` schema in `api/routes_system.py` that carry a float inherit `api.deps.FiniteModel` (`allow_inf_nan=False`): `Infinity`, `-Infinity`, `NaN` and a number that overflows to infinity (`1e999`) are rejected with `422`, so a non-finite price, quantity or limit can never be stored. The size limits below live in `constants.py`; an over-limit request is refused whole, never truncated:
+Request models in `api/routes_accounts.py`, `api/routes_pension.py`, `api/routes.py` and the `POST /api/settings` schema in `api/routes_system.py` that carry a float inherit `api.deps.FiniteModel` (`allow_inf_nan=False`): `Infinity`, `-Infinity`, `NaN` and a number that overflows to infinity (`1e999`) are rejected with `422`, so a non-finite price, quantity or limit can never be stored. The size limits below live in `constants.py`; an over-limit request is refused whole, never truncated:
 
 | Limit | Value | Where |
 |---|---|---|

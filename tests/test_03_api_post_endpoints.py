@@ -228,9 +228,11 @@ def test_account_reads_still_work_during_a_restore(client):
 @pytest.mark.api
 def test_every_accounts_route_that_queues_a_task_sits_behind_the_restore_refusal():
     import api.routes_accounts
+    import api.routes_pension
     from api.deps import refuse_writes_during_restore
 
-    assert any(d.dependency is refuse_writes_during_restore for d in api.routes_accounts.accounts_router.dependencies)
+    for router in (api.routes_accounts.accounts_router, api.routes_pension.pension_router):
+        assert any(d.dependency is refuse_writes_during_restore for d in router.dependencies)
 
 
 @pytest.mark.api
