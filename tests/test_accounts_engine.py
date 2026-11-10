@@ -1919,6 +1919,67 @@ def test_refresh_performance_cache_counts_holdings_valued_at_cost():
 
 
 @pytest.mark.db
+def test_refresh_performance_cache_reads_the_account_once(monkeypatch):
+    from database import get_performance_cache, upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    _seed_stock_signal("ZZPERFONCE", 12.0, "GBP")
+    aid = create_account("PerfCacheOnceAcc", "GBP", initial_cash=1000.0, opened_date="2026-01-01")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPERFONCE", currency="GBP",
+                    quantity=20, unit_price=10, exchange_rate=1.0)
+    add_transaction(aid, "Cash", "2026-01-06", unit_price=250)
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    upsert_value_snapshot(aid, yesterday, 1100.0, 900.0, 200.0, 1000.0)
+
+    accounts_engine.refresh_performance_cache(aid)
+    expected = get_performance_cache(aid)
+
+    reads = {"account": 0, "transactions": 0, "prices": 0, "ledger": 0}
+    for name, attr in (("account", "get_account"), ("transactions", "get_transactions"),
+                       ("prices", "current_price_map"), ("ledger", "_ledger_for_account")):
+        real = getattr(accounts_engine, attr)
+
+        def wrapper(*args, _name=name, _real=real, **kwargs):
+            reads[_name] += 1
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(accounts_engine, attr, wrapper)
+
+    accounts_engine.refresh_performance_cache(aid)
+
+    assert reads == {"account": 1, "transactions": 1, "prices": 1, "ledger": 1}
+    refreshed = get_performance_cache(aid)
+    for column in ("total_value", "equity_value", "cash_balance", "unrealized_pnl", "return_1d",
+                   "return_1w", "return_1y", "mwrr", "realized_pnl", "dividend_income",
+                   "interest_income", "priced_at_cost_count"):
+        assert refreshed[column] == expected[column], column
+
+
+@pytest.mark.db
+def test_shared_inputs_give_the_same_returns_and_contributions(monkeypatch):
+    from database import upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    _seed_stock_signal("ZZRETINPUTS", 15.0, "GBP")
+    aid = create_account("ReturnsInputsAcc", "GBP", initial_cash=500.0, opened_date="2026-01-01")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZRETINPUTS", currency="GBP",
+                    quantity=10, unit_price=10, exchange_rate=1.0)
+    add_transaction(aid, "Cash", "2026-01-07", unit_price=300)
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    upsert_value_snapshot(aid, yesterday, 800.0, 700.0, 100.0, 500.0)
+
+    inputs = accounts_engine.AccountInputs(aid)
+    assert accounts_engine.net_contributions(aid, inputs) == accounts_engine.net_contributions(aid)
+    assert accounts_engine.period_returns(aid, inputs) == accounts_engine.period_returns(aid)
+    assert accounts_engine.money_weighted_return(aid, inputs) == accounts_engine.money_weighted_return(aid)
+
+    missing = accounts_engine.AccountInputs(999999)
+    assert accounts_engine.net_contributions(999999, missing) == 0.0
+    assert accounts_engine.money_weighted_return(999999, missing) is None
+    assert accounts_engine.period_returns(999999, missing) == accounts_engine.period_returns(999999)
+
+
+@pytest.mark.db
 def test_backfill_currency_breakdown_matches_total_equity_across_two_currencies(monkeypatch, tmp_path):
     idx = pd.date_range("2025-01-01", "2025-01-05", freq="D")
     gbp_df = pd.DataFrame({"Close": [10.0] * len(idx)}, index=idx)
