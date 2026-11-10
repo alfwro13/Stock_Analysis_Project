@@ -185,3 +185,4 @@ ML_FEATURE_MAX_AGE_TRADING_DAYS = 3  # newest quant_signals row inference accept
 # ── Sentiment chart rendering ─────────────────────────────────────────────────
 SENTIMENT_CHART_FIGSIZE    = (12, 6)  # matplotlib figure size for Nextcloud alert chart
 SENTIMENT_CHART_DPI        = 300      # export resolution for Nextcloud alert chart
+SENTIMENT_VISUAL_CACHE_TTL_SECONDS = 3600  # Macro Sentiment charts and Fear & Greed value; every rebuild makes a live CNN request
