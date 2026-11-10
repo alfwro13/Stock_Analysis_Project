@@ -38,6 +38,8 @@ ENGINE = AIPromptEngine()
 SECTOR_TICKERS = [f"AI_PEER_{i}" for i in range(8)]  # AI_PEER_0 … AI_PEER_7
 OPT_TICKER = "AI_OPT_TEST"
 CORE_TICKER = "AI_CORE_TEST"
+XRAY_TICKER = "AI_XRAY_TEST"
+XRAY_BENCHMARK = "SWDA.L"
 
 
 def _seed_sector_peers(num_peers: int):
@@ -110,6 +112,51 @@ def _seed_core_stock(ticker: str):
     )
     conn.commit()
     conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _restore_shared_state():
+    import time_engine
+    from db import database as db
+    saved_calendars = dict(time_engine._calendar_cache)
+    conn = None
+    try:
+        conn = db.get_connection()
+        saved_matrix = conn.execute(
+            "SELECT * FROM xray_correlation_matrix WHERE benchmark = ?", (XRAY_BENCHMARK,)
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    yield
+    # A calendar built while builtins.open is patched fails, and time_engine caches the failure as None for the session.
+    for exchange, calendar in list(time_engine._calendar_cache.items()):
+        if calendar is None and saved_calendars.get(exchange, False) is not None:
+            del time_engine._calendar_cache[exchange]
+    conn = None
+    try:
+        conn = db.get_connection()
+        peers = SECTOR_TICKERS + ["AI_SOLO"]
+        conn.execute(
+            f"DELETE FROM sector_relative_momentum_results WHERE ticker IN ({', '.join('?' * len(peers))})", peers
+        )
+        stocks = SECTOR_TICKERS + [CORE_TICKER]
+        conn.execute(f"DELETE FROM stock_signals WHERE ticker IN ({', '.join('?' * len(stocks))})", stocks)
+        conn.execute("DELETE FROM quant_signals WHERE ticker = ?", (CORE_TICKER,))
+        conn.execute("DELETE FROM earnings_volatility WHERE instr(ticker, ?) = 1", (OPT_TICKER,))
+        conn.execute("DELETE FROM xray_risk_cache WHERE ticker = ?", (XRAY_TICKER,))
+        conn.execute("DELETE FROM xray_dividend_cache WHERE ticker = ?", (XRAY_TICKER,))
+        conn.execute("DELETE FROM xray_correlation_matrix WHERE benchmark = ?", (XRAY_BENCHMARK,))
+        for row in saved_matrix:
+            cols = row.keys()
+            conn.execute(
+                f"INSERT INTO xray_correlation_matrix ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                tuple(row),
+            )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -578,9 +625,6 @@ class TestADXAndBollingerBands:
 # ─────────────────────────────────────────────────────────────────────────────
 # Feature: X-ray portfolio risk data injection
 # ─────────────────────────────────────────────────────────────────────────────
-
-XRAY_TICKER = "AI_XRAY_TEST"
-
 
 def _seed_xray_data(ticker: str):
     from db import database as db

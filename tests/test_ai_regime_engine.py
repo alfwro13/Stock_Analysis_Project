@@ -25,6 +25,9 @@ from ai_regime_engine import AIRegimePromptEngine, _ALLOWED_MODES
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+_SEED_DATE = "2026-06-20"
+
+
 def _seed_regime(conn, date_str, state=0, label="Bull", prob=0.85, vix=15.0):
     conn.execute(
         """INSERT OR REPLACE INTO market_regimes
@@ -133,6 +136,32 @@ class TestDaysSinceLastTransition:
 # ── generate_prompt ───────────────────────────────────────────────────────────
 
 class TestGeneratePrompt:
+    @pytest.fixture(autouse=True)
+    def _restore_regime_rows(self):
+        tables = ("market_regimes", "macro_regimes")
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            saved = {t: conn.execute(f"SELECT * FROM {t} WHERE date = ?", (_SEED_DATE,)).fetchall() for t in tables}
+        finally:
+            if conn:
+                conn.close()
+        yield
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            for table, rows in saved.items():
+                conn.execute(f"DELETE FROM {table} WHERE date = ?", (_SEED_DATE,))
+                for row in rows:
+                    cols = row.keys()
+                    conn.execute(
+                        f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", tuple(row)
+                    )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
     def setup_method(self):
         self.engine = AIRegimePromptEngine()
 
@@ -143,7 +172,7 @@ class TestGeneratePrompt:
     @pytest.mark.parametrize("mode", list(_ALLOWED_MODES))
     def test_all_modes_return_nonempty_string(self, mode):
         conn = _db_module.get_connection()
-        _seed_regime(conn, "2026-06-20")
+        _seed_regime(conn, _SEED_DATE)
         conn.close()
         result = self.engine.generate_prompt(mode)
         assert isinstance(result, str)
@@ -151,7 +180,7 @@ class TestGeneratePrompt:
 
     def test_prompt_contains_data_block_header(self):
         conn = _db_module.get_connection()
-        _seed_regime(conn, "2026-06-20", state=2, label="Crash", prob=0.91)
+        _seed_regime(conn, _SEED_DATE, state=2, label="Crash", prob=0.91)
         conn.close()
         result = self.engine.generate_prompt("Plain English Briefing")
         assert "MARKET REGIME SNAPSHOT" in result
@@ -159,7 +188,7 @@ class TestGeneratePrompt:
 
     def test_result_is_cached(self):
         conn = _db_module.get_connection()
-        _seed_regime(conn, "2026-06-20")
+        _seed_regime(conn, _SEED_DATE)
         conn.close()
         mode = "Red Flags Check"
         r1 = self.engine.generate_prompt(mode)
@@ -168,7 +197,7 @@ class TestGeneratePrompt:
 
     def test_cache_clears_on_new_day(self):
         conn = _db_module.get_connection()
-        _seed_regime(conn, "2026-06-20")
+        _seed_regime(conn, _SEED_DATE)
         conn.close()
         mode = "Plain English Briefing"
         with patch("ai_regime_engine.datetime") as mock_dt:
