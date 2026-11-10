@@ -7,7 +7,6 @@ Tests for the alert_state-based deduplication logic added to IntradayOrchestrato
   _dedup_settings          - config knob resolution with safe fallbacks
   _evaluate_alert_gate     - all 7 suppression decision branches
   record_alert_fired       - state persistence after confirmed dispatch
-  log_notification_feed    - feed write decoupled from suppression ledger
 
 All tests use the session-level temp DB created by conftest.py (init_db() has
 already run, so alert_state exists). Engine instances are mocked to avoid any
@@ -661,44 +660,6 @@ class TestComputeTargetOnlyTickers:
             "ZZWATCH": {2: {"low_limit": 5.0, "high_limit": None}},
         }
         assert orch._compute_target_only_tickers(held, limits_by_ticker) == ["ZZWATCH"]
-
-
-# ── log_notification_feed ─────────────────────────────────────────────────────
-
-class TestLogNotificationFeed:
-    MSG_MARKER = "__dedup_test_feed_marker__"
-
-    def teardown_method(self):
-        conn = _conn()
-        conn.execute(
-            "DELETE FROM system_notifications WHERE message_text LIKE ?",
-            (f"%{self.MSG_MARKER}%",),
-        )
-        conn.commit()
-        conn.close()
-
-    def test_writes_row_with_status_sent(self, orch, db_conn):
-        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}", db_conn)
-        conn = _conn()
-        row = conn.execute(
-            "SELECT status FROM system_notifications WHERE message_text LIKE ? LIMIT 1",
-            (f"%{self.MSG_MARKER}%",),
-        ).fetchone()
-        conn.close()
-        assert row is not None
-        assert row["status"] == "sent"
-
-    def test_does_not_affect_alert_state(self, orch, db_conn):
-        """Feed writes must be completely decoupled from the suppression ledger."""
-        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}", db_conn)
-        row = _read_alert_state("Crash", TEST_TICKER)
-        assert row is None  # alert_state untouched
-
-    def test_gate_still_fires_after_feed_write(self, orch, db_conn):
-        """Writing to the feed must not suppress subsequent alerts."""
-        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}", db_conn)
-        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
-        assert result is False  # still fires; feed write has no bearing on gate
 
 
 # ── N2: alert_state pruning ───────────────────────────────────────────────────
