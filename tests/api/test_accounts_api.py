@@ -1,11 +1,8 @@
 """Tests for the built-in Accounts API endpoints (api/routes_accounts.py)."""
-import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def _json(resp) -> dict:
@@ -2933,7 +2930,7 @@ context.calculateTransactionFx();
 assert.match(fields['txn-fx-calc-status'].textContent, /total cost must exceed the fee/);
 """
     result = subprocess.run(
-        [node, "-e", script, str(Path(__file__).parent.parent / "static/js/accounts.js")],
+        [node, "-e", script, str(Path(__file__).resolve().parents[2] / "static/js/accounts.js")],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
@@ -2974,7 +2971,7 @@ assert.ok(html.includes('<td>1.5 USD</td>'));
 assert.ok(html.includes('<td>GBp</td>'));
 assert.ok(html.includes('editTransaction(7, 3)'));
 """
-    root = Path(__file__).parent.parent / "static/js"
+    root = Path(__file__).resolve().parents[2] / "static/js"
     result = subprocess.run(
         [node, "-e", script, str(root / "utils.js"), str(root / "accounts.js")],
         capture_output=True, text=True,
@@ -3452,7 +3449,7 @@ context._renderTickerSuggestions();
 assert.deepEqual(shown(), []);
 """
     result = subprocess.run(
-        [node, "-e", script, str(Path(__file__).parent.parent / "static/js/accounts.js")],
+        [node, "-e", script, str(Path(__file__).resolve().parents[2] / "static/js/accounts.js")],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr

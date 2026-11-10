@@ -1,5 +1,5 @@
 """
-tests/test_02_api_get_endpoints.py  ── API GET ENDPOINTS
+tests/api/test_02_api_get_endpoints.py  ── API GET ENDPOINTS
 
 Verifies that every GET endpoint in the application:
   1. Returns HTTP 200 (not a crash / 500 Internal Server Error)
@@ -12,15 +12,12 @@ the temp database.  No live network calls are made.
 All "trigger" POST endpoints are tested separately in test_03_*.
 """
 
-import sys
 import json
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -651,9 +648,6 @@ def test_intraday_monitor_analysis_unknown_ticker_returns_null(client):
 def test_intraday_monitor_analysis_returns_data_after_result_inserted(client):
     """After inserting a result row, GET /api/intraday-monitor/analysis/{ticker} must return it."""
     import json
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
     from db import database as _db
 
     conn = _db.get_connection()
@@ -726,9 +720,6 @@ def test_news_feed_pagination_params_accepted(client):
 @pytest.mark.api
 def test_news_feed_returns_inserted_article(client):
     """After inserting an article directly, GET /api/news-feed must include it."""
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
     from db import database as _db
 
     conn = _db.get_connection()

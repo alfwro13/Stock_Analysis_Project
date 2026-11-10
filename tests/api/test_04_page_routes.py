@@ -1,5 +1,5 @@
 """
-tests/test_04_page_routes.py  ── HTML PAGE ROUTES
+tests/api/test_04_page_routes.py  ── HTML PAGE ROUTES
 
 Verifies that every page in the application:
   1. Returns HTTP 200 (or 302 for redirect pages)
@@ -11,13 +11,11 @@ handle the "no data yet" state gracefully — a common source of crashes after
 a refactor.
 """
 
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -131,7 +129,7 @@ def test_settings_inline_handlers_resolve_to_loaded_scripts(client):
     scripts = re.findall(r'<script src="/static/js/([\w.]+\.js)', resp.text)
     for name in ("settings_system.js", "settings_account.js", "settings_backup.js"):
         assert name in scripts
-    static_js = Path(__file__).parent.parent / "static" / "js"
+    static_js = Path(__file__).resolve().parents[2] / "static" / "js"
     source = "\n".join((static_js / name).read_text(encoding="utf-8") for name in scripts)
     handlers = set(re.findall(r'\bon(?:click|change|toggle|input)="\s*(?:return\s+)?([A-Za-z_]\w*)\(', resp.text))
     assert handlers
@@ -2233,7 +2231,7 @@ def test_pension_detail_page_loads_with_actions(client):
 
 
 def test_pension_admin_fee_preview_shows_post_fee_account_value():
-    script = (Path(__file__).parent.parent / "static" / "js" / "account_detail_pension.js").read_text()
+    script = (Path(__file__).resolve().parents[2] / "static" / "js" / "account_detail_pension.js").read_text()
     assert "isNaN(price) || _pensionFeeUnitsBefore === null" in script
     assert "const remainingUnits = _pensionFeeUnitsBefore - removed;" in script
     assert "Pension value will be: ${(remainingUnits * price).toFixed(2)} ${currency}" in script
@@ -2369,7 +2367,7 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
         asyncio.run(exercise())
     assert "event_loop_lag lag_ms=" in caplog.text
     assert "suspected_blocker=db/connection.py:_retry_on_locked:" in caplog.text
-    assert "callers=tests/test_04_page_routes.py:exercise:" in caplog.text
+    assert "callers=tests/api/test_04_page_routes.py:exercise:" in caplog.text
 
 
 def _stub_connection(rows=None, row=None):
@@ -2465,7 +2463,7 @@ def test_async_route_handlers_always_await(module_file):
                 stack.extend(ast.iter_child_nodes(node))
         return False
 
-    source = (Path(__file__).resolve().parents[1] / module_file).read_text()
+    source = (Path(__file__).resolve().parents[2] / module_file).read_text()
     offenders = [
         node.name for node in ast.parse(source).body
         if isinstance(node, ast.AsyncFunctionDef) and not awaits_itself(node)
@@ -2482,7 +2480,7 @@ def test_intraday_timer_pauses_and_coalesces_load_and_resume(page):
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node is required for timer behavior checks")
-    source = (Path(__file__).resolve().parents[1] / "static" / "js" / (page + ".js")).read_text()
+    source = (Path(__file__).resolve().parents[2] / "static" / "js" / (page + ".js")).read_text()
     timer = source[source.index("    var _intradayBusy"):source.index("    // ─── Refresh Status Countdown")]
     script = r"""
 const assert = require('node:assert/strict');
@@ -2592,7 +2590,7 @@ def test_watchlist_fx_progress_continues_after_failure_and_cleans_polling():
     node = shutil.which('node')
     if node is None:
         pytest.skip('Node is required for FX interaction checks')
-    source = (Path(__file__).resolve().parents[1] / 'static/js/watchlist.js').read_text()
+    source = (Path(__file__).resolve().parents[2] / 'static/js/watchlist.js').read_text()
     script = r"""
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
@@ -2661,7 +2659,7 @@ def test_notifications_live_poll_renders_text_without_html_parsing():
     node = shutil.which('node')
     if node is None:
         pytest.skip('Node is required for the notification poll check')
-    source = (Path(__file__).resolve().parents[1] / 'static/js/notifications.js').read_text()
+    source = (Path(__file__).resolve().parents[2] / 'static/js/notifications.js').read_text()
     script = r"""
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
@@ -2746,7 +2744,7 @@ def test_settings_loads_vendored_mermaid_that_exists_in_the_repo(client):
     assert resp.status_code == 200
     srcs = re.findall(r'<script src="(/static/[^"?]+mermaid[^"?]*)', resp.text)
     assert len(srcs) == 1 and srcs[0].startswith("/static/vendor/mermaid/")
-    root = Path(__file__).parent.parent
+    root = Path(__file__).resolve().parents[2]
     assert (root / srcs[0].lstrip("/")).stat().st_size > 0
     declared = json.loads((root / "package.json").read_text())["dependencies"]["mermaid"]
     assert srcs[0].endswith(f"/mermaid-{declared}.min.js"), (
