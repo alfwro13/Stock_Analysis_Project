@@ -354,6 +354,30 @@ class TestOptionsStaleness:
         result = ENGINE._get_options_volatility(OPT_TICKER + "_UNDER")
         assert "UNDERPRICED" in result
 
+    def test_null_edge_score_is_reported_unavailable_not_fairly_priced(self):
+        from db import database as db
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO earnings_volatility (ticker, next_earnings_date, last_updated) VALUES (?, '2026-09-01', ?)",
+                (OPT_TICKER + "_NOEDGE", ts),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        try:
+            result = ENGINE._get_options_volatility(OPT_TICKER + "_NOEDGE")
+        finally:
+            conn = db.get_connection()
+            try:
+                conn.execute("DELETE FROM earnings_volatility WHERE ticker = ?", (OPT_TICKER + "_NOEDGE",))
+                conn.commit()
+            finally:
+                conn.close()
+        assert "Edge unavailable" in result
+        assert "fairly priced" not in result
+
     def test_last_updated_present_in_output(self):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _seed_options_row(OPT_TICKER + "_TS", ts)

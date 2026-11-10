@@ -385,6 +385,37 @@ def test_earnings_volatility_accuracy_page_loads(client):
 
 
 @pytest.mark.pages
+def test_earnings_volatility_page_renders_row_without_historical_move(client):
+    """A ticker Yahoo has no past earnings for is stored with a NULL Historical Avg Move and still renders."""
+    from db import database as _db
+    from datetime import datetime, timedelta, timezone
+
+    next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO earnings_volatility "
+            "(ticker, next_earnings_date, drift_sample_size_1d, last_updated) "
+            "VALUES ('ZZNOHIST', ?, 0, datetime('now'))",
+            (next_earnings,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        resp = client.get("/earnings-volatility")
+        assert resp.status_code == 200
+        assert "/stock/ZZNOHIST" in resp.text
+    finally:
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM earnings_volatility WHERE ticker = 'ZZNOHIST'")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+@pytest.mark.pages
 def test_earnings_volatility_page_scope_filter(client):
     """The Scope selector defaults to Portfolio, and each row carries data-portfolio/
     data-watchlist attributes reflecting the ticker's actual membership so the
