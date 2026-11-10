@@ -23,7 +23,7 @@ def load_isin_cache() -> Dict[str, str]:
             with open(ISIN_CACHE_PATH, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load ISIN cache: {e}")
+            logger.error("Failed to load ISIN cache: %s", e)
     return {}
 
 def save_isin_cache(cache_dict: Dict[str, str]) -> None:
@@ -32,7 +32,7 @@ def save_isin_cache(cache_dict: Dict[str, str]) -> None:
         with open(ISIN_CACHE_PATH, 'w') as f:
             json.dump(cache_dict, f, indent=4)
     except Exception as e:
-        logger.error(f"Failed to save ISIN cache: {e}")
+        logger.error("Failed to save ISIN cache: %s", e)
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
     # Trailing periods are stripped (RR. and BP. would become RR..L); internal dots become hyphens
@@ -83,11 +83,11 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
         if target_mic:
             target_mic = target_mic.strip().upper()
             df = df[df['MIC'].astype(str).str.strip().str.upper() == target_mic]
-            logger.info(f"Filtered for MIC: {target_mic}. Found {len(df)} records.")
+            logger.info("Filtered for MIC: %s. Found %s records.", target_mic, len(df))
             
         if limit:
             df = df.head(limit)
-            logger.info(f"Limited run to {limit} records for testing.")
+            logger.info("Limited run to %s records for testing.", limit)
             
         kiid_col = next((c for c in df.columns if 'kiid' in c.lower()), None)
         def clean_url(val: Any) -> Optional[str]:
@@ -105,7 +105,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
         processed_count = 0
         total_rows = len(df)
         
-        logger.info(f"Resolving {total_rows} tickers against dynamic configuration map...")
+        logger.info("Resolving %s tickers against dynamic configuration map...", total_rows)
         
         for i, row in df.iterrows():
             symbol_raw = row.get('Symbol')
@@ -118,7 +118,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             resolved_ticker, is_mapped = resolve_ticker(symbol_raw, isin, mic, cache_dict, ft_config)
             
             if target_mic or limit:
-                logger.info(f"TEST: Original: '{symbol_raw}' (ISIN: {isin}) -> Resolved: '{resolved_ticker}'")
+                logger.info("TEST: Original: '%s' (ISIN: %s) -> Resolved: '%s'", symbol_raw, isin, resolved_ticker)
             
             if not is_mapped:
                 unmapped_mics.add(mic)
@@ -126,7 +126,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
                 
             if resolved_ticker in blacklist:
                 if target_mic or limit:
-                    logger.info(f"TEST: '{resolved_ticker}' is on the Blacklist. Skipping DB insertion.")
+                    logger.info("TEST: '%s' is on the Blacklist. Skipping DB insertion.", resolved_ticker)
                 continue
             
             ui_exchange = ft_config.get("EXCHANGES", {}).get(mic, {}).get("ui_name", mic)
@@ -138,14 +138,14 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             processed_count += 1
             
             if processed_count % 50 == 0:
-                logger.info(f"Freetrade Sync Progress: {processed_count} assets processed...")
+                logger.info("Freetrade Sync Progress: %s assets processed...", processed_count)
             if processed_count % 500 == 0:
                 save_isin_cache(cache_dict)
 
         save_isin_cache(cache_dict)
         
         if unmapped_mics:
-            logger.warning(f"Unmapped Freetrade MICs detected and skipped: {list(unmapped_mics)}")
+            logger.warning("Unmapped Freetrade MICs detected and skipped: %s", list(unmapped_mics))
         
         if not records:
             logger.warning("No valid records to insert.")
@@ -176,7 +176,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             cursor.executemany(upsert_query, records)
             conn.commit()
             
-            logger.info(f"Successfully synced {len(records)} Freetrade assets to the database.")
+            logger.info("Successfully synced %s Freetrade assets to the database.", len(records))
             
         except Exception:
             conn.rollback()
@@ -185,7 +185,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             conn.close()
 
     except Exception as e:
-        logger.error(f"Failed to sync Freetrade Universe: {e}")
+        logger.error("Failed to sync Freetrade Universe: %s", e)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Freetrade Universe Data Ingestion")

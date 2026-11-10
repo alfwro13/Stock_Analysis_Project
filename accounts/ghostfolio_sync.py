@@ -61,7 +61,7 @@ class GhostfolioSyncEngine:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to authenticate with Ghostfolio: {e}")
+            logger.error("Failed to authenticate with Ghostfolio: %s", e)
             return False
 
     def discover_accounts(self) -> list:
@@ -97,16 +97,16 @@ class GhostfolioSyncEngine:
                 self.active_account_ids = current_active
                 self.discovered_accounts = discovered_accounts
 
-                logger.info(f"Discovered {len(discovered_accounts)} accounts; {len(self.active_account_ids)} active.")
+                logger.info("Discovered %s accounts; %s active.", len(discovered_accounts), len(self.active_account_ids))
                 return discovered_accounts
 
             except Exception as e:
-                logger.error(f"Failed to update config.json with discovered accounts: {e}")
+                logger.error("Failed to update config.json with discovered accounts: %s", e)
                 self.active_account_ids = GHOSTFOLIO_ACCOUNTS.get("active", [])
                 return discovered_accounts
 
         except Exception as e:
-            logger.error(f"Account discovery failed: {e}")
+            logger.error("Account discovery failed: %s", e)
             self.active_account_ids = GHOSTFOLIO_ACCOUNTS.get("active", [])
             return []
 
@@ -118,7 +118,7 @@ class GhostfolioSyncEngine:
         output_json: Dict[str, Any] = {}
 
         try:
-            logger.info(f"Extracting holdings from {len(self.active_account_ids)} active accounts...")
+            logger.info("Extracting holdings from %s active accounts...", len(self.active_account_ids))
             
             for acc_id in self.active_account_ids:
                 acc_name = next((acc["name"] for acc in self.discovered_accounts if acc["id"] == acc_id), acc_id)
@@ -128,7 +128,7 @@ class GhostfolioSyncEngine:
                 try:
                     resp.raise_for_status()
                 except requests.exceptions.HTTPError:
-                    logger.warning(f"Failed to fetch holdings for account {acc_name}: HTTP {resp.status_code}")
+                    logger.warning("Failed to fetch holdings for account %s: HTTP %s", acc_name, resp.status_code)
                     continue
 
                 holdings_list = resp.json().get("holdings", [])
@@ -177,11 +177,11 @@ class GhostfolioSyncEngine:
             with open(PORTFOLIO_PATH, 'w') as f:
                 json.dump(output_json, f, indent=4)
                 
-            logger.info(f"Synced {len(output_json)} unique assets to portfolio.json.")
+            logger.info("Synced %s unique assets to portfolio.json.", len(output_json))
             return True
 
         except Exception as e:
-            logger.error(f"Failed to sync portfolio: {e}")
+            logger.error("Failed to sync portfolio: %s", e)
             return False
 
     def fetch_activities(self, account_id: Optional[str] = None) -> list[dict]:

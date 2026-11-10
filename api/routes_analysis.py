@@ -62,7 +62,7 @@ def get_ai_contagion_status():
             })
         return JSONResponse(content={"status": "success", "snapshots": snapshots})
     except Exception as e:
-        logger.error(f"ai-contagion/status failed: {e}")
+        logger.error("ai-contagion/status failed: %s", e)
         return _error_500(e)
     finally:
         if conn:
@@ -81,7 +81,7 @@ def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
         background_tasks.add_task(run_manual_job, "ai_contagion_job", run_ai_contagion_job)
         return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
     except Exception as e:
-        logger.error(f"Failed to trigger AI Contagion scan: {e}")
+        logger.error("Failed to trigger AI Contagion scan: %s", e)
         return _error_500(e)
 
 
