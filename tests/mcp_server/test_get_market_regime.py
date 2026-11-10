@@ -223,7 +223,8 @@ class TestGetMarketRegime:
 
     def test_crash_veto_threshold_follows_settings(self, mcp_client):
         _stress(_day())
-        default = self._regime(mcp_client)["data"]["market_stress"]["crash_veto_threshold"]
+        with patch("config.load_config", return_value={}):
+            default = self._regime(mcp_client)["data"]["market_stress"]["crash_veto_threshold"]
         with patch("config.load_config", return_value={"META_SCORING": {"CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.9}}}):
             configured = self._regime(mcp_client)["data"]["market_stress"]["crash_veto_threshold"]
         assert (default, configured) == (0.75, 0.9)
