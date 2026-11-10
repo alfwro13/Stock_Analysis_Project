@@ -74,7 +74,9 @@ SCHEDULER_RUN_HISTORY_LIMIT = 20  # runs kept per job in scheduler_run_history; 
 DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 1800  # a torch upgrade pulls several GB of CUDA wheels; the old 300 s limit killed it mid-download
 DEPENDENCY_INSTALL_RESUME_RETRIES = 10     # pip --resume-retries: re-attempts for an interrupted wheel download
 
-PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS = 600  # GET /api/accounts/portfolio-totals treats its answer as current this long, even when no input changed
+CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS = 30  # longest a request or job thread waits on an awaited cache refresh; an unbounded wait on a stuck Yahoo call exhausts the web worker pool (rule 10)
+
+PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS = 600 # GET /api/accounts/portfolio-totals treats its answer as current this long, even when no input changed
 PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS = 1800  # a price, FX or snapshot change, or an expired answer, is served while a background recompute runs, but never older than this (LR-10)
 
 # ── Request input limits (SEC 23/27) ──────────────────────────────────────────

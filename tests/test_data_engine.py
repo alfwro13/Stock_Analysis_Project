@@ -1105,6 +1105,26 @@ def test_awaited_refresh_promotes_queued_background_job():
             future.result(timeout=10)
 
 
+def test_await_cache_refresh_returns_the_result():
+    import cache_refresh_helpers as refresh_helpers
+
+    assert refresh_helpers.await_cache_refresh("zz-await-ok", lambda: 3.5) == 3.5
+
+
+def test_await_cache_refresh_gives_up_on_a_stuck_refresh(monkeypatch):
+    from threading import Event
+    import cache_refresh_helpers as refresh_helpers
+
+    release = Event()
+    monkeypatch.setattr(refresh_helpers, "CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS", 0.2)
+    try:
+        assert refresh_helpers.await_cache_refresh("zz-await-stuck", lambda: release.wait(10) or 1.0) is None
+        assert not release.is_set()
+    finally:
+        release.set()
+        refresh_helpers._pending["zz-await-stuck"].result(timeout=10)
+
+
 # ── universe history refresh ──────────────────────────────────────────────────
 
 def _universe_engine():

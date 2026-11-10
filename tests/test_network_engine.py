@@ -7,8 +7,10 @@ No real network calls; curl_cffi Session is mocked throughout.
 import json
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -375,6 +377,56 @@ class TestSleepOutsideLock:
             with pytest.raises(RuntimeError):
                 ne._sleep_outside_lock(1.0, lock=mock_lock)
         mock_lock.__enter__.assert_called_once()
+
+
+class TestClearYfinanceCrumb:
+    """yfinance holds YfData._cookie_lock (a plain Lock) while it fetches the crumb, and a 429 on that very
+    request reaches _clear_yfinance_crumb on the same thread: waiting for the lock hung prod's Yahoo callers."""
+
+    @staticmethod
+    def _instance():
+        return SimpleNamespace(_cookie_lock=threading.Lock(), _crumb="crumb", _cookie="cookie")
+
+    @staticmethod
+    def _run_in_thread(target):
+        finished = threading.Event()
+
+        def wrapper():
+            target()
+            finished.set()
+
+        threading.Thread(target=wrapper, daemon=True).start()
+        return finished
+
+    def test_clears_crumb_and_cookie_and_releases_the_lock(self):
+        inst = self._instance()
+        with patch("yfinance.data.YfData._instances", {"k": inst}):
+            ne._clear_yfinance_crumb()
+        assert inst._crumb is None and inst._cookie is None
+        assert not inst._cookie_lock.locked()
+
+    def test_does_not_wait_for_a_lock_the_calling_thread_holds(self):
+        inst = self._instance()
+
+        def hold_and_clear():
+            with inst._cookie_lock:
+                ne._clear_yfinance_crumb()
+
+        with patch("yfinance.data.YfData._instances", {"k": inst}):
+            assert self._run_in_thread(hold_and_clear).wait(5)
+        assert inst._crumb == "crumb"
+
+    def test_rate_limit_trip_from_a_thread_holding_the_crumb_lock_returns(self):
+        inst = self._instance()
+
+        def hold_and_trip():
+            with inst._cookie_lock:
+                ne._enter_yahoo_rate_limit("crumb fetch")
+
+        with patch("yfinance.data.YfData._instances", {"k": inst}), \
+             patch("tools.network_engine._RATE_LIMIT_COOLDOWN_SECS", 0):
+            assert self._run_in_thread(hold_and_trip).wait(5)
+            assert ne._RATE_LIMIT_READY.wait(5)
 
 
 class TestCreateFailoverSession:
