@@ -753,6 +753,35 @@ class TestStaleDailyHistoryFallback:
         assert row["change_pct"] == pytest.approx(1.127, abs=0.01)
 
 
+class TestWriteLockNotHeldDuringFetch:
+    """A ticker's Yahoo calls must run with no write transaction of the pulse writer open, or every other writer waits for the whole batch."""
+
+    TICKERS = ["_PULSE_LOCK_A", "_PULSE_LOCK_B", "_PULSE_LOCK_C"]
+
+    def teardown_method(self):
+        _clear_cache(*self.TICKERS)
+
+    def test_no_pulse_write_transaction_is_open_while_a_quote_is_fetched(self):
+        held_during_fetch = []
+
+        def fetch_snapshot(ticker):
+            held_during_fetch.append(
+                [e["caller"] for e in list(_db._open_writes.values()) if e["caller"].startswith("market_pulse_write.py")]
+            )
+            return _snapshot(101.0, regular_change=1.0, regular_change_pct=1.0, market_state="REGULAR")
+
+        daily = {t: _flat_daily_df([100.0, 101.0]) for t in self.TICKERS}
+        with patch("market_pulse_write.yahoo_engine.get_price_history", return_value=daily), \
+             patch("market_pulse_write.yahoo_engine.get_intraday", return_value={}), \
+             patch("market_pulse_write.yahoo_engine.get_quote_snapshot", side_effect=fetch_snapshot):
+            _mw.fetch_and_save_pulse(self.TICKERS)
+
+        assert len(held_during_fetch) == len(self.TICKERS)
+        assert held_during_fetch == [[]] * len(self.TICKERS)
+        for ticker in self.TICKERS:
+            assert _read_cache(ticker)["price"] == pytest.approx(101.0)
+
+
 class TestUpsertLivePrice:
     """upsert_live_price(): shares a price another engine already fetched, without a new Yahoo call."""
 

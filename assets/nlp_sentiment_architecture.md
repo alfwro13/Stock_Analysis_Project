@@ -134,8 +134,10 @@ huggingface_engine._get_finbert_analyzer()   ← shared singleton
         ↓
 _score_text(analyzer, headline + " " + summary)
         ↓
-UPDATE news_articles SET sentiment_score, sentiment_label
+UPDATE news_articles SET sentiment_score, sentiment_label   ← one executemany, after every article is scored
 ```
+
+The model runs over all unscored articles before the first `UPDATE`, so the write transaction covers only the batched update. Scoring a few hundred articles takes tens of seconds, and a write transaction open that long blocks every other writer.
 
 Labels are coarser (`positive` / `negative` / `neutral`) using ±0.15 as the threshold.
 

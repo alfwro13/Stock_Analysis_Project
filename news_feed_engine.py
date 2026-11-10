@@ -135,24 +135,24 @@ def _score_unscoredrows(conn) -> None:
         return
 
     logger.info(f"News Feed: scoring sentiment for {len(rows)} articles...")
-    scored = 0
+    scored_rows = []
     for row in rows:
         text = " ".join(filter(None, [row["headline"], row["summary"]])).strip()
         if not text:
             continue
         try:
             score = _score_text(analyzer, text)
-            label = _label_from_score(score)
-            cursor.execute(
-                "UPDATE news_articles SET sentiment_score = ?, sentiment_label = ? WHERE id = ?",
-                (round(score, 4), label, row["id"]),
-            )
-            scored += 1
         except Exception as e:
             logger.debug(f"News Feed: sentiment scoring failed for article {row['id']}: {e}")
+            continue
+        scored_rows.append((round(score, 4), _label_from_score(score), row["id"]))
 
+    cursor.executemany(
+        "UPDATE news_articles SET sentiment_score = ?, sentiment_label = ? WHERE id = ?",
+        scored_rows,
+    )
     conn.commit()
-    logger.info(f"News Feed: sentiment scored {scored}/{len(rows)} articles.")
+    logger.info(f"News Feed: sentiment scored {len(scored_rows)}/{len(rows)} articles.")
 
 
 def run_news_feed_job() -> int:

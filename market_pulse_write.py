@@ -434,6 +434,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
             except Exception as e:
                 logger.error("[MARKET PULSE BACKGROUND] Error processing %s: %s", ticker, e)
+            finally:
+                conn.commit()
 
         if handle_gilt:
             _save_gilt_pulse(cursor, index_tickers, current_time)
