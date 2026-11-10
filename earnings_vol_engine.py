@@ -315,7 +315,7 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         return None, 0, None
 
 def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
-    """{ticker: reason} for tickers due within 14 days that failed in a way a retry can fix; tickers Yahoo answered with no usable earnings history are only logged."""
+    """{ticker: reason} for tickers due within 14 days that failed in a way a retry can fix; a ticker Yahoo answered with no usable earnings history still gets a row without drift or Historical Avg Move and is only logged."""
     ticker_list = filter_equity_tickers(ticker_list)
     total_tickers = len(ticker_list)
     if not ticker_list:
@@ -377,8 +377,10 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
 
                 if hist_move_pct is None:
                     reason, retryable = _earnings_history_gap(ticker)
-                    (failed_tickers if retryable else unusable_tickers)[ticker] = reason
-                    continue
+                    if retryable:
+                        failed_tickers[ticker] = reason
+                        continue
+                    unusable_tickers[ticker] = reason
 
                 # Options leg is optional now the page's primary content is drift/ML-band, not
                 # options mispricing — a ticker with no liquid ATM straddle still gets a row with
@@ -399,7 +401,8 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
                     isolated_variance = max(total_implied_pct**2 - non_earn_pct**2, 0)
                     isolated_implied_move = np.sqrt(isolated_variance) * 100.0 if isolated_variance > 0 else 0.01
 
-                    edge_score = hist_move_pct - isolated_implied_move
+                    if hist_move_pct is not None:
+                        edge_score = hist_move_pct - isolated_implied_move
 
                 last_updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -415,7 +418,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
                     ticker,
                     e_date_str,
                     round(isolated_implied_move, 2) if isolated_implied_move is not None else None,
-                    round(hist_move_pct, 2),
+                    round(hist_move_pct, 2) if hist_move_pct is not None else None,
                     round(edge_score, 2) if edge_score is not None else None,
                     opt_volume if implied_move_pct is not None else None,
                     last_updated,
@@ -427,22 +430,23 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
                     drift[20]["up_count"], drift[20]["sample_size"],
                 ))
 
-                cursor.execute('''
-                    INSERT OR REPLACE INTO earnings_volatility_history (ticker, scan_date, edge_score, drift_avg_pct_5d)
-                    VALUES (?, ?, ?, ?)
-                ''', (
-                    ticker,
-                    today.strftime("%Y-%m-%d"),
-                    round(edge_score, 2) if edge_score is not None else None,
-                    round(drift[5]["avg_pct"], 2) if drift[5]["avg_pct"] is not None else None,
-                ))
+                if edge_score is not None or drift[5]["avg_pct"] is not None:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO earnings_volatility_history (ticker, scan_date, edge_score, drift_avg_pct_5d)
+                        VALUES (?, ?, ?, ?)
+                    ''', (
+                        ticker,
+                        today.strftime("%Y-%m-%d"),
+                        round(edge_score, 2) if edge_score is not None else None,
+                        round(drift[5]["avg_pct"], 2) if drift[5]["avg_pct"] is not None else None,
+                    ))
                 conn.commit()
 
-                logger.info("[%s] Edge: %s | Isolated Implied: %s | Hist: %.2f%%",
+                logger.info("[%s] Edge: %s | Isolated Implied: %s | Hist: %s",
                             ticker,
                             f"{edge_score:.2f}%" if edge_score is not None else "N/A",
                             f"{isolated_implied_move:.2f}%" if isolated_implied_move is not None else "N/A",
-                            hist_move_pct)
+                            f"{hist_move_pct:.2f}%" if hist_move_pct is not None else "N/A")
 
             except Exception as e:
                 logger.error("Error analyzing %s: %s", ticker, e)

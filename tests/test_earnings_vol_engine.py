@@ -270,19 +270,66 @@ class TestCachedEarningsDateFilter:
             failed = run_earnings_vol_scan(["AAPL"])
         assert failed == {"AAPL": "Yahoo returned no earnings dates"}
 
-    def test_yahoo_answer_without_past_dates_is_logged_not_retried(self, db_path, caplog):
+    def test_yahoo_answer_without_past_dates_writes_row_without_drift_and_is_not_retried(self, db_path, caplog):
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
         _seed(db_path, "FGP.L", in_window)
         future_only = _fake_earnings_dates([pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=30)])
         with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=future_only), \
+             patch("earnings_vol_engine.yahoo_engine.get_options_expirations", return_value=None), \
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              caplog.at_level("INFO", logger="earnings_vol_engine"):
             failed = run_earnings_vol_scan(["FGP.L"])
         assert failed == {}
+        assert "have no usable earnings history" in caplog.text
         assert "FGP.L: Yahoo lists no past earnings dates" in caplog.text
-        assert len(_read_all(db_path, "SELECT * FROM earnings_volatility")) == 0
+        rows = _read_all(db_path, "SELECT * FROM earnings_volatility")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["ticker"] == "FGP.L"
+        assert row["next_earnings_date"] == in_window
+        for col in ("historical_avg_move_pct", "edge_score", "implied_move_pct", "options_volume", "drift_avg_pct_1d", "drift_avg_pct_5d", "drift_avg_pct_20d"):
+            assert row[col] is None
+        assert row["drift_sample_size_1d"] == 0
+        assert len(_read_all(db_path, "SELECT * FROM earnings_volatility_history")) == 0
+
+    def test_no_history_ticker_keeps_a_liquid_implied_move_without_an_edge(self, db_path):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "ET", in_window)
+        future_only = _fake_earnings_dates([pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=30)])
+        expiry = (date.today() + timedelta(days=6)).strftime("%Y-%m-%d")
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=future_only), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
+             patch("earnings_vol_engine.get_implied_straddle_move", return_value=(6.0, 500, expiry)):
+            run_earnings_vol_scan(["ET"])
+        row = _read_all(db_path, "SELECT * FROM earnings_volatility")[0]
+        assert row["implied_move_pct"] is not None
+        assert row["options_volume"] == 500
+        assert row["historical_avg_move_pct"] is None
+        assert row["edge_score"] is None
+
+    def test_retryable_gap_leaves_the_stored_row_untouched(self, db_path):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "AAPL", in_window)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "INSERT INTO earnings_volatility (ticker, next_earnings_date, historical_avg_move_pct, drift_avg_pct_1d, drift_sample_size_1d) VALUES ('AAPL', ?, 4.2, 1.5, 4)",
+            (in_window,),
+        )
+        conn.commit()
+        conn.close()
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()):
+            failed = run_earnings_vol_scan(["AAPL"])
+        assert failed == {"AAPL": "Yahoo returned no earnings dates"}
+        row = _read_all(db_path, "SELECT * FROM earnings_volatility")[0]
+        assert row["historical_avg_move_pct"] == 4.2
+        assert row["drift_sample_size_1d"] == 4
 
     def test_failed_warning_lists_ticker_and_reason(self, db_path, caplog):
         in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")

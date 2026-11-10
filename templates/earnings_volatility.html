@@ -67,7 +67,7 @@
                 {% else %}&mdash;{% endif %}
             </td>
             <td>{% if row.implied_move_pct is not none %}{{ "{:,.2f}".format(row.implied_move_pct) }}%{% else %}&mdash;{% endif %}</td>
-            <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
+            <td>{% if row.historical_avg_move_pct is not none %}{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%{% else %}&mdash;{% endif %}</td>
             <td class="{% if row.edge_score is none %}text-neutral-bold{% elif row.edge_score > 0 %}text-success{% elif row.edge_score < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
                 {% if row.edge_score is none %}&mdash;{% else %}{% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%{% endif %}
             </td>
@@ -138,7 +138,7 @@
             <div class="guide-card border-top-neutral">
                 <h4 class="text-muted">5. Options Volume</h4>
                 <p>This is the total number of Option contracts that have traded today for the specific strike prices we used in our calculation.</p>
-                <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data. A ticker with no liquid ATM straddle still appears above with drift/ML-band data — the Implied Move, Edge Score, and Options Volume columns simply show &mdash;.</p>
+                <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data. A ticker with no liquid ATM straddle still appears above with drift/ML-band data — the Implied Move, Edge Score, and Options Volume columns simply show &mdash;. A ticker for which Yahoo lists no usable past earnings (common for LSE listings) appears with only the ML Quantile Band, and its Drift and Historical Avg Move columns show &mdash;.</p>
             </div>
 
         </div>

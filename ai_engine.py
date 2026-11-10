@@ -403,6 +403,8 @@ class AIPromptEngine:
                 verdict = "Options appear UNDERPRICED (statistical edge to buying premium)."
             elif edge is not None and edge < 0:
                 verdict = "Options appear OVERPRICED (IV-crush risk; edge to selling premium)."
+            elif edge is None:
+                verdict = "Edge unavailable (no liquid ATM options quote or no past earnings history)."
             else:
                 verdict = "Options fairly priced relative to history."
 
