@@ -1,12 +1,11 @@
 import logging
 import os
 import time
-import json
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 from config import (
-    PORTFOLIO_PATH, HISTORICAL_DIR,
+    HISTORICAL_DIR,
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 )
 from database import (
@@ -75,18 +74,13 @@ class MaintenanceEngine:
             logger.info("Purged %d stale Ghostfolio file(s) (integration disabled)", self.metrics["ghostfolio_files_purged"])
 
     def _get_active_tickers(self) -> set:
-        """Collects tickers from portfolio JSON, the Watchlist account, and every DB table; any hit → file must not be deleted."""
+        """Collects tickers from combined holdings, the Watchlist account, and every DB table; any hit → file must not be deleted."""
         active_tickers = set()
 
-        if os.path.exists(PORTFOLIO_PATH):
-            try:
-                with open(PORTFOLIO_PATH, 'r') as f:
-                    data = json.load(f)
-                    for v in data.values():
-                        if 'ticker' in v:
-                            active_tickers.add(v['ticker'])
-            except Exception:
-                logger.warning("Failed to parse portfolio.json for active tickers", exc_info=True)
+        try:
+            active_tickers.update(get_combined_holdings().keys())
+        except Exception as e:
+            logger.warning("Failed to load combined holdings for active tickers: %s", e)
 
         active_tickers.update(get_watchlist_tickers())
 

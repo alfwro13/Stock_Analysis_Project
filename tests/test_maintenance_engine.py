@@ -377,6 +377,26 @@ class TestPrunePulseCache:
         assert "NVDA" in active
 
 
+class TestGetActiveTickers:
+    def test_includes_combined_holdings_without_portfolio_json(self):
+        eng = _engine()
+        with (
+            patch("maintenance_engine.get_combined_holdings", return_value={"ZZHELD": {"ticker": "ZZHELD"}}),
+            patch("maintenance_engine.get_watchlist_tickers", return_value=["ZZWATCH"]),
+        ):
+            active = eng._get_active_tickers()
+        assert {"ZZHELD", "ZZWATCH"} <= active
+
+    def test_holdings_failure_still_returns_watchlist_and_db_tickers(self):
+        eng = _engine()
+        with (
+            patch("maintenance_engine.get_combined_holdings", side_effect=RuntimeError("boom")),
+            patch("maintenance_engine.get_watchlist_tickers", return_value=["ZZWATCH"]),
+        ):
+            active = eng._get_active_tickers()
+        assert "ZZWATCH" in active
+
+
 # ── garbage_collect_files ─────────────────────────────────────────────────────
 
 class TestGarbageCollectFiles:
