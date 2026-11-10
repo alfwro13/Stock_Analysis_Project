@@ -1,12 +1,8 @@
 """Tests for Pension Reminders: reminder CRUD, the per-reminder job, pending items and their resolution."""
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def _json(resp) -> dict:

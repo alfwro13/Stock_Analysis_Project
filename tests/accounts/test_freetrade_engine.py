@@ -1,5 +1,5 @@
 """
-tests/test_freetrade_engine.py  ── FREETRADE ENGINE
+tests/accounts/test_freetrade_engine.py  ── FREETRADE ENGINE
 
 Covers resolve_ticker() for all 5 routing branches:
   - MUTUAL_FUND_EXCHANGE + ISIN in cache → returns cached value
@@ -12,13 +12,9 @@ Covers resolve_ticker() for all 5 routing branches:
   - Internal dot becomes a hyphen on every branch (e.g. BT.A → BT-A.L, not BT.A.L)
 """
 
-import sys
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from accounts.freetrade_engine import resolve_ticker
 
