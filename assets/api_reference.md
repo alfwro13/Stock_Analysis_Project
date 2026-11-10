@@ -840,7 +840,10 @@ banner (`db.database.get_auction_summary()`) — `null` when there are no auctio
 `true`, which would misleadingly claim "healthy" when there's simply no data to judge). `fear_greed`
 is served from an in-memory cache refreshed by the same background cycle that builds the Fear &
 Greed chart on `/market-sentiment` (`sentiment_engine.get_latest_fear_greed()`) — `null` until that
-cycle has run at least once since the last restart.
+cycle has run at least once since the last restart. The cycle runs when the cache is older than
+`constants.SENTIMENT_VISUAL_CACHE_TTL_SECONDS` (one hour) and makes one live Fear & Greed request
+per run; a run that does not obtain the value leaves the cache age untouched, so the next request
+retries.
 
 `tyx_close`, `dxy_close` and `gbpusd_close` are `null` when the nightly macro fetch returned nothing
 for them, and `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are `null` when the UK gilt

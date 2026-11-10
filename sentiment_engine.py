@@ -20,11 +20,11 @@ import matplotlib.pyplot as plt
 
 from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
 from constants import (
-    SENTIMENT_CHART_FIGSIZE, SENTIMENT_CHART_DPI,
+    SENTIMENT_CHART_FIGSIZE, SENTIMENT_CHART_DPI, SENTIMENT_VISUAL_CACHE_TTL_SECONDS,
 )
 from config import (
     NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN,
-    load_config, HISTORICAL_DIR
+    HISTORICAL_DIR
 )
 
 logger = logging.getLogger(__name__)
@@ -347,13 +347,9 @@ def get_vix_spy_html() -> str:
 
 
 def _check_and_trigger_async_refresh() -> None:
-    global _LAST_CACHE_TIME, _IS_REFRESHING
+    global _IS_REFRESHING
 
-    config_data = load_config()
-    refresh_rate: int = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
-    current_time: float = time.time()
-
-    if (current_time - _LAST_CACHE_TIME) > refresh_rate:
+    if (time.time() - _LAST_CACHE_TIME) > SENTIMENT_VISUAL_CACHE_TTL_SECONDS:
         with _CACHE_LOCK:
             if not _IS_REFRESHING:
                 _IS_REFRESHING = True
@@ -423,7 +419,7 @@ def _async_chart_cruncher_worker() -> None:
                 _MACRO_HTML_CACHE["fear_greed_value"] = fear_greed_value
                 _MACRO_HTML_CACHE["fear_greed_label"] = fear_greed_label
                 _MACRO_HTML_CACHE["fear_greed_as_of"] = fear_greed_as_of
-            _LAST_CACHE_TIME = time.time()
+                _LAST_CACHE_TIME = time.time()
 
         logger.info("Visual macro caches synchronized successfully.")
     except Exception as ex:

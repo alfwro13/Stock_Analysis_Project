@@ -219,3 +219,42 @@ class TestAsyncChartCruncherWorker:
         for key in ("yield_equity_html", "uk_yield_equity_html", "ftse_gbp_html"):
             assert '"y":-0.15' in cache[key].replace(" ", "")
             assert '"height":420' in cache[key].replace(" ", "")
+
+    def _run_worker(self, monkeypatch, sentiment_df):
+        monkeypatch.setattr(sentiment_engine, "_MACRO_HTML_CACHE", {})
+        monkeypatch.setattr(sentiment_engine, "_IS_REFRESHING", True)
+        monkeypatch.setattr(sentiment_engine, "_LAST_CACHE_TIME", 0.0)
+        monkeypatch.setattr(sentiment_engine, "get_sentiment_data", lambda: sentiment_df)
+        monkeypatch.setattr(sentiment_engine, "generate_vix_spy_figure", lambda: None)
+        monkeypatch.setattr(sentiment_engine, "fetch_stock_data", lambda ticker, start: pd.DataFrame())
+        monkeypatch.setattr(sentiment_engine, "fetch_parquet_data", lambda name, start: pd.DataFrame())
+        sentiment_engine._async_chart_cruncher_worker()
+
+    def test_worker_stamps_cache_time_only_when_fear_greed_was_obtained(self, monkeypatch):
+        self._run_worker(monkeypatch, None)
+        assert sentiment_engine._LAST_CACHE_TIME == 0.0
+
+        self._run_worker(monkeypatch, _frame(SPY_Close=(500, 520), Fear_Greed_Index=(40, 60)))
+        assert sentiment_engine._LAST_CACHE_TIME > 0.0
+        assert sentiment_engine._MACRO_HTML_CACHE["fear_greed_value"] == 60.0
+
+
+class TestRefreshGate:
+    @pytest.fixture
+    def thread_spy(self, monkeypatch):
+        monkeypatch.setattr(sentiment_engine, "_IS_REFRESHING", False)
+        with patch.object(sentiment_engine, "threading") as fake_threading:
+            yield fake_threading.Thread
+        monkeypatch.setattr(sentiment_engine, "_IS_REFRESHING", False)
+
+    def test_cache_younger_than_ttl_spawns_no_rebuild(self, monkeypatch, thread_spy):
+        monkeypatch.setattr(sentiment_engine, "_LAST_CACHE_TIME", sentiment_engine.time.time() - 300)
+        sentiment_engine._check_and_trigger_async_refresh()
+        thread_spy.assert_not_called()
+
+    def test_cache_older_than_ttl_spawns_one_rebuild(self, monkeypatch, thread_spy):
+        ttl = sentiment_engine.SENTIMENT_VISUAL_CACHE_TTL_SECONDS
+        monkeypatch.setattr(sentiment_engine, "_LAST_CACHE_TIME", sentiment_engine.time.time() - ttl - 1)
+        sentiment_engine._check_and_trigger_async_refresh()
+        sentiment_engine._check_and_trigger_async_refresh()
+        thread_spy.assert_called_once()
