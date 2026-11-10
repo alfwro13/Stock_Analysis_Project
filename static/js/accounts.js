@@ -86,10 +86,12 @@ function _scraperStatusBadgeHtml(acc) {
 const _ACCOUNT_DETAIL_URL_SUFFIX = { Pension: '/pension', House: '/house' };
 
 function _pendingActionTagHtml(pendingItems) {
-    const count = (pendingItems || []).length;
-    if (!count) return '';
-    const suffix = count > 1 ? ` &times;${count}` : '';
-    return ` <span class="account-badge account-badge-pending">[PENDING ACTION${suffix}]</span>`;
+    const items = pendingItems || [];
+    if (!items.length) return '';
+    const summary = items.map(i => i.title).join(', ');
+    const details = items.map(i => `${i.title}: ${i.detail}`).join(' ');
+    const heading = items.length === 1 ? 'PENDING ACTION' : `PENDING ACTION &times;${items.length}`;
+    return ` <span class="account-badge account-badge-pending" title="${escapeHtml(details)}">[${heading}: ${escapeHtml(summary)}]</span>`;
 }
 
 function _accountCardHtml(acc) {
@@ -103,7 +105,7 @@ function _accountCardHtml(acc) {
         <div class="guide-card h-100" id="account-card-${acc.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h4 class="mb-0">${escapeHtml(acc.name)} <span class="account-badge">${escapeHtml(acc.account_type)}</span>${isTrading ? _pendingActionTagHtml(acc.pending_topups) : ''}${isPension ? _pendingActionTagHtml(acc.pending_reminders) : ''}</h4>
+                    <h4 class="mb-0">${escapeHtml(acc.name)} <span class="account-badge">${escapeHtml(acc.account_type)}</span>${_pendingActionTagHtml(acc.pending_actions)}</h4>
                     <p class="text-muted account-stats-line mb-0">${_accountStatsLine(acc)}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${escapeHtml(acc.note)}</p>` : ''}
                 </div>

@@ -16,7 +16,7 @@ from accounts_engine import (
     tickers_needing_refresh, watchlist_summary,
 )
 from account_csv_import_engine import import_csv_activities
-from account_reminders_engine import labelled_pending_reminders
+from accounts.pending_actions import pending_account_actions
 from account_scraper_engine import (
     config_error, header_error, import_price_csv, price_as_of, run_scrape_for_account, test_scrape,
 )
@@ -49,7 +49,6 @@ from db.database import (
     get_watchlist_items,
     add_watchlist_item,
     delete_watchlist_items,
-    get_unresolved_pending_topups,
     get_treasury_bill,
     update_treasury_bill_auto_reinvest,
 )
@@ -257,11 +256,21 @@ def _resolve_fee_currency_and_rate(
     return resolved_currency, fx_rate_on_date(resolved_currency, txn_date)
 
 
+@accounts_router.get("/accounts/pending-actions")
+def api_pending_account_actions():
+    items = pending_account_actions()
+    return JSONResponse(content={"status": "success", "count": len(items), "items": items})
+
+
 @accounts_router.get("/accounts")
 def api_list_accounts():
     accounts = get_accounts()
     job_runs = get_all_job_last_runs()
+    pending_by_account: dict = {}
+    for item in pending_account_actions():
+        pending_by_account.setdefault(item["account_id"], []).append(item)
     for acc in accounts:
+        acc["pending_actions"] = pending_by_account.get(acc["id"], [])
         if acc.get("scraper_enabled"):
             job = job_runs.get(f"account_scraper_{acc['id']}_job")
             acc["scraper_last_status"] = job["last_status"] if job else None
@@ -269,14 +278,11 @@ def api_list_accounts():
             acc["scraper_last_status"] = None
         if acc["account_type"] in ("Pension", "House"):
             acc["current_balance"] = account_summary(acc["id"]).get("equity_value", 0.0)
-            if acc["account_type"] == "Pension":
-                acc["pending_reminders"] = labelled_pending_reminders(acc["id"])
         elif acc["account_type"] == "Trading":
             summary = account_summary(acc["id"])
             acc["holdings_count"] = summary.get("holdings_count", 0)
             acc["equity_value"] = summary.get("equity_value", 0.0)
             acc["cash_balance"] = summary.get("cash_balance", 0.0)
-            acc["pending_topups"] = get_unresolved_pending_topups(acc["id"])
         elif acc["account_type"] == "Watchlist":
             breakdown = watchlist_summary(acc["id"])
             acc["watchlist_count"] = breakdown["count"]

@@ -194,7 +194,7 @@ def test_pending_reminders_appear_on_the_tile_list_and_the_pension_page(client, 
 
     accounts = _json(client.get("/api/accounts"))["accounts"]
     tile = next(a for a in accounts if a["id"] == pension)
-    assert [p["title"] for p in tile["pending_reminders"]] == ["November 2026 Pay In"]
+    assert [p["title"] for p in tile["pending_actions"]] == ["November 2026 Pay In"]
 
     page = client.get(f"/accounts/{pension}/pension")
     assert page.status_code == 200

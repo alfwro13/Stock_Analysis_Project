@@ -2358,14 +2358,14 @@ def test_autotopup_pending_topups_stack_and_resolve_independently(client):
 
 
 @pytest.mark.api
-def test_list_accounts_includes_pending_topups_for_trading(client):
+def test_list_accounts_includes_pending_actions_for_trading(client):
     account_id = _create_account(client)
     from db import database as _db
     _db.create_pending_topup(account_id, "2026-06-26", 100.0)
 
     resp = client.get("/api/accounts")
     acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
-    assert len(acc["pending_topups"]) == 1
+    assert [i["kind"] for i in acc["pending_actions"]] == ["autotopup"]
 
     _db.soft_delete_account(account_id)
 

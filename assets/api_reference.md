@@ -3813,7 +3813,7 @@ Native, database-backed brokerage accounts + transaction ledger (`/accounts`). C
 
 ### `GET /accounts`
 
-HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal. For foreign-currency Buy transactions, the modal can calculate the trade exchange rate from the broker's total cost in base currency (including fees), quantity, per-share price, and fee. Foreign-currency dividends use the net amount received and withholding. A fee in the trade currency shares the inferred rate; a fee in another currency uses its own entered fee rate. The calculated trade rate is submitted as the transaction's explicit `exchange_rate`. With the type set to Dividend, the Ticker field suggests only tickers that are or were held in the chosen account, matched by prefix as you type (`GET /api/accounts/{id}/held-tickers`), and the server refuses any other ticker.
+HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal. For foreign-currency Buy transactions, the modal can calculate the trade exchange rate from the broker's total cost in base currency (including fees), quantity, per-share price, and fee. Foreign-currency dividends use the net amount received and withholding. A fee in the trade currency shares the inferred rate; a fee in another currency uses its own entered fee rate. The calculated trade rate is submitted as the transaction's explicit `exchange_rate`. With the type set to Dividend, the Ticker field suggests only tickers that are or were held in the chosen account, matched by prefix as you type (`GET /api/accounts/{id}/held-tickers`), and the server refuses any other ticker. Each tile tags itself `[PENDING ACTION]` (`×N` for several) with the title of every item in its `pending_actions`, and the navbar shows the account-wide total (`GET /api/accounts/pending-actions`).
 
 ### `GET /accounts/{id}`
 
@@ -3829,7 +3829,7 @@ HTML page. Dedicated House account detail view (used instead of the generic ledg
 
 ### `GET /api/accounts`
 
-Returns all non-deleted accounts. The stored scraper request headers may carry a provider cookie or `Authorization` value, so `scraper_headers` is never returned: each account carries `scraper_headers_set` (boolean) instead (`db.accounts._public_account()`, which `get_account()`/`get_accounts()`/`get_watchlist_account()` all apply; the scraper reads the real value through `db.accounts.get_scraper_headers()`). Each account is annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Pension accounts are also annotated with `pending_reminders` (unresolved rows from `account_reminder_pending`, oldest first, each with `title` such as "November 2026 Pay In" and `type_label` — powers the `[PENDING ACTION]` tile tag). Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`), and `pending_topups` (unresolved rows from `account_autotopup_pending`, oldest first — powers the `[PENDING ACTION]` tile tag). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
+Returns all non-deleted accounts. The stored scraper request headers may carry a provider cookie or `Authorization` value, so `scraper_headers` is never returned: each account carries `scraper_headers_set` (boolean) instead (`db.accounts._public_account()`, which `get_account()`/`get_accounts()`/`get_watchlist_account()` all apply; the scraper reads the real value through `db.accounts.get_scraper_headers()`). Each account is annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Every account is annotated with `pending_actions`: the items from `accounts.pending_actions.pending_account_actions()` that wait for the operator on that account (Auto Top-up confirmations, Pension Reminders, Treasury Bill YTM confirmations; `[]` when none), each with `kind`, `kind_label`, `account_id`, `account_name`, `title` and `detail` — powers the `[PENDING ACTION]` tile tag, which lists each item's `title`. Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
 
 **Response:**
 ```json
@@ -3837,6 +3837,24 @@ Returns all non-deleted accounts. The stored scraper request headers may carry a
   "status": "success",
   "accounts": [
     {"id": 1, "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "note": null, "pension_ticker_label": null, "scraper_headers_set": false, "scraper_last_status": null, "deleted_at": null, "created_at": "2026-06-25 10:00:00"}
+  ]
+}
+```
+
+---
+
+### `GET /api/accounts/pending-actions`
+
+Every action that is waiting for the operator on a non-deleted account, across all kinds in `accounts.pending_actions.PENDING_ACTION_KINDS`. A deleted account's items are never returned. It is a few indexed reads, so the navbar polls it (`static/js/navbar.js`, on every page load and every 15 seconds) to show the number beside **Accounts**; the badge is hidden at 0. Session authentication only; the `X-API-Key` does not apply.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "count": 2,
+  "items": [
+    {"kind": "autotopup", "kind_label": "Auto Top-up", "account_id": 1, "account_name": "My ISA", "title": "Auto Top-up", "detail": "Due 2026-06-26, expected 200.00 GBP."},
+    {"kind": "pension_reminder", "kind_label": "Pension Reminders", "account_id": 2, "account_name": "My Pension", "title": "November 2026 Pay In", "detail": "November 2026 Pay In reminder is waiting."}
   ]
 }
 ```
