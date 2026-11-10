@@ -40,6 +40,13 @@ class TestEnrichMacroEvents:
     def test_no_events_returns_empty_list(self):
         assert enrich_macro_events([]) == []
 
+    def test_display_values_prefer_the_number_then_the_vote_split_text(self):
+        evt = _make_event("BoE Vote", forecast=None, previous=3.0)
+        evt["forecast_text"] = "7-0-2"
+        result = enrich_macro_events([evt])[0]
+        assert (result["forecast_display"], result["previous_display"]) == ("7-0-2", 3.0)
+        assert result["insight"] == ""
+
     def test_display_date_always_set(self):
         events = enrich_macro_events([_make_event("Unknown Event X")])
         assert "display_date" in events[0]

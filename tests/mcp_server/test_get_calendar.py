@@ -34,11 +34,12 @@ def _signal(conn, ticker, earnings, ex_div, updated):
     )
 
 
-def _event(conn, event_id, when, name, currency="USD", forecast=None, previous=None, actual=None, miss=None, vol=0.0):
+def _event(conn, event_id, when, name, currency="USD", forecast=None, previous=None, actual=None, miss=None, vol=0.0,
+           forecast_text=None, previous_text=None):
     conn.execute(
-        "INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, forecast_val, previous_val, actual_val, ai_consensus_miss_prob, ai_volatility_warning) "
-        "VALUES (?, ?, ?, 'High', ?, ?, ?, ?, ?, ?)",
-        (event_id, when, currency, name, forecast, previous, actual, miss, vol),
+        "INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, forecast_val, previous_val, actual_val, ai_consensus_miss_prob, ai_volatility_warning, forecast_text, previous_text) "
+        "VALUES (?, ?, ?, 'High', ?, ?, ?, ?, ?, ?, ?, ?)",
+        (event_id, when, currency, name, forecast, previous, actual, miss, vol, forecast_text, previous_text),
     )
 
 
@@ -54,6 +55,7 @@ def calendar():
             _signal(conn, PAST, _day(-3), _day(-10), _stamp(hours=2))
             _event(conn, "zz-cpi", _at(2), "CPI y/y", forecast=3.1, previous=3.0, miss=0.62, vol=1.4)
             _event(conn, "zz-boe", _at(4, 12), "BoE Official Bank Rate", currency="GBP", forecast=4.5, previous=4.5)
+            _event(conn, "zz-mpc", _at(5, 12), "MPC Vote", currency="GBP", forecast_text="7-0-2", previous_text="3-0-6")
             _event(conn, "zz-past", _at(-2), "Old release", actual=1.0)
             _event(conn, "zz-late", _at(25), "Beyond the window")
             conn.execute("INSERT OR REPLACE INTO scheduler_run_log (job_id, last_run) VALUES ('macro_calendar_job', ?)", (_stamp(hours=3),))
@@ -156,11 +158,17 @@ class TestTickerDates:
 class TestMacroEvents:
     def test_events_in_the_window_with_the_model_fields(self, mcp_client, calendar):
         rows = _calendar(mcp_client)["data"]["macro_events"]["rows"]
-        assert [r["name"] for r in rows] == ["CPI y/y", "BoE Official Bank Rate"]
+        assert [r["name"] for r in rows] == ["CPI y/y", "BoE Official Bank Rate", "MPC Vote"]
         cpi = rows[0]
         assert (cpi["currency"], cpi["impact"], cpi["forecast"], cpi["previous"], cpi["actual"]) == ("USD", "High", 3.1, 3.0, None)
         assert (cpi["ai_consensus_miss_probability"], cpi["ai_volatility_forecast_pct"]) == (0.62, 1.4)
         assert cpi["at"].endswith("Z")
+
+    def test_a_vote_split_is_text_with_the_number_null(self, mcp_client, calendar):
+        rows = _calendar(mcp_client)["data"]["macro_events"]["rows"]
+        mpc = next(r for r in rows if r["name"] == "MPC Vote")
+        assert (mpc["forecast"], mpc["previous"], mpc["forecast_text"], mpc["previous_text"]) == (None, None, "7-0-2", "3-0-6")
+        assert "actual_text" not in mpc and "forecast_text" not in rows[0]
 
     def test_unscored_events_have_null_model_fields_not_the_default_zero(self, mcp_client, calendar):
         boe = _calendar(mcp_client)["data"]["macro_events"]["rows"][1]

@@ -342,6 +342,7 @@ def get_upcoming_macro_events(start: str, end: str) -> dict:
         conn = get_connection()
         rows = conn.execute(
             "SELECT event_date, currency, impact, event_name, forecast_val, previous_val, actual_val, "
+            "forecast_text, previous_text, actual_text, "
             "ai_consensus_miss_prob, ai_volatility_warning FROM macro_calendar WHERE event_date BETWEEN ? AND ? ORDER BY event_date ASC",
             (start, end),
         ).fetchall()
@@ -350,6 +351,12 @@ def get_upcoming_macro_events(start: str, end: str) -> dict:
     finally:
         if conn:
             conn.close()
+
+
+def macro_event_value(event: dict, field: str):
+    """A `get_upcoming_macro_events` row's forecast/previous/actual as the number, else the vote split text ('7-0-2'), else None."""
+    number = event.get(f"{field}_val")
+    return number if number is not None else event.get(f"{field}_text")
 
 
 def get_ticker_currency_map(tickers: List[str], conn) -> dict:

@@ -1,5 +1,6 @@
 import logging
 import hashlib
+import re
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -16,14 +17,22 @@ logger = logging.getLogger(__name__)
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 TARGET_CURRENCIES = {'USD', 'GBP'}
 TARGET_IMPACT = 'High'
+VOTE_SPLIT_RE = re.compile(r'\d+-\d+(-\d+)?')
 
-def clean_value(val_str: Optional[str]) -> Optional[float]:
-    """Parse financial magnitude strings (K/M/B/T/%) to raw float, or None if unparseable."""
+def vote_split_text(val_str: Optional[str]) -> Optional[str]:
+    """Return a central-bank vote split such as '7-0-2' as written in the feed, or None for any other value."""
+    if not isinstance(val_str, str):
+        return None
+    val_str = val_str.strip()
+    return val_str if VOTE_SPLIT_RE.fullmatch(val_str) else None
+
+def clean_value(val_str: Optional[str], event_name: str = "") -> Optional[float]:
+    """Parse financial magnitude strings (K/M/B/T/%) to raw float, or None if unparseable (a vote split is text, not a number)."""
     if not val_str or not isinstance(val_str, str):
         return None
 
     val_str = val_str.strip()
-    if val_str in ('', '-'):
+    if val_str in ('', '-') or vote_split_text(val_str):
         return None
 
     val_str = val_str.replace(',', '')
@@ -47,7 +56,7 @@ def clean_value(val_str: Optional[str]) -> Optional[float]:
     try:
         return float(val_str) * multiplier
     except ValueError:
-        logger.warning(f"Failed to parse numeric value from string: {val_str}")
+        logger.warning("Failed to parse numeric value from string %r for event %r", val_str, event_name)
         return None
 
 def generate_event_id(date_str: str, currency: str, event_name: str) -> str:
@@ -64,13 +73,13 @@ def fetch_and_process_calendar() -> List[Tuple]:
         response = requests.get(FEED_URL, headers=headers, timeout=15)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"Network error fetching calendar XML: {e}")
+        logger.error("Network error fetching calendar XML: %s", e)
         return []
 
     try:
         root = ET.fromstring(response.content)
     except ET.ParseError as e:
-        logger.error(f"Failed to parse XML content: {e}")
+        logger.error("Failed to parse XML content: %s", e)
         return []
 
     processed_events = []
@@ -94,14 +103,17 @@ def fetch_and_process_calendar() -> List[Tuple]:
                     dt_naive = datetime.strptime(date_str, "%m-%d-%Y")
                     formatted_date = localize_naive_to_utc(dt_naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
-                    logger.warning(f"Could not parse date: {date_str} {time_str}")
+                    logger.warning("Could not parse date: %s %s", date_str, time_str)
                     formatted_date = f"{date_str} {time_str}"
 
             event_id = generate_event_id(formatted_date, currency, event_name)
 
-            forecast_val = clean_value(event.findtext('forecast'))
-            previous_val = clean_value(event.findtext('previous'))
-            actual_val = clean_value(event.findtext('actual'))
+            forecast_raw = event.findtext('forecast')
+            previous_raw = event.findtext('previous')
+            actual_raw = event.findtext('actual')
+            forecast_val = clean_value(forecast_raw, event_name)
+            previous_val = clean_value(previous_raw, event_name)
+            actual_val = clean_value(actual_raw, event_name)
 
             event_utc = parse_stored_utc(formatted_date)
             is_passed = 1 if event_utc is not None and datetime.now(timezone.utc) > event_utc else 0
@@ -118,7 +130,10 @@ def fetch_and_process_calendar() -> List[Tuple]:
                 None, # post_event_spy_gap (calculated later by reconcile_past_events)
                 0,    # ai_volatility_warning (set by MacroAIEngine inference)
                 is_passed,
-                0     # alert_dispatched default
+                0,    # alert_dispatched default
+                vote_split_text(forecast_raw),
+                vote_split_text(previous_raw),
+                vote_split_text(actual_raw),
             ))
 
     return processed_events
@@ -128,38 +143,44 @@ def upsert_calendar_events(events: List[Tuple]) -> None:
         logger.info("No high-impact events found matching criteria. Exiting.")
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         # COALESCE preserves existing ML warnings or actuals if the ForexFactory feed later omits them
         cursor.executemany('''
             INSERT INTO macro_calendar (
                 event_id, event_date, currency, impact, event_name,
                 forecast_val, previous_val, actual_val, post_event_spy_gap,
-                ai_volatility_warning, is_event_passed, alert_dispatched
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ai_volatility_warning, is_event_passed, alert_dispatched,
+                forecast_text, previous_text, actual_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 forecast_val = excluded.forecast_val,
                 previous_val = excluded.previous_val,
                 actual_val = COALESCE(excluded.actual_val, macro_calendar.actual_val),
+                forecast_text = excluded.forecast_text,
+                previous_text = excluded.previous_text,
+                actual_text = COALESCE(excluded.actual_text, macro_calendar.actual_text),
                 is_event_passed = excluded.is_event_passed
         ''', events)
         conn.commit()
-        logger.info(f"Successfully upserted {cursor.rowcount} macro events.")
+        logger.info("Successfully upserted %s macro events.", cursor.rowcount)
     except Exception as e:
-        logger.error(f"Database error during upsert: {e}")
-        conn.rollback()
+        logger.error("Database error during upsert: %s", e)
+        if conn:
+            conn.rollback()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def reconcile_past_events() -> None:
     """Calculate post-release SPY gap for events passed in the last 7 days with no gap data."""
     logger.info("Reconciling ground-truth SPY gaps for passed macro events...")
-    conn = get_connection()
-    cursor = conn.cursor()
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         # 7d is safe: yfinance 5m data limit is 60d
         cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
@@ -176,7 +197,7 @@ def reconcile_past_events() -> None:
             logger.info("No pending past events require reconciliation.")
             return
 
-        logger.info(f"Fetching SPY intraday data to reconcile {len(events_to_reconcile)} events.")
+        logger.info("Fetching SPY intraday data to reconcile %s events.", len(events_to_reconcile))
         _spy_result = yahoo_engine.get_intraday(["SPY"], period="7d", interval="5m")
         spy_df = _spy_result.get("SPY")
         if spy_df is None or spy_df.empty:
@@ -209,23 +230,24 @@ def reconcile_past_events() -> None:
                     max_abs_gap = max(abs(gap_up), abs(gap_down))
 
                     updates.append((max_abs_gap, row['event_id']))
-                    logger.info(f"Reconciled {row['event_id']} - SPY Gap: {max_abs_gap:.2f}%")
+                    logger.info("Reconciled %s - SPY Gap: %.2f%%", row['event_id'], max_abs_gap)
                 else:
-                    logger.debug(f"Event {row['event_id']} at {event_dt} fell outside market hours. Assigning 0.0 gap.")
+                    logger.debug("Event %s at %s fell outside market hours. Assigning 0.0 gap.", row['event_id'], event_dt)
                     updates.append((0.0, row['event_id']))
 
             except Exception as e:
-                logger.error(f"Failed to process reconciliation for event {row['event_id']}: {e}")
+                logger.error("Failed to process reconciliation for event %s: %s", row['event_id'], e)
 
         if updates:
             cursor.executemany('''
                 UPDATE macro_calendar SET post_event_spy_gap = ? WHERE event_id = ?
             ''', updates)
             conn.commit()
-            logger.info(f"Successfully committed {len(updates)} ground-truth gap calculations.")
+            logger.info("Successfully committed %s ground-truth gap calculations.", len(updates))
 
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def update_macro_calendar() -> None:
     logger.info("Starting Macro Calendar Ingestion...")

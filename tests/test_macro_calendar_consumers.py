@@ -24,11 +24,12 @@ def _at(**delta) -> str:
     return (datetime.now(timezone.utc) + timedelta(**delta)).strftime(_STAMP)
 
 
-def _insert(conn, event_id, when, name, currency="USD", impact="High", forecast=None, previous=None, miss=None, vol=0.0):
+def _insert(conn, event_id, when, name, currency="USD", impact="High", forecast=None, previous=None, miss=None, vol=0.0,
+            forecast_text=None, previous_text=None):
     conn.execute(
         "INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, forecast_val, previous_val, "
-        "ai_consensus_miss_prob, ai_volatility_warning) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (event_id, when, currency, impact, name, forecast, previous, miss, vol),
+        "ai_consensus_miss_prob, ai_volatility_warning, forecast_text, previous_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (event_id, when, currency, impact, name, forecast, previous, miss, vol, forecast_text, previous_text),
     )
 
 
@@ -82,6 +83,10 @@ class TestAiEngineRadar:
         assert "USD ZZ Sooner High (Est: 3.10 | Prev: 3.00)" in radar[0]
         assert "GBP ZZ Later High" in radar[1]
 
+    def test_a_vote_split_is_shown_as_written(self, calendar):
+        _seed([{"when": _at(hours=2), "name": "ZZ MPC Vote", "currency": "GBP", "forecast_text": "7-0-2", "previous_text": "3-0-6"}])
+        assert "GBP ZZ MPC Vote (Est: 7-0-2 | Prev: 3-0-6)" in self._radar()[0]
+
     def test_caps_the_radar_at_twelve_rows(self, calendar):
         _seed([{"when": _at(hours=1 + n), "name": f"ZZ High {n:02d}"} for n in range(15)])
         radar = self._radar()
@@ -126,6 +131,12 @@ class TestMarketSentimentPage:
         assert event["ai_consensus_miss_prob"] == pytest.approx(0.62)
         assert event["ai_volatility_warning"] == pytest.approx(1.4)
 
+    def test_a_vote_split_reaches_the_template_as_display_text(self, client, calendar):
+        _seed([{"when": _at(hours=2), "name": "ZZ MPC Vote", "currency": "GBP", "forecast_text": "7-0-2", "previous": 3.0}])
+        event = self._context(client)["urgent_events"][0]
+        assert (event["forecast_display"], event["previous_display"]) == ("7-0-2", 3.0)
+        assert event["insight"] == ""
+
     def test_an_empty_calendar_yields_empty_lists(self, client, calendar):
         context = self._context(client)
         assert context["urgent_events"] == [] and context["us_events"] == [] and context["uk_events"] == []
@@ -158,6 +169,11 @@ class TestSentimentPromptEvents:
         engine = AISentimentPromptEngine()
         assert [e["event_name"] for e in engine._gather_us_data()["us_events"]] == ["ZZ Prompt USD"]
         assert [e["event_name"] for e in engine._gather_uk_data()["uk_events"]] == ["ZZ Prompt GBP"]
+
+    def test_the_prompt_text_shows_a_vote_split(self, calendar):
+        _seed([{"when": _at(days=1), "name": "ZZ MPC Vote", "currency": "GBP", "forecast_text": "7-0-2", "previous_text": "3-0-6"}])
+        events = AISentimentPromptEngine()._upcoming_events("GBP")
+        assert "forecast=7-0-2, prev=3-0-6" in AISentimentPromptEngine()._fmt_events(events)
 
     def test_a_failed_read_leaves_an_empty_list(self):
         with patch("ai_sentiment_engine.get_upcoming_macro_events", side_effect=RuntimeError("db down")):
