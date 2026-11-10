@@ -326,12 +326,12 @@ class TestInferenceRunnersRefreshTheUniverseFirst:
         assert calls == [("scan", (["AAPL"],), {"scan_type": "universe_refresh", "read_only": True}), "score", ("alert", ["AAPL"])]
 
     def test_manual_run_does_the_same(self):
-        import api_routes_triggers
+        import api.routes_triggers
         calls = []
-        with patch("api_routes_triggers.get_ml_inference_tickers", return_value=["AAPL"]), \
-             patch("api_routes_triggers.run_daily_quant_scan", side_effect=lambda *a, **k: calls.append("scan")), \
-             patch("api_routes_triggers.update_daily_ml_predictions", side_effect=lambda t: calls.append("score") or []), \
-             patch("api_routes_triggers.alert_unscored_holdings", side_effect=lambda u: calls.append("alert")), \
-             patch("api_routes_triggers.score_quantile_predictions", side_effect=lambda t: calls.append("bands")):
-            api_routes_triggers.bg_execute_ml_inference()
+        with patch("api.routes_triggers.get_ml_inference_tickers", return_value=["AAPL"]), \
+             patch("api.routes_triggers.run_daily_quant_scan", side_effect=lambda *a, **k: calls.append("scan")), \
+             patch("api.routes_triggers.update_daily_ml_predictions", side_effect=lambda t: calls.append("score") or []), \
+             patch("api.routes_triggers.alert_unscored_holdings", side_effect=lambda u: calls.append("alert")), \
+             patch("api.routes_triggers.score_quantile_predictions", side_effect=lambda t: calls.append("bands")):
+            api.routes_triggers.bg_execute_ml_inference()
         assert calls == ["scan", "score", "alert", "bands"]

@@ -41,7 +41,7 @@ class TestEnableToggle:
         assert "MCP_SERVER_ENABLED" not in config.DEFAULT_CONFIG
 
     def test_the_key_is_not_in_the_settings_schema(self):
-        from api_routes_system import SettingsConfig
+        from api.routes_system import SettingsConfig
         assert "MCP_LAN_ENABLED" not in SettingsConfig.model_fields
 
     def test_disabled_lan_access_refuses_even_the_right_key(self, mcp_client, monkeypatch):
@@ -58,21 +58,21 @@ class TestEnableToggle:
 
     def test_enabling_requires_step_up(self, client, auth_cookies):
         headers = {"Cookie": "; ".join(f"{k}={v}" for k, v in auth_cookies.items()), "X-CSRFToken": auth_cookies["csrftoken"]}
-        with patch("api_routes_auth.update_config_atomic") as update:
+        with patch("api.routes_auth.update_config_atomic") as update:
             response = _set_enabled(client, headers, True)
         assert response.status_code == 403
         assert response.headers["X-Step-Up-Required"] == "1"
         update.assert_not_called()
 
     def test_enabling_with_step_up_writes_only_the_lan_key(self, client, step_up_headers):
-        with patch("api_routes_auth.update_config_atomic") as update:
+        with patch("api.routes_auth.update_config_atomic") as update:
             response = _set_enabled(client, step_up_headers, True)
         assert response.status_code == 200 and response.json() == {"status": "success", "enabled": True}
         update.assert_called_once_with({"MCP_LAN_ENABLED": True})
 
     def test_disabling_needs_no_step_up(self, client, auth_cookies):
         headers = {"Cookie": "; ".join(f"{k}={v}" for k, v in auth_cookies.items()), "X-CSRFToken": auth_cookies["csrftoken"]}
-        with patch("api_routes_auth.update_config_atomic") as update:
+        with patch("api.routes_auth.update_config_atomic") as update:
             response = _set_enabled(client, headers, False)
         assert response.status_code == 200
         update.assert_called_once_with({"MCP_LAN_ENABLED": False})

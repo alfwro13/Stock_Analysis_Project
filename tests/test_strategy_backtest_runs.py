@@ -597,5 +597,5 @@ class TestApi:
         assert sbd._prepare_state.get(SBT_A) is None
 
     def test_shortlists_endpoint(self, client):
-        with patch("api_routes_backtester.list_shortlist_baskets", return_value=[]):
+        with patch("api.routes_backtester.list_shortlist_baskets", return_value=[]):
             assert client.get("/api/strategy-backtester/shortlists").json() == {"status": "success", "baskets": []}

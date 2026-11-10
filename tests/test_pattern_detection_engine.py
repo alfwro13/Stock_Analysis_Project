@@ -580,7 +580,7 @@ class TestChartAPIMultiPattern:
         try:
             idx = pd.date_range("2026-01-01", periods=30, freq="D")
             df = pd.DataFrame({"Close": np.linspace(100.0, 110.0, 30)}, index=idx)
-            with patch("api_routes_analysis.HISTORICAL_DIR", tmp_path):
+            with patch("api.routes_analysis.HISTORICAL_DIR", tmp_path):
                 df.to_parquet(tmp_path / f"{ticker}.parquet", engine="pyarrow")
                 resp = client.get(
                     f"/api/pattern-detection/chart/{ticker}"

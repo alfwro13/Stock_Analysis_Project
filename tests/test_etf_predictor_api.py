@@ -216,7 +216,7 @@ def test_validate_weight_ok_flag(client):
 @pytest.mark.api
 def test_validate_rejects_more_constituents_than_the_cap_before_any_lookup(client):
     from constants import ETF_CONSTITUENTS_MAX
-    with patch("api_routes_analysis.yahoo_engine.get_ticker_info") as mock_info:
+    with patch("api.routes_analysis.yahoo_engine.get_ticker_info") as mock_info:
         resp = client.post("/api/etf-predictors/validate", json={
             "etf_ticker": "TST.L",
             "constituents": [{"ticker": f"T{i}", "weight": 1.0} for i in range(ETF_CONSTITUENTS_MAX + 1)],
@@ -326,7 +326,7 @@ def test_etf_run_and_fill_actuals_queue_the_tracked_manual_job(client):
 def test_validate_marks_a_ticker_without_price_data_invalid_even_when_info_answers_a_stub(client):
     """Yahoo's .info answers a one-key dict for a symbol it does not list (SES.PA), which is truthy."""
     with patch("etf_predictor_engine.find_tickers_without_data", return_value=["SES.PA"]), \
-         patch("api_routes_analysis.yahoo_engine.get_ticker_info", return_value={"trailingPegRatio": None}):
+         patch("api.routes_analysis.yahoo_engine.get_ticker_info", return_value={"trailingPegRatio": None}):
         resp = client.post("/api/etf-predictors/validate", json={
             "etf_ticker": "TST.L",
             "constituents": [{"ticker": "SES.PA", "weight": 60.0}, {"ticker": "AAPL", "weight": 40.0}],
@@ -339,7 +339,7 @@ def test_validate_marks_a_ticker_without_price_data_invalid_even_when_info_answe
 @pytest.mark.api
 def test_validate_falls_back_to_info_when_the_price_probe_is_inconclusive(client):
     with patch("etf_predictor_engine.find_tickers_without_data", return_value=None), \
-         patch("api_routes_analysis.yahoo_engine.get_ticker_info", return_value={"longName": "X"}):
+         patch("api.routes_analysis.yahoo_engine.get_ticker_info", return_value={"longName": "X"}):
         resp = client.post("/api/etf-predictors/validate", json={
             "etf_ticker": "TST.L", "constituents": [{"ticker": "AAPL", "weight": 100.0}],
         })

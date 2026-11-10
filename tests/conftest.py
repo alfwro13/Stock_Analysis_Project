@@ -15,15 +15,15 @@ patched out:
   - reload_scheduler         (reads DB and launches cron jobs)
   - shutdown_scheduler       (teardown hook)
 
-Also patched for the lifetime of the `client` fixture: `api_routes_accounts.fetch_and_save_pulse`
+Also patched for the lifetime of the `client` fixture: `api.routes_accounts.fetch_and_save_pulse`
 — the accounts-API self-triggered live-price refresh (portfolio-totals/list-with-metrics/
 holdings-list) would otherwise fire a real Yahoo Finance background fetch for any held test
 ticker with no market_pulse_cache row whenever a test happens to run during real market hours.
 Individual tests that want to assert on this call still work as before via their own local
-`patch("api_routes_accounts.fetch_and_save_pulse")`, which layers over this one for the
+`patch("api.routes_accounts.fetch_and_save_pulse")`, which layers over this one for the
 duration of their own `with` block.
 
-Same treatment for `api_routes_system.fetch_and_save_pulse`: GET /api/system/market-status
+Same treatment for `api.routes_system.fetch_and_save_pulse`: GET /api/system/market-status
 self-triggers a background refresh of the ^GSPC/^FTSE proxy tickers whenever their cached
 market_state is missing/stale (market_pulse.proxy_tickers_needing_refresh()), which — unlike
 the accounts case above — is unconditional on wall-clock market hours, so an unpatched test DB
@@ -51,7 +51,7 @@ import pytest
 # ── Auth for tests ────────────────────────────────────────────────────────────
 #    The shared `client` fixture signs in with a freshly minted session cookie and
 #    CSRF token on every request. The API key is scoped to the Home Assistant
-#    routes (api_deps.API_KEY_ROUTES), so it is only used by tests of that scope.
+#    routes (api.deps.API_KEY_ROUTES), so it is only used by tests of that scope.
 _TEST_API_KEY = "test-api-key-do-not-use-in-production"
 os.environ["API_KEY"] = _TEST_API_KEY
 
@@ -135,7 +135,7 @@ def _block_background_totals_refresh():
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """The limiter is process-wide, so the suite's request count would otherwise build up across tests and trip a per-minute cap on a fast runner."""
-    from api_deps import limiter
+    from api.deps import limiter
     limiter.reset()
     yield
     limiter.reset()
@@ -154,8 +154,8 @@ def client():
         patch("main.shutdown_scheduler"),
         patch("main.harden_runtime_permissions"),
         patch("main.resume_interrupted_scans"),
-        patch("api_routes_accounts.fetch_and_save_pulse"),
-        patch("api_routes_system.fetch_and_save_pulse"),
+        patch("api.routes_accounts.fetch_and_save_pulse"),
+        patch("api.routes_system.fetch_and_save_pulse"),
     ):
         import main as _main_module
         with _SessionTestClient(

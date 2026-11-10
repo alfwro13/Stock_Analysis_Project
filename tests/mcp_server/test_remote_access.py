@@ -28,8 +28,8 @@ def _plain(auth_cookies):
 def saved_config(monkeypatch):
     """What the Settings routes read: remote access on, with a saved public host."""
     values = {"MCP_REMOTE_ENABLED": True, "MCP_PUBLIC_HOST": PUBLIC_HOST}
-    monkeypatch.setattr("api_routes_mcp_remote.load_config", lambda: values)
-    monkeypatch.setattr("api_routes_mcp_remote.arm_mcp_pairing_window_check", lambda until: None)
+    monkeypatch.setattr("api.routes_mcp_remote.load_config", lambda: values)
+    monkeypatch.setattr("api.routes_mcp_remote.arm_mcp_pairing_window_check", lambda until: None)
     return values
 
 
@@ -63,26 +63,26 @@ class TestAccessControl:
 
 class TestEnable:
     def test_enabling_needs_the_password(self, client, auth_cookies):
-        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+        with patch("api.routes_mcp_remote.update_config_atomic") as update:
             response = client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=_plain(auth_cookies))
         assert response.status_code == 403 and response.headers["X-Step-Up-Required"] == "1"
         update.assert_not_called()
 
     def test_enabling_needs_a_saved_public_host(self, client, step_up_headers, monkeypatch):
-        monkeypatch.setattr("api_routes_mcp_remote.load_config", lambda: {"MCP_PUBLIC_HOST": ""})
-        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+        monkeypatch.setattr("api.routes_mcp_remote.load_config", lambda: {"MCP_PUBLIC_HOST": ""})
+        with patch("api.routes_mcp_remote.update_config_atomic") as update:
             response = client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers)
         assert response.status_code == 409
         update.assert_not_called()
 
     def test_enabling_writes_the_flag(self, client, step_up_headers, saved_config):
-        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+        with patch("api.routes_mcp_remote.update_config_atomic") as update:
             assert client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers).status_code == 200
         update.assert_called_once_with({"MCP_REMOTE_ENABLED": True})
 
     def test_enabling_is_refused_while_the_trust_setting_is_a_wildcard(self, client, step_up_headers, saved_config, monkeypatch):
         monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
-        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+        with patch("api.routes_mcp_remote.update_config_atomic") as update:
             response = client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers)
         assert response.status_code == 409 and "FORWARDED_ALLOW_IPS" in response.json()["detail"]
         update.assert_not_called()
@@ -93,17 +93,17 @@ class TestEnable:
             monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
         else:
             monkeypatch.setenv("FORWARDED_ALLOW_IPS", value)
-        with patch("api_routes_mcp_remote.update_config_atomic"):
+        with patch("api.routes_mcp_remote.update_config_atomic"):
             assert client.post("/api/mcp-remote/enabled", json={"enabled": True}, headers=step_up_headers).status_code == 200
 
     def test_a_wildcard_does_not_stop_turning_remote_access_off(self, client, auth_cookies, monkeypatch):
         monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
-        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+        with patch("api.routes_mcp_remote.update_config_atomic") as update:
             assert client.post("/api/mcp-remote/enabled", json={"enabled": False}, headers=_plain(auth_cookies)).status_code == 200
         update.assert_called_once_with({"MCP_REMOTE_ENABLED": False})
 
     def test_disabling_needs_no_password(self, client, auth_cookies):
-        with patch("api_routes_mcp_remote.update_config_atomic") as update:
+        with patch("api.routes_mcp_remote.update_config_atomic") as update:
             assert client.post("/api/mcp-remote/enabled", json={"enabled": False}, headers=_plain(auth_cookies)).status_code == 200
         update.assert_called_once_with({"MCP_REMOTE_ENABLED": False})
 
@@ -129,7 +129,7 @@ class TestClientAndPairing:
         assert _status(client)["apps"] == []
 
     def test_the_window_needs_remote_access_turned_on(self, client, step_up_headers, monkeypatch):
-        monkeypatch.setattr("api_routes_mcp_remote.load_config", lambda: {"MCP_REMOTE_ENABLED": False})
+        monkeypatch.setattr("api.routes_mcp_remote.load_config", lambda: {"MCP_REMOTE_ENABLED": False})
         assert client.post("/api/mcp-remote/pairing", headers=step_up_headers).status_code == 409
 
     def test_the_window_needs_a_client(self, client, step_up_headers, saved_config):
@@ -139,7 +139,7 @@ class TestClientAndPairing:
     def test_opening_the_window_arms_the_check_and_shows_the_time_left(self, client, step_up_headers, saved_config, remote, monkeypatch):
         oauth.close_pairing_window()
         armed = []
-        monkeypatch.setattr("api_routes_mcp_remote.arm_mcp_pairing_window_check", armed.append)
+        monkeypatch.setattr("api.routes_mcp_remote.arm_mcp_pairing_window_check", armed.append)
         response = client.post("/api/mcp-remote/pairing", headers=step_up_headers)
         assert response.status_code == 200
         pairing = response.json()["pairing"]

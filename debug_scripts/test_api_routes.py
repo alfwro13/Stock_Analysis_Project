@@ -1,5 +1,5 @@
 """
-test_api_routes.py — Integration smoke-test for api_routes.py.
+test_api_routes.py — Integration smoke-test for api/routes.py.
 
 Requires a running server. Start it first:
     python main.py

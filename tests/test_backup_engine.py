@@ -222,7 +222,7 @@ class TestSettingsFieldValidation:
     def test_settings_model_rejects_bad_backup_fields(self):
         from pydantic import ValidationError
 
-        from api_routes_system import SettingsConfig
+        from api.routes_system import SettingsConfig
 
         for field, value in (
             ("LOCAL_PATH", "/etc"), ("NFS_SERVER", "-oevil"), ("NFS_PATH", "/a/../b"),
@@ -844,7 +844,7 @@ class TestRestoreJobGuard:
 
     def test_returns_409_and_restores_nothing_while_a_job_is_running(self, client, step_up_headers, live_scheduler):
         scheduler_engine._mark_job_started("Busy Job")
-        with patch("api_routes_triggers.restore_backup") as restore:
+        with patch("api.routes_triggers.restore_backup") as restore:
             resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 409
@@ -860,7 +860,7 @@ class TestRestoreJobGuard:
             seen.append(live_scheduler.state)
             return {"status": "success", "message": "done"}
 
-        with patch("api_routes_triggers.restore_backup", side_effect=_restore):
+        with patch("api.routes_triggers.restore_backup", side_effect=_restore):
             resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 200
@@ -868,7 +868,7 @@ class TestRestoreJobGuard:
         assert live_scheduler.state == STATE_RUNNING
 
     def test_returns_409_when_the_database_connections_do_not_drain(self, client, step_up_headers, live_scheduler):
-        with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreBusy("raw internal text")):
+        with patch("api.routes_triggers.restore_backup", side_effect=backup_engine.RestoreBusy("raw internal text")):
             resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 409
@@ -878,7 +878,7 @@ class TestRestoreJobGuard:
     def test_returns_409_while_a_restart_is_queued(self, client, step_up_headers, live_scheduler):
         assert scheduler_engine.claim_restart()
         try:
-            with patch("api_routes_triggers.restore_backup") as restore:
+            with patch("api.routes_triggers.restore_backup") as restore:
                 resp = self._post(client, step_up_headers)
         finally:
             scheduler_engine.release_restart()
@@ -889,7 +889,7 @@ class TestRestoreJobGuard:
         assert live_scheduler.state == STATE_RUNNING
 
     def test_resumes_the_scheduler_when_the_restore_is_refused(self, client, step_up_headers, live_scheduler):
-        with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreRefused("bad archive")):
+        with patch("api.routes_triggers.restore_backup", side_effect=backup_engine.RestoreRefused("bad archive")):
             resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 400

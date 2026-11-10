@@ -299,14 +299,14 @@ class TestAuthMiddleware:
     def test_api_key_routes_are_registered_routes(self):
         from starlette.routing import Match
         import main
-        from api_deps import API_KEY_ROUTES
+        from api.deps import API_KEY_ROUTES
         for method, path in sorted(API_KEY_ROUTES):
             scope = {"type": "http", "method": method, "path": path, "root_path": "", "query_string": b"", "headers": []}
             assert any(r.matches(scope)[0] == Match.FULL for r in main.app.routes), (method, path)
 
     def test_api_key_routes_match_the_documented_table(self):
         import re
-        from api_deps import API_KEY_ROUTES
+        from api.deps import API_KEY_ROUTES
         doc = (Path(__file__).parent.parent / "assets" / "api_reference.md").read_text()
         start = doc.index("### API key scope")
         section = doc[start:doc.index("\n### ", start + 1)]
@@ -865,7 +865,7 @@ class TestStepUpRoutes:
     def test_send_test_email_hides_smtp_error_text(self, client, step_up_headers):
         env = {"SMTP_HOST": "mail.lan", "SMTP_PORT": "2525", "ACCOUNT_EMAIL": "me@example.com"}
         with patch.dict(os.environ, env), \
-                patch("api_routes_auth._smtp_send", side_effect=ConnectionRefusedError("[Errno 111] mail.lan:2525")):
+                patch("api.routes_auth._smtp_send", side_effect=ConnectionRefusedError("[Errno 111] mail.lan:2525")):
             resp = client.post("/api/send-test-email", headers=step_up_headers)
         assert resp.status_code == 500
         assert "Errno" not in resp.json()["detail"] and "mail.lan" not in resp.json()["detail"]
@@ -979,7 +979,7 @@ class TestSelfServiceReset:
                 conn.close()
 
     def test_reply_is_identical_whether_or_not_the_email_matches(self):
-        with _fresh_client() as c, patch("api_routes_auth._send_reset_notification", return_value=True):
+        with _fresh_client() as c, patch("api.routes_auth._send_reset_notification", return_value=True):
             matching = _request_reset(c)
             other = _request_reset(c, "someone-else@example.com")
         assert matching.status_code == other.status_code == 200
@@ -987,15 +987,15 @@ class TestSelfServiceReset:
 
     def test_reply_is_identical_when_delivery_fails(self):
         with _fresh_client() as c:
-            with patch("api_routes_auth._send_reset_notification", return_value=True):
+            with patch("api.routes_auth._send_reset_notification", return_value=True):
                 delivered = _request_reset(c)
-            with patch("api_routes_auth._send_reset_notification", return_value=False):
+            with patch("api.routes_auth._send_reset_notification", return_value=False):
                 failed = _request_reset(c)
         assert delivered.json() == failed.json()
         assert "log" not in failed.json()["message"].lower()
 
     def test_non_matching_email_issues_and_sends_nothing(self):
-        with _fresh_client() as c, patch("api_routes_auth._send_reset_notification") as send:
+        with _fresh_client() as c, patch("api.routes_auth._send_reset_notification") as send:
             _request_reset(c, "someone-else@example.com")
         send.assert_not_called()
 
@@ -1003,7 +1003,7 @@ class TestSelfServiceReset:
         sent = []
         with (
             _fresh_client() as c,
-            patch("api_routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or False),
+            patch("api.routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or False),
             caplog.at_level("DEBUG"),
         ):
             _request_reset(c)
@@ -1016,7 +1016,7 @@ class TestSelfServiceReset:
         sent = []
         with (
             _fresh_client() as c,
-            patch("api_routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or True),
+            patch("api.routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or True),
             patch("dotenv.set_key"),
         ):
             _request_reset(c)
@@ -1031,7 +1031,7 @@ class TestSelfServiceReset:
         before = create_session_token("alice", remember=False)
         with (
             _fresh_client() as c,
-            patch("api_routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or True),
+            patch("api.routes_auth._send_reset_notification", side_effect=lambda url: sent.append(url) or True),
             patch("dotenv.set_key"),
         ):
             _request_reset(c)
@@ -1042,7 +1042,7 @@ class TestSelfServiceReset:
         assert verify_session_token(before) is False
 
     def test_request_route_is_rate_limited_to_three_per_hour(self):
-        with _fresh_client() as c, patch("api_routes_auth._send_reset_notification", return_value=True):
+        with _fresh_client() as c, patch("api.routes_auth._send_reset_notification", return_value=True):
             codes = [_request_reset(c).status_code for _ in range(4)]
         assert codes == [200, 200, 200, 429]
 
@@ -1089,7 +1089,7 @@ class TestDefaultCredentialProvisioning:
 class TestResetDelivery:
 
     def test_nextcloud_delivery_sends_the_link_when_smtp_is_not_configured(self):
-        from api_routes_auth import _send_reset_notification
+        from api.routes_auth import _send_reset_notification
         with (
             patch.dict(os.environ, {"SMTP_HOST": "", "NEXTCLOUD_URL": "https://cloud.example"}),
             patch("nextcloud_talk.send_text_message", return_value=True) as send,
@@ -1098,7 +1098,7 @@ class TestResetDelivery:
         assert "reset-password?token=abc" in send.call_args[0][0]
 
     def test_nextcloud_failure_reports_undelivered(self):
-        from api_routes_auth import _send_reset_notification
+        from api.routes_auth import _send_reset_notification
         with (
             patch.dict(os.environ, {"SMTP_HOST": "", "NEXTCLOUD_URL": "https://cloud.example"}),
             patch("nextcloud_talk.send_text_message", return_value=False),
@@ -1106,7 +1106,7 @@ class TestResetDelivery:
             assert _send_reset_notification("http://host:8090/reset-password?token=abc") is False
 
     def test_no_channel_configured_reports_undelivered(self):
-        from api_routes_auth import _send_reset_notification
+        from api.routes_auth import _send_reset_notification
         with patch.dict(os.environ, {"SMTP_HOST": "", "NEXTCLOUD_URL": ""}):
             assert _send_reset_notification("http://host:8090/reset-password?token=abc") is False
 

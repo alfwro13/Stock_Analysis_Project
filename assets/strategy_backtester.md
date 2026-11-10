@@ -7,7 +7,7 @@ Engines: `strategy_backtest_engine.py` (pure simulation), `strategy_backtest_str
 Front end: `templates/strategy_backtester.html`, `static/js/strategy_backtester.js` (state, helpers, rules, explanations, Optimizer hand-off prefill, run and polling), `static/js/strategy_backtester_basket.js` (accounts, shortlists, candidate lists, extended-history preparation), `static/js/strategy_backtester_results.js` (results, charts, saved runs)
 DB table: `strategy_backtest_runs`
 Files: `data/strategy_backtests/<run_id>/` (run results), `data/backtest_history/` (extended price history)
-Endpoints: `/api/strategy-backtester/*` (see `assets/api_reference.md` §32), router `api_routes_backtester.py`
+Endpoints: `/api/strategy-backtester/*` (see `assets/api_reference.md` §32), router `api/routes_backtester.py`
 Workflow Monitor: `strategy_backtester_source` (non-job entry; consumes `historical_parquet`, `portfolio`, `stable_shortlist_snapshots`, produces `strategy_backtest_runs`)
 
 ---

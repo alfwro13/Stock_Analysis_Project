@@ -1222,7 +1222,7 @@ def snapshot_all_accounts(scheduled: bool = True) -> int:
     overnight_quant_scan_job so it reads the verified close) — the calendar date at that moment is
     already tomorrow relative to the day being captured, so a *scheduled* run is dated `today - 1`,
     not the run date itself, or every period_returns() baseline anchors one calendar day later than
-    it should. `scheduled=False` (the Settings "Run Now" trigger, `api_routes_accounts.py`) instead
+    it should. `scheduled=False` (the Settings "Run Now" trigger, `api/routes_accounts.py`) instead
     labels the row with today's actual date — it's producing a live intraday snapshot for today, not
     reconstructing last night's close, so shifting it back a day would relabel a still-forming
     mid-day price as an official prior close. Each account is isolated so one account's pricing

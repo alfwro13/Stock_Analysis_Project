@@ -198,7 +198,7 @@ def test_check_flags_yahoo_bar_that_matches_extreme_zero_volume_bar(tmp_path):
 
 
 def test_price_repair_api_check_and_rejects_stale_write(tmp_path):
-    from api_routes import DailyBarRepairRequest, api_price_repair_apply, api_price_repair_check
+    from api.routes import DailyBarRepairRequest, api_price_repair_apply, api_price_repair_check
     from fastapi import HTTPException
 
     path = tmp_path / "LCJP.L.parquet"

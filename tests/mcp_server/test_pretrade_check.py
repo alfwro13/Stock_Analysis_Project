@@ -211,6 +211,6 @@ class TestReadOnly:
 
     def test_the_route_still_logs_its_verdict(self):
         import inspect
-        import api_routes_analysis
-        assert "log_pretrade_check" in inspect.getsource(api_routes_analysis.get_risk_orchestrator_pretrade_check)
+        import api.routes_analysis
+        assert "log_pretrade_check" in inspect.getsource(api.routes_analysis.get_risk_orchestrator_pretrade_check)
         assert "log_pretrade_check" not in inspect.getsource(pretrade_tool)

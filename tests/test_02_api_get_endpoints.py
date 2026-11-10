@@ -144,16 +144,16 @@ def test_get_freshness_returns_200(client):
 def test_freshness_prices_state_counts_trading_days_only(monkeypatch, today, expected):
     """A Friday bar stays green over the weekend and on Monday; only missed trading days turn it amber/red."""
     from unittest.mock import MagicMock
-    import api_routes
+    import api.routes
     import time_engine
 
     conn = MagicMock()
     conn.cursor.return_value.fetchone.return_value = {"max_date": "2026-11-06"}
-    monkeypatch.setattr(api_routes, "get_connection", lambda: conn)
+    monkeypatch.setattr(api.routes, "get_connection", lambda: conn)
     monkeypatch.setattr(time_engine, "now_local", lambda: today)
     monkeypatch.setattr(time_engine, "_load_config", lambda: {"HOME_EXCHANGE": "LSE"})
 
-    body = json.loads(api_routes.get_data_freshness().body)
+    body = json.loads(api.routes.get_data_freshness().body)
     assert body["prices_date"] == "2026-11-06"
     assert body["prices_state"] == expected
 
@@ -285,7 +285,7 @@ def test_get_market_status_returns_200_with_expected_keys(client):
 
 @pytest.mark.api
 def test_get_market_status_reflects_trading_session_true(client):
-    with patch("api_routes_system.is_exchange_open", side_effect=lambda exchange: exchange == "NYSE"):
+    with patch("api.routes_system.is_exchange_open", side_effect=lambda exchange: exchange == "NYSE"):
         resp = client.get("/api/system/market-status")
     data = _json(resp)
     assert data["us_market_open"] is True
@@ -294,7 +294,7 @@ def test_get_market_status_reflects_trading_session_true(client):
 
 @pytest.mark.api
 def test_get_market_status_reflects_trading_session_false(client):
-    with patch("api_routes_system.is_exchange_open", return_value=False):
+    with patch("api.routes_system.is_exchange_open", return_value=False):
         resp = client.get("/api/system/market-status")
     data = _json(resp)
     assert data["us_market_open"] is False
@@ -307,10 +307,10 @@ def test_get_market_status_self_triggers_refresh_for_stale_proxy_tickers(client)
     Assistant, with no browser dashboard open to drive /api/market-pulse's own polling) would
     never populate market_state at all, and us_market_open/uk_market_open would silently fall
     back to the naive weekday/hours heuristic forever."""
-    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=["^GSPC", "^FTSE"]), \
-         patch("api_routes_system.markets_engine.registry_lookup_tickers", return_value=[]), \
-         patch("api_routes_system.registry_tickers_needing_refresh", return_value=[]), \
-         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+    with patch("api.routes_system.proxy_tickers_needing_refresh", return_value=["^GSPC", "^FTSE"]), \
+         patch("api.routes_system.markets_engine.registry_lookup_tickers", return_value=[]), \
+         patch("api.routes_system.registry_tickers_needing_refresh", return_value=[]), \
+         patch("api.routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/system/market-status")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -319,10 +319,10 @@ def test_get_market_status_self_triggers_refresh_for_stale_proxy_tickers(client)
 
 @pytest.mark.api
 def test_get_market_status_does_not_trigger_refresh_when_proxies_fresh(client):
-    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=[]), \
-         patch("api_routes_system.markets_engine.registry_lookup_tickers", return_value=[]), \
-         patch("api_routes_system.registry_tickers_needing_refresh", return_value=[]), \
-         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+    with patch("api.routes_system.proxy_tickers_needing_refresh", return_value=[]), \
+         patch("api.routes_system.markets_engine.registry_lookup_tickers", return_value=[]), \
+         patch("api.routes_system.registry_tickers_needing_refresh", return_value=[]), \
+         patch("api.routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/system/market-status")
     assert resp.status_code == 200
     mock_fetch.assert_not_called()
@@ -334,10 +334,10 @@ def test_get_market_status_self_triggers_refresh_for_stale_registry_tickers(clie
     warm-up for the Markets registry on installs that never press "Refresh Data" and never have
     /markets open in a browser tab — added 2026-07-10 after tiles were observed showing stale
     ("crossed over") data on cold visits."""
-    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=[]), \
-         patch("api_routes_system.markets_engine.registry_lookup_tickers", return_value=["^KS200", "GC=F"]), \
-         patch("api_routes_system.registry_tickers_needing_refresh", return_value=["^KS200", "GC=F"]), \
-         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+    with patch("api.routes_system.proxy_tickers_needing_refresh", return_value=[]), \
+         patch("api.routes_system.markets_engine.registry_lookup_tickers", return_value=["^KS200", "GC=F"]), \
+         patch("api.routes_system.registry_tickers_needing_refresh", return_value=["^KS200", "GC=F"]), \
+         patch("api.routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/system/market-status")
     assert resp.status_code == 200
     mock_fetch.assert_called_once()
@@ -409,7 +409,7 @@ def test_get_market_pulse_dynamic_mode_returns_dynamic_selection(client):
     from unittest.mock import patch as _patch
     with _patch("database.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
          _patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
-         _patch("api_routes_system.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}):
+         _patch("api.routes_system.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}):
         resp = client.get("/api/market-pulse")
     data = _json(resp)["data"]
     assert len(data) == 3
@@ -434,8 +434,8 @@ def test_get_markets_self_triggers_refresh_for_stale_proxy_tickers(client):
     proxy's market_state forever just because no tile ticker on this page happened to need a
     price refresh — without this, a region can report "open" indefinitely once no page traffic
     refreshes its proxy (see the analogous GET /api/system/market-status fix)."""
-    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=["^N225", "^HSI"]), \
-         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+    with patch("api.routes_system.proxy_tickers_needing_refresh", return_value=["^N225", "^HSI"]), \
+         patch("api.routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/markets")
     assert resp.status_code == 200
     assert mock_fetch.called
@@ -447,10 +447,10 @@ def test_get_markets_self_triggers_refresh_for_stale_proxy_tickers(client):
 def test_get_markets_refreshes_the_future_card_not_resolved_for_the_tile(client):
     """The spot is the resolved ticker while its exchange is open, so ES=F was never fetched by
     page traffic and its card sat on stale stripes; the registry sweep must add it."""
-    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=[]), \
-         patch("api_routes_system.registry_tickers_needing_refresh", return_value=["ES=F"]) as mock_sweep, \
-         patch("api_routes_system.load_config", return_value={"UI_PREFERENCES": {"REFRESH_RATE": 45}}), \
-         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+    with patch("api.routes_system.proxy_tickers_needing_refresh", return_value=[]), \
+         patch("api.routes_system.registry_tickers_needing_refresh", return_value=["ES=F"]) as mock_sweep, \
+         patch("api.routes_system.load_config", return_value={"UI_PREFERENCES": {"REFRESH_RATE": 45}}), \
+         patch("api.routes_system.fetch_and_save_pulse") as mock_fetch:
         resp = client.get("/api/markets")
     assert resp.status_code == 200
     assert "ES=F" in set(mock_fetch.call_args[0][0])
@@ -1416,7 +1416,7 @@ def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disa
                          quantity=10, unit_price=80, exchange_rate=1.0)
 
     # list_scope_accounts_with_values() (accounts_engine.py) is the shared account-tile
-    # builder behind this endpoint — patch its own load_config, not api_routes'.
+    # builder behind this endpoint — patch its own load_config, not api.routes'.
     with patch("accounts_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
         resp = client.get("/api/monte-carlo/accounts")
 
@@ -1585,7 +1585,7 @@ def test_backup_status_returns_200(client):
         "stored_size_bytes": 2097152,
         "backups": [{"filename": "backup_20260628_033000.tar.gz", "size_bytes": 1048576, "mtime": "2026-06-28 03:30:05"}],
     }
-    with patch("api_routes_triggers.get_backup_status", return_value=fake_status):
+    with patch("api.routes_triggers.get_backup_status", return_value=fake_status):
         resp = client.get("/api/backup/status")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
     data = _json(resp)
@@ -1684,7 +1684,7 @@ def test_fx_status_rejects_invalid_currencies(client, currencies):
 @pytest.mark.api
 def test_xray_returns_only_the_fixed_scope_message(client):
     from xray_engine import XRayScopeUnavailable
-    with patch("api_routes.assemble_xray_report", side_effect=XRayScopeUnavailable("no_holdings")):
+    with patch("api.routes.assemble_xray_report", side_effect=XRayScopeUnavailable("no_holdings")):
         resp = client.get("/api/xray?account_id=all")
     assert resp.status_code == 503
     assert _json(resp)["error"] == "No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty)."
@@ -1702,7 +1702,7 @@ def test_xray_refuses_unknown_account_with_404(client, account_id):
 
 @pytest.mark.api
 def test_xray_hides_text_of_any_other_error(client):
-    with patch("api_routes.assemble_xray_report", side_effect=RuntimeError("db at /home/andre/secret.db is locked")):
+    with patch("api.routes.assemble_xray_report", side_effect=RuntimeError("db at /home/andre/secret.db is locked")):
         resp = client.get("/api/xray?account_id=all")
     assert resp.status_code == 500
     assert "secret.db" not in resp.text

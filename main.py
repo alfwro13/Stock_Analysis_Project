@@ -22,15 +22,15 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette_csrf import CSRFMiddleware
 
 from config import ALLOWED_HOSTS, BASE_DIR, BIND_HOST, FRAME_ANCESTORS, MCP_PUBLIC_HOST, PORT, SERVER_URL, load_config
-from api_deps import API_KEY_ROUTES, RestoreInProgress, restore_busy_response
+from api.deps import API_KEY_ROUTES, RestoreInProgress, restore_busy_response
 from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_token
-from api_routes import limiter
+from api.routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans, start_model_compatibility_guard
 from log_config import configure_console_logging, configure_file_logging, uvicorn_log_config
 from utils import _request_counts, _request_stages, harden_runtime_permissions
 
-from api_routes import api_router
+from api.routes import api_router
 from page_routes import page_router
 from data_engine import run_yfinance_smoke_test
 import mcp_server

@@ -123,8 +123,8 @@ class TestPut:
         assert policy_path.read_text(encoding="utf-8") == "keep"
 
     def test_cap_comes_from_the_request_limits_block(self):
-        import api_routes_auth
-        assert api_routes_auth.INVESTMENT_POLICY_MAX_CHARS is constants.INVESTMENT_POLICY_MAX_CHARS
+        import api.routes_auth
+        assert api.routes_auth.INVESTMENT_POLICY_MAX_CHARS is constants.INVESTMENT_POLICY_MAX_CHARS
 
     @pytest.mark.parametrize("body", [{}, {"text": None}, {"text": 5}, {"text": ["a"]}, {"body": "x"}])
     def test_malformed_body_is_refused(self, client, policy_path, headers, body):
@@ -153,7 +153,7 @@ class TestPut:
         assert not policy_path.exists()
 
     def test_home_assistant_api_key_cannot_save(self, raw_client, policy_path):
-        from api_deps import API_KEY_ROUTES
+        from api.deps import API_KEY_ROUTES
         assert ("PUT", URL) not in API_KEY_ROUTES and ("GET", URL) not in API_KEY_ROUTES
         response = raw_client.put(URL, json={"text": "x"}, headers={"X-API-Key": os.environ["API_KEY"]})
         assert response.status_code == 403
@@ -202,7 +202,7 @@ class TestAtomicWrite:
     def test_the_route_goes_through_the_atomic_writer(self, client, policy_path, headers, monkeypatch):
         calls = []
         real = utils.write_text_atomic
-        monkeypatch.setattr("api_routes_auth.write_text_atomic", lambda path, text: (calls.append(path), real(path, text)))
+        monkeypatch.setattr("api.routes_auth.write_text_atomic", lambda path, text: (calls.append(path), real(path, text)))
         client.put(URL, json={"text": "rules"}, headers=headers)
         assert calls == [policy_path]
 
@@ -221,8 +221,8 @@ class TestResourceReflectsTheSave:
         assert _resource_text(mcp_client).startswith("POLICY NOT CONFIGURED")
 
     def test_editor_and_resource_share_one_path_and_reader(self, client, policy_path, headers):
-        import api_routes_auth
-        assert api_routes_auth.investment_policy is policy_resource
+        import api.routes_auth
+        assert api.routes_auth.investment_policy is policy_resource
         client.put(URL, json={"text": "shared"}, headers=headers)
         assert policy_resource.load_policy_file() == ("shared", None)
 
