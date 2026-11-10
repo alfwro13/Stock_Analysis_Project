@@ -3370,6 +3370,20 @@ CARDS = [
 <p>When an enabled reminder's day arrives, the app does <strong>not</strong> record anything for you. It stages a <strong>pending</strong> task named for its month, such as <em>November 2026 Pay In</em>, tags the account <code>[PENDING ACTION]</code> on the Accounts page and sends a <strong>Pension Reminders</strong> notification. Opening the Pension account's page shows a banner listing every waiting task: <strong>Record</strong> opens the existing Pay In or Admin Fee form with the due date filled in, and saving that form marks the task done; <strong>Dismiss</strong> clears it with no transaction. Tasks from several months stack, each resolved on its own, so a missed December does not hide November. Deleting or disabling a reminder stops future tasks but leaves already-pending ones in place. The schedule fires at 08:00 in your timezone, so a task is staged only if the app is running at that moment.</p>""",
     },
     {
+        "term_key": "pending-account-actions",
+        "section_id": "accounts",
+        "term_title": "Pending Account Actions",
+        "question": "What does the red number beside Accounts in the top menu count?",
+        "answer": "Actions waiting for you to confirm on any account, such as an Auto Top-up, a Pension reminder or a Treasury Bill YTM",
+        "distractors": [
+            "Unread notifications from the alert engines",
+            "Accounts whose price scraper failed on its last run",
+            "Open positions that have reached a Position Target",
+        ],
+        "explanation": """<p>Some account tasks wait for you to confirm them: an <strong>Auto Top-up</strong> whose payment you have not yet confirmed, a <strong>Pension Reminders</strong> Pay In or Admin Fee you have not yet recorded or dismissed, and a <strong>Treasury Bill</strong> whose final YTM you have not yet confirmed. Each one is a <strong>pending action</strong>, and it stays pending until you resolve it, so it cannot be missed simply by not opening the account.</p>
+<p>The <strong>Accounts</strong> entry in the top menu shows a red number: the total of pending actions across all your accounts, updated every few seconds without reloading the page, and hidden when there are none. On the Accounts page each affected tile carries a <code>[PENDING ACTION]</code> tag (with <code>&times;N</code> when there are several) that names what is waiting; hover over it for the details. Resolving the item on the account's own page, by confirming or dismissing it, removes it from both the tag and the menu number.</p>""",
+    },
+    {
         "term_key": "pension-benchmarks",
         "section_id": "accounts",
         "term_title": "Pension Benchmarks",

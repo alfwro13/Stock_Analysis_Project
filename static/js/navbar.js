@@ -55,6 +55,22 @@ async function pollGlobalSystemNotifications() {
     }
 }
 
+async function loadAccountsPendingBadge() {
+    const badge = document.getElementById('nav-accounts-badge');
+    if (!badge) return;
+    try {
+        const response = await fetch('/api/accounts/pending-actions');
+        if (!response.ok) return;
+        const result = await response.json();
+        const count = result.count || 0;
+        badge.textContent = count;
+        badge.title = `${count} pending account action${count === 1 ? '' : 's'}`;
+        badge.classList.toggle('d-none', count === 0);
+    } catch (error) {
+        console.error("Failed to load pending account actions:", error);
+    }
+}
+
 async function loadFreshnessBadge() {
     const slot = document.getElementById('freshness-badge-slot');
     if (!slot) return;
@@ -78,4 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadFreshnessBadge();
     setInterval(pollGlobalSystemNotifications, 15000);
     pollGlobalSystemNotifications();
+    setInterval(loadAccountsPendingBadge, 15000);
+    loadAccountsPendingBadge();
 });

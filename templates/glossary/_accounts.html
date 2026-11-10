@@ -53,6 +53,12 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Pending Account Actions</span>
+                <p>Some account tasks wait for you to confirm them: an <strong>Auto Top-up</strong> whose payment you have not yet confirmed, a <strong>Pension Reminders</strong> Pay In or Admin Fee you have not yet recorded or dismissed, and a <strong>Treasury Bill</strong> whose final YTM you have not yet confirmed. Each one is a <strong>pending action</strong>, and it stays pending until you resolve it, so it cannot be missed simply by not opening the account.</p>
+                <p>The <strong>Accounts</strong> entry in the top menu shows a red number: the total of pending actions across all your accounts, updated every few seconds without reloading the page, and hidden when there are none. On the Accounts page each affected tile carries a <code>[PENDING ACTION]</code> tag (with <code>&times;N</code> when there are several) that names what is waiting; hover over it for the details. Resolving the item on the account's own page, by confirming or dismissing it, removes it from both the tag and the menu number.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Pension Benchmarks</span>
                 <p>The Pension Value Over Time chart on a Pension account's detail page can overlay comparison lines against the account's own value, added alongside two configurable inputs edited from the <strong>&#127919; Benchmarks</strong> button on the account's tile (<code>/accounts</code>): a fixed <strong>UK CPI + Target</strong> line (UK CPI YoY%, the same series charted on the Market Sentiment page's "UK Price Stability: CPI YoY vs FTSE 100" chart, plus a user-set target — 4% by default) and any number of <strong>ticker benchmarks</strong> (a Yahoo Finance ticker plus a display name), defaulting to <strong>URTH</strong> (MSCI World Index, tracked via the iShares MSCI World ETF) and <strong>VWRL.L</strong> (FTSE All-World Index, tracked via the Vanguard FTSE All-World UCITS ETF). Every line is <strong>rebased</strong> to the pension's own starting value on its first snapshot date, so all lines sit on the same value axis as the Pension Value line itself rather than needing a separate percentage-return chart — a benchmark line answers "what would this account be worth today if it had grown at this rate/tracked this index instead," not "what % did this index return."</p>
             </div>

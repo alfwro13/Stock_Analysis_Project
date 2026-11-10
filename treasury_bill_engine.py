@@ -187,7 +187,7 @@ def list_treasury_bills(account_id: int) -> list:
     return bills
 
 
-def bills_pending_ytm_confirmation(account_id: int) -> list:
+def bills_pending_ytm_confirmation(account_id: Optional[int] = None) -> list:
     """Bills bought with an indicative (pre-tender) YTM whose Start Date has arrived — by then the
     Friday DMO tender has already happened, so the operator can now confirm the real yield instead
     of the last-week estimate the Buy T-Bill modal computed Face Value from."""
