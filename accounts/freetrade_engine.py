@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from db.database import get_connection
 from config import load_config
+from constants import FREETRADE_IGNORED_MICS
 from yahoo_engine import yahoo_engine
 from profile_engine import load_blacklist
 
@@ -121,7 +122,8 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
                 logger.info("TEST: Original: '%s' (ISIN: %s) -> Resolved: '%s'", symbol_raw, isin, resolved_ticker)
             
             if not is_mapped:
-                unmapped_mics.add(mic)
+                if mic not in FREETRADE_IGNORED_MICS:
+                    unmapped_mics.add(mic)
                 continue
                 
             if resolved_ticker in blacklist:

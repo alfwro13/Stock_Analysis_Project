@@ -57,7 +57,7 @@ All asset routing rules, tracking formats, and allowed exchanges reside natively
 
 ### **Strict Exchange Circuit Breaker Rule**
 
-If a record flows in with a MIC that isn't listed in US\_MICS or EXCHANGES (such as XPAR, XETR, or XSTO), the resolve\_ticker function will return False and the engine will skip the row. This safely ignores European exotics without throwing critical system errors.
+If a record flows in with a MIC that isn't listed in US\_MICS or EXCHANGES (such as XPAR, XETR, or XSTO), the resolve\_ticker function will return False and the engine will skip the row. This safely ignores European exotics without throwing critical system errors. The exchanges the app deliberately does not cover (XAMS, XBRU, XWBO, XSTO, XHEL, XPAR, MTAA, XETR, XLIS) are listed in `constants.FREETRADE_IGNORED_MICS` and are skipped silently; any other unmapped MIC is reported once per run in an `Unmapped Freetrade MICs detected and skipped` warning, so a new exchange in the feed is noticed.
 
 ## **🛡️ 3\. The Automated Blacklist Architecture**
 
