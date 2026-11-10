@@ -374,6 +374,35 @@ class TestBackfillAll:
         assert score is not None
         assert 0.0 <= score <= 1.0
 
+    def test_no_write_transaction_is_open_while_the_next_ticker_is_scored(self, tmp_path):
+        tickers = ["BFA_LOCK_A", "BFA_LOCK_B", "BFA_LOCK_C"]
+        engine = _engine(tmp_path)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        dates = {}
+        for seed, ticker in enumerate(tickers, start=1):
+            df = _make_ohlcv_dated(seed=seed)
+            dates[ticker] = _last_feature_date(df)
+            _seed_quant_signals(ticker, dates[ticker])
+            engine.train_one(ticker, df, beta=1.0)
+            df.to_parquet(parquet_dir / f"{ticker}.parquet")
+
+        held_before_ticker = []
+        original = engine._backfill_ticker
+
+        def spy(ticker, *args, **kwargs):
+            held_before_ticker.append(
+                [e["caller"] for e in list(db._open_writes.values()) if e["caller"].startswith("anomaly_engine.py")]
+            )
+            return original(ticker, *args, **kwargs)
+
+        engine._backfill_ticker = spy
+        engine.backfill_all(tickers, parquet_dir)
+
+        assert held_before_ticker == [[]] * len(tickers)
+        for ticker in tickers:
+            assert _read_anomaly_score(ticker, dates[ticker]) is not None
+
     def test_empty_ticker_list_is_noop(self, tmp_path):
         engine = _engine(tmp_path)
         parquet_dir = tmp_path / "parquet"

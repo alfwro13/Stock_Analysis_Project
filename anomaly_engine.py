@@ -250,8 +250,9 @@ class AnomalyEngine:
                 except Exception:
                     logger.error("Backfill failed for %s", ticker, exc_info=True)
                     skipped += 1
+                finally:
+                    conn.commit()
 
-            conn.commit()
             logger.info(
                 "Anomaly backfill complete: %d scores written, %d tickers skipped.",
                 scored, skipped,

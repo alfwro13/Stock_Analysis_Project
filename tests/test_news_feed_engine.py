@@ -5,15 +5,18 @@ Covers:
   _make_article_id()        — UUID present vs absent, SHA-256 hash determinism
   _build_ticker_source_map()— portfolio/watchlist union, 'both' label, ignored filter
   _fetch_full_text()        — vetted fetch only: https, public address, 2 redirects, 2 MB, no TLS-off retry
+  _score_unscoredrows()     — sentiment is computed before the write transaction opens
 """
 import logging
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import database
 import news_feed_engine
 import outbound_fetch_helpers
 from news_feed_engine import (
@@ -132,3 +135,74 @@ class TestFetchFullText:
     def test_fetch_failure_returns_none(self):
         with patch("news_feed_engine.fetch_body", side_effect=Exception("TLS handshake failed")):
             assert _fetch_full_text("https://publisher.example/a") is None
+
+
+# ── _score_unscoredrows ───────────────────────────────────────────────────────
+
+class TestScoreUnscoredRows:
+    ARTICLES = [f"_LOCKTEST_{i}" for i in range(3)]
+
+    def setup_method(self):
+        conn = database.get_connection()
+        try:
+            for article_id in self.ARTICLES:
+                conn.execute(
+                    "INSERT INTO news_articles (article_id, ticker, source_list, headline, summary, published_at, fetched_at) "
+                    "VALUES (?, 'LOCKTEST', 'portfolio', ?, 'summary', ?, ?)",
+                    (article_id, f"Headline {article_id}", int(time.time()), int(time.time())),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def teardown_method(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM news_articles WHERE ticker = 'LOCKTEST'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_no_write_transaction_is_open_while_an_article_is_scored(self):
+        held_while_scoring = []
+
+        def score_text(analyzer, text):
+            held_while_scoring.append(
+                [e["caller"] for e in list(database._open_writes.values()) if e["caller"].startswith("news_feed_engine.py")]
+            )
+            return 0.5
+
+        conn = database.get_connection()
+        try:
+            with patch("huggingface_engine._get_finbert_analyzer", return_value=object()), \
+                 patch("huggingface_engine._score_text", side_effect=score_text):
+                news_feed_engine._score_unscoredrows(conn)
+            rows = conn.execute(
+                "SELECT sentiment_score, sentiment_label FROM news_articles WHERE ticker = 'LOCKTEST'"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert held_while_scoring == [[]] * len(self.ARTICLES)
+        assert [(r["sentiment_score"], r["sentiment_label"]) for r in rows] == [(0.5, "positive")] * len(self.ARTICLES)
+
+    def test_an_article_whose_scoring_fails_stays_unscored(self):
+        def score_text(analyzer, text):
+            if "_LOCKTEST_1" in text:
+                raise RuntimeError("model failure")
+            return -0.5
+
+        conn = database.get_connection()
+        try:
+            with patch("huggingface_engine._get_finbert_analyzer", return_value=object()), \
+                 patch("huggingface_engine._score_text", side_effect=score_text):
+                news_feed_engine._score_unscoredrows(conn)
+            rows = conn.execute(
+                "SELECT article_id, sentiment_score FROM news_articles WHERE ticker = 'LOCKTEST' ORDER BY article_id"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert [(r["article_id"], r["sentiment_score"]) for r in rows] == [
+            ("_LOCKTEST_0", -0.5), ("_LOCKTEST_1", None), ("_LOCKTEST_2", -0.5),
+        ]
