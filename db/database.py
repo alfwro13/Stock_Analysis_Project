@@ -143,7 +143,7 @@ from db.helpers import (  # noqa: E402
     record_nextcloud_talk_attempt,
     get_nextcloud_talk_today,
 )
-from db.accounts import (  # noqa: E402
+from db.account_store import (  # noqa: E402
     get_accounts,
     get_account,
     get_scraper_headers,

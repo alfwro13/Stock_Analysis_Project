@@ -17,7 +17,7 @@ from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_tic
 from db.database import get_connection, get_mutual_fund_tickers
 from db.helpers import ml_fresh_since, sentiment_fresh_since
 import accounts_engine
-from db.accounts import get_all_holding_price_limits, get_accounts
+from db.account_store import get_all_holding_price_limits, get_accounts
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine

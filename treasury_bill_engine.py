@@ -4,8 +4,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from db import accounts as db_accounts
-from db.accounts import (
+from db import account_store
+from db.account_store import (
     add_transaction, confirm_treasury_bill_ytm, create_treasury_bill, delete_transaction,
     get_account, get_treasury_bill, get_treasury_bill_by_ticker, get_treasury_bills_for_account,
     get_treasury_bills_pending_ytm_confirmation, get_open_treasury_bills_due,
@@ -235,6 +235,6 @@ def delete_treasury_bill(bill_id: int) -> dict:
     delete_transaction(bill["buy_txn_id"])
     if bill["maturity_txn_id"]:
         delete_transaction(bill["maturity_txn_id"])
-    if not db_accounts.delete_treasury_bill(bill_id):
+    if not account_store.delete_treasury_bill(bill_id):
         return {"error": "Failed to delete the Treasury Bill record."}
     return {"deleted": True, "account_id": bill["account_id"]}

@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from account_reminders_engine import reminder_job_display_name
-from db.accounts import get_account
+from db.account_store import get_account
 from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _DYNAMIC_ACCOUNT_TOPUP_RE, _DYNAMIC_ACCOUNT_REMINDER_RE, _resolve_manifest, job_label
 from time_engine import parse_stored_utc
 

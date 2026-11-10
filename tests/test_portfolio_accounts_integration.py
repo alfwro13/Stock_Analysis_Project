@@ -385,7 +385,7 @@ def test_watchlist_signal_query_scopes_rows_and_keeps_global_freshness():
 @pytest.mark.pages
 def test_watchlist_scope_limits_sql_and_fx_to_watchlist_tickers(client, monkeypatch):
     import page_routes_portfolio
-    from db.accounts import add_watchlist_item, get_watchlist_account
+    from db.account_store import add_watchlist_item, get_watchlist_account
 
     watched = {"ZZPERF3USD": "USD", "ZZPERF3EUR": "EUR"}
     for ticker, currency in watched.items():

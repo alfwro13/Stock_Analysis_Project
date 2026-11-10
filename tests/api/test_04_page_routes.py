@@ -422,7 +422,7 @@ def test_earnings_volatility_page_scope_filter(client):
     client-side DataTables filter can default to showing Portfolio-only rows."""
     from db import database as _db
     from datetime import datetime, timedelta, timezone
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
 
@@ -986,7 +986,7 @@ def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
     "Position Targets" box with a Watchlist row, since Set Targets no longer lives
     inside the Your Position box."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1025,7 +1025,7 @@ def test_stock_detail_gbp_target_input_prefilled_in_pounds_not_pence(client):
     units — not the raw pence value, which previously redisplayed as 0.06 after a user
     typed the suggested pounds figure and it was saved unconverted."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
+    from db.account_store import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
 
     conn = _db.get_connection()
     try:
@@ -1066,7 +1066,7 @@ def test_stock_detail_gbp_ticker_no_target_set_does_not_crash(client):
     500 — limits.get('low_limit') is None (real None), not Jinja Undefined, so the pence
     conversion's `is not none` check must correctly skip the division."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1105,7 +1105,7 @@ def test_stock_detail_stale_pulse_fallback_price_does_not_crash(client):
     cp.change_pct is numeric just because cp exists. Reproduces a real 500 (TypeError:
     NoneType doesn't define __round__) seen after a market_pulse_cache row went stale."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1150,7 +1150,7 @@ def test_stock_detail_shows_drift_stats_with_thumbs_icon(client):
     earnings_drift_predictions event moved with the historical-average direction."""
     from db import database as _db
     from datetime import datetime, timedelta, timezone
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
     past_earnings = (datetime.now(timezone.utc) - timedelta(days=100)).strftime("%Y-%m-%d")
@@ -1211,7 +1211,7 @@ def test_watchlist_page_stale_pulse_fallback_price_does_not_crash(client):
     """Same fallback scenario as test_stock_detail_stale_pulse_fallback_price_does_not_crash,
     but on the /watchlist table row itself, which reads the same cached_pulse dict."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1255,7 +1255,7 @@ def test_watchlist_ticker_link_propagates_embed_token(client):
     /stock/{ticker} must carry the same embed_token — otherwise clicking through from an
     embedded (no-session-cookie) view hits the login-redirect middleware branch."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1290,7 +1290,7 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
     trap / bubble badges render for a seeded ticker, and the Market Pulse widget + US 10Y
     Treasury / UK 10Y Gilt cards are gone from the page entirely."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1380,7 +1380,7 @@ def test_portfolio_and_watchlist_thead_th_count_matches_column_registry(client):
 def test_watchlist_page_colours_altman_z_poor_only_below_distress_cutoff(client):
     """The Watchlist Altman cell turns metric-poor below the Z' distress cutoff (1.1), not below the old 1.81."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     tickers = {"ZZALTGREY": 1.5, "ZZALTDISTRESS": 0.9}
     conn = _db.get_connection()
@@ -1422,7 +1422,7 @@ def test_watchlist_page_renders_new_optional_columns_for_seeded_ticker(client):
     """New optional Watchlist columns (Fundamentals + Watchlist's Exit Target parity gap) render
     with the correct GBp-aware/percent formatting for a seeded ticker."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1465,7 +1465,7 @@ def test_watchlist_page_renders_xray_and_earnings_vol_columns_for_seeded_ticker(
     Volatility edge score/implied move) render correctly for a ticker with rows in all three
     backing tables, using the fixed X-ray benchmark (xray_engine.BENCHMARK_SYMBOL)."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
     from xray_engine import BENCHMARK_SYMBOL
 
     conn = _db.get_connection()
@@ -1610,7 +1610,7 @@ def test_watchlist_filters_only_show_present_values(client):
     """Filter dropdowns must only offer options with at least one matching row — an option with
     zero matches would filter the table down to nothing for no useful reason."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item
+    from db.account_store import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1656,7 +1656,7 @@ def test_watchlist_target_column_no_longer_has_a_filter(client):
     Target render as plain always-available columns regardless of whether any ticker has a
     target set, and #targetFilter must never appear."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
+    from db.account_store import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
 
     conn = _db.get_connection()
     try:

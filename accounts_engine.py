@@ -14,7 +14,7 @@ import time_engine
 import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db.helpers import parse_utc_epoch, resolve_live_price
-from db.accounts import (
+from db.account_store import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
     get_value_history, get_watchlist_account, get_watchlist_items, resolve_pending_topup, update_account,
@@ -1272,7 +1272,7 @@ def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
 
     from account_scraper_engine import parse_pension_account_id
     from account_scraper_engine import price_series as scraped_price_series
-    from db.accounts import get_treasury_bill_by_ticker
+    from db.account_store import get_treasury_bill_by_ticker
     from treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
 
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(
@@ -1359,7 +1359,7 @@ def backfill_value_history(account_id: int) -> int:
 
     from account_scraper_engine import parse_pension_account_id
     from account_scraper_engine import price_series as scraped_price_series
-    from db.accounts import get_treasury_bill_by_ticker
+    from db.account_store import get_treasury_bill_by_ticker
     from treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
 
     tickers = sorted({t["ticker"] for t in transactions if t["ticker"]})
@@ -1582,7 +1582,7 @@ def scraped_price_performance(account_id: int) -> dict:
 def pension_benchmark_overlay(account_id: int, value_df: pd.DataFrame) -> Dict[str, pd.Series]:
     """Rebases each configured benchmark to the pension's own starting value so all lines are
     directly comparable on the same value chart, rather than plotted as a separate % return axis."""
-    from db.accounts import get_benchmark_tickers
+    from db.account_store import get_benchmark_tickers
     from data_engine import load_or_fetch_daily_history
     from macro_data_engine import get_uk_cpi_yoy_series
 

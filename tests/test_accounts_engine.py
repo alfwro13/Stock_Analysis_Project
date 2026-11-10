@@ -769,7 +769,7 @@ def test_backfill_value_history_prices_treasury_bill_by_accretion_not_flat_cost(
 
     from db.database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
-    from db.accounts import get_treasury_bill_by_ticker
+    from db.account_store import get_treasury_bill_by_ticker
     bill_row = get_treasury_bill_by_ticker(ticker)
 
     snapshot_date = "2025-01-16"  # 15 of 30 days elapsed -> halfway accreted
@@ -2227,7 +2227,7 @@ def test_pension_benchmark_overlay_ticker_line_rebased_to_start_value():
     from unittest.mock import patch
 
     aid = create_account("PensionOverlayTickerAcc", "GBP", account_type="Pension")
-    from db.accounts import replace_benchmark_tickers
+    from db.account_store import replace_benchmark_tickers
     replace_benchmark_tickers(aid, [{"ticker": "URTH", "display_name": "MSCI World Index"}])
 
     value_df = pd.DataFrame(
@@ -2337,7 +2337,7 @@ def test_value_history_never_reads_a_parquet_outside_the_history_folder_for_an_u
 
 @pytest.mark.db
 def test_position_target_accounts_lists_trading_accounts_then_the_watchlist():
-    from db.accounts import get_watchlist_account
+    from db.account_store import get_watchlist_account
     asset = {"accounts": [
         {"id": "acct:7", "name": "Main", "shares": 4.0},
         {"id": "gf-uuid", "name": "Ghostfolio only", "shares": 1.0},

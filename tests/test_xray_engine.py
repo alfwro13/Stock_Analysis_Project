@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as db
 from db.database import create_account, add_transaction
-from db.accounts import soft_delete_account
+from db.account_store import soft_delete_account
 from xray_engine import (
     XRayRiskComputer,
     GhostfolioXRayClient,

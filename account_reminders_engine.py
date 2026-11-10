@@ -7,7 +7,7 @@ from db.account_reminders import (
     create_pending_reminder, get_pending_reminder, get_reminder, get_unresolved_pending_reminders,
     resolve_pending_reminder,
 )
-from db.accounts import get_account
+from db.account_store import get_account
 
 logger = logging.getLogger(__name__)
 

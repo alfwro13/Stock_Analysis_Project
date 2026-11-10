@@ -12,7 +12,7 @@ from cache_refresh_helpers import request_cache_refresh
 from config import BASE_CURRENCY
 from constants import PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS, PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS
 from db.database import get_connection
-from db.accounts import (
+from db.account_store import (
     get_accounts, get_all_holding_price_limits, get_performance_cache, get_price_history,
     get_value_history, get_value_history_currency, ledger_revision, snapshot_revision,
     upsert_holding_price_limit,
@@ -192,10 +192,10 @@ def holdings_with_metrics_all_accounts() -> dict:
 
 
 def set_holding_price_limit(account_id: int, ticker: str, **fields) -> None:
-    """Thin wrapper so api/routes_accounts.py never calls db_accounts directly, matching the
+    """Thin wrapper so api/routes_accounts.py never calls account_store directly, matching the
     existing convention (list-with-metrics/portfolio-totals routes always call the engine layer).
     Only forwards the kwarg(s) the caller actually passed, so setting one limit never clears the
-    other — see db_accounts.upsert_holding_price_limit()'s partial-update semantics."""
+    other — see account_store.upsert_holding_price_limit()'s partial-update semantics."""
     fields["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     upsert_holding_price_limit(account_id, ticker, **fields)
 

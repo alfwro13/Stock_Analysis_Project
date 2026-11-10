@@ -2839,7 +2839,7 @@ def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
     assert resp2.status_code == 200
     assert _json(resp2)["status"] == "success"
 
-    from db.accounts import get_all_holding_price_limits
+    from db.account_store import get_all_holding_price_limits
     limits = get_all_holding_price_limits()[(account_id, "ZZLIMITAPI")]
     assert limits["low_limit"] == 10.0
     assert limits["high_limit"] == 20.0
@@ -3046,7 +3046,7 @@ def test_holding_price_limit_accepts_null_to_clear_a_limit(client):
 
 
 def _stored_limits(account_id):
-    from db.accounts import get_all_holding_price_limits
+    from db.account_store import get_all_holding_price_limits
     return {t: v for (a, t), v in get_all_holding_price_limits().items() if a == account_id}
 
 

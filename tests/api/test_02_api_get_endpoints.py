@@ -1529,7 +1529,7 @@ def test_portfolio_optimizer_candidates_returns_held_and_watchlist(client):
     """GET /api/portfolio-optimizer/candidates marks held tickers held=True and Watchlist-only
     tickers held=False with current_weight 0.0."""
     from db import database as _db
-    from db.accounts import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
+    from db.account_store import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
 
     conn = _db.get_connection()
     try:

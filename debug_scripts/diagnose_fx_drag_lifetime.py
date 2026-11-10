@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import BASE_CURRENCY
 from db import database  # noqa: F401 — must import before accounts_engine to avoid a circular import
-from db.accounts import get_accounts, get_transactions
+from db.account_store import get_accounts, get_transactions
 from accounts_engine import get_combined_holdings
 from fx_drag_engine import _get_usd_tickers_from_db, _lifetime_buy_stats
 

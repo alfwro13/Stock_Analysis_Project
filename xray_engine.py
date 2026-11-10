@@ -12,7 +12,7 @@ from urllib.parse import quote
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, load_config
 from price_history_helpers import load_daily_close
 from db.database import get_connection
-from db.accounts import get_account
+from db.account_store import get_account
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
 from treasury_bill_engine import parse_tbill_buy_txn_id
@@ -1220,7 +1220,7 @@ def resolve_scope_holdings(account_id: str) -> Tuple[List[Dict], float]:
     """Canonical holdings resolver for any account scope — Ghostfolio (optional) + Built-in Accounts.
 
     account_id: "all" = every configured source; a Ghostfolio UUID = that account only;
-    "acct:{id}" = that one built-in Trading account only (db_accounts namespacing convention).
+    "acct:{id}" = that one built-in Trading account only (account_store namespacing convention).
     Returns (holdings with "weight" populated, total_value). Raises XRayScopeUnavailable if the
     id is not a known scope, the resolved scope has no holdings, or Ghostfolio is in scope but unreachable.
     """

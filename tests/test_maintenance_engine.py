@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database as _db
 from maintenance_engine import MaintenanceEngine
 from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS
-from db.accounts import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
+from db.account_store import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
 from db.helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
 

@@ -23,7 +23,7 @@ Key functions:
 | `_lifetime_buy_stats(ticker)` | Scans every Buy transaction for `ticker` across all built-in accounts and returns `(vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy)` |
 | `portfolio_lifetime_fx_breakdown()` | Lifetime mode: aggregates Buy transactions from `account_transactions` (all accounts), derives per-ticker purchase GBPUSD, computes full decomposition |
 
-`db.accounts.get_accounts()` / `db.accounts.get_transactions(account_id)` are called by the lifetime function to read the built-in ledger — the same source `accounts_engine.get_combined_holdings()` and `_ledger_for_account()` use, per AGENTS.md rule 14 (Built-in Accounts is the primary portfolio source; Ghostfolio is opt-in only).
+`db.account_store.get_accounts()` / `db.account_store.get_transactions(account_id)` are called by the lifetime function to read the built-in ledger — the same source `accounts_engine.get_combined_holdings()` and `_ledger_for_account()` use, per AGENTS.md rule 14 (Built-in Accounts is the primary portfolio source; Ghostfolio is opt-in only).
 
 ## Math
 
@@ -57,7 +57,7 @@ Lifetime mode replaces the shared reference date with the **actual weighted-aver
 
 ### How it works
 
-`db.accounts.get_transactions(account_id)` is called for every account from `db.accounts.get_accounts()`. For each USD position, all `Buy` rows are collected and aggregated:
+`db.account_store.get_transactions(account_id)` is called for every account from `db.account_store.get_accounts()`. For each USD position, all `Buy` rows are collected and aggregated:
 
 ```
 total_usd = Σ (quantity_i × unit_price_i)
@@ -98,7 +98,7 @@ Uses all historical Buy rows. For positions with partial sells, the ledger-deriv
 | Stock price history | `data/historical/{ticker}.parquet` (2-year daily OHLCV) |
 | USD→GBP history | Cached `USDGBP=X` daily history (`data/historical/USDGBP=X.parquet`, via `data_engine.load_or_fetch_daily_history`) |
 | USD position list | `accounts_engine.get_combined_holdings()` + `stock_signals.currency` column in SQLite |
-| Lifetime buy history | `account_transactions` table (all accounts), via `db.accounts.get_accounts()` / `get_transactions()` |
+| Lifetime buy history | `account_transactions` table (all accounts), via `db.account_store.get_accounts()` / `get_transactions()` |
 
 No new data pipeline or scheduled job is required.
 

@@ -41,7 +41,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
     from xray_engine import BENCHMARK_SYMBOL
     from accounts_engine import current_price_map, get_combined_holdings
     from api.routes_accounts import maybe_trigger_price_refresh
-    from db.accounts import get_all_holding_price_limits
+    from db.account_store import get_all_holding_price_limits
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 
     config_data = load_config()
@@ -195,7 +195,7 @@ def house_account_detail_page(request: Request, account_id: int):
 @page_router_portfolio.get("/watchlist", response_class=HTMLResponse)
 def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
     from xray_engine import BENCHMARK_SYMBOL
-    from db.accounts import get_all_holding_price_limits, get_watchlist_account
+    from db.account_store import get_all_holding_price_limits, get_watchlist_account
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 
     watchlist_tickers = list(dict.fromkeys(get_watchlist_tickers()))
