@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 import pytest
-import database as _db_module
+from db import database as _db_module
 import system_check_engine as _sce
 from ml_features import save_feature_stats
 

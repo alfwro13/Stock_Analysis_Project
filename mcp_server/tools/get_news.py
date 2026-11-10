@@ -3,7 +3,7 @@ from typing import Annotated, Any, Optional
 from pydantic import Field
 
 from constants import MCP_NEWS_HEADLINE_MAX_CHARS, MCP_NEWS_MAX_ROWS, MCP_NEWS_SUMMARY_MAX_CHARS, MCP_TICKER_MAX_CHARS
-from db_helpers import parse_utc_epoch
+from db.helpers import parse_utc_epoch
 from news_feed_engine import fetch_articles
 from scheduler_engine import get_all_job_last_runs
 from utils import clean_display_text

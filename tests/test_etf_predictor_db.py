@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 
 
 @pytest.mark.db
@@ -296,7 +296,7 @@ def test_get_recent_prediction_errors_only_returns_resolved_rows_for_type():
     _db.log_etf_prediction(cid, unresolved)
     _db.fill_etf_actual(cid, "2099-09-02", 102.0, "next_open")
 
-    from db_etf import get_recent_prediction_errors
+    from db.etf import get_recent_prediction_errors
     rows = get_recent_prediction_errors(cid, "next_open", limit=10)
     try:
         assert len(rows) == 1

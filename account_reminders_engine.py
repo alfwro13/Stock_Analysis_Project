@@ -3,11 +3,11 @@ import logging
 from typing import List, Optional
 
 import time_engine
-from db_account_reminders import (
+from db.account_reminders import (
     create_pending_reminder, get_pending_reminder, get_reminder, get_unresolved_pending_reminders,
     resolve_pending_reminder,
 )
-from db_accounts import get_account
+from db.accounts import get_account
 
 logger = logging.getLogger(__name__)
 

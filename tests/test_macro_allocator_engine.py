@@ -10,7 +10,7 @@ Covers:
 """
 
 import pytest
-import database as _db_module
+from db import database as _db_module
 from macro_allocator_engine import (
     get_ideal_allocation,
     score_portfolio_alignment,
@@ -251,7 +251,7 @@ class TestGetPortfolioAssetClassWeightsBuiltinFallback:
 
     def test_falls_back_to_builtin_holdings_when_ghostfolio_unconfigured(self):
         from unittest.mock import patch
-        from database import create_account, add_transaction
+        from db.database import create_account, add_transaction
 
         ticker = "MACROALLOC_T1"
         self._seed_stock_signal(ticker, 100.0, "GBP")

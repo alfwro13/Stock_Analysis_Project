@@ -10,7 +10,7 @@ Focus on Python-side logic that the SQL cannot enforce:
 import pytest
 from unittest.mock import patch, MagicMock
 
-import database
+from db import database
 from reports_engine import (
     get_dividend_harvest_setups,
     get_mean_reversion_setups,

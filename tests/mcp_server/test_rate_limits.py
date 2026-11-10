@@ -7,12 +7,12 @@ from unittest.mock import patch
 import pytest
 from starlette.testclient import TestClient
 
-import db_mcp_keys
+from db import mcp_keys as db_mcp_keys
 from constants import (
     MCP_AUTH_FAILURE_WINDOW_SECONDS, MCP_AUTH_FAILURES_MAX, MCP_AUTH_LOCKOUT_SECONDS, MCP_RATE_CALLS_PER_MINUTE,
     MCP_RATE_CONCURRENT_CALLS, MCP_REFUSAL_LOG_SECONDS,
 )
-from database import get_connection
+from db.database import get_connection
 from mcp_server import keys, limits
 
 from .helpers import MCP_KEY, RPC_HEADERS, call, rpc

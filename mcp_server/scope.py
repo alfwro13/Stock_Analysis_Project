@@ -5,7 +5,7 @@ from pydantic import Field
 
 from config import load_config
 from constants import MCP_ACCOUNT_SCOPE_MAX_CHARS
-from db_accounts import get_accounts as get_db_accounts
+from db.accounts import get_accounts as get_db_accounts
 from utils import INVALID_TICKER_MESSAGE, is_valid_ticker
 
 ACCOUNT_ALL = "all"

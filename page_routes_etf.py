@@ -24,7 +24,7 @@ templates.env.globals["css_version"] = CSS_VERSION
 
 @page_router_etf.get("/etf-predictor", response_class=HTMLResponse)
 def etf_predictor_index_page(request: Request):
-    from database import get_etf_predictor_configs, get_etf_accuracy
+    from db.database import get_etf_predictor_configs, get_etf_accuracy
     configs = get_etf_predictor_configs()
     tiles = []
     for cfg in configs:
@@ -51,7 +51,7 @@ def etf_predictor_index_page(request: Request):
 
 @page_router_etf.get("/etf-predictor/{config_id}", response_class=HTMLResponse)
 async def etf_predictor_detail_page(request: Request, config_id: int):
-    from database import get_etf_predictor_config
+    from db.database import get_etf_predictor_config
     from etf_predictor_engine import (
         detect_etf_info, run_prediction, fetch_shared_prediction_data,
         get_etf_correlation_data, get_etf_intraday_overlay_data, get_etf_recent_closes,

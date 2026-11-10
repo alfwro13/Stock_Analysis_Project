@@ -6,7 +6,7 @@ import market_pulse
 import market_session_helpers
 import time_engine
 from config import load_config
-from database import get_ticker_registry, get_ticker_registry_row_by_exchange, get_registry_spot_future_tickers
+from db.database import get_ticker_registry, get_ticker_registry_row_by_exchange, get_registry_spot_future_tickers
 
 logger = logging.getLogger(__name__)
 

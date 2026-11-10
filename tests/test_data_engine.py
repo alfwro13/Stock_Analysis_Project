@@ -1282,7 +1282,7 @@ def test_history_staleness_check_uses_the_registry_exchange(tmp_path):
 def reported_sessions():
     import daily_history_writer
     import market_session_helpers
-    from database import get_connection
+    from db.database import get_connection
 
     market_session_helpers._instrument_sessions.clear()
     daily_history_writer._session_lookup_failed.clear()
@@ -1412,7 +1412,7 @@ def test_history_staleness_uses_the_reported_window_end(tmp_path, reported_sessi
 def test_session_is_learned_once_from_yahoo_and_persisted(reported_sessions):
     import daily_history_writer
     import market_session_helpers
-    from database import get_instrument_sessions
+    from db.database import get_instrument_sessions
 
     shape = {"tz": "America/Chicago", "regular_end": 1791572400}
     with patch("daily_history_writer.yahoo_engine.get_session_shape", return_value=shape) as lookup:

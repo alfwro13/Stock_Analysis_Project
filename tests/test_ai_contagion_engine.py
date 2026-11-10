@@ -23,7 +23,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 from ai_contagion_engine import AIContagionEngine, record_scan_snapshot
 
 # ── minimal config ────────────────────────────────────────────────────────────

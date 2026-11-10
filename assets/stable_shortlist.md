@@ -23,7 +23,7 @@ Two signals × two scopes, each with its own membership, snapshots and track rec
 | **ML Upside** (`ml_upside`) | Signed predicted upside, `((Q10 + Q90) / 2) / reference_close − 1`, from the existing 10-trading-day quantile models | Upside is positive. The list is never padded with non-positive names, so it can be shorter than the list size |
 | **Quant Score** (`quant_score`) | The nightly 0–100 composite quant score | Score is at least **Min Quant Score** (default 50) |
 
-Scopes are **Portfolio** (`db_helpers.get_portfolio_tickers()`) and **Watchlist**
+Scopes are **Portfolio** (`db.helpers.get_portfolio_tickers()`) and **Watchlist**
 (`get_watchlist_only_tickers()` — Watchlist tickers you do not hold). A ticker in both belongs to
 Portfolio only. The two signals are never blended into one score.
 
@@ -74,7 +74,7 @@ predictions, so replaying today's model on past dates would use information that
 `resolve_outcomes()` runs at the start of every job run and scans the **whole** unresolved backlog
 (a missed run strands nothing, per the catch-up rule). For each tracked row whose `target_date`
 (≈10 trading days after the signal date) has passed, the outcome is the first `quant_signals` close on
-or after it (`db_helpers.get_first_close_on_or_after()`, shared with
+or after it (`db.helpers.get_first_close_on_or_after()`, shared with
 `predicted_movers_engine.backfill_actual_outcomes()`), giving `forward_return_pct` from the frozen
 reference close. ML rows also get `direction_correct` and `within_band_correct`.
 

@@ -202,7 +202,7 @@ The `date_added` column is set to today's ISO date at arm time. The `get_active_
 When score ≥ 65 and the alert is armed, two notifications are dispatched:
 
 ### In-app notification (always)
-Written to `system_notifications` via `log_notification()` from `database.py`:
+Written to `system_notifications` via `log_notification()` from `db/database.py`:
 
 ```
 [DipRadar] 🎯 Dip Radar | AAPL @ 185.42 | Score: 75/100 — Extreme Oversold (RSI: 22.1) | Volume Capitulation detected

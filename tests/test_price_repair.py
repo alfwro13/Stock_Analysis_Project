@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-from database import get_connection
+from db.database import get_connection
 from price_repair_engine import PriceRepairError, apply_saved_repairs, check_daily_bar, refresh_downstream, repair_daily_bar, remove_daily_bar, _fingerprint, _history_path
 
 
@@ -304,7 +304,7 @@ class TestRefreshDownstream:
 
     def test_in_scope_ticker_rebuilds_history_and_queues_portfolio_caches(self):
         with patch("ml_backfill_engine.rebuild_quant_history", return_value=42) as rebuild, \
-             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
+             patch("db.helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
              patch("price_repair_engine.request_cache_refresh", return_value=MagicMock()) as queue:
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
         assert result == {"history_rows_rebuilt": 42, "portfolio_caches": "queued"}
@@ -314,7 +314,7 @@ class TestRefreshDownstream:
 
     def test_ticker_outside_portfolio_and_watchlist_queues_nothing(self):
         with patch("ml_backfill_engine.rebuild_quant_history", return_value=5), \
-             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["AAPL"]), \
+             patch("db.helpers.get_portfolio_watchlist_tickers", return_value=["AAPL"]), \
              patch("price_repair_engine.request_cache_refresh") as queue:
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
         assert result == {"history_rows_rebuilt": 5, "portfolio_caches": "not_in_scope"}
@@ -322,14 +322,14 @@ class TestRefreshDownstream:
 
     def test_refused_refresh_request_is_reported_as_unavailable(self):
         with patch("ml_backfill_engine.rebuild_quant_history", return_value=5), \
-             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
+             patch("db.helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
              patch("price_repair_engine.request_cache_refresh", return_value=None):
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
         assert result["portfolio_caches"] == "unavailable"
 
     def test_history_rebuild_failure_is_reported_and_does_not_block_cache_refresh(self):
         with patch("ml_backfill_engine.rebuild_quant_history", side_effect=RuntimeError("boom")), \
-             patch("db_helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
+             patch("db.helpers.get_portfolio_watchlist_tickers", return_value=["LCJP.L"]), \
              patch("price_repair_engine.request_cache_refresh", return_value=MagicMock()):
             result = refresh_downstream("LCJP.L", "2026-10-05", self._history_frame())
         assert result == {"history_rows_rebuilt": None, "portfolio_caches": "queued"}

@@ -21,8 +21,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
-from db_helpers import parse_utc_epoch
+from db import database as _db
+from db.helpers import parse_utc_epoch
 import market_pulse as _mp
 import market_pulse_write as _mw
 import market_session_helpers as _ms

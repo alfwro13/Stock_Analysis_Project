@@ -10,7 +10,7 @@ def trading_account_context(acc, chart_period_cookie):
         holdings_with_market_value, is_unresolved_ticker, refresh_performance_cache,
         stale_pricing_warning, transaction_total_base, VALUE_CHART_PERIODS,
     )
-    from database import (
+    from db.database import (
         get_performance_cache, get_transactions, get_unresolved_pending_topups, get_value_history,
     )
     from treasury_bill_engine import bills_pending_ytm_confirmation, list_treasury_bills
@@ -60,7 +60,7 @@ def pension_account_context(acc):
         account_summary, pension_activities, pension_benchmark_overlay, pension_display_label,
         scraped_price_performance,
     )
-    from database import get_price_history, get_value_history
+    from db.database import get_price_history, get_value_history
     from visuals import create_pension_unit_price_chart, create_pension_value_chart
 
     account_id = acc["id"]
@@ -96,7 +96,7 @@ def pension_account_context(acc):
 
 
 def house_account_context(acc):
-    from database import get_price_history
+    from db.database import get_price_history
 
     price_history = get_price_history(acc["id"])
     if price_history:

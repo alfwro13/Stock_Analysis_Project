@@ -17,7 +17,7 @@ strong ones, without any scores or gamification beyond visible progress.
 | Concern | File |
 |---|---|
 | Card content (git-tracked, one entry per glossary term-box) | `learn_cards_seed.py` |
-| DB tables + idempotent seeding | `db_schema.py` (`learn_cards`, `learn_term_state`, `_seed_learn_cards()`) |
+| DB tables + idempotent seeding | `db/schema.py` (`learn_cards`, `learn_term_state`, `_seed_learn_cards()`) |
 | Leitner-box math, session builder, overview | `glossary_learn_engine.py` |
 | API endpoints | `api/routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`, `/api/learn/preference`) |
 | Page route | `page_routes.py` (`GET /glossary/learn`) |

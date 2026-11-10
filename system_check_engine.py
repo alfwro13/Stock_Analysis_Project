@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
-from database import get_connection
+from db.database import get_connection
 from ml_features import FEATURE_STATS_PATH, load_feature_stats
 
 logger = logging.getLogger(__name__)

@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 import pytest
 from apscheduler.schedulers.background import BackgroundScheduler
 
-import db_mcp_oauth
+from db import mcp_oauth as db_mcp_oauth
 import notification_engine as ne
 import scheduler_engine
 import scheduler_jobs
 from constants import MCP_AUTH_FAILURES_MAX, MCP_NOTIFY_COOLDOWN_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS
-from database import get_connection
+from db.database import get_connection
 from mcp_server import events, limits, oauth
 
 from .helpers import MCP_KEY, rpc

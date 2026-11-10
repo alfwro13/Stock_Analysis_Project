@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from constants import MCP_CALENDAR_MAX_DAYS, MCP_CALENDAR_MAX_ROWS
-from database import add_transaction, create_account, get_connection
-from db_accounts import add_watchlist_item, get_watchlist_account
+from db.database import add_transaction, create_account, get_connection
+from db.accounts import add_watchlist_item, get_watchlist_account
 
 from .helpers import ACCOUNT_TABLES, call, emptied_tables, rpc, table_counts, tool_data
 

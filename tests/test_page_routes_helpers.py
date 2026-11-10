@@ -19,7 +19,7 @@ from page_helpers import (
     _fmt_currency, _fmt_volume, calculate_pnl, _build_position_sizing_context,
     get_pattern_tags_by_ticker, compute_badge_tags,
 )
-import database as db
+from db import database as db
 
 
 # ---------------------------------------------------------------------------

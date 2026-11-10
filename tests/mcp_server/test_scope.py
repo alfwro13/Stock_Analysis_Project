@@ -28,7 +28,7 @@ class TestAccountArgument:
 
     @pytest.mark.parametrize("tool", ["get_holdings", "get_xray"])
     def test_soft_deleted_account_is_not_exposed(self, mcp_client, holdings_book, tool):
-        from database import soft_delete_account
+        from db.database import soft_delete_account
         soft_delete_account(holdings_book["empty"])
         assert error_text(call(mcp_client, tool, {"account": f"acct:{holdings_book['empty']}"})).startswith("Unknown account")
 

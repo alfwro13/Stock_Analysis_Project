@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import db_mcp_oauth
+from db import mcp_oauth as db_mcp_oauth
 from constants import MCP_ACTIVITY_ROWS
-from database import get_connection
+from db.database import get_connection
 from mcp_server import audit, oauth
 
 from .helpers import MCP_KEY

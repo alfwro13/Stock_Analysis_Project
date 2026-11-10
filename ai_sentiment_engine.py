@@ -5,8 +5,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
-from database import get_connection
-from db_helpers import get_upcoming_macro_events, macro_event_value
+from db.database import get_connection
+from db.helpers import get_upcoming_macro_events, macro_event_value
 
 logger = logging.getLogger(__name__)
 

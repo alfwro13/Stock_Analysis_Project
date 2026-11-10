@@ -18,7 +18,7 @@ def portfolio_scope_tickers(portfolio_json, account_id, ignored_tickers):
 
 
 def portfolio_account_options(config_data):
-    from database import get_accounts
+    from db.database import get_accounts
 
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])

@@ -72,7 +72,7 @@ def test_create_etf_predictor_normalises_weights(client):
     assert resp.status_code == 200
     config_id = _json(resp)["id"]
 
-    import database as _db
+    from db import database as _db
     cfg = _db.get_etf_predictor_config(config_id)
     total = sum(h["weight"] for h in cfg["constituents"])
     assert abs(total - 1.0) < 1e-6, f"Weights did not normalise to 1.0: total={total}"
@@ -104,7 +104,7 @@ def test_update_etf_predictor(client):
     assert resp.status_code == 200
     assert _json(resp).get("status") == "success"
 
-    import database as _db
+    from db import database as _db
     cfg = _db.get_etf_predictor_config(config_id)
     assert cfg["name"] == "Updated Name"
     _db.soft_delete_etf_predictor_config(config_id)
@@ -125,7 +125,7 @@ def test_delete_etf_predictor(client):
     assert resp.status_code == 200
     assert _json(resp).get("status") == "success"
 
-    import database as _db
+    from db import database as _db
     assert _db.get_etf_predictor_config(config_id) is None
 
 
@@ -144,7 +144,7 @@ def test_run_now_returns_success(client):
     assert resp.status_code == 200
     assert _json(resp).get("status") == "success"
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_etf_predictor_config(config_id)
 
 
@@ -166,7 +166,7 @@ def test_predictions_returns_accuracy_shape(client):
     assert "next_open" in data
     assert "us_open_impact" in data
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_etf_predictor_config(config_id)
 
 
@@ -244,13 +244,13 @@ def test_create_etf_predictor_rejects_an_unsafe_etf_or_constituent_ticker(client
     assert resp.status_code == 422
     assert "ticker" in _json(resp)["message"]
 
-    import database as _db
+    from db import database as _db
     assert "Bad Constituent" not in {c["name"] for c in _db.get_etf_predictor_configs()}
 
 
 @pytest.mark.api
 def test_update_etf_predictor_rejects_an_unsafe_ticker_and_keeps_the_config(client):
-    import database as _db
+    from db import database as _db
     config_id = _db.create_etf_predictor_config(
         name="Guard Update Test", etf_ticker="TST.L", constituents=[{"ticker": "AAPL", "weight": 1.0}],
     )
@@ -267,7 +267,7 @@ def test_update_etf_predictor_rejects_an_unsafe_ticker_and_keeps_the_config(clie
 
 
 def _create_config() -> int:
-    import database as _db
+    from db import database as _db
     return _db.create_etf_predictor_config(
         _SAMPLE_BODY["name"], _SAMPLE_BODY["etf_ticker"], _SAMPLE_BODY["constituents"],
     )
@@ -277,7 +277,7 @@ def _create_config() -> int:
 @pytest.mark.parametrize("suffix,job_suffix,phase", [("run", "pre", "pre-open"), ("fill-actuals", "post", "post-close")])
 def test_etf_trigger_answers_409_busy_while_its_scheduled_job_runs(client, suffix, job_suffix, phase):
     from starlette.background import BackgroundTasks
-    import database as _db
+    from db import database as _db
     config_id = _create_config()
     checked = []
 
@@ -302,7 +302,7 @@ def test_etf_trigger_answers_409_busy_while_its_scheduled_job_runs(client, suffi
 @pytest.mark.api
 def test_etf_run_and_fill_actuals_queue_the_tracked_manual_job(client):
     from starlette.background import BackgroundTasks
-    import database as _db
+    from db import database as _db
     import scheduler_engine
     config_id = _create_config()
     try:
@@ -355,7 +355,7 @@ def test_create_warns_about_a_ticker_without_price_data_but_still_saves(client):
     assert len(data["warnings"]) == 1 and "MSFT" in data["warnings"][0]
     assert mock_probe.call_args.args[0] == ["TST.L", "AAPL", "MSFT", "NVDA"]
 
-    import database as _db
+    from db import database as _db
     assert _db.get_etf_predictor_config(data["id"]) is not None
     _db.soft_delete_etf_predictor_config(data["id"])
 
@@ -366,7 +366,7 @@ def test_create_has_no_warnings_when_every_ticker_has_data(client):
     data = _json(resp)
     assert data["warnings"] == []
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_etf_predictor_config(data["id"])
 
 
@@ -379,5 +379,5 @@ def test_update_warns_about_a_ticker_without_price_data(client):
     assert data["status"] == "success"
     assert len(data["warnings"]) == 1 and "AAPL" in data["warnings"][0]
 
-    import database as _db
+    from db import database as _db
     _db.soft_delete_etf_predictor_config(config_id)

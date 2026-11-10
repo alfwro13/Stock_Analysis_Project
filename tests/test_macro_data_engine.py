@@ -26,7 +26,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db_module
+from db import database as _db_module
 from macro_data_engine import (
     fetch_fred_api,
     fetch_boe_data,

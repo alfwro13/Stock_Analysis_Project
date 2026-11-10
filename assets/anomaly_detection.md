@@ -339,7 +339,7 @@ Shows: `Isolation Forest Models — N Models` (count of `.joblib` files in `data
 anomaly_score REAL  -- Isolation Forest normalised score [0.0, 1.0], NULL until first training run
 ```
 
-Primary key is `(ticker, date)`. The column is added by `migrate_db()` in `db_schema.py` on app startup if absent.
+Primary key is `(ticker, date)`. The column is added by `migrate_db()` in `db/schema.py` on app startup if absent.
 
 **Model files (not database):**
 

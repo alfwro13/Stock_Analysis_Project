@@ -8,7 +8,7 @@ import time_engine
 import numpy as np
 import pandas as pd
 from config import HISTORICAL_DIR
-from database import get_mutual_fund_tickers
+from db.database import get_mutual_fund_tickers
 from market_pulse_write import upsert_live_price
 from market_session_helpers import is_exchange_open, is_quote_settled
 from yahoo_engine import yahoo_engine
@@ -27,7 +27,7 @@ class IntradayBottomEngine:
 
     def __init__(self):
         from config import load_config
-        from database import get_connection
+        from db.database import get_connection
         self._get_connection = get_connection
         self.config = load_config()
 
@@ -286,7 +286,7 @@ class IntradayBottomEngine:
             return None
 
     def _log_notification(self, msg_type: str, msg_text: str) -> None:
-        from database import log_notification
+        from db.database import log_notification
         log_notification(msg_type, msg_text)
 
     def _fire_alert(self, result: dict) -> None:

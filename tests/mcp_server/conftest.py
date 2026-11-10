@@ -3,8 +3,8 @@ import time
 import pytest
 
 import accounts_engine
-import db_mcp_keys
-from database import add_transaction, create_account, get_connection
+from db import mcp_keys as db_mcp_keys
+from db.database import add_transaction, create_account, get_connection
 
 from .helpers import ACCOUNT_TABLES, MCP_KEY, emptied_tables
 

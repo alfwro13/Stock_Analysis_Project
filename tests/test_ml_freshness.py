@@ -27,8 +27,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import ai_engine
-import database as _db
-import db_helpers
+from db import database as _db
+from db import helpers as db_helpers
 import page_data_signal_rows
 import page_data_stock
 import scheduler_jobs
@@ -83,7 +83,7 @@ class TestCutoffCountsTradingDays:
         assert db_helpers.ml_fresh_cutoff_date(date(2026, 11, 7)) == date(2026, 11, 3)
 
     def test_ml_fresh_since_is_midnight_of_the_cutoff_date(self):
-        with patch("db_helpers.datetime") as clock:
+        with patch("db.helpers.datetime") as clock:
             clock.now.return_value = datetime(2026, 11, 9, 1, 30, tzinfo=timezone.utc)
             assert db_helpers.ml_fresh_since() == "2026-11-04 00:00:00"
 

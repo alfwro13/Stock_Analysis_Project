@@ -47,7 +47,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
+from db import database as _db
 
 
 @pytest.fixture(autouse=True)
@@ -417,7 +417,7 @@ class TestDispatchAlerts:
 class TestSendTextMessageStats:
     @staticmethod
     def _today():
-        from database import get_nextcloud_talk_today
+        from db.database import get_nextcloud_talk_today
         return get_nextcloud_talk_today()
 
     def test_success_is_counted_and_state_is_ok(self):

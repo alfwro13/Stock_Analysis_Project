@@ -8,7 +8,7 @@ import pandas as pd
 from data_engine import DataEngine, load_or_fetch_daily_history
 from yahoo_engine import yahoo_engine
 from indicators import QUANT_HISTORY_COLUMNS, compute_quant_indicator_frame
-from database import get_connection, log_notification
+from db.database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
-from database import get_connection
-from db_helpers import ml_fresh_since, sentiment_fresh_since
+from db.database import get_connection
+from db.helpers import ml_fresh_since, sentiment_fresh_since
 
 _SIGNAL_COLUMNS = """
                    (SELECT ml_confidence_score FROM quant_signals

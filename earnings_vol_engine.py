@@ -9,8 +9,8 @@ import pandas as pd
 
 from constants import EARNINGS_DRIFT_HORIZONS
 from data_engine import load_or_fetch_daily_history
-from database import get_connection, log_notification
-from db_helpers import filter_equity_tickers, get_next_earnings_dates
+from db.database import get_connection, log_notification
+from db.helpers import filter_equity_tickers, get_next_earnings_dates
 from utils import trading_days_forward
 from yahoo_engine import yahoo_engine
 
@@ -151,7 +151,7 @@ def log_near_earnings_predictions(ticker_list: Optional[List[str]] = None, days_
     db_helpers.log_earnings_drift_prediction's ON-CONFLICT-DO-UPDATE guard, which stops refreshing
     once a row has begun resolving. Independent of run_earnings_vol_scan()'s cached
     earnings_volatility columns — computes its own historical drift directly."""
-    from db_helpers import log_earnings_drift_prediction
+    from db.helpers import log_earnings_drift_prediction
 
     if ticker_list is None:
         from data_engine import DataEngine
@@ -208,7 +208,7 @@ def backfill_earnings_drift_outcomes() -> int:
     has passed, per horizon independently, via the same 'first quant_signals close on/after
     target_date' lookup used by predicted_movers_engine.backfill_actual_outcomes(). Scans the
     whole unresolved set each run (catch-up discipline), not just the newest."""
-    from db_helpers import batch_update_earnings_drift_actuals, get_unresolved_earnings_drift
+    from db.helpers import batch_update_earnings_drift_actuals, get_unresolved_earnings_drift
 
     cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     pending = get_unresolved_earnings_drift(cutoff)
@@ -251,7 +251,7 @@ def backfill_earnings_drift_outcomes() -> int:
 
 
 def get_earnings_drift_accuracy_summary() -> dict:
-    from db_helpers import get_company_names, get_earnings_drift_accuracy, get_earnings_drift_events
+    from db.helpers import get_company_names, get_earnings_drift_accuracy, get_earnings_drift_events
 
     data = get_earnings_drift_accuracy()
     tickers = [r["ticker"] for r in data.get("by_ticker", [])]

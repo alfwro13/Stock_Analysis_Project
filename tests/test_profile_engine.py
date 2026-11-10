@@ -140,7 +140,7 @@ class TestProfilingQueueCounts:
 # ── update_single_profile ─────────────────────────────────────────────────────
 
 def _get_strikes(ticker):
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         row = conn.execute("SELECT strikes FROM profile_empty_strikes WHERE ticker = ?", (ticker,)).fetchone()
@@ -150,7 +150,7 @@ def _get_strikes(ticker):
 
 
 def _set_strikes(ticker, strikes):
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         conn.execute(
@@ -163,7 +163,7 @@ def _set_strikes(ticker, strikes):
 
 
 def _clear_strikes(ticker):
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         conn.execute("DELETE FROM profile_empty_strikes WHERE ticker = ?", (ticker,))
@@ -312,7 +312,7 @@ class TestUpdateSingleProfile:
 
     def test_valid_payload_row_persisted_in_db(self, tmp_path):
         """The upserted row must be readable back from asset_profiles."""
-        import database
+        from db import database
         bl = tmp_path / "freetrade_blacklist.json"
         bl.write_text("[]")
         mock_info = {
@@ -350,7 +350,7 @@ _QUEUE_PREFIX = "PQTEST_"
 
 def _seed_queue(profiles):
     """profiles: {ticker: last_verified_date or None}; every ticker gets a stock_signals row."""
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         for ticker, verified in profiles.items():
@@ -366,7 +366,7 @@ def _seed_queue(profiles):
 
 
 def _clear_queue(tickers):
-    import database
+    from db import database
     conn = database.get_connection()
     try:
         for ticker in tickers:
@@ -584,7 +584,7 @@ class TestBlacklistPurgeFiles:
         assert outside.exists()
 
     def test_sweep_removes_recreated_rows_and_files_but_not_protected_or_unlisted(self, tmp_path, ticker_dirs):
-        import database
+        from db import database
         import profile_engine
         history, fundamentals = ticker_dirs
         bl = tmp_path / "freetrade_blacklist.json"

@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db_module
+from db import database as _db_module
 from ai_sentiment_engine import AISentimentPromptEngine, _ALLOWED_US_MODES, _ALLOWED_UK_MODES
 
 

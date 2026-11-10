@@ -9,7 +9,7 @@ from data_engine import load_or_fetch_daily_history
 from indicators import compute_keltner_channel, compute_quant_indicator_frame, compute_volume_profile
 from ml_backfill_engine import download_spy_benchmark
 
-from database import get_connection, log_notification
+from db.database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 

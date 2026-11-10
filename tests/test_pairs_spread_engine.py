@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 from utils import normalize_currency_bucket
 from pairs_spread_engine import (
     PairsSpreadEngine,

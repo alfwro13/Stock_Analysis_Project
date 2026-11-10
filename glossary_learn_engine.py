@@ -3,7 +3,7 @@ import json
 import random
 from datetime import datetime, timedelta, timezone
 
-from database import get_connection
+from db.database import get_connection
 import learn_cards_seed
 
 INTERVALS = {1: 1, 2: 3, 3: 7, 4: 14, 5: 30}

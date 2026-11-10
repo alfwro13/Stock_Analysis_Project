@@ -3,7 +3,7 @@ import logging
 import threading
 from typing import Optional
 
-from database import get_connection
+from db.database import get_connection
 from utils import is_currency_code, is_iso_date, is_valid_ticker
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ def create_account(
         )
         account_id = cursor.lastrowid
         if account_type == "Pension":
-            from db_schema import DEFAULT_PENSION_BENCHMARK_TICKERS
+            from db.schema import DEFAULT_PENSION_BENCHMARK_TICKERS
             for sort_order, (ticker, display_name) in enumerate(DEFAULT_PENSION_BENCHMARK_TICKERS):
                 cursor.execute(
                     "INSERT INTO account_benchmark_tickers (account_id, ticker, display_name, sort_order) VALUES (?, ?, ?, ?)",

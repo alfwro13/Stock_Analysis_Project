@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from database import get_connection, create_account, add_transaction
+from db.database import get_connection, create_account, add_transaction
 
 
 def _seed_stock_signal(ticker: str, price: float, currency: str) -> None:
@@ -385,7 +385,7 @@ def test_watchlist_signal_query_scopes_rows_and_keeps_global_freshness():
 @pytest.mark.pages
 def test_watchlist_scope_limits_sql_and_fx_to_watchlist_tickers(client, monkeypatch):
     import page_routes_portfolio
-    from db_accounts import add_watchlist_item, get_watchlist_account
+    from db.accounts import add_watchlist_item, get_watchlist_account
 
     watched = {"ZZPERF3USD": "USD", "ZZPERF3EUR": "EUR"}
     for ticker, currency in watched.items():
@@ -530,7 +530,7 @@ def test_cached_navigation_completes_while_upstream_is_blocked(client, tmp_path,
     import cache_refresh_helpers as refresh_helpers
     import daily_history_writer
     import data_engine
-    from db_helpers import upsert_fx_quote
+    from db.helpers import upsert_fx_quote
     from yahoo_engine import yahoo_engine
 
     ticker = "ZZSTEP3CACHED"

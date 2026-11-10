@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Optional
 
-from database import get_connection
+from db.database import get_connection
 from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)

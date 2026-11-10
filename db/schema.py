@@ -2,15 +2,15 @@ import json
 import os
 import logging
 
-from database import get_connection
-from config import BASE_CURRENCY, WATCHLIST_PATH
+from db.database import get_connection
+from config import BASE_CURRENCY, DATA_DIR, WATCHLIST_PATH
 import time_engine
 import learn_cards_seed
 from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
-_EXCHANGE_HOURS_PATH = os.path.join(os.path.dirname(__file__), "data", "exchange_hours.json")
+_EXCHANGE_HOURS_PATH = os.path.join(DATA_DIR, "exchange_hours.json")
 
 _DEFAULT_EXCHANGE_HOURS = {
     "NYSE":    {"open":"09:30","close":"16:00","tz":"America/New_York",     "currency":"USD","suffixes":[],"premarket_open":"04:00"},
@@ -1827,7 +1827,7 @@ def init_db() -> None:
 
 def _tag_predicted_movers_history_scope() -> None:
     """One-time tagging of pre-existing history rows by current membership; rows of tickers no longer in either list stay untagged."""
-    from db_helpers import get_portfolio_tickers, get_watchlist_only_tickers
+    from db.helpers import get_portfolio_tickers, get_watchlist_only_tickers
     conn = None
     try:
         conn = get_connection()
@@ -2907,7 +2907,7 @@ def migrate_db(conn, cursor) -> None:
             logger.error("[MIGRATION ERROR] %s nullable score migration failed: %s", table, e)
 
     try:
-        from db_helpers import refresh_job_average_duration
+        from db.helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to recompute scheduler job average durations: %s", e)

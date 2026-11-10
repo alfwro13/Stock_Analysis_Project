@@ -522,7 +522,7 @@ class TestLogout:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _clear_login_throttle():
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -966,7 +966,7 @@ class TestSelfServiceReset:
 
     @pytest.fixture(autouse=True)
     def _account_email_and_tokens(self):
-        from database import get_connection
+        from db.database import get_connection
         with patch.dict(os.environ, {"ACCOUNT_EMAIL": "owner@example.com"}):
             yield
         conn = None
@@ -1213,7 +1213,7 @@ def _login(c, username, password):
 
 
 def _throttle_row():
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -1275,7 +1275,7 @@ class TestLoginLockout:
 
     def test_corrupt_lock_timestamp_raises_instead_of_reading_as_unlocked(self, test_username):
         from auth import login_lockout_remaining
-        from database import get_connection
+        from db.database import get_connection
         with _fresh_client() as c:
             for _ in range(5):
                 _login(c, test_username, "wrong-guess")
@@ -1292,7 +1292,7 @@ class TestLoginLockout:
                 _clear_login_throttle()
 
     def test_lock_expires_on_its_own(self, test_username, test_password):
-        from database import get_connection
+        from db.database import get_connection
         with _fresh_client() as c:
             for _ in range(5):
                 _login(c, test_username, "wrong-guess")
@@ -1349,7 +1349,7 @@ class TestLoginLockout:
     def test_notification_fires_once_when_the_lockout_starts(self, test_username):
         with patch("notification_engine.notify") as notify, _fresh_client() as c:
             for _ in range(8):
-                from database import get_connection
+                from db.database import get_connection
                 conn = get_connection()
                 conn.execute("UPDATE login_throttle SET locked_until = NULL")
                 conn.commit()

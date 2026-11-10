@@ -1,5 +1,5 @@
 """
-tests/test_db_lock_handling.py — "database is locked" handling in database.py.
+tests/test_db_lock_handling.py — "database is locked" handling in db/database.py.
 
 Covers the open-write registry that names the holder of the write lock in the log, the
 deferred-write queue that retries a write which lost the lock, and the writers that use it
@@ -19,8 +19,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as _db
-import db_helpers
+from db import database as _db
+from db import helpers as db_helpers
 import notification_engine
 import scheduler_engine
 from pattern_detection_engine import PatternDetectionEngine
@@ -73,7 +73,7 @@ class TestOpenWriteRegistry:
         try:
             _insert_score_row(conn, "TST_HOLD1")
             assert id(conn) in _db._open_writes
-            with caplog.at_level(logging.WARNING, logger="database"):
+            with caplog.at_level(logging.WARNING, logger="db.database"):
                 conn.commit()
         finally:
             conn.close()
@@ -86,7 +86,7 @@ class TestOpenWriteRegistry:
         conn = _tracked_connection()
         try:
             _insert_score_row(conn, "TST_HOLD2")
-            with caplog.at_level(logging.WARNING, logger="database"):
+            with caplog.at_level(logging.WARNING, logger="db.database"):
                 conn.commit()
         finally:
             conn.close()
@@ -120,7 +120,7 @@ class TestOpenWriteRegistry:
         waiter = _tracked_connection(timeout=0.05)
         try:
             _insert_score_row(holder, "TST_HOLD4")
-            with caplog.at_level(logging.WARNING, logger="database"):
+            with caplog.at_level(logging.WARNING, logger="db.database"):
                 with pytest.raises(sqlite3.OperationalError, match="database is locked"):
                     _insert_score_row(waiter, "TST_HOLD5")
         finally:
@@ -138,7 +138,7 @@ class TestOpenWriteRegistry:
         waiter = _tracked_connection(timeout=0.05)
         try:
             outsider.execute("BEGIN IMMEDIATE")
-            with caplog.at_level(logging.WARNING, logger="database"):
+            with caplog.at_level(logging.WARNING, logger="db.database"):
                 with pytest.raises(sqlite3.OperationalError):
                     _insert_score_row(waiter, "TST_HOLD6")
         finally:
@@ -174,7 +174,7 @@ class TestDeferredWriteQueue:
             if len(calls) == 1:
                 raise _LOCKED
 
-        with caplog.at_level(logging.WARNING, logger="database"):
+        with caplog.at_level(logging.WARNING, logger="db.database"):
             assert _db.write_or_defer("probe write", write) is False
             assert len(deferred_queue) == 1
             assert _db._run_due_deferred(now=_FOREVER) is None
@@ -214,7 +214,7 @@ class TestDeferredWriteQueue:
             raise _LOCKED
 
         _db.write_or_defer("stuck write", write)
-        with caplog.at_level(logging.WARNING, logger="database"):
+        with caplog.at_level(logging.WARNING, logger="db.database"):
             for _ in range(len(_db.DB_DEFERRED_WRITE_RETRY_SECONDS)):
                 _db._run_due_deferred(now=_FOREVER)
         assert len(calls) == 1 + len(_db.DB_DEFERRED_WRITE_RETRY_SECONDS)
@@ -231,7 +231,7 @@ class TestDeferredWriteQueue:
             raise _LOCKED if len(calls) == 1 else RuntimeError("boom")
 
         _db.write_or_defer("flaky write", write)
-        with caplog.at_level(logging.ERROR, logger="database"):
+        with caplog.at_level(logging.ERROR, logger="db.database"):
             _db._run_due_deferred(now=_FOREVER)
         assert deferred_queue == []
         assert any("abandoned after 1 failed retries" in r.getMessage() and "boom" in r.getMessage() for r in caplog.records)
@@ -245,7 +245,7 @@ class TestDeferredWriteQueue:
 
     def test_full_queue_drops_the_new_write_and_logs_it(self, deferred_queue, monkeypatch, caplog):
         monkeypatch.setattr(_db, "DB_DEFERRED_WRITE_QUEUE_MAX", 2)
-        with caplog.at_level(logging.ERROR, logger="database"):
+        with caplog.at_level(logging.ERROR, logger="db.database"):
             for index in range(3):
                 _db.defer_write(f"write {index}", lambda: None)
         assert [item["description"] for item in deferred_queue] == ["write 0", "write 1"]

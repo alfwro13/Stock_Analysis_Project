@@ -2,7 +2,7 @@ from typing import Any
 
 import portfolio_metrics_engine
 from accounts_engine import list_scope_accounts_with_values
-from db_accounts import get_performance_cache
+from db.accounts import get_performance_cache
 from portfolio_service import persisted_fx_reads
 
 from ..envelope import envelope, iso_utc

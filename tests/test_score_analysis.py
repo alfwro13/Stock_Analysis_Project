@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
-import database as _db_module
+from db import database as _db_module
 from score_analysis import (
     _available_from,
     _compute_return,

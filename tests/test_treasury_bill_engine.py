@@ -1,7 +1,7 @@
 import pytest
 
 import treasury_bill_engine as tbe
-from database import create_account, get_account, get_connection
+from db.database import create_account, get_account, get_connection
 
 
 @pytest.mark.db
@@ -206,7 +206,7 @@ def test_confirm_ytm_on_matured_bill_corrects_sell_transaction_and_cash():
     matured must correct the posted maturity Sell too, not just the treasury_bills row, otherwise
     the account's cash balance would silently disagree with the corrected face value."""
     from accounts_engine import cash_balance
-    from database import get_transaction
+    from db.database import get_transaction
 
     aid = create_account("TBillEditMaturedAcc", "GBP", initial_cash=2000.0)
     result = tbe.buy_treasury_bill(aid, "2026-05-01", 501.43, 500.0, "2026-05-29", indicative_ytm=3.72)
@@ -340,7 +340,7 @@ def test_delete_treasury_bill_removes_bill_and_linked_transactions():
     assert outcome.get("deleted") is True
     assert tbe.get_treasury_bill(result["bill_id"]) is None
 
-    from database import get_transaction
+    from db.database import get_transaction
     assert get_transaction(result["txn_id"]) is None
 
 
@@ -354,5 +354,5 @@ def test_delete_treasury_bill_removes_maturity_leg_too():
 
     tbe.delete_treasury_bill(result["bill_id"])
 
-    from database import get_transaction
+    from db.database import get_transaction
     assert get_transaction(maturity_txn_id) is None

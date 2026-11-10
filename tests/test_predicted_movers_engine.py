@@ -21,8 +21,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
-import db_helpers
+from db import database as db
+from db import helpers as db_helpers
 from constants import PREDICTION_HORIZON_DAYS
 from predicted_movers_engine import (
     SCOPE_PORTFOLIO,
@@ -213,7 +213,7 @@ class TestLogPredictions:
 
 class TestBackfillActualOutcomes:
     def test_returns_zero_when_no_pending_rows(self):
-        with patch("db_helpers.get_unresolved_predicted_movers", return_value=[]):
+        with patch("db.helpers.get_unresolved_predicted_movers", return_value=[]):
             assert backfill_actual_outcomes() == 0
 
     def test_resolves_direction_correct_and_within_band(self):
@@ -315,11 +315,11 @@ class TestGetAccuracySummary:
 
 class TestScopeTaggingMigration:
     def test_tags_existing_rows_by_current_membership_and_leaves_untracked_untagged(self):
-        import db_schema
+        from db import schema as db_schema
         for ticker in ("PM_MG1", "PM_MG2", "PM_MG3"):
             _seed_predicted_movers_row(ticker, "2024-05-01", 100.0, 95.0, 105.0, "2024-05-15")
-        with patch("db_helpers.get_portfolio_tickers", return_value=["PM_MG1"]), \
-             patch("db_helpers.get_watchlist_only_tickers", return_value=["PM_MG2"]):
+        with patch("db.helpers.get_portfolio_tickers", return_value=["PM_MG1"]), \
+             patch("db.helpers.get_watchlist_only_tickers", return_value=["PM_MG2"]):
             db_schema._tag_predicted_movers_history_scope()
         conn = db.get_connection()
         try:
@@ -331,7 +331,7 @@ class TestScopeTaggingMigration:
         assert scopes == {"PM_MG1": "portfolio", "PM_MG2": "watchlist", "PM_MG3": None}
 
     def test_never_retags_a_row_that_already_has_a_scope(self):
-        import db_schema
+        from db import schema as db_schema
         row_id = _seed_predicted_movers_row("PM_MG4", "2024-05-01", 100.0, 95.0, 105.0, "2024-05-15")
         conn = db.get_connection()
         try:
@@ -339,8 +339,8 @@ class TestScopeTaggingMigration:
             conn.commit()
         finally:
             conn.close()
-        with patch("db_helpers.get_portfolio_tickers", return_value=["PM_MG4"]), \
-             patch("db_helpers.get_watchlist_only_tickers", return_value=[]):
+        with patch("db.helpers.get_portfolio_tickers", return_value=["PM_MG4"]), \
+             patch("db.helpers.get_watchlist_only_tickers", return_value=[]):
             db_schema._tag_predicted_movers_history_scope()
         conn = db.get_connection()
         try:
@@ -352,15 +352,15 @@ class TestScopeTaggingMigration:
 class TestPortfolioAndWatchlistSplit:
     def test_overlap_belongs_to_portfolio_only(self):
         with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
-             patch("database.get_watchlist_tickers", return_value=[T_B, T_C]):
+             patch("db.database.get_watchlist_tickers", return_value=[T_B, T_C]):
             assert db_helpers.get_portfolio_tickers() == sorted([T_A, T_B])
             assert db_helpers.get_watchlist_only_tickers() == [T_C]
 
     def test_ignored_ticker_excluded_from_both(self):
         config = {"IGNORED_TICKERS": [T_A, T_C]}
         with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}, T_B: {}}), \
-             patch("database.get_watchlist_tickers", return_value=[T_C, "PM_D"]), \
-             patch("db_helpers.load_config", return_value=config):
+             patch("db.database.get_watchlist_tickers", return_value=[T_C, "PM_D"]), \
+             patch("db.helpers.load_config", return_value=config):
             assert db_helpers.get_portfolio_tickers() == [T_B]
             assert db_helpers.get_watchlist_only_tickers() == ["PM_D"]
 
@@ -368,14 +368,14 @@ class TestPortfolioAndWatchlistSplit:
 class TestGetPortfolioWatchlistTickers:
     def test_unions_holdings_and_watchlist(self):
         with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}}), \
-             patch("database.get_watchlist_tickers", return_value=[T_B]):
+             patch("db.database.get_watchlist_tickers", return_value=[T_B]):
             tickers = db_helpers.get_portfolio_watchlist_tickers()
         assert tickers == sorted([T_A, T_B])
 
     def test_ignored_ticker_excluded(self):
         config = {"IGNORED_TICKERS": [T_A]}
         with patch("accounts_engine.get_combined_holdings", return_value={T_A: {}}), \
-             patch("database.get_watchlist_tickers", return_value=[T_B]), \
-             patch("db_helpers.load_config", return_value=config):
+             patch("db.database.get_watchlist_tickers", return_value=[T_B]), \
+             patch("db.helpers.load_config", return_value=config):
             tickers = db_helpers.get_portfolio_watchlist_tickers()
         assert tickers == [T_B]

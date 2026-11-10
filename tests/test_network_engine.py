@@ -516,12 +516,12 @@ class TestSelectInterface:
 
 class TestGetYahooApiStats:
     def test_returns_empty_list_when_no_rows(self):
-        import database as db
+        from db import database as db
         rows = db.get_yahoo_api_stats(days=8)
         assert isinstance(rows, list)
 
     def test_returns_inserted_rows(self):
-        import database as db
+        from db import database as db
         conn = db.get_connection()
         try:
             conn.execute(
@@ -543,7 +543,7 @@ class TestGetYahooApiStats:
         assert row["other_errors"] == 0
 
     def test_respects_days_limit(self):
-        import database as db
+        from db import database as db
         conn = db.get_connection()
         try:
             for i in range(10):
@@ -583,7 +583,7 @@ class TestYahooApiCallLog:
         assert yf_errors == 2
 
     def test_write_call_log_entry_inserts_row(self):
-        import database as db
+        from db import database as db
         ne._write_call_log_entry("2099-03-01 10:00:00", "2099-03-01", "ipv6", "success", "quant_analysis_job", "Ticker Info: MSFT")
         conn = db.get_connection()
         try:
@@ -598,7 +598,7 @@ class TestYahooApiCallLog:
         assert row["action_context"] == "Ticker Info: MSFT"
 
     def test_write_call_log_entry_allows_null_job_id(self):
-        import database as db
+        from db import database as db
         ne._write_call_log_entry("2099-03-02 10:00:00", "2099-03-02", "ipv4", "error", None, "Ticker Info: TSLA")
         conn = db.get_connection()
         try:
@@ -611,7 +611,7 @@ class TestYahooApiCallLog:
         assert row["job_id"] is None
 
     def test_prune_call_log_removes_rows_older_than_retention(self):
-        import database as db
+        from db import database as db
         conn = db.get_connection()
         try:
             conn.execute(
@@ -632,18 +632,18 @@ class TestYahooApiCallLog:
 
     def test_prune_call_log_throttled(self):
         ne._last_call_log_prune = time.time()
-        with patch("database.get_connection") as mock_conn:
+        with patch("db.database.get_connection") as mock_conn:
             ne._maybe_prune_call_log()
         mock_conn.assert_not_called()
 
 
 class TestGetYahooApiCallLog:
     def test_returns_empty_list_for_unknown_date(self):
-        import database as db
+        from db import database as db
         assert db.get_yahoo_api_call_log("2099-04-01") == []
 
     def test_aggregates_by_minute_job_and_status(self):
-        import database as db
+        from db import database as db
         conn = db.get_connection()
         try:
             for _ in range(3):

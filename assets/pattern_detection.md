@@ -90,7 +90,7 @@ Volatility Squeeze is the one family so far whose key level (the actual Bollinge
 
 ## 5. Database
 
-`pattern_detection_results` (one row per `(ticker, pattern_family)`) and `pattern_detection_history` (append-only, `UNIQUE(ticker, scan_date, pattern_family, pattern_type)`) are the two generic tables — see `assets/db_schema_and_architecture.md` for full column definitions. Head & Shoulders results are stored in the same generic tables; the `head_shoulders_results`/`head_shoulders_history` tables are retained only as the source of a one-time `db_schema.migrate_db()` copy step and are not written to.
+`pattern_detection_results` (one row per `(ticker, pattern_family)`) and `pattern_detection_history` (append-only, `UNIQUE(ticker, scan_date, pattern_family, pattern_type)`) are the two generic tables — see `assets/db_schema_and_architecture.md` for full column definitions. Head & Shoulders results are stored in the same generic tables; the `head_shoulders_results`/`head_shoulders_history` tables are retained only as the source of a one-time `db.schema.migrate_db()` copy step and are not written to.
 
 ## 6. Adding a New Pattern Family
 

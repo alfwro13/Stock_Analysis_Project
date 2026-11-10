@@ -445,7 +445,7 @@ def _ensure_stats_writer() -> None:
 
 
 def _write_call_log_entry(call_time: str, date_str: str, interface: str, status: str, job_id, action_context: str, yf_errors: int = 0) -> None:
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         conn = get_connection()
@@ -469,7 +469,7 @@ def _maybe_prune_call_log() -> None:
     if now - _last_call_log_prune < _PRUNE_INTERVAL_SECS:
         return
     _last_call_log_prune = now
-    from database import get_connection
+    from db.database import get_connection
     conn = None
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=_CALL_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
@@ -489,7 +489,7 @@ def _write_api_stat(date_str: str, interface: str, status: str, yf_errors: int =
     is_429 = 1 if status == "429" else 0
     is_err = 1 if status == "error" else 0
     try:
-        from database import get_connection
+        from db.database import get_connection
         conn = None
         try:
             conn = get_connection()

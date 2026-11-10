@@ -10,8 +10,8 @@ from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 
 import backup_engine
 import scheduler_engine
-import database
-from database import database_swap_gate, get_connection
+from db import database
+from db.database import database_swap_gate, get_connection
 
 
 def _cfg(**overrides):

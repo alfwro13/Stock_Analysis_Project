@@ -28,7 +28,7 @@ from config import (
     validate_xray_targets,
 )
 from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
-from database import get_connection, get_nextcloud_talk_today, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
+from db.database import get_connection, get_nextcloud_talk_today, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging, resolve_log_dir
 from market_pulse import get_cached_pulse_from_db, proxy_tickers_needing_refresh, registry_tickers_needing_refresh, reload_ticker_registry
@@ -908,7 +908,7 @@ def get_network_status():
 
 @system_router.get("/system/yahoo-api-stats")
 def get_yahoo_api_stats_endpoint():
-    from database import get_yahoo_api_stats
+    from db.database import get_yahoo_api_stats
     rows = get_yahoo_api_stats(days=8)
     return JSONResponse(content={"status": "success", "rows": rows})
 
@@ -916,7 +916,7 @@ def get_yahoo_api_stats_endpoint():
 @system_router.get("/system/yahoo-api-stats/{date_str}")
 def get_yahoo_api_stats_detail_endpoint(date_str: str):
     from collections import defaultdict
-    from database import get_yahoo_api_call_log
+    from db.database import get_yahoo_api_call_log
     from scheduler_manifest import job_label
 
     try:
@@ -1098,7 +1098,7 @@ def get_system_metrics():
         pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 0")
         sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 1")
 
-        import db_mcp_audit
+        from db import mcp_audit as db_mcp_audit
         from mcp_server import oauth as mcp_oauth
         mcp_requests, mcp_refused = db_mcp_audit.traffic_counts((datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -1172,7 +1172,7 @@ def _yahoo_ok() -> bool:
     # yahoo_engine.get_stats()'s hit_rate_pct is an in-process cache stat that reads 0% right after
     # a restart even when Yahoo itself is perfectly healthy — get_yahoo_api_stats() is real call
     # history, so the most recent day's row is used to check for at least one non-error call.
-    from database import get_yahoo_api_stats
+    from db.database import get_yahoo_api_stats
     rows = get_yahoo_api_stats(days=1)
     if not rows:
         return False

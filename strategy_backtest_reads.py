@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 import time_engine
-from database import get_connection
+from db.database import get_connection
 from stable_shortlist_reads import SIGNAL_LABELS
 from strategy_backtest_runs import (
     MAX_TRANSACTIONS_PER_STRATEGY,

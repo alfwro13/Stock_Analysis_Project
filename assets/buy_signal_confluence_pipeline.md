@@ -58,7 +58,7 @@ return `{"bullish_pillars": [...], "bearish_pillars": [...], "confluence": bool,
   up automatically with zero changes to this pillar's code.
 - **Statistical** — `earnings_volatility_history.drift_avg_pct_5d` sign, gated on
   `edge_score > 0` (only counted when there's a real measured mispricing edge, not noise).
-- **ML** — `quant_signals.ml_confidence_score` above/below 50. A live window votes only while its newest score is fresh (`ml_scored_at >= db_helpers.ml_fresh_since()`); a window reconstructed `as_of` a past date does not apply that limit.
+- **ML** — `quant_signals.ml_confidence_score` above/below 50. A live window votes only while its newest score is fresh (`ml_scored_at >= db.helpers.ml_fresh_since()`); a window reconstructed `as_of` a past date does not apply that limit.
 
 **Per-pillar voting.** A pillar only casts a vote when every signal it saw in the window points
 the same way (`score_analysis._pillar_vote()`) — if a pillar's own signals conflict with each
@@ -215,7 +215,7 @@ engine is usable data for the combined model:
 
 **Evaluation trigger.** Rather than a new scheduled job, the Confluence shadow evaluation
 piggybacks on the existing `trap_monitor_job` (frequent intraday cadence) with a once-per-ticker-
-per-day gate: `db_helpers.log_trap_phase()` returns `True` only when it actually inserted a
+per-day gate: `db.helpers.log_trap_phase()` returns `True` only when it actually inserted a
 new row (blocked by `trap_phase_history`'s `UNIQUE(ticker, scan_date)` on every later call that
 day) — `TrapEngine._save_results()` surfaces this as `row["_new_trap_history_row"]`, alongside
 `row["confluence_direction"]`/`pillar_*`/`regime_weighted_score`. `scheduler_jobs
@@ -266,8 +266,8 @@ return `None` (no signal) when a required input is missing, otherwise `{"entry_p
   `pattern_detection_engine.DETECTORS` registry Part A's Technical pillar reads — never a
   hardcoded family list, so a new pattern family is automatically eligible with no changes here).
   If no qualifying confirmed pattern exists, falls back to the ML Quantile Regression Q90 band
-  (`db_helpers.get_latest_quantile_bands()` — the same band already shown on the Position
-  Targets panel, and only while it was scored inside the `db_helpers.ml_fresh_since()` window).
+  (`db.helpers.get_latest_quantile_bands()` — the same band already shown on the Position
+  Targets panel, and only while it was scored inside the `db.helpers.ml_fresh_since()` window).
   `None` if neither is available.
 - **Gate:** `risk_reward = (take_profit - entry_price) / (entry_price - stop_price)`; `passes`
   is true when `risk_reward >= MIN_RISK_REWARD` (a new key in the existing `POSITION_SIZING`

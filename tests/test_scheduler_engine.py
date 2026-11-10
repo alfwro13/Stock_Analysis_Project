@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
 import pytest
-import database as _db_module
+from db import database as _db_module
 from scheduler_engine import (
     _build_contagion_feed_text,
     _build_contagion_message,
@@ -387,8 +387,8 @@ class TestAverageDuration:
         assert runs["avg_job_b"]["avg_duration_sec"] == pytest.approx(50.0)
 
     def test_migration_replaces_a_legacy_moving_average(self):
-        from database import get_connection
-        from db_helpers import refresh_job_average_duration
+        from db.database import get_connection
+        from db.helpers import refresh_job_average_duration
 
         _record_runs("avg_legacy_job", [10.0, 30.0])
         conn = get_connection()
@@ -653,7 +653,7 @@ class TestWorkflowManifest:
 
     @pytest.mark.db
     def test_scraper_enabled_account_registers_a_live_resolvable_job(self):
-        from database import create_account, update_account
+        from db.database import create_account, update_account
         aid = create_account("ManifestScraperAcc", "GBP", account_type="House")
         update_account(
             aid, scraper_url="http://example.test/x.html", scraper_selector="#gf-price",
@@ -749,7 +749,7 @@ class TestBuildWorkflowGraph:
 
     @pytest.mark.db
     def test_pension_scraper_job_labelled_and_linked_to_pension_node(self):
-        from database import create_account, update_account
+        from db.database import create_account, update_account
         aid = create_account("ManifestPensionAcc", "GBP", account_type="Pension")
         update_account(aid, scraper_url="http://example.test/x.html", scraper_selector="#price", scraper_enabled=True)
         reload_scheduler()
@@ -762,7 +762,7 @@ class TestBuildWorkflowGraph:
 
     @pytest.mark.db
     def test_autotopup_job_labelled_and_linked_to_trading_accounts_node(self):
-        from database import create_account, update_account
+        from db.database import create_account, update_account
         aid = create_account("ManifestTopupAcc", "GBP", account_type="Trading")
         update_account(
             aid, autotopup_enabled=True, autotopup_amount=100.0,

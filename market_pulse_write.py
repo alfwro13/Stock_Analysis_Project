@@ -9,8 +9,8 @@ import pandas as pd
 
 import notification_engine
 from config import HISTORICAL_DIR
-from database import get_connection, get_mutual_fund_tickers
-from db_helpers import upsert_fx_quote
+from db.database import get_connection, get_mutual_fund_tickers
+from db.helpers import upsert_fx_quote
 from gilt_engine import GiltDataService
 from market_pulse import SPARKLINE_MAX_POINTS, get_index_tickers
 from market_session_helpers import (

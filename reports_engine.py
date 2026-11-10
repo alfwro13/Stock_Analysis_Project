@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any
-from database import get_connection
-from db_helpers import ml_fresh_since
+from db.database import get_connection
+from db.helpers import ml_fresh_since
 from utils import is_iso_date
 from fundamentals_helpers import (
     QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,

@@ -10,7 +10,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 
 from config import BASE_DIR, HISTORICAL_DIR, load_config
-from database import get_connection
+from db.database import get_connection
 from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
 from utils import safe_ticker_filename
 

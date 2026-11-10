@@ -7,7 +7,7 @@ import pandas as pd
 from scipy import stats
 
 import time_engine
-from database import (
+from db.database import (
     fill_etf_actual,
     get_etf_predictor_config,
     get_etf_predictor_configs,

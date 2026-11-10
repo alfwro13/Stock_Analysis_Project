@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 
 from config import load_config
 import time_engine
-from database import get_connection, get_watchlist_tickers
+from db.database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse
 from auth import STEP_UP_COOKIE_NAME, STEP_UP_COOKIE_PATH
 from utils import normalize_ticker, safe_local_path
@@ -230,7 +230,7 @@ def earnings_volatility_page(request: Request):
         if conn:
             conn.close()
 
-    from db_helpers import get_latest_quantile_bands
+    from db.helpers import get_latest_quantile_bands
     quant_bands = {r["ticker"]: r for r in get_latest_quantile_bands([r["ticker"] for r in earnings_data])}
     for row in earnings_data:
         row["quant_band"] = quant_bands.get(row["ticker"])

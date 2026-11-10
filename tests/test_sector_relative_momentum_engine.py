@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 import sector_relative_momentum_engine as srm
 
 SECTOR = "SRM_TEST_SECTOR"

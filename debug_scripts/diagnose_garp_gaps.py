@@ -29,7 +29,7 @@ from typing import List, Optional
 # Allow direct execution from project root or as a module
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from database import get_connection
+from db.database import get_connection
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Module-level logging

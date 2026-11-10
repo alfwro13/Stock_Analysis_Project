@@ -15,7 +15,7 @@ import pytest
 import page_routes_macro
 from ai_engine import AIPromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
-from database import get_connection
+from db.database import get_connection
 
 _STAMP = "%Y-%m-%d %H:%M:%S"
 

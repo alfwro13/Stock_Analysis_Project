@@ -13,7 +13,7 @@ from sklearn.calibration import CalibratedClassifierCV
 
 import memory_helpers
 from model_compatibility_engine import dump_sklearn_artifact
-from database import get_connection, log_notification
+from db.database import get_connection, log_notification
 from constants import (
     ML_TRAINING_ABORT_AVAILABLE_GB, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB, PREDICTION_HORIZON_DAYS,
     PREDICTION_RETURN_THRESHOLD,

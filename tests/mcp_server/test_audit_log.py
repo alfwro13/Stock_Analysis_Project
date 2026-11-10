@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-import db_mcp_audit
-import db_mcp_keys
-from database import get_connection
+from db import mcp_audit as db_mcp_audit
+from db import mcp_keys as db_mcp_keys
+from db.database import get_connection
 from mcp_server import audit
 
 from .helpers import MCP_KEY, RPC_HEADERS, call, get_prompt, rpc

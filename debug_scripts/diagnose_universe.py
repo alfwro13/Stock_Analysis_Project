@@ -15,7 +15,7 @@ from typing import List, Tuple
 # Allow running from project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from database import get_connection
+from db.database import get_connection
 from config import load_config
 
 logging.basicConfig(

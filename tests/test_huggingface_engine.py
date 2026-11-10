@@ -502,7 +502,7 @@ class TestRunCentralBankNlpAlert:
         assert "NEUTRAL" in dispatched[0]
 
     def test_dispatches_to_nextcloud_and_logs_to_db(self):
-        import database as _db
+        from db import database as _db
         news = [_cb_news("Bank of England rate decision", "BoE holds rate")]
         conn = _db.get_connection()
         conn.execute("DELETE FROM system_notifications WHERE message_type = 'Macro NLP'")

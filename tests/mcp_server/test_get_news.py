@@ -5,7 +5,7 @@ import time
 import pytest
 
 from constants import MCP_NEWS_HEADLINE_MAX_CHARS, MCP_NEWS_MAX_ROWS, MCP_NEWS_SUMMARY_MAX_CHARS
-from database import get_connection
+from db.database import get_connection
 from news_feed_engine import fetch_articles
 
 from .helpers import call, emptied_tables, error_text, rpc, table_counts, tool_data

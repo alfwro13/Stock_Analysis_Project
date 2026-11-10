@@ -10,7 +10,7 @@ import ta
 
 from utils import clamp_beta
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
-from database import get_ticker_registry_row_by_exchange
+from db.database import get_ticker_registry_row_by_exchange
 import market_pulse
 import market_session_helpers
 import markets_engine

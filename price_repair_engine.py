@@ -13,7 +13,7 @@ import pandas as pd
 from cache_refresh_helpers import request_cache_refresh
 from config import DATA_DIR, HISTORICAL_DIR
 from constants import DAILY_BAR_COLUMNS
-from database import get_connection
+from db.database import get_connection
 from quant_signals import QuantEngine
 from utils import normalize_ticker, safe_ticker_filename
 from yahoo_engine import yahoo_engine
@@ -165,7 +165,7 @@ def _refresh_portfolio_caches():
 
 def refresh_downstream(ticker, from_date, history):
     from ml_backfill_engine import rebuild_quant_history
-    from db_helpers import get_portfolio_watchlist_tickers
+    from db.helpers import get_portfolio_watchlist_tickers
 
     try:
         history_rows = rebuild_quant_history(ticker, history, from_date)

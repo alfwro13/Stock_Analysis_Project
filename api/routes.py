@@ -39,10 +39,10 @@ from config import (
     HISTORICAL_DIR,
     INTRADAY_DIR
 )
-from database import (
+from db.database import (
     get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
 )
-from db_helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, ml_fresh_since, sentiment_fresh_since
+from db.helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, ml_fresh_since, sentiment_fresh_since
 from accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
@@ -856,7 +856,7 @@ async def intraday_monitor_add(req: DipRadarAddRequest):
         conn.close()
     engine = IntradayBottomEngine()
     await asyncio.to_thread(engine.arm_alert, ticker)
-    from database import log_notification
+    from db.database import log_notification
     _exch = time_engine.ticker_exchange(ticker, _currency)
     if days == 1:
         _reset_str = time_engine.fmt_reset_time(_exch)

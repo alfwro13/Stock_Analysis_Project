@@ -29,7 +29,7 @@ def _json(resp) -> dict:
 
 @pytest.mark.db
 def test_add_and_get_ticker_notes():
-    from db_helpers import add_ticker_note, get_ticker_notes
+    from db.helpers import add_ticker_note, get_ticker_notes
 
     note_id = add_ticker_note("ZZNOTES1", "First observation.\n\nWith a blank line.")
     assert note_id is not None
@@ -43,7 +43,7 @@ def test_add_and_get_ticker_notes():
 
 @pytest.mark.db
 def test_get_ticker_notes_orders_newest_first():
-    from db_helpers import add_ticker_note, get_ticker_notes
+    from db.helpers import add_ticker_note, get_ticker_notes
 
     add_ticker_note("ZZNOTES2", "older note")
     add_ticker_note("ZZNOTES2", "newer note")
@@ -56,7 +56,7 @@ def test_get_ticker_notes_orders_newest_first():
 
 @pytest.mark.db
 def test_update_ticker_note():
-    from db_helpers import add_ticker_note, get_ticker_notes, update_ticker_note
+    from db.helpers import add_ticker_note, get_ticker_notes, update_ticker_note
 
     note_id = add_ticker_note("ZZNOTES3", "original text")
     updated = update_ticker_note(note_id, "ZZNOTES3", "edited text")
@@ -69,14 +69,14 @@ def test_update_ticker_note():
 
 @pytest.mark.db
 def test_update_ticker_note_missing_id_returns_false():
-    from db_helpers import update_ticker_note
+    from db.helpers import update_ticker_note
 
     assert update_ticker_note(999999999, "ZZNOTESNONE", "text") is False
 
 
 @pytest.mark.db
 def test_update_ticker_note_wrong_ticker_returns_false():
-    from db_helpers import add_ticker_note, update_ticker_note
+    from db.helpers import add_ticker_note, update_ticker_note
 
     note_id = add_ticker_note("ZZNOTES3B", "original text")
     assert update_ticker_note(note_id, "ZZWRONGTICKER", "edited text") is False
@@ -84,7 +84,7 @@ def test_update_ticker_note_wrong_ticker_returns_false():
 
 @pytest.mark.db
 def test_delete_ticker_note():
-    from db_helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
+    from db.helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
     note_id = add_ticker_note("ZZNOTES4", "to be deleted")
     assert delete_ticker_note(note_id, "ZZNOTES4") is True
@@ -93,14 +93,14 @@ def test_delete_ticker_note():
 
 @pytest.mark.db
 def test_delete_ticker_note_missing_id_returns_false():
-    from db_helpers import delete_ticker_note
+    from db.helpers import delete_ticker_note
 
     assert delete_ticker_note(999999999, "ZZNOTESNONE") is False
 
 
 @pytest.mark.db
 def test_delete_ticker_note_wrong_ticker_returns_false():
-    from db_helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
+    from db.helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
     note_id = add_ticker_note("ZZNOTES4B", "keep me")
     assert delete_ticker_note(note_id, "ZZWRONGTICKER") is False
@@ -109,7 +109,7 @@ def test_delete_ticker_note_wrong_ticker_returns_false():
 
 @pytest.mark.db
 def test_get_all_ticker_notes_grouped():
-    from db_helpers import add_ticker_note, get_all_ticker_notes_grouped
+    from db.helpers import add_ticker_note, get_all_ticker_notes_grouped
 
     add_ticker_note("ZZNOTES5", "note a")
     add_ticker_note("ZZNOTES5", "note b")
@@ -153,7 +153,7 @@ def test_api_update_and_delete_ticker_note(client):
     assert resp2.status_code == 200
     assert _json(resp2)["status"] == "success"
 
-    from db_helpers import get_ticker_notes
+    from db.helpers import get_ticker_notes
     notes = get_ticker_notes("ZZAPINOTE4")
     assert notes[0]["note_text"] == "updated"
 
@@ -191,7 +191,7 @@ def test_api_get_all_ticker_notes_shape(client):
 
 @pytest.mark.pages
 def test_stock_detail_page_includes_ticker_notes_context(client):
-    from db_helpers import add_ticker_note
+    from db.helpers import add_ticker_note
 
     add_ticker_note("ZZPAGENOTE1", "visible note")
     resp = client.get("/stock/ZZPAGENOTE1", follow_redirects=True)
@@ -207,7 +207,7 @@ def test_stock_detail_page_without_notes_does_not_crash(client):
 
 @pytest.mark.pages
 def test_stock_detail_notes_section_defaults_collapsed(client):
-    from db_helpers import add_ticker_note
+    from db.helpers import add_ticker_note
 
     add_ticker_note("ZZPAGENOTE2", "collapsed by default")
     resp = client.get("/stock/ZZPAGENOTE2", follow_redirects=True)
@@ -217,7 +217,7 @@ def test_stock_detail_notes_section_defaults_collapsed(client):
 
 @pytest.mark.pages
 def test_stock_detail_long_note_gets_truncate_toggle(client):
-    from db_helpers import add_ticker_note
+    from db.helpers import add_ticker_note
 
     add_ticker_note("ZZPAGENOTE3", "x" * 400)
     resp = client.get("/stock/ZZPAGENOTE3", follow_redirects=True)
@@ -228,7 +228,7 @@ def test_stock_detail_long_note_gets_truncate_toggle(client):
 
 @pytest.mark.pages
 def test_stock_detail_short_note_has_no_truncate_toggle(client):
-    from db_helpers import add_ticker_note
+    from db.helpers import add_ticker_note
 
     add_ticker_note("ZZPAGENOTE4", "short note")
     resp = client.get("/stock/ZZPAGENOTE4", follow_redirects=True)

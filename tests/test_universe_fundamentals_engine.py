@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-import database as _db
+from db import database as _db
 from universe_fundamentals_engine import (
     _compute_fundamental_score, _clean, _needs_holdings_refresh, sync_etf_holdings_cache,
     _upsert_fundamentals,

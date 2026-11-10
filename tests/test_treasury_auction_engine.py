@@ -24,8 +24,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
-import db_schema
+from db import database as db
+from db import schema as db_schema
 from treasury_auction_engine import (
     _safe_float,
     _pct,

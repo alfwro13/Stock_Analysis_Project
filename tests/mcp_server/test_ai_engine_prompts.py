@@ -3,7 +3,7 @@ import pytest
 
 from ai_engine import AIPromptEngine
 from ai_regime_engine import AIRegimePromptEngine
-from database import get_connection
+from db.database import get_connection
 from mcp_server.prompts.market_regime import REGIME_MODES
 from mcp_server.prompts.shared import policy_step
 from mcp_server.prompts.stock_analysis import STOCK_MODES

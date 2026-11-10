@@ -11,12 +11,12 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 import config
-import db_mcp_oauth
+from db import mcp_oauth as db_mcp_oauth
 from constants import (
     MCP_AUTH_FAILURES_MAX, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_PENDING_MAX,
     MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
-from database import get_connection
+from db.database import get_connection
 from mcp_server import keys, limits, oauth
 
 from .helpers import MCP_KEY, rpc

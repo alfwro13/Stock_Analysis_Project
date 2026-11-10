@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 import config
-import db_mcp_oauth
+from db import mcp_oauth as db_mcp_oauth
 from mcp_server import oauth
 
 from .helpers import MCP_KEY

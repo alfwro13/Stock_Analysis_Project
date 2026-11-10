@@ -6,7 +6,7 @@ Mirrors the JS implementation in watchlist/portfolio tables — both must stay i
 import logging
 from typing import Dict, Optional
 
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def passes_risk_reward_gate_batch(tickers: list, min_rr: Optional[float] = None)
     convention elsewhere in this pipeline; otherwise a dict with the computed values and a
     `passes` bool (risk_reward >= the configured/passed-in minimum)."""
     from config import load_config
-    from db_helpers import get_latest_quantile_bands
+    from db.helpers import get_latest_quantile_bands
 
     tickers = list(dict.fromkeys(tickers))
     results: Dict[str, Optional[dict]] = {t: None for t in tickers}

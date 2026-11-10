@@ -211,7 +211,7 @@ class TestResolveTile:
         ("^GSPC", "ES=F"), ("^NDX", "NQ=F"), ("^DJI", "YM=F"), ("^RUT", "RTY=F"), ("^N225", "NIY=F"),
     ])
     def test_all_five_dual_instrument_indexes_swap_when_closed(self, spot, future):
-        from database import get_ticker_registry_row
+        from db.database import get_ticker_registry_row
         row = get_ticker_registry_row(spot)
         assert row is not None
         with patch("markets_engine.market_session_helpers.is_exchange_open", return_value=False):

@@ -2,7 +2,7 @@ import random
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 

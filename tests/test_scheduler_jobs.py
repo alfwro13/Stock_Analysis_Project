@@ -154,7 +154,7 @@ class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
 
 class TestRunForensicScoresJobAltmanThreshold:
     def test_alerts_only_inside_the_distress_zone(self, tmp_path):
-        from database import get_connection
+        from db.database import get_connection
 
         for ticker in ("ZZALTGREY", "ZZALTDISTRESS"):
             (tmp_path / f"{ticker}.json").write_text("{}")

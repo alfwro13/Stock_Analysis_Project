@@ -6,7 +6,7 @@ from typing import Optional
 import pandas as pd
 
 from config import HISTORICAL_DIR, load_config
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 

@@ -132,7 +132,7 @@ Additional context: if close is more than 7% below EMA, the deep extension is no
 
 - **Proxy basket** — `NOTIFICATIONS.TRAP_MONITOR_ALERTS.PROXY_TICKERS` (default: `["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]`). Configurable via Settings.
 - **Portfolio** — `accounts_engine.get_combined_holdings()` (built-in Trading accounts + Ghostfolio when enabled), gated by `SCHEDULING.TRAP_MONITORS.MONITOR_PORTFOLIO` (default: `True`). Toggle via "Monitor Portfolio Tickers" checkbox in Settings.
-- **Watchlist** — `database.get_watchlist_tickers()`, gated by `SCHEDULING.TRAP_MONITORS.MONITOR_WATCHLIST` (default: `False`). Toggle via "Monitor Watchlist Tickers" checkbox in Settings.
+- **Watchlist** — `db.database.get_watchlist_tickers()`, gated by `SCHEDULING.TRAP_MONITORS.MONITOR_WATCHLIST` (default: `False`). Toggle via "Monitor Watchlist Tickers" checkbox in Settings.
 
 Each source is filtered through `utils.is_excluded_from_yahoo_fetch()` (synthetic tickers and the Settings-page Ignored Tickers list). History is read through `data_engine.load_or_fetch_daily_history()`: a ticker with no Parquet file at `data/historical/{ticker}.parquet` is fetched once and written through `daily_history_writer.prepare_daily_history()` and the atomic writer (so saved Repair Data corrections and the in-progress-bar trim apply), and is skipped if it cannot be fetched.
 
@@ -267,6 +267,6 @@ Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and dis
 | `templates/tools.html` | Guide-card entry |
 | `templates/settings.html` | Settings card: enable toggle, detector toggles, portfolio checkbox, proxy tickers, notification config |
 | `templates/glossary.html` | Term-box entries: Bull Trap, Bear Trap, Capitulation, Wyckoff Accumulation, Trap Phase History |
-| `db_schema.py` | `trap_monitor_results` and `trap_phase_history` table definitions in `init_db()` |
-| `db_helpers.py` | `get_trap_monitor_results()` (the one reader of `trap_monitor_results`, used by the results route and the MCP Server's `get_alerts`), `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `batch_update_trap_phase_actuals()`, `get_trap_phase_accuracy()` (all except `get_trap_monitor_results()`, imported from `db_helpers` directly, re-exported from `database.py`) |
+| `db/schema.py` | `trap_monitor_results` and `trap_phase_history` table definitions in `init_db()` |
+| `db/helpers.py` | `get_trap_monitor_results()` (the one reader of `trap_monitor_results`, used by the results route and the MCP Server's `get_alerts`), `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `batch_update_trap_phase_actuals()`, `get_trap_phase_accuracy()` (all except `get_trap_monitor_results()`, imported from `db.helpers` directly, re-exported from `db/database.py`) |
 | `config.py` | `SCHEDULING.TRAP_MONITORS` and `NOTIFICATIONS.TRAP_MONITOR_ALERTS` in `DEFAULT_CONFIG` |

@@ -4,7 +4,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, load_config
-from database import get_connection
+from db.database import get_connection
 from position_sizing import get_position_sizing_config
 from portfolio_service import get_rate_to_base, get_fx_cache_status
 from utils import cached_fundamentals_extra, safe_http_url, safe_ticker_filename

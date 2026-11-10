@@ -5,8 +5,8 @@ import pandas as pd
 
 import time_engine
 from config import HISTORICAL_DIR, INTRADAY_DIR
-from database import get_connection
-from db_accounts import get_holding_price_limits_for_ticker
+from db.database import get_connection
+from db.accounts import get_holding_price_limits_for_ticker
 from utils import measure_request_stage, safe_ticker_filename
 from visuals import (
     create_macro_chart,
@@ -77,7 +77,7 @@ def position_targets(ticker, stock_data, user_asset, is_in_watchlist):
 
 
 def ticker_notes_for_display(ticker):
-    from db_helpers import get_ticker_notes
+    from db.helpers import get_ticker_notes
 
     ticker_notes = get_ticker_notes(ticker)
     for note in ticker_notes:

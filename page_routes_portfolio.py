@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from config import load_config, BASE_CURRENCY, ACCOUNT_CURRENCIES
-from database import get_watchlist_tickers
+from db.database import get_watchlist_tickers
 from macro_data_engine import yield_gdp_link
 from market_pulse import get_all_cached_pulse
 from utils import ignored_tickers_set, measure_request_stage, time_request_call
@@ -41,7 +41,7 @@ def portfolio_page(request: Request, background_tasks: BackgroundTasks, account_
     from xray_engine import BENCHMARK_SYMBOL
     from accounts_engine import current_price_map, get_combined_holdings
     from api.routes_accounts import maybe_trigger_price_refresh
-    from db_accounts import get_all_holding_price_limits
+    from db.accounts import get_all_holding_price_limits
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 
     config_data = load_config()
@@ -138,7 +138,7 @@ def accounts_page(request: Request):
 
 @page_router_portfolio.get("/accounts/{account_id}", response_class=HTMLResponse)
 def account_detail_page(request: Request, account_id: int):
-    from database import get_account, get_watchlist_items
+    from db.database import get_account, get_watchlist_items
 
     acc = get_account(account_id)
     if acc is None:
@@ -168,7 +168,7 @@ def account_detail_page(request: Request, account_id: int):
 
 @page_router_portfolio.get("/accounts/{account_id}/pension", response_class=HTMLResponse)
 def pension_account_detail_page(request: Request, account_id: int):
-    from database import get_account
+    from db.database import get_account
 
     acc = get_account(account_id)
     if acc is None or acc["account_type"] != "Pension":
@@ -181,7 +181,7 @@ def pension_account_detail_page(request: Request, account_id: int):
 
 @page_router_portfolio.get("/accounts/{account_id}/house", response_class=HTMLResponse)
 def house_account_detail_page(request: Request, account_id: int):
-    from database import get_account
+    from db.database import get_account
 
     acc = get_account(account_id)
     if acc is None or acc["account_type"] != "House":
@@ -195,7 +195,7 @@ def house_account_detail_page(request: Request, account_id: int):
 @page_router_portfolio.get("/watchlist", response_class=HTMLResponse)
 def watchlist_page(request: Request, embed: bool = False, embed_token: str = ""):
     from xray_engine import BENCHMARK_SYMBOL
-    from db_accounts import get_all_holding_price_limits, get_watchlist_account
+    from db.accounts import get_all_holding_price_limits, get_watchlist_account
     from price_history_helpers import get_period_anchor_closes, CHANGE_PERIODS
 
     watchlist_tickers = list(dict.fromkeys(get_watchlist_tickers()))

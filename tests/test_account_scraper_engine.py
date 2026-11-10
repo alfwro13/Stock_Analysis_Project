@@ -8,7 +8,7 @@ import pytest
 
 import account_scraper_engine as scraper
 import outbound_fetch_helpers as fetch_helpers
-from database import create_account, get_price_history
+from db.database import create_account, get_price_history
 
 
 AVIVA_HTML = """<html><body>
@@ -385,7 +385,7 @@ def test_http_error_status_is_a_generic_error(trust_test_cert):
 @pytest.mark.db
 def test_run_scrape_for_account_persists_price():
     aid = create_account("ScrapeAcc", "GBP", account_type="House")
-    from database import update_account
+    from db.database import update_account
     update_account(aid, scraper_url="https://example.test/house.html", scraper_selector="#gf-price")
     with patch.object(scraper, "_fetch_body", return_value=ZOOPLA_HTML):
         result = scraper.run_scrape_for_account(aid)
@@ -399,7 +399,7 @@ def test_run_scrape_for_account_persists_price():
 @pytest.mark.db
 def test_run_scrape_for_account_refuses_a_stored_http_url():
     aid = create_account("StoredHttpAcc", "GBP", account_type="House")
-    from database import update_account
+    from db.database import update_account
     update_account(aid, scraper_url="http://example.test/house.html", scraper_selector="#gf-price")
     result = scraper.run_scrape_for_account(aid)
     assert result["status"] == "error"

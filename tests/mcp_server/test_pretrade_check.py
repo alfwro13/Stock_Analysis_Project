@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from database import get_connection
+from db.database import get_connection
 from mcp_server.tools import pretrade_check as pretrade_tool
 from xray_engine import XRayScopeUnavailable
 

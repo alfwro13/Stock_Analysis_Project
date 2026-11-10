@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from database import get_connection
-from db_helpers import parse_utc_epoch
+from db.database import get_connection
+from db.helpers import parse_utc_epoch
 from mcp_server.tools import get_heat_index as get_heat_index_tool
 
 from .helpers import call, rpc, table_counts, tool_data

@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-import database as _db_module
+from db import database as _db_module
 import universe_engine
 from universe_engine import update_market_universe
 

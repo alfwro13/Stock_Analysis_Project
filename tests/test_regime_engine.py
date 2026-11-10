@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-import database
+from db import database
 from regime_engine import (
     calculate_market_regime,
     get_latest_regime,

@@ -376,8 +376,8 @@ def get_yahoo_api_call_log(date_str: str) -> list:
             conn.close()
 
 
-from db_schema import init_db, migrate_db  # noqa: E402
-from db_etf import (  # noqa: E402
+from db.schema import init_db, migrate_db  # noqa: E402
+from db.etf import (  # noqa: E402
     get_etf_predictor_configs,
     get_etf_predictor_config,
     create_etf_predictor_config,
@@ -388,7 +388,7 @@ from db_etf import (  # noqa: E402
     get_etf_accuracy,
     get_recent_prediction_errors,
 )
-from db_helpers import (  # noqa: E402
+from db.helpers import (  # noqa: E402
     log_score_event,
     get_universe_tickers,
     get_ml_inference_tickers,
@@ -421,7 +421,7 @@ from db_helpers import (  # noqa: E402
     record_nextcloud_talk_attempt,
     get_nextcloud_talk_today,
 )
-from db_accounts import (  # noqa: E402
+from db.accounts import (  # noqa: E402
     get_accounts,
     get_account,
     get_scraper_headers,

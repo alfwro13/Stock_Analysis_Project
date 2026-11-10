@@ -12,8 +12,8 @@ from accounts_engine import refresh_all_trading_performance_caches, resnapshot_a
 from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
-from database import get_account, get_connection, get_ml_inference_tickers, get_universe_tickers
-from db_helpers import get_ticker_currency_map
+from db.database import get_account, get_connection, get_ml_inference_tickers, get_universe_tickers
+from db.helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import backfill_earnings_drift_outcomes, format_failure_reasons, log_near_earnings_predictions, run_earnings_vol_scan
@@ -1496,7 +1496,7 @@ def _run_account_topup_job(account_id: int) -> None:
     try:
         if not acc or not acc.get("autotopup_enabled"):
             return
-        from database import create_pending_topup
+        from db.database import create_pending_topup
         today = datetime.now(timezone.utc).date().isoformat()
         pending_id = create_pending_topup(account_id, today, acc["autotopup_amount"])
         if pending_id is None:

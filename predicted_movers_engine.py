@@ -8,8 +8,8 @@ import numpy as np
 
 from accounts_engine import current_price_map
 from constants import PREDICTION_HORIZON_DAYS
-from database import get_connection
-from db_helpers import (
+from db.database import get_connection
+from db.helpers import (
     batch_update_predicted_movers_actuals,
     get_company_names,
     get_first_close_on_or_after,

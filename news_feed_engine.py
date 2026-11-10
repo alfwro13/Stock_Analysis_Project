@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 from config import load_config
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
-from database import get_connection, get_watchlist_tickers
+from db.database import get_connection, get_watchlist_tickers
 from outbound_fetch_helpers import fetch_body
 
 logger = logging.getLogger(__name__)

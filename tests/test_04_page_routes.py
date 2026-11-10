@@ -151,7 +151,7 @@ def test_notifications_page_converts_timestamp_to_local_time(client):
     """Notification timestamps are stored in UTC and must be displayed in local time — regression
     for a bug where the raw UTC string was rendered as-is, showing the wrong hour whenever local
     time differs from UTC (e.g. British Summer Time)."""
-    import database as _db
+    from db import database as _db
     from datetime import datetime, timezone
     import time_engine
 
@@ -264,7 +264,7 @@ def _fake_yield_parquet(parquet_name, start_date):
 
 @pytest.fixture
 def seeded_macro_regime():
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute(
@@ -286,7 +286,7 @@ def seeded_macro_regime():
 
 @pytest.fixture
 def seeded_nominal_gdp():
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.executemany(
@@ -344,7 +344,7 @@ def test_portfolio_without_gdp_data_omits_the_line(client, seeded_macro_regime):
 
 @pytest.mark.pages
 def test_portfolio_shows_the_uk_gilt_box_as_unavailable_when_the_threat_level_is_null(client, seeded_macro_regime):
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute("UPDATE macro_regimes SET uk_threat_level=NULL, uk_yield_velocity=NULL, uk_gilt_close=NULL WHERE date='2999-12-31'")
@@ -360,7 +360,7 @@ def test_portfolio_shows_the_uk_gilt_box_as_unavailable_when_the_threat_level_is
 
 @pytest.mark.pages
 def test_portfolio_shows_the_us_treasury_box_as_unavailable_when_the_threat_level_is_null(client, seeded_macro_regime):
-    import database as _db
+    from db import database as _db
     conn = _db.get_connection()
     try:
         conn.execute("UPDATE macro_regimes SET us_threat_level=NULL, us_yield_velocity=NULL WHERE date='2999-12-31'")
@@ -391,9 +391,9 @@ def test_earnings_volatility_page_scope_filter(client):
     """The Scope selector defaults to Portfolio, and each row carries data-portfolio/
     data-watchlist attributes reflecting the ticker's actual membership so the
     client-side DataTables filter can default to showing Portfolio-only rows."""
-    import database as _db
+    from db import database as _db
     from datetime import datetime, timedelta, timezone
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
 
@@ -719,7 +719,7 @@ def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkey
     The page_action block that reads those keys only renders when a daily Parquet file
     exists for the ticker, so one must be written here to actually exercise that path."""
     import pandas as pd
-    import database as _db
+    from db import database as _db
 
     historical_dir = tmp_path / "historical"
     historical_dir.mkdir()
@@ -759,7 +759,7 @@ def test_stock_detail_shows_setup_and_derived_tags(client):
     """Stock Detail must show the same badge-style tags as Portfolio/Watchlist —
     setup_tags (candlestick patterns), Trap Monitor phase, and every currently-active
     Pattern Detection family (not just Head & Shoulders) — next to the header."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -807,7 +807,7 @@ def test_stock_detail_shows_setup_and_derived_tags(client):
 def test_stock_detail_trap_phase_button_shown_when_not_neutral(client):
     """A ticker with a non-NEUTRAL Trap Monitor phase must get a sub-menu button labeled
     with the phase's display name, linking to the shared /trap-monitor page."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -839,7 +839,7 @@ def test_stock_detail_trap_phase_button_shown_when_not_neutral(client):
 @pytest.mark.pages
 def test_stock_detail_trap_phase_button_hidden_when_neutral(client):
     """A ticker whose Trap Monitor phase is NEUTRAL must not show the trap-phase button."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -872,7 +872,7 @@ def test_stock_detail_trap_phase_button_hidden_when_neutral(client):
 def test_stock_detail_etf_predictor_button_shown_when_configured(client):
     """A ticker configured as an ETF Predictor's etf_ticker must get a sub-menu button
     linking to that config's detail page."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -906,7 +906,7 @@ def test_stock_detail_etf_predictor_button_shown_when_configured(client):
 @pytest.mark.pages
 def test_stock_detail_etf_predictor_button_hidden_when_not_configured(client):
     """A ticker with no matching ETF Predictor config must not show the button."""
-    import database as _db
+    from db import database as _db
 
     conn = _db.get_connection()
     try:
@@ -935,7 +935,7 @@ def test_stock_detail_etf_predictor_button_hidden_when_not_configured(client):
 def test_stock_detail_held_ticker_without_a_price_still_shows_position_targets_box(client):
     """A held ticker with no stock_signals price has no "Your Position" box (its P&L math needs a
     price) but the Position Targets box needs none, so it must still list the holding account."""
-    import database as _db
+    from db import database as _db
 
     account_id = _db.create_account("Unpriced Held Account", "GBP", initial_cash=0.0)
     _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="ZZUNPRICED", currency="GBP",
@@ -956,8 +956,8 @@ def test_stock_detail_watchlist_only_ticker_shows_position_targets_box(client):
     "Your Position" box (portfolio_math is None), but must still get a standalone
     "Position Targets" box with a Watchlist row, since Set Targets no longer lives
     inside the Your Position box."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -995,8 +995,8 @@ def test_stock_detail_gbp_target_input_prefilled_in_pounds_not_pence(client):
     prefill the Position Targets input box in pounds (6.37), matching the ML suggestion's
     units — not the raw pence value, which previously redisplayed as 0.06 after a user
     typed the suggested pounds figure and it was saved unconverted."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
 
     conn = _db.get_connection()
     try:
@@ -1036,8 +1036,8 @@ def test_stock_detail_gbp_ticker_no_target_set_does_not_crash(client):
     """A GBp (LSE pence) watchlist ticker with no holding_price_limits row at all must not
     500 — limits.get('low_limit') is None (real None), not Jinja Undefined, so the pence
     conversion's `is not none` check must correctly skip the division."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1075,8 +1075,8 @@ def test_stock_detail_stale_pulse_fallback_price_does_not_crash(client):
     docstring) — cp is still truthy in that case, so the template must not assume
     cp.change_pct is numeric just because cp exists. Reproduces a real 500 (TypeError:
     NoneType doesn't define __round__) seen after a market_pulse_cache row went stale."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1119,9 +1119,9 @@ def test_stock_detail_shows_drift_stats_with_thumbs_icon(client):
     drift_sample_size_Nd figures as the Earnings Volatility page) instead of Implied Move/Options
     Edge, with a thumbs-up icon next to a horizon whose most recent resolved
     earnings_drift_predictions event moved with the historical-average direction."""
-    import database as _db
+    from db import database as _db
     from datetime import datetime, timedelta, timezone
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     next_earnings = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
     past_earnings = (datetime.now(timezone.utc) - timedelta(days=100)).strftime("%Y-%m-%d")
@@ -1181,8 +1181,8 @@ def test_stock_detail_shows_drift_stats_with_thumbs_icon(client):
 def test_watchlist_page_stale_pulse_fallback_price_does_not_crash(client):
     """Same fallback scenario as test_stock_detail_stale_pulse_fallback_price_does_not_crash,
     but on the /watchlist table row itself, which reads the same cached_pulse dict."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1225,8 +1225,8 @@ def test_watchlist_ticker_link_propagates_embed_token(client):
     """When /watchlist is loaded with ?embed=true&embed_token=..., its ticker links to
     /stock/{ticker} must carry the same embed_token — otherwise clicking through from an
     embedded (no-session-cookie) view hits the login-redirect middleware branch."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1260,8 +1260,8 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
     """The Watchlist analytics overhaul: forensic score columns, Quality Grade / report-screen /
     trap / bubble badges render for a seeded ticker, and the Market Pulse widget + US 10Y
     Treasury / UK 10Y Gilt cards are gone from the page entirely."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1350,8 +1350,8 @@ def test_portfolio_and_watchlist_thead_th_count_matches_column_registry(client):
 @pytest.mark.pages
 def test_watchlist_page_colours_altman_z_poor_only_below_distress_cutoff(client):
     """The Watchlist Altman cell turns metric-poor below the Z' distress cutoff (1.1), not below the old 1.81."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     tickers = {"ZZALTGREY": 1.5, "ZZALTDISTRESS": 0.9}
     conn = _db.get_connection()
@@ -1392,8 +1392,8 @@ def test_watchlist_page_colours_altman_z_poor_only_below_distress_cutoff(client)
 def test_watchlist_page_renders_new_optional_columns_for_seeded_ticker(client):
     """New optional Watchlist columns (Fundamentals + Watchlist's Exit Target parity gap) render
     with the correct GBp-aware/percent formatting for a seeded ticker."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1435,8 +1435,8 @@ def test_watchlist_page_renders_xray_and_earnings_vol_columns_for_seeded_ticker(
     """The stage-2 deferred columns (X-ray beta/annualised vol/dividend yield, Earnings
     Volatility edge score/implied move) render correctly for a ticker with rows in all three
     backing tables, using the fixed X-ray benchmark (xray_engine.BENCHMARK_SYMBOL)."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
     from xray_engine import BENCHMARK_SYMBOL
 
     conn = _db.get_connection()
@@ -1509,7 +1509,7 @@ def test_portfolio_and_watchlist_render_views_bootstrap_with_defaults(client):
 def test_portfolio_page_renders_views_button_when_holdings_exist(client):
     """The Views/Columns toolbar (like the pre-existing Columns button) only renders once the
     Portfolio page has a summary to show — confirm the button appears for a real holding."""
-    from database import create_account, add_transaction, get_connection as _get_conn
+    from db.database import create_account, add_transaction, get_connection as _get_conn
 
     conn = _get_conn()
     try:
@@ -1546,7 +1546,7 @@ def test_portfolio_page_renders_watchlist_parity_columns_for_builtin_holding(cli
     """Portfolio previously had no Piotroski/Altman/Beneish/Target Price columns at all, even
     though Watchlist already showed them from the same stock_signals row — this is the parity
     gap the optional-columns catalog closes."""
-    from database import create_account, add_transaction, get_connection as _get_conn
+    from db.database import create_account, add_transaction, get_connection as _get_conn
 
     conn = _get_conn()
     try:
@@ -1580,8 +1580,8 @@ def test_portfolio_page_renders_watchlist_parity_columns_for_builtin_holding(cli
 def test_watchlist_filters_only_show_present_values(client):
     """Filter dropdowns must only offer options with at least one matching row — an option with
     zero matches would filter the table down to nothing for no useful reason."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item
 
     conn = _db.get_connection()
     try:
@@ -1626,8 +1626,8 @@ def test_watchlist_target_column_no_longer_has_a_filter(client):
     """The 'Has Target Set' filter dropdown was removed in favor of the Views feature — Low/High
     Target render as plain always-available columns regardless of whether any ticker has a
     target set, and #targetFilter must never appear."""
-    import database as _db
-    from db_accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
+    from db import database as _db
+    from db.accounts import get_watchlist_account, add_watchlist_item, upsert_holding_price_limit
 
     conn = _db.get_connection()
     try:
@@ -1862,7 +1862,7 @@ def test_treasury_auctions_page_has_back_to_tools_and_run_now(client):
 @pytest.mark.pages
 def test_treasury_auctions_page_shows_plain_english_alert_in_summary(client):
     """The Data Summary callout must additively surface the same plain-English text as the notification."""
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     try:
         conn.executemany(
@@ -1899,7 +1899,7 @@ def test_treasury_auctions_page_shows_plain_english_alert_in_summary(client):
 def test_treasury_auctions_page_highlights_bid_to_cover_by_the_series_threshold(client):
     """A 0.3 bid-to-cover drop is red for a note (0.2 rule) but not for a bill (0.4 rule)."""
     import re
-    import database as db
+    from db import database as db
     conn = db.get_connection()
     try:
         conn.executemany(
@@ -1968,7 +1968,7 @@ def test_etf_predictor_detail_unknown_id_redirects(client):
 @pytest.mark.pages
 def test_etf_predictor_detail_renders_bias_and_blend_tiles(client, monkeypatch):
     """GET /etf-predictor/{id} must render the new Bias-Corrected/Blend tiles without a Jinja crash."""
-    import database as _db
+    from db import database as _db
     import pandas as pd
     import etf_predictor_engine
 
@@ -2040,7 +2040,7 @@ def test_etf_predictor_detail_renders_bias_and_blend_tiles(client, monkeypatch):
 @pytest.mark.pages
 def test_etf_predictor_detail_prediction_chart_survives_correlation_failure(client, monkeypatch):
     """A raising get_etf_correlation_data must not blank the prediction chart or the page."""
-    import database as _db
+    from db import database as _db
     import pandas as pd
     import etf_predictor_engine
 
@@ -2107,7 +2107,7 @@ def test_account_detail_unknown_id_redirects(client):
 @pytest.mark.pages
 def test_account_detail_page_loads_for_real_account(client):
     """GET /accounts/{id} for a real account (with a transaction) must render without crashing."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test Account", "GBP", initial_cash=100.0)
     _db.add_transaction(account_id, "Cash", "2026-01-01", unit_price=50)
     try:
@@ -2119,7 +2119,7 @@ def test_account_detail_page_loads_for_real_account(client):
 @pytest.mark.pages
 def test_account_detail_page_renders_compact_view_for_watchlist_account(client):
     """GET /accounts/{watchlist_id} must render the compact watchlist_account_detail.html, not the ledger view."""
-    import database as _db
+    from db import database as _db
     wl = _db.get_watchlist_account()
     resp = client.get(f"/accounts/{wl['id']}")
     assert resp.status_code == 200
@@ -2130,7 +2130,7 @@ def test_account_detail_page_renders_compact_view_for_watchlist_account(client):
 @pytest.mark.pages
 def test_account_detail_page_redirects_house_to_dedicated_page(client):
     """The generic ledger page is for Trading only now — House has its own dedicated page."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test House", "GBP", account_type="House")
     try:
         resp = client.get(f"/accounts/{account_id}", follow_redirects=False)
@@ -2151,7 +2151,7 @@ def test_house_detail_unknown_id_redirects(client):
 @pytest.mark.pages
 def test_house_detail_rejects_non_house_account(client):
     """GET /accounts/{id}/house for a non-House account must redirect, not render the wrong page."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test Trading2", "GBP", account_type="Trading")
     try:
         resp = client.get(f"/accounts/{account_id}/house", follow_redirects=False)
@@ -2164,7 +2164,7 @@ def test_house_detail_rejects_non_house_account(client):
 def test_house_detail_page_loads_with_chart_and_scraper(client):
     """House's dedicated page renders the value chart and the Scraper action, with no
     holdings/closed-positions/activities tables (House has no transaction ledger concept)."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test House", "GBP", account_type="House")
     _db.add_price_history(account_id, "2026-01-01", 300000.0, source="purchase")
     try:
@@ -2181,7 +2181,7 @@ def test_house_detail_page_loads_with_chart_and_scraper(client):
 @pytest.mark.pages
 def test_account_detail_page_redirects_pension_to_dedicated_page(client):
     """The generic ledger page is for Trading/House — Pension has its own dedicated page now."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test Pension", "GBP", account_type="Pension")
     try:
         resp = client.get(f"/accounts/{account_id}", follow_redirects=False)
@@ -2202,7 +2202,7 @@ def test_pension_detail_unknown_id_redirects(client):
 @pytest.mark.pages
 def test_pension_detail_rejects_non_pension_account(client):
     """GET /accounts/{id}/pension for a non-Pension account must redirect, not render the wrong page."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test Trading", "GBP", account_type="Trading")
     try:
         resp = client.get(f"/accounts/{account_id}/pension", follow_redirects=False)
@@ -2215,7 +2215,7 @@ def test_pension_detail_rejects_non_pension_account(client):
 def test_pension_detail_page_loads_with_actions(client):
     """Pension's dedicated page renders both charts, the Pay In / Admin Fee actions, and the
     Running Total Units / Notes activities columns."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test Pension", "GBP", account_type="Pension")
     _db.add_transaction(
         account_id, "Buy", "2026-01-01", ticker=f"PENSION-{account_id}",
@@ -2245,7 +2245,7 @@ def test_pension_activities_table_has_no_edit_button(client):
     """Every Pension activity row is system-generated (Opening Balance / Pay In / Admin Fee) —
     editing one through the generic Buy/Sell modal silently forces update_cash back to True,
     corrupting the cash-free Pension ledger. Edit must not be offered; Delete still is."""
-    import database as _db
+    from db import database as _db
     account_id = _db.create_account("Page Test Pension NoEdit", "GBP", account_type="Pension")
     _db.add_transaction(
         account_id, "Buy", "2026-01-01", ticker=f"PENSION-{account_id}",
@@ -2263,7 +2263,7 @@ def test_pension_activities_table_has_no_edit_button(client):
 def test_danger_zone_with_delete_confirmation_on_all_three_detail_pages(client):
     """Delete moved off the account tile onto each detail page's Danger Zone, gated behind a
     checkbox-confirmation modal rather than a one-click browser confirm()."""
-    import database as _db
+    from db import database as _db
     trading_id = _db.create_account("Danger Zone Trading", "GBP", account_type="Trading")
     pension_id = _db.create_account("Danger Zone Pension", "GBP", account_type="Pension")
     house_id = _db.create_account("Danger Zone House", "GBP", account_type="House")
@@ -2351,7 +2351,7 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
     import asyncio
     import logging
     import time
-    from database import _retry_on_locked
+    from db.database import _retry_on_locked
     from main import _watch_event_loop_lag
 
     async def exercise():
@@ -2368,7 +2368,7 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
     with caplog.at_level(logging.WARNING, logger="main"):
         asyncio.run(exercise())
     assert "event_loop_lag lag_ms=" in caplog.text
-    assert "suspected_blocker=database.py:_retry_on_locked:" in caplog.text
+    assert "suspected_blocker=db/database.py:_retry_on_locked:" in caplog.text
     assert "callers=tests/test_04_page_routes.py:exercise:" in caplog.text
 
 
@@ -2541,7 +2541,7 @@ vm.runInContext(fs.readFileSync(0, 'utf8'), context);
 @pytest.mark.pages
 @pytest.mark.parametrize("url", ["/portfolio", "/watchlist", "/stock/ZZREUSE"])
 def test_page_buy_recommendations_reuse_existing_scores(client, url):
-    import database
+    from db import database
 
     confluence = {"ZZREUSE": {"bullish_pillars": ["technical", "ml"], "bearish_pillars": [], "confluence": True, "direction": "bullish"}}
     regime = {"ZZREUSE": {"score": 80, "regime": "Bull", "components": {}}}

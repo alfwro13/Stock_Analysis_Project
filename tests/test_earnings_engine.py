@@ -126,7 +126,7 @@ class TestDailyAlertType:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("accounts_engine.get_combined_holdings", return_value=_combined(tickers)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
             return run_earnings_alert()
@@ -191,7 +191,7 @@ class TestOnceAlertType:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("accounts_engine.get_combined_holdings", return_value=_combined(tickers)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
             return run_earnings_alert()
@@ -220,7 +220,7 @@ class TestReturnValues:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("accounts_engine.get_combined_holdings", return_value=_combined(["AAPL"])), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
             ok, msg = run_earnings_alert()
@@ -234,7 +234,7 @@ class TestReturnValues:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("accounts_engine.get_combined_holdings", return_value=_combined(["AAPL"])), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db.helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
             ok, msg = run_earnings_alert()

@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database as db
+from db import database as db
 from bubble_radar_engine import (
     _score_sma_ext,
     _score_rsi,

@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s [%(name)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-from database import get_connection
+from db.database import get_connection
 from ml_inference_engine import update_daily_ml_predictions
 
 # Pick one universe-only ticker (UNIVERSE_FUNDAMENTALS) and one overlap (HARDCODED)

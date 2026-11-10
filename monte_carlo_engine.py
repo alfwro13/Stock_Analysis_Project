@@ -4,7 +4,7 @@ import logging
 import numpy as np
 
 from config import load_config
-from database import get_connection
+from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 
