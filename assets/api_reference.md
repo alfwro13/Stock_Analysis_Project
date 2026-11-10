@@ -931,7 +931,7 @@ The database reads run in request workers, so a slow status query does not hold 
 
 ### `POST /api/trigger-universe-update`
 
-Refreshes the market universe ticker list — syncs new additions and removals from supported indices. The US Common Stock list comes from Nasdaq's Symbol Directory (`nasdaqlisted.txt`, `otherlisted.txt`): downloaded over HTTPS through `outbound_fetch_helpers.fetch_body()`, with FTP (30 s timeout) only as a fallback when HTTPS fails. A listing is stored only when its symbol (after the `.` → `-` step) passes `utils.is_valid_ticker()` and its name is 1–200 characters with no control characters, `<` or `>`; any other row is skipped, logged and counted in the success notification.
+Refreshes the market universe ticker list — syncs new additions and removals from supported indices. The US Common Stock list comes from Nasdaq's Symbol Directory (`nasdaqlisted.txt`, `otherlisted.txt`): downloaded over HTTPS through `outbound_fetch_helpers.fetch_body()`, with FTP (30 s timeout) only as a fallback when HTTPS fails. A listing is stored only when its symbol (after the `.` → `-` step) passes `utils.is_valid_ticker()` and its name is 1–200 characters with no control characters, `<` or `>`; any other row is skipped, logged and counted in the success notification. Rows the directory flags as `Test Issue`, and warrants, units and rights, are never stored.
 
 **Request body:** none  
 **Response:** standard background task response

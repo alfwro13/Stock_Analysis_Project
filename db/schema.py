@@ -2906,6 +2906,23 @@ def migrate_db(conn, cursor) -> None:
         except Exception as e:
             logger.error("[MIGRATION ERROR] %s nullable score migration failed: %s", table, e)
 
+    # Exchange test symbols stored before the Nasdaq listing sync skipped the Test Issue flag; they can
+    # never be fetched, and nothing else removes a universe row that stops qualifying.
+    test_symbols = (
+        "ATEST", "ATEST-A", "ATEST-C", "CBO", "CBX", "CTEST", "CTEST-E", "CTEST-G", "CTEST-L", "CTEST-O",
+        "CTEST-V", "IGZ", "MTEST",
+    )
+    try:
+        removed = 0
+        for table in ("market_universe", "stock_signals", "ticker_metadata", "asset_profiles"):
+            cursor.execute(f"DELETE FROM {table} WHERE ticker IN ({','.join('?' * len(test_symbols))})", test_symbols)
+            removed += cursor.rowcount
+        if removed:
+            logger.info("[MIGRATION] Removed %d exchange test-symbol row(s) from the universe tables.", removed)
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to remove exchange test symbols: %s", e)
+
     try:
         from db.helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)

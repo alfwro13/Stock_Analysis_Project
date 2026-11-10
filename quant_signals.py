@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 
 # GUI name: "Quantamental Analysis Engine". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 
+_PARTIAL_SKIP_WARNED: set = set()
+
+
+def _log_partial_skip(ticker: str) -> None:
+    """Warns once per process per ticker: the same instruments lack history on every nightly run."""
+    level = logging.DEBUG if ticker in _PARTIAL_SKIP_WARNED else logging.WARNING
+    _PARTIAL_SKIP_WARNED.add(ticker)
+    logger.log(level, "[PARTIAL SKIP] Insufficient historical data for %s. Proceeding with fundamental analysis only.", ticker)
+
 
 def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series) -> List[Dict[str, Any]]:
     """Pattern recognition engine; patterns are non-exclusive to allow signal confluence."""
@@ -513,7 +522,7 @@ class QuantEngine:
                             if rs_1y_return > 0.15 and current_price is not None and current_price > ma200_val:
                                 is_market_leader = True
             else:
-                logger.warning("[PARTIAL SKIP] Insufficient historical data for %s. Proceeding with fundamental analysis only.", ticker)
+                _log_partial_skip(ticker)
                 current_price = info.get('navPrice') or info.get('regularMarketPrice') or info.get('previousClose')
 
             quote_type = info.get('quoteType', 'EQUITY')
