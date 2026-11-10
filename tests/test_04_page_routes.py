@@ -2447,7 +2447,7 @@ def test_blocked_request_does_not_stall_unrelated_request(
     "module_file",
     [
         "api/routes.py", "api/routes_accounts.py", "api/routes_analysis.py", "api/routes_auth.py",
-        "api/routes_backtester.py", "api/routes_system.py", "api/routes_triggers.py", "page_routes.py",
+        "api/routes_backtester.py", "api/routes_pension.py", "api/routes_system.py", "api/routes_triggers.py", "page_routes.py",
         "page_routes_etf.py",
     ],
 )

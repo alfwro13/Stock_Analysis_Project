@@ -1248,6 +1248,7 @@ from api.routes_triggers import triggers_router
 from api.routes_system import system_router
 from api.routes_analysis import analysis_router
 from api.routes_accounts import accounts_router
+from api.routes_pension import pension_router
 from api.routes_backtester import backtester_router
 
 api_router.include_router(auth_router)
@@ -1256,4 +1257,5 @@ api_router.include_router(triggers_router)
 api_router.include_router(system_router)
 api_router.include_router(analysis_router)
 api_router.include_router(accounts_router)
+api_router.include_router(pension_router)
 api_router.include_router(backtester_router)
