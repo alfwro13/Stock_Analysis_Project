@@ -1,5 +1,5 @@
 """
-tests/test_ghostfolio_sync.py  ── GHOSTFOLIO SYNC ENGINE
+tests/accounts/test_ghostfolio_sync.py  ── GHOSTFOLIO SYNC ENGINE
 
 Comprehensive tests for every API contract point used by GhostfolioSyncEngine.
 If any upstream Ghostfolio API endpoint changes its response shape, these tests
@@ -24,15 +24,12 @@ Regression tests:
 """
 
 import json
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 import requests
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from accounts.ghostfolio_sync import GhostfolioSyncEngine
 
