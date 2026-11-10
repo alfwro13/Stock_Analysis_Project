@@ -393,11 +393,18 @@ class TestRegistryIntegrity:
 
     def test_notify_calls_with_a_registered_alert_source_use_its_alert_type(self):
         import re
-        pattern = re.compile(r'\bnotify\(\s*"(\w+)",\s*"([^"]+)"')
+        pattern = re.compile(r'\bnotify\(\s*("\w+"|[A-Z_]+),\s*("[^"]+"|[A-Z_]+)')
+        constant = re.compile(r'^([A-Z_]+) = "([^"]+)"$', re.MULTILINE)
         root = Path(__file__).parent.parent
         mismatches = []
-        for path in [*root.glob("*.py"), *(root / "tools").glob("*.py"), *(root / "api").glob("*.py")]:
-            for source, message_type in pattern.findall(path.read_text(encoding="utf-8")):
+        paths = [*root.glob("*.py"), *(root / "tools").glob("*.py"), *(root / "api").glob("*.py"),
+                 *(root / "mcp_server").rglob("*.py")]
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            constants = dict(constant.findall(text))
+            for source, message_type in pattern.findall(text):
+                source = constants.get(source, source.strip('"'))
+                message_type = constants.get(message_type, message_type.strip('"'))
                 alert_type = ne.NOTIFICATION_SOURCES.get(source, {}).get("alert_type")
                 if alert_type and message_type != alert_type:
                     mismatches.append(f"{path.name}: {source} -> {message_type!r}, registry says {alert_type!r}")
