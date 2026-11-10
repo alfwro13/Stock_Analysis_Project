@@ -155,19 +155,6 @@ class IntradayOrchestrator:
             if conn:
                 conn.close()
 
-    def log_notification_feed(self, msg_type: str, msg_text: str, conn: sqlite3.Connection, status: str = "sent") -> None:
-        """Display-only feed write; no effect on alert suppression; conn is caller-scoped."""
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO system_notifications (message_type, message_text, status) "
-                "VALUES (?, ?, ?)",
-                (msg_type, msg_text, status)
-            )
-            conn.commit()
-        except Exception as e:
-            logger.error("Failed to write notification feed row for %s: %s", msg_type, e)
-
     @staticmethod
     def _condition_fingerprint(reason: str) -> str:
         """Hashes the first 6 alphabetic tokens of reason so price fluctuations don't create spurious new fingerprints."""
