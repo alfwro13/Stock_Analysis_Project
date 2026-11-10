@@ -569,9 +569,6 @@ class TestGetTickerInfo:
 
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_passes_singleton_lock_to_connection_boundary(self, mock_ctx):
-        # yahoo_engine._yf_singleton_lock must reach tools.network_engine.yahoo_connection_boundary
-        # so a retry's backoff sleep can release it (see _sleep_outside_lock) — a call site that
-        # forgets to pass lock= would silently keep the old sleep-inside-the-lock behavior.
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -580,7 +577,63 @@ class TestGetTickerInfo:
             self.eng.get_ticker_info("AAPL")
 
         import yahoo_engine as ye
-        mock_ctx.assert_called_once_with("Ticker Info: AAPL", lock=ye._yf_singleton_lock)
+        mock_ctx.assert_called_once_with("Ticker Info: AAPL", lock=ye._yf_singleton_lock, raise_on_transient=True)
+
+
+class TestYahooCallRetry:
+
+    def test_backoff_sleeps_with_the_singleton_lock_released(self):
+        import yahoo_engine as ye
+        from tools.network_engine import _TransientNetworkError
+
+        attempts = []
+        lock_state = []
+
+        def boundary(ctx, lock=None, raise_on_transient=False):
+            attempts.append(raise_on_transient)
+            if len(attempts) == 1:
+                raise _TransientNetworkError("curl: (28) timed out")
+            return MagicMock(__enter__=lambda s: "session", __exit__=lambda *a: False)
+
+        with patch("yahoo_engine.yahoo_connection_boundary", side_effect=boundary), \
+             patch("yahoo_engine.time.sleep", side_effect=lambda s: lock_state.append(ye._yf_singleton_lock._lock.locked())):
+            assert ye._yahoo_call("ctx", lambda session: session) == "session"
+
+        assert attempts == [True, True]
+        assert lock_state == [False]
+        assert not ye._yf_singleton_lock._lock.locked()
+
+    def test_last_attempt_does_not_ask_for_a_transient_raise(self):
+        import yahoo_engine as ye
+        from tools.network_engine import TRANSIENT_MAX_RETRIES, _TransientNetworkError
+
+        flags = []
+
+        def boundary(ctx, lock=None, raise_on_transient=False):
+            flags.append(raise_on_transient)
+            if raise_on_transient:
+                raise _TransientNetworkError("timed out")
+            return MagicMock(__enter__=lambda s: "session", __exit__=lambda *a: False)
+
+        with patch("yahoo_engine.yahoo_connection_boundary", side_effect=boundary), \
+             patch("yahoo_engine.time.sleep"):
+            assert ye._yahoo_call("ctx", lambda session: "result") == "result"
+
+        assert flags == [True] * TRANSIENT_MAX_RETRIES + [False]
+
+    def test_unlocked_call_never_takes_the_singleton_lock(self):
+        import yahoo_engine as ye
+
+        seen = []
+
+        def boundary(ctx, lock=None, raise_on_transient=False):
+            seen.append((lock, ye._yf_singleton_lock._lock.locked()))
+            return MagicMock(__enter__=lambda s: "session", __exit__=lambda *a: False)
+
+        with patch("yahoo_engine.yahoo_connection_boundary", side_effect=boundary):
+            ye._yahoo_call("ctx", lambda session: None, locked=False)
+
+        assert seen == [(None, False)]
 
 
 class TestGetQuoteSnapshot:

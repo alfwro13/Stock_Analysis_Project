@@ -1,3 +1,4 @@
+import contextlib
 import time
 import html
 import logging
@@ -15,7 +16,10 @@ import yfinance as yf
 from curl_cffi import requests as cffi_requests
 import pandas as pd
 
-from tools.network_engine import _RateLimitedError, _TransientHTTPError, yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset, suppress_yf_delisted_noise
+from tools.network_engine import (
+    TRANSIENT_MAX_RETRIES, _RateLimitedError, _TransientHTTPError, _TransientNetworkError,
+    suppress_yf_delisted_noise, transient_backoff_seconds, wait_for_yahoo_rate_limit_reset, yahoo_connection_boundary,
+)
 from notification_engine import notify
 from utils import measure_request_stage
 
@@ -37,10 +41,7 @@ class _RateLimitAwareLock:
         return self._lock.__exit__(*args)
 
     def release(self) -> None:
-        """Lets tools.network_engine._sleep_outside_lock drop this lock during a retry's backoff
-        sleep instead of stalling every other Yahoo caller for the sleep duration. Reacquire always
-        goes back through __enter__ (not a bare .acquire()) so a 429 tripped by another thread
-        while we slept is honored on the way back in."""
+        """Lets the IPv6-only failover session's retry (tools.network_engine._sleep_outside_lock) drop this lock during its backoff sleep; reacquire goes back through __enter__ so a 429 tripped meanwhile is honored."""
         self._lock.release()
 
 
@@ -48,9 +49,28 @@ class _RateLimitAwareLock:
 # parallel callers corrupt the session/crumb and trigger an infinite 401 re-fetch loop. Held for
 # the full session-negotiate-plus-fetch call (tools.network_engine.yahoo_connection_boundary
 # reuses one curl_cffi Session per interface rather than building a fresh one per call, to keep
-# this held for less time on average; per-request retry backoff sleeps release it entirely — see
-# tools.network_engine._sleep_outside_lock).
+# this held for less time on average). A retryable network error never sleeps under it: _yahoo_call
+# releases it, backs off and reruns the call.
 _yf_singleton_lock = _RateLimitAwareLock()
+
+def _yahoo_call(action_context: str, fetch, *, locked: bool = True):
+    """Runs fetch(session) under the singleton lock; a retryable network error backs off with the lock released and reruns the whole call, and the last attempt returns whatever yfinance produced."""
+    for attempt in range(TRANSIENT_MAX_RETRIES + 1):
+        last = attempt == TRANSIENT_MAX_RETRIES
+        try:
+            with _yf_singleton_lock if locked else contextlib.nullcontext():
+                with yahoo_connection_boundary(
+                    action_context, lock=_yf_singleton_lock if locked else None, raise_on_transient=not last,
+                ) as session:
+                    return fetch(session)
+        except _TransientNetworkError as e:
+            sleep_time = transient_backoff_seconds(attempt)
+            logger.warning(
+                "Transient network error during '%s': %s. Retrying in %.2fs (Attempt %d/%d).",
+                action_context, e, sleep_time, attempt + 1, TRANSIENT_MAX_RETRIES,
+            )
+            time.sleep(sleep_time)
+
 
 _CacheEntry = namedtuple("_CacheEntry", ["data", "expires_at"])
 
@@ -272,13 +292,14 @@ class YahooEngine:
 
         if missing:
             try:
-                with _yf_singleton_lock:
-                    with yahoo_connection_boundary(f"Price History {period}/{interval}", lock=_yf_singleton_lock) as session:
-                        df_bulk = yf.download(
-                            missing, period=period, interval=interval,
-                            group_by="ticker", auto_adjust=True, progress=False,
-                            session=session,
-                        )
+                df_bulk = _yahoo_call(
+                    f"Price History {period}/{interval}",
+                    lambda session: yf.download(
+                        missing, period=period, interval=interval,
+                        group_by="ticker", auto_adjust=True, progress=False,
+                        session=session,
+                    ),
+                )
                 if not df_bulk.empty:
                     is_single = len(missing) == 1
                     for t in missing:
@@ -376,23 +397,23 @@ class YahooEngine:
                 # demoted to DEBUG here; _track_intraday_gap_misses/_hits below is the actual
                 # tracking + escalation mechanism (see class docstring-level comment there).
                 suppress_yf_delisted_noise(True)
-                with _yf_singleton_lock:
+                def fetch_missing(session):
+                    # The cache write stays under the lock so a waiting caller's re-check sees it.
                     for t in missing:
                         cached = self._get(key_fn(t))
                         if cached is not None:
                             result[t] = cached
-                    missing = [t for t in missing if result[t] is None]
-                    if not missing:
-                        return {t: df for t, df in result.items() if df is not None}
-                    with yahoo_connection_boundary(f"Intraday {period}/{interval}", lock=_yf_singleton_lock) as session:
-                        df_bulk = yf.download(
-                            missing, period=period, interval=interval, prepost=prepost,
-                            group_by="ticker", auto_adjust=True, progress=False,
-                            session=session,
-                        )
+                    still_missing = [t for t in missing if result[t] is None]
+                    if not still_missing:
+                        return still_missing
+                    df_bulk = yf.download(
+                        still_missing, period=period, interval=interval, prepost=prepost,
+                        group_by="ticker", auto_adjust=True, progress=False,
+                        session=session,
+                    )
                     if not df_bulk.empty:
-                        is_single = len(missing) == 1
-                        for t in missing:
+                        is_single = len(still_missing) == 1
+                        for t in still_missing:
                             df = self._slice_bulk(df_bulk, t, is_single)
                             if df is not None:
                                 # A multi-ticker download sits on the union of every ticker's bar times, so a
@@ -404,6 +425,11 @@ class YahooEngine:
                                 df.attrs["yahoo_fetched_at"] = time.time()
                             self._set(key_fn(t), df, ttl)
                             result[t] = df
+                    return still_missing
+
+                missing = _yahoo_call(f"Intraday {period}/{interval}", fetch_missing)
+                if not missing:
+                    return {t: df for t, df in result.items() if df is not None}
             except Exception:
                 logger.error("get_intraday failed for %s", missing, exc_info=True)
             finally:
@@ -485,9 +511,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Ticker Info: {ticker}", lock=_yf_singleton_lock) as session:
-                    info = yf.Ticker(ticker, session=session).info
+            info = _yahoo_call(f"Ticker Info: {ticker}", lambda session: yf.Ticker(ticker, session=session).info)
             if info:
                 self._set(key, info, _TTLS["info"])
                 return info
@@ -504,9 +528,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Quote Snapshot: {ticker}", lock=_yf_singleton_lock) as session:
-                    info = yf.Ticker(ticker, session=session).info
+            info = _yahoo_call(f"Quote Snapshot: {ticker}", lambda session: yf.Ticker(ticker, session=session).info)
             if not info or info.get("regularMarketPrice") is None:
                 return None
             snapshot = {
@@ -535,9 +557,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Session Shape: {ticker}", lock=_yf_singleton_lock) as session:
-                    meta = yf.Ticker(ticker, session=session).get_history_metadata()
+            meta = _yahoo_call(f"Session Shape: {ticker}", lambda session: yf.Ticker(ticker, session=session).get_history_metadata())
             tz = (meta or {}).get("exchangeTimezoneName")
             end = ((meta or {}).get("currentTradingPeriod") or {}).get("regular", {}).get("end")
             if not tz or not end:
@@ -556,9 +576,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Options Expirations: {ticker}", lock=_yf_singleton_lock) as session:
-                    expirations = yf.Ticker(ticker, session=session).options
+            expirations = _yahoo_call(f"Options Expirations: {ticker}", lambda session: yf.Ticker(ticker, session=session).options)
             if expirations:
                 result = list(expirations)
                 self._set(key, result, _TTLS["options_expirations"])
@@ -576,9 +594,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Options Chain: {ticker} {expiry}", lock=_yf_singleton_lock) as session:
-                    chain = yf.Ticker(ticker, session=session).option_chain(expiry)
+            chain = _yahoo_call(f"Options Chain: {ticker} {expiry}", lambda session: yf.Ticker(ticker, session=session).option_chain(expiry))
             result = (chain.calls, chain.puts)
             self._set(key, result, _TTLS["options_chain"])
             return result
@@ -593,11 +609,13 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"News: {ticker}", lock=_yf_singleton_lock) as session:
-                    news = self._fetch_rss_news(session, ticker)
-                    if news is None:
-                        news = self._fetch_search_news(session, ticker)
+            def fetch_news(session):
+                news = self._fetch_rss_news(session, ticker)
+                if news is None:
+                    news = self._fetch_search_news(session, ticker)
+                return news
+
+            news = _yahoo_call(f"News: {ticker}", fetch_news)
         except (_TransientHTTPError, _RateLimitedError, cffi_requests.RequestsError) as e:
             logger.warning("get_news failed for %s: %s", ticker, e)
             return None
@@ -635,13 +653,14 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Insider Transactions: {ticker}", lock=_yf_singleton_lock) as session:
-                    tk = yf.Ticker(ticker, session=session)
-                    try:
-                        df = tk.insider_transactions
-                    except Exception:
-                        df = tk.get_insider_transactions()
+            def fetch_insider(session):
+                tk = yf.Ticker(ticker, session=session)
+                try:
+                    return tk.insider_transactions
+                except Exception:
+                    return tk.get_insider_transactions()
+
+            df = _yahoo_call(f"Insider Transactions: {ticker}", fetch_insider)
             if df is not None and not df.empty:
                 self._set(key, df, _TTLS["insider_transactions"])
                 return df
@@ -656,9 +675,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Earnings Dates: {ticker}", lock=_yf_singleton_lock) as session:
-                    df = yf.Ticker(ticker, session=session).get_earnings_dates(limit=limit)
+            df = _yahoo_call(f"Earnings Dates: {ticker}", lambda session: yf.Ticker(ticker, session=session).get_earnings_dates(limit=limit))
             if df is not None and not df.empty:
                 self._set(key, df, _TTLS["earnings_dates"])
                 return df
@@ -673,12 +690,13 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Fund Holdings: {ticker}", lock=_yf_singleton_lock) as session:
-                    funds_data = yf.Ticker(ticker, session=session).get_funds_data()
-                    # top_holdings is a lazy property that triggers its own network fetch —
-                    # must be read before the session context above closes it.
-                    df = funds_data.top_holdings if funds_data is not None else None
+            def fetch_holdings(session):
+                funds_data = yf.Ticker(ticker, session=session).get_funds_data()
+                # top_holdings is a lazy property that triggers its own network fetch —
+                # must be read before the session context closes it.
+                return funds_data.top_holdings if funds_data is not None else None
+
+            df = _yahoo_call(f"Fund Holdings: {ticker}", fetch_holdings)
             if df is not None and not df.empty:
                 self._set(key, df, _TTLS["fund_holdings"])
                 return df
@@ -693,10 +711,11 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Fund Sector Weightings: {ticker}", lock=_yf_singleton_lock) as session:
-                    funds_data = yf.Ticker(ticker, session=session).get_funds_data()
-                    weights = funds_data.sector_weightings if funds_data is not None else None
+            def fetch_weights(session):
+                funds_data = yf.Ticker(ticker, session=session).get_funds_data()
+                return funds_data.sector_weightings if funds_data is not None else None
+
+            weights = _yahoo_call(f"Fund Sector Weightings: {ticker}", fetch_weights)
             if weights:
                 self._set(key, weights, _TTLS["fund_holdings"])
                 return weights
@@ -711,9 +730,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Ticker Actions: {ticker}", lock=_yf_singleton_lock) as session:
-                    actions = yf.Ticker(ticker, session=session).actions
+            actions = _yahoo_call(f"Ticker Actions: {ticker}", lambda session: yf.Ticker(ticker, session=session).actions)
             if actions is not None:
                 self._set(key, actions, _TTLS["ticker_actions"])
                 return actions
@@ -731,12 +748,11 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Annual Financials: {ticker}", lock=_yf_singleton_lock) as session:
-                    tk  = yf.Ticker(ticker, session=session)
-                    bs  = tk.balance_sheet
-                    fin = tk.income_stmt
-                    cf  = tk.cash_flow
+            def fetch_financials(session):
+                tk = yf.Ticker(ticker, session=session)
+                return tk.balance_sheet, tk.income_stmt, tk.cash_flow
+
+            bs, fin, cf = _yahoo_call(f"Annual Financials: {ticker}", fetch_financials)
             result = (
                 bs  if bs  is not None and not bs.empty  else None,
                 fin if fin is not None and not fin.empty else None,
@@ -784,9 +800,7 @@ class YahooEngine:
         from db.helpers import upsert_fx_quote
 
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"FX Rate: {pair}", lock=_yf_singleton_lock) as session:
-                    df = yf.Ticker(pair, session=session).history(period="1d")
+            df = _yahoo_call(f"FX Rate: {pair}", lambda session: yf.Ticker(pair, session=session).history(period="1d"))
             if not df.empty:
                 rate = float(df["Close"].iloc[-1])
                 if not math.isfinite(rate) or rate <= 0:
@@ -806,9 +820,7 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Single History: {ticker}", lock=_yf_singleton_lock) as session:
-                    df = yf.Ticker(ticker, session=session).history(period=period)
+            df = _yahoo_call(f"Single History: {ticker}", lambda session: yf.Ticker(ticker, session=session).history(period=period))
             if df is not None and not df.empty:
                 if df.index.tz is not None:
                     df.index = df.index.tz_convert(None)
@@ -826,8 +838,7 @@ class YahooEngine:
             return cached
         try:
             url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
-            with yahoo_connection_boundary(f"ISIN search: {isin}") as session:
-                resp = session.get(url, timeout=10)
+            resp = _yahoo_call(f"ISIN search: {isin}", lambda session: session.get(url, timeout=10), locked=False)
             if resp.status_code == 200:
                 quotes = resp.json().get("quotes", [])
                 if quotes:
@@ -847,9 +858,7 @@ class YahooEngine:
             return cached
         result: list[dict] = []
         try:
-            with _yf_singleton_lock:
-                with yahoo_connection_boundary(f"Ticker Search: {query}", lock=_yf_singleton_lock) as session:
-                    quotes = yf.Search(query, max_results=max_results, session=session).quotes
+            quotes = _yahoo_call(f"Ticker Search: {query}", lambda session: yf.Search(query, max_results=max_results, session=session).quotes)
             result = [
                 {
                     "ticker": q.get("symbol"),

@@ -46,11 +46,6 @@ _routing_counter = 0
 _session_cache: dict[str, cffi_requests.Session] = {}
 _session_cache_lock = threading.Lock()
 
-# Per-thread action_context/lock for the currently-in-flight call on a (possibly reused) session —
-# see _patch_session_with_retries. yfinance runs the request on its own worker thread, which never
-# sets these, so the wrapper falls back to the context stored on the session itself.
-_retry_context = threading.local()
-
 _stats_queue: "_queue_module.Queue" = _queue_module.Queue()
 _stats_writer_started = False
 _stats_writer_init_lock = threading.Lock()
@@ -113,6 +108,18 @@ class _RateLimitedError(Exception):
 
 class _TransientHTTPError(Exception):
     """Raised after exhausting retries on a repeated Yahoo Finance 5xx; bypasses IPv6-fault handling like _RateLimitedError."""
+
+
+class _TransientNetworkError(Exception):
+    """Raised by yahoo_connection_boundary(raise_on_transient=True) after a call hit a retryable network error, so the caller can back off outside any lock and run the whole call again."""
+
+
+TRANSIENT_MAX_RETRIES = 3
+TRANSIENT_BASE_DELAY = 2.0
+
+
+def transient_backoff_seconds(attempt: int) -> float:
+    return (TRANSIENT_BASE_DELAY ** attempt) + random.uniform(0.5, 1.5)
 
 
 def _sleep_outside_lock(seconds: float, lock=None) -> None:
@@ -256,69 +263,48 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     notify("network_fault", "Network Fault", msg, nextcloud_text=alert_msg, level="error")
 
 
-def _patch_session_with_retries(
-    session: cffi_requests.Session,
-    action_context: str,
-    timeout: int = 30,
-    max_retries: int = 3,
-    lock=None,
-) -> None:
-    # Refresh the current thread's context every call — including on a cache hit, where the
-    # session's request() is already wrapped from an earlier call — since wrapped_request reads
-    # it dynamically rather than closing over a single caller's action_context/lock forever.
-    _retry_context.action_context = action_context
-    _retry_context.lock = lock
+def _patch_session_with_retries(session: cffi_requests.Session, action_context: str, timeout: int = 30) -> None:
+    # Retries are not done here: this wrapper runs on yfinance's own worker threads, which cannot
+    # release the lock their caller holds (AGENTS.md rule 10). It only records a retryable failure on
+    # the session; yahoo_connection_boundary(raise_on_transient=True) turns that into
+    # _TransientNetworkError and the caller backs off outside the lock.
     session._retry_action_context = action_context
     if "_retry_patched" in session.__dict__:
         return
 
     original_request = session.request
-    base_delay = 2.0
+    session._transient_failures = 0
+
+    def record_transient(detail: str) -> None:
+        session._last_transient_error = detail
+        session._transient_failures += 1
 
     def wrapped_request(method, url, **kwargs):
-        action_context = getattr(_retry_context, "action_context", None) or session._retry_action_context
-        lock = getattr(_retry_context, "lock", None)
+        action_context = session._retry_action_context
         kwargs.setdefault("timeout", timeout)
-        for attempt in range(max_retries + 1):
-            try:
-                response = original_request(method, url, **kwargs)
-            except Exception as e:
-                if isinstance(e, _RateLimitedError):
-                    raise
-                error_str = str(e)
-                is_transient = (
-                    type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
-                    or any(term in error_str.lower() for term in [
-                        "timeout", "timed out", "connection reset", "curl: (28)", "(28)",
-                    ])
-                )
-                if is_transient and attempt < max_retries:
-                    sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
-                    logger.warning(
-                        "Transient network error during '%s': %s. Retrying in %.2fs (Attempt %d/%d).",
-                        action_context, error_str, sleep_time, attempt + 1, max_retries,
-                    )
-                    _sleep_outside_lock(sleep_time, lock)
-                    continue
+        try:
+            response = original_request(method, url, **kwargs)
+        except Exception as e:
+            if isinstance(e, _RateLimitedError):
                 raise
-            else:
-                if response.status_code == 429:
-                    _enter_yahoo_rate_limit(action_context)
-                    raise _RateLimitedError("HTTP 429. URL: %s" % url)
-                if response.status_code >= 500:
-                    if attempt < max_retries:
-                        sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
-                        logger.warning(
-                            "Transient network error during '%s': HTTP %d from Yahoo Finance. Retrying in %.2fs (Attempt %d/%d).",
-                            action_context, response.status_code, sleep_time, attempt + 1, max_retries,
-                        )
-                        _sleep_outside_lock(sleep_time, lock)
-                        continue
-                    raise _TransientHTTPError(
-                        "HTTP %d from Yahoo Finance during '%s' after %d attempts. URL: %s"
-                        % (response.status_code, action_context, max_retries + 1, url)
-                    )
-                return response
+            error_str = str(e)
+            if (
+                type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
+                or any(term in error_str.lower() for term in [
+                    "timeout", "timed out", "connection reset", "curl: (28)", "(28)",
+                ])
+            ):
+                record_transient(error_str)
+            raise
+        if response.status_code == 429:
+            _enter_yahoo_rate_limit(action_context)
+            raise _RateLimitedError("HTTP 429. URL: %s" % url)
+        if response.status_code >= 500:
+            record_transient("HTTP %d from Yahoo Finance" % response.status_code)
+            raise _TransientHTTPError(
+                "HTTP %d from Yahoo Finance during '%s'. URL: %s" % (response.status_code, action_context, url)
+            )
+        return response
 
     session.request = wrapped_request
     session._retry_patched = True
@@ -536,7 +522,7 @@ def _cached_plain_session(cache_key: str, factory) -> cffi_requests.Session:
 
 
 @contextmanager
-def yahoo_connection_boundary(action_context: str, lock=None):
+def yahoo_connection_boundary(action_context: str, lock=None, raise_on_transient: bool = False):
     _maybe_restore_latch()
     _ensure_yf_error_filter()
     config = load_config()
@@ -562,22 +548,33 @@ def yahoo_connection_boundary(action_context: str, lock=None):
         session = _cached_plain_session(
             f"ipv6:{ipv6_addr}", lambda: cffi_requests.Session(impersonate="chrome", interface=ipv6_addr)
         )
-        _patch_session_with_retries(session, action_context, lock=lock)
+        _patch_session_with_retries(session, action_context)
         is_cached_session = True
     else:
         session = _cached_plain_session("ipv4", lambda: cffi_requests.Session(impersonate="chrome"))
-        _patch_session_with_retries(session, action_context, lock=lock)
+        _patch_session_with_retries(session, action_context)
         is_cached_session = True
 
     stat_status = "success"
     _yf_logged_error_local.count = 0
+    failures_before = getattr(session, "_transient_failures", 0)
+
+    def transient_failure():
+        if raise_on_transient and getattr(session, "_transient_failures", 0) > failures_before:
+            return _TransientNetworkError(getattr(session, "_last_transient_error", "transient network error"))
+        return None
+
     try:
         yield session
+        if (failure := transient_failure()) is not None:
+            raise failure
     except _RateLimitedError:
         stat_status = "429"
         raise
-    except Exception:
+    except Exception as e:
         stat_status = "error"
+        if not isinstance(e, _TransientNetworkError) and (failure := transient_failure()) is not None:
+            raise failure from e
         raise
     finally:
         if not is_cached_session:
