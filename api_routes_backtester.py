@@ -1,13 +1,13 @@
 import logging
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Path as PathParam, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Path as PathParam, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import list_scope_accounts_with_values
-from api_deps import _error_500, limiter
+from api_deps import _error_500, limiter, refuse_writes_during_restore
 from config import BASE_CURRENCY
 from strategy_backtest_data import (
     COST_PRESETS,
@@ -138,7 +138,7 @@ async def api_backtester_prepare_history(request: Request, req: PrepareHistoryRe
         return _error_500(e)
 
 
-@backtester_router.post("/strategy-backtester/run")
+@backtester_router.post("/strategy-backtester/run", dependencies=[Depends(refuse_writes_during_restore)])
 @limiter.limit("10/minute")
 async def api_backtester_run(request: Request, req: StrategyBacktestRunRequest, background_tasks: BackgroundTasks):
     """Validates the request, saves a queued run and computes it in the background; poll GET /runs/{run_id}."""

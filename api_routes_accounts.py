@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -32,7 +32,7 @@ import notification_engine
 from db_account_reminders import (
     create_reminder, delete_reminder, get_reminder, get_reminders, resolve_pending_reminder, update_reminder,
 )
-from api_deps import FiniteModel, job_busy_response, limiter, _error_500
+from api_deps import FiniteModel, job_busy_response, limiter, refuse_writes_during_restore, _error_500
 from config import load_config
 from constants import ACCOUNT_NAME_MAX_CHARS, CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
 from data_engine import fetch_and_save_single_ticker
@@ -80,7 +80,7 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-accounts_router = APIRouter()
+accounts_router = APIRouter(dependencies=[Depends(refuse_writes_during_restore)])
 
 _TXN_TYPES = frozenset({"Buy", "Sell", "Fee", "Dividend", "Interest", "Cash", "Transfer"})
 _ACCOUNT_TYPES = frozenset({"Trading", "House", "Pension", "Watchlist"})

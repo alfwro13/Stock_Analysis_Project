@@ -16,9 +16,9 @@ from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any, List, Literal, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
+from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from api_deps import FiniteModel, job_busy_response, limiter, _error_500
+from api_deps import FiniteModel, job_busy_response, limiter, refuse_writes_during_restore, _error_500
 from constants import (
     OPTION_LEGS_MAX, TABLE_COLUMN_KEY_MAX_CHARS, TABLE_COLUMN_KEYS_MAX, TABLE_FILTER_CONDITIONS_MAX,
     TABLE_FILTER_VALUE_MAX_CHARS, TABLE_VIEW_NAME_MAX_CHARS, TABLE_VIEWS_MAX,
@@ -125,7 +125,7 @@ class TickerNoteRequest(BaseModel):
     note_text: str = Field(..., min_length=1, max_length=1000)
 
 
-@api_router.post("/watchlist/add")
+@api_router.post("/watchlist/add", dependencies=[Depends(refuse_writes_during_restore)])
 async def api_watchlist_add(req: TickerRequest, background_tasks: BackgroundTasks):
     ticker = normalize_ticker(req.ticker)
     if not is_valid_ticker(ticker):

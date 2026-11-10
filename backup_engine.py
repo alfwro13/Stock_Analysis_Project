@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 import db_mcp_oauth
 from config import BASE_DIR, DATA_DIR, DB_PATH, load_config
-from database import get_connection
+from database import DatabaseInUse, database_swap_gate, get_connection
 from notification_engine import notify
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,13 @@ _HISTORY_COLUMNS = (
 
 
 class RestoreRefused(ValueError):
+    pass
+
+
+RESTORE_BUSY_MESSAGE = "Cannot restore: the dashboard still has database connections open. Try again in a moment."
+
+
+class RestoreBusy(RestoreRefused):
     pass
 
 
@@ -387,6 +394,17 @@ def _forget_remote_access(revoked: Optional[int]) -> None:
         audit.record_action(f"restore: {revoked} grants revoked")
 
 
+@contextlib.contextmanager
+def _quiesced_database():
+    """Holds the database connection gate across the extraction and the swap, so a request or refresh connection never spans the file replacement; refuses before any live file changes when connections stay open."""
+    try:
+        with database_swap_gate():
+            yield
+    except DatabaseInUse as e:
+        logger.warning("Restore refused: %s", e)
+        raise RestoreBusy(RESTORE_BUSY_MESSAGE) from e
+
+
 def _swap_database(staged: Path) -> None:
     sidecars = [Path(str(DB_PATH) + suffix) for suffix in _DB_SIDECARS]
     for sidecar in sidecars:
@@ -453,14 +471,17 @@ def _apply_archive(local_copy: Path, adopted_row: Optional[dict]) -> None:
         try:
             revoked = _revoke_remote_access(staged) if staged else None
             history = _read_backup_history() if staged else []
-            tar.extractall(path=BASE_DIR, members=to_extract, filter="data")
             if staged:
-                _swap_database(staged)
-                staged = None
+                with _quiesced_database():
+                    tar.extractall(path=BASE_DIR, members=to_extract, filter="data")
+                    _swap_database(staged)
+                    staged = None
                 _merge_backup_history(history + ([adopted_row] if adopted_row else []))
                 _forget_remote_access(revoked)
-            elif adopted_row:
-                _record_backup_history(**adopted_row)
+            else:
+                tar.extractall(path=BASE_DIR, members=to_extract, filter="data")
+                if adopted_row:
+                    _record_backup_history(**adopted_row)
         finally:
             if staged:
                 staged.unlink(missing_ok=True)

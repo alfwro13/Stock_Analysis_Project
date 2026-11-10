@@ -48,7 +48,9 @@ _active_jobs: dict[str, str] = {}
 _active_job_ids: dict[str, str] = {}
 _running_job_runs: dict[str, int] = {}
 _restore_in_progress = False
+_pending_restarts = 0
 RESTORE_ACTIVITY_NAME = "Backup & Recovery restore"
+RESTART_ACTIVITY_NAME = "Service restart"
 _active_jobs_lock = _threading.Lock()
 _job_execution_context = _threading.local()
 
@@ -75,6 +77,20 @@ def is_job_running(job_id: str) -> bool:
 def restore_in_progress() -> bool:
     with _active_jobs_lock:
         return _restore_in_progress
+
+def claim_restart() -> bool:
+    """Registers a queued restart unless a restore is running; the restore refuses to start while one is registered, under the same lock."""
+    global _pending_restarts
+    with _active_jobs_lock:
+        if _restore_in_progress:
+            return False
+        _pending_restarts += 1
+        return True
+
+def release_restart() -> None:
+    global _pending_restarts
+    with _active_jobs_lock:
+        _pending_restarts = max(0, _pending_restarts - 1)
 
 def get_active_job_average_durations() -> dict[str, float | None]:
     with _active_jobs_lock:
@@ -1246,6 +1262,8 @@ def scheduler_quiesced():
     with _active_jobs_lock:
         if _restore_in_progress:
             running = {RESTORE_ACTIVITY_NAME: ""}
+        elif _pending_restarts:
+            running = {RESTART_ACTIVITY_NAME: ""}
         else:
             running = dict(_active_jobs)
             for run_job_id in _running_job_runs:

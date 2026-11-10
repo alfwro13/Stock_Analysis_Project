@@ -233,6 +233,7 @@ class TestSchedulerQuiesced:
             _sched_module._active_jobs.clear()
             _sched_module._running_job_runs.clear()
             _sched_module._restore_in_progress = False
+            _sched_module._pending_restarts = 0
 
     @pytest.fixture
     def live_scheduler(self):
@@ -308,6 +309,32 @@ class TestSchedulerQuiesced:
             assert _sched_module.restore_in_progress()
             assert live_scheduler.state == STATE_PAUSED
         assert not _sched_module.restore_in_progress()
+
+    def test_a_queued_restart_blocks_the_claim_and_touches_nothing(self, live_scheduler):
+        from apscheduler.schedulers.base import STATE_RUNNING
+        assert _sched_module.claim_restart()
+        with _sched_module.scheduler_quiesced() as running:
+            assert list(running) == [_sched_module.RESTART_ACTIVITY_NAME]
+            assert not _sched_module.restore_in_progress()
+            assert live_scheduler.state == STATE_RUNNING
+        _sched_module.release_restart()
+        with _sched_module.scheduler_quiesced() as running:
+            assert running == {}
+
+    def test_a_restart_cannot_be_claimed_during_a_restore(self, live_scheduler):
+        with _sched_module.scheduler_quiesced():
+            assert not _sched_module.claim_restart()
+        assert _sched_module.claim_restart()
+
+    def test_every_queued_restart_must_be_released(self, live_scheduler):
+        assert _sched_module.claim_restart() and _sched_module.claim_restart()
+        _sched_module.release_restart()
+        with _sched_module.scheduler_quiesced() as running:
+            assert list(running) == [_sched_module.RESTART_ACTIVITY_NAME]
+        _sched_module.release_restart()
+        _sched_module.release_restart()
+        with _sched_module.scheduler_quiesced() as running:
+            assert running == {}
 
     def test_a_job_run_that_has_not_reached_the_active_list_blocks_the_claim(self, live_scheduler):
         with _sched_module._active_jobs_lock:

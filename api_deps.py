@@ -50,15 +50,28 @@ API_KEY_ROUTES = frozenset({
 })
 
 
-def restore_busy_response():
-    """409 while a backup restore swaps live files; a trigger or restart started then would write to, or kill the process holding, files being replaced."""
+class RestoreInProgress(Exception):
+    pass
+
+
+def restore_busy_response(force: bool = False):
+    """409 while a backup restore swaps live files; a trigger or restart started then would write to, or kill the process holding, files being replaced. `force` answers it for a caller that already knows a restore claimed the slot."""
     from scheduler_engine import restore_in_progress
-    if not restore_in_progress():
+    if not force and not restore_in_progress():
         return None
     return JSONResponse(status_code=409, content={
         "status": "busy",
         "message": "A backup restore is in progress. Wait for it to finish, then try again.",
     })
+
+
+def refuse_writes_during_restore(request: Request) -> None:
+    """Router dependency: a change accepted while the database file is about to be replaced would be silently lost, and a task it queues would run against a half-restored tree."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    from scheduler_engine import restore_in_progress
+    if restore_in_progress():
+        raise RestoreInProgress()
 
 
 def job_busy_response(job_id: str):

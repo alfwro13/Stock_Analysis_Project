@@ -22,7 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette_csrf import CSRFMiddleware
 
 from config import ALLOWED_HOSTS, BASE_DIR, BIND_HOST, FRAME_ANCESTORS, MCP_PUBLIC_HOST, PORT, SERVER_URL, load_config
-from api_deps import API_KEY_ROUTES
+from api_deps import API_KEY_ROUTES, RestoreInProgress, restore_busy_response
 from auth import COOKIE_NAME, cookie_secure, verify_session_token, verify_embed_token
 from api_routes import limiter
 from database import init_db
@@ -208,6 +208,13 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
 
 
 app.add_exception_handler(RequestValidationError, _validation_error_handler)
+
+
+async def _restore_in_progress_handler(request: Request, exc: RestoreInProgress) -> JSONResponse:
+    return restore_busy_response(force=True)
+
+
+app.add_exception_handler(RestoreInProgress, _restore_in_progress_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CSRFMiddleware,

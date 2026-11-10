@@ -566,35 +566,43 @@ def _run_dependency_install(command: list[str]) -> str | None:
 
 
 async def execute_restart():
+    from scheduler_engine import release_restart
     global _requirements_changed_pending
-    if await asyncio.to_thread(_reinstall_needed):
-        if not _dependency_install_lock.acquire(blocking=False):
-            return
-        try:
-            command = pip_install_command()
-            shell_command = shlex.join(command)
-            _dependency_install.update(state="running", command=shell_command)
-            error = await asyncio.to_thread(_run_dependency_install, command)
-            if error is not None:
-                _dependency_install["state"] = "failed"
-                logger.error("pip install before restart failed: %s", error)
-                notify(
-                    "system_update_status", "Error",
-                    "Dependency installation failed, so the service was not restarted.\n\n"
-                    f"Run this in a shell on the server, then restart the service:\n{shell_command}\n\n{error}",
-                    level="error",
-                )
+    killing = False
+    try:
+        if await asyncio.to_thread(_reinstall_needed):
+            if not _dependency_install_lock.acquire(blocking=False):
                 return
-            _requirements_changed_pending = False
-            _dependency_install["state"] = "restarting"
-            notify("system_update_status", "Success", "Dependencies were reinstalled before restart.")
-        finally:
-            _dependency_install_lock.release()
-    await asyncio.sleep(2)
-    os.kill(os.getpid(), signal.SIGTERM)
+            try:
+                command = pip_install_command()
+                shell_command = shlex.join(command)
+                _dependency_install.update(state="running", command=shell_command)
+                error = await asyncio.to_thread(_run_dependency_install, command)
+                if error is not None:
+                    _dependency_install["state"] = "failed"
+                    logger.error("pip install before restart failed: %s", error)
+                    notify(
+                        "system_update_status", "Error",
+                        "Dependency installation failed, so the service was not restarted.\n\n"
+                        f"Run this in a shell on the server, then restart the service:\n{shell_command}\n\n{error}",
+                        level="error",
+                    )
+                    return
+                _requirements_changed_pending = False
+                _dependency_install["state"] = "restarting"
+                notify("system_update_status", "Success", "Dependencies were reinstalled before restart.")
+            finally:
+                _dependency_install_lock.release()
+        await asyncio.sleep(2)
+        killing = True
+        os.kill(os.getpid(), signal.SIGTERM)
+    finally:
+        if not killing:
+            release_restart()
 
 
 def _queue_restart(background_tasks: BackgroundTasks, message: str) -> JSONResponse:
+    from scheduler_engine import claim_restart
     restoring = restore_busy_response()
     if restoring is not None:
         return restoring
@@ -604,6 +612,8 @@ def _queue_restart(background_tasks: BackgroundTasks, message: str) -> JSONRespo
             "message": "Dependencies are already being installed. The service restarts automatically when the installation finishes.",
         })
     installing = _reinstall_needed()
+    if not claim_restart():
+        return restore_busy_response(force=True)
     background_tasks.add_task(execute_restart)
     if installing:
         message = "Installing updated dependencies before restart. This can take several minutes; the service restarts automatically when it finishes."

@@ -10,7 +10,8 @@ from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 
 import backup_engine
 import scheduler_engine
-from database import get_connection
+import database
+from database import database_swap_gate, get_connection
 
 
 def _cfg(**overrides):
@@ -528,6 +529,51 @@ class TestRestoreBackup:
                 conn.close()
         assert adopted == ("adopted", _sha(path), "success")
 
+    def test_restore_is_refused_and_changes_nothing_while_a_connection_is_open(self, app_tree):
+        path = _craft_archive(
+            app_tree, "backup_20200102_100001.tar.gz",
+            [("data", "dir", None), ("data/restored.txt", "file", "x"), ("data/analysis.db", "file", _db_bytes(app_tree))],
+        )
+        open_connection = get_connection()
+        try:
+            with patch("backup_engine.load_config", return_value=_cfg()), \
+                 patch("backup_engine.database_swap_gate", side_effect=lambda: database_swap_gate(drain_timeout=0.1)):
+                with pytest.raises(backup_engine.RestoreBusy, match="database connections open"):
+                    backup_engine.restore_backup(path.name)
+        finally:
+            open_connection.close()
+        assert not (app_tree / "data" / "restored.txt").exists()
+        assert _live_marker(app_tree) == "original"
+        assert list(app_tree.glob(".restore_*")) == []
+
+    def test_connections_are_held_across_the_extraction_and_the_swap(self, app_tree):
+        path = _craft_archive(
+            app_tree, "backup_20200102_100002.tar.gz",
+            [("data", "dir", None), ("data/restored.txt", "file", "x"), ("data/analysis.db", "file", _db_bytes(app_tree))],
+        )
+        seen = []
+        real_swap = backup_engine._swap_database
+
+        def _swap(staged):
+            seen.append(database._swap_gate_closed)
+            real_swap(staged)
+
+        with patch("backup_engine.load_config", return_value=_cfg()), patch("backup_engine._swap_database", side_effect=_swap):
+            assert backup_engine.restore_backup(path.name)["status"] == "success"
+        assert seen == [True]
+        assert not database._swap_gate_closed
+
+    def test_the_gate_reopens_when_the_swap_fails(self, app_tree):
+        path = _craft_archive(
+            app_tree, "backup_20200102_100003.tar.gz",
+            [("data", "dir", None), ("data/analysis.db", "file", _db_bytes(app_tree))],
+        )
+        with patch("backup_engine.load_config", return_value=_cfg()), \
+             patch("backup_engine._swap_database", side_effect=OSError("disk gone")):
+            assert backup_engine.restore_backup(path.name)["status"] == "error"
+        assert not database._swap_gate_closed
+        get_connection().close()
+
     def test_trusted_archive_without_a_database_is_recorded_in_the_live_history(self, app_tree):
         path = _craft_archive(
             app_tree, "backup_20200101_000006.tar.gz", [("data/restored.txt", "file", "x")], register_hash=False,
@@ -819,6 +865,27 @@ class TestRestoreJobGuard:
 
         assert resp.status_code == 200
         assert seen == [STATE_PAUSED]
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_returns_409_when_the_database_connections_do_not_drain(self, client, step_up_headers, live_scheduler):
+        with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreBusy("raw internal text")):
+            resp = self._post(client, step_up_headers)
+
+        assert resp.status_code == 409
+        assert resp.json() == {"status": "busy", "message": backup_engine.RESTORE_BUSY_MESSAGE}
+        assert live_scheduler.state == STATE_RUNNING
+
+    def test_returns_409_while_a_restart_is_queued(self, client, step_up_headers, live_scheduler):
+        assert scheduler_engine.claim_restart()
+        try:
+            with patch("api_routes_triggers.restore_backup") as restore:
+                resp = self._post(client, step_up_headers)
+        finally:
+            scheduler_engine.release_restart()
+
+        assert resp.status_code == 409
+        assert scheduler_engine.RESTART_ACTIVITY_NAME in resp.json()["message"]
+        restore.assert_not_called()
         assert live_scheduler.state == STATE_RUNNING
 
     def test_resumes_the_scheduler_when_the_restore_is_refused(self, client, step_up_headers, live_scheduler):

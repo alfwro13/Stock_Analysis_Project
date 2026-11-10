@@ -24,7 +24,7 @@ from scheduler_engine import (
     scheduler_quiesced, run_universe_csv_import_scan, log_sched_notification,
 )
 from maintenance_engine import MaintenanceEngine
-from backup_engine import get_backup_status, restore_backup, run_backup
+from backup_engine import RESTORE_BUSY_MESSAGE, RestoreBusy, get_backup_status, restore_backup, run_backup
 from ghostfolio_sync import GhostfolioSyncEngine
 from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
@@ -588,6 +588,8 @@ def trigger_backup_restore(request: Request, body: RestoreBackupRequest):
         if result["status"] == "success":
             return JSONResponse(content=result)
         return JSONResponse(status_code=500, content=result)
+    except RestoreBusy:
+        return JSONResponse(status_code=409, content={"status": "busy", "message": RESTORE_BUSY_MESSAGE})
     except ValueError as e:
         return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
     except Exception as e:
