@@ -803,7 +803,7 @@ def test_cache_only_stale_history_returns_last_good_after_failed_refresh(tmp_pat
 def test_cache_only_history_never_refreshes_excluded_tickers(tmp_path, ticker):
     from data_engine import load_or_fetch_daily_history
 
-    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("config.load_config", return_value={"IGNORED_TICKERS": ["GBP"]}), patch("cache_refresh_helpers.request_cache_refresh") as refresh:
         assert load_or_fetch_daily_history(ticker, cache_only=True) is None
     refresh.assert_not_called()
 
