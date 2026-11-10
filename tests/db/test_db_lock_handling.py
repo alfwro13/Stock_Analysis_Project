@@ -1,5 +1,5 @@
 """
-tests/test_db_lock_handling.py — "database is locked" handling in db/connection.py.
+tests/db/test_db_lock_handling.py — "database is locked" handling in db/connection.py.
 
 Covers the open-write registry that names the holder of the write lock in the log, the
 deferred-write queue that retries a write which lost the lock, and the writers that use it
@@ -11,13 +11,10 @@ outlives a test.
 import gc
 import logging
 import sqlite3
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
 from db import connection as _conn

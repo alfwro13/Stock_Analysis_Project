@@ -1,5 +1,5 @@
 """
-tests/test_01_database_schema.py  ── DATABASE SCHEMA & INTEGRITY
+tests/db/test_01_database_schema.py  ── DATABASE SCHEMA & INTEGRITY
 
 Verifies that:
   • Every expected table was created by init_db()
@@ -12,14 +12,12 @@ No network access required.
 """
 
 import json
-import sys
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # conftest.py redirects database.DB_PATH to the temp test file before this runs.
 # We use database.get_connection() so tests share the same redirected path.
