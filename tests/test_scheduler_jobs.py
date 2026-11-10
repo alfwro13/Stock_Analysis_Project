@@ -72,7 +72,7 @@ class TestRunOvernightQuantScanWiresEarningsDrift:
 class TestRunWeekendEarningsScanSchedulesRetry:
     def test_schedules_retry_when_tickers_failed(self):
         with patch("scheduler_jobs.DataEngine") as mock_engine_cls, \
-             patch("scheduler_jobs.run_earnings_vol_scan", return_value=["GOOGL", "INTC"]) as mock_scan, \
+             patch("scheduler_jobs.run_earnings_vol_scan", return_value={"GOOGL": "a", "INTC": "b"}) as mock_scan, \
              patch("scheduler_jobs._schedule_earnings_vol_retry") as mock_schedule, \
              patch("scheduler_jobs.log_sched_notification"):
             mock_engine_cls.return_value.get_all_tickers.return_value = ["GOOGL", "INTC", "AAPL"]
@@ -83,7 +83,7 @@ class TestRunWeekendEarningsScanSchedulesRetry:
 
     def test_no_retry_scheduled_when_nothing_failed(self):
         with patch("scheduler_jobs.DataEngine") as mock_engine_cls, \
-             patch("scheduler_jobs.run_earnings_vol_scan", return_value=[]), \
+             patch("scheduler_jobs.run_earnings_vol_scan", return_value={}), \
              patch("scheduler_jobs._schedule_earnings_vol_retry") as mock_schedule, \
              patch("scheduler_jobs.log_sched_notification"):
             mock_engine_cls.return_value.get_all_tickers.return_value = ["AAPL"]
@@ -112,16 +112,19 @@ class TestScheduleEarningsVolRetry:
 
 class TestRunEarningsVolRetryJob:
     def test_calls_run_earnings_vol_scan_with_given_tickers(self):
-        with patch("scheduler_jobs.run_earnings_vol_scan", return_value=[]) as mock_scan, \
+        with patch("scheduler_jobs.run_earnings_vol_scan", return_value={}) as mock_scan, \
              patch("scheduler_jobs.log_sched_notification"):
             scheduler_jobs._run_earnings_vol_retry_job(tickers=["GOOGL", "INTC"])
         mock_scan.assert_called_once_with(["GOOGL", "INTC"])
 
     def test_logs_warning_when_tickers_still_fail(self):
-        with patch("scheduler_jobs.run_earnings_vol_scan", return_value=["INTC"]), \
+        with patch("scheduler_jobs.run_earnings_vol_scan",
+                   return_value={"INTC": "Yahoo returned no earnings dates"}), \
              patch("scheduler_jobs.log_sched_notification") as mock_notify:
             scheduler_jobs._run_earnings_vol_retry_job(tickers=["GOOGL", "INTC"])
-        assert any(call.args[0] == "Warning" for call in mock_notify.call_args_list)
+        warnings = [call.args[1] for call in mock_notify.call_args_list if call.args[0] == "Warning"]
+        assert len(warnings) == 1
+        assert "INTC: Yahoo returned no earnings dates" in warnings[0]
 
 
 class TestRunUpdatePipelineRefreshesUniverseHistoryLast:

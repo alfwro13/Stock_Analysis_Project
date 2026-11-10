@@ -16,7 +16,7 @@ from database import get_account, get_connection, get_ml_inference_tickers, get_
 from db_helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
-from earnings_vol_engine import backfill_earnings_drift_outcomes, log_near_earnings_predictions, run_earnings_vol_scan
+from earnings_vol_engine import backfill_earnings_drift_outcomes, format_failure_reasons, log_near_earnings_predictions, run_earnings_vol_scan
 from market_session_helpers import is_quote_settled
 from freetrade_engine import sync_freetrade_universe
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -370,7 +370,7 @@ def run_weekend_earnings_scan():
         engine = DataEngine()
         all_tickers = engine.get_all_tickers()
         failed_tickers = run_earnings_vol_scan(all_tickers)
-        _schedule_earnings_vol_retry(failed_tickers)
+        _schedule_earnings_vol_retry(list(failed_tickers))
         logger.info("Earnings volatility scan complete.")
         log_sched_notification("Success", "Earnings Volatility Scan completed successfully.")
     except Exception as e:
@@ -416,12 +416,13 @@ def _run_earnings_vol_retry_job(tickers: list) -> None:
         logger.info("Retrying earnings volatility scan for %d previously-failed ticker(s).", len(tickers))
         still_failed = run_earnings_vol_scan(tickers)
         if still_failed:
+            reasons = format_failure_reasons(still_failed)
             logger.warning("Earnings volatility retry: %d ticker(s) still failed after retry: %s",
-                            len(still_failed), still_failed)
+                           len(still_failed), reasons)
             log_sched_notification(
                 "Warning",
                 f"Earnings Volatility retry: {len(still_failed)}/{len(tickers)} ticker(s) still "
-                f"unreachable — will pick up on the next scheduled scan.",
+                f"failed ({reasons}) — will pick up on the next scheduled scan.",
             )
         else:
             log_sched_notification("Success", f"Earnings Volatility retry resolved all {len(tickers)} ticker(s).")
