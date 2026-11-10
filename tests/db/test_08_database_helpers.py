@@ -1,11 +1,12 @@
 """
 tests/db/test_08_database_helpers.py  ── DATABASE HELPER FUNCTION TESTS
 
-Exercises the business logic in db/database.py helper functions:
+Exercises the business logic in the db/helpers.py functions and the lock-retry connection in db/connection.py:
   - log_score_event: upsert with COALESCE on close_price
   - upsert_quant_signal: insert + conflict update semantics
   - get_universe_tickers: FREETRADE_ONLY_MODE filtering
   - batch_update_trap_phase_actuals: single-transaction multi-row update
+  - get_connection: retries past a transient write lock
 """
 
 from unittest.mock import patch
