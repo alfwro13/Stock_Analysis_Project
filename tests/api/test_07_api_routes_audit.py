@@ -1,5 +1,5 @@
 """
-tests/test_07_api_routes_audit.py  ── api/routes.py Audit Regression Tests
+tests/api/test_07_api_routes_audit.py  ── api/routes.py Audit Regression Tests
 
 Covers the bugs found and fixed in the June 2026 api/routes.py audit:
 
@@ -17,7 +17,6 @@ Covers the bugs found and fixed in the June 2026 api/routes.py audit:
 import io
 import json
 import os
-import sys
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -25,7 +24,6 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def _json(resp) -> dict:
@@ -268,7 +266,7 @@ class TestIntradayChartPlaceholders:
 class TestIntradayPlaceholderCss:
     """The CSS classes used by the chart placeholders must be defined in styles.css."""
 
-    STYLES_PATH = Path(__file__).parent.parent / "static" / "css" / "styles.css"
+    STYLES_PATH = Path(__file__).resolve().parents[2] / "static" / "css" / "styles.css"
 
     def _css(self) -> str:
         return self.STYLES_PATH.read_text(encoding="utf-8")

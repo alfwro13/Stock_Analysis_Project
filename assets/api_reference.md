@@ -1571,7 +1571,7 @@ Signs out every browser and device, including the caller's: raises the session e
 3. **Add a row to the table above** (the test below fails if a listed route is missing from it). Update the endpoint's own entry in this file if its authentication note says otherwise.
 4. **Update the integration** (`Stock_Analysis_Project_ha_integration/custom_components/stock_analysis_project/api.py`, then `sensor.py`/`number.py`/`binary_sensor.py`, `const.py`, `strings.json` and `translations/en.json`), its tests, its README, and the endpoint list in its `AGENTS.md`. Both repositories change together; a release of the integration that calls a route the deployed app does not list stops that section updating.
 5. **Update the endpoint lists** that name the integration's calls: `agents/SUBSYSTEM_HOME_ASSISTANT.md` and the Cross-Reference section of the integration's `AGENTS.md` (both are operator-approved edits), and `README.md` if user-visible sensors change.
-6. **Run `tests/test_06_auth.py`.** `TestAuthMiddleware` checks that every listed route is a registered route and that this table matches `API_KEY_ROUTES` exactly.
+6. **Run `tests/api/test_06_auth.py`.** `TestAuthMiddleware` checks that every listed route is a registered route and that this table matches `API_KEY_ROUTES` exactly.
 
 Removing a route from the integration follows the same steps in reverse: drop it from `API_KEY_ROUTES` and the table so the key does not keep access it no longer needs.
 

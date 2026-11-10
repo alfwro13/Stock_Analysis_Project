@@ -185,7 +185,7 @@ Dedup (AGENTS.md rule 19): the first three are exactly-once by their state chang
 
 **MCP Pairing Window Check.** Opening a window arms a one-shot APScheduler job (`mcp_pairing_window_check_job`, `DateTrigger` in UTC, `replace_existing`, so a later window replaces the earlier check). When it fires, `oauth.check_pairing_window(until)` does nothing unless that window is still the stored one and has ended; it announces "Window closed unused" only when no request (of any outcome) was created since the window opened. `reload_scheduler()` removes every job, so it re-arms a window that is still open. A window that ended while the app was down is not reported. Workflow Monitor: the MCP Server node produces `mcp_oauth_requests`; the check job consumes it.
 
-Tests: `tests/mcp_server/test_remote_access.py` (routes, step-up, the waiting page and its status poll), `tests/mcp_server/test_remote_events.py` (registry, the six events, cooldown, the window check and its job). Gated routes are in `_GATED_ROUTES` (`tests/test_06_auth.py`).
+Tests: `tests/mcp_server/test_remote_access.py` (routes, step-up, the waiting page and its status poll), `tests/mcp_server/test_remote_events.py` (registry, the six events, cooldown, the window check and its job). Gated routes are in `_GATED_ROUTES` (`tests/api/test_06_auth.py`).
 
 ## Transport
 

@@ -1,5 +1,5 @@
 """
-tests/test_03_api_post_endpoints.py  ── API POST ENDPOINTS
+tests/api/test_03_api_post_endpoints.py  ── API POST ENDPOINTS
 
 Verifies that every POST endpoint:
   1. Returns HTTP 200 (not a crash)
@@ -22,7 +22,6 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 from starlette.background import BackgroundTasks as _StarletteBackgroundTasks
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -270,7 +269,7 @@ def test_every_manual_job_route_checks_the_running_guard():
     """A route that queues run_manual_job must call job_busy_response in the same function."""
     import ast
     unguarded = []
-    for path in sorted(Path(__file__).parent.parent.glob("api/routes*.py")):
+    for path in sorted(Path(__file__).resolve().parents[2].glob("api/routes*.py")):
         for fn in ast.walk(ast.parse(path.read_text())):
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -1111,9 +1110,6 @@ class TestIntradayDipRadar:
 
     def test_add_monitor_persists_to_db(self, client):
         """After adding, the ticker must appear as active in the DB."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent.parent))
         from db import database as _db
         from datetime import date
 
@@ -1141,9 +1137,6 @@ class TestIntradayDipRadar:
 
     def test_remove_monitor_sets_inactive_in_db(self, client):
         """After removing, is_active must be 0 in the DB."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent.parent))
         from db import database as _db
 
         client.post("/api/intraday-monitor/add", json={"ticker": "META"})
@@ -1167,9 +1160,6 @@ class TestIntradayDipRadar:
 
     def test_add_monitor_idempotent(self, client):
         """Calling add twice for the same ticker must not duplicate the DB row."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent.parent))
         from db import database as _db
 
         client.post("/api/intraday-monitor/add", json={"ticker": "NVDA"})

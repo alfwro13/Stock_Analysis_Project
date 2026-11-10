@@ -1,5 +1,5 @@
 """
-tests/test_06_auth.py  ── Authentication Subsystem Tests
+tests/api/test_06_auth.py  ── Authentication Subsystem Tests
 
 Full coverage of the auth surface:
 
@@ -27,7 +27,6 @@ Design notes
 """
 
 import os
-import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -36,7 +35,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from auth import COOKIE_NAME, create_session_token, hash_password, verify_embed_token, verify_password, verify_session_token
 
@@ -307,7 +305,7 @@ class TestAuthMiddleware:
     def test_api_key_routes_match_the_documented_table(self):
         import re
         from api.deps import API_KEY_ROUTES
-        doc = (Path(__file__).parent.parent / "assets" / "api_reference.md").read_text()
+        doc = (Path(__file__).resolve().parents[2] / "assets" / "api_reference.md").read_text()
         start = doc.index("### API key scope")
         section = doc[start:doc.index("\n### ", start + 1)]
         rows = set(re.findall(r"^\| `(GET|POST|PUT|PATCH|DELETE)` \| `([^`]+)` \|", section, re.M))
