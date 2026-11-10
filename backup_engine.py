@@ -38,6 +38,9 @@ class RestoreRefused(ValueError):
     pass
 
 
+RESTORE_BUSY_MESSAGE = "Cannot restore: the dashboard still has database connections open. Try again in a moment."
+
+
 class RestoreBusy(RestoreRefused):
     pass
 
@@ -399,7 +402,7 @@ def _quiesced_database():
             yield
     except DatabaseInUse as e:
         logger.warning("Restore refused: %s", e)
-        raise RestoreBusy("Cannot restore: the dashboard still has database connections open. Try again in a moment.") from e
+        raise RestoreBusy(RESTORE_BUSY_MESSAGE) from e
 
 
 def _swap_database(staged: Path) -> None:

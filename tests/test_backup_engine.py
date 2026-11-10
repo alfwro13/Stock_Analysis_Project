@@ -868,11 +868,11 @@ class TestRestoreJobGuard:
         assert live_scheduler.state == STATE_RUNNING
 
     def test_returns_409_when_the_database_connections_do_not_drain(self, client, step_up_headers, live_scheduler):
-        with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreBusy("Cannot restore: busy.")):
+        with patch("api_routes_triggers.restore_backup", side_effect=backup_engine.RestoreBusy("raw internal text")):
             resp = self._post(client, step_up_headers)
 
         assert resp.status_code == 409
-        assert resp.json() == {"status": "busy", "message": "Cannot restore: busy."}
+        assert resp.json() == {"status": "busy", "message": backup_engine.RESTORE_BUSY_MESSAGE}
         assert live_scheduler.state == STATE_RUNNING
 
     def test_returns_409_while_a_restart_is_queued(self, client, step_up_headers, live_scheduler):
