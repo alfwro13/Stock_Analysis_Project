@@ -17,6 +17,28 @@ from yahoo_engine import yahoo_engine
 logger = logging.getLogger(__name__)
 
 
+def _past_earnings_dates(earnings_dates: pd.DataFrame) -> pd.DatetimeIndex:
+    index = earnings_dates.index
+    if index.tz is None:
+        index = index.tz_localize(timezone.utc)
+    return index[index < pd.Timestamp.now(tz=timezone.utc)]
+
+
+def format_failure_reasons(reasons: Dict[str, str]) -> str:
+    return "; ".join(f"{ticker}: {reason}" for ticker, reason in reasons.items())
+
+
+def _earnings_history_gap(ticker: str) -> Tuple[str, bool]:
+    """(reason, retryable): only an unanswered Yahoo call can change on a retry; a frame that holds no usable past date cannot."""
+    earnings_dates = yahoo_engine.get_earnings_dates(ticker, limit=10)
+    if earnings_dates is None or earnings_dates.empty:
+        return "Yahoo returned no earnings dates", True
+    past_dates = _past_earnings_dates(earnings_dates)
+    if len(past_dates) == 0:
+        return "Yahoo lists no past earnings dates", False
+    return f"newest past earnings date {past_dates.max():%Y-%m-%d} has no stored price history around it", False
+
+
 def _get_past_earnings_events(ticker: str, offsets: Sequence[int], max_events: int = 4) -> List[dict]:
     """Fetches the ticker's last `max_events` past earnings dates once and returns, per event,
     the pre-earnings close plus the close at each requested trading-day offset. offset<=0 counts
@@ -32,10 +54,7 @@ def _get_past_earnings_events(ticker: str, offsets: Sequence[int], max_events: i
         if earnings_dates is None or earnings_dates.empty:
             return events
 
-        if earnings_dates.index.tz is None:
-            earnings_dates.index = earnings_dates.index.tz_localize(timezone.utc)
-        now = pd.Timestamp.now(tz=timezone.utc)
-        past_dates = earnings_dates[earnings_dates.index < now].index
+        past_dates = _past_earnings_dates(earnings_dates)
         if len(past_dates) == 0:
             return events
 
@@ -295,18 +314,16 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         logger.debug("Error calculating implied straddle: %s", e)
         return None, 0, None
 
-def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
-    """Returns the tickers that were due to be scanned (earnings within 14 days) but couldn't
-    be — a Yahoo fetch failure (network error, or genuinely no data available), not a case
-    correctly skipped by the date-window check. Caller may retry these later rather than
-    waiting a full week for the next scheduled run."""
+def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
+    """{ticker: reason} for tickers due within 14 days that failed in a way a retry can fix; tickers Yahoo answered with no usable earnings history are only logged."""
     ticker_list = filter_equity_tickers(ticker_list)
     total_tickers = len(ticker_list)
     if not ticker_list:
         logger.warning("Ticker list is empty. Aborting scan.")
-        return []
+        return {}
 
-    failed_tickers: List[str] = []
+    failed_tickers: Dict[str, str] = {}
+    unusable_tickers: Dict[str, str] = {}
 
     logger.info("Starting earnings volatility scan for %d assets...", total_tickers)
     log_notification("Info", f"Earnings Volatility Scan initiated for {total_tickers} assets.")
@@ -342,7 +359,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
 
                 if hist.empty or len(hist) < 20:
                     logger.warning("Insufficient underlying price data available for %s. Skipping.", ticker)
-                    failed_tickers.append(ticker)
+                    failed_tickers[ticker] = f"fewer than 20 daily bars of price history ({len(hist)})"
                     continue
 
                 underlying_price = hist['Close'].iloc[-1]
@@ -352,15 +369,15 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
                 historical_hv = hist['Returns'].std() * np.sqrt(252)
 
                 if pd.isna(historical_hv) or historical_hv == 0:
-                    failed_tickers.append(ticker)
+                    failed_tickers[ticker] = "price history has no measurable volatility"
                     continue
 
                 drift = get_historical_earnings_drift(ticker)
                 hist_move_pct = drift.get(1, {}).get("avg_abs_pct")
 
                 if hist_move_pct is None:
-                    logger.debug("No historical earnings-move data for %s. Skipping.", ticker)
-                    failed_tickers.append(ticker)
+                    reason, retryable = _earnings_history_gap(ticker)
+                    (failed_tickers if retryable else unusable_tickers)[ticker] = reason
                     continue
 
                 # Options leg is optional now the page's primary content is drift/ML-band, not
@@ -429,7 +446,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
 
             except Exception as e:
                 logger.error("Error analyzing %s: %s", ticker, e)
-                failed_tickers.append(ticker)
+                failed_tickers[ticker] = f"{type(e).__name__} while analysing"
                 conn.rollback()
             finally:
                 # Wider, randomised gap between tickers — Yahoo's guce.yahoo.com consent gate has
@@ -442,9 +459,12 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> List[str]:
                 pct = int((processed / total_tickers) * 100)
                 log_notification("Info", f"Earnings Volatility Scan Progress: {pct}% ({processed}/{total_tickers} tickers evaluated).")
 
+        if unusable_tickers:
+            logger.info("Earnings volatility scan: %d ticker(s) have no usable earnings history and are not retried: %s",
+                        len(unusable_tickers), format_failure_reasons(unusable_tickers))
         if failed_tickers:
             logger.warning("Earnings volatility scan: %d ticker(s) failed and may need a retry: %s",
-                            len(failed_tickers), failed_tickers)
+                           len(failed_tickers), format_failure_reasons(failed_tickers))
         logger.info("Earnings volatility options scan complete.")
         log_notification("Success", f"Earnings Volatility Options Scan completed successfully across {total_tickers} tracked assets.")
 

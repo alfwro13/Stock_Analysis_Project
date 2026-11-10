@@ -14,8 +14,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import db_helpers
 from earnings_vol_engine import (
+    _earnings_history_gap,
     _get_past_earnings_events,
     backfill_earnings_drift_outcomes,
+    format_failure_reasons,
     get_earnings_drift_accuracy_summary,
     get_historical_earnings_drift,
     get_historical_earnings_move,
@@ -266,13 +268,68 @@ class TestCachedEarningsDateFilter:
              patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
              patch("earnings_vol_engine.yahoo_engine.get_options_expirations", return_value=None):
             failed = run_earnings_vol_scan(["AAPL"])
-        assert failed == ["AAPL"]
+        assert failed == {"AAPL": "Yahoo returned no earnings dates"}
+
+    def test_yahoo_answer_without_past_dates_is_logged_not_retried(self, db_path, caplog):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "FGP.L", in_window)
+        future_only = _fake_earnings_dates([pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=30)])
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=future_only), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
+             caplog.at_level("INFO", logger="earnings_vol_engine"):
+            failed = run_earnings_vol_scan(["FGP.L"])
+        assert failed == {}
+        assert "FGP.L: Yahoo lists no past earnings dates" in caplog.text
+        assert len(_read_all(db_path, "SELECT * FROM earnings_volatility")) == 0
+
+    def test_failed_warning_lists_ticker_and_reason(self, db_path, caplog):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "AAPL", in_window)
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
+             caplog.at_level("WARNING", logger="earnings_vol_engine"):
+            run_earnings_vol_scan(["AAPL"])
+        assert "AAPL: Yahoo returned no earnings dates" in caplog.text
+
+    def test_short_price_history_reason(self, db_path):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "NEWB", in_window)
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist(12)):
+            failed = run_earnings_vol_scan(["NEWB"])
+        assert failed == {"NEWB": "fewer than 20 daily bars of price history (12)"}
+
+    def test_flat_price_history_reason(self, db_path):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "FLAT", in_window)
+        flat = _fake_hist()
+        flat["Close"] = 50.0
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=flat):
+            failed = run_earnings_vol_scan(["FLAT"])
+        assert failed == {"FLAT": "price history has no measurable volatility"}
+
+    def test_exception_reason_names_the_exception_class(self, db_path):
+        in_window = (date.today() + timedelta(days=5)).strftime("%Y-%m-%d")
+        _seed(db_path, "BOOM", in_window)
+        with patch("earnings_vol_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("db_helpers.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("earnings_vol_engine.load_or_fetch_daily_history", return_value=_fake_hist()), \
+             patch("earnings_vol_engine.get_historical_earnings_drift", side_effect=KeyError("x")):
+            failed = run_earnings_vol_scan(["BOOM"])
+        assert failed == {"BOOM": "KeyError while analysing"}
 
     def test_outside_window_ticker_not_in_failed_list(self, db_path):
         far_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
         _seed(db_path, "MSFT", far_date)
         failed = _run(db_path, ["MSFT"])
-        assert failed == []
+        assert failed == {}
 
     def test_successful_scan_returns_empty_failed_list(self, db_path):
         in_window_date = date.today() + timedelta(days=3)
@@ -290,7 +347,7 @@ class TestCachedEarningsDateFilter:
              patch("earnings_vol_engine.get_historical_earnings_drift", return_value=fake_drift), \
              patch("earnings_vol_engine.get_implied_straddle_move", return_value=(None, 0, None)):
             failed = run_earnings_vol_scan(["OK1"])
-        assert failed == []
+        assert failed == {}
 
     def test_full_scan_writes_edge_row_using_cached_date(self, db_path):
         in_window_date = date.today() + timedelta(days=3)
@@ -377,6 +434,29 @@ class TestGetPastEarningsEvents:
     def test_no_earnings_dates_returns_empty(self):
         with patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None):
             assert _get_past_earnings_events("TEST", offsets=[1]) == []
+
+
+class TestEarningsHistoryGap:
+    def test_no_answer_is_retryable(self):
+        with patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=None):
+            assert _earnings_history_gap("TEST") == ("Yahoo returned no earnings dates", True)
+
+    def test_only_future_dates_is_not_retryable(self):
+        future = _fake_earnings_dates([pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=20)])
+        with patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=future):
+            assert _earnings_history_gap("TEST") == ("Yahoo lists no past earnings dates", False)
+
+    def test_past_dates_without_price_history_names_the_newest(self):
+        stale = _fake_earnings_dates(["2022-07-28", "2022-11-03"])
+        with patch("earnings_vol_engine.yahoo_engine.get_earnings_dates", return_value=stale):
+            reason, retryable = _earnings_history_gap("TEST")
+        assert reason == "newest past earnings date 2022-11-03 has no stored price history around it"
+        assert retryable is False
+
+
+class TestFormatFailureReasons:
+    def test_ticker_colon_reason_joined(self):
+        assert format_failure_reasons({"A": "x", "B.L": "y"}) == "A: x; B.L: y"
 
 
 class TestGetHistoricalEarningsMoveUnchanged:
