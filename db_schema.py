@@ -694,7 +694,10 @@ def init_db() -> None:
                 post_event_spy_gap REAL,
                 ai_volatility_warning REAL DEFAULT 0.0,
                 is_event_passed BOOLEAN DEFAULT 0,
-                alert_dispatched BOOLEAN DEFAULT 0
+                alert_dispatched BOOLEAN DEFAULT 0,
+                forecast_text TEXT,
+                previous_text TEXT,
+                actual_text TEXT
             )
         ''')
 
@@ -2205,7 +2208,8 @@ def migrate_db(conn, cursor) -> None:
         'event_name': 'TEXT', 'forecast_val': 'REAL', 'previous_val': 'REAL',
         'actual_val': 'REAL', 'post_event_spy_gap': 'REAL', 'ai_volatility_warning': 'REAL DEFAULT 0.0',
         'is_event_passed': 'BOOLEAN DEFAULT 0', 'alert_dispatched': 'BOOLEAN DEFAULT 0',
-        'ai_consensus_miss_prob': 'REAL'  # Surface standalone RF probability to UI
+        'ai_consensus_miss_prob': 'REAL',  # Surface standalone RF probability to UI
+        'forecast_text': 'TEXT', 'previous_text': 'TEXT', 'actual_text': 'TEXT'
     }
 
     for col_name, data_type in required_calendar_columns.items():

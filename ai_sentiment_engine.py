@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from database import get_connection
-from db_helpers import get_upcoming_macro_events
+from db_helpers import get_upcoming_macro_events, macro_event_value
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ class AISentimentPromptEngine:
             miss_str = f"{miss_prob:.1%}" if miss_prob is not None else "N/A"
             lines.append(
                 f"  - {ev.get('event_name', 'Unknown')} on {ev.get('event_date', '?')}: "
-                f"forecast={ev.get('forecast_val', 'N/A')}, prev={ev.get('previous_val', 'N/A')}, "
+                f"forecast={macro_event_value(ev, 'forecast')}, prev={macro_event_value(ev, 'previous')}, "
                 f"surprise-prob={miss_str}"
             )
         return "\n".join(lines)

@@ -11,7 +11,7 @@ import ta
 
 from config import HISTORICAL_DIR
 from database import get_connection
-from db_helpers import get_upcoming_macro_events, ml_fresh_since, sentiment_fresh_since
+from db_helpers import get_upcoming_macro_events, macro_event_value, ml_fresh_since, sentiment_fresh_since
 from portfolio_service import get_rate_to_base
 from time_engine import now_local, parse_stored_utc
 from regime_engine import get_latest_regime
@@ -327,8 +327,10 @@ class AIPromptEngine:
             if events:
                 lines.append("Upcoming Tier-1 Macro Events (7-Day Radar):")
                 for e in events:
-                    fc = self._fmt_float(e.get('forecast_val'))
-                    prev = self._fmt_float(e.get('previous_val'))
+                    fc, prev = (
+                        v if isinstance(v, str) else self._fmt_float(v)
+                        for v in (macro_event_value(e, 'forecast'), macro_event_value(e, 'previous'))
+                    )
                     lines.append(
                         f"  - [{e.get('event_date')}] {e.get('currency')} "
                         f"{e.get('event_name')} (Est: {fc} | Prev: {prev})"

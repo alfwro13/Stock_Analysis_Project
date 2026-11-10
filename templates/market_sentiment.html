@@ -59,7 +59,7 @@
                 {% endif %}
             </span>
             <span class="ue-insight">
-                <span>Est: <span class="text-white">{{ evt.forecast_val }}</span> | Prev: <span class="text-white">{{ evt.previous_val }}</span></span>
+                <span>Est: <span class="text-white">{{ evt.forecast_display }}</span> | Prev: <span class="text-white">{{ evt.previous_display }}</span></span>
                 {% if evt.insight %}
                 <span class="text-accent-cyan">{{ evt.insight }}</span>
                 {% endif %}
@@ -301,9 +301,9 @@
                             {% endif %}
                         </td>
                         <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
-                            {{ row.forecast_val }}
+                            {{ row.forecast_display }}
                         </td>
-                        <td>{{ row.previous_val }}</td>
+                        <td>{{ row.previous_display }}</td>
                         <td class="text-sm text-accent-cyan">
                             {{ row.insight }}
                             {% if row.ai_consensus_miss_prob is not none %}
@@ -444,9 +444,9 @@
                             {% endif %}
                         </td>
                         <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
-                            {{ row.forecast_val }}
+                            {{ row.forecast_display }}
                         </td>
-                        <td>{{ row.previous_val }}</td>
+                        <td>{{ row.previous_display }}</td>
                         <td class="text-sm text-accent-cyan">
                             {{ row.insight }}
                             {% if row.ai_consensus_miss_prob is not none %}

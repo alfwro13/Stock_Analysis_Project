@@ -26,7 +26,7 @@ _UNITS = {
     "days": f"size of the look-ahead window, 1 to {MCP_CALENDAR_MAX_DAYS}; today counts as day 0 and the last day is included; each list holds at most {MCP_CALENDAR_MAX_ROWS} rows, soonest first, and truncated says more matched",
     "earnings": "next earnings date of each held (list portfolio) or watched-only (list watchlist) ticker, from the nightly Quant Scan (Yahoo); date is YYYY-MM-DD, days_until counts from today (UTC). A ticker with no known date is left out. A date Yahoo has not confirmed can move",
     "ex_dividends": "ex-dividend date of the same tickers, as Yahoo last reported it: only dates from today on are listed, and a company that has not announced its next ex-date is left out, so an empty list does not mean no dividend is coming. date is YYYY-MM-DD",
-    "macro_events": "High-impact US (USD) and UK (GBP) releases and central-bank decisions, from the Macroeconomic Automation Schedulers (Calendar) job, which reads a feed of the current week only. at is UTC time YYYY-MM-DDTHH:MM:SSZ. forecast, previous and actual are in the release's own unit (percent, thousands, an index level); actual is null until released",
+    "macro_events": "High-impact US (USD) and UK (GBP) releases and central-bank decisions, from the Macroeconomic Automation Schedulers (Calendar) job, which reads a feed of the current week only. at is UTC time YYYY-MM-DDTHH:MM:SSZ. forecast, previous and actual are in the release's own unit (percent, thousands, an index level); actual is null until released. A central-bank vote split such as 7-0-2 is not a number: that field is null and forecast_text, previous_text or actual_text carries the split as written (the _text fields are left out when empty)",
     "macro_events.ai_consensus_miss_probability": "0-1: the dashboard's model of how likely the release is to miss the consensus forecast; null when the model has not scored the event (it scores the next 48 hours)",
     "macro_events.ai_volatility_forecast_pct": "the dashboard's model of the absolute S&P 500 move after the release, in percent, direction unknown; null with the probability",
     "<part>.as_of": "the oldest source time behind that part (the last update of the stock rows, or the last Macro Calendar run); stale is true when it is older than 5 days for tickers, 2 days for macro events",
@@ -72,6 +72,7 @@ def _macro(start: str, end: str, last_day: str, missing: list) -> tuple:
         {
             "at": iso_from_stored_utc(e["event_date"]), "currency": e["currency"], "impact": e["impact"], "name": e["event_name"],
             "forecast": e["forecast_val"], "previous": e["previous_val"], "actual": e["actual_val"],
+            **{f"{field}_text": e[f"{field}_text"] for field in ("forecast", "previous", "actual") if e[f"{field}_text"] is not None},
             "ai_consensus_miss_probability": e["ai_consensus_miss_prob"],
             "ai_volatility_forecast_pct": None if e["ai_consensus_miss_prob"] is None else e["ai_volatility_warning"],
         }

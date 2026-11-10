@@ -10,6 +10,7 @@ Tests for deterministic pure functions:
 """
 
 import hashlib
+import logging
 import sqlite3
 import sys
 import tempfile
@@ -23,7 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import datetime, timezone
 
-from macro_calendar_engine import clean_value, generate_event_id, upsert_calendar_events
+from macro_calendar_engine import (
+    clean_value, fetch_and_process_calendar, generate_event_id, upsert_calendar_events, vote_split_text,
+)
 from time_engine import localize_naive_to_utc
 
 
@@ -52,6 +55,17 @@ class TestCleanValue:
     def test_non_parseable_returns_none(self, val):
         assert clean_value(val) is None
 
+    @pytest.mark.parametrize("val", ["7-0-2", "3-0-6", "9-0", " 7-0-2 "])
+    def test_vote_split_is_none_without_a_warning(self, val, caplog):
+        with caplog.at_level(logging.WARNING, logger="macro_calendar_engine"):
+            assert clean_value(val, "BoE Monetary Policy Summary") is None
+        assert caplog.records == []
+
+    def test_unparseable_value_warning_names_the_event(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="macro_calendar_engine"):
+            assert clean_value("abc", "German Ifo") is None
+        assert "'abc'" in caplog.text and "'German Ifo'" in caplog.text
+
     def test_strips_whitespace_before_parsing(self):
         assert clean_value("  3.5%  ") == pytest.approx(3.5)
 
@@ -60,6 +74,45 @@ class TestCleanValue:
 
     def test_negative_thousands(self):
         assert clean_value("-200K") == pytest.approx(-200_000.0)
+
+
+class TestVoteSplitText:
+
+    @pytest.mark.parametrize("val, expected", [
+        ("7-0-2", "7-0-2"), (" 3-0-6 ", "3-0-6"), ("9-0", "9-0"),
+    ])
+    def test_vote_splits_are_returned_as_written(self, val, expected):
+        assert vote_split_text(val) == expected
+
+    @pytest.mark.parametrize("val", [None, "", "-", "-0.5", "3.1%", "250K", "1-2-3-4", "7-0-x", "abc", 42])
+    def test_other_values_are_not_vote_splits(self, val):
+        assert vote_split_text(val) is None
+
+
+_FEED_XML = """<weeklyevents>
+<event><title>MPC Vote</title><country>GBP</country><date>06-18-2026</date><time>11:00am</time><impact>High</impact>
+<forecast>7-0-2</forecast><previous>3-0-6</previous><actual></actual></event>
+<event><title>CPI y/y</title><country>USD</country><date>06-18-2026</date><time>8:30am</time><impact>High</impact>
+<forecast>3.1%</forecast><previous>3.0%</previous><actual></actual></event>
+</weeklyevents>"""
+
+
+class TestFetchAndProcessCalendar:
+
+    def _events(self):
+        response = type("R", (), {"content": _FEED_XML.encode(), "raise_for_status": lambda self: None})()
+        with patch("macro_calendar_engine.requests.get", return_value=response):
+            return {row[4]: row for row in fetch_and_process_calendar()}
+
+    def test_vote_split_goes_to_the_text_columns_and_leaves_the_numbers_null(self):
+        row = self._events()["MPC Vote"]
+        assert row[5:8] == (None, None, None)
+        assert row[12:15] == ("7-0-2", "3-0-6", None)
+
+    def test_numeric_values_leave_the_text_columns_null(self):
+        row = self._events()["CPI y/y"]
+        assert row[5] == pytest.approx(3.1) and row[6] == pytest.approx(3.0)
+        assert row[12:15] == (None, None, None)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -132,7 +185,10 @@ _CAL_DDL = """
         post_event_spy_gap REAL,
         ai_volatility_warning REAL,
         is_event_passed   INTEGER DEFAULT 0,
-        alert_dispatched  INTEGER DEFAULT 0
+        alert_dispatched  INTEGER DEFAULT 0,
+        forecast_text     TEXT,
+        previous_text     TEXT,
+        actual_text       TEXT
     )
 """
 
@@ -150,9 +206,11 @@ def cal_db_path(tmp_path):
 def _make_row(event_id="abc", event_date="2026-06-07 08:30:00",
               currency="USD", event_name="CPI",
               forecast=3.1, previous=3.0, actual=None,
-              spy_gap=None, ai_warn=0, is_passed=0, dispatched=0):
+              spy_gap=None, ai_warn=0, is_passed=0, dispatched=0,
+              forecast_text=None, previous_text=None, actual_text=None):
     return (event_id, event_date, currency, "High", event_name,
-            forecast, previous, actual, spy_gap, ai_warn, is_passed, dispatched)
+            forecast, previous, actual, spy_gap, ai_warn, is_passed, dispatched,
+            forecast_text, previous_text, actual_text)
 
 
 def _query(db_path, sql, params=()):
@@ -212,3 +270,22 @@ class TestUpsertCalendarEvents:
             upsert_calendar_events([_make_row(actual=3.8)])
         row = _query(cal_db_path, "SELECT actual_val FROM macro_calendar WHERE event_id='abc'")
         assert row["actual_val"] == pytest.approx(3.8)
+
+    def test_vote_split_text_is_stored_and_refreshed(self, cal_db_path):
+        def _conn():
+            return sqlite3.connect(cal_db_path)
+        with patch("macro_calendar_engine.get_connection", side_effect=_conn):
+            upsert_calendar_events([_make_row(forecast=None, previous=None, forecast_text="7-0-2", previous_text="3-0-6")])
+            upsert_calendar_events([_make_row(forecast=None, previous=None, forecast_text="8-0-1", previous_text="3-0-6")])
+        row = _query(cal_db_path, "SELECT * FROM macro_calendar WHERE event_id='abc'")
+        assert (row["forecast_text"], row["previous_text"]) == ("8-0-1", "3-0-6")
+        assert row["forecast_val"] is None
+
+    def test_coalesce_preserves_existing_actual_text(self, cal_db_path):
+        def _conn():
+            return sqlite3.connect(cal_db_path)
+        with patch("macro_calendar_engine.get_connection", side_effect=_conn):
+            upsert_calendar_events([_make_row(actual=None, actual_text="6-0-3")])
+            upsert_calendar_events([_make_row(actual=None, actual_text=None)])
+        row = _query(cal_db_path, "SELECT actual_text FROM macro_calendar WHERE event_id='abc'")
+        assert row["actual_text"] == "6-0-3"

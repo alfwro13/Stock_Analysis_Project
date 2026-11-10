@@ -253,6 +253,13 @@ def test_macro_regimes_has_required_columns():
 
 
 @pytest.mark.db
+def test_macro_calendar_has_vote_split_text_columns():
+    """Central-bank vote splits ('7-0-2') are not numbers, so they live in text columns beside the REAL ones."""
+    cols = _columns("macro_calendar")
+    assert {"forecast_val", "previous_val", "actual_val", "forecast_text", "previous_text", "actual_text"} <= cols
+
+
+@pytest.mark.db
 def test_macro_indicators_has_new_rate_columns():
     """macro_indicators must include Fed funds rate, TIPS real yield, and UK base rate."""
     cols = _columns("macro_indicators")
