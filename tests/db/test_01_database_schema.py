@@ -999,3 +999,27 @@ def test_account_transactions_has_account_date_index():
         assert sum(1 for r in rows if r["name"] == "idx_account_transactions_account_date") == 1
     finally:
         conn.close()
+
+
+@pytest.mark.db
+def test_migrate_db_removes_exchange_test_symbols_from_the_universe_tables_and_keeps_real_tickers():
+    tables = ("market_universe", "stock_signals", "ticker_metadata", "asset_profiles")
+    conn = _conn()
+    try:
+        cursor = conn.cursor()
+        for table in tables:
+            for ticker in ("ATEST", "CTEST-E", "ZZLR13KEEP"):
+                conn.execute(f"INSERT OR REPLACE INTO {table} (ticker) VALUES (?)", (ticker,))
+        conn.commit()
+
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+
+        for table in tables:
+            left = {r["ticker"] for r in conn.execute(f"SELECT ticker FROM {table} WHERE ticker IN ('ATEST', 'CTEST-E', 'ZZLR13KEEP')")}
+            assert left == {"ZZLR13KEEP"}, table
+    finally:
+        for table in tables:
+            conn.execute(f"DELETE FROM {table} WHERE ticker IN ('ATEST', 'CTEST-E', 'ZZLR13KEEP')")
+        conn.commit()
+        conn.close()

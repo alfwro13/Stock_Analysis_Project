@@ -4,6 +4,7 @@ tests/test_quant_signals.py
 Unit tests for quant_signals.QuantEngine.run_all() business logic.
 """
 
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -13,6 +14,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
+import quant_signals
 from quant_signals import QuantEngine
 
 
@@ -294,3 +296,17 @@ class TestEducationalNotesEscapeExternalValues:
                 conn.commit()
             finally:
                 conn.close()
+
+
+class TestPartialSkipWarning:
+    def test_warns_once_per_ticker_then_demotes_to_debug(self, caplog):
+        quant_signals._PARTIAL_SKIP_WARNED.discard("ZZPSKIP.L")
+        try:
+            with caplog.at_level(logging.DEBUG, logger="quant_signals"):
+                quant_signals._log_partial_skip("ZZPSKIP.L")
+                quant_signals._log_partial_skip("ZZPSKIP.L")
+            levels = [r.levelno for r in caplog.records if "ZZPSKIP.L" in r.getMessage()]
+            assert levels == [logging.WARNING, logging.DEBUG]
+        finally:
+            quant_signals._PARTIAL_SKIP_WARNED.discard("ZZPSKIP.L")
+
