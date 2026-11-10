@@ -603,6 +603,52 @@ class TestQuoteSnapshotSessionTagging:
         assert row["market_state"] == "REGULAR"
 
 
+class TestImplausibleQuoteGuard:
+    def teardown_method(self):
+        _clear_cache(NORMAL_TICKER)
+
+    def test_tripped_guard_skips_the_write_and_logs_the_snapshot_and_parquet_fields(self, caplog):
+        daily = _flat_daily_df([100.0, 101.0])
+        snap = _snapshot(
+            171.4, regular_change=70.4, regular_change_pct=69.7, market_state="CLOSED",
+            regular_previous_close=101.0,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, pd.DataFrame())
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap), \
+             caplog.at_level("WARNING", logger="market_pulse_write"):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        assert _read_cache(NORMAL_TICKER) is None
+        message = next(r.getMessage() for r in caplog.records if "implausible daily change" in r.getMessage())
+        assert "69.7%" in message
+        assert "price=171.4" in message and "change=70.4" in message
+        assert "regular_previous_close=101.0" in message and "market_state=CLOSED" in message
+        assert "101.0" in message.split("daily_closes=")[1] and "100.0" in message.split("daily_closes=")[1]
+
+    def test_fallback_quote_logs_no_previous_close(self, caplog):
+        daily = _flat_daily_df([100.0, 160.0])
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, pd.DataFrame())
+        with p1, p2, caplog.at_level("WARNING", logger="market_pulse_write"):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        assert _read_cache(NORMAL_TICKER) is None
+        assert "regular_previous_close=None" in caplog.text
+
+    def test_plausible_quote_is_written_without_a_warning(self, caplog):
+        daily = _flat_daily_df([100.0, 101.0])
+        snap = _snapshot(
+            102.0, regular_change=1.0, regular_change_pct=0.99, market_state="REGULAR",
+            regular_previous_close=101.0,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, pd.DataFrame())
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap), \
+             caplog.at_level("WARNING", logger="market_pulse_write"):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        assert _read_cache(NORMAL_TICKER)["price"] == pytest.approx(102.0)
+        assert "implausible" not in caplog.text
+
+
 class TestFallbackSingleHistory:
     """Mutual fund real-world path: get_price_history empty, get_single_ticker_history fallback must compute correct change."""
 

@@ -41,6 +41,7 @@ class _Quote(NamedTuple):
     extended_change_pts: Optional[float] = None
     extended_change_pct: Optional[float] = None
     extended_session: Optional[str] = None
+    regular_previous_close: Optional[float] = None
 
 
 def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn: Any = None) -> None:
@@ -129,7 +130,9 @@ def _quote_from_snapshot(snapshot: dict, t_daily: pd.DataFrame) -> _Quote:
     extended_session = extended["session"] if extended else None
     extended_fields = (extended["price"], extended["change"], extended["change_pct"]) if extended else (None, None, None)
 
-    return _Quote(current_price, change_pts, change_pct, market_state, *extended_fields, extended_session)
+    raw_prev_close = snapshot.get('regular_previous_close')
+    return _Quote(current_price, change_pts, change_pct, market_state, *extended_fields, extended_session,
+                  float(raw_prev_close) if raw_prev_close is not None else None)
 
 
 def _quote_from_daily_close(t_daily: pd.DataFrame) -> _Quote:
@@ -207,11 +210,17 @@ def _derive_quote(ticker: str, t_daily: pd.DataFrame, t_live: pd.DataFrame,
     return _quote_from_live_feed(ticker, t_daily, t_live, registry_exchange_map)
 
 
-def _quote_is_plausible(ticker: str, quote: _Quote) -> bool:
+def _quote_is_plausible(ticker: str, quote: _Quote, t_daily: pd.DataFrame) -> bool:
     if ticker.endswith("=X") and (not math.isfinite(quote.price) or quote.price <= 0):
         return False
     if abs(quote.change_pct) > 50.0:
-        logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, quote.change_pct)
+        daily_closes = [(d.date().isoformat(), round(float(c), 4)) for d, c in t_daily['Close'].tail(2).items()]
+        logger.warning(
+            "Skipping %s: implausible daily change %.1f%% (possible split mismatch); price=%s change=%s "
+            "regular_previous_close=%s market_state=%s daily_closes=%s",
+            ticker, quote.change_pct, quote.price, quote.change_pts,
+            quote.regular_previous_close, quote.market_state, daily_closes,
+        )
         return False
     return True
 
@@ -423,7 +432,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
                 quote = _derive_quote(ticker, t_daily, t_live, registry_exchange_map)
                 if quote is not None:
-                    if not _quote_is_plausible(ticker, quote):
+                    if not _quote_is_plausible(ticker, quote, t_daily):
                         continue
                     _write_pulse_row(cursor, conn, ticker, index_tickers.get(ticker, ticker), quote, current_time)
 
