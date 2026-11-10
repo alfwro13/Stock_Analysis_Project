@@ -31,7 +31,7 @@ ALLOWED_EXCEPTIONS = {
 
 
 def _collect_py_files() -> list[Path]:
-    """All .py files in the project root, tests/, tools/ and api/."""
+    """All .py files in the project root, tests/, tools/, api/ and mcp_server/ (recursive)."""
     files = []
     for p in PROJECT_ROOT.iterdir():
         if p.suffix == ".py" and p.is_file():
@@ -45,6 +45,9 @@ def _collect_py_files() -> list[Path]:
         package_dir = PROJECT_ROOT / package
         if package_dir.is_dir():
             files.extend(package_dir.glob("*.py"))
+    mcp_dir = PROJECT_ROOT / "mcp_server"
+    if mcp_dir.is_dir():
+        files.extend(mcp_dir.rglob("*.py"))
     return sorted(files)
 
 
@@ -93,8 +96,7 @@ def _has_direct_yfinance_import(path: Path) -> list[str]:
 def pytest_generate_tests(metafunc):
     if "py_file" in metafunc.fixturenames:
         files = _collect_py_files()
-        ids = [p.name if p.parent == PROJECT_ROOT else f"{p.parent.name}/{p.name}"
-               for p in files]
+        ids = [p.relative_to(PROJECT_ROOT).as_posix() for p in files]
         metafunc.parametrize("py_file", files, ids=ids)
 
 
