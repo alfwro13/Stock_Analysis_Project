@@ -51,6 +51,20 @@ def _seed(conn):
     conn.commit()
 
 
+def _unseed():
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        conn.execute("DELETE FROM ai_contagion_snapshots WHERE scan_ts = '2026-06-20 12:00:00'")
+        conn.execute("DELETE FROM macro_regimes WHERE date = '2026-06-20'")
+        conn.execute("DELETE FROM macro_indicators WHERE date = '2026-06-20'")
+        conn.execute("DELETE FROM market_regimes WHERE date = '2026-06-20'")
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
 # ── _fmt_events ───────────────────────────────────────────────────────────────
 
 class TestFmtEvents:
@@ -97,6 +111,9 @@ class TestGenerateUsPrompt:
         _seed(conn)
         conn.close()
 
+    def teardown_method(self):
+        _unseed()
+
     def test_invalid_mode_raises(self):
         with pytest.raises(ValueError):
             self.engine.generate_us_prompt("Not A Real Mode")
@@ -126,6 +143,9 @@ class TestGenerateUkPrompt:
         conn = _db_module.get_connection()
         _seed(conn)
         conn.close()
+
+    def teardown_method(self):
+        _unseed()
 
     def test_invalid_mode_raises(self):
         with pytest.raises(ValueError):
