@@ -2368,7 +2368,7 @@ def test_event_loop_lag_probe_reports_blocked_loop(caplog):
     with caplog.at_level(logging.WARNING, logger="main"):
         asyncio.run(exercise())
     assert "event_loop_lag lag_ms=" in caplog.text
-    assert "suspected_blocker=database.py:_retry_on_locked:" in caplog.text
+    assert "suspected_blocker=db/database.py:_retry_on_locked:" in caplog.text
     assert "callers=tests/test_04_page_routes.py:exercise:" in caplog.text
 
 
