@@ -543,16 +543,18 @@ def _cash_balance_as_of(acc: dict, transactions: list, as_of_date: str) -> float
 _CONTRIBUTION_TYPES = ("Cash", "Transfer")
 
 
-def net_contributions(account_id: int) -> float:
+def net_contributions(account_id: int, inputs: Optional[AccountInputs] = None) -> float:
     """Cumulative money put into (or taken out of) the account — `initial_cash` plus every
     Cash/Transfer movement — deliberately excluding Buy/Sell/Dividend/Interest/Fee, which are
     investment activity rather than money moved in or out. Comparing this against equity+cash
     (`total_value`) shows at a glance whether the account is up or down versus what was put in."""
-    acc = get_account(account_id)
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    acc = inputs.account
     if not acc:
         return 0.0
     total = acc["initial_cash"] or 0.0
-    for txn in get_transactions(account_id):
+    for txn in inputs.transactions:
         if txn["update_cash"] and txn["txn_type"] in _CONTRIBUTION_TYPES:
             total += _cash_delta(txn)
     return round(total, 2)
@@ -1014,7 +1016,7 @@ _RETURN_WINDOWS = {"1d": 1, "1w": 7, "1m": 30, "3m": 91, "6m": 182, "1y": 365}
 _MAX_BASELINE_GAP_DAYS = 2
 
 
-def period_returns(account_id: int) -> dict:
+def period_returns(account_id: int, inputs: Optional[AccountInputs] = None) -> dict:
     """1D/1W/1M/3M/6M/1Y gain/loss in BASE_CURRENCY, excluding the effect of deposits/withdrawals
     during the period. Deliberately currency, not %: dividing by the period's starting value blows
     up into a meaningless number whenever that baseline is small (e.g. a lookback window older than
@@ -1026,11 +1028,13 @@ def period_returns(account_id: int) -> dict:
     if not history:
         return {key: None for key in _RETURN_WINDOWS}
 
-    end_value = total_value(account_id)
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    end_value = total_value(account_id, inputs)
     if end_value is None:
         return {key: None for key in _RETURN_WINDOWS}
 
-    net_contributions_now = net_contributions(account_id)
+    net_contributions_now = net_contributions(account_id, inputs)
     today = datetime.now(timezone.utc).date()
 
     returns: dict = {}
@@ -1060,10 +1064,12 @@ def period_returns(account_id: int) -> dict:
     return returns
 
 
-def money_weighted_return(account_id: int) -> Optional[float]:
+def money_weighted_return(account_id: int, inputs: Optional[AccountInputs] = None) -> Optional[float]:
     """Since-inception Modified Dietz return, % — a closed-form approximation of true
     money-weighted (IRR-style) return that avoids iterative solving."""
-    acc = get_account(account_id)
+    if inputs is None:
+        inputs = AccountInputs(account_id)
+    acc = inputs.account
     if not acc:
         return None
 
@@ -1078,7 +1084,7 @@ def money_weighted_return(account_id: int) -> Optional[float]:
     initial_cash = acc["initial_cash"] or 0.0
     if abs(initial_cash) > _EPS:
         flows.append((initial_cash, 0))
-    for txn in get_transactions(account_id):
+    for txn in inputs.transactions:
         if txn["update_cash"] and txn["txn_type"] in _CONTRIBUTION_TYPES:
             txn_date = datetime.strptime(txn["txn_date"], "%Y-%m-%d").date()
             d_i = min(max((txn_date - opened_date).days, 0), cd) if cd else 0
@@ -1087,7 +1093,7 @@ def money_weighted_return(account_id: int) -> Optional[float]:
     if not flows:
         return None
 
-    emv = total_value(account_id)
+    emv = total_value(account_id, inputs)
     if emv is None:
         return None
 
@@ -1112,19 +1118,20 @@ def refresh_performance_cache(account_id: int) -> None:
     realized_pnl/dividend_income/interest_income from the same account_summary() call so every
     field in the cache row is refreshed together — a consumer reading only this cache never mixes
     a stale cached figure with a live one."""
-    summary = account_summary(account_id)
-    returns = period_returns(account_id)
-    holdings = holdings_with_market_value(account_id)
+    inputs = AccountInputs(account_id)
+    summary = account_summary(account_id, inputs)
+    returns = period_returns(account_id, inputs)
+    holdings = holdings_with_market_value(account_id, inputs)
     upsert_performance_cache(
         account_id,
-        total_value=total_value(account_id),
+        total_value=total_value(account_id, inputs),
         equity_value=summary["equity_value"],
-        cash_balance=cash_balance(account_id),
+        cash_balance=cash_balance(account_id, inputs),
         unrealized_pnl=unrealized_pnl(account_id, holdings),
         priced_at_cost_count=sum(1 for h in holdings if h["priced_at_cost"]),
         return_1d=returns["1d"], return_1w=returns["1w"], return_1m=returns["1m"],
         return_3m=returns["3m"], return_6m=returns["6m"], return_1y=returns["1y"],
-        mwrr=money_weighted_return(account_id),
+        mwrr=money_weighted_return(account_id, inputs),
         realized_pnl=summary["realized_pnl"],
         dividend_income=summary["dividend"],
         interest_income=summary["interest"],
