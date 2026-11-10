@@ -154,6 +154,8 @@ TABLE_FILTER_VALUE_MAX_CHARS = 200
 DB_WRITE_HOLD_WARN_SECONDS  = 5                # a SQLite write transaction held longer than this is logged at WARNING with its caller
 DB_DEFERRED_WRITE_RETRY_SECONDS = (30, 60, 120, 240, 480)  # waits before each retry of a write that hit "database is locked"; after the last failed retry the write is abandoned
 DB_DEFERRED_WRITE_QUEUE_MAX = 200              # writes waiting for a retry; past it a new one is dropped and logged, never blocked on
+DB_SWAP_DRAIN_TIMEOUT_SECONDS = 30            # a backup restore waits this long for open database connections to close before it refuses and changes nothing
+DB_SWAP_GATE_WAIT_SECONDS = 60                # a new connection waits this long for a closed swap gate before it raises DatabaseSwapInProgress
 
 MEMORY_SAMPLE_INTERVAL_MINUTES = 15            # Process Memory Telemetry cadence
 MEMORY_JOB_LOG_MIN_SECONDS  = 5                # a scheduled job gets a memory line when it ran at least this long

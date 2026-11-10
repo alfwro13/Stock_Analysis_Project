@@ -119,7 +119,7 @@ The database writers (`add_transaction`, `update_transaction`, `add_watchlist_it
 | `200` | Success |
 | `400` | Bad request — invalid input |
 | `404` | Resource not found |
-| `409` | Conflict — `status: "busy"`: the job a trigger endpoint would start is already running, or a restore/install is in progress |
+| `409` | Conflict — `status: "busy"`: the job a trigger endpoint would start is already running, a restore/install is in progress, or (for a restore) a restart is queued or database connections stay open |
 | `413` | Upload larger than the route allows (`POST /api/accounts/{id}/import-csv`) |
 | `422` | Validation error — request body failed schema check. The `detail` list carries `loc`, `msg` and `type` only; the rejected value is never echoed back (`main._validation_error_handler`) |
 | `500` | Internal server error |
@@ -2093,7 +2093,13 @@ Verification happens before any live file changes, and every refusal returns `40
 
 Members are extracted with `filter="data"`. `data/analysis.db-wal` and `-shm` are never extracted. The database is staged next to the live file and swapped in atomically, and the live `-wal`/`-shm` are removed. `backup_history` rows the restored database lacks are carried forward, so newer archives keep their hashes. When the archive holds the database, the staged copy also has every OAuth grant revoked, the pairing window closed and every connection request deleted before anything live changes (an older backup would otherwise bring revoked Remote Access tokens back to life); the in-memory token cache is dropped after the swap and one `mcp_audit_log` row `restore: <n> grants revoked` is written. An archive from before the OAuth tables skips this. A `trust_unhashed` restore records the archive's computed hash as a `trigger_type: "adopted"` row, so later restores verify normally. A missing archive or an extraction failure returns `500` with `status: "error"`.
 
-Scheduled job firing is paused for the whole restore and resumed afterward, whatever the outcome. If a job is already running (the Active Jobs list, or a run that has started but not yet reached it), or another restore is running, nothing is touched and the response is `409` with `status: "busy"` and a `message` naming the running job(s), the same shape as `POST /api/system/restart`: a running job holds connections to the database file being replaced and would lose its later writes. The running-jobs check and the start of the restore happen under one lock, so no job can start between them. For the whole restore every manual job trigger (`409`, see *Job already running*), `POST /api/system/restart` and `POST /api/system/force-restart` (`409`) are refused, and a scheduled firing that was already submitted is dropped with a warning in the log. Connections opened by web requests and cache-refresh workers are not tracked; restart the service after the restore as above.
+Scheduled job firing is paused for the whole restore and resumed afterward, whatever the outcome. If a job is already running (the Active Jobs list, or a run that has started but not yet reached it), or another restore is running, nothing is touched and the response is `409` with `status: "busy"` and a `message` naming the running job(s), the same shape as `POST /api/system/restart`: a running job holds connections to the database file being replaced and would lose its later writes. The running-jobs check and the start of the restore happen under one lock, so no job can start between them. For the whole restore every manual job trigger (`409`, see *Job already running*), `POST /api/system/restart` and `POST /api/system/force-restart` (`409`) are refused, and a scheduled firing that was already submitted is dropped with a warning in the log. Three more guards cover the work that does not go through `run_manual_job`:
+
+- **A queued restart.** `POST /api/system/restart` and `POST /api/system/force-restart` register the restart (`scheduler_engine.claim_restart()`) under the same lock as the restore claim, and the registration lasts until the restart signals shutdown or its dependency install fails. While one is registered the restore answers `409` naming "Service restart", so a restart queued before the restore (including a dependency install of up to 30 minutes) cannot kill the process mid-restore. A restart requested during a restore is answered `409` (above).
+- **State-changing requests.** For the whole restore every non-`GET` request under the Built-in Accounts routes (`/api/accounts/*`, including the Home Assistant `POST /api/accounts/refresh-now` and `POST /api/accounts/holding-price-limit`), `POST /api/watchlist/add` and `POST /api/strategy-backtester/run` is answered `409` with `status: "busy"` and the restore-in-progress message, before anything is written or queued (`api_deps.refuse_writes_during_restore`). A change accepted then would be written to the database about to be replaced. `GET` requests are served.
+- **Database connections.** The restore holds new connections at a gate and waits up to 30 s for the open ones (web requests, cache-refresh workers, tasks queued earlier) to close, before it extracts any file. If they stay open the response is `409` with `status: "busy"`, a fixed `message` ("the dashboard still has database connections open") and no live file changed; retry shortly. A request that opens a connection while the gate is closed waits, up to 60 s, and then fails with a fixed error. See *Database File Swap Gate* in `db_schema_and_architecture.md`.
+
+Restart the service after the restore as above, so in-memory caches reload.
 
 ---
 
@@ -2336,7 +2342,7 @@ Sends a `SIGTERM` to the running process after a 2-second delay, triggering a gr
 
 Only one installation runs at a time: while one is running a second restart request returns HTTP **409** (`status: "busy"`). If pip fails or times out the service is **not** restarted, the pending state is kept (the Settings banner stays), and a `system_update_status` Error notification carries the exact interpreter-based command to run by hand in a shell on the server; run it, then restart the service. Progress and the failure command are exposed as `dependency_install` on `GET /api/system/active-jobs`; pip's own output is never part of that response — it goes to the application log and the Error notification only.
 
-Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated. It also returns **409** while a backup restore is running (`A backup restore is in progress. ...`), because a kill mid-restore can leave `data/` half restored.
+Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated. It also returns **409** while a backup restore is running (`A backup restore is in progress. ...`), because a kill mid-restore can leave `data/` half restored. The reverse also holds: once the restart is accepted, a `POST /api/backup/restore` answers `409` until the restart has signalled shutdown or its dependency install has failed.
 
 **Requires:** a password step-up (see `POST /api/step-up`).
 
@@ -2565,7 +2571,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
 | `POST` | `/api/backup/run` | Run an Automated Backup now |
 | `GET` | `/api/backup/status` | Last backup result + stored archive list |
-| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive; 409 if jobs running or a restore is already running) |
+| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive; 409 if jobs running, a restore is already running, a restart is queued or database connections stay open) |
 | `GET` | `/api/settings/network-status` | Current routing health and mode |
 | `GET` | `/api/system/yahoo-api-stats` | Daily Yahoo Finance API call counts |
 | `GET` | `/api/system/yahoo-api-stats/{date_str}` | Per-day Yahoo Finance usage bucketed by 15-min interval and consuming job |

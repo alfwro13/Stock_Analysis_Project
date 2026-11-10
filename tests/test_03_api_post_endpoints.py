@@ -201,6 +201,69 @@ def test_restart_is_refused_while_a_restore_is_in_progress(client, step_up_heade
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("endpoint, body", [
+    ("/api/watchlist/add", {"ticker": "AAPL"}),
+    ("/api/strategy-backtester/run", {}),
+    ("/api/accounts", {"name": "Restore Guard"}),
+    ("/api/accounts/1/transactions", {}),
+])
+def test_state_changing_routes_that_queue_tasks_are_refused_during_a_restore(client, endpoint, body):
+    with patch("scheduler_engine.restore_in_progress", return_value=True), \
+         patch.object(_StarletteBackgroundTasks, "add_task") as add_task:
+        resp = client.post(endpoint, json=body)
+    assert resp.status_code == 409, f"{endpoint}: expected 409, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "busy"
+    assert "restore is in progress" in data["message"]
+    add_task.assert_not_called()
+
+
+@pytest.mark.api
+def test_account_reads_still_work_during_a_restore(client):
+    with patch("scheduler_engine.restore_in_progress", return_value=True):
+        resp = client.get("/api/accounts")
+    assert resp.status_code != 409
+
+
+@pytest.mark.api
+def test_every_accounts_route_that_queues_a_task_sits_behind_the_restore_refusal():
+    import api_routes_accounts
+    from api_deps import refuse_writes_during_restore
+
+    assert any(d.dependency is refuse_writes_during_restore for d in api_routes_accounts.accounts_router.dependencies)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("endpoint", ["/api/system/restart", "/api/system/force-restart"])
+def test_a_queued_restart_holds_the_restore_off_until_it_is_released(client, step_up_headers, endpoint, restart_env):
+    import scheduler_engine
+
+    with patch("api_routes_system.execute_restart", new=AsyncMock()):
+        resp = client.post(endpoint, headers=step_up_headers)
+    assert resp.status_code == 200
+    try:
+        with scheduler_engine.scheduler_quiesced() as running:
+            assert list(running) == [scheduler_engine.RESTART_ACTIVITY_NAME]
+    finally:
+        scheduler_engine.release_restart()
+    with scheduler_engine.scheduler_quiesced() as running:
+        assert running == {}
+
+
+@pytest.mark.api
+def test_a_restart_that_loses_the_race_to_a_restore_is_refused(client, step_up_headers):
+    import scheduler_engine
+
+    with patch("scheduler_engine.restore_in_progress", return_value=False), \
+         patch("scheduler_engine.claim_restart", return_value=False), \
+         patch("api_routes_system.execute_restart", new=AsyncMock()) as mock_restart:
+        resp = client.post("/api/system/force-restart", headers=step_up_headers)
+    assert resp.status_code == 409
+    assert "restore is in progress" in _json(resp)["message"]
+    mock_restart.assert_not_called()
+
+
+@pytest.mark.api
 def test_every_manual_job_route_checks_the_running_guard():
     """A route that queues run_manual_job must call job_busy_response in the same function."""
     import ast
@@ -1663,7 +1726,9 @@ def restart_env(tmp_path, monkeypatch):
     monkeypatch.setattr(api_routes_system, "check_requirements_drift", lambda: [])
     monkeypatch.setitem(api_routes_system._dependency_install, "state", "idle")
     monkeypatch.setitem(api_routes_system._dependency_install, "command", None)
-    return api_routes_system
+    yield api_routes_system
+    import scheduler_engine
+    scheduler_engine._pending_restarts = 0
 
 
 def _run_execute_restart(module, pip_result=None, pip_side_effect=None):
@@ -1706,6 +1771,31 @@ def test_execute_restart_installs_pip_dependencies_when_pending(restart_env, tmp
     mock_kill.assert_called_once()
     assert restart_env._requirements_changed_pending is False
     assert restart_env._dependency_install["state"] == "restarting"
+
+
+def test_execute_restart_keeps_the_restart_claim_once_it_signals_shutdown(restart_env):
+    """After os.kill the process is shutting down; releasing the claim then would let a restore start inside the shutdown."""
+    import scheduler_engine
+
+    assert scheduler_engine.claim_restart()
+    try:
+        _run_execute_restart(restart_env)
+        with scheduler_engine.scheduler_quiesced() as running:
+            assert list(running) == [scheduler_engine.RESTART_ACTIVITY_NAME]
+    finally:
+        scheduler_engine.release_restart()
+
+
+def test_execute_restart_releases_the_restart_claim_when_pip_fails(restart_env):
+    import scheduler_engine
+
+    restart_env._requirements_changed_pending = True
+    assert scheduler_engine.claim_restart()
+    _, _, mock_kill = _run_execute_restart(restart_env, pip_result=MagicMock(returncode=1, stdout="", stderr="boom"))
+
+    mock_kill.assert_not_called()
+    with scheduler_engine.scheduler_quiesced() as running:
+        assert running == {}
 
 
 def test_execute_restart_skips_pip_install_when_not_pending(restart_env):

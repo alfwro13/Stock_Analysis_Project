@@ -503,3 +503,100 @@ class TestPatternDetectionSave:
             assert self._saved()["phase"] == "FORMING"
         finally:
             self._cleanup()
+
+
+class TestSwapGate:
+    """database_swap_gate() holds new connections and waits for open ones, so a restore never has a connection spanning the file swap."""
+
+    @pytest.fixture(autouse=True)
+    def _settled(self):
+        gc.collect()
+        before = _db._live_connections
+        yield
+        gc.collect()
+        assert _db._live_connections == before
+
+    def test_a_closed_connection_releases_its_slot(self):
+        before = _db._live_connections
+        conn = _db.get_connection()
+        assert _db._live_connections == before + 1
+        conn.close()
+        assert _db._live_connections == before
+        gc.collect()
+        assert _db._live_connections == before
+
+    def test_an_unclosed_connection_releases_its_slot_when_collected(self):
+        before = _db._live_connections
+        conn = _db.get_connection()
+        del conn
+        gc.collect()
+        assert _db._live_connections == before
+
+    def test_a_failed_connect_does_not_leak_a_slot(self):
+        before = _db._live_connections
+        with patch.object(_db.sqlite3, "connect", side_effect=sqlite3.OperationalError("unable to open")):
+            with pytest.raises(sqlite3.OperationalError):
+                _db.get_connection()
+        assert _db._live_connections == before
+
+    def test_the_gate_waits_for_an_open_connection_to_close(self):
+        import threading
+        import time
+
+        conn = _db.get_connection()
+        entered = threading.Event()
+
+        def _swap():
+            with _db.database_swap_gate(drain_timeout=5):
+                entered.set()
+
+        thread = threading.Thread(target=_swap)
+        thread.start()
+        time.sleep(0.2)
+        assert not entered.is_set()
+        conn.close()
+        thread.join(5)
+        assert entered.is_set()
+
+    def test_the_gate_refuses_and_reopens_when_a_connection_stays_open(self):
+        conn = _db.get_connection()
+        try:
+            with pytest.raises(_db.DatabaseInUse):
+                with _db.database_swap_gate(drain_timeout=0.1):
+                    pytest.fail("the gate must not open while a connection is live")
+            assert not _db._swap_gate_closed
+        finally:
+            conn.close()
+
+    def test_a_new_connection_waits_for_the_gate_and_proceeds_after(self):
+        import threading
+        import time
+
+        opened = []
+
+        def _connect():
+            conn = _db.get_connection()
+            opened.append(time.monotonic())
+            conn.close()
+
+        with _db.database_swap_gate(drain_timeout=5):
+            thread = threading.Thread(target=_connect)
+            thread.start()
+            time.sleep(0.2)
+            assert opened == []
+            released = time.monotonic()
+        thread.join(5)
+        assert len(opened) == 1 and opened[0] >= released
+
+    def test_a_connection_gives_up_with_a_clear_error_when_the_gate_stays_closed(self, monkeypatch):
+        monkeypatch.setattr(_db, "DB_SWAP_GATE_WAIT_SECONDS", 0.1)
+        with _db.database_swap_gate(drain_timeout=5):
+            with pytest.raises(_db.DatabaseSwapInProgress, match="being replaced by a backup restore"):
+                _db.get_connection()
+
+    def test_the_gate_reopens_when_the_body_raises(self):
+        with pytest.raises(KeyError):
+            with _db.database_swap_gate(drain_timeout=5):
+                raise KeyError("boom")
+        assert not _db._swap_gate_closed
+        _db.get_connection().close()

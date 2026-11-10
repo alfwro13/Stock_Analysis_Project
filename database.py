@@ -1,3 +1,5 @@
+import contextlib
+import gc
 import os
 import random
 import sqlite3
@@ -10,7 +12,10 @@ from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from config import DB_PATH, load_config
-from constants import DB_DEFERRED_WRITE_QUEUE_MAX, DB_DEFERRED_WRITE_RETRY_SECONDS, DB_WRITE_HOLD_WARN_SECONDS
+from constants import (
+    DB_DEFERRED_WRITE_QUEUE_MAX, DB_DEFERRED_WRITE_RETRY_SECONDS, DB_SWAP_DRAIN_TIMEOUT_SECONDS,
+    DB_SWAP_GATE_WAIT_SECONDS, DB_WRITE_HOLD_WARN_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,59 @@ _LOCK_RETRY_BASE_DELAY = 0.5
 
 _open_writes: dict = {}
 _open_writes_lock = threading.Lock()
+
+_swap_gate = threading.Condition()
+_swap_gate_closed = False
+_live_connections = 0
+
+
+class DatabaseSwapInProgress(sqlite3.OperationalError):
+    pass
+
+
+class DatabaseInUse(Exception):
+    pass
+
+
+def _claim_connection_slot() -> None:
+    global _live_connections
+    deadline = time.monotonic() + DB_SWAP_GATE_WAIT_SECONDS
+    with _swap_gate:
+        while _swap_gate_closed:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise DatabaseSwapInProgress("The database is being replaced by a backup restore. Try again in a moment.")
+            _swap_gate.wait(remaining)
+        _live_connections += 1
+
+
+def _release_connection_slot() -> None:
+    global _live_connections
+    with _swap_gate:
+        _live_connections -= 1
+        _swap_gate.notify_all()
+
+
+@contextlib.contextmanager
+def database_swap_gate(drain_timeout: float = DB_SWAP_DRAIN_TIMEOUT_SECONDS):
+    """Holds new get_connection() calls and waits for the open ones to close, so the database file can be replaced with no connection spanning the swap; raises DatabaseInUse (nothing held) when connections stay open."""
+    global _swap_gate_closed
+    with _swap_gate:
+        _swap_gate_closed = True
+    try:
+        gc.collect()
+        deadline = time.monotonic() + drain_timeout
+        with _swap_gate:
+            while _live_connections > 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise DatabaseInUse(f"{_live_connections} database connection(s) are still open.")
+                _swap_gate.wait(remaining)
+        yield
+    finally:
+        with _swap_gate:
+            _swap_gate_closed = False
+            _swap_gate.notify_all()
 
 
 def is_lock_error(error: BaseException) -> bool:
@@ -88,6 +146,7 @@ class _RetryingCursor(sqlite3.Cursor):
 
 class _RetryingConnection(sqlite3.Connection):
     _write_entry = None
+    _slot = None
 
     def cursor(self, factory=_RetryingCursor):
         return super().cursor(factory)
@@ -112,6 +171,8 @@ class _RetryingConnection(sqlite3.Connection):
     def close(self):
         self._release_write()
         super().close()
+        if self._slot is not None:
+            self._slot()
 
     def _track_write(self, sql):
         if self._write_entry is None and self.in_transaction:
@@ -233,7 +294,14 @@ def get_connection() -> sqlite3.Connection:
     """sqlite3.Row enables column-name access (row['ticker'])."""
     # timeout=20.0 gracefully handles background thread write collisions; _RetryingConnection
     # adds a few extra jittered retries on top for the rarer case where even that 20s is exceeded.
-    conn = sqlite3.connect(DB_PATH, timeout=20.0, factory=_RetryingConnection)
+    _claim_connection_slot()
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0, factory=_RetryingConnection)
+    except BaseException:
+        _release_connection_slot()
+        raise
+    conn._slot = weakref.finalize(conn, _release_connection_slot)
+    conn._slot.atexit = False
     conn.execute('PRAGMA journal_mode=WAL;')   # concurrent reads + writes
     conn.execute('PRAGMA synchronous=NORMAL;')  # significant write-perf gain in WAL mode
     conn.execute('PRAGMA temp_store=MEMORY;')   # keeps temp tables in RAM; avoids disk I/O under heavy scans

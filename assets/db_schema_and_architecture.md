@@ -20,6 +20,16 @@ SQLite allows one writer at a time, so a write transaction that is slow to commi
 * **Writers that use it:** `database.log_notification()` and the in-app channel of `notification_engine.notify()` (the row keeps its original time), `db_helpers.upsert_fx_quote()` when it opens its own connection, the Workflow Monitor run records (`scheduler_engine.record_job_run()` and `_record_job_duration()`), and `PatternDetectionEngine._write_results()`. Writes that the next scan rewrites within minutes (live prices, the account performance cache) are not deferred.
 * **A retry must not overwrite newer data:** while a queued write runs, `database.replaying_deferred_write()` is true, and a writer of a value that later writes supersede adds a newer-wins condition in that case only (`market_pulse_cache.fx_updated_at`, `scheduler_run_log.last_run`, `pattern_detection_results.scan_ts`, and a stale-row delete limited to rows older than the scan). A direct write is unconditional.
 
+### Database File Swap Gate (`database.py`)
+
+A backup restore replaces `data/analysis.db` while the web server, the cache-refresh workers and any task already queued keep opening connections. A connection that spans the replacement writes to the old file or pairs a stale `-wal` with the new one, so `get_connection()` counts every connection it hands out (released on `close()`, or when the object is collected) and `database.database_swap_gate()` controls them:
+
+* **Closed gate:** a new `get_connection()` waits up to `DB_SWAP_GATE_WAIT_SECONDS` (60 s), then raises `DatabaseSwapInProgress` (a `sqlite3.OperationalError` with a fixed message).
+* **Drain:** with the gate closed, the restore waits up to `DB_SWAP_DRAIN_TIMEOUT_SECONDS` (30 s) for the open connections to close. If any stay open it raises `DatabaseInUse`, the gate reopens and nothing live has changed (`backup_engine` turns this into `RestoreBusy`, answered `409`).
+* **Span:** the gate stays closed across the extraction of `data/` and `models/` and the swap of the database, and reopens in a `finally`. The restore's own reads happen before it closes; a connection opened with `sqlite3.connect()` directly is outside the count (only the Backup & Recovery engine does that, on the staged copy and for its snapshot).
+
+A long-lived connection (held open across network work) makes the drain time out, so a connection is opened late and closed early (the connection pattern in `AGENTS.md`).
+
 ### Core Tables & Entities
 
 #### `market_universe`
