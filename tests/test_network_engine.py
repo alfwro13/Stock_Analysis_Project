@@ -276,105 +276,134 @@ class TestPatchSessionWithRetries:
         session = MagicMock()
         ok_response = MagicMock(status_code=200)
         session.request = MagicMock(return_value=ok_response)
-        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3)
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
         assert session.request("GET", "http://example.com") is ok_response
+        assert session._transient_failures == 0
 
-    def test_retries_on_500_then_succeeds(self):
+    def test_500_raises_at_once_without_sleeping_and_is_recorded(self):
         session = MagicMock()
-        ok_response = MagicMock(status_code=200)
-        err_response = MagicMock(status_code=500)
-        original = MagicMock(side_effect=[err_response, ok_response])
+        original = MagicMock(return_value=MagicMock(status_code=500))
         session.request = original
-        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3)
-        with patch("tools.network_engine.time.sleep"):
-            result = session.request("GET", "http://example.com")
-        assert result is ok_response
-        assert original.call_count == 2
-
-    def test_raises_transient_http_error_after_exhausting_retries_on_500(self):
-        session = MagicMock()
-        err_response = MagicMock(status_code=500)
-        original = MagicMock(return_value=err_response)
-        session.request = original
-        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=2)
-        with patch("tools.network_engine.time.sleep"):
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        with patch("tools.network_engine.time.sleep") as mock_sleep:
             with pytest.raises(ne._TransientHTTPError, match="test-ctx"):
                 session.request("GET", "http://example.com")
-        assert original.call_count == 3
+        mock_sleep.assert_not_called()
+        assert original.call_count == 1
+        assert session._transient_failures == 1
+
+    def test_timeout_is_recorded_and_reraised_without_sleeping(self):
+        session = MagicMock()
+        session.request = MagicMock(side_effect=Exception("curl: (28) Operation timed out"))
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        with patch("tools.network_engine.time.sleep") as mock_sleep:
+            with pytest.raises(Exception, match="timed out"):
+                session.request("GET", "http://example.com")
+        mock_sleep.assert_not_called()
+        assert session._transient_failures == 1
+        assert "timed out" in session._last_transient_error
+
+    def test_non_transient_error_is_not_recorded(self):
+        session = MagicMock()
+        session.request = MagicMock(side_effect=ValueError("bad url"))
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        with pytest.raises(ValueError):
+            session.request("GET", "http://example.com")
+        assert session._transient_failures == 0
 
     def test_429_raises_rate_limited_error_without_retry(self):
         session = MagicMock()
-        response_429 = MagicMock(status_code=429)
-        original = MagicMock(return_value=response_429)
+        original = MagicMock(return_value=MagicMock(status_code=429))
         session.request = original
         with patch("tools.network_engine._enter_yahoo_rate_limit") as mock_enter:
-            ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3)
+            ne._patch_session_with_retries(session, "test-ctx", timeout=5)
             with pytest.raises(ne._RateLimitedError):
                 session.request("GET", "http://example.com")
         mock_enter.assert_called_once_with("test-ctx")
         assert original.call_count == 1
+        assert session._transient_failures == 0
 
     def test_second_call_does_not_rewrap_a_reused_session(self):
-        # A cached session (see _cached_plain_session) is patched again on every reuse purely to
-        # refresh the thread-local action_context/lock — it must not nest a second retry wrapper
-        # around the first, or a single transient error would sleep/log twice.
         session = MagicMock()
-        ok_response = MagicMock(status_code=200)
-        original = MagicMock(return_value=ok_response)
-        session.request = original
-        ne._patch_session_with_retries(session, "first-ctx", timeout=5, max_retries=3)
+        session.request = MagicMock(return_value=MagicMock(status_code=200))
+        ne._patch_session_with_retries(session, "first-ctx", timeout=5)
         wrapped_once = session.request
-        ne._patch_session_with_retries(session, "second-ctx", timeout=5, max_retries=3)
+        ne._patch_session_with_retries(session, "second-ctx", timeout=5)
         assert session.request is wrapped_once
 
-    def test_reused_session_retry_error_reports_latest_action_context(self):
-        # The wrapper reads action_context from the per-thread _retry_context at call time, not
-        # from whichever call first wrapped the session — so a cached session's error messages
-        # stay accurate across reuse for a different ticker/call.
+    def test_reused_session_error_reports_latest_action_context(self):
         session = MagicMock()
-        err_response = MagicMock(status_code=500)
-        original = MagicMock(return_value=err_response)
-        session.request = original
-        ne._patch_session_with_retries(session, "first-ctx", timeout=5, max_retries=0)
-        ne._patch_session_with_retries(session, "second-ctx", timeout=5, max_retries=0)
-        with patch("tools.network_engine.time.sleep"):
-            with pytest.raises(ne._TransientHTTPError, match="second-ctx"):
-                session.request("GET", "http://example.com")
+        session.request = MagicMock(return_value=MagicMock(status_code=500))
+        ne._patch_session_with_retries(session, "first-ctx", timeout=5)
+        ne._patch_session_with_retries(session, "second-ctx", timeout=5)
+        with pytest.raises(ne._TransientHTTPError, match="second-ctx"):
+            session.request("GET", "http://example.com")
 
-    def test_worker_thread_warning_names_the_calling_context(self, caplog):
-        # yfinance issues the request on its own worker thread, which never set the thread-local
-        # context; the warning must still name the call instead of 'unknown'.
+    def test_worker_thread_failure_is_recorded_on_the_session(self):
         session = MagicMock()
-        ok_response = MagicMock(status_code=200)
-        original = MagicMock(side_effect=[Exception("curl: (28) Operation timed out"), ok_response])
-        session.request = original
-        ne._patch_session_with_retries(session, "history:AAPL", timeout=5, max_retries=2)
-        results = []
+        session.request = MagicMock(side_effect=Exception("curl: (28) Operation timed out"))
+        ne._patch_session_with_retries(session, "history:AAPL", timeout=5)
 
         def worker():
-            results.append(session.request("GET", "http://example.com"))
+            with pytest.raises(Exception, match="timed out"):
+                session.request("GET", "http://example.com")
 
-        with patch("tools.network_engine.time.sleep"), caplog.at_level(logging.WARNING, logger="tools.network_engine"):
-            thread = threading.Thread(target=worker)
-            thread.start()
-            thread.join()
-        assert results == [ok_response]
-        assert "during 'history:AAPL'" in caplog.text
-        assert "unknown" not in caplog.text
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join()
+        assert session._transient_failures == 1
 
-    def test_retry_sleep_releases_and_reacquires_lock(self):
-        session = MagicMock()
-        ok_response = MagicMock(status_code=200)
-        err_response = MagicMock(status_code=500)
-        original = MagicMock(side_effect=[err_response, ok_response])
-        session.request = original
-        mock_lock = MagicMock()
-        ne._patch_session_with_retries(session, "test-ctx", timeout=5, max_retries=3, lock=mock_lock)
-        with patch("tools.network_engine.time.sleep"):
-            result = session.request("GET", "http://example.com")
-        assert result is ok_response
-        mock_lock.release.assert_called_once()
-        mock_lock.__enter__.assert_called_once()
+
+class TestBoundaryRaiseOnTransient:
+    @pytest.fixture
+    def make_session(self):
+        cfg = {"YAHOO_USE_IPV4": True, "YAHOO_USE_IPV6": False, "YAHOO_IPV6_ADDRESS": ""}
+        holder = {}
+
+        def build(request):
+            session = MagicMock()
+            session.request = request
+            ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+            holder["session"] = session
+            return session
+
+        with patch("tools.network_engine.load_config", return_value=cfg), \
+             patch("tools.network_engine._cached_plain_session", side_effect=lambda *a: holder["session"]), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine._increment_api_stat"):
+            yield build
+
+    def test_failure_swallowed_by_the_caller_still_raises_transient(self, make_session):
+        session = make_session(MagicMock(side_effect=Exception("curl: (28) Operation timed out")))
+        with pytest.raises(ne._TransientNetworkError, match="timed out"):
+            with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True):
+                try:
+                    session.request("GET", "http://example.com")
+                except Exception:
+                    pass
+
+    def test_exception_from_the_body_is_converted(self, make_session):
+        session = make_session(MagicMock(return_value=MagicMock(status_code=503)))
+        with pytest.raises(ne._TransientNetworkError):
+            with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True):
+                session.request("GET", "http://example.com")
+
+    def test_last_attempt_lets_the_original_exception_through(self, make_session):
+        session = make_session(MagicMock(return_value=MagicMock(status_code=503)))
+        with pytest.raises(ne._TransientHTTPError):
+            with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=False):
+                session.request("GET", "http://example.com")
+
+    def test_clean_call_does_not_raise(self, make_session):
+        session = make_session(MagicMock(return_value=MagicMock(status_code=200)))
+        with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True):
+            session.request("GET", "http://example.com")
+
+    def test_earlier_failures_on_a_reused_session_are_ignored(self, make_session):
+        session = make_session(MagicMock(return_value=MagicMock(status_code=200)))
+        session._transient_failures = 5
+        with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True):
+            session.request("GET", "http://example.com")
 
 
 class TestSleepOutsideLock:
