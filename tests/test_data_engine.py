@@ -1133,6 +1133,14 @@ def _universe_engine():
     return DataEngine.__new__(DataEngine)
 
 
+@pytest.fixture(autouse=True)
+def universe_notify():
+    """No test sleeps for the universe step's pacing or sends a real notification; the pacing tests set their own values."""
+    with patch("data_engine.UNIVERSE_HISTORY_MIN_BATCH_SECONDS", 0), patch("data_engine.UNIVERSE_HISTORY_SETTLE_SECONDS", 0), \
+         patch("data_engine.notify") as notify:
+        yield notify
+
+
 def test_universe_history_pool_is_scored_tickers_outside_nightly_ignored_and_synthetic():
     engine = _universe_engine()
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["DEAD"]}), \
@@ -1158,7 +1166,7 @@ def test_universe_history_is_downloaded_in_batches_without_live_bars(tmp_path):
          patch("data_engine.yahoo_engine.get_intraday") as intraday:
         engine.bulk_download_historical([], universe=["AAA", "BBB", "GONE", "CCC", "DDD"])
 
-    assert [c.args[0] for c in history.call_args_list] == [["AAA", "BBB"], ["GONE", "CCC"], ["DDD"]]
+    assert [c.args[0] for c in history.call_args_list] == [["AAA", "BBB"], ["GONE", "CCC"], ["DDD"], ["GONE"]]
     intraday.assert_not_called()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["AAA.parquet", "BBB.parquet", "CCC.parquet", "DDD.parquet"]
     assert pd.read_parquet(tmp_path / "AAA.parquet")["Close"].tolist() == [10.0, 11.0]
@@ -1180,7 +1188,7 @@ def test_universe_history_runs_the_shared_cleaning_path(tmp_path):
         assert pd.read_parquet(tmp_path / "AAA.parquet")["Close"].tolist() == expected
 
 
-def test_universe_history_failed_batch_does_not_stop_later_batches(tmp_path):
+def test_universe_history_failed_batch_does_not_stop_later_batches_and_is_retried(tmp_path):
     engine = _universe_engine()
     frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
     calls = []
@@ -1196,7 +1204,124 @@ def test_universe_history_failed_batch_does_not_stop_later_batches(tmp_path):
          patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history):
         engine.bulk_download_historical([], universe=["AAA", "BBB"])
 
-    assert [p.name for p in tmp_path.iterdir()] == ["BBB.parquet"]
+    assert calls == [["AAA"], ["BBB"], ["AAA"]]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["AAA.parquet", "BBB.parquet"]
+
+
+def test_universe_history_retries_what_yahoo_did_not_answer_once_not_forever(tmp_path):
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    nan_frame = frame.copy()
+    nan_frame[["Open", "High", "Low", "Close"]] = float("nan")
+
+    def fake_history(batch, **kwargs):
+        return {t: (nan_frame.copy() if t == "FAILED" else frame.copy()) for t in batch if t != "ABSENT"}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history) as history:
+        engine.bulk_download_historical([], universe=["AAA", "ABSENT", "FAILED"])
+
+    assert [c.args[0] for c in history.call_args_list] == [["AAA", "ABSENT", "FAILED"], ["ABSENT", "FAILED"]]
+    assert [p.name for p in tmp_path.iterdir()] == ["AAA.parquet"]
+
+
+def test_universe_history_waits_out_the_cooldown_and_settles_after_a_rate_limit_trip(tmp_path):
+    from unittest.mock import MagicMock
+
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    trips = [4]
+    events = []
+    fake_time = MagicMock()
+    fake_time.monotonic.return_value = 0.0
+    fake_time.sleep.side_effect = lambda s: events.append(("sleep", s))
+
+    def fake_history(batch, **kwargs):
+        events.append(("batch", batch))
+        if batch == ["AAA"] and len(events) == 1:
+            trips[0] += 1
+            return {}
+        return {t: frame.copy() for t in batch}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 1), \
+         patch("data_engine.UNIVERSE_HISTORY_SETTLE_SECONDS", 7), \
+         patch("data_engine.yahoo_rate_limit_trips", side_effect=lambda: trips[0]), \
+         patch("data_engine.wait_for_yahoo_rate_limit_reset", side_effect=lambda: events.append(("cooldown",))), \
+         patch("data_engine.time", fake_time), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history):
+        engine.bulk_download_historical([], universe=["AAA", "BBB"])
+
+    assert events == [
+        ("batch", ["AAA"]), ("cooldown",), ("sleep", 7), ("batch", ["BBB"]), ("batch", ["AAA"]),
+    ]
+
+
+def test_universe_history_starts_batches_at_least_the_minimum_batch_time_apart(tmp_path):
+    import time
+
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    started = []
+
+    def fake_history(batch, **kwargs):
+        started.append(time.monotonic())
+        return {t: frame.copy() for t in batch}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), patch("data_engine.UNIVERSE_HISTORY_BATCH", 1), \
+         patch("data_engine.UNIVERSE_HISTORY_MIN_BATCH_SECONDS", 0.2), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history):
+        engine.bulk_download_historical([], universe=["AAA", "BBB", "CCC"])
+
+    assert len(started) == 3
+    assert all(later - earlier >= 0.19 for earlier, later in zip(started, started[1:]))
+
+
+def test_universe_history_raises_one_degraded_alert_when_the_retry_still_leaves_a_short_write(tmp_path, universe_notify):
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    trips = [0]
+
+    def fake_history(batch, **kwargs):
+        trips[0] += 1
+        return {t: frame.copy() for t in batch if t != "GONE"}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_rate_limit_trips", side_effect=lambda: trips[0]), \
+         patch("data_engine.wait_for_yahoo_rate_limit_reset"), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history):
+        engine.bulk_download_historical([], universe=["AAA", "BBB", "GONE"])
+
+    universe_notify.assert_called_once()
+    source, message_type, text = universe_notify.call_args.args
+    assert (source, message_type) == ("universe_history_degraded", "Warning")
+    assert universe_notify.call_args.kwargs == {"level": "warning"}
+    assert "2 of 3 assets (66.7%)" in text and "Not written: GONE." in text and "rate-limited the step 2 time(s)" in text
+
+
+def test_universe_history_a_healthy_night_stays_quiet(tmp_path, universe_notify):
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=lambda batch, **kw: {t: frame.copy() for t in batch}):
+        engine.bulk_download_historical([], universe=["AAA", "BBB"])
+
+    universe_notify.assert_not_called()
+
+
+def test_universe_history_report_threshold_is_a_share_of_the_pool(universe_notify):
+    from data_engine import DataEngine
+
+    DataEngine._report_universe_history(99, 100, ["X"], 0)
+    universe_notify.assert_not_called()
+    DataEngine._report_universe_history(98, 100, [f"T{i}" for i in range(12)], 1)
+    universe_notify.assert_called_once()
+    assert "Not written: T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, ...." in universe_notify.call_args.args[2]
 
 
 def test_read_only_history_returns_stale_file_without_queueing_a_refresh(tmp_path):

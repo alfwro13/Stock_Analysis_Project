@@ -323,6 +323,19 @@ class TestPatchSessionWithRetries:
         assert original.call_count == 1
         assert session._transient_failures == 0
 
+    def test_request_is_not_sent_while_the_rate_limit_cooldown_is_open(self):
+        session = MagicMock()
+        original = MagicMock(return_value=MagicMock(status_code=200))
+        session.request = original
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        ne._RATE_LIMIT_READY.clear()
+        with pytest.raises(ne._RateLimitedError, match="not sent"):
+            session.request("GET", "http://example.com")
+        original.assert_not_called()
+        assert session._transient_failures == 0
+        ne._RATE_LIMIT_READY.set()
+        assert session.request("GET", "http://example.com").status_code == 200
+
     def test_second_call_does_not_rewrap_a_reused_session(self):
         session = MagicMock()
         session.request = MagicMock(return_value=MagicMock(status_code=200))
@@ -479,7 +492,38 @@ class TestClearYfinanceCrumb:
             assert ne._RATE_LIMIT_READY.wait(5)
 
 
+class TestRateLimitTripCounter:
+    def test_a_429_response_counts_one_trip(self):
+        session = MagicMock()
+        session.request = MagicMock(return_value=MagicMock(status_code=429))
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        before = ne.yahoo_rate_limit_trips()
+        with patch("tools.network_engine._clear_yfinance_crumb"), \
+             patch("tools.network_engine._RATE_LIMIT_COOLDOWN_SECS", 0):
+            with pytest.raises(ne._RateLimitedError):
+                session.request("GET", "http://example.com")
+            assert ne._RATE_LIMIT_READY.wait(5)
+        assert ne.yahoo_rate_limit_trips() == before + 1
+
+    def test_a_429_during_an_open_cooldown_is_not_another_trip(self):
+        before = ne.yahoo_rate_limit_trips()
+        ne._RATE_LIMIT_READY.clear()
+        ne._enter_yahoo_rate_limit("test-ctx")
+        assert ne.yahoo_rate_limit_trips() == before
+
+
 class TestCreateFailoverSession:
+    def test_does_not_send_while_the_rate_limit_cooldown_is_open(self):
+        mock_session = MagicMock()
+        original = MagicMock(return_value=MagicMock(status_code=200))
+        mock_session.request = original
+        with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session):
+            session = ne.create_failover_session("::1", "test-ctx", {})
+            ne._RATE_LIMIT_READY.clear()
+            with pytest.raises(ne._RateLimitedError, match="not sent"):
+                session.request("GET", "http://example.com")
+        original.assert_not_called()
+
     def test_retries_on_500_then_succeeds(self):
         ok_response = MagicMock(status_code=200)
         err_response = MagicMock(status_code=500)

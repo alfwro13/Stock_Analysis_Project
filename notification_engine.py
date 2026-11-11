@@ -73,6 +73,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "risk_orchestrator_digest": {"label": "Risk Orchestrator Daily Rollup", "job_id": "risk_orchestrator_digest_job", "default": dict(_ON)},
     "sentiment_scan_degraded": {"label": "NLP Sentiment Scan Degraded",    "job_id": "sentiment_scan_job",     "default": dict(_ON)},
     "ml_inference_stale_features": {"label": "Daily ML Inference — Stale Features", "job_id": "ml_inference_job", "default": dict(_ON)},
+    "universe_history_degraded": {"label": "Universe History Refresh Degraded", "job_id": "quant_analysis_job", "default": dict(_ON)},
     "failed_login_alert":      {"label": "Failed Login Alert",              "job_id": None,                     "default": dict(_ON)},
     "mcp_remote_access_alert": {"label": "MCP Remote Access",               "job_id": "claude_mcp_server_source", "default": dict(_ON)},
     "nextcloud_talk_health":   {"label": "Nextcloud Talk Delivery Warning", "job_id": None,                     "default": dict(_NO_TALK)},
