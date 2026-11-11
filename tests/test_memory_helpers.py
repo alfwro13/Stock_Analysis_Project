@@ -8,6 +8,8 @@ import memory_helpers
 import scheduler_engine
 from constants import MEMORY_JOB_LOG_MIN_DELTA_MIB, MEMORY_JOB_LOG_MIN_SECONDS, MEMORY_SAMPLE_INTERVAL_MINUTES
 
+pytestmark = pytest.mark.restore_tables("scheduler_run_history", "scheduler_run_log")
+
 SAMPLE_KEYS = {
     "taken_at", "rss_mib", "rss_anon_mib", "rss_file_mib", "rss_peak_mib", "anon_huge_mib", "available_mib",
     "total_mib", "glibc_in_use_mib", "glibc_free_held_mib", "arrow_backend", "arrow_mib", "python_blocks",

@@ -10,12 +10,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
 import quant_signals
 from quant_signals import QuantEngine
+
+pytestmark = pytest.mark.restore_tables("score_history")
 
 
 def test_run_all_skips_tbill_synthetic_tickers(tmp_path):

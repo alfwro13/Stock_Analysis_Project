@@ -589,6 +589,8 @@ from scheduler_engine import (
 import config as _config_module
 from apscheduler.events import EVENT_JOB_EXECUTED
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "scheduler_run_history", "scheduler_run_log")
+
 
 def _wf_node(**kw):
     base = {

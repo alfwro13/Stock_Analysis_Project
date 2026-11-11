@@ -21,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from intraday_bottom_engine import IntradayBottomEngine, _BOTTOMING_THRESHOLD
 
+pytestmark = pytest.mark.restore_tables("market_pulse_cache")
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

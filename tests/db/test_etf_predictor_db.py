@@ -4,6 +4,8 @@ import pytest
 
 from db import database as _db
 
+pytestmark = pytest.mark.restore_tables("etf_predictor_configs")
+
 
 @pytest.mark.db
 def test_etf_predictor_configs_table_exists():
