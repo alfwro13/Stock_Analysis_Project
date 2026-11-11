@@ -256,6 +256,24 @@ class TestGetMarketRegime:
         assert tiles["ZZMRA"]["extended"] == {"session": "post", "price": 5050.0, "change_pct": 1.0}
         assert tiles["ZZMRB"]["extended"] is None
 
+    def test_yield_tiles_carry_the_change_in_basis_points_and_other_tiles_do_not(self, mcp_client):
+        _pulse("ZZMRA")
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) "
+                "VALUES ('^TNX', 'US 10Y Yield', 4.998, 0.0149998665, 0.30102077, 1, ?)", (time.time() - 60,),
+            )
+            conn.commit()
+            with patch("mcp_server.tools.get_market_regime.get_pulse_index_tickers", return_value={**_PULSE, "^TNX": "US 10Y Yield"}):
+                tiles = {t["ticker"]: t for t in self._regime(mcp_client)["data"]["market_pulse"]["tiles"]}
+        finally:
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker = '^TNX'")
+            conn.commit()
+            conn.close()
+        assert tiles["^TNX"]["change_bp"] == 1.5 and tiles["^TNX"]["change_pct"] == 0.30102077
+        assert "change_bp" not in tiles["ZZMRA"]
+
     def test_tile_as_of_is_the_time_of_the_price_shown(self, mcp_client):
         now = time.time()
         _pulse("ZZMRA", price=297.11, change_pct=35.0, updated=now - 7 * 86400)
