@@ -1,5 +1,6 @@
 from typing import Any
 
+from db.helpers import get_ticker_registry
 from market_pulse import get_all_cached_pulse, get_pulse_index_tickers
 from regime_engine import crash_veto_stress_threshold, current_hmm_regime, macro_conditions_snapshot, market_stress_snapshot
 
@@ -23,6 +24,7 @@ _REGIME_UNITS = {
     "treasury_auctions.recent": "up to the 6 latest auctions of the last 30 days; bid_to_cover is a ratio, tail_bp basis points",
     "fear_greed.value": "0-100: CNN-style Fear & Greed index. Extreme Fear below 25, Fear below 45, Neutral below 56, Greed below 76, Extreme Greed otherwise",
     "market_pulse.tiles": "the Market Pulse tiles in registry order, each in its own instrument units (index points, a rate, a price, a yield in percent); change_pct is percent since the previous regular close",
+    "market_pulse.tiles.change_bp": "yield tiles only (registry type Rate): change since the previous close in basis points, 1 bp = 0.01 percentage point; unlike change_pct, which is relative to the yield (0.30 on a 5.0% yield is 1.5 bp)",
     "market_pulse.tiles.extended": "pre- or post-market move, kept apart from price and change_pct; null outside extended hours",
     "<part>.as_of": "dated parts: the data date (YYYY-MM-DD); Market Pulse: UTC time of the oldest tile price. stale is true when a dated part is older than 5 days (a missed nightly run) or a Market Pulse tile is past its refresh interval; treasury_auctions never ages (auctions are irregular, as_of is the latest one)",
 }
@@ -106,6 +108,7 @@ def _macro_parts(macro, missing, epochs):
 
 def _pulse_part(missing, epochs):
     cached = get_all_cached_pulse()
+    rates = {row["ticker"] for row in get_ticker_registry() if row["asset_type"] == "Rate"}
     tiles = []
     tile_epochs = []
     for ticker, name in get_pulse_index_tickers().items():
@@ -117,14 +120,19 @@ def _pulse_part(missing, epochs):
             missing.append(f"Market Pulse {ticker}: quote time is not known")
         else:
             tile_epochs.append(row["price_as_of"])
-        tiles.append({
+        tile = {
             "ticker": ticker, "name": name, "price": row["price"], "change_pct": row["change_pct"],
             "as_of": None if row["price_as_of"] is None else iso_utc(row["price_as_of"]),
             "stale": row["is_stale"],
             "extended": None if row["extended_price"] is None else {
                 "session": row["extended_session"], "price": row["extended_price"], "change_pct": row["extended_change_pct"],
             },
-        })
+        }
+        if ticker in rates:
+            if row["change_pts"] is None:
+                missing.append(f"Market Pulse {ticker}: change since the previous close is not available")
+            tile["change_bp"] = None if row["change_pts"] is None else round(row["change_pts"] * 100, 1)
+        tiles.append(tile)
     if not tiles:
         missing.append(_NO_TILES)
         return None
