@@ -10,7 +10,7 @@ from db.database import get_watchlist_tickers
 from db.account_store import get_holding_price_limits_for_ticker
 from db.helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import get_all_cached_pulse
-from market_session_helpers import extended_quote_from_snapshot
+from market_session_helpers import extended_quote_from_snapshot, regular_change_from_snapshot
 from page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
 from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector
 from yahoo_engine import yahoo_engine
@@ -106,10 +106,11 @@ def _price(ticker: str, currency: Optional[str], missing: list) -> tuple:
         missing.append("No cached price and no live Yahoo quote is available: price is null")
         return None, None, None
     now = time.time()
+    day_change, day_change_pct = regular_change_from_snapshot(snapshot, ticker) or (None, None)
     return {
         "value": snapshot["regular_price"], "currency": currency, "source": "yahoo_live",
         "as_of": iso_utc(now), "stale": False,
-        "day_change": snapshot["regular_change"], "day_change_pct": snapshot["regular_change_pct"],
+        "day_change": day_change, "day_change_pct": day_change_pct,
         "previous_close": snapshot["regular_previous_close"], "market_state": snapshot["market_state"],
     }, extended_quote_from_snapshot(snapshot), now
 

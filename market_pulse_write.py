@@ -17,6 +17,7 @@ from market_session_helpers import (
     build_registry_exchange_map,
     extended_quote_from_snapshot,
     is_exchange_open,
+    regular_change_from_snapshot,
     reported_session,
     resolve_ticker_exchange,
 )
@@ -113,16 +114,15 @@ def _maybe_alert_stale_ticker(ticker: str, prior_last_updated: float, now: float
     )
 
 
-def _quote_from_snapshot(snapshot: dict, t_daily: pd.DataFrame) -> _Quote:
+def _quote_from_snapshot(ticker: str, snapshot: dict, t_daily: pd.DataFrame) -> _Quote:
     current_price = float(snapshot['regular_price'])
     market_state = snapshot.get('market_state')
 
-    if snapshot.get('regular_change') is not None and snapshot.get('regular_change_pct') is not None:
-        change_pts = float(snapshot['regular_change'])
-        change_pct = float(snapshot['regular_change_pct'])
+    regular_change = regular_change_from_snapshot(snapshot, ticker)
+    if regular_change is not None:
+        change_pts, change_pct = regular_change
     else:
-        prev_close = snapshot.get('regular_previous_close')
-        prev_close = float(prev_close) if prev_close is not None else float(t_daily['Close'].iloc[-1])
+        prev_close = float(t_daily['Close'].iloc[-1])
         change_pts = current_price - prev_close
         change_pct = (change_pts / prev_close) * 100.0 if prev_close else 0.0
 
@@ -204,7 +204,7 @@ def _derive_quote(ticker: str, t_daily: pd.DataFrame, t_live: pd.DataFrame,
     # Session (regular/pre/post) always comes from Yahoo's own marketState, never guessed from the clock.
     snapshot = yahoo_engine.get_quote_snapshot(ticker)
     if snapshot and snapshot.get('regular_price') is not None:
-        return _quote_from_snapshot(snapshot, t_daily)
+        return _quote_from_snapshot(ticker, snapshot, t_daily)
     if t_live.empty:
         return _quote_from_daily_close(t_daily)
     return _quote_from_live_feed(ticker, t_daily, t_live, registry_exchange_map)

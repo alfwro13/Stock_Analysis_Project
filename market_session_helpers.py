@@ -1,7 +1,9 @@
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from constants import QUOTE_CHANGE_TOLERANCE_PCT
 from db.database import get_connection, get_instrument_sessions, get_ticker_registry
 from time_engine import (
     EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, reported_window_open,
@@ -40,6 +42,29 @@ def extended_quote_from_snapshot(snapshot: dict) -> Optional[dict]:
         "change": None if change is None else float(change),
         "change_pct": None if change_pct is None else float(change_pct),
     }
+
+
+def regular_change_from_snapshot(snapshot: dict, ticker: str = "") -> Optional[tuple]:
+    """(change, change_pct) of a yahoo_engine.get_quote_snapshot() dict versus the regular previous close; Yahoo's own two fields unless they contradict its price and previous close (then derived from those), None when neither is available."""
+    price, prev = snapshot.get("regular_price"), snapshot.get("regular_previous_close")
+    change, change_pct = snapshot.get("regular_change"), snapshot.get("regular_change_pct")
+    have_fields = change is not None and change_pct is not None
+    if price is None or prev is None or not math.isfinite(float(prev)) or float(prev) == 0:
+        return (float(change), float(change_pct)) if have_fields else None
+    price, prev = float(price), float(prev)
+    derived = price - prev
+    derived_pct = derived / prev * 100.0
+    if have_fields:
+        change, change_pct = float(change), float(change_pct)
+        tolerance_points = abs(prev) * QUOTE_CHANGE_TOLERANCE_PCT / 100.0
+        if abs(change_pct - derived_pct) <= QUOTE_CHANGE_TOLERANCE_PCT and abs(change - derived) <= tolerance_points:
+            return change, change_pct
+        logger.warning(
+            "Yahoo's change fields for %s contradict its own price and previous close: change=%s change_pct=%s, "
+            "but price=%s regular_previous_close=%s gives change=%.4f change_pct=%.2f; using the derived values.",
+            ticker or "a quote", change, change_pct, price, prev, derived, derived_pct,
+        )
+    return derived, derived_pct
 
 
 def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
