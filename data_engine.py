@@ -8,6 +8,7 @@ import pandas as pd
 from typing import Set, List, Dict, Any, Optional, Sequence
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
+from constants import UNIVERSE_HISTORY_MIN_BATCH_SECONDS, UNIVERSE_HISTORY_MIN_WRITTEN, UNIVERSE_HISTORY_SETTLE_SECONDS
 from db.database import (
     get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers, get_registry_spot_future_tickers,
     get_stock_signal_tickers,
@@ -16,6 +17,8 @@ from daily_history_writer import fetch_daily_history, history_exchange, persist_
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 from market_session_helpers import reported_session
+from notification_engine import notify
+from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
 import time_engine
 
 from utils import normalize_ticker, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename, write_parquet_atomic  # noqa: F401 — normalize_ticker re-exported for callers
@@ -141,17 +144,59 @@ class DataEngine:
             logger.error('Fatal error during bulk historical download: %s', e)
 
     def _bulk_download_universe(self, tickers: List[str]) -> None:
-        batches = [tickers[i:i + UNIVERSE_HISTORY_BATCH] for i in range(0, len(tickers), UNIVERSE_HISTORY_BATCH)]
-        logger.info('Bulk downloading 2Y Universe history for %s assets in %s batches...', len(tickers), len(batches))
-        written = 0
-        for batch in batches:
-            try:
-                for ticker, df in yahoo_engine.get_price_history(batch, period="2y", interval="1d", force_refresh=True).items():
-                    if df is not None and not df.empty and persist_daily_history(ticker, df, None):
-                        written += 1
-            except Exception as e:
-                logger.error('Universe history batch failed: %s', e)
-        logger.info('Universe history refreshed: %s of %s assets written.', written, len(tickers))
+        logger.info(
+            'Bulk downloading 2Y Universe history for %s assets in %s batches...',
+            len(tickers), len(range(0, len(tickers), UNIVERSE_HISTORY_BATCH)),
+        )
+        trips_at_start = trips_seen = yahoo_rate_limit_trips()
+        last_started: Optional[float] = None
+        written: Set[str] = set()
+        pending = tickers
+        for attempt in (1, 2):
+            for i in range(0, len(pending), UNIVERSE_HISTORY_BATCH):
+                batch = pending[i:i + UNIVERSE_HISTORY_BATCH]
+                trips_seen = self._pace_universe_batch(last_started, trips_seen)
+                last_started = time.monotonic()
+                try:
+                    for ticker, df in yahoo_engine.get_price_history(batch, period="2y", interval="1d", force_refresh=True).items():
+                        if df is not None and not df.empty and persist_daily_history(ticker, df, None):
+                            written.add(ticker)
+                except Exception as e:
+                    logger.error('Universe history batch failed: %s', e)
+            pending = [t for t in pending if t not in written]
+            if not pending or attempt == 2:
+                break
+            logger.info('Retrying %s universe assets that came back without history...', len(pending))
+        self._report_universe_history(len(written), len(tickers), pending, yahoo_rate_limit_trips() - trips_at_start)
+
+    @staticmethod
+    def _pace_universe_batch(last_started: Optional[float], trips_seen: int) -> int:
+        """Runs on the job thread between batches with no lock held: a 429 trip since the last batch waits out the cooldown plus a settle pause, otherwise batches start at least UNIVERSE_HISTORY_MIN_BATCH_SECONDS apart. Returns the trip count to compare next time."""
+        if yahoo_rate_limit_trips() != trips_seen:
+            logger.warning('Yahoo rate-limited the universe history download; pausing %ss after the cooldown before the next batch.', UNIVERSE_HISTORY_SETTLE_SECONDS)
+            wait_for_yahoo_rate_limit_reset()
+            time.sleep(UNIVERSE_HISTORY_SETTLE_SECONDS)
+        elif last_started is not None:
+            remaining = UNIVERSE_HISTORY_MIN_BATCH_SECONDS - (time.monotonic() - last_started)
+            if remaining > 0:
+                time.sleep(remaining)
+        return yahoo_rate_limit_trips()
+
+    @staticmethod
+    def _report_universe_history(written: int, total: int, unwritten: List[str], rate_limit_pauses: int) -> None:
+        share = written / total if total else 1.0
+        if share >= UNIVERSE_HISTORY_MIN_WRITTEN:
+            logger.info('Universe history refreshed: %s of %s assets written.', written, total)
+            return
+        sample = ', '.join(unwritten[:10]) + (', ...' if len(unwritten) > 10 else '')
+        notify(
+            "universe_history_degraded", "Warning",
+            f"Universe history refresh wrote only {written} of {total} assets ({share:.1%}) after retrying the missing ones. "
+            f"The other {len(unwritten)} keep their previous daily history, so their quant scores stay on an older close "
+            f"until the next successful refresh. Yahoo Finance rate-limited the step {rate_limit_pauses} time(s). "
+            f"Not written: {sample}.",
+            level="warning",
+        )
 
     def bulk_download_intraday(self, tickers: List[str]) -> None:
         if not tickers:

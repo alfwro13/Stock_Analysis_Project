@@ -30,6 +30,7 @@ _RATE_LIMIT_READY = threading.Event()
 _RATE_LIMIT_READY.set()
 _rate_limit_cb_lock = threading.Lock()
 _RATE_LIMIT_COOLDOWN_SECS: float = 60.0
+_rate_limit_trips = 0
 
 _routing_lock = threading.Lock()
 _routing_counter = 0
@@ -208,12 +209,25 @@ def wait_for_yahoo_rate_limit_reset(timeout: float = 65.0) -> None:
     _RATE_LIMIT_READY.wait(timeout=timeout)
 
 
+def yahoo_rate_limit_trips() -> int:
+    """How often the 429 breaker has tripped in this process; two readings tell a caller whether the work between them was rate-limited."""
+    return _rate_limit_trips
+
+
+def _raise_if_rate_limited(url: str) -> None:
+    """A request already running when the breaker trips (yfinance's download workers keep sending) stops here: each further request into a limited IP only extends the block."""
+    if not _RATE_LIMIT_READY.is_set():
+        raise _RateLimitedError("Yahoo rate-limit cooldown open; request not sent. URL: %s" % url)
+
+
 def _enter_yahoo_rate_limit(action_context: str) -> None:
     """Trip the global 429 circuit breaker. Only the first concurrent caller does work; others return immediately."""
+    global _rate_limit_trips
     with _rate_limit_cb_lock:
         if not _RATE_LIMIT_READY.is_set():
             return
         _RATE_LIMIT_READY.clear()
+        _rate_limit_trips += 1
 
     _clear_yfinance_crumb()
     logger.warning(
@@ -282,6 +296,7 @@ def _patch_session_with_retries(session: cffi_requests.Session, action_context: 
     def wrapped_request(method, url, **kwargs):
         action_context = session._retry_action_context
         kwargs.setdefault("timeout", timeout)
+        _raise_if_rate_limited(url)
         try:
             response = original_request(method, url, **kwargs)
         except Exception as e:
@@ -325,6 +340,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
         base_delay = 2.0
 
         for attempt in range(max_retries + 1):
+            _raise_if_rate_limited(url)
             try:
                 response = original_request(method, url, **kwargs)
 
