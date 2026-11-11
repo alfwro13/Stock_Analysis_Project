@@ -1471,7 +1471,7 @@ Returns daily Yahoo Finance request counts for the past 8 days, broken down by i
 | `total_calls` | Total `yahoo_connection_boundary` invocations |
 | `ipv4_calls` | Calls routed via IPv4 |
 | `ipv6_calls` | Calls routed via IPv6 |
-| `rate_limit_429` | Calls that received HTTP 429 |
+| `rate_limit_429` | Calls that received HTTP 429, including calls that returned normally because `yf.download` swallowed a per-ticker 429 (the 429 circuit breaker tripped while the call ran, so every call overlapping a trip is counted) |
 | `other_errors` | Calls that raised a non-429 exception |
 | `yfinance_logged_errors` | ERROR-level lines the `yfinance` library itself logged during a call (e.g. no data for the requested range, a 404 on a quoteSummary module Yahoo doesn't support for that instrument) without raising — tracked separately since these never set `other_errors`, but do explain "yfinance" ERROR lines in the Log Viewer |
 

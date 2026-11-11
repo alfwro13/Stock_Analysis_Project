@@ -260,6 +260,43 @@ class TestYahooConnectionBoundary:
                     raise ne._RateLimitedError("rate limited")
         mock_inc.assert_called_once_with("ipv4", "429", "test", 0)
 
+    def test_stat_incremented_as_429_when_breaker_trips_without_raising(self):
+        mock_session = MagicMock()
+        with patch("tools.network_engine.load_config", return_value=self._ipv4_only_cfg), \
+             patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine._patch_session_with_retries"), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine.yahoo_rate_limit_trips", side_effect=[4, 5]), \
+             patch("tools.network_engine._increment_api_stat") as mock_inc:
+            with ne.yahoo_connection_boundary("test"):
+                pass
+        mock_inc.assert_called_once_with("ipv4", "429", "test", 0)
+
+    def test_stat_stays_success_when_no_trip_happened(self):
+        mock_session = MagicMock()
+        with patch("tools.network_engine.load_config", return_value=self._ipv4_only_cfg), \
+             patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine._patch_session_with_retries"), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine.yahoo_rate_limit_trips", side_effect=[4, 4]), \
+             patch("tools.network_engine._increment_api_stat") as mock_inc:
+            with ne.yahoo_connection_boundary("test"):
+                pass
+        mock_inc.assert_called_once_with("ipv4", "success", "test", 0)
+
+    def test_stat_stays_error_when_a_trip_overlaps_a_raised_failure(self):
+        mock_session = MagicMock()
+        with patch("tools.network_engine.load_config", return_value=self._ipv4_only_cfg), \
+             patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine._patch_session_with_retries"), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine.yahoo_rate_limit_trips", side_effect=[4, 5]), \
+             patch("tools.network_engine._increment_api_stat") as mock_inc:
+            with pytest.raises(RuntimeError):
+                with ne.yahoo_connection_boundary("test"):
+                    raise RuntimeError("boom")
+        mock_inc.assert_called_once_with("ipv4", "error", "test", 0)
+
     def test_yfinance_logged_errors_counted_without_being_raised(self):
         import logging as _logging
         mock_session = MagicMock()
