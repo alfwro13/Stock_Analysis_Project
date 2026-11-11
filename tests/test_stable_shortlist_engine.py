@@ -35,6 +35,8 @@ from stable_shortlist_engine import (
 )
 from stable_shortlist_reads import get_column_values, get_evaluation, get_shortlist
 
+pytestmark = pytest.mark.restore_tables("quant_signals", "stock_signals")
+
 PARAMS = {"TOPK": 3, "N_DROP": 1, "HOLD_THRESH": 1, "SECTOR_CAP": 2, "MAX_SIGNAL_AGE_DAYS": 4, "MIN_QUANT_SCORE": 50}
 NOW = datetime(2026, 10, 9, 19, 30, tzinfo=timezone.utc)  # Friday, ISO week 2026-W41
 NEXT_WEEK = datetime(2026, 10, 16, 19, 30, tzinfo=timezone.utc)

@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.restore_tables("etf_predictor_configs", "etf_predictor_predictions", "market_pulse_cache", "scheduler_run_history", "scheduler_run_log", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats")
+
 
 def _json(resp) -> dict:
     try:

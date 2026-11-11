@@ -20,6 +20,8 @@ from db.database import (
     replace_benchmark_tickers,
 )
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "account_transactions", "account_value_history")
+
 
 @pytest.mark.db
 def test_create_and_get_account_roundtrip():

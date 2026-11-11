@@ -21,6 +21,8 @@ from score_analysis import (
     pillar_confluence_label,
 )
 
+pytestmark = pytest.mark.restore_tables("pattern_detection_history", "quant_signals", "trap_phase_history")
+
 _DEFAULT_META_SCORING = {
     "REGIME_WEIGHTS": {
         "Bull": {"composite_score": 0.40, "ml_confidence": 0.30, "pattern": 0.20, "trap": 0.10},

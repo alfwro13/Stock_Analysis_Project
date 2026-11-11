@@ -13,6 +13,8 @@ import scheduler_engine
 from db import connection as _conn
 from db.database import database_swap_gate, get_connection
 
+pytestmark = pytest.mark.restore_tables("scheduler_run_log", "system_notifications")
+
 
 def _cfg(**overrides):
     cfg = {

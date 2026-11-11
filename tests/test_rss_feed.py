@@ -31,6 +31,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import config as _cfg_module
 from db import database as _db_module
 
+pytestmark = pytest.mark.restore_tables("system_notifications")
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

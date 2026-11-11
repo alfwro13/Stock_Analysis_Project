@@ -18,6 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.restore_tables("account_transactions", "macro_regimes", "market_pulse_cache", "market_regimes", "scheduler_run_history", "stock_signals", "system_notifications", "treasury_auction_results", "yahoo_api_call_log", "yahoo_api_stats")
+
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

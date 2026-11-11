@@ -25,6 +25,8 @@ from earnings_vol_engine import (
     run_earnings_vol_scan,
 )
 
+pytestmark = pytest.mark.restore_tables("system_notifications")
+
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep():

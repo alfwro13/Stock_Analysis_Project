@@ -21,7 +21,7 @@ from reports_engine import (
     get_garp_tenbaggers,
 )
 
-pytestmark = pytest.mark.reports
+pytestmark = [pytest.mark.reports, pytest.mark.restore_tables("market_universe", "quant_signals")]
 
 
 def _seed_universe(conn, ticker, company="Test Co", sector="Technology"):

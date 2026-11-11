@@ -34,6 +34,8 @@ from performance_analytics_engine import (
     _win_loss_stats,
 )
 
+pytestmark = pytest.mark.restore_tables("account_transactions", "asset_profiles", "stock_signals", "xray_returns_cache")
+
 T1 = "PAE_T1"
 
 

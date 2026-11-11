@@ -6,6 +6,8 @@ from db import database as _db_module
 import universe_engine
 from universe_engine import update_market_universe
 
+pytestmark = pytest.mark.restore_tables("market_universe", "system_notifications")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures

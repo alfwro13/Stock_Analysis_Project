@@ -19,7 +19,7 @@ from regime_engine import (
 )
 from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL, IF_STRESS_MIN_ROWS
 
-pytestmark = pytest.mark.regime
+pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_regimes", "market_regimes", "price_hmm_states", "system_notifications")]
 
 
 def _make_spy_vix_ftse(spy_daily_std, ftse_daily_std=None, n=252):

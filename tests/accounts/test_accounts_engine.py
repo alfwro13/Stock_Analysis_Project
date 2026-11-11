@@ -8,6 +8,8 @@ from db.database import (
     add_transaction,
 )
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "account_value_history", "account_value_history_currency", "market_pulse_cache", "scheduler_run_log", "stock_signals", "system_notifications", "treasury_bills")
+
 
 def _seed_stock_signal(ticker: str, price: float, currency: str, last_updated: str = None) -> None:
     conn = None

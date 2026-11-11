@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database
 
+pytestmark = pytest.mark.restore_tables("quant_scan_states", "quant_signals", "system_notifications")
+
 
 def _fake_ohlcv(n: int = 210) -> pd.DataFrame:
     """Return a deterministic OHLCV DataFrame with n rows and a DatetimeIndex."""

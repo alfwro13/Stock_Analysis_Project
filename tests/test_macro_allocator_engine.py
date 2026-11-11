@@ -20,7 +20,7 @@ from macro_allocator_engine import (
     _get_portfolio_asset_class_weights,
 )
 
-pytestmark = pytest.mark.regime
+pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("account_transactions", "asset_profiles", "macro_regimes", "stock_signals")]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

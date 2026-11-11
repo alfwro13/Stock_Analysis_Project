@@ -18,6 +18,8 @@ from db import database as db
 from db import connection as _conn
 from anomaly_engine import AnomalyEngine, read_trained_at
 
+pytestmark = pytest.mark.restore_tables("quant_signals")
+
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -6,6 +6,8 @@ from accounts.pending_actions import PENDING_ACTION_KINDS, pending_account_actio
 from db import database as _db
 from db.account_reminders import create_pending_reminder
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_transactions", "system_notifications", "treasury_bills")
+
 
 def _delete_pending_rows(account_ids):
     conn = None

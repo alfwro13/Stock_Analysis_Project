@@ -32,6 +32,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.restore_tables("asset_profiles", "scheduler_run_log", "system_notifications")
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 

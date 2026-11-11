@@ -5,6 +5,8 @@ from unittest.mock import patch, MagicMock
 from db import database as _db_module
 from universe_deep_sync_engine import _get_universe_target_tickers, run_universe_deep_sync
 
+pytestmark = pytest.mark.restore_tables("market_universe", "quant_scan_states", "system_notifications")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures

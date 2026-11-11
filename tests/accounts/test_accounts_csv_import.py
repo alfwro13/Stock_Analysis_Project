@@ -8,6 +8,8 @@ from accounts import accounts_engine
 from accounts.accounts_engine import cash_balance
 from db.database import create_account
 
+pytestmark = pytest.mark.restore_tables("account_transactions")
+
 
 _HEADER = (
     "Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,Ticker,ISIN,"

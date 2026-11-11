@@ -17,14 +17,20 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pytest
+
 import scheduler_jobs
+
+pytestmark = pytest.mark.restore_tables("quant_scan_states", "quant_signals", "scheduler_run_log", "system_notifications")
 
 
 class TestRunMlInferenceWiresPredictedMovers:
     def test_logs_and_backfills_when_tickers_present(self):
         call_order = []
         with patch("scheduler_jobs.get_ml_inference_tickers", return_value=["AAPL"]), \
+             patch("scheduler_jobs.run_daily_quant_scan"), \
              patch("scheduler_jobs.update_daily_ml_predictions"), \
+             patch("scheduler_jobs.alert_unscored_holdings"), \
              patch("scheduler_jobs.score_quantile_predictions"), \
              patch("predicted_movers_engine.backfill_actual_outcomes",
                    side_effect=lambda: call_order.append("backfill") or 0) as mock_backfill, \
