@@ -19,6 +19,7 @@ from yahoo_engine import yahoo_engine
 from market_session_helpers import reported_session
 import profile_engine
 from notification_engine import notify
+from quant_signals import QuantEngine
 from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
 import time_engine
 
@@ -68,12 +69,13 @@ class DataEngine:
         return sorted(valid_tickers)
 
     def get_universe_history_pool(self) -> List[str]:
-        """Scored tickers outside the nightly set; only the Update Pipeline's universe step keeps their daily history fresh."""
+        """Scored tickers outside the nightly set and inside the quant scan scope, so no download feeds a stock_signals row the scan has stopped refreshing; only the Update Pipeline's universe step keeps their daily history fresh."""
         ignored_tickers = ignored_tickers_set(load_config())
         nightly = set(self.get_all_tickers())
+        scope = QuantEngine._scan_scope()
         return sorted({
             t for t in map(normalize_ticker, get_stock_signal_tickers())
-            if t not in nightly and not is_excluded_from_yahoo_fetch(t, ignored_tickers)
+            if t not in nightly and (scope is None or t in scope) and not is_excluded_from_yahoo_fetch(t, ignored_tickers)
         })
 
     @staticmethod
