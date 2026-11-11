@@ -38,6 +38,8 @@ from risk_orchestrator_engine import (
     TIER_RED,
 )
 
+pytestmark = pytest.mark.restore_tables("alert_state", "portfolio_heat_index", "system_notifications")
+
 
 def _ro_config():
     return {

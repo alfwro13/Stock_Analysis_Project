@@ -38,6 +38,8 @@ from predicted_movers_engine import (
 )
 from utils import trading_days_forward
 
+pytestmark = pytest.mark.restore_tables("predicted_movers_history", "quant_signals")
+
 
 def _target_date(predicted_date: str) -> str:
     return trading_days_forward(predicted_date, PREDICTION_HORIZON_DAYS)

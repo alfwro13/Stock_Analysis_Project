@@ -39,6 +39,8 @@ from pattern_detection_engine import (
     backfill_historical_patterns,
 )
 
+pytestmark = pytest.mark.restore_tables("alert_state", "pattern_detection_history", "scheduler_run_log", "system_notifications")
+
 _CFG = {
     "SCHEDULING": {"PATTERN_DETECTION": {}},
     "NOTIFICATIONS": {"PATTERN_DETECTION_ALERTS": {}},

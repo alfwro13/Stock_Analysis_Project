@@ -38,6 +38,8 @@ from fastapi.testclient import TestClient
 
 from auth import COOKIE_NAME, create_session_token, hash_password, verify_embed_token, verify_password, verify_session_token
 
+pytestmark = pytest.mark.restore_tables("system_notifications")
+
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 

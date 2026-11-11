@@ -3,6 +3,8 @@ import pytest
 from accounts import treasury_bill_engine as tbe
 from db.database import create_account, get_account, get_connection
 
+pytestmark = pytest.mark.restore_tables("account_transactions", "account_value_history", "account_value_history_currency", "scheduler_run_log", "system_notifications", "treasury_bills")
+
 
 @pytest.mark.db
 def test_buy_treasury_bill_creates_unique_ticker_and_spends_cash():

@@ -16,6 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "etf_predictor_configs", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats")
+
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

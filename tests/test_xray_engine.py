@@ -1111,6 +1111,8 @@ class TestRecommendationsInReport:
 from xray_engine import _psd_fix_corr
 import numpy as np
 
+pytestmark = pytest.mark.restore_tables("account_transactions", "asset_profiles", "stock_signals", "treasury_bills", "xray_correlation_matrix", "xray_dividend_cache", "xray_returns_cache", "xray_risk_cache")
+
 
 class TestPsdFixCorr:
 

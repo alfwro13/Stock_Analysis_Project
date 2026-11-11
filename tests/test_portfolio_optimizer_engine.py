@@ -43,6 +43,8 @@ from portfolio_optimizer_engine import (
     optimize_portfolio,
 )
 
+pytestmark = pytest.mark.restore_tables("account_transactions", "asset_profiles", "xray_returns_cache", "yahoo_api_call_log", "yahoo_api_stats")
+
 T1 = "POE_T1"
 T2 = "POE_T2"
 T3 = "POE_T3"

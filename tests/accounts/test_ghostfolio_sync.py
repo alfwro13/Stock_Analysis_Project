@@ -33,6 +33,8 @@ import requests
 
 from accounts.ghostfolio_sync import GhostfolioSyncEngine
 
+pytestmark = pytest.mark.restore_tables("scheduler_run_history", "scheduler_run_log", "system_notifications")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers

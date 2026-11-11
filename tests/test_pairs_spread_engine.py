@@ -32,6 +32,8 @@ from pairs_spread_engine import (
     build_chart_series,
 )
 
+pytestmark = pytest.mark.restore_tables("scheduler_run_log", "stock_signals", "system_notifications")
+
 T_A = "PSM_A"
 T_B = "PSM_B"
 T_C = "PSM_C"

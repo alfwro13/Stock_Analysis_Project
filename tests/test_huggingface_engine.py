@@ -43,6 +43,8 @@ from constants import (
     NLP_CB_TONE_THRESHOLD, NLP_FINBERT_REVISION, NLP_NEWS_FETCH_LIMIT, NLP_TEXT_TRUNCATE_CHARS,
 )
 
+pytestmark = pytest.mark.restore_tables("system_notifications")
+
 MAX_AGE_DAYS = 3
 
 

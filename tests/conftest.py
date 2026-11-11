@@ -116,6 +116,42 @@ class _SessionTestClient(TestClient):
 
 
 @pytest.fixture(autouse=True)
+def _restore_marked_tables(request):
+    """A file marked `pytest.mark.restore_tables("t1", ...)` gets those tables put back after every test, so rows a test adds are removed and rows it overwrites or deletes are restored."""
+    marker = request.node.get_closest_marker("restore_tables")
+    if marker is None:
+        yield
+        return
+    tables = marker.args
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        before = {t: {r[0]: tuple(r) for r in conn.execute(f'SELECT rowid, * FROM "{t}"')} for t in tables}
+        columns = {t: [c[1] for c in conn.execute(f'PRAGMA table_info("{t}")')] for t in tables}
+    finally:
+        if conn:
+            conn.close()
+    yield
+    conn = None
+    try:
+        conn = _db_module.get_connection()
+        for t in tables:
+            names = ", ".join(f'"{c}"' for c in columns[t])
+            marks = ", ".join("?" * (len(columns[t]) + 1))
+            after = {r[0]: tuple(r) for r in conn.execute(f'SELECT rowid, * FROM "{t}"')}
+            for rowid, row in after.items():
+                if before[t].get(rowid) != row:
+                    conn.execute(f'DELETE FROM "{t}" WHERE rowid = ?', (rowid,))
+            for rowid, row in before[t].items():
+                if after.get(rowid) != row:
+                    conn.execute(f'INSERT INTO "{t}" (rowid, {names}) VALUES ({marks})', row)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.fixture(autouse=True)
 def _block_real_nextcloud_send():
     """Session-wide safety net: no test should ever be able to dispatch a real Nextcloud Talk
     message, regardless of whether it remembered to mock the send path itself. A test asserting

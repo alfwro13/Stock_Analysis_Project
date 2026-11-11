@@ -10,6 +10,8 @@ import pytest
 
 from db.database import get_connection, create_account, add_transaction
 
+pytestmark = pytest.mark.restore_tables("account_transactions", "market_pulse_cache", "stock_signals", "system_notifications")
+
 
 def _seed_stock_signal(ticker: str, price: float, currency: str) -> None:
     conn = None

@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db_module
 
+pytestmark = pytest.mark.restore_tables("system_notifications")
+
 
 # ---------------------------------------------------------------------------
 # run_historical_backfill resume logic

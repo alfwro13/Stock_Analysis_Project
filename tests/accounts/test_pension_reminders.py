@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_price_history", "account_transactions", "account_value_history", "account_value_history_currency", "scheduler_run_log", "system_notifications")
+
 
 def _json(resp) -> dict:
     return resp.json()
