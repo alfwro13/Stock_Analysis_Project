@@ -22,6 +22,8 @@ Covers:
   • blacklist purge: leftover parquet/fundamentals files and re-created rows are removed,
     protected (held/watched/ledger/registry) tickers are not
   • manual un-blacklist: remove_from_blacklist() and the /api/universe/blacklist routes
+  • universe-history strikes: one per UTC day, cleared by a written bar, 5th blacklists and purges,
+    protected tickers never struck, independent of the profiler's own strikes
 """
 
 import inspect
@@ -32,7 +34,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-pytestmark = pytest.mark.restore_tables("asset_profiles", "scheduler_run_log", "system_notifications")
+pytestmark = pytest.mark.restore_tables("asset_profiles", "scheduler_run_log", "system_notifications", "profile_empty_strikes")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -717,3 +719,142 @@ class TestBlacklistEndpoints:
             response = client.post("/api/universe/blacklist/remove", json={"tickers": ["BK"]})
         assert response.status_code == 500
         assert response.json()["status"] == "error"
+
+
+# ── universe-history strikes ─────────────────────────────────────────────────
+
+def _history_row(ticker):
+    from db import database
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT strikes, history_strikes, last_history_empty_at FROM profile_empty_strikes WHERE ticker = ?", (ticker,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _set_history_strikes(ticker, history_strikes, profile_strikes=0, last="2026-01-01 00:00:00"):
+    from db import database
+    conn = database.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_empty_strikes (ticker, strikes, last_empty_at, history_strikes, last_history_empty_at) "
+            "VALUES (?, ?, '2026-01-01 00:00:00', ?, ?)",
+            (ticker, profile_strikes, history_strikes, last),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestUniverseHistoryStrikes:
+
+    def test_unwritten_ticker_gets_one_strike_per_utc_day(self, empty_blacklist):
+        import profile_engine
+        with patch("profile_engine.protected_tickers", return_value=set()):
+            profile_engine.record_universe_history_night(["UHS_ONE"])
+            profile_engine.record_universe_history_night(["UHS_ONE"])
+        row = _history_row("UHS_ONE")
+        assert row["history_strikes"] == 1 and row["strikes"] == 0
+
+    def test_a_strike_from_an_earlier_day_is_added_to(self, empty_blacklist):
+        import profile_engine
+        _set_history_strikes("UHS_TWO", 2)
+        with patch("profile_engine.protected_tickers", return_value=set()):
+            assert profile_engine.record_universe_history_night(["UHS_TWO"]) == []
+        assert _history_row("UHS_TWO")["history_strikes"] == 3
+
+    def test_ticker_missing_from_a_counted_night_loses_its_strikes(self, empty_blacklist):
+        import profile_engine
+        _set_history_strikes("UHS_GONE", 4)
+        with patch("profile_engine.protected_tickers", return_value=set()):
+            profile_engine.record_universe_history_night(["UHS_OTHER"])
+        assert _history_row("UHS_GONE") is None
+        assert _history_row("UHS_OTHER")["history_strikes"] == 1
+
+    def test_written_ticker_loses_its_strikes_and_its_row(self, empty_blacklist):
+        import profile_engine
+        _set_history_strikes("UHS_BACK", 4)
+        with patch("profile_engine.protected_tickers", return_value=set()):
+            profile_engine.record_universe_history_night([])
+        assert _history_row("UHS_BACK") is None
+
+    def test_written_ticker_keeps_the_profilers_own_strikes(self, empty_blacklist):
+        import profile_engine
+        _set_history_strikes("UHS_KEEP", 4, profile_strikes=2)
+        with patch("profile_engine.protected_tickers", return_value=set()):
+            profile_engine.record_universe_history_night([])
+        row = _history_row("UHS_KEEP")
+        assert row["strikes"] == 2 and row["history_strikes"] == 0 and row["last_history_empty_at"] is None
+
+    def test_fifth_counted_night_blacklists_and_purges_rows_and_files(self, empty_blacklist, ticker_dirs, caplog):
+        import profile_engine
+        history, fundamentals = ticker_dirs
+        _touch_ticker_files("UHS_DEAD", history, fundamentals)
+        _seed_queue({"UHS_DEAD": "2026-01-01 00:00:00"})
+        _set_history_strikes("UHS_DEAD", profile_engine.UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST - 1)
+        try:
+            with patch("profile_engine.protected_tickers", return_value=set()), caplog.at_level("WARNING", logger="profile_engine"):
+                assert profile_engine.record_universe_history_night(["UHS_DEAD"]) == ["UHS_DEAD"]
+            assert "UHS_DEAD" in json.loads(empty_blacklist.read_text())
+            assert _history_row("UHS_DEAD") is None
+            assert not (history / "UHS_DEAD.parquet").exists() and not (fundamentals / "UHS_DEAD.json").exists()
+            assert "Blacklisted and purged 1 universe ticker(s)" in caplog.text and "UHS_DEAD" in caplog.text
+            from db import database
+            conn = database.get_connection()
+            try:
+                assert conn.execute("SELECT 1 FROM stock_signals WHERE ticker = 'UHS_DEAD'").fetchone() is None
+            finally:
+                conn.close()
+        finally:
+            _clear_queue(["UHS_DEAD"])
+
+    def test_fourth_counted_night_does_not_blacklist(self, empty_blacklist, ticker_dirs):
+        import profile_engine
+        history, fundamentals = ticker_dirs
+        _touch_ticker_files("UHS_FOURTH", history, fundamentals)
+        _set_history_strikes("UHS_FOURTH", profile_engine.UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST - 2)
+        with patch("profile_engine.protected_tickers", return_value=set()):
+            assert profile_engine.record_universe_history_night(["UHS_FOURTH"]) == []
+        assert json.loads(empty_blacklist.read_text()) == []
+        assert (history / "UHS_FOURTH.parquet").exists()
+
+    def test_protected_ticker_is_never_struck(self, empty_blacklist):
+        import profile_engine
+        with patch("profile_engine.protected_tickers", return_value={"UHS_HELD"}):
+            assert profile_engine.record_universe_history_night(["UHS_HELD"]) == []
+        assert _history_row("UHS_HELD") is None
+
+    def test_a_valid_profile_clears_only_the_profiler_strikes(self, empty_blacklist):
+        import profile_engine
+        _set_history_strikes("UHS_PROF", 3, profile_strikes=2)
+        with patch("profile_engine.yahoo_engine") as mock_ye:
+            mock_ye.get_ticker_info.return_value = {"shortName": "Profile Corp"}
+            assert profile_engine.update_single_profile("UHS_PROF") is True
+        try:
+            row = _history_row("UHS_PROF")
+            assert row["strikes"] == 0 and row["history_strikes"] == 3
+        finally:
+            _clear_queue(["UHS_PROF"])
+
+    def test_a_valid_profile_removes_a_row_with_no_history_strikes(self, empty_blacklist):
+        import profile_engine
+        _set_strikes("UHS_ROW", 2)
+        with patch("profile_engine.yahoo_engine") as mock_ye:
+            mock_ye.get_ticker_info.return_value = {"shortName": "Row Corp"}
+            profile_engine.update_single_profile("UHS_ROW")
+        try:
+            assert _history_row("UHS_ROW") is None
+        finally:
+            _clear_queue(["UHS_ROW"])
+
+    def test_profiler_empty_answers_do_not_add_to_history_strikes(self, empty_blacklist):
+        import profile_engine
+        _set_history_strikes("UHS_SEP", 3)
+        with patch("profile_engine.yahoo_engine") as mock_ye:
+            mock_ye.get_ticker_info.return_value = {}
+            profile_engine.update_single_profile("UHS_SEP")
+        row = _history_row("UHS_SEP")
+        assert row["strikes"] == 1 and row["history_strikes"] == 3

@@ -91,6 +91,10 @@ When profile\_engine.py executes its rolling audit metadata harvest, it evaluate
 
 4. **Upstream Ingestion Veto:** The next time freetrade\_engine.py runs a background sync, it loads data/freetrade\_blacklist.json directly into a high-speed memory set(). As it iterates through the broker rows, any resolved ticker matching the blacklist is **vetoed and discarded instantly**, ensuring it can never pollute your local system data layers again.
 
+### **The Universe-History Strike**
+
+A ticker can have a valid profile and still never return a price: the nightly Update Pipeline's universe-history step (the last step of the pipeline, over every scored ticker outside the nightly Portfolio/Watchlist/Accounts/Markets set) finds no bar for it on any night. The step counts that as a **history strike** (`profile_empty_strikes.history_strikes`), separate from the profiler's strike, and runs the same blacklist and purge on the 5th counted night (`record_universe_history_night()`, WARNING line `Blacklisted and purged N universe ticker(s) ...`). yfinance logs a rate-limited ticker as `possibly delisted; no price data found`, so the count is guarded: a night counts only when Yahoo's rate-limit breaker did not trip during the step and the step wrote at least 99% of its pool; any other night neither adds nor clears a strike. At most one strike is added per UTC day, and a counted night on which the ticker is not among the unwritten ones (a bar was written, or it left the pool) resets its count, so the strikes stay consecutive. Held, watched, ever-traded and Markets-registry tickers are never struck.
+
 ## **💻 4\. Command Line Diagnostics & Isolated Testing**
 
 The Freetrade Sync Engine includes an advanced Command Line Interface (CLI) configuration. This allows system administrators to test symbol resolution mappings and audit specific exchanges line-by-line without purging operational database tables.

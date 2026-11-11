@@ -7,11 +7,12 @@ import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from config import load_config, HISTORICAL_DIR, FUNDAMENTALS_DIR
+from constants import UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST
 from db.database import get_connection, get_all_account_tickers, get_registry_spot_future_tickers
 from yahoo_engine import yahoo_engine
 from db.helpers import get_portfolio_watchlist_tickers
 from utils import ignored_tickers_set, is_excluded_from_yahoo_fetch, normalize_ticker, safe_ticker_filename
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,67 @@ def _record_empty_answer(cursor, ticker: str) -> int:
     return cursor.execute("SELECT strikes FROM profile_empty_strikes WHERE ticker = ?", (ticker,)).fetchone()["strikes"]
 
 
+def record_universe_history_night(unwritten: Iterable[str]) -> List[str]:
+    """Counts one strike per UTC day for each unwritten universe-history ticker, clears the count of every other ticker (written, or out of the pool that night, so strikes stay consecutive), and blacklists and purges at UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST strikes. The caller only passes a night with no 429 trip and a healthy write share, because yfinance logs a rate-limited ticker as 'possibly delisted'. Returns the purged tickers."""
+    protected = protected_tickers()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    unwritten = set(unwritten)
+    to_purge: List[str] = []
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        for row in cursor.execute("SELECT ticker FROM profile_empty_strikes WHERE history_strikes > 0").fetchall():
+            if row["ticker"] not in unwritten:
+                cursor.execute(
+                    "UPDATE profile_empty_strikes SET history_strikes = 0, last_history_empty_at = NULL WHERE ticker = ?",
+                    (row["ticker"],),
+                )
+                cursor.execute("DELETE FROM profile_empty_strikes WHERE ticker = ? AND strikes = 0", (row["ticker"],))
+        for ticker in sorted(unwritten):
+            if normalize_ticker(ticker) in protected:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO profile_empty_strikes (ticker, strikes, last_empty_at, history_strikes, last_history_empty_at)
+                VALUES (?, 0, ?, 1, ?)
+                ON CONFLICT(ticker) DO UPDATE SET
+                    history_strikes = CASE WHEN substr(last_history_empty_at, 1, 10) = substr(excluded.last_history_empty_at, 1, 10)
+                                           THEN history_strikes ELSE history_strikes + 1 END,
+                    last_empty_at = excluded.last_empty_at,
+                    last_history_empty_at = excluded.last_history_empty_at
+                """,
+                (ticker, now, now),
+            )
+            strikes = cursor.execute("SELECT history_strikes FROM profile_empty_strikes WHERE ticker = ?", (ticker,)).fetchone()["history_strikes"]
+            if strikes >= UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST:
+                to_purge.append(ticker)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+    if to_purge:
+        for ticker in to_purge:
+            add_to_blacklist(ticker)
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            for ticker in to_purge:
+                _purge_ticker_rows(cursor, ticker)
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+        for ticker in to_purge:
+            _delete_ticker_files(ticker, protected)
+        logger.warning(
+            "Blacklisted and purged %d universe ticker(s) with no usable daily bar on %d counted nights: %s",
+            len(to_purge), UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST, ", ".join(to_purge),
+        )
+    return to_purge
+
+
 def update_single_profile(ticker: str) -> bool:
     """Fetches yfinance metadata for one ticker, upserts asset_profiles; blacklists/purges after EMPTY_ANSWERS_TO_BLACKLIST consecutive empty answers, never on a failed call."""
     blacklist = load_blacklist()
@@ -190,7 +252,8 @@ def update_single_profile(ticker: str) -> bool:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (ticker, company_name, sector, industry, country, exchange, currency, quote_type, summary, last_verified))
 
-        cursor.execute("DELETE FROM profile_empty_strikes WHERE ticker = ?", (ticker,))
+        cursor.execute("UPDATE profile_empty_strikes SET strikes = 0 WHERE ticker = ?", (ticker,))
+        cursor.execute("DELETE FROM profile_empty_strikes WHERE ticker = ? AND history_strikes = 0", (ticker,))
         conn.commit()
         return True
 

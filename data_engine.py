@@ -17,6 +17,7 @@ from daily_history_writer import fetch_daily_history, history_exchange, persist_
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 from market_session_helpers import reported_session
+import profile_engine
 from notification_engine import notify
 from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
 import time_engine
@@ -167,7 +168,13 @@ class DataEngine:
             if not pending or attempt == 2:
                 break
             logger.info('Retrying %s universe assets that came back without history...', len(pending))
-        self._report_universe_history(len(written), len(tickers), pending, yahoo_rate_limit_trips() - trips_at_start)
+        rate_limit_pauses = yahoo_rate_limit_trips() - trips_at_start
+        self._report_universe_history(len(written), len(tickers), pending, rate_limit_pauses)
+        if not rate_limit_pauses and len(written) / len(tickers) >= UNIVERSE_HISTORY_MIN_WRITTEN:
+            try:
+                profile_engine.record_universe_history_night(pending)
+            except Exception as e:
+                logger.error('Counting unwritten universe history tickers failed: %s', e)
 
     @staticmethod
     def _pace_universe_batch(last_started: Optional[float], trips_seen: int) -> int:

@@ -1777,3 +1777,54 @@ def test_market_baseline_keeps_stored_history_when_yahoo_returns_the_newest_bar_
     _run_baseline_fetch(tmp_path, {"^FTSE": _ohlcv(["2026-06-01"], [500.0])})
 
     assert len(pd.read_parquet(tmp_path / "FTSE_BASELINE.parquet")) == len(stored) + 1
+
+
+def _run_universe_night(tmp_path, pool_size, missing, trips_per_call=0):
+    engine = _universe_engine()
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    tickers = [f"U{i:03d}" for i in range(pool_size)]
+    trips = [0]
+
+    def fake_history(batch, **kwargs):
+        trips[0] += trips_per_call
+        return {t: frame.copy() for t in batch if t not in missing}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.yahoo_rate_limit_trips", side_effect=lambda: trips[0]), \
+         patch("data_engine.wait_for_yahoo_rate_limit_reset"), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history), \
+         patch("data_engine.profile_engine.record_universe_history_night") as record:
+        engine.bulk_download_historical([], universe=tickers)
+    return record
+
+
+def test_universe_history_clean_night_counts_the_unwritten_tickers(tmp_path):
+    record = _run_universe_night(tmp_path, 200, {"U007"})
+
+    record.assert_called_once()
+    assert list(record.call_args.args[0]) == ["U007"]
+
+
+def test_universe_history_night_with_a_rate_limit_trip_counts_nothing(tmp_path):
+    assert not _run_universe_night(tmp_path, 200, {"U007"}, trips_per_call=1).called
+
+
+def test_universe_history_degraded_night_counts_nothing(tmp_path, universe_notify):
+    record = _run_universe_night(tmp_path, 200, {f"U{i:03d}" for i in range(20)})
+
+    universe_notify.assert_called_once()
+    assert not record.called
+
+
+def test_universe_history_strike_failure_does_not_fail_the_step(tmp_path, caplog):
+    with patch("data_engine.profile_engine.record_universe_history_night", side_effect=RuntimeError("locked")), \
+         caplog.at_level("ERROR", logger="data_engine"):
+        engine = _universe_engine()
+        frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+        with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+             patch("data_engine.time_engine.is_market_open", return_value=False), \
+             patch("data_engine.yahoo_engine.get_price_history", side_effect=lambda batch, **kw: {t: frame.copy() for t in batch}):
+            engine.bulk_download_historical([], universe=["AAA", "BBB"])
+
+    assert "Counting unwritten universe history tickers failed: locked" in caplog.text

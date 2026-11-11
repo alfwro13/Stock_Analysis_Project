@@ -984,6 +984,32 @@ def test_migrate_db_adds_scope_column_to_predicted_movers_history():
 
 
 @pytest.mark.db
+def test_profile_empty_strikes_has_history_strike_columns():
+    assert {"strikes", "last_empty_at", "history_strikes", "last_history_empty_at"} <= _columns("profile_empty_strikes")
+
+
+@pytest.mark.db
+def test_migrate_db_adds_history_strike_columns_and_keeps_existing_rows():
+    conn = _conn()
+    try:
+        conn.execute("INSERT OR REPLACE INTO profile_empty_strikes (ticker, strikes, last_empty_at) VALUES ('MIGSTRIKE', 2, '2026-01-01 00:00:00')")
+        conn.execute("ALTER TABLE profile_empty_strikes DROP COLUMN history_strikes")
+        conn.execute("ALTER TABLE profile_empty_strikes DROP COLUMN last_history_empty_at")
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+        assert {"history_strikes", "last_history_empty_at"} <= {r["name"] for r in conn.execute("PRAGMA table_info(profile_empty_strikes)").fetchall()}
+        row = conn.execute("SELECT strikes, history_strikes, last_history_empty_at FROM profile_empty_strikes WHERE ticker = 'MIGSTRIKE'").fetchone()
+        assert (row["strikes"], row["history_strikes"], row["last_history_empty_at"]) == (2, 0, None)
+    finally:
+        conn.execute("DELETE FROM profile_empty_strikes WHERE ticker = 'MIGSTRIKE'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
 def test_account_transactions_has_account_date_index():
     """get_transactions() filters on account_id and orders by txn_date — must be indexed, not a table scan."""
     conn = _conn()

@@ -632,7 +632,9 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS profile_empty_strikes (
                 ticker TEXT PRIMARY KEY,
                 strikes INTEGER NOT NULL,
-                last_empty_at TIMESTAMP NOT NULL
+                last_empty_at TIMESTAMP NOT NULL,
+                history_strikes INTEGER NOT NULL DEFAULT 0,
+                last_history_empty_at TIMESTAMP
             )
         ''')
 
@@ -1924,6 +1926,16 @@ def migrate_db(conn, cursor) -> None:
                 cursor.execute(f"ALTER TABLE market_pulse_cache ADD COLUMN {extended_col} {col_type}")
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed on market_pulse_cache.%s: %s", extended_col, e)
+
+    cursor.execute("PRAGMA table_info(profile_empty_strikes)")
+    existing_strike_columns = {info['name'] for info in cursor.fetchall()}
+    for strike_col, strike_type in (("history_strikes", "INTEGER NOT NULL DEFAULT 0"), ("last_history_empty_at", "TIMESTAMP")):
+        if strike_col not in existing_strike_columns:
+            try:
+                logger.info("[MIGRATION] Adding column: %s to profile_empty_strikes...", strike_col)
+                cursor.execute(f"ALTER TABLE profile_empty_strikes ADD COLUMN {strike_col} {strike_type}")
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on profile_empty_strikes.%s: %s", strike_col, e)
 
     cursor.execute("PRAGMA table_info(backup_history)")
     if 'sha256' not in [info['name'] for info in cursor.fetchall()]:
