@@ -11,25 +11,26 @@ from db.database import get_connection
 
 logger = logging.getLogger(__name__)
 
-def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
-    """Historical Simulation VaR/CVaR at 95% CI; uses empirical percentiles to avoid the normal-distribution assumption (returns are leptokurtic)."""
+MIN_TAIL_RISK_BARS = 50
+
+
+def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> bool:
+    """Historical Simulation VaR/CVaR at 95% CI; uses empirical percentiles to avoid the normal-distribution assumption (returns are leptokurtic). Returns True when the history is too short to compute."""
     try:
         df = load_or_fetch_daily_history(ticker)
         if df is None:
             df = pd.DataFrame()
 
-        if df.empty or len(df) < 50:
-            logger.warning("Insufficient historical data to calculate tail risk for %s.", ticker)
-            return
+        if df.empty or len(df) < MIN_TAIL_RISK_BARS:
+            return True
 
         df = df.dropna(subset=['Close'])
 
         # log returns preferred over simple returns for statistical modelling
         log_returns = np.log(df['Close'] / df['Close'].shift(1)).dropna().values
 
-        if len(log_returns) < 50:
-            logger.warning("Insufficient valid log returns to calculate tail risk for %s.", ticker)
-            return
+        if len(log_returns) < MIN_TAIL_RISK_BARS:
+            return True
 
         # leptokurtic returns: use empirical 5th-percentile rather than normal-distribution VaR
         alpha = 0.05
@@ -127,8 +128,10 @@ def update_all_tail_risks(tickers: list, scan_type: str = None) -> None:
             process_tickers = tickers
 
     logger.info("Initiating Tail Risk (VaR) Scan for %s assets...", len(process_tickers))
+    too_short = []
     for ticker in process_tickers:
-        calculate_tail_risk(ticker)
+        if calculate_tail_risk(ticker):
+            too_short.append(ticker)
         time.sleep(random.uniform(0.5, 1.5))
         if scan_type:
             conn = None
@@ -158,6 +161,8 @@ def update_all_tail_risks(tickers: list, scan_type: str = None) -> None:
             if conn:
                 conn.close()
 
+    if too_short:
+        logger.info("Tail risk skipped for %s ticker(s) with fewer than %s daily bars: %s", len(too_short), MIN_TAIL_RISK_BARS, ", ".join(too_short))
     logger.info("Tail Risk Scan completed successfully.")
 
 if __name__ == "__main__":

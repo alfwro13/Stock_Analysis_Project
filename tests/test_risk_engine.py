@@ -27,13 +27,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from typing import Tuple
+import logging
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from risk_engine import calculate_tail_risk
+from risk_engine import calculate_tail_risk, update_all_tail_risks
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +192,29 @@ class TestCalculateTailRiskIntegration:
 
         calculate_tail_risk("SPY")
         mock_cursor.execute.assert_not_called()
+
+
+class TestShortHistory:
+    """A ticker whose Yahoo history is a few bars is reported once per scan at INFO, never as a per-ticker warning."""
+
+    @patch("risk_engine.load_or_fetch_daily_history")
+    def test_short_history_returns_true_without_warning(self, mock_get_history, caplog) -> None:
+        mock_get_history.return_value = pd.DataFrame({"Close": np.linspace(100, 110, 17)})
+        with caplog.at_level(logging.DEBUG, logger="risk_engine"):
+            assert calculate_tail_risk("EBSV.XD") is True
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @patch("risk_engine.time.sleep")
+    @patch("risk_engine.load_or_fetch_daily_history")
+    def test_scan_logs_one_info_line_naming_short_tickers(self, mock_get_history, _sleep, caplog) -> None:
+        mock_get_history.side_effect = lambda t: pd.DataFrame({"Close": np.linspace(100, 110, 17)})
+        with caplog.at_level(logging.DEBUG, logger="risk_engine"):
+            update_all_tail_risks(["EBSV.XD", "^KS200"])
+        short_lines = [r for r in caplog.records if "Tail risk skipped" in r.getMessage()]
+        assert len(short_lines) == 1
+        assert short_lines[0].levelno == logging.INFO
+        assert "EBSV.XD, ^KS200" in short_lines[0].getMessage()
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 if __name__ == "__main__":
