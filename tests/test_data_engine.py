@@ -1145,9 +1145,29 @@ def test_universe_history_pool_is_scored_tickers_outside_nightly_ignored_and_syn
     engine = _universe_engine()
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["DEAD"]}), \
          patch.object(engine, "get_all_tickers", return_value=["AAPL", "MSFT"]), \
+         patch("data_engine.QuantEngine._scan_scope", return_value=None), \
          patch("data_engine.get_stock_signal_tickers",
                return_value=["aapl", "NVDA", "dead", "TBILL-7", "PENSION-2", "NVDA", "VOD.L"]):
         assert engine.get_universe_history_pool() == ["NVDA", "VOD.L"]
+
+
+def test_universe_history_pool_skips_tickers_the_quant_scan_no_longer_refreshes():
+    engine = _universe_engine()
+    with patch("data_engine.load_config", return_value={}), \
+         patch.object(engine, "get_all_tickers", return_value=["AAPL"]), \
+         patch("data_engine.QuantEngine._scan_scope", return_value={"AAPL", "NVDA", "EURGBP=X", "VOD.L"}), \
+         patch("data_engine.get_stock_signal_tickers",
+               return_value=["AAPL", "NVDA", "PAVE", "SND.DE", "EURGBP=X", "VOD.L"]):
+        assert engine.get_universe_history_pool() == ["EURGBP=X", "NVDA", "VOD.L"]
+
+
+def test_universe_history_pool_is_not_narrowed_when_the_scan_scope_is_unavailable():
+    engine = _universe_engine()
+    with patch("data_engine.load_config", return_value={}), \
+         patch.object(engine, "get_all_tickers", return_value=[]), \
+         patch("data_engine.QuantEngine._scan_scope", return_value=None), \
+         patch("data_engine.get_stock_signal_tickers", return_value=["PAVE", "NVDA"]):
+        assert engine.get_universe_history_pool() == ["NVDA", "PAVE"]
 
 
 def test_universe_history_is_downloaded_in_batches_without_live_bars(tmp_path):
