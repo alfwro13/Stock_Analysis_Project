@@ -273,6 +273,52 @@ class TestFetchLiveFtYield:
         assert result is None
 
 
+FT_QUOTE_HTML = (
+    '<ul><li><span class="mod-ui-data-list__label">Yield</span><span class="mod-ui-data-list__value">5.20</span></li>'
+    '<li><span class="mod-ui-data-list__label">Today\'s Change</span><span class="mod-ui-data-list__value">'
+    '<span class="mod-format--neg"><i class="o-ft-icons-icon o-ft-icons-icon--arrow-downwards"></i>'
+    '-0.027 / -0.51%</span></span></li>'
+    '<li><span class="mod-ui-data-list__label">1 Year change</span><span class="mod-ui-data-list__value">'
+    '<span class="mod-format--pos"><i></i>+18.71%</span></span></li></ul>'
+)
+
+
+class TestFetchLiveFtQuote:
+    """The change is read from the FT tearsheet (markup copied from the live page); it is None, never 0, when it cannot be read."""
+
+    @staticmethod
+    def _quote(html):
+        svc = GiltDataService()
+        with patch.object(svc, "_get_with_retry", return_value=_mock_resp(200, text=html)):
+            return svc.fetch_live_ft_quote()
+
+    def test_negative_change_is_read_from_the_live_markup(self):
+        assert self._quote(FT_QUOTE_HTML) == (5.20, pytest.approx(-0.027))
+
+    def test_positive_change_with_explicit_plus_sign(self):
+        html = FT_QUOTE_HTML.replace("-0.027 / -0.51%", "+0.045 / +0.87%")
+        assert self._quote(html) == (5.20, pytest.approx(0.045))
+
+    def test_unicode_minus_and_escaped_apostrophe(self):
+        html = FT_QUOTE_HTML.replace("Today's", "Today&#39;s").replace("-0.027", "\u22120.027")
+        assert self._quote(html) == (5.20, pytest.approx(-0.027))
+
+    def test_missing_change_label_gives_a_yield_without_a_change(self):
+        assert self._quote(FT_HTML_PATTERN1) == (4.25, None)
+
+    def test_out_of_range_change_is_discarded(self):
+        html = FT_QUOTE_HTML.replace("-0.027 / -0.51%", "-9.5 / -45%")
+        assert self._quote(html) == (5.20, None)
+
+    def test_unreadable_yield_gives_no_quote(self):
+        assert self._quote(FT_HTML_NO_MATCH) is None
+
+    def test_fetch_live_ft_yield_returns_only_the_yield(self):
+        svc = GiltDataService()
+        with patch.object(svc, "_get_with_retry", return_value=_mock_resp(200, text=FT_QUOTE_HTML)):
+            assert svc.fetch_live_ft_yield() == 5.20
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 4. sync_gilt_data()
 # ──────────────────────────────────────────────────────────────────────────────
