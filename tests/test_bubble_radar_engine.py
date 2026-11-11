@@ -39,6 +39,8 @@ from bubble_radar_engine import (
     flag_label,
 )
 
+pytestmark = pytest.mark.restore_tables("scheduler_run_history", "scheduler_run_log")
+
 
 # ── Scoring functions ────────────────────────────────────────────────────────
 

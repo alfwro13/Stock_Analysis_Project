@@ -28,6 +28,8 @@ from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHL
 from db.account_store import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
 from db.helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
+pytestmark = pytest.mark.restore_tables("market_pulse_cache")
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

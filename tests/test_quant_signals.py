@@ -18,6 +18,8 @@ from db import database as _db
 import quant_signals
 from quant_signals import QuantEngine
 
+pytestmark = pytest.mark.restore_tables("score_history")
+
 
 @pytest.fixture(autouse=True)
 def _no_scan_scope():

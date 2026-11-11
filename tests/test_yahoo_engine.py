@@ -34,6 +34,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import yahoo_engine as yahoo_engine_module
 from yahoo_engine import YahooEngine, yahoo_engine, news_item_published_at, news_item_text
 
+pytestmark = pytest.mark.restore_tables("market_pulse_cache")
+
 _REAL_GET_SESSION_SHAPE = YahooEngine.get_session_shape
 
 

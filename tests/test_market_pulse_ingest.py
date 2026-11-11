@@ -14,6 +14,8 @@ from db import connection as _connection_layer
 import market_pulse as _mp
 import market_pulse_write as _mw
 
+pytestmark = pytest.mark.restore_tables("market_pulse_sparkline")
+
 
 MUTUAL_FUND = "0P00018XAR.L"
 NORMAL_TICKER = "_PULSE_TEST_STK"

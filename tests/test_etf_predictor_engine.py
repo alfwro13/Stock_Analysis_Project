@@ -32,6 +32,8 @@ from etf_predictor_engine import (
     _MIN_HISTORY_FOR_CALIBRATION,
 )
 
+pytestmark = pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats")
+
 
 def _fake_datetime(fixed_utc: datetime):
     """Return a datetime subclass whose .now() always returns fixed_utc — mirrors test_time_engine.py."""

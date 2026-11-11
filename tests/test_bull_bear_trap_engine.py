@@ -26,6 +26,8 @@ from db import database as db
 import alert_referee_engine as are
 from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER, fill_trap_phase_actuals, phase_label
 
+pytestmark = pytest.mark.restore_tables("scheduler_run_log", "trap_phase_history")
+
 # ── minimal config ─────────────────────────────────────────────────────────────
 
 _CFG = {

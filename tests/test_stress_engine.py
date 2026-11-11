@@ -13,7 +13,7 @@ from unittest.mock import patch
 from db import database as _db_module
 from stress_engine import _primary_sector, _get_betas, run_stress_test, SCENARIOS
 
-pytestmark = pytest.mark.stress
+pytestmark = [pytest.mark.stress, pytest.mark.restore_tables("xray_risk_cache")]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

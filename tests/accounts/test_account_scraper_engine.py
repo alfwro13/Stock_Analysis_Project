@@ -10,6 +10,8 @@ from accounts import account_scraper_engine as scraper
 import outbound_fetch_helpers as fetch_helpers
 from db.database import create_account, get_price_history
 
+pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_price_history")
+
 
 AVIVA_HTML = """<html><body>
     <div id="gf-price" class="price">1.5649</div>

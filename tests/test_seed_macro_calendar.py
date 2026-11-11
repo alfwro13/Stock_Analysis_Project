@@ -1,6 +1,10 @@
 """Tests for seed_macro_calendar.seed_calendar()."""
+import pytest
+
 from db import database as _db_module
 from seed_macro_calendar import seed_calendar
+
+pytestmark = pytest.mark.restore_tables("macro_calendar")
 
 
 class TestSeedCalendar:

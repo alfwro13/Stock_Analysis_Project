@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
 
 import tools.network_engine as ne
 
+pytestmark = pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats")
+
 
 @pytest.fixture(autouse=True)
 def reset_global_state():

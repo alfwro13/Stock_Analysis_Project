@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database as db
 import sector_relative_momentum_engine as srm
 
+pytestmark = pytest.mark.restore_tables("sector_relative_momentum_results")
+
 SECTOR = "SRM_TEST_SECTOR"
 OTHER_SECTOR = "SRM_OTHER_SECTOR"
 USD = [f"SRM_U{i}" for i in range(6)]
