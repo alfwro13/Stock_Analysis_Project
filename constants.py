@@ -80,6 +80,7 @@ CACHE_REFRESH_AWAIT_TIMEOUT_SECONDS = 30  # longest a request or job thread wait
 UNIVERSE_HISTORY_MIN_BATCH_SECONDS = 25  # a 250-ticker universe-history batch takes at least this long (about 10 tickers/s); unthrottled, yfinance's thread pool ran at about 23/s and Yahoo answered 429 about 150 s into the step
 UNIVERSE_HISTORY_SETTLE_SECONDS = 60     # pause after the 429 cooldown before the next universe-history batch; the limit outlasted a bare 60 s cooldown
 UNIVERSE_HISTORY_MIN_WRITTEN = 0.99      # a universe-history refresh that writes a smaller share of its pool raises the degraded-refresh alert; a healthy night writes all but a handful of dead symbols
+QUOTE_CHANGE_TOLERANCE_PCT = 0.5  # Yahoo regularMarketChange/ChangePercent that differ from price versus previous close by more than this many percentage points contradict the same payload
 
 PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS = 600 # GET /api/accounts/portfolio-totals treats its answer as current this long, even when no input changed
 PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS = 1800  # a price, FX or snapshot change, or an expired answer, is served while a background recompute runs, but never older than this (LR-10)

@@ -649,6 +649,68 @@ class TestImplausibleQuoteGuard:
         assert "implausible" not in caplog.text
 
 
+class TestContradictoryChangeFields:
+    """Yahoo's regularMarketChange/ChangePercent are used only while they agree with its own price and previous close."""
+
+    def teardown_method(self):
+        _clear_cache(NORMAL_TICKER)
+
+    def test_contradicting_fields_are_recomputed_and_the_quote_is_written(self, caplog):
+        daily = _flat_daily_df([19.92, 19.46])
+        snap = _snapshot(
+            19.46, regular_change=-19.92, regular_change_pct=-50.6, market_state="POSTPOST",
+            regular_previous_close=19.92,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, pd.DataFrame())
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap), \
+             caplog.at_level("WARNING"):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["price"] == pytest.approx(19.46)
+        assert row["change_pts"] == pytest.approx(-0.46)
+        assert row["change_pct"] == pytest.approx(-2.309, abs=1e-3)
+        assert "contradict its own price and previous close" in caplog.text
+        assert "implausible" not in caplog.text
+
+    def test_a_consistent_large_move_is_still_skipped_by_the_guard(self):
+        daily = _flat_daily_df([100.0, 101.0])
+        snap = _snapshot(171.4, regular_change=70.4, regular_change_pct=69.7, market_state="CLOSED", regular_previous_close=101.0)
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, pd.DataFrame())
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        assert _read_cache(NORMAL_TICKER) is None
+
+
+class TestRegularChangeFromSnapshot:
+    def _change(self, **fields):
+        from market_session_helpers import regular_change_from_snapshot
+        return regular_change_from_snapshot({"regular_price": 102.0, "regular_previous_close": 100.0, **fields})
+
+    def test_yahoo_fields_inside_the_tolerance_are_kept(self):
+        assert self._change(regular_change=2.01, regular_change_pct=2.01) == (2.01, 2.01)
+
+    def test_fields_outside_the_tolerance_are_derived(self):
+        change, pct = self._change(regular_change=-100.0, regular_change_pct=-50.0)
+        assert (change, pct) == (pytest.approx(2.0), pytest.approx(2.0))
+
+    def test_one_field_that_disagrees_is_enough(self):
+        change, pct = self._change(regular_change=2.0, regular_change_pct=-50.0)
+        assert (change, pct) == (pytest.approx(2.0), pytest.approx(2.0))
+
+    def test_missing_fields_are_derived_from_the_previous_close(self):
+        change, pct = self._change(regular_change=None, regular_change_pct=None)
+        assert (change, pct) == (pytest.approx(2.0), pytest.approx(2.0))
+
+    @pytest.mark.parametrize("prev", [None, 0, float("nan")])
+    def test_without_a_usable_previous_close_yahoo_fields_are_kept(self, prev):
+        assert self._change(regular_previous_close=prev, regular_change=-100.0, regular_change_pct=-50.0) == (-100.0, -50.0)
+
+    def test_without_fields_or_previous_close_it_is_none(self):
+        assert self._change(regular_previous_close=None, regular_change=None, regular_change_pct=None) is None
+
+
 class TestFallbackSingleHistory:
     """Mutual fund real-world path: get_price_history empty, get_single_ticker_history fallback must compute correct change."""
 
