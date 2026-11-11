@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-pytestmark = pytest.mark.restore_tables("account_autotopup_pending", "account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "account_value_history", "account_value_history_currency", "asset_profiles", "atr_stop_history", "market_pulse_cache", "scheduler_run_history", "scheduler_run_log", "score_history", "stock_signals", "system_notifications", "treasury_bills", "yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("account_autotopup_pending", "account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "account_value_history", "account_value_history_currency", "asset_profiles", "atr_stop_history", "market_pulse_cache", "scheduler_run_history", "scheduler_run_log", "score_history", "stock_signals", "system_notifications", "treasury_bills", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 def _json(resp) -> dict:

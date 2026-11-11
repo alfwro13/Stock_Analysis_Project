@@ -22,7 +22,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 from starlette.background import BackgroundTasks as _StarletteBackgroundTasks
 
-pytestmark = pytest.mark.restore_tables("account_transactions", "alert_state", "asset_profiles", "market_pulse_cache", "quant_scan_states", "stock_signals", "system_notifications", "xray_returns_cache", "yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("account_transactions", "alert_state", "asset_profiles", "market_pulse_cache", "quant_scan_states", "stock_signals", "system_notifications", "xray_returns_cache", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 

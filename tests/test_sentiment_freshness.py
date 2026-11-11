@@ -29,7 +29,7 @@ import page_data_signal_rows
 import page_data_stock
 from intraday_orchestrator import IntradayOrchestrator
 
-pytestmark = pytest.mark.restore_tables("market_pulse_cache", "yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("market_pulse_cache", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 TICKERS = ("SENTMIG_A", "SENTMIG_B", "SENTMIG_C", "SENTMIG_D", "SENTFRESH_1", "SENTFRESH_2", "^GSPC")
 

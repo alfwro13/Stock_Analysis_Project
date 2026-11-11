@@ -32,7 +32,7 @@ from etf_predictor_engine import (
     _MIN_HISTORY_FOR_CALIBRATION,
 )
 
-pytestmark = pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 def _fake_datetime(fixed_utc: datetime):

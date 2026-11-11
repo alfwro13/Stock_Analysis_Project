@@ -26,7 +26,7 @@ from db.database import add_transaction, create_account
 from strategy_backtest_engine import InsufficientHistory
 from xray_engine import resolve_scope_holdings
 
-pytestmark = pytest.mark.restore_tables("account_transactions", "market_pulse_cache", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("account_transactions", "market_pulse_cache", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 SBT_A, SBT_B, SBT_C, SBT_USD, SBT_BENCH = "SBT_A", "SBT_B", "SBT_C", "SBT_USD", "SBT_BENCH"
 DAYS = 400
