@@ -572,6 +572,7 @@ def yahoo_connection_boundary(action_context: str, lock=None, raise_on_transient
         is_cached_session = True
 
     stat_status = "success"
+    trips_before = yahoo_rate_limit_trips()
     _yf_logged_error_local.count = 0
     failures_before = getattr(session, "_transient_failures", 0)
 
@@ -595,6 +596,9 @@ def yahoo_connection_boundary(action_context: str, lock=None, raise_on_transient
     finally:
         if not is_cached_session:
             session.close()
+        # yf.download swallows the per-ticker rate-limit error, so a rate-limited bulk call leaves the block without raising.
+        if stat_status == "success" and yahoo_rate_limit_trips() != trips_before:
+            stat_status = "429"
         yf_errors = _yf_logged_error_local.count
         _yf_logged_error_local.count = None
         _increment_api_stat(interface, stat_status, action_context, yf_errors)
