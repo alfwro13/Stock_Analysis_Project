@@ -7,7 +7,8 @@ Covers:
   • inference scores only feature rows within the trading-day age limit, on dates that meet the coverage threshold,
     stamps ml_scored_at, clears the stock_signals mirror of an unscored ticker whose last score has aged out,
     and returns the requested tickers it left unscored
-  • the Portfolio/Watchlist warning fires once per newly unscored held ticker and rearms when all are scored
+  • the Portfolio/Watchlist warning fires once per held ticker that had a score and lost it, survives a restart
+    (alert_state) and rearms when the ticker is scored again; a never-scored ticker is only logged
   • score_quantile_predictions stamps quantile_scored_at with every band it writes
 """
 
@@ -24,6 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database as _db_module
 import time_engine
 from ml_features import LATEST_FEATURES_QUERY
+
+pytestmark = pytest.mark.restore_tables("alert_state", "quant_signals")
 
 
 def _session_date(sessions_back=0):
@@ -231,57 +234,119 @@ class TestInferenceUsesOnlyFreshWellCoveredRows:
 
 
 class TestAlertUnscoredHoldings:
+    SCORED_BEFORE = ("MLHA", "MLHB")
+    NEVER_SCORED = "MLHN"
+
     @pytest.fixture(autouse=True)
-    def _rearm(self):
-        import ml_inference_engine
-        ml_inference_engine._warned_unscored_holdings = set()
-        yield
-        ml_inference_engine._warned_unscored_holdings = set()
+    def _seed(self):
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            for ticker in self.SCORED_BEFORE:
+                conn.execute(
+                    "INSERT OR REPLACE INTO quant_signals (ticker, date, ml_scored_at) VALUES (?, ?, ?)",
+                    (ticker, _session_date(5), "2000-01-03 02:00:00"),
+                )
+            conn.execute(
+                "INSERT OR REPLACE INTO quant_signals (ticker, date) VALUES (?, ?)", (self.NEVER_SCORED, _session_date(5))
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
 
     @staticmethod
-    def _alert(unscored, held=("HELD1", "HELD2")):
+    def _alert(unscored, held=("MLHA", "MLHB", "MLHN")):
         from ml_inference_engine import alert_unscored_holdings
         with patch("ml_inference_engine.get_portfolio_watchlist_tickers", return_value=list(held)), \
              patch("ml_inference_engine.notify") as notify:
             alert_unscored_holdings(unscored)
         return notify
 
-    def test_warns_about_unscored_held_tickers_with_the_universe_count(self):
-        notify = self._alert(["HELD1", "UNIV1", "UNIV2"])
+    @staticmethod
+    def _warned():
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            rows = conn.execute("SELECT ticker FROM alert_state WHERE engine = 'ml_inference_stale_features'").fetchall()
+            return {row["ticker"] for row in rows}
+        finally:
+            if conn:
+                conn.close()
+
+    def test_warns_about_a_held_ticker_that_lost_its_score_without_a_universe_count(self):
+        notify = self._alert(["MLHA", "UNIV1", "UNIV2"])
         assert notify.call_args.args[:2] == ("ml_inference_stale_features", "Warning")
         text = notify.call_args.args[2]
-        assert "1 Portfolio/Watchlist ticker(s)" in text and "HELD1" in text and "2 other universe" in text
+        assert "1 Portfolio/Watchlist ticker(s)" in text and "MLHA" in text and "other universe" not in text
+        assert self._warned() == {"MLHA"}
+
+    def test_a_never_scored_ticker_is_only_logged_at_info(self, caplog):
+        with caplog.at_level("INFO", logger="ml_inference_engine"):
+            notify = self._alert(["MLHN"])
+        assert not notify.called
+        assert self._warned() == set()
+        assert any(
+            r.levelname == "INFO" and "never had a score" in r.getMessage() and "MLHN" in r.getMessage()
+            for r in caplog.records
+        )
 
     def test_universe_only_misses_do_not_warn(self):
         assert not self._alert(["UNIV1", "UNIV2"]).called
 
-    def test_same_set_warns_once_and_a_new_member_warns_again(self):
-        import ml_inference_engine
-        with patch("ml_inference_engine.get_portfolio_watchlist_tickers", return_value=["HELD1", "HELD2"]), \
-             patch("ml_inference_engine.notify") as notify:
-            ml_inference_engine.alert_unscored_holdings(["HELD1"])
-            ml_inference_engine.alert_unscored_holdings(["HELD1"])
-            assert notify.call_count == 1
-            ml_inference_engine.alert_unscored_holdings(["HELD1", "HELD2"])
-            assert notify.call_count == 2
+    def test_a_never_scored_ticker_is_not_named_in_the_warning(self):
+        text = self._alert(["MLHA", "MLHN"]).call_args.args[2]
+        assert "MLHA" in text and "MLHN" not in text
 
-    def test_rearms_after_every_held_ticker_is_scored(self):
+    def test_same_set_warns_once_and_a_new_member_warns_again(self):
+        assert self._alert(["MLHA"]).call_count == 1
+        assert self._alert(["MLHA"]).call_count == 0
+        notify = self._alert(["MLHA", "MLHB"])
+        assert notify.call_count == 1 and self._warned() == {"MLHA", "MLHB"}
+
+    def test_the_memory_survives_a_restart(self):
+        self._alert(["MLHA"])
         import ml_inference_engine
-        with patch("ml_inference_engine.get_portfolio_watchlist_tickers", return_value=["HELD1"]), \
-             patch("ml_inference_engine.notify") as notify:
-            ml_inference_engine.alert_unscored_holdings(["HELD1"])
-            ml_inference_engine.alert_unscored_holdings([])
-            ml_inference_engine.alert_unscored_holdings(["HELD1"])
-            assert notify.call_count == 2
+        assert not hasattr(ml_inference_engine, "_warned_unscored_holdings")
+        assert self._alert(["MLHA"]).call_count == 0
+
+    def test_rearms_after_the_ticker_is_scored_again(self):
+        self._alert(["MLHA"])
+        assert self._alert([]).call_count == 0 and self._warned() == set()
+        assert self._alert(["MLHA"]).call_count == 1
+
+    def test_a_ticker_that_leaves_the_portfolio_rearms(self):
+        self._alert(["MLHA"])
+        self._alert(["MLHA"], held=("MLHB",))
+        assert self._warned() == set()
+
+    def test_a_still_missing_ticker_keeps_its_row_alive_for_the_alert_state_prune(self):
+        self._alert(["MLHA"])
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            conn.execute("UPDATE alert_state SET state_date = '2000-01-01' WHERE engine = 'ml_inference_stale_features'")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+        self._alert(["MLHA"])
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            state_date = conn.execute(
+                "SELECT state_date FROM alert_state WHERE engine = 'ml_inference_stale_features' AND ticker = 'MLHA'"
+            ).fetchone()["state_date"]
+        finally:
+            if conn:
+                conn.close()
+        assert state_date == datetime.now(timezone.utc).date().isoformat()
 
     def test_inference_that_did_not_run_neither_warns_nor_rearms(self):
-        import ml_inference_engine
-        with patch("ml_inference_engine.get_portfolio_watchlist_tickers", return_value=["HELD1"]), \
-             patch("ml_inference_engine.notify") as notify:
-            ml_inference_engine.alert_unscored_holdings(["HELD1"])
-            ml_inference_engine.alert_unscored_holdings(None)
-            ml_inference_engine.alert_unscored_holdings(["HELD1"])
-            assert notify.call_count == 1
+        self._alert(["MLHA"])
+        assert not self._alert(None).called
+        assert self._warned() == {"MLHA"}
+        assert self._alert(["MLHA"]).call_count == 0
 
 
 class TestQuantileScoringStampsBands:

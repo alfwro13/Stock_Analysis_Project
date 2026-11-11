@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # GUI name: "Daily ML Inference". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 
 _MAX_TICKERS_IN_WARNING = 15
-_warned_unscored_holdings: set = set()
+_STALE_FEATURES_ENGINE = "ml_inference_stale_features"
 
 
 def _coverage_threshold(saved_stats: Optional[Dict[str, Any]]) -> Tuple[int, Optional[int]]:
@@ -40,27 +40,71 @@ def _log_cross_section(summary: Dict[str, Any], threshold: int) -> None:
     )
 
 
+def _ever_scored(cursor: Any, tickers: set) -> set:
+    if not tickers:
+        return set()
+    placeholders = ",".join("?" for _ in tickers)
+    cursor.execute(
+        f"SELECT DISTINCT ticker FROM quant_signals WHERE ml_scored_at IS NOT NULL AND ticker IN ({placeholders})",
+        sorted(tickers),
+    )
+    return {row[0] for row in cursor.fetchall()}
+
+
 def alert_unscored_holdings(unscored: Optional[List[str]]) -> None:
-    """One warning per newly unscored Portfolio/Watchlist ticker set; rearms when every held and watched ticker is scored again."""
-    global _warned_unscored_holdings
+    """Warns once per Portfolio/Watchlist ticker that had a score and lost it (re-arms when scored again); a ticker never scored (short history, fund codes) is only logged."""
     if unscored is None:
         return
-    unscored_set = set(unscored)
-    missing = unscored_set & set(get_portfolio_watchlist_tickers())
-    new = missing - _warned_unscored_holdings
-    _warned_unscored_holdings = missing
-    if not new:
-        return
-    shown = sorted(missing)[:_MAX_TICKERS_IN_WARNING]
-    extra = f" (+{len(missing) - len(shown)} more)" if len(missing) > len(shown) else ""
-    notify(
-        "ml_inference_stale_features", "Warning",
-        f"Daily ML Inference could not score {len(missing)} Portfolio/Watchlist ticker(s): their newest quant "
-        f"features are older than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days or missing: {', '.join(shown)}{extra}. "
-        f"{len(unscored_set) - len(missing)} other universe ticker(s) have no fresh score either. "
-        "Check the Daily Quant Screener and the Update Pipeline for these tickers.",
-        level="warning",
-    )
+    missing = set(unscored) & set(get_portfolio_watchlist_tickers())
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        lost = _ever_scored(cursor, missing)
+        cursor.execute("SELECT ticker FROM alert_state WHERE engine = ?", (_STALE_FEATURES_ENGINE,))
+        warned = {row[0] for row in cursor.fetchall()}
+
+        never_scored = sorted(missing - lost)
+        if never_scored:
+            logger.info(
+                "Daily ML Inference left %d Portfolio/Watchlist ticker(s) unscored that have never had a score "
+                "(typically fewer than 200 daily bars, or a fund code): %s",
+                len(never_scored), ", ".join(never_scored),
+            )
+
+        new = lost - warned
+        if new:
+            shown = sorted(lost)[:_MAX_TICKERS_IN_WARNING]
+            extra = f" (+{len(lost) - len(shown)} more)" if len(lost) > len(shown) else ""
+            notify(
+                _STALE_FEATURES_ENGINE, "Warning",
+                f"Daily ML Inference could not score {len(lost)} Portfolio/Watchlist ticker(s) that had a score before: "
+                f"their newest quant features are older than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days or missing: "
+                f"{', '.join(shown)}{extra}. Check the Daily Quant Screener and the Update Pipeline for these tickers.",
+                level="warning",
+            )
+
+        now = datetime.now(timezone.utc)
+        today = now.date().isoformat()
+        cursor.executemany(
+            "DELETE FROM alert_state WHERE engine = ? AND ticker = ?",
+            [(_STALE_FEATURES_ENGINE, ticker) for ticker in warned - lost],
+        )
+        cursor.executemany(
+            "INSERT INTO alert_state (engine, ticker, last_fired_utc, state_date) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(engine, ticker) DO UPDATE SET last_fired_utc = excluded.last_fired_utc, state_date = excluded.state_date",
+            [(_STALE_FEATURES_ENGINE, ticker, now.strftime("%Y-%m-%d %H:%M:%S"), today) for ticker in new],
+        )
+        cursor.executemany(
+            "UPDATE alert_state SET state_date = ? WHERE engine = ? AND ticker = ?",
+            [(today, _STALE_FEATURES_ENGINE, ticker) for ticker in warned & lost],
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Daily ML Inference unscored-holdings alert failed: %s", e)
+    finally:
+        if conn:
+            conn.close()
 
 
 def update_daily_ml_predictions(tickers: List[str]) -> Optional[List[str]]:
