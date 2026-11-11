@@ -40,9 +40,13 @@ unit-tests send_text_message's own real implementation against a mocked `request
 overrides this fixture with a no-op in that module.
 """
 
+import contextlib
 import os
 import sys
 import tempfile
+import time
+import threading
+import traceback
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -149,6 +153,72 @@ def _restore_marked_tables(request):
     finally:
         if conn:
             conn.close()
+
+
+from curl_cffi import requests as _cffi_requests  # noqa: E402
+
+_real_session_request = _cffi_requests.Session.request
+_live_yahoo = {"active": False, "calls": []}
+
+
+class LiveYahooRequestBlocked(Exception):
+    pass
+
+
+def _guarded_session_request(self, method, url, *args, **kwargs):
+    if _live_yahoo["active"]:
+        frames = [f for f in traceback.extract_stack() if f.filename.startswith(str(PROJECT_ROOT)) and "/tests/" not in f.filename and "/venv/" not in f.filename and Path(f.filename).name not in ("network_engine.py", "yahoo_engine.py")]
+        origin = "%s:%d" % (Path(frames[-1].filename).name, frames[-1].lineno) if frames else threading.current_thread().name
+        _live_yahoo["calls"].append("%s [%s] from %s" % (method, getattr(self, "_retry_action_context", "") or url, origin))
+        raise LiveYahooRequestBlocked("a live Yahoo request is blocked while a test runs")
+    return _real_session_request(self, method, url, *args, **kwargs)
+
+
+_cffi_requests.Session.request = _guarded_session_request
+
+
+@pytest.fixture(autouse=True)
+def _block_live_yahoo_requests():
+    """Every Yahoo request goes through a curl_cffi Session, so a test that reaches the network is refused there and then failed with the URLs; a live call depends on the network and market hours, and its call-log rows are written by a background thread that no table restore can reach. A test patches the Yahoo call it triggers (a `yahoo_engine` method or `yf`)."""
+    _live_yahoo["calls"].clear()
+    _live_yahoo["active"] = True
+    try:
+        yield
+        _wait_for_sentiment_refresh_worker()
+    finally:
+        _live_yahoo["active"] = False
+        calls = list(_live_yahoo["calls"])
+        _live_yahoo["calls"].clear()
+    if calls:
+        pytest.fail("test made %d live Yahoo request(s), patch them: %s" % (len(calls), "; ".join(calls[:3])), pytrace=False)
+
+
+def _wait_for_sentiment_refresh_worker():
+    """A page request can start a background chart refresh that calls Yahoo; it finishes inside the test that started it, so the live-request check and any Yahoo stub still apply to it."""
+    module = sys.modules.get("sentiment_engine")
+    deadline = time.monotonic() + 10
+    while module is not None and module._IS_REFRESHING and time.monotonic() < deadline:
+        time.sleep(0.02)
+
+
+@pytest.fixture
+def offline_yahoo():
+    """Yahoo answers every request with nothing, as when it is unreachable; for a test that reaches Yahoo through code it does not mock. A test's own patch of a Yahoo method layers over this one."""
+    from yahoo_engine import YahooEngine
+
+    answers = {
+        "get_price_history": {}, "get_intraday": {}, "get_ticker_info": None, "get_quote_snapshot": None,
+        "get_options_expirations": None, "get_options_chain": None, "get_news": None,
+        "get_insider_transactions": None, "get_earnings_dates": None, "get_fund_holdings": None,
+        "get_fund_sector_weightings": None, "get_ticker_actions": None,
+        "get_annual_financials": (None, None, None), "_fetch_fx_rate": None,
+        "get_single_ticker_history": None, "search_by_isin": None, "search_ticker": [],
+    }
+    with contextlib.ExitStack() as stack:
+        for name, answer in answers.items():
+            stack.enter_context(patch.object(YahooEngine, name, MagicMock(return_value=answer)))
+        yield
+        _wait_for_sentiment_refresh_worker()
 
 
 @pytest.fixture(autouse=True)

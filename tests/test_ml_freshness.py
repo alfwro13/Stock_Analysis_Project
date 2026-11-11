@@ -36,7 +36,7 @@ from intraday_orchestrator import IntradayOrchestrator
 from ml_features import inference_cross_section
 from reports_engine import get_dividend_harvest_setups, get_garp_tenbaggers
 
-pytestmark = pytest.mark.restore_tables("market_pulse_cache", "quant_scan_states", "scheduler_run_log", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("market_pulse_cache", "quant_scan_states", "scheduler_run_log", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 TICKERS = ("MLFRESH_1", "MLFRESH_2", "MLFRESH_3")
 

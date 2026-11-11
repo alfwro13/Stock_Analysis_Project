@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import create_account, get_connection, get_performance_cache
 from intraday_orchestrator import IntradayOrchestrator, format_currency, build_stock_url
 
-pytestmark = pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "alert_state", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "alert_state", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 # ── format_currency ───────────────────────────────────────────────────────────

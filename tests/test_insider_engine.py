@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import insider_engine
 from insider_engine import get_tickers_from_json, run_insider_alert
 
-pytestmark = pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

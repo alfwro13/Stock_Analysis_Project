@@ -17,7 +17,7 @@ from ai_engine import AIPromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from db.database import get_connection
 
-pytestmark = pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 _STAMP = "%Y-%m-%d %H:%M:%S"
 

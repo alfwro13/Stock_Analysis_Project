@@ -16,7 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from crash_engine import CrashEngine
 
-pytestmark = pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats")
+pytestmark = [pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 CFG = {

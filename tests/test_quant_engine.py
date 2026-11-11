@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database
 
-pytestmark = pytest.mark.restore_tables("quant_scan_states", "quant_signals", "system_notifications")
+pytestmark = [pytest.mark.restore_tables("quant_scan_states", "quant_signals", "system_notifications"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 def _fake_ohlcv(n: int = 210) -> pd.DataFrame:
@@ -203,6 +203,7 @@ class TestResumability:
         import logging
         from quant_engine import run_daily_quant_scan
         with patch("quant_engine.load_or_fetch_daily_history", return_value=_fake_ohlcv(n=50)), \
+             patch("quant_engine.download_spy_benchmark", return_value=None), \
              patch("quant_engine.time"), caplog.at_level(logging.INFO, logger="quant_engine"):
             run_daily_quant_scan(["ZZSHORTA", "ZZSHORTB"], scan_type="short_summary_test")
 
