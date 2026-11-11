@@ -148,12 +148,12 @@ def log_pretrade_check(
             conn.close()
 
 
-def get_universe_tickers() -> List[str]:
-    """Respects FREETRADE_ONLY_MODE: returns only is_freetrade=1 tickers when enabled."""
+def get_universe_tickers(include_non_freetrade: bool = False) -> List[str]:
+    """Respects FREETRADE_ONLY_MODE (only is_freetrade=1 tickers when enabled) unless include_non_freetrade asks for every listing."""
     conn = None
     try:
         config_data = load_config()
-        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False) and not include_non_freetrade
         conn = get_connection()
         cursor = conn.cursor()
         if freetrade_only:

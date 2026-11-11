@@ -556,7 +556,7 @@ class TestBlacklistPurgeFiles:
         _set_strikes("PQPURGE", profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
         with patch("profile_engine.BLACKLIST_PATH", bl), \
              patch("profile_engine.yahoo_engine") as mock_ye, \
-             patch("profile_engine._protected_tickers", return_value=set()):
+             patch("profile_engine.protected_tickers", return_value=set()):
             mock_ye.get_ticker_info.return_value = {}
             assert profile_engine.update_single_profile("PQPURGE") is False
         assert not (history / "PQPURGE.parquet").exists()
@@ -571,7 +571,7 @@ class TestBlacklistPurgeFiles:
         _set_strikes("PQHELD", profile_engine.EMPTY_ANSWERS_TO_BLACKLIST - 1)
         with patch("profile_engine.BLACKLIST_PATH", bl), \
              patch("profile_engine.yahoo_engine") as mock_ye, \
-             patch("profile_engine._protected_tickers", return_value={"PQHELD"}):
+             patch("profile_engine.protected_tickers", return_value={"PQHELD"}):
             mock_ye.get_ticker_info.return_value = {}
             profile_engine.update_single_profile("PQHELD")
         assert (history / "PQHELD.parquet").exists()
@@ -597,7 +597,7 @@ class TestBlacklistPurgeFiles:
         _seed_queue({"PQSWEEP": "2026-01-01 00:00:00", "PQHELD2": None, "PQOTHER": None})
         try:
             with patch("profile_engine.BLACKLIST_PATH", bl), \
-                 patch("profile_engine._protected_tickers", return_value={"PQHELD2"}):
+                 patch("profile_engine.protected_tickers", return_value={"PQHELD2"}):
                 removed = profile_engine.purge_blacklisted_tickers()
             conn = database.get_connection()
             try:
