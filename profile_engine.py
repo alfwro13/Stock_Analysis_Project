@@ -72,7 +72,7 @@ def _purge_ticker_rows(cursor, ticker: str) -> int:
     return removed
 
 
-def _protected_tickers() -> set:
+def protected_tickers() -> set:
     """Held, watched, ever-traded and Markets-registry tickers: valuation history and the Markets page still read their files and rows."""
     protected = set(get_portfolio_watchlist_tickers())
     protected.update(normalize_ticker(t) for t in get_all_account_tickers())
@@ -101,7 +101,7 @@ def purge_blacklisted_tickers() -> int:
     blacklist = load_blacklist()
     if not blacklist:
         return 0
-    protected = _protected_tickers()
+    protected = protected_tickers()
     targets = sorted(t for t in blacklist if normalize_ticker(t) not in protected)
 
     removed = 0
@@ -169,7 +169,7 @@ def update_single_profile(ticker: str) -> bool:
 
             _purge_ticker_rows(cursor, ticker)
             conn.commit()
-            _delete_ticker_files(ticker, _protected_tickers())
+            _delete_ticker_files(ticker, protected_tickers())
             return False
 
         company_name = info.get('shortName') or info.get('longName') or ticker

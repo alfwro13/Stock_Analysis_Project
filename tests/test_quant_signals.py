@@ -10,12 +10,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
 import quant_signals
 from quant_signals import QuantEngine
+
+
+@pytest.fixture(autouse=True)
+def _no_scan_scope():
+    """An empty Market Universe disables the scope filter; the scope tests patch their own."""
+    with patch("quant_signals.get_universe_tickers", return_value=[]):
+        yield
 
 
 def test_run_all_skips_tbill_synthetic_tickers(tmp_path):
@@ -67,6 +75,30 @@ def test_run_all_skips_non_bar_files_and_empty_history(tmp_path, caplog):
     assert any("3 file(s)" in m and "is not daily OHLCV bars" in m and "FUTURE_CACHE, SPY_hmm, market_stress_if" in m for m in skipped)
     assert any("2 file(s)" in m and "has no valid Close" in m and "PFC.L, ZNGA" in m for m in skipped)
     assert all(r.levelname == "INFO" for r in caplog.records if "skipped" in r.getMessage())
+
+
+def test_run_all_skips_leftover_files_outside_every_ticker_scope_and_names_them_once(tmp_path, caplog):
+    """A history file no feature reads (an exchange test symbol, a retired ETF) must not re-seed stock_signals every night."""
+    for name in ("AAPL", "HELD", "NIGHTLY", "USDGBP=X", "SPY", "ATEST", "XLK"):
+        _write_history(tmp_path, name, [1.0, 2.0, 3.0])
+
+    engine = QuantEngine()
+    with patch("quant_signals.HISTORICAL_DIR", tmp_path), \
+         patch("quant_signals.get_universe_tickers", return_value=["aapl"]) as universe, \
+         patch("profile_engine.protected_tickers", return_value={"HELD"}), \
+         patch("data_engine.DataEngine") as data_engine, \
+         patch.object(engine, "analyze_ticker") as mock_analyze, \
+         caplog.at_level("INFO", logger="quant_signals"):
+        data_engine.return_value.get_all_tickers.return_value = ["NIGHTLY"]
+        data_engine.in_scope_fx_pairs.return_value = ["USDGBP=X"]
+        engine.run_all()
+
+    universe.assert_called_once_with(include_non_freetrade=True)
+    assert {c.args[0] for c in mock_analyze.call_args_list} == {"AAPL", "HELD", "NIGHTLY", "USDGBP=X", "SPY"}
+    skipped = [r for r in caplog.records if "skipped" in r.getMessage()]
+    assert len(skipped) == 1
+    assert "2 file(s)" in skipped[0].getMessage() and "ATEST, XLK" in skipped[0].getMessage()
+    assert skipped[0].levelname == "INFO"
 
 
 def test_run_all_still_analyses_a_file_it_cannot_read(tmp_path):

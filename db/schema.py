@@ -3,10 +3,10 @@ import os
 import logging
 
 from db.database import get_connection
-from config import BASE_CURRENCY, DATA_DIR, WATCHLIST_PATH
+from config import BASE_CURRENCY, DATA_DIR, FUNDAMENTALS_DIR, HISTORICAL_DIR, WATCHLIST_PATH
 import time_engine
 import learn_cards_seed
-from utils import is_valid_ticker
+from utils import contained_ticker_path, is_valid_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -2922,6 +2922,20 @@ def migrate_db(conn, cursor) -> None:
             conn.commit()
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to remove exchange test symbols: %s", e)
+
+    # The quant scan seeds stock_signals from every stored history file, so a surviving file brings the row back.
+    files_removed = 0
+    for directory, suffix in ((HISTORICAL_DIR, ".parquet"), (FUNDAMENTALS_DIR, ".json")):
+        for symbol in test_symbols:
+            path = contained_ticker_path(directory, symbol, suffix)
+            try:
+                if path and os.path.exists(path):
+                    os.remove(path)
+                    files_removed += 1
+            except OSError as e:
+                logger.warning("[MIGRATION] Failed to delete %s: %s", path, e)
+    if files_removed:
+        logger.info("[MIGRATION] Removed %d exchange test-symbol history/fundamentals file(s).", files_removed)
 
     try:
         from db.helpers import refresh_job_average_duration

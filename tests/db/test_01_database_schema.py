@@ -1002,6 +1002,30 @@ def test_account_transactions_has_account_date_index():
 
 
 @pytest.mark.db
+def test_migrate_db_deletes_exchange_test_symbol_history_and_fundamentals_files_and_keeps_real_ones(tmp_path, monkeypatch):
+    """The quant scan re-seeds stock_signals from any stored history file, so the rows alone do not stay removed."""
+    history, fundamentals = tmp_path / "historical", tmp_path / "fundamentals"
+    history.mkdir()
+    fundamentals.mkdir()
+    for path in (history / "ATEST.parquet", history / "CTEST-E.parquet", history / "ZZLR13KEEP.parquet",
+                 fundamentals / "MTEST.json", fundamentals / "ZZLR13KEEP.json"):
+        path.write_bytes(b"x")
+    monkeypatch.setattr(db_schema, "HISTORICAL_DIR", history)
+    monkeypatch.setattr(db_schema, "FUNDAMENTALS_DIR", fundamentals)
+
+    conn = _conn()
+    try:
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+    finally:
+        conn.close()
+
+    assert sorted(p.name for p in history.iterdir()) == ["ZZLR13KEEP.parquet"]
+    assert sorted(p.name for p in fundamentals.iterdir()) == ["ZZLR13KEEP.json"]
+
+
+@pytest.mark.db
 def test_migrate_db_removes_exchange_test_symbols_from_the_universe_tables_and_keeps_real_tickers():
     tables = ("market_universe", "stock_signals", "ticker_metadata", "asset_profiles")
     conn = _conn()

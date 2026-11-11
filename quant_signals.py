@@ -11,14 +11,14 @@ import pyarrow.parquet as pq
 import ta
 
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
-from db.database import get_connection, log_score_event
+from db.database import get_connection, get_universe_tickers, log_score_event
 from fundamentals_helpers import calculate_peter_lynch_peg
 from pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker
+from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker, normalize_ticker
 from constants import (
-    DAILY_BAR_COLUMNS,
+    DAILY_BAR_COLUMNS, QUANT_SCAN_ALWAYS_TICKERS,
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
 )
@@ -921,21 +921,41 @@ class QuantEngine:
         except Exception:
             return "bars"
 
+    @staticmethod
+    def _scan_scope() -> Optional[set]:
+        """Every ticker a feature reads a score for; a stored file outside it is a leftover that must not seed stock_signals again. None (nothing is skipped) when the Market Universe is unreadable or empty."""
+        from data_engine import DataEngine  # data_engine -> daily_history_writer -> price_repair_engine imports this module
+        from profile_engine import protected_tickers
+
+        universe = {normalize_ticker(t) for t in get_universe_tickers(include_non_freetrade=True)}
+        if not universe:
+            return None
+        nightly = DataEngine().get_all_tickers()
+        return universe | protected_tickers() | set(nightly) | set(DataEngine.in_scope_fx_pairs(nightly)) | set(QUANT_SCAN_ALWAYS_TICKERS)
+
     def run_all(self) -> None:
         logger.info("Starting Institutional Quantamental Engine...")
-        skipped = {"not_bars": [], "empty": []}
+        skipped = {"orphan": [], "not_bars": [], "empty": []}
+        scope = self._scan_scope()
         for filename in os.listdir(HISTORICAL_DIR):
             if not filename.endswith(".parquet") or "BASELINE" in filename:
                 continue
             ticker = filename.replace(".parquet", "")
             if is_synthetic_ticker(ticker):
                 continue
+            if scope is not None and normalize_ticker(ticker) not in scope:
+                skipped["orphan"].append(ticker)
+                continue
             kind = self._history_kind(ticker)
             if kind == "bars":
                 self.analyze_ticker(ticker)
             else:
                 skipped[kind].append(ticker)
-        for kind, reason in (("not_bars", "is not daily OHLCV bars"), ("empty", "has no valid Close")):
+        for kind, reason in (
+            ("orphan", "belongs to no Market Universe, held, watched, traded or Markets-page ticker"),
+            ("not_bars", "is not daily OHLCV bars"),
+            ("empty", "has no valid Close"),
+        ):
             if skipped[kind]:
                 logger.info("Quant scan skipped %d file(s) whose stored history %s: %s",
                             len(skipped[kind]), reason, ", ".join(sorted(skipped[kind])))
