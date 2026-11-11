@@ -12,6 +12,13 @@ from utils import write_parquet_atomic
 
 logger = logging.getLogger(__name__)
 
+FT_MAX_DAILY_CHANGE_PTS = 2.0
+_FT_CHANGE_PATTERN = re.compile(
+    r"Today(?:'|&#39;|&#x27;|\u2019)s\s+Change\s*</span>\s*<span[^>]*>(?:\s*<[^>]+>)*\s*([+\-\u2212]?\d+(?:\.\d+)?)\s*/",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
 class GiltDataService:
 
     def __init__(self) -> None:
@@ -73,7 +80,23 @@ class GiltDataService:
             logger.exception("Failed to extract historical data layers from BoE.")
             return None
 
+    @staticmethod
+    def _parse_ft_change(html_content: str) -> Optional[float]:
+        match = _FT_CHANGE_PATTERN.search(html_content)
+        if not match:
+            return None
+        change = float(match.group(1).replace("\u2212", "-"))
+        if abs(change) >= FT_MAX_DAILY_CHANGE_PTS:
+            logger.warning("FT.com Today's Change rejected as out of range: %s", change)
+            return None
+        return change
+
     def fetch_live_ft_yield(self) -> Optional[float]:
+        quote = self.fetch_live_ft_quote()
+        return None if quote is None else quote[0]
+
+    def fetch_live_ft_quote(self) -> Optional[tuple[float, Optional[float]]]:
+        """(yield %, FT's own change since the previous close in percentage points or None), or None when no yield could be read."""
         payload = {"s": "UK10YG"}
         try:
             logger.info("Scraping live session snapshot via FT.com: %s?s=UK10YG", self.ft_url)
@@ -101,7 +124,7 @@ class GiltDataService:
                 yield_val = float(match.group(1).replace(",", "").strip())
                 if 0.0 < yield_val < 25.0:
                     logger.info("FT.com parsing success. Isolated Live Yield: %s%%", yield_val)
-                    return yield_val
+                    return yield_val, self._parse_ft_change(html_content)
 
             # Price-node fallback when the Yield label is absent from the page
             price_match = re.search(r'class="mod-ui-data-list__value[^"]*">\s*([\d\.]+)', html_content)
@@ -109,7 +132,7 @@ class GiltDataService:
                 yield_val = float(price_match.group(1))
                 if 0.0 < yield_val < 25.0:
                     logger.info("Fallback UI extractor executed. Isolated Live Yield: %s%%", yield_val)
-                    return yield_val
+                    return yield_val, self._parse_ft_change(html_content)
                 logger.warning("Fallback UI extractor rejected out-of-range value: %s", yield_val)
 
             logger.warning("Financial Times content layout has shifted. Yield token missed.")

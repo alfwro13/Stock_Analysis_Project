@@ -1170,7 +1170,7 @@ def test_legacy_pulse_heartbeat_is_not_successful_fx_quote():
 
 
 class TestGiltPulse:
-    """UK10YG is sourced from FT.com (never Yahoo); the Parquet baseline supplies prev close and the fallback yield."""
+    """UK10YG is sourced from FT.com (never Yahoo), which also supplies its change; the Parquet baseline supplies only the fallback yield."""
 
     def setup_method(self):
         _clear_cache("UK10YG")
@@ -1199,15 +1199,16 @@ class TestGiltPulse:
             tmp_path / "UK_GILT_BASELINE.parquet"
         )
 
-    def _run(self, tmp_path, live_yield):
+    def _run(self, tmp_path, live_yield, change_pts=None):
         with patch("market_pulse_write.HISTORICAL_DIR", tmp_path), \
              patch("market_pulse_write.GiltDataService") as svc:
-            svc.return_value.fetch_live_ft_yield.return_value = live_yield
+            svc.return_value.fetch_live_ft_quote.return_value = (
+                None if live_yield is None else (live_yield, change_pts)
+            )
             _mw.fetch_and_save_pulse(["UK10YG"])
 
-    def test_live_yield_diffs_against_second_last_baseline_close(self, tmp_path):
-        self._write_baseline(tmp_path, [4.30, 4.40, 4.45])
-        self._run(tmp_path, 4.50)
+    def test_change_comes_from_the_ft_quote(self, tmp_path):
+        self._run(tmp_path, 4.50, change_pts=0.10)
 
         row = _read_cache("UK10YG")
         assert row["price"] == pytest.approx(4.50)
@@ -1215,28 +1216,40 @@ class TestGiltPulse:
         assert row["change_pct"] == pytest.approx(0.10 / 4.40 * 100.0)
         assert row["is_positive"] == 1
 
-    def test_single_baseline_row_is_its_own_prev_close(self, tmp_path):
-        self._write_baseline(tmp_path, [4.40])
-        self._run(tmp_path, 4.30)
+    def test_negative_ft_change_is_negative(self, tmp_path):
+        self._run(tmp_path, 4.30, change_pts=-0.10)
 
         row = _read_cache("UK10YG")
         assert row["change_pts"] == pytest.approx(-0.10)
+        assert row["change_pct"] == pytest.approx(-0.10 / 4.40 * 100.0)
         assert row["is_positive"] == 0
 
-    def test_no_baseline_means_zero_change(self, tmp_path):
+    def test_weekend_padding_in_the_baseline_does_not_flatten_the_change(self, tmp_path):
+        """The baseline's padded and live rows equal the live yield; the previous close must not come from it."""
+        self._write_baseline(tmp_path, [5.1184, 5.21, 5.21, 5.21])
+        self._run(tmp_path, 5.21, change_pts=0.027)
+
+        row = _read_cache("UK10YG")
+        assert row["change_pts"] == pytest.approx(0.027)
+        assert row["change_pct"] == pytest.approx(0.027 / (5.21 - 0.027) * 100.0)
+
+    def test_missing_ft_change_is_null_never_zero_or_a_baseline_diff(self, tmp_path):
+        self._write_baseline(tmp_path, [4.30, 4.40, 4.45])
         self._run(tmp_path, 4.50)
 
         row = _read_cache("UK10YG")
         assert row["price"] == pytest.approx(4.50)
-        assert row["change_pts"] == pytest.approx(0.0)
+        assert row["change_pts"] is None
+        assert row["change_pct"] is None
 
-    def test_failed_ft_scrape_falls_back_to_baseline_last_close(self, tmp_path):
+    def test_failed_ft_scrape_falls_back_to_baseline_price_without_a_change(self, tmp_path):
         self._write_baseline(tmp_path, [4.30, 4.40])
         self._run(tmp_path, None)
 
         row = _read_cache("UK10YG")
         assert row["price"] == pytest.approx(4.40)
-        assert row["change_pts"] == pytest.approx(0.10)
+        assert row["change_pts"] is None
+        assert row["change_pct"] is None
 
     def test_failed_scrape_without_baseline_refreshes_timestamp_of_priced_row(self, tmp_path):
         _seed_cache("UK10YG", 4.2, 123.0)

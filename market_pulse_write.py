@@ -328,21 +328,21 @@ def _write_sparkline(cursor: Any, ticker: str, t_live: pd.DataFrame) -> None:
         logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
 
 
-def _live_gilt_yield(parquet_path: Any) -> tuple[Optional[float], bool]:
-    """Second element is True only for a fresh FT reading, never the Parquet fallback."""
-    feed_yield = GiltDataService().fetch_live_ft_yield()
-    if feed_yield is not None:
-        return feed_yield, True
+def _live_gilt_quote(parquet_path: Any) -> tuple[Optional[float], Optional[float], bool]:
+    """(yield, change in points or None, from_feed); from_feed is True only for a fresh FT reading, never the Parquet fallback, which has no change."""
+    quote = GiltDataService().fetch_live_ft_quote()
+    if quote is not None:
+        return quote[0], quote[1], True
     if parquet_path.exists():
         try:
             df_gilt_hist = pd.read_parquet(parquet_path)
             if not df_gilt_hist.empty:
                 fallback_yield = float(df_gilt_hist['Close'].iloc[-1])
                 logger.info("Live FT scrape returned None. Falling back to Parquet value: %s", fallback_yield)
-                return fallback_yield, False
+                return fallback_yield, None, False
         except Exception as ex:
             logger.error("Failed to read Parquet fallback for market pulse: %s", ex)
-    return None, False
+    return None, None, False
 
 
 def _append_gilt_sparkline(cursor: Any, price: float, now: float) -> None:
@@ -364,30 +364,18 @@ def _append_gilt_sparkline(cursor: Any, price: float, now: float) -> None:
 def _save_gilt_pulse(cursor: Any, index_tickers: dict, current_time: float) -> None:
     try:
         parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
-        live_gilt_yield, from_feed = _live_gilt_yield(parquet_path)
+        live_gilt_yield, gilt_change_pts, from_feed = _live_gilt_quote(parquet_path)
 
         if live_gilt_yield is not None:
-            gilt_prev_close: float = live_gilt_yield
-
-            if parquet_path.exists():
-                try:
-                    df_gilt_hist = pd.read_parquet(parquet_path)
-                    if len(df_gilt_hist) >= 2:
-                        gilt_prev_close = float(df_gilt_hist['Close'].iloc[-2])
-                    elif len(df_gilt_hist) == 1:
-                        gilt_prev_close = float(df_gilt_hist['Close'].iloc[-1])
-                except Exception:
-                    logger.debug("Could not parse gilt history close price, using default prev_close")
-
-            gilt_change_pts: float = live_gilt_yield - gilt_prev_close
-            gilt_change_pct: float = (gilt_change_pts / gilt_prev_close) * 100.0 if gilt_prev_close != 0.0 else 0.0
+            gilt_prev_close = None if gilt_change_pts is None else live_gilt_yield - gilt_change_pts
+            gilt_change_pct = gilt_change_pts / gilt_prev_close * 100.0 if gilt_prev_close else None
 
             cursor.execute('''
                 INSERT OR REPLACE INTO market_pulse_cache
                 (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', ("UK10YG", index_tickers.get("UK10YG", "UK 10Y Gilt"), live_gilt_yield, gilt_change_pts,
-                  gilt_change_pct, int(gilt_change_pts >= 0), current_time))
+                  gilt_change_pct, int(gilt_change_pts is None or gilt_change_pts >= 0), current_time))
             if from_feed:
                 _append_gilt_sparkline(cursor, live_gilt_yield, current_time)
         else:
