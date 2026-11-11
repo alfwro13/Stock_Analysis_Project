@@ -19,7 +19,7 @@ _HOLDING_UNITS = {
     "day_change_pct": "percent change since the previous close (regular session only)",
     "pre_market_change_pct/post_market_change_pct": "percent versus the regular close, extended-hours only; never mixed into market_price or day_change",
     "priced_at_cost": "true when no usable price or FX rate exists; market_value, gain_value, gain_pct and allocation_pct are then null",
-    "as_of": "oldest market quote behind the prices; Treasury Bills are priced analytically and carry no quote time",
+    "as_of": "oldest market quote behind the prices; Treasury Bills are priced analytically and mutual funds are priced once a day, so neither sets it",
 }
 
 
@@ -60,7 +60,7 @@ def get_holdings(account: AccountArg = ACCOUNT_ALL) -> dict[str, Any]:
         missing.append("Ghostfolio accounts are not covered by get_holdings; get_xray includes them")
     return envelope(
         {"account": scope, "holdings": [_holding_row(r) for r in rows]},
-        as_of=oldest_quote_epoch(sorted({r["ticker"] for r in rows})),
+        as_of=oldest_quote_epoch(sorted({r["ticker"] for r in rows}), skip_daily_priced=True),
         units=_HOLDING_UNITS,
         missing=missing,
     )

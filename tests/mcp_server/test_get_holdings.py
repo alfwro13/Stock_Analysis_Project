@@ -68,6 +68,26 @@ class TestGetHoldings:
         data, _ = self._rows(mcp_client, f"acct:{holdings_book['first']}")
         assert data["as_of"] == "2026-10-01T09:00:00Z"
 
+    def test_a_daily_priced_fund_does_not_set_as_of(self, mcp_client, holdings_book):
+        from db.database import add_transaction, get_connection
+
+        fund = "0PZZMCPFUND.L"
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, last_updated) "
+                "VALUES (?, 285.0, 'GBP', 'MUTUALFUND', '2026-09-01 09:00:00')", (fund,),
+            )
+            conn.commit()
+            add_transaction(holdings_book["first"], "Buy", "2026-01-07", ticker=fund, currency="GBP", quantity=1, unit_price=250, exchange_rate=1.0)
+            data, rows = self._rows(mcp_client)
+            assert (holdings_book["first"], fund) in rows
+            assert data["as_of"] == "2026-10-01T09:00:00Z"
+        finally:
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (fund,))
+            conn.commit()
+            conn.close()
+
     def test_account_with_no_positions_is_empty_with_no_as_of(self, mcp_client, holdings_book):
         data, rows = self._rows(mcp_client, f"acct:{holdings_book['empty']}")
         assert rows == {} and data["data"]["holdings"] == []

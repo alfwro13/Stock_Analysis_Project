@@ -13,7 +13,7 @@ import pandas as pd
 import time_engine
 import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
-from db.helpers import parse_utc_epoch, resolve_live_price
+from db.helpers import get_mutual_fund_tickers, parse_utc_epoch, resolve_live_price
 from db.account_store import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
@@ -665,9 +665,11 @@ def current_price_map(tickers: list) -> dict:
     return {t: (price, currency) for t, (price, currency, _) in _price_map_with_quote_epochs(tickers).items()}
 
 
-def oldest_quote_epoch(tickers: list) -> Optional[float]:
-    """Unix time of the oldest market quote behind current_price_map() for these tickers; analytic prices (Treasury Bills, Pension) carry no quote time and are skipped."""
-    epochs = [epoch for _, _, epoch in _price_map_with_quote_epochs(tickers).values() if epoch]
+def oldest_quote_epoch(tickers: list, skip_daily_priced: bool = False) -> Optional[float]:
+    """Unix time of the oldest market quote behind current_price_map() for these tickers; analytic prices (Treasury Bills, Pension) carry no quote time and are skipped. skip_daily_priced also skips mutual funds: their one NAV a day is never refreshed intraday, so their fetch time says nothing about how old the other prices are."""
+    priced = _price_map_with_quote_epochs(tickers)
+    funds = get_mutual_fund_tickers(list(priced)) if skip_daily_priced else set()
+    epochs = [epoch for ticker, (_, _, epoch) in priced.items() if epoch and ticker not in funds]
     return min(epochs) if epochs else None
 
 

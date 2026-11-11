@@ -1695,6 +1695,20 @@ def test_oldest_quote_epoch_takes_the_oldest_and_ignores_unpriced_and_empty_inpu
     assert accounts_engine.oldest_quote_epoch([]) is None
 
 
+@pytest.mark.db
+def test_oldest_quote_epoch_can_skip_daily_priced_funds():
+    from db.helpers import parse_utc_epoch
+
+    _seed_stock_signal("0PZZQFUND.L", 285.0, "GBP", last_updated="2026-10-01 09:00:00")
+    _seed_stock_signal("ZZQSTOCK", 10.0, "GBP", last_updated="2026-10-05 09:00:00")
+    both = ["0PZZQFUND.L", "ZZQSTOCK"]
+
+    assert accounts_engine.oldest_quote_epoch(both) == parse_utc_epoch("2026-10-01 09:00:00")
+    assert accounts_engine.oldest_quote_epoch(both, skip_daily_priced=True) == parse_utc_epoch("2026-10-05 09:00:00")
+    assert accounts_engine.oldest_quote_epoch(["0PZZQFUND.L"], skip_daily_priced=True) is None
+    assert accounts_engine.oldest_quote_epoch(["0PZZQFUND.L"]) == parse_utc_epoch("2026-10-01 09:00:00")
+
+
 def test_analytic_prices_carry_no_quote_time_and_keep_the_two_item_price_shape():
     from unittest.mock import patch
 
