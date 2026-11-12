@@ -239,7 +239,7 @@ class TestUniverseOnlyTicker:
             assert (body["price"]["previous_close"], body["price"]["market_state"]) == (100.0, state)
             assert body["extended_hours"] == expected
 
-    def test_yahoo_change_fields_that_contradict_its_price_and_previous_close_are_derived(self, mcp_client, book, yahoo):
+    def test_a_yahoo_change_that_is_the_negative_of_the_previous_close_is_derived(self, mcp_client, book, yahoo):
         yahoo.get_quote_snapshot.side_effect = None
         yahoo.get_quote_snapshot.return_value = {
             **_SNAPSHOT, "regular_price": 19.46, "regular_previous_close": 19.92,
