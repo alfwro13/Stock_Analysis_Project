@@ -652,7 +652,7 @@ class TestImplausibleQuoteGuard:
 
 
 class TestContradictoryChangeFields:
-    """Yahoo's regularMarketChange/ChangePercent are used only while they agree with its own price and previous close."""
+    """Yahoo's regularMarketChange/ChangePercent are replaced only when the change is the negative of the previous close."""
 
     def teardown_method(self):
         _clear_cache(NORMAL_TICKER)
@@ -672,8 +672,24 @@ class TestContradictoryChangeFields:
         assert row["price"] == pytest.approx(19.46)
         assert row["change_pts"] == pytest.approx(-0.46)
         assert row["change_pct"] == pytest.approx(-2.309, abs=1e-3)
-        assert "contradict its own price and previous close" in caplog.text
+        assert "is the negative of its previous close" in caplog.text
         assert "implausible" not in caplog.text
+
+    def test_a_stale_previous_close_keeps_yahoos_own_change_fields(self, caplog):
+        daily = _flat_daily_df([9029.7, 9129.0])
+        snap = _snapshot(
+            9153.2, regular_change=24.2, regular_change_pct=0.2651, market_state="CLOSED",
+            regular_previous_close=9029.7,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, pd.DataFrame())
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap), \
+             caplog.at_level("WARNING"):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["change_pts"] == pytest.approx(24.2)
+        assert row["change_pct"] == pytest.approx(0.2651)
+        assert "negative of its previous close" not in caplog.text
 
     def test_a_consistent_large_move_is_still_skipped_by_the_guard(self):
         daily = _flat_daily_df([100.0, 101.0])
@@ -697,9 +713,18 @@ class TestRegularChangeFromSnapshot:
         change, pct = self._change(regular_change=-100.0, regular_change_pct=-50.0)
         assert (change, pct) == (pytest.approx(2.0), pytest.approx(2.0))
 
-    def test_one_field_that_disagrees_is_enough(self):
-        change, pct = self._change(regular_change=2.0, regular_change_pct=-50.0)
-        assert (change, pct) == (pytest.approx(2.0), pytest.approx(2.0))
+    def test_a_previous_close_that_disagrees_with_yahoos_change_is_not_trusted(self, caplog):
+        with caplog.at_level("WARNING"):
+            assert self._change(regular_change=0.27, regular_change_pct=0.27) == (0.27, 0.27)
+        assert caplog.text == ""
+
+    def test_a_change_pct_that_disagrees_alone_is_left_to_yahoo(self):
+        assert self._change(regular_change=2.0, regular_change_pct=-50.0) == (2.0, -50.0)
+
+    @pytest.mark.parametrize("change, derived", [(-99.8, True), (-99.0, False)])
+    def test_the_negated_previous_close_is_matched_within_the_tolerance(self, change, derived):
+        result = self._change(regular_change=change, regular_change_pct=-50.0)
+        assert (result == (pytest.approx(2.0), pytest.approx(2.0))) is derived
 
     def test_missing_fields_are_derived_from_the_previous_close(self):
         change, pct = self._change(regular_change=None, regular_change_pct=None)

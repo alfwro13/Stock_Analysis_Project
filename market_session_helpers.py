@@ -45,22 +45,21 @@ def extended_quote_from_snapshot(snapshot: dict) -> Optional[dict]:
 
 
 def regular_change_from_snapshot(snapshot: dict, ticker: str = "") -> Optional[tuple]:
-    """(change, change_pct) of a yahoo_engine.get_quote_snapshot() dict versus the regular previous close; Yahoo's own two fields unless they contradict its price and previous close (then derived from those), None when neither is available."""
+    """(change, change_pct) of a yahoo_engine.get_quote_snapshot() dict versus the regular previous close; Yahoo's own two fields, derived from price and previous close only when they are missing or Yahoo sent the negative of the previous close as the change, None when neither is available. A previous close that merely disagrees with Yahoo's change is not a signal: it is often the stale one."""
     price, prev = snapshot.get("regular_price"), snapshot.get("regular_previous_close")
     change, change_pct = snapshot.get("regular_change"), snapshot.get("regular_change_pct")
     have_fields = change is not None and change_pct is not None
-    if price is None or prev is None or not math.isfinite(float(prev)) or float(prev) == 0:
-        return (float(change), float(change_pct)) if have_fields else None
+    can_derive = price is not None and prev is not None and math.isfinite(float(prev)) and float(prev) != 0
+    if have_fields and not (can_derive and abs(float(change) + float(prev)) <= abs(float(prev)) * QUOTE_CHANGE_TOLERANCE_PCT / 100.0):
+        return float(change), float(change_pct)
+    if not can_derive:
+        return None
     price, prev = float(price), float(prev)
     derived = price - prev
     derived_pct = derived / prev * 100.0
     if have_fields:
-        change, change_pct = float(change), float(change_pct)
-        tolerance_points = abs(prev) * QUOTE_CHANGE_TOLERANCE_PCT / 100.0
-        if abs(change_pct - derived_pct) <= QUOTE_CHANGE_TOLERANCE_PCT and abs(change - derived) <= tolerance_points:
-            return change, change_pct
         logger.warning(
-            "Yahoo's change fields for %s contradict its own price and previous close: change=%s change_pct=%s, "
+            "Yahoo's change for %s is the negative of its previous close: change=%s change_pct=%s, "
             "but price=%s regular_previous_close=%s gives change=%.4f change_pct=%.2f; using the derived values.",
             ticker or "a quote", change, change_pct, price, prev, derived, derived_pct,
         )
