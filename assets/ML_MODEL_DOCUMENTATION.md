@@ -174,7 +174,7 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 
 Classifier training, quantile training, classifier inference and quantile scoring all call `ml_features.build_model_features()` (derived columns, fundamental winsorize/impute, inf-to-NaN, per-date cross-sectional z-scores) and read their rows through the two shared queries, so train and serve cannot drift apart. Training computes its feature statistics from the raw columns the builder leaves in place.
 
-`train_global_ml_model()` is a thin orchestrator over private stage helpers in `ml_training_engine.py`: `_search_iterations` (RAM gate), `_save_feature_stats`, `_add_classifier_target`, `_temporal_split` (returns a `_Split` of Train/Calib/Test), `_walk_forward_splits`, `_search_hyperparameters`, `_holdout_pr_auc` and `_refit_production_ensemble`. `train_quantile_models()` shares three of them with the classifier: `_memory_gate` (the pre-load and post-load RAM checks, one message format), `_add_forward_return` (entry at close[T+1], exit at close[T+`PREDICTION_HORIZON_DAYS`]) and `_embargoed_row_indices` (date regions that drop the last `PREDICTION_HORIZON_DAYS` dates of every region but the last; 60/20/20 for the classifier, 80/20 for the quantile models). Helpers return only what the next stage needs, and the orchestrator deletes the wide frame, the CV folds and the search estimators at the same points as before, so the memory profile described under "Training memory" is preserved.
+`train_global_ml_model()` is a thin orchestrator over private stage helpers in `ml_training_engine.py`: `_enough_memory_before_load` (RAM gate), `_save_feature_stats`, `_add_classifier_target`, `_temporal_split` (returns a `_Split` of Train/Calib/Test), `_walk_forward_splits`, `_search_hyperparameters`, `_holdout_pr_auc` and `_refit_production_ensemble`. `train_quantile_models()` shares three of them with the classifier: `_memory_gate` (the pre-load and post-load RAM checks, one message format), `_add_forward_return` (entry at close[T+1], exit at close[T+`PREDICTION_HORIZON_DAYS`]) and `_embargoed_row_indices` (date regions that drop the last `PREDICTION_HORIZON_DAYS` dates of every region but the last; 60/20/20 for the classifier, 80/20 for the quantile models). Helpers return only what the next stage needs, and the orchestrator deletes the wide frame, the CV folds and the search estimators at the same points as before, so the memory profile described under "Training memory" is preserved.
 
 ### 5.1 Base Estimators
 
@@ -642,9 +642,10 @@ table was about 305 MiB. Training on a host with no swap and little free memory 
 be killed by the kernel's out-of-memory killer before feature extraction.
 
 The loader logs row count, table size, process RSS, and available system memory.
-The pre-load available-memory check is a coarse guard: reducing randomized
-search iterations does not reduce the size of the training dataset, and neither
-batching nor that guard guarantees protection from concurrent system-wide load.
+The pre-load available-memory check is a coarse guard: it cannot see the history's
+own footprint (the post-load check covers that), and neither batching nor the guards
+guarantee protection from concurrent system-wide load. The randomized search always
+draws `ML_TRAINING_SEARCH_ITERATIONS` (10) candidates, whatever RAM is available.
 
 ### Training runs in a child process
 
@@ -667,7 +668,7 @@ fails does not stop the other. Consequences:
   by the web process and re-emitted through its own loggers, so `app.log` shows them
   in one place. A line without that prefix (a traceback, a library warning) is logged
   at INFO as `training child: ...`.
-* **Memory guards.** `_search_iterations()` and the quantile step abort below
+* **Memory guards.** The classifier and quantile steps abort below
   `constants.ML_TRAINING_ABORT_AVAILABLE_GB` (0.75 GB) before loading. Both steps check
   again **after** the history load (`_enough_memory_after_load`) against
   `ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB` (1.5 GB), because the child still grows by

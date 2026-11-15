@@ -136,14 +136,24 @@ def test_training_completes_after_releasing_intermediates(training_history, tmp_
                 assert np.isfinite(scores).all()
 
 
-@pytest.mark.parametrize("available_gb, expected", [(0.5, None), (1.0, 4), (8.0, 10)])
-def test_search_iterations_follow_available_memory(available_gb, expected):
+@pytest.mark.parametrize("available_gb, enough", [(0.5, False), (1.0, True), (8.0, True)])
+def test_pre_load_gate_only_checks_the_abort_minimum(available_gb, enough):
     import ml_training_engine as engine
 
     with patch.object(engine.memory_helpers, "available_mib", return_value=available_gb * 1024), \
          patch.object(engine, "log_notification") as notify:
-        assert engine._search_iterations() == expected
-    assert notify.called is (expected is None)
+        assert engine._enough_memory_before_load("ML Training") is enough
+    assert notify.called is (not enough)
+
+
+def test_search_draws_the_configured_iteration_budget():
+    import ml_training_engine as engine
+    from constants import ML_TRAINING_SEARCH_ITERATIONS
+
+    with patch.object(engine, "RandomizedSearchCV") as search:
+        search.return_value.best_score_ = 0.3
+        engine._search_hyperparameters(pd.DataFrame({"a": [0, 1]}), pd.Series([0, 1]), [])
+    assert [c.kwargs["n_iter"] for c in search.call_args_list] == [ML_TRAINING_SEARCH_ITERATIONS] * 2
 
 
 def test_classifier_target_labels_the_entry_to_exit_return_and_drops_unresolved_rows():
