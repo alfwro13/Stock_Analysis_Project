@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Tuple
 
 import numpy as np
 import pandas as pd
@@ -15,8 +15,8 @@ import memory_helpers
 from model_compatibility_engine import dump_sklearn_artifact
 from db.database import get_connection, log_notification
 from constants import (
-    ML_TRAINING_ABORT_AVAILABLE_GB, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB, PREDICTION_HORIZON_DAYS,
-    PREDICTION_RETURN_THRESHOLD,
+    ML_TRAINING_ABORT_AVAILABLE_GB, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB, ML_TRAINING_SEARCH_ITERATIONS,
+    PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD,
 )
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
@@ -71,18 +71,8 @@ def _memory_gate(label: str, avail_gb: float, minimum_gb: float, when: str = "")
     return False
 
 
-def _search_iterations() -> Optional[int]:
-    """Randomized-search budget for the RAM available now; None (after notifying) when training must not start."""
-    avail_gb = memory_helpers.available_mib() / 1024
-    throttle_gb = 1.5
-    if not _memory_gate("ML Training", avail_gb, ML_TRAINING_ABORT_AVAILABLE_GB):
-        return None
-    n_iter = 4 if avail_gb < throttle_gb else 10
-    if avail_gb < throttle_gb:
-        logger.warning(
-            'Low memory (%s GB available) — throttling search to %s iterations.', format(avail_gb, '.1f'), n_iter
-        )
-    return n_iter
+def _enough_memory_before_load(label: str) -> bool:
+    return _memory_gate(label, memory_helpers.available_mib() / 1024, ML_TRAINING_ABORT_AVAILABLE_GB)
 
 
 def _enough_memory_after_load(label: str) -> bool:
@@ -227,7 +217,7 @@ def _walk_forward_splits(train_dates: pd.Series) -> List[Tuple[List[int], List[i
     return cv_splits
 
 
-def _search_hyperparameters(X_train, y_train, cv_splits, n_iter: int):
+def _search_hyperparameters(X_train, y_train, cv_splits):
     """Randomized search on the Train region only; returns the best (RF, XGB) estimators."""
     # scale_pos_weight derived from train set only to prevent test leakage
     neg_count_train        = (y_train == 0).sum()
@@ -261,12 +251,12 @@ def _search_hyperparameters(X_train, y_train, cv_splits, n_iter: int):
 
     rf_search = RandomizedSearchCV(
         estimator=rf_base, param_distributions=rf_param_dist,
-        n_iter=n_iter, cv=cv_splits, scoring='average_precision',
+        n_iter=ML_TRAINING_SEARCH_ITERATIONS, cv=cv_splits, scoring='average_precision',
         random_state=42, n_jobs=1
     )
     xgb_search = RandomizedSearchCV(
         estimator=xgb_base, param_distributions=xgb_param_dist,
-        n_iter=n_iter, cv=cv_splits, scoring='average_precision',
+        n_iter=ML_TRAINING_SEARCH_ITERATIONS, cv=cv_splits, scoring='average_precision',
         random_state=42, n_jobs=1
     )
 
@@ -334,8 +324,7 @@ def train_global_ml_model() -> bool:
     """Fundamentals are joined and preprocessed for drift diagnostics only; FEATURE_COLS excludes them (see ml_features.py). False when training did not finish."""
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
 
-    n_iter = _search_iterations()
-    if n_iter is None:
+    if not _enough_memory_before_load("ML Training"):
         return False
 
     log_notification("Info", "Global ML Model Training pipeline initiated.")
@@ -369,7 +358,7 @@ def train_global_ml_model() -> bool:
         del df
 
         cv_splits = _walk_forward_splits(split.train_dates)
-        best_rf, best_xgb = _search_hyperparameters(split.X_train, split.y_train, cv_splits, n_iter)
+        best_rf, best_xgb = _search_hyperparameters(split.X_train, split.y_train, cv_splits)
         del cv_splits
 
         true_oos_pr_auc, true_oos_baseline = _holdout_pr_auc(best_rf, best_xgb, split)
@@ -404,7 +393,7 @@ def train_quantile_models() -> bool:
     """Q10/Q90 XGBoost regressors on the classifier's feature pipeline with a clipped 10-day return target (inference converts it to prices). False when training did not finish."""
     logger.info("Initiating Quantile Regression model training (Q10 / Q90)...")
 
-    if not _memory_gate("Quantile training", memory_helpers.available_mib() / 1024, ML_TRAINING_ABORT_AVAILABLE_GB):
+    if not _enough_memory_before_load("Quantile training"):
         return False
 
     try:
