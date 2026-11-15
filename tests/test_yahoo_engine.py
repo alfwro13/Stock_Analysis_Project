@@ -337,6 +337,60 @@ class TestGetPriceHistory:
         assert "MSFT" not in self.eng._history_gap_alerted
         mock_notify.assert_not_called()
 
+    @staticmethod
+    def _bulk_with_failed_ticker(good: str, failed: str, failed_close_nan: bool = True) -> pd.DataFrame:
+        df = _yf_multi_df([good, failed])
+        df[(failed, "Close")] = np.nan if failed_close_nan else df[(failed, "Close")]
+        return df
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_all_nan_close_slice_is_omitted_and_tracked_as_a_gap(self, mock_ctx, mock_dl, mock_notify):
+        """A ticker that fails inside a multi-ticker download comes back as an all-NaN column; it must
+        count as missing so the gap tracker sees it and no caller reads key presence as success."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = self._bulk_with_failed_ticker("AAPL", "MSFT")
+
+        result = self.eng.get_price_history(["AAPL", "MSFT"], force_refresh=True)
+
+        assert set(result) == {"AAPL"}
+        assert "MSFT" in self.eng._history_gap_since
+        assert "AAPL" not in self.eng._history_gap_since
+        mock_notify.assert_not_called()
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_all_nan_close_slice_alerts_after_a_missed_nightly_run(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = self._bulk_with_failed_ticker("AAPL", "MSFT")
+        self.eng._history_gap_since["MSFT"] = time.time() - 31 * 3600
+
+        self.eng.get_price_history(["AAPL", "MSFT"], force_refresh=True)
+
+        assert "MSFT" in self.eng._history_gap_alerted
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.args[0] == "yahoo_history_gap_alert"
+        assert "MSFT" in mock_notify.call_args.args[2]
+
+    @patch("yahoo_engine.notify")
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_slice_with_some_nan_closes_is_kept(self, mock_ctx, mock_dl, mock_notify):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        bulk = self._bulk_with_failed_ticker("AAPL", "MSFT", failed_close_nan=False)
+        bulk.loc[bulk.index[:3], ("MSFT", "Close")] = np.nan
+        mock_dl.return_value = bulk
+
+        result = self.eng.get_price_history(["AAPL", "MSFT"], force_refresh=True)
+
+        assert set(result) == {"AAPL", "MSFT"}
+        assert "MSFT" not in self.eng._history_gap_since
+
     @patch("yahoo_engine.notify")
     @patch("yahoo_engine.yf.download")
     @patch("yahoo_engine.yahoo_connection_boundary")

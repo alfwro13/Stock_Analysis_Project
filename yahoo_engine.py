@@ -267,7 +267,8 @@ class YahooEngine:
         interval: str = "1d",
         force_refresh: bool = False,
     ) -> dict[str, pd.DataFrame]:
-        # Returns {ticker: DataFrame}; missing/failed tickers omitted — callers fall back to local Parquet.
+        # Returns {ticker: DataFrame}; missing/failed tickers omitted (a slice whose Close is all NaN is how a multi-ticker
+        # download reports a rate-limited or delisted ticker, so it is omitted too) — callers fall back to local Parquet.
         tickers = list(dict.fromkeys(tickers))
         ttl = self._ttl("history")
         key_fn = lambda t: f"history:{t}:{period}:{interval}"
@@ -304,6 +305,8 @@ class YahooEngine:
                     is_single = len(missing) == 1
                     for t in missing:
                         df = self._slice_bulk(df_bulk, t, is_single)
+                        if df is not None and ("Close" not in df.columns or df["Close"].isna().all()):
+                            df = None
                         if not force_refresh:
                             self._set(key_fn(t), df, ttl)
                         result[t] = df
