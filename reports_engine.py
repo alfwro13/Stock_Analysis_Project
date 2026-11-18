@@ -131,9 +131,6 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         cursor.execute(query)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
-    except Exception as e:
-        logger.error("Failed to generate Sector Trends: %s", e)
-        return []
     finally:
         if conn:
             conn.close()
@@ -176,9 +173,6 @@ def get_mean_reversion_setups(max_rsi: float = MEAN_REVERSION_DEFAULT_MAX_RSI, m
         cursor.execute(query, (max_rsi,))
         rows = cursor.fetchall()
         return [dict(row) for row in rows if row['distance_from_200d_pct'] >= min_sma_distance]
-    except Exception as e:
-        logger.error("Failed to generate Mean Reversion Setups: %s", e)
-        return []
     finally:
         if conn:
             conn.close()
@@ -228,9 +222,6 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         cursor.execute(query)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
-    except Exception as e:
-        logger.error("Failed to generate Leaders & Laggards: %s", e)
-        return []
     finally:
         if conn:
             conn.close()
@@ -291,9 +282,6 @@ def get_dividend_harvest_setups(
         # Sort ascending so the soonest ex-div date is first (most actionable)
         return sorted(results, key=lambda x: x['ex_dividend_date'])
 
-    except Exception as e:
-        logger.error("Failed to fetch dividend harvest setups: %s", e)
-        return []
     finally:
         if conn:
             conn.close()
@@ -355,9 +343,6 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    except Exception as e:
-        logger.error("Failed to generate Quality Compounders: %s", e)
-        return []
     finally:
         if conn:
             conn.close()
@@ -421,9 +406,6 @@ def get_quality_on_sale() -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    except Exception as e:
-        logger.error("Failed to generate Quality on Sale: %s", e)
-        return []
     finally:
         if conn:
             conn.close()
@@ -487,9 +469,6 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    except Exception as e:
-        logger.error("Failed to generate GARP Tenbaggers: %s", e)
-        return []
     finally:
         if conn:
             conn.close()

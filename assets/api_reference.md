@@ -718,7 +718,7 @@ Which tickers appear is controlled by `UI_PREFERENCES.MARKET_PULSE_DYNAMIC` (Set
 
 ## 7. Reports
 
-All report endpoints return a `data` array. The array may be empty if the database has insufficient data to generate ranked results. Each endpoint backs its own standalone page (see `assets/reports_page.md`) rather than a single combined `/market-reports` page.
+All report endpoints return a `data` array. An empty array means the screen found no matches. A failed database query answers `500` with the fixed `{"status": "error", "message": ...}` body and no `data` key, so a page shows its error row and never an empty screen. Each endpoint backs its own standalone page (see `assets/reports_page.md`) rather than a single combined `/market-reports` page.
 
 ### `GET /api/reports/quality-compounders`
 
