@@ -15,9 +15,9 @@ import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db.helpers import get_mutual_fund_tickers, parse_utc_epoch, resolve_live_price
 from db.account_store import (
-    add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
+    add_price_history, add_transaction, delete_stale_holding_price_limits, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
-    get_value_history, get_watchlist_account, get_watchlist_items, resolve_pending_topup, update_account,
+    get_value_history, get_watchlist_account, get_watchlist_items, register_ledger_listener, resolve_pending_topup, update_account,
     update_transaction, upsert_performance_cache, upsert_value_snapshot,
     upsert_value_snapshot_currency,
 )
@@ -194,6 +194,18 @@ def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, trans
             })
 
     return open_holdings, closed, round(realized_total, 2), realized_by_txn_id
+
+
+def clear_targets_of_closed_positions(account_id: int) -> None:
+    """Position Targets exist only for what the account holds: a Trading account's targets for tickers its ledger no longer holds, and every target of a deleted account, are removed."""
+    account = get_account(account_id)
+    if account is None:
+        delete_stale_holding_price_limits(account_id, (), "the account was deleted")
+    elif account["account_type"] == "Trading":
+        delete_stale_holding_price_limits(account_id, _ledger_for_account(account_id)[0], "the position is closed")
+
+
+register_ledger_listener(clear_targets_of_closed_positions)
 
 
 class AccountInputs:

@@ -499,7 +499,6 @@ class IntradayOrchestrator:
         if not ticker_limits:
             return
         for account_id, lim in ticker_limits.items():
-            # holding_price_limits rows for a soft-deleted account are never cleaned up;
             # account_names only holds active accounts, so absence here means skip.
             account_name = account_names.get(account_id)
             if account_name is None:

@@ -1,7 +1,7 @@
 import json
 import logging
 import threading
-from typing import Optional
+from typing import Callable, Iterable, Optional
 
 from db.database import get_connection
 from utils import is_currency_code, is_iso_date, is_valid_ticker
@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _ledger_revision = 0
 _snapshot_revision = 0
 _ledger_revision_lock = threading.Lock()
+_ledger_listeners: list[Callable[[int], None]] = []
 
 
 def ledger_revision() -> int:
@@ -21,10 +22,23 @@ def snapshot_revision() -> int:
     return _snapshot_revision
 
 
-def _bump_ledger_revision() -> None:
+def register_ledger_listener(listener: Callable[[int], None]) -> None:
+    if listener not in _ledger_listeners:
+        _ledger_listeners.append(listener)
+
+
+def _bump_ledger_revision(position_account_id: Optional[int] = None) -> None:
+    """`position_account_id` names the account whose open positions the write may have changed; the listeners (the engine's Position Target clearing) run after the revision moves and a failing one never fails the write."""
     global _ledger_revision
     with _ledger_revision_lock:
         _ledger_revision += 1
+    if position_account_id is None:
+        return
+    for listener in _ledger_listeners:
+        try:
+            listener(position_account_id)
+        except Exception as e:
+            logger.error("Ledger listener %s failed for account %s: %s", getattr(listener, "__name__", listener), position_account_id, e)
 
 
 def _bump_snapshot_revision() -> None:
@@ -195,7 +209,7 @@ def soft_delete_account(account_id: int) -> bool:
             (account_id,)
         )
         conn.commit()
-        _bump_ledger_revision()
+        _bump_ledger_revision(account_id)
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to soft-delete account %s: %s", account_id, e)
@@ -280,7 +294,7 @@ def add_transaction(
              1 if is_adjustment else 0)
         )
         conn.commit()
-        _bump_ledger_revision()
+        _bump_ledger_revision(account_id if txn_type in ("Buy", "Sell") else None)
         return cursor.lastrowid
     except Exception as e:
         logger.error("Failed to add transaction to account %s: %s", account_id, e)
@@ -318,12 +332,13 @@ def update_transaction(txn_id: int, **fields) -> bool:
             fields["price_in_pence"] = 1 if fields["price_in_pence"] else 0
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [txn_id]
+        owner = cursor.execute("SELECT account_id FROM account_transactions WHERE id = ?", (txn_id,)).fetchone()
         cursor.execute(
             f"UPDATE account_transactions SET {set_clause} WHERE id = ?",
             values
         )
         conn.commit()
-        _bump_ledger_revision()
+        _bump_ledger_revision(owner["account_id"] if owner else None)
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to update transaction %s: %s", txn_id, e)
@@ -338,9 +353,10 @@ def delete_transaction(txn_id: int) -> bool:
     try:
         conn = get_connection()
         cursor = conn.cursor()
+        owner = cursor.execute("SELECT account_id FROM account_transactions WHERE id = ?", (txn_id,)).fetchone()
         cursor.execute("DELETE FROM account_transactions WHERE id = ?", (txn_id,))
         conn.commit()
-        _bump_ledger_revision()
+        _bump_ledger_revision(owner["account_id"] if owner else None)
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to delete transaction %s: %s", txn_id, e)
@@ -577,6 +593,35 @@ def upsert_holding_price_limit(account_id: int, ticker: str, **fields) -> None:
             conn.close()
 
 
+def _delete_holding_price_limits(cursor, account_id: int, tickers: Iterable[str], reason: str) -> None:
+    for ticker in tickers:
+        row = cursor.execute(
+            "SELECT low_limit, high_limit FROM holding_price_limits WHERE account_id = ? AND ticker = ?", (account_id, ticker)
+        ).fetchone()
+        if row is None:
+            continue
+        cursor.execute("DELETE FROM holding_price_limits WHERE account_id = ? AND ticker = ?", (account_id, ticker))
+        if row["low_limit"] is not None or row["high_limit"] is not None:
+            logger.info(
+                "Cleared Position Targets for %s in account %s (low %s, high %s): %s",
+                ticker, account_id, row["low_limit"], row["high_limit"], reason,
+            )
+
+
+def delete_stale_holding_price_limits(account_id: int, keep_tickers: Iterable[str], reason: str) -> None:
+    """Deletes the account's Position Target rows for every ticker outside `keep_tickers`, logging each one that carried a target."""
+    keep = set(keep_tickers)
+    conn = None
+    try:
+        conn = get_connection()
+        tickers = [r["ticker"] for r in conn.execute("SELECT ticker FROM holding_price_limits WHERE account_id = ?", (account_id,)).fetchall()]
+        _delete_holding_price_limits(conn, account_id, [t for t in tickers if t not in keep], reason)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
 def add_price_history(account_id: int, price_date: str, price: float, source: str) -> bool:
     conn = None
     try:
@@ -732,12 +777,18 @@ def delete_watchlist_items(account_id: int, item_ids: list) -> int:
         conn = get_connection()
         cursor = conn.cursor()
         placeholders = ", ".join("?" for _ in item_ids)
+        tickers = [r["ticker"] for r in cursor.execute(
+            f"SELECT ticker FROM watchlist_items WHERE account_id = ? AND id IN ({placeholders})",
+            [account_id] + list(item_ids)
+        ).fetchall()]
         cursor.execute(
             f"DELETE FROM watchlist_items WHERE account_id = ? AND id IN ({placeholders})",
             [account_id] + list(item_ids)
         )
+        removed = cursor.rowcount
+        _delete_holding_price_limits(cursor, account_id, tickers, "the ticker left the Watchlist")
         conn.commit()
-        return cursor.rowcount
+        return removed
     except Exception as e:
         logger.error("Failed to delete watchlist items %s for account %s: %s", item_ids, account_id, e)
         return 0
@@ -754,8 +805,10 @@ def remove_watchlist_ticker(account_id: int, ticker: str) -> bool:
         cursor.execute(
             "DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (account_id, ticker)
         )
+        removed = cursor.rowcount > 0
+        _delete_holding_price_limits(cursor, account_id, [ticker], "the ticker left the Watchlist")
         conn.commit()
-        return cursor.rowcount > 0
+        return removed
     except Exception as e:
         logger.error("Failed to remove watchlist ticker %s for account %s: %s", ticker, account_id, e)
         return False
