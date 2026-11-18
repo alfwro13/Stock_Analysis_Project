@@ -4,8 +4,8 @@ tests/test_gilt_engine.py  ── GILT DATA SERVICE
 Covers every function in GiltDataService with a focus on:
  - API contract tests (endpoint URLs, required params, required columns)
  - Regex pattern coverage for each FT.com scraping pattern
- - Graceful degradation when either source fails
- - Weekend fill and deduplication logic
+ - Graceful degradation when a source fails
+ - A BoE-only baseline file (no FT row, no weekend padding) and deduplication logic
 
 External sources under contract test:
   BoE  GET https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp
@@ -340,60 +340,45 @@ class TestSyncGiltData:
             result = svc.sync_gilt_data()
         assert result is False
 
-    def test_live_failure_degrades_gracefully(self, tmp_path):
-        """
-        When live FT fetch fails, sync still succeeds using BoE data alone.
-        No live data row is inserted.
-        """
-        svc = _make_service(tmp_path)
-        with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()), \
-             patch.object(svc, "fetch_live_ft_yield", return_value=None):
-            result = svc.sync_gilt_data()
-        assert result is True
-        df = pd.read_parquet(svc.parquet_path)
-        assert len(df) == 3
-
     def test_success_writes_parquet(self, tmp_path):
         """Happy path writes a Parquet file and returns True."""
         svc = _make_service(tmp_path)
-        with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()), \
-             patch.object(svc, "fetch_live_ft_yield", return_value=None):
+        with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()):
             result = svc.sync_gilt_data()
         assert result is True
         assert svc.parquet_path.exists()
 
-    def test_weekend_saturday_maps_to_friday(self, tmp_path):
-        """
-        When sync runs on Saturday, the live yield must be inserted under Friday's date.
-        """
-        from datetime import date as date_cls
-
+    def test_file_holds_only_boe_prints(self, tmp_path):
+        """No FT reading and no weekend padding is written: every row is a BoE print, so the file is one series."""
         svc = _make_service(tmp_path)
-        saturday_date = date_cls(2024, 1, 6)   # Saturday
-        friday        = pd.Timestamp("2024-01-05")
-
-        fake_now = MagicMock()
-        fake_now.date.return_value = saturday_date
-
         with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()), \
-             patch.object(svc, "fetch_live_ft_yield", return_value=4.50), \
-             patch("gilt_engine.datetime") as mock_dt:
-            mock_dt.now.return_value = fake_now
-            svc.sync_gilt_data()
-
+             patch.object(svc, "fetch_live_ft_quote") as ft:
+            assert svc.sync_gilt_data() is True
+        ft.assert_not_called()
         df = pd.read_parquet(svc.parquet_path)
-        assert friday in df.index, "Live yield must be stored under Friday when run on Saturday"
-        assert df.loc[friday, "Close"] == pytest.approx(4.50)
+        assert list(df.index) == list(pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"]))
+        assert list(df["Close"]) == pytest.approx([3.80, 3.82, 3.79])
+
+    def test_a_working_day_boe_has_not_published_stays_absent(self, tmp_path):
+        """A gap before the newest BoE print (or a missing today) is not filled from another source."""
+        boe = pd.DataFrame({
+            "Date": pd.to_datetime(["2024-01-02", "2024-01-05"]),
+            "Close": [3.80, 3.79],
+        })
+        svc = _make_service(tmp_path)
+        with patch.object(svc, "fetch_historical_boe", return_value=boe):
+            svc.sync_gilt_data()
+        df = pd.read_parquet(svc.parquet_path)
+        assert list(df.index) == list(pd.to_datetime(["2024-01-02", "2024-01-05"]))
 
     def test_deduplication_keeps_last(self, tmp_path):
-        """Duplicate index rows are de-duped with keep='last' (live data wins)."""
+        """Duplicate index rows are de-duped with keep='last'."""
         boe_with_dup = pd.DataFrame({
             "Date": pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-03"]),
             "Close": [3.80, 3.82, 3.99],
         })
         svc = _make_service(tmp_path)
-        with patch.object(svc, "fetch_historical_boe", return_value=boe_with_dup), \
-             patch.object(svc, "fetch_live_ft_yield", return_value=None):
+        with patch.object(svc, "fetch_historical_boe", return_value=boe_with_dup):
             svc.sync_gilt_data()
 
         df = pd.read_parquet(svc.parquet_path)
@@ -407,7 +392,6 @@ class TestSyncGiltData:
         """IO error writing Parquet → returns False without raising."""
         svc = _make_service(tmp_path)
         with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()), \
-             patch.object(svc, "fetch_live_ft_yield", return_value=None), \
              patch("pandas.DataFrame.to_parquet", side_effect=IOError("disk full")):
             result = svc.sync_gilt_data()
         assert result is False
@@ -419,7 +403,6 @@ class TestSyncGiltData:
         previous.index.name = "Date"
         previous.to_parquet(svc.parquet_path)
         with patch.object(svc, "fetch_historical_boe", return_value=_boe_df()), \
-             patch.object(svc, "fetch_live_ft_yield", return_value=None), \
              patch("pandas.DataFrame.to_parquet", side_effect=IOError("disk full")):
             assert svc.sync_gilt_data() is False
         pd.testing.assert_frame_equal(pd.read_parquet(svc.parquet_path), previous)

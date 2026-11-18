@@ -24,7 +24,9 @@ Runs once per day (as part of the `market_regime_job`, alongside `calculate_mark
 
 **US side** is derived from **`^TNX` (the 10-Year US Treasury Note), not `^TYX` (the 30-Year Bond)**. `^TYX` is still fetched and stored (`tyx_close`) for display/reference, but it does not feed the threat classification.
 
-**UK side** is derived from the scraped `UK_GILT_BASELINE.parquet` series (10Y Gilt, via `gilt_engine.py`), with no fallback: when the baseline parquet is missing, unreadable (corrupt, or without a `Close` column), has no weekday rows, or has no value 4+ days back, `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are stored as `NULL` (the UK threat level is never derived from `^TNX`).
+**UK side** is derived from one series, FT.com's live 10-year gilt yield (`gilt_engine.GiltDataService.fetch_live_ft_yield()`, fetched once per run by `regime_engine._gilt_readings()`). The reference for the velocity is the FT yield an earlier run stored in `macro_regimes.uk_gilt_close`: the newest row dated 4 to 10 days before the run's date (the 10-day bound matches the `^TNX` window, so a long FT outage cannot stretch the velocity over weeks). The Bank of England series in `UK_GILT_BASELINE.parquet` sits a few basis points from FT's, so it is never mixed into the velocity or the level. There is no fallback: when FT's yield cannot be read, `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are stored as `NULL` (the UK threat level is never derived from `^TNX` or from a Bank of England print).
+
+**UK side without a prior reading:** when `macro_regimes` holds no FT yield dated 4 to 10 days back, the velocity cannot be measured, so `uk_yield_velocity` and `uk_threat_level` are stored as `NULL` while `uk_gilt_close` is still written (it is the reference for later runs). FT's yield has two decimals, so the velocity moves in steps of about 1 bp.
 
 **US side without a prior reading:** when `^TNX` has no row 4+ days back, the velocity cannot be measured, so `us_yield_velocity` and `us_threat_level` are stored as `NULL` (never a velocity of 0 and a level-only GREEN/YELLOW/RED); `tnx_close`, the other closes and the UK side are still written. The Portfolio risk summary then shows the US box as "N/A", like the UK box, and the AI prompts print "N/A".
 
@@ -34,7 +36,7 @@ For each side, the engine computes a 3-trading-day yield velocity in **basis poi
 
 ```
 us_velocity_bps  = (curr_tnx  - tnx_4_days_ago)  * 100.0
-gilt_velocity_bps = (curr_gilt - gilt_4_days_ago) * 100.0
+gilt_velocity_bps = (curr_gilt - gilt_4_days_ago) * 100.0   # both from FT.com
 ```
 
 **Thresholds** (`regime_engine.py`, calibrated to the post-2022 rate environment — see Section 4 for the full table):
@@ -96,11 +98,11 @@ CREATE TABLE IF NOT EXISTS macro_regimes (
     tyx_close REAL,              -- US 30Y Treasury close yield (display/reference only — not used in threat classification)
     tnx_close REAL,              -- US 10Y Treasury close yield (drives us_threat_level)
     dxy_close REAL,              -- US Dollar Index close (NULL when the fetch failed)
-    uk_gilt_close REAL,          -- UK 10Y Gilt close yield (drives uk_threat_level; NULL when the gilt baseline is unavailable)
+    uk_gilt_close REAL,          -- UK 10Y Gilt yield read from FT.com (drives uk_threat_level; NULL when FT's yield could not be read)
     gbpusd_close REAL,           -- GBP/USD exchange rate (NULL when the fetch failed)
     us_yield_velocity REAL,      -- 3-day US yield rate of change, in basis points
     us_threat_level TEXT,        -- GREEN, YELLOW, or RED
-    uk_yield_velocity REAL,      -- 3-day UK gilt rate of change, in basis points
+    uk_yield_velocity REAL,      -- 3-day UK gilt rate of change, in basis points (FT vs FT; NULL without an FT reading 4-10 days back)
     uk_threat_level TEXT         -- GREEN, YELLOW, or RED
     -- plus market-turbulence/regime-label columns written by calculate_market_regime()
     -- and classify_macro_regime() — see db/schema.py for the full column set.

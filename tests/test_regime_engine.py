@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from db import database
 from regime_engine import (
@@ -44,8 +44,13 @@ def _make_tnx_df(curr_tnx, past_tnx, n=10):
     return pd.DataFrame({"Close": prices}, index=dates)
 
 
+def _ft_gilt(value):
+    """Patch the FT gilt scrape so no test reaches the network; value is the live yield or None."""
+    return patch("regime_engine.GiltDataService", return_value=MagicMock(fetch_live_ft_yield=MagicMock(return_value=value)))
+
+
 def _run_macro(curr_tnx, past_tnx):
-    """Run calculate_systemic_macro_threat with controlled TNX and no gilt file."""
+    """Run calculate_systemic_macro_threat with controlled TNX and no live gilt reading."""
     tnx_df = _make_tnx_df(curr_tnx, past_tnx)
     n = len(tnx_df)
     dates = tnx_df.index
@@ -55,6 +60,7 @@ def _run_macro(curr_tnx, past_tnx):
     with (
         patch("regime_engine.yahoo_engine.get_price_history", return_value=mock_dfs),
         patch("regime_engine.HISTORICAL_DIR", new=Path(tempfile.mkdtemp())),
+        _ft_gilt(None),
     ):
         calculate_systemic_macro_threat()
 
@@ -199,21 +205,26 @@ class TestMacroThreatFailedFetches:
 
     _EMPTY = pd.DataFrame()
 
-    def _run(self, empty=(), gilt_closes=None, gilt_dates=None, tnx=(4.30, 4.29), tnx_df=None, gilt_bytes=None):
+    def _run(self, empty=(), live_gilt=None, gilt_history=(), tnx=(4.30, 4.29), tnx_df=None, boe_file=None):
         tnx_df = _make_tnx_df(*tnx) if tnx_df is None else tnx_df
         flat = pd.DataFrame({"Close": [3.5] * len(tnx_df)}, index=tnx_df.index)
         dfs = {"^TYX": flat, "^TNX": tnx_df, "DX-Y.NYB": flat, "GBPUSD=X": flat}
         for ticker in empty:
             dfs[ticker] = self._EMPTY
         history_dir = Path(tempfile.mkdtemp())
-        if gilt_closes is not None:
-            index = pd.DatetimeIndex(gilt_dates if gilt_dates is not None else tnx_df.index[-len(gilt_closes):])
-            pd.DataFrame({"Close": gilt_closes}, index=index).to_parquet(history_dir / "UK_GILT_BASELINE.parquet")
-        if gilt_bytes is not None:
-            (history_dir / "UK_GILT_BASELINE.parquet").write_bytes(gilt_bytes)
+        if boe_file is not None:
+            boe_file.to_parquet(history_dir / "UK_GILT_BASELINE.parquet")
+        conn = database.get_connection()
+        try:
+            for date, close in gilt_history:
+                conn.execute("INSERT OR REPLACE INTO macro_regimes (date, tnx_close, uk_gilt_close) VALUES (?, 4.0, ?)", (date, close))
+            conn.commit()
+        finally:
+            conn.close()
         with (
             patch("regime_engine.yahoo_engine.get_price_history", return_value=dfs),
             patch("regime_engine.HISTORICAL_DIR", new=history_dir),
+            _ft_gilt(live_gilt),
         ):
             calculate_systemic_macro_threat()
         return self._row(tnx_df.index[-1].strftime("%Y-%m-%d"))
@@ -238,39 +249,54 @@ class TestMacroThreatFailedFetches:
         row = self._run()
         assert (row["tyx_close"], row["dxy_close"], row["gbpusd_close"]) == (3.5, 3.5, 3.5)
 
-    def test_missing_gilt_file_leaves_the_uk_side_null_and_the_us_side_computed(self, isolated_regime_tables):
-        row = self._run()
+    def test_unreadable_ft_yield_leaves_the_uk_side_null_and_the_us_side_computed(self, isolated_regime_tables):
+        row = self._run(gilt_history=[("2025-06-09", 4.0)])
         assert row["uk_gilt_close"] is None
         assert row["uk_yield_velocity"] is None
         assert row["uk_threat_level"] is None
         assert row["us_threat_level"] == "YELLOW"
 
-    def test_gilt_file_with_a_value_four_days_back_is_scored(self, isolated_regime_tables):
-        row = self._run(gilt_closes=[4.0] * 9 + [4.6])
+    def test_ft_yield_with_an_ft_reading_four_days_back_is_scored(self, isolated_regime_tables):
+        row = self._run(live_gilt=4.6, gilt_history=[("2025-06-09", 4.0)])
         assert row["uk_gilt_close"] == 4.6
         assert row["uk_threat_level"] == "RED"
         assert abs(row["uk_yield_velocity"] - 60.0) < 0.5
 
-    def test_gilt_file_without_a_value_four_days_back_leaves_the_uk_side_null(self, isolated_regime_tables):
-        row = self._run(gilt_closes=[4.0, 4.6])
-        assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
-        assert row["us_threat_level"] == "YELLOW"
+    def test_velocity_compares_the_ft_yield_with_the_stored_ft_yield_and_never_reads_the_boe_baseline_file(self, isolated_regime_tables):
+        boe = pd.DataFrame({"Close": [3.0] * 10}, index=pd.date_range("2025-06-02", periods=10, freq="B"))
+        row = self._run(live_gilt=4.05, gilt_history=[("2025-06-09", 4.0)], boe_file=boe)
+        assert row["uk_gilt_close"] == 4.05
+        assert abs(row["uk_yield_velocity"] - 5.0) < 0.5
+        assert row["uk_threat_level"] == "GREEN"
 
-    def test_gilt_file_with_only_weekend_rows_leaves_the_uk_side_null(self, isolated_regime_tables):
-        row = self._run(gilt_closes=[4.0, 4.6], gilt_dates=["2025-06-07", "2025-06-08"])
-        assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
-        assert row["us_threat_level"] == "YELLOW"
+    def test_newest_reading_at_least_four_days_back_is_the_reference(self, isolated_regime_tables):
+        row = self._run(live_gilt=4.3, gilt_history=[("2025-06-04", 3.0), ("2025-06-09", 4.2), ("2025-06-10", 9.0)])
+        assert abs(row["uk_yield_velocity"] - 10.0) < 0.5
 
-    def test_unreadable_gilt_file_leaves_the_uk_side_null_and_still_writes_the_us_row(self, isolated_regime_tables):
-        row = self._run(gilt_bytes=b"not a parquet file")
-        assert row["uk_gilt_close"] is None and row["uk_yield_velocity"] is None and row["uk_threat_level"] is None
-        assert row["us_threat_level"] == "YELLOW" and row["tnx_close"] == 4.3
+    def test_null_gilt_rows_are_skipped_when_looking_back(self, isolated_regime_tables):
+        conn = database.get_connection()
+        try:
+            conn.execute("INSERT OR REPLACE INTO macro_regimes (date, tnx_close, uk_gilt_close) VALUES ('2025-06-09', 4.0, NULL)")
+            conn.commit()
+        finally:
+            conn.close()
+        row = self._run(live_gilt=4.3, gilt_history=[("2025-06-06", 4.2)])
+        assert abs(row["uk_yield_velocity"] - 10.0) < 0.5
 
-    def test_gilt_file_without_a_close_column_leaves_the_uk_side_null(self, isolated_regime_tables):
-        no_close = Path(tempfile.mkdtemp()) / "no_close.parquet"
-        pd.DataFrame({"Open": [4.0] * 10}, index=pd.date_range("2025-06-02", periods=10, freq="B")).to_parquet(no_close)
-        row = self._run(gilt_bytes=no_close.read_bytes())
-        assert row["uk_gilt_close"] is None and row["uk_threat_level"] is None
+    def test_reading_inside_the_four_day_window_is_not_a_reference(self, isolated_regime_tables):
+        row = self._run(live_gilt=4.6, gilt_history=[("2025-06-10", 4.0), ("2025-06-12", 4.0)])
+        assert row["uk_gilt_close"] == 4.6
+        assert row["uk_yield_velocity"] is None and row["uk_threat_level"] is None
+
+    def test_reading_older_than_ten_days_is_not_a_reference(self, isolated_regime_tables):
+        row = self._run(live_gilt=4.6, gilt_history=[("2025-06-02", 4.0)])
+        assert row["uk_gilt_close"] == 4.6
+        assert row["uk_yield_velocity"] is None and row["uk_threat_level"] is None
+
+    def test_ft_yield_without_a_prior_reading_stores_the_level_and_leaves_velocity_and_threat_null(self, isolated_regime_tables):
+        row = self._run(live_gilt=5.2)
+        assert row["uk_gilt_close"] == 5.2
+        assert row["uk_yield_velocity"] is None and row["uk_threat_level"] is None
         assert row["us_threat_level"] == "YELLOW"
 
     @staticmethod
@@ -284,7 +310,7 @@ class TestMacroThreatFailedFetches:
         assert (row["tyx_close"], row["dxy_close"], row["gbpusd_close"]) == (3.5, 3.5, 3.5)
 
     def test_tnx_without_a_value_four_days_back_still_scores_the_uk_side(self, isolated_regime_tables):
-        row = self._run(tnx_df=self._tnx_without_a_value_four_days_back(), gilt_closes=[4.0] * 9 + [4.6], gilt_dates=pd.date_range(end="2025-06-05", periods=10, freq="B"))
+        row = self._run(tnx_df=self._tnx_without_a_value_four_days_back(), live_gilt=4.6, gilt_history=[("2025-05-30", 4.0)])
         assert row["us_threat_level"] is None
         assert row["uk_threat_level"] == "RED"
 
@@ -296,14 +322,14 @@ class TestMacroThreatFailedFetches:
         assert rerun["us_yield_velocity"] == good["us_yield_velocity"] is not None
 
     def test_failed_rerun_keeps_the_good_values_stored_for_the_same_date(self, isolated_regime_tables):
-        good = self._run(gilt_closes=[4.0] * 9 + [4.6])
+        good = self._run(live_gilt=4.6, gilt_history=[("2025-06-09", 4.0)])
         rerun = self._run(empty=("^TYX", "DX-Y.NYB", "GBPUSD=X"))
         for column in ("tyx_close", "dxy_close", "gbpusd_close", "uk_gilt_close", "uk_yield_velocity", "uk_threat_level"):
             assert rerun[column] == good[column] and rerun[column] is not None
 
     def test_successful_rerun_replaces_the_stored_values(self, isolated_regime_tables):
-        self._run(gilt_closes=[4.0] * 9 + [4.6])
-        rerun = self._run(gilt_closes=[4.0] * 10)
+        self._run(live_gilt=4.6, gilt_history=[("2025-06-09", 4.0)])
+        rerun = self._run(live_gilt=4.0, gilt_history=[("2025-06-09", 4.0)])
         assert rerun["uk_gilt_close"] == 4.0 and rerun["uk_threat_level"] == "GREEN"
 
 

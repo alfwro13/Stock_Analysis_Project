@@ -846,8 +846,9 @@ per run; a run that does not obtain the value leaves the cache age untouched, so
 retries.
 
 `tyx_close`, `dxy_close` and `gbpusd_close` are `null` when the nightly macro fetch returned nothing
-for them, and `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are `null` when the UK gilt
-baseline was unavailable (the writer stores `NULL`, never `0.0` or a Treasury-based substitute). Treat
+for them, `uk_gilt_close`, `uk_yield_velocity` and `uk_threat_level` are `null` when FT's live gilt
+yield could not be read, and `uk_yield_velocity` and `uk_threat_level` are also `null` while no FT yield is
+stored 4 to 10 days back (the writer stores `NULL`, never `0.0` or a Treasury-based substitute). Treat
 `null` as unavailable.
 
 **Response:**
