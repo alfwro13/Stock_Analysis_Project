@@ -1,17 +1,12 @@
 """
-tests/test_narrow_range_engine.py — NR4/NR7 Narrow Range detection math (the Pattern Detection
+tests/patterns/test_narrow_range_engine.py — NR4/NR7 Narrow Range detection math (the Pattern Detection
 "narrow_range" family). Orchestration (ticker scans, DB save/dedup, scheduler wiring, chart API)
-is generic across every family and is covered by tests/test_pattern_detection_engine.py.
+is generic across every family and is covered by tests/patterns/test_pattern_detection_engine.py.
 """
-
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
 from patterns.narrow_range_engine import (

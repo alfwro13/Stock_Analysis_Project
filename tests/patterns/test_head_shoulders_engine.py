@@ -1,17 +1,12 @@
 """
-tests/test_head_shoulders_engine.py — Head & Shoulders detection math (the Pattern Detection
+tests/patterns/test_head_shoulders_engine.py — Head & Shoulders detection math (the Pattern Detection
 "head_shoulders" family). Orchestration (ticker scans, DB save/dedup, scheduler wiring, chart
-API) is generic across every family and is covered by tests/test_pattern_detection_engine.py.
+API) is generic across every family and is covered by tests/patterns/test_pattern_detection_engine.py.
 """
-
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
 from patterns.head_shoulders_engine import (

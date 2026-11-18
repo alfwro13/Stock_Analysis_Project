@@ -1,16 +1,11 @@
 """
-tests/test_momentum_divergence_engine.py — Bullish / Bearish Divergence detection math (the
+tests/patterns/test_momentum_divergence_engine.py — Bullish / Bearish Divergence detection math (the
 Pattern Detection "momentum_divergence" family).
 """
-
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
 from patterns.momentum_divergence_engine import (
