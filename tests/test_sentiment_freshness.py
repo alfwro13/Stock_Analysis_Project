@@ -25,8 +25,8 @@ import ai_engine
 from db import helpers as db_helpers
 from db import schema as db_schema
 import market_pulse as _mp
-import page_data_signal_rows
-import page_data_stock
+from pages import page_data_signal_rows
+from pages import page_data_stock
 from intraday_orchestrator import IntradayOrchestrator
 
 pytestmark = [pytest.mark.restore_tables("market_pulse_cache", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]

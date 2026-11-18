@@ -230,7 +230,7 @@ The page renders a unified view of all four signals per ticker:
 
 **Run Scan Now** — a button that posts to `POST /api/trap-monitor/run`, disables with a spinner while running, and re-fetches results on completion.
 
-**Stock Detail cross-link** — a ticker's current phase already surfaces as a `setup-tag` badge next to the Stock Detail page header (via `page_helpers.compute_badge_tags()`'s `trap_phase_label`, `NEUTRAL` excluded). It also gets a sub-menu button — styled and positioned identically to the "Detected Patterns" button, after it — labeled with the phase's display name (e.g. "Active Selloff") and linking to `/trap-monitor`. Since Trap Monitor has no per-ticker detail page, the link always goes to the shared page rather than a per-ticker URL. The button is omitted whenever `trap_phase_label` is falsy (no scan row yet, or phase is `NEUTRAL`) — no new query is needed since `page_data_stock.load_stock_row()` (called by `stock_detail()`) already joins `trap_monitor_results` and runs `compute_badge_tags()` for the existing badge.
+**Stock Detail cross-link** — a ticker's current phase already surfaces as a `setup-tag` badge next to the Stock Detail page header (via `pages.page_helpers.compute_badge_tags()`'s `trap_phase_label`, `NEUTRAL` excluded). It also gets a sub-menu button — styled and positioned identically to the "Detected Patterns" button, after it — labeled with the phase's display name (e.g. "Active Selloff") and linking to `/trap-monitor`. Since Trap Monitor has no per-ticker detail page, the link always goes to the shared page rather than a per-ticker URL. The button is omitted whenever `trap_phase_label` is falsy (no scan row yet, or phase is `NEUTRAL`) — no new query is needed since `pages.page_data_stock.load_stock_row()` (called by `stock_detail()`) already joins `trap_monitor_results` and runs `compute_badge_tags()` for the existing badge.
 
 ---
 
@@ -262,7 +262,7 @@ Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and dis
 | `scheduler_jobs.py` | `run_trap_monitor_job()`, `run_trap_accuracy_fill_job()` runner functions |
 | `scheduler_engine.py` | CronTrigger scheduling blocks in `reload_scheduler()` |
 | `api/routes_analysis.py` | `GET /api/trap-monitor/results`, `POST /api/trap-monitor/run`, `GET /api/trap-monitor/accuracy` |
-| `page_routes.py` | `GET /trap-monitor` route |
+| `pages/page_routes.py` | `GET /trap-monitor` route |
 | `templates/trap_monitor.html` | Page template: lifecycle arc, alert strip, ticker table, accuracy panel, auto-refresh |
 | `templates/tools.html` | Guide-card entry |
 | `templates/settings.html` | Settings card: enable toggle, detector toggles, portfolio checkbox, proxy tickers, notification config |

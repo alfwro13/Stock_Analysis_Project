@@ -11,14 +11,14 @@ from portfolio_service import get_fx_cache_status
 import table_columns_helpers
 from constants import ACCOUNT_NAME_MAX_CHARS, CSS_VERSION
 from fundamentals_helpers import ALTMAN_Z_DISTRESS
-from page_helpers import (
+from pages.page_helpers import (
     _build_position_sizing_context,
     get_unread_count,
     get_all_scope_heat_tier,
     get_portfolio_heat_row,
 )
-from page_data_signal_rows import fetch_portfolio_signal_rows, fetch_watchlist_signal_rows
-from page_data_portfolio import (
+from pages.page_data_signal_rows import fetch_portfolio_signal_rows, fetch_watchlist_signal_rows
+from pages.page_data_portfolio import (
     build_portfolio_rows,
     build_watchlist_rows,
     finalize_portfolio_rows,
@@ -29,7 +29,7 @@ from page_data_portfolio import (
     watchlist_present_tags,
     watchlist_score_buckets,
 )
-from page_data_accounts import house_account_context, pension_account_context, trading_account_context
+from pages.page_data_accounts import house_account_context, pension_account_context, trading_account_context
 
 page_router_portfolio = APIRouter()
 templates = Jinja2Templates(directory="templates")

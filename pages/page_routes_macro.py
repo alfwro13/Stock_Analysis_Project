@@ -46,7 +46,7 @@ from visuals.macro import (
     create_yield_vs_gdp_chart,
 )
 from constants import CSS_VERSION
-from page_helpers import get_unread_count, intraday_chart_revision
+from pages.page_helpers import get_unread_count, intraday_chart_revision
 
 logger = logging.getLogger(__name__)
 

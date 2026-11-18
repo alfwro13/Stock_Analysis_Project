@@ -29,11 +29,11 @@ from visuals.ai import (
 )
 from fx_drag_engine import portfolio_lifetime_fx_breakdown
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, INVESTMENT_POLICY_MAX_CHARS, MCP_ACTIVITY_ROWS, MCP_KEY_NAME_MAX_CHARS, MCP_PUBLIC_HOST_MAX_CHARS
-from page_helpers import get_unread_count
-from page_routes_etf import page_router_etf
-from page_routes_macro import page_router_macro
-from page_routes_portfolio import page_router_portfolio
-from page_routes_stock import page_router_stock
+from pages.page_helpers import get_unread_count
+from pages.page_routes_etf import page_router_etf
+from pages.page_routes_macro import page_router_macro
+from pages.page_routes_portfolio import page_router_portfolio
+from pages.page_routes_stock import page_router_stock
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -147,7 +147,7 @@ def notifications_page(request: Request):
     )
 
 
-_ASSETS_DIR = Path(__file__).parent / "assets"
+_ASSETS_DIR = Path(__file__).parent.parent / "assets"
 _MD = _markdown.Markdown(extensions=["tables", "fenced_code"])
 
 

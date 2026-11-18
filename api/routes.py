@@ -61,7 +61,7 @@ from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, fetch_and_save_single_ticker, load_or_fetch_intraday_history
 import glossary_learn_engine
 from utils import INVALID_TICKER_MESSAGE, normalize_ticker, measure_request_stage, is_excluded_from_yahoo_fetch, is_valid_ticker, safe_ticker_filename
-from page_helpers import intraday_chart_revision
+from pages.page_helpers import intraday_chart_revision
 from cache_refresh_helpers import await_cache_refresh
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan

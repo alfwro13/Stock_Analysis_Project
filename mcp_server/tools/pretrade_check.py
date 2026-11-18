@@ -6,7 +6,7 @@ from pydantic import Field
 from config import BASE_CURRENCY
 from constants import MCP_PRETRADE_AMOUNT_MAX
 from db.helpers import parse_utc_epoch
-from page_helpers import get_portfolio_heat_row
+from pages.page_helpers import get_portfolio_heat_row
 from portfolio_service import persisted_fx_reads
 from risk_orchestrator_engine import evaluate_pretrade_check
 from utils import normalize_ticker

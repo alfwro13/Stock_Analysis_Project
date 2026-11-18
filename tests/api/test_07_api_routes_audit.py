@@ -491,14 +491,14 @@ def test_intraday_refresh_returns_changed_chart(client, tmp_path):
 def test_fresh_intraday_polling_fetch_counts_and_latency(client, tmp_path):
     import pandas as pd
     import statistics
-    from page_helpers import intraday_chart_revision
+    from pages.page_helpers import intraday_chart_revision
 
     ticker = "STEP4PERF"
     df = pd.DataFrame({"Close": [10]}, index=pd.to_datetime(["2026-10-02 14:00"]))
     df.to_parquet(tmp_path / (ticker + "_intraday.parquet"))
     with patch("data_engine.INTRADAY_DIR", tmp_path), \
-         patch("page_helpers.INTRADAY_DIR", tmp_path), \
-         patch("page_helpers.HISTORICAL_DIR", tmp_path), \
+         patch("pages.page_helpers.INTRADAY_DIR", tmp_path), \
+         patch("pages.page_helpers.HISTORICAL_DIR", tmp_path), \
          patch("api.routes.yahoo_engine.is_intraday_gap_alerted", return_value=False), \
          patch("data_engine.yahoo_engine.get_intraday") as network, \
          patch("api.routes.create_intraday_chart") as chart:

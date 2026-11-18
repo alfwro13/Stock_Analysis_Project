@@ -357,7 +357,7 @@ def test_fundamentals_extra_website_is_a_web_link_or_none(tmp_path, monkeypatch,
     import json
 
     import config
-    import page_helpers
+    from pages import page_helpers
 
     (tmp_path / "ZZWEB.json").write_text(json.dumps({"website": website}))
     monkeypatch.setattr(config, "FUNDAMENTALS_DIR", tmp_path)

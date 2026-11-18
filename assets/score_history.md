@@ -141,7 +141,7 @@ The banner on the page always shows the exact dates based on the actual earliest
 | `db/schema.py` | `score_history` table schema (`init_db`) |
 | `db/helpers.py` | `log_score_event()` helper (re-exported from `db/database.py`) |
 | `quant_signals.py` | Calls `log_score_event()` after every scoring run (only for tickers with sufficient data) |
-| `page_routes.py` | `GET /score-history?filter=` route |
+| `pages/page_routes.py` | `GET /score-history?filter=` route |
 | `templates/score_history.html` | Page template: filter tabs, availability banner, summary table, events table |
 | `templates/portfolio.html` | Score History link in the summary bar (next to X-ray) |
 | `templates/watchlist.html` | Score History link in the controls bar |

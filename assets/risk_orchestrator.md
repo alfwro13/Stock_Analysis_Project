@@ -87,7 +87,7 @@ and the MCP Server's `get_heat_index` tool both read through it.
 
 ## 4. Visual-only "circuit breaker"
 
-When the `"all"`-scope PHI is Red, `page_helpers.get_all_scope_heat_tier()` drives a
+When the `"all"`-scope PHI is Red, `pages.page_helpers.get_all_scope_heat_tier()` drives a
 presentational-only warning badge ("RISK PAUSED") next to any BUY-flavored `overall_signal`
 on the Portfolio, Watchlist, and Stock Detail pages. This is deliberately **not** a blocking
 mechanism — the app has no trade execution to block, so "halting new buys" is a visibility

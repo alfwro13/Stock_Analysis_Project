@@ -1,7 +1,7 @@
 import pandas as pd
 
 from config import load_config, BASE_CURRENCY, ACCOUNT_CURRENCIES
-from page_helpers import get_unread_count, get_portfolio_heat_row
+from pages.page_helpers import get_unread_count, get_portfolio_heat_row
 
 
 def trading_account_context(acc, chart_period_cookie):

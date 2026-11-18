@@ -20,7 +20,7 @@ strong ones, without any scores or gamification beyond visible progress.
 | DB tables + idempotent seeding | `db/schema.py` (`learn_cards`, `learn_term_state`, `_seed_learn_cards()`) |
 | Leitner-box math, session builder, overview | `glossary_learn_engine.py` |
 | API endpoints | `api/routes.py` (`/api/learn/overview`, `/api/learn/session`, `/api/learn/answer`, `/api/learn/preference`) |
-| Page route | `page_routes.py` (`GET /glossary/learn`) |
+| Page route | `pages/page_routes.py` (`GET /glossary/learn`) |
 | Study UI | `templates/learn.html` + `static/js/learn.js` |
 
 Card content lives in a git-tracked Python module (not `data/`, which is gitignored) so it

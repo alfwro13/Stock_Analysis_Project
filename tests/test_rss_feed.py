@@ -45,8 +45,8 @@ def _rss_config(enabled: bool) -> dict:
 
 @contextmanager
 def _rss_enabled(enabled: bool):
-    """Context manager that patches page_routes.load_config for the duration."""
-    with patch("page_routes.load_config", return_value=_rss_config(enabled)):
+    """Context manager that patches pages.page_routes.load_config for the duration."""
+    with patch("pages.page_routes.load_config", return_value=_rss_config(enabled)):
         yield
 
 

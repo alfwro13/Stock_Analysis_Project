@@ -13,9 +13,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from page_routes import _build_rss_base_url
-from page_routes_macro import enrich_macro_events, _parse_cb_nlp_message
-from page_helpers import (
+from pages.page_routes import _build_rss_base_url
+from pages.page_routes_macro import enrich_macro_events, _parse_cb_nlp_message
+from pages.page_helpers import (
     _fmt_currency, _fmt_volume, calculate_pnl, _build_position_sizing_context,
     get_pattern_tags_by_ticker, compute_badge_tags,
 )
@@ -346,38 +346,38 @@ class TestBuildPositionSizingContext:
         return _Row({"currency": currency})
 
     def test_returns_required_keys(self):
-        with patch("page_helpers.get_position_sizing_config", return_value={}), \
-             patch("page_helpers.get_rate_to_base", return_value=1.25):
+        with patch("pages.page_helpers.get_position_sizing_config", return_value={}), \
+             patch("pages.page_helpers.get_rate_to_base", return_value=1.25):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, [])
         assert set(result.keys()) == {"config", "fx_rates", "fx_status", "base_currency"}
         assert result["fx_status"] == []
 
     def test_base_currency_always_has_rate_1(self):
-        with patch("page_helpers.get_position_sizing_config", return_value={}), \
-             patch("page_helpers.get_rate_to_base", return_value=1.25):
+        with patch("pages.page_helpers.get_position_sizing_config", return_value={}), \
+             patch("pages.page_helpers.get_rate_to_base", return_value=1.25):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, [])
         assert result["fx_rates"]["GBP"] == 1.0
 
     def test_foreign_currency_from_rows_included(self):
         rows = [self._make_row("USD")]
-        with patch("page_helpers.get_position_sizing_config", return_value={}), \
-             patch("page_helpers.get_rate_to_base", return_value=0.79):
+        with patch("pages.page_helpers.get_position_sizing_config", return_value={}), \
+             patch("pages.page_helpers.get_rate_to_base", return_value=0.79):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
         assert "USD" in result["fx_rates"]
         assert result["fx_rates"]["USD"] == pytest.approx(0.79)
 
     def test_failed_fx_lookup_does_not_raise(self):
         rows = [self._make_row("EUR")]
-        with patch("page_helpers.get_position_sizing_config", return_value={}), \
-             patch("page_helpers.get_rate_to_base", side_effect=Exception("network")):
+        with patch("pages.page_helpers.get_position_sizing_config", return_value={}), \
+             patch("pages.page_helpers.get_rate_to_base", side_effect=Exception("network")):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
         assert result["fx_rates"]["GBP"] == 1.0
         assert "EUR" not in result["fx_rates"]
 
     def test_none_rate_excluded(self):
         rows = [self._make_row("JPY")]
-        with patch("page_helpers.get_position_sizing_config", return_value={}), \
-             patch("page_helpers.get_rate_to_base", return_value=None):
+        with patch("pages.page_helpers.get_position_sizing_config", return_value={}), \
+             patch("pages.page_helpers.get_rate_to_base", return_value=None):
             result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
         assert "JPY" not in result["fx_rates"]
 
@@ -448,12 +448,12 @@ if __name__ == "__main__":
 
 
 def test_intraday_chart_revision_tracks_files_and_display_inputs(tmp_path):
-    from page_helpers import intraday_chart_revision
+    from pages.page_helpers import intraday_chart_revision
     from unittest.mock import patch
 
-    with patch("page_helpers.INTRADAY_DIR", tmp_path), \
-         patch("page_helpers.HISTORICAL_DIR", tmp_path), \
-         patch("page_helpers.load_config", return_value={"USER_TIMEZONE": "configured-zone"}):
+    with patch("pages.page_helpers.INTRADAY_DIR", tmp_path), \
+         patch("pages.page_helpers.HISTORICAL_DIR", tmp_path), \
+         patch("pages.page_helpers.load_config", return_value={"USER_TIMEZONE": "configured-zone"}):
         before = intraday_chart_revision("STEP4REV")
         (tmp_path / "STEP4REV_intraday.parquet").write_bytes(b"intraday")
         intraday = intraday_chart_revision("STEP4REV")
@@ -464,6 +464,6 @@ def test_intraday_chart_revision_tracks_files_and_display_inputs(tmp_path):
         assert history != intraday
         assert intraday_chart_revision("STEP4REV", "GBp") != history
         assert intraday_chart_revision("STEP4REV", None) == intraday_chart_revision("STEP4REV", "")
-        with patch("page_helpers.load_config", return_value={"USER_TIMEZONE": "changed-zone"}):
+        with patch("pages.page_helpers.load_config", return_value={"USER_TIMEZONE": "changed-zone"}):
             assert intraday_chart_revision("STEP4REV") != history
         assert intraday_chart_revision("../ESCAPE") == ""

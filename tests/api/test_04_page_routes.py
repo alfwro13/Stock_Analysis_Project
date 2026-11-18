@@ -307,7 +307,7 @@ def seeded_nominal_gdp():
 
 @pytest.mark.pages
 def test_market_sentiment_shows_yield_vs_nominal_gdp_line_and_charts(client, seeded_macro_regime, seeded_nominal_gdp):
-    with patch("page_routes_macro.fetch_parquet_data", side_effect=_fake_yield_parquet):
+    with patch("pages.page_routes_macro.fetch_parquet_data", side_effect=_fake_yield_parquet):
         resp = client.get("/market-sentiment")
     assert resp.status_code == 200
     assert _US_BELOW_LINE in resp.text
@@ -550,7 +550,7 @@ def test_index_detail_new_ticker_shows_no_historical_data_placeholder(client, tm
     parquet on disk — it's a tracked market_ticker_registry index (ASX 200) since the Markets
     page feature, so a dev/prod checkout that has ever run a daily fetch will have real data
     for it, which used to make this test's "no data" assumption false (found 2026-07-10)."""
-    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr("pages.page_routes_macro.HISTORICAL_DIR", tmp_path)
     resp = client.get("/index/%5EAXJO")
     assert resp.status_code == 200
     assert "No historical data yet" in resp.text
@@ -558,7 +558,7 @@ def test_index_detail_new_ticker_shows_no_historical_data_placeholder(client, tm
 
 @pytest.mark.pages
 def test_index_detail_shows_futures_banner_when_cash_market_closed(client):
-    with patch("page_routes_macro.markets_engine.resolve_tile", return_value=("ES=F", "S&P 500 Futures", True)):
+    with patch("pages.page_routes_macro.markets_engine.resolve_tile", return_value=("ES=F", "S&P 500 Futures", True)):
         resp = client.get("/index/%5EGSPC")
     assert resp.status_code == 200
     assert "Cash market closed" in resp.text
@@ -567,7 +567,7 @@ def test_index_detail_shows_futures_banner_when_cash_market_closed(client):
 
 @pytest.mark.pages
 def test_index_detail_no_futures_banner_when_cash_market_open(client):
-    with patch("page_routes_macro.markets_engine.resolve_tile", return_value=("^GSPC", "US S&P 500", False)):
+    with patch("pages.page_routes_macro.markets_engine.resolve_tile", return_value=("^GSPC", "US S&P 500", False)):
         resp = client.get("/index/%5EGSPC")
     assert resp.status_code == 200
     assert "cash market closed" not in resp.text
@@ -601,7 +601,7 @@ def test_index_detail_gilt_renders_yield_history_from_close_only_baseline(client
     pivot levels, volume and Yahoo-refresh controls cannot apply, so the page shows a yield-history chart
     and Close-derived ranges and technicals instead of a failure placeholder."""
     _write_gilt_baseline(tmp_path)
-    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr("pages.page_routes_macro.HISTORICAL_DIR", tmp_path)
     resp = client.get("/index/UK10YG")
     assert resp.status_code == 200
     assert "Chart unavailable" not in resp.text
@@ -618,8 +618,8 @@ def test_index_detail_gilt_renders_yield_history_from_close_only_baseline(client
 @pytest.mark.pages
 def test_index_detail_gilt_intraday_slot_plots_accumulated_ft_readings(client, tmp_path, monkeypatch):
     _write_gilt_baseline(tmp_path)
-    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
-    with patch("page_routes_macro.get_intraday_points", return_value=[[1_000_000.0, 5.40], [1_000_300.0, 5.42]]):
+    monkeypatch.setattr("pages.page_routes_macro.HISTORICAL_DIR", tmp_path)
+    with patch("pages.page_routes_macro.get_intraday_points", return_value=[[1_000_000.0, 5.40], [1_000_300.0, 5.42]]):
         resp = client.get("/index/UK10YG")
     assert "Today&#x27;s FT Yield Readings" in resp.text or "Today's FT Yield Readings" in resp.text
     assert "Not enough readings yet" not in resp.text
@@ -628,8 +628,8 @@ def test_index_detail_gilt_intraday_slot_plots_accumulated_ft_readings(client, t
 @pytest.mark.pages
 def test_index_detail_gilt_with_a_single_reading_shows_the_placeholder(client, tmp_path, monkeypatch):
     _write_gilt_baseline(tmp_path)
-    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
-    with patch("page_routes_macro.get_intraday_points", return_value=[[1_000_000.0, 5.40]]):
+    monkeypatch.setattr("pages.page_routes_macro.HISTORICAL_DIR", tmp_path)
+    with patch("pages.page_routes_macro.get_intraday_points", return_value=[[1_000_000.0, 5.40]]):
         resp = client.get("/index/UK10YG")
     assert "Not enough readings yet" in resp.text
 
@@ -705,12 +705,12 @@ def test_stock_detail_chart_error_shows_fixed_message_not_exception_text(client,
         "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
     }, index=pd.date_range("2026-01-01", periods=2))
     df.to_parquet(tmp_path / "ZZXSSCHART.parquet")
-    monkeypatch.setattr("page_data_stock_panels.HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr("pages.page_data_stock_panels.HISTORICAL_DIR", tmp_path)
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("<img src=x onerror=alert(1)> /opt/secret/path")
 
-    monkeypatch.setattr("page_data_stock_panels.create_macro_chart", _boom)
+    monkeypatch.setattr("pages.page_data_stock_panels.create_macro_chart", _boom)
     resp = client.get("/stock/ZZXSSCHART", follow_redirects=True)
     assert resp.status_code == 200
     assert "Chart unavailable" in resp.text
@@ -728,12 +728,12 @@ def test_index_detail_chart_error_shows_fixed_message_not_exception_text(client,
         "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
     }, index=pd.date_range("2026-01-01", periods=2))
     df.to_parquet(tmp_path / "^GSPC.parquet")
-    monkeypatch.setattr("page_routes_macro.HISTORICAL_DIR", tmp_path)
+    monkeypatch.setattr("pages.page_routes_macro.HISTORICAL_DIR", tmp_path)
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("<img src=x onerror=alert(1)> /opt/secret/path")
 
-    monkeypatch.setattr("page_routes_macro.create_macro_chart", _boom)
+    monkeypatch.setattr("pages.page_routes_macro.create_macro_chart", _boom)
     resp = client.get("/index/%5EGSPC")
     assert resp.status_code == 200
     assert "Chart unavailable" in resp.text
@@ -745,7 +745,7 @@ def test_index_detail_chart_error_shows_fixed_message_not_exception_text(client,
 def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkeypatch):
     """A ticker that has a quant_signals row but no stock_signals row yet (e.g. freshly
     fetched, before the full nightly pipeline has run) hits the 'UNIVERSE SCAN ONLY'
-    fallback in page_data_stock.py — that dict must carry every key stock_detail.html reads
+    fallback in pages/page_data_stock.py — that dict must carry every key stock_detail.html reads
     (fifty_two_week_low/high, ma_50_day, ma_200_day, country), or the template 500s.
     The page_action block that reads those keys only renders when a daily Parquet file
     exists for the ticker, so one must be written here to actually exercise that path."""
@@ -759,7 +759,7 @@ def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkey
         "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
     }, index=pd.date_range("2026-01-01", periods=2))
     df.to_parquet(historical_dir / "ZZQUANTONLY.parquet")
-    monkeypatch.setattr("page_data_stock_panels.HISTORICAL_DIR", historical_dir)
+    monkeypatch.setattr("pages.page_data_stock_panels.HISTORICAL_DIR", historical_dir)
 
     conn = _db.get_connection()
     try:
@@ -2113,7 +2113,7 @@ def test_etf_predictor_detail_prediction_chart_survives_correlation_failure(clie
             etf_predictor_engine, "get_etf_intraday_overlay_data",
             lambda cfg, prediction=None, intraday_data=None, daily_df=None: (_ for _ in ()).throw(RuntimeError("skip")),
         )
-        import page_routes_etf
+        from pages import page_routes_etf
         monkeypatch.setattr(page_routes_etf, "create_etf_prediction_chart", fake_chart)
         resp = client.get(f"/etf-predictor/{config_id}")
         assert resp.status_code == 200
@@ -2419,8 +2419,8 @@ def _stub_connection(rows=None, row=None):
         ("get", "/api/markets", "markets_engine.assemble_markets_payload", {"regions": []}),
         ("get", "/api/system/market-status", "system_check_engine.run_system_checks", []),
         ("get", "/api/universe/profiler-status", "api.routes_triggers.get_profiler_queue_breakdown", {"pending_count": 3}),
-        ("get", "/index/%5EGSPC", "page_routes_macro.intraday_chart_revision", ""),
-        ("get", "/market-sentiment", "page_routes_macro.get_latest_regime", {}),
+        ("get", "/index/%5EGSPC", "pages.page_routes_macro.intraday_chart_revision", ""),
+        ("get", "/market-sentiment", "pages.page_routes_macro.get_latest_regime", {}),
         ("get", "/api/system/metrics", "api.routes_system.get_all_job_last_runs", {}),
         ("get", "/api/notifications/latest", "api.routes_system.get_connection", _stub_connection()),
         ("post", "/api/system/git-pull", "api.routes_system.subprocess.run", MagicMock(returncode=0, stdout="sha\n", stderr="")),
@@ -2428,12 +2428,12 @@ def _stub_connection(rows=None, row=None):
         ("get", "/api/fx-drag?period=lifetime", "api.routes.portfolio_lifetime_fx_breakdown", []),
         ("get", "/api/portfolio-optimizer/candidates", "api.routes._po_list_candidates", {"status": "success"}),
         ("get", "/api/alert-referee/status", "alert_referee_engine.get_referee_summary", {}),
-        ("get", "/settings", "page_routes.get_unread_count", 0),
-        ("get", "/glossary", "page_routes._render_asset_docs", []),
-        ("get", "/notifications", "page_routes.get_connection", _stub_connection()),
-        ("get", "/tools", "page_routes.get_unread_count", 0),
-        ("get", "/fx-drag", "page_routes.portfolio_lifetime_fx_breakdown", []),
-        ("get", "/rss/alerts.xml", "page_routes.load_config", {"NOTIFICATIONS": {"RSS_FEED": {"ENABLED": True}}}),
+        ("get", "/settings", "pages.page_routes.get_unread_count", 0),
+        ("get", "/glossary", "pages.page_routes._render_asset_docs", []),
+        ("get", "/notifications", "pages.page_routes.get_connection", _stub_connection()),
+        ("get", "/tools", "pages.page_routes.get_unread_count", 0),
+        ("get", "/fx-drag", "pages.page_routes.portfolio_lifetime_fx_breakdown", []),
+        ("get", "/rss/alerts.xml", "pages.page_routes.load_config", {"NOTIFICATIONS": {"RSS_FEED": {"ENABLED": True}}}),
     ],
     ids=[
         "intraday-yahoo", "portfolio-history", "ha-metrics", "markets-payload", "ha-market-status",
@@ -2478,8 +2478,8 @@ def test_blocked_request_does_not_stall_unrelated_request(
     "module_file",
     [
         "api/routes.py", "api/routes_accounts.py", "api/routes_analysis.py", "api/routes_auth.py",
-        "api/routes_backtester.py", "api/routes_pension.py", "api/routes_system.py", "api/routes_triggers.py", "page_routes.py",
-        "page_routes_etf.py",
+        "api/routes_backtester.py", "api/routes_pension.py", "api/routes_system.py", "api/routes_triggers.py", "pages/page_routes.py",
+        "pages/page_routes_etf.py",
     ],
 )
 def test_async_route_handlers_always_await(module_file):

@@ -29,8 +29,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import ai_engine
 from db import database as _db
 from db import helpers as db_helpers
-import page_data_signal_rows
-import page_data_stock
+from pages import page_data_signal_rows
+from pages import page_data_stock
 import scheduler_jobs
 from intraday_orchestrator import IntradayOrchestrator
 from ml_features import inference_cross_section

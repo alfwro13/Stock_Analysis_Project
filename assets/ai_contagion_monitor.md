@@ -74,6 +74,6 @@ Runs on the scheduled `ai_contagion_job` (default mon-fri 08:20–18:00 UTC, eve
 |------|------|
 | `ai_contagion_engine.py` | `get_ai_contagion_data()`, `_AI_PAGE_TICKERS` constant, flash-crash detector |
 | `visuals/ai.py` | `create_ai_contagion_performance_chart()`, `create_ai_contagion_correlation_heatmap()`, `_AI_COLORS` |
-| `page_routes.py` | `GET /ai-contagion` route |
+| `pages/page_routes.py` | `GET /ai-contagion` route |
 | `templates/ai_contagion.html` | Page template |
 | `templates/tools.html` | Tool card entry |
