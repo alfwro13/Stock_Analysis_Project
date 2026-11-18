@@ -91,6 +91,8 @@ _config_module.DB_PATH = TEST_DB_PATH
 # during tests instead of pulling in the real data/watchlist.json.
 from db import schema as _db_schema_module  # noqa: E402
 _db_schema_module.WATCHLIST_PATH = TEST_DB_PATH.with_suffix(".watchlist.json")
+# migrate_db() rewrites stored daily bars once; it must never scan the real data/historical in a test run.
+_db_schema_module.HISTORICAL_DIR = TEST_DB_PATH.with_suffix(".historical")
 
 # ── 3. Initialise the schema in the temp DB ───────────────────────────────────
 _db_module.init_db()

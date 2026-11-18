@@ -320,6 +320,46 @@ class TestGetPriceHistory:
         # Different period → different key → two downloads
         assert mock_dl.call_count == 2
 
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_repair_is_off_unless_the_caller_asks_for_it(self, mock_ctx, mock_dl):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["AAPL"])
+
+        self.eng.get_price_history(["AAPL"])
+        assert mock_dl.call_args.kwargs["repair"] is False
+        self.eng.get_price_history(["MSFT"], repair=True)
+        assert mock_dl.call_args.kwargs["repair"] is True
+
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_repaired_and_plain_answers_are_cached_apart(self, mock_ctx, mock_dl):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["AAPL"])
+
+        self.eng.get_price_history(["AAPL"], repair=True)
+        self.eng.get_price_history(["AAPL"])
+        assert mock_dl.call_count == 2
+        self.eng.get_price_history(["AAPL"], repair=True)
+        self.eng.get_price_history(["AAPL"])
+        assert mock_dl.call_count == 2
+
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_the_repaired_marker_column_never_reaches_a_caller(self, mock_ctx, mock_dl):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        bulk = _yf_multi_df(["AAPL", "MSFT"])
+        for ticker in ("AAPL", "MSFT"):
+            bulk[(ticker, "Repaired?")] = False
+        mock_dl.return_value = bulk
+
+        result = self.eng.get_price_history(["AAPL", "MSFT"], repair=True)
+        assert all("Repaired?" not in df.columns for df in result.values())
+        assert set(result["AAPL"].columns) == {"Open", "High", "Low", "Close", "Volume"}
+
     @patch("yahoo_engine.notify")
     @patch("yahoo_engine.yf.download")
     @patch("yahoo_engine.yahoo_connection_boundary")
