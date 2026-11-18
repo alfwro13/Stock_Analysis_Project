@@ -6,7 +6,10 @@ Focus on Python-side logic that the SQL cannot enforce:
     and the rest sort ascending by date.
   - get_mean_reversion_setups: min_sma_distance in-Python filter.
   - Empty-DB guard paths for all public functions.
+  - A database error propagates (it is never reported as an empty screen) and the connection is closed.
 """
+import sqlite3
+
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -166,3 +169,27 @@ class TestEmptyDbGuards:
     def test_get_garp_tenbaggers_empty(self):
         with patch("reports_engine.get_connection", return_value=self._empty_conn()):
             assert get_garp_tenbaggers() == []
+
+
+class TestDatabaseErrorsPropagate:
+    """A failed query raises so a caller can tell it from a screen with no matches."""
+
+    ENGINES = [
+        get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups,
+        get_quality_compounders, get_quality_on_sale, get_garp_tenbaggers,
+    ]
+
+    @pytest.mark.parametrize("engine", ENGINES, ids=lambda f: f.__name__)
+    def test_query_error_raises_and_closes_the_connection(self, engine):
+        conn = MagicMock()
+        conn.cursor.return_value.execute.side_effect = sqlite3.OperationalError("no such table: quant_signals")
+        with patch("reports_engine.get_connection", return_value=conn):
+            with pytest.raises(sqlite3.OperationalError):
+                engine()
+        conn.close.assert_called_once()
+
+    @pytest.mark.parametrize("engine", ENGINES, ids=lambda f: f.__name__)
+    def test_connection_error_raises(self, engine):
+        with patch("reports_engine.get_connection", side_effect=sqlite3.OperationalError("unable to open database file")):
+            with pytest.raises(sqlite3.OperationalError):
+                engine()

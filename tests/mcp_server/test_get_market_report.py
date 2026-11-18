@@ -1,4 +1,6 @@
 """get_market_report tool: the nine reports over the whole universe, held/watchlist/new flags and scope, the Freetrade universe rule for new rows, limits, argument refusals, third-party text cleaning, per-report units and as_of, read-only."""
+from unittest.mock import patch
+
 import pytest
 
 from constants import MCP_DISCOVERY_DEFAULT_ROWS, MCP_DISCOVERY_MAX_ROWS
@@ -191,3 +193,11 @@ def test_tool_does_not_write(mcp_client):
     for report in REPORTS:
         tool_data(call(mcp_client, "get_market_report", {"report": report}))
     assert table_counts() == before
+
+
+@pytest.mark.parametrize("report", ["quality_compounders", "garp_tenbaggers", "quality_on_sale", "sector_trends", "relative_strength_leaders", "mean_reversion", "dividend_harvest"])
+def test_database_error_is_an_error_result_not_an_empty_report(mcp_client, report):
+    with patch("reports_engine.get_connection", side_effect=RuntimeError("secret-path /etc/shadow")):
+        response = call(mcp_client, "get_market_report", {"report": report})
+    assert response.json()["result"]["isError"] is True
+    assert "secret-path" not in response.text and "/etc/shadow" not in response.text

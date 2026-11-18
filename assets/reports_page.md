@@ -8,7 +8,7 @@ Scheduler job: none — every report is a live on-demand query
 
 ## 1. Overview
 
-The 7 screener reports are standalone pages, each with its own guide-card tile on the Reports hub (`/reports`, `templates/reports.html`). `reports_engine.py`, the `/api/reports/*` endpoints and the DB schema are shared by all of them; each report function is independent, with no shared state or cross-report dependency.
+The 7 screener reports are standalone pages, each with its own guide-card tile on the Reports hub (`/reports`, `templates/reports.html`). `reports_engine.py`, the `/api/reports/*` endpoints and the DB schema are shared by all of them; each report function is independent, with no shared state or cross-report dependency. A report function returns `[]` only when the screen has no matches; a failed query raises, so a caller can tell the two apart (the `/api/reports/*` routes answer `500` and the report page shows its error row; the MCP `get_market_report` tool returns an error result).
 
 | Report | Route | Template | JS |
 |---|---|---|---|

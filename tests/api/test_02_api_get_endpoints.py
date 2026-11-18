@@ -547,6 +547,17 @@ def test_report_endpoint_returns_200(client, endpoint, label):
     assert isinstance(data["data"], list), f"{label}: 'data' must be a list"
 
 
+@pytest.mark.api
+@pytest.mark.parametrize("endpoint,label", REPORT_ENDPOINTS, ids=[r[1] for r in REPORT_ENDPOINTS])
+def test_report_endpoint_database_error_is_a_500_not_an_empty_screen(client, endpoint, label):
+    """A failed query must answer 500 with the fixed message, never 200 with an empty 'data' list."""
+    with patch("reports_engine.get_connection", side_effect=RuntimeError("secret-path /etc/shadow")):
+        resp = client.get(endpoint)
+    assert resp.status_code == 500, f"{label}: Expected 500, got {resp.status_code}"
+    assert "data" not in _json(resp)
+    assert "secret-path" not in resp.text
+
+
 # ── AI Prompt (missing ticker → 404, not 500) ─────────────────────────────────
 
 @pytest.mark.api
