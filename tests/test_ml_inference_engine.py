@@ -8,7 +8,8 @@ Covers:
     stamps ml_scored_at, clears the stock_signals mirror of an unscored ticker whose last score has aged out,
     and returns the requested tickers it left unscored
   • the Portfolio/Watchlist warning fires once per held ticker that had a score and lost it, survives a restart
-    (alert_state) and rearms when the ticker is scored again; a never-scored ticker is only logged
+    (alert_state) and rearms when the ticker is scored again; a never-scored ticker, and one whose newest
+    complete-feature row is exactly one trading session behind the latest date, are only logged
   • score_quantile_predictions stamps quantile_scored_at with every band it writes
 """
 
@@ -256,6 +257,32 @@ class TestAlertUnscoredHoldings:
                 conn.close()
 
     @staticmethod
+    def _complete_row(ticker, day):
+        conn = None
+        try:
+            conn = _db_module.get_connection()
+            conn.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+            conn.execute(
+                "INSERT INTO quant_signals (ticker, date, mom_1m, atr_pct, rel_strength_5d, rel_strength_20d, ml_scored_at) "
+                "VALUES (?, ?, 1.0, 1.0, 1.0, 1.0, '2000-01-03 02:00:00')",
+                (ticker, day),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    @staticmethod
+    def _sessions_before(newest, sessions):
+        day = datetime.fromisoformat(newest).date()
+        found = 0
+        while found < sessions:
+            day -= timedelta(days=1)
+            if time_engine.trading_days_since(day - timedelta(days=1), day) == 1:
+                found += 1
+        return day.isoformat()
+
+    @staticmethod
     def _alert(unscored, held=("MLHA", "MLHB", "MLHN")):
         from ml_inference_engine import alert_unscored_holdings
         with patch("ml_inference_engine.get_portfolio_watchlist_tickers", return_value=list(held)), \
@@ -290,6 +317,40 @@ class TestAlertUnscoredHoldings:
             r.levelname == "INFO" and "never had a score" in r.getMessage() and "MLHN" in r.getMessage()
             for r in caplog.records
         )
+
+    def test_a_ticker_one_session_behind_the_latest_date_is_only_logged_at_info(self, caplog):
+        newest = _session_date(0)
+        self._complete_row("MLHREF", newest)
+        self._complete_row("MLHA", self._sessions_before(newest, 1))
+        with caplog.at_level("INFO", logger="ml_inference_engine"):
+            notify = self._alert(["MLHA"], held=("MLHA", "MLHREF"))
+        assert not notify.called
+        assert self._warned() == set()
+        assert any(
+            r.levelname == "INFO" and "one trading session behind" in r.getMessage() and "MLHA" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_a_ticker_two_sessions_behind_still_warns(self):
+        newest = _session_date(0)
+        self._complete_row("MLHREF", newest)
+        self._complete_row("MLHA", self._sessions_before(newest, 2))
+        notify = self._alert(["MLHA"], held=("MLHA", "MLHREF"))
+        assert notify.call_args.args[:2] == ("ml_inference_stale_features", "Warning")
+        assert self._warned() == {"MLHA"}
+
+    def test_a_ticker_on_the_latest_date_that_is_unscored_still_warns(self):
+        newest = _session_date(0)
+        self._complete_row("MLHA", newest)
+        assert self._alert(["MLHA"]).call_count == 1
+
+    def test_one_session_ticker_warns_once_it_falls_further_behind(self):
+        newest = _session_date(0)
+        self._complete_row("MLHREF", newest)
+        self._complete_row("MLHA", self._sessions_before(newest, 1))
+        assert not self._alert(["MLHA"], held=("MLHA", "MLHREF")).called
+        self._complete_row("MLHA", self._sessions_before(newest, 2))
+        assert self._alert(["MLHA"], held=("MLHA", "MLHREF")).call_count == 1
 
     def test_universe_only_misses_do_not_warn(self):
         assert not self._alert(["UNIV1", "UNIV2"]).called

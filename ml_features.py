@@ -274,18 +274,17 @@ TRAINING_HISTORY_QUERY = _FEATURE_SELECT + """
     ORDER BY qs.date ASC
 """
 
-LATEST_FEATURES_QUERY = _FEATURE_SELECT + """
-    WHERE qs.mom_1m           IS NOT NULL
-      AND qs.atr_pct          IS NOT NULL
-      AND qs.rel_strength_5d  IS NOT NULL
-      AND qs.rel_strength_20d IS NOT NULL
+INFERENCE_FEATURES_PRESENT = (
+    "{a}mom_1m IS NOT NULL AND {a}atr_pct IS NOT NULL "
+    "AND {a}rel_strength_5d IS NOT NULL AND {a}rel_strength_20d IS NOT NULL"
+)
+
+LATEST_FEATURES_QUERY = _FEATURE_SELECT + f"""
+    WHERE {INFERENCE_FEATURES_PRESENT.format(a="qs.")}
       AND qs.date = (
           SELECT MAX(qs2.date) FROM quant_signals qs2
-          WHERE qs2.ticker          = qs.ticker
-            AND qs2.mom_1m          IS NOT NULL
-            AND qs2.atr_pct         IS NOT NULL
-            AND qs2.rel_strength_5d  IS NOT NULL
-            AND qs2.rel_strength_20d IS NOT NULL
+          WHERE qs2.ticker = qs.ticker
+            AND {INFERENCE_FEATURES_PRESENT.format(a="qs2.")}
       )
 """
 
