@@ -94,7 +94,7 @@ def nominal_gdp_yoy_by_release(levels: pd.Series, window_start: datetime) -> pd.
     start = pd.Timestamp(window_start.date())
     prior = yoy[yoy.index < start].tail(1)
     window = yoy[yoy.index >= start]
-    if prior.empty:
+    if prior.empty or (not window.empty and window.index[0] == start):
         return window
     prior.index = pd.DatetimeIndex([start])
     return pd.concat([prior, window])
@@ -320,6 +320,11 @@ def update_macro_indicators() -> None:
     if not dfs:
         logger.error("All data sources returned empty. Engine execution halted.")
         return
+
+    duplicated = [d.columns[0] for d in dfs if d.index.has_duplicates]
+    if duplicated:
+        logger.warning("Duplicate publication dates in %s; keeping the last row of each before the merge.", duplicated)
+        dfs = [d[~d.index.duplicated(keep='last')] for d in dfs]
 
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)

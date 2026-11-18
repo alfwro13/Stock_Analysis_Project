@@ -116,6 +116,19 @@ class TestScheduleEarningsVolRetry:
         assert call.kwargs["replace_existing"] is True
 
 
+class TestRunMacroDataUpdate:
+    def test_failure_is_logged_with_a_traceback_and_notified(self, caplog):
+        with caplog.at_level("ERROR"), \
+             patch("scheduler_jobs.update_macro_indicators", side_effect=ValueError("boom")), \
+             patch("scheduler_jobs.log_sched_notification") as mock_notify:
+            scheduler_jobs.run_macro_data_update()
+
+        failure = [r for r in caplog.records if "Macro Data Update Failed: boom" in r.getMessage()]
+        assert len(failure) == 1
+        assert failure[0].exc_info is not None
+        assert any(call.args[0] == "Error" and "boom" in call.args[1] for call in mock_notify.call_args_list)
+
+
 class TestRunEarningsVolRetryJob:
     def test_calls_run_earnings_vol_scan_with_given_tickers(self):
         with patch("scheduler_jobs.run_earnings_vol_scan", return_value={}) as mock_scan, \

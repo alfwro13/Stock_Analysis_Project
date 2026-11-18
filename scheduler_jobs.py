@@ -655,7 +655,7 @@ def run_macro_data_update():
         logger.info("Macro data update complete.")
         log_sched_notification("Success", "Macro Data Update completed successfully.")
     except Exception as e:
-        logger.error("Macro Data Update Failed: %s", e)
+        logger.exception("Macro Data Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
     finally:
         _mark_job_done(job_label("macro_data_job"))
