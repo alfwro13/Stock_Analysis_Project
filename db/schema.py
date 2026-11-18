@@ -428,6 +428,13 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_cache (
                 ticker TEXT PRIMARY KEY,
                 name TEXT,
@@ -2948,6 +2955,19 @@ def migrate_db(conn, cursor) -> None:
                 logger.warning("[MIGRATION] Failed to delete %s: %s", path, e)
     if files_removed:
         logger.info("[MIGRATION] Removed %d exchange test-symbol history/fundamentals file(s).", files_removed)
+
+    try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'stored_bar_artifacts'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            from price_repair_engine import clean_stored_bar_artifacts
+            rewritten = clean_stored_bar_artifacts(HISTORICAL_DIR)
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('stored_bar_artifacts')")
+            conn.commit()
+            if rewritten:
+                logger.info("[MIGRATION] Corrected unit flips and listing breaks in %d stored daily-history file(s) and rebuilt their quant_signals rows.", rewritten)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to correct stored daily-history bars: %s", e)
 
     try:
         from db.helpers import refresh_job_average_duration

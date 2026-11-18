@@ -15,6 +15,13 @@ logger = logging.getLogger(__name__)
 # GUI name: "Historical Data Backfill & Sync". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 
 
+def spy_benchmark_frame(spy: pd.DataFrame) -> pd.DataFrame:
+    spy = spy[['Close']].copy()
+    spy['spy_ret_5d']  = spy['Close'].pct_change(5)
+    spy['spy_ret_20d'] = spy['Close'].pct_change(20)
+    return spy
+
+
 def download_spy_benchmark() -> Optional[pd.DataFrame]:
     """
     Loads SPY OHLCV data for relative strength calculations.
@@ -28,9 +35,7 @@ def download_spy_benchmark() -> Optional[pd.DataFrame]:
         if spy.empty:
             logger.warning("SPY download returned empty. Relative strength will be skipped.")
             return None
-        spy = spy[['Close']].copy()
-        spy['spy_ret_5d']  = spy['Close'].pct_change(5)
-        spy['spy_ret_20d'] = spy['Close'].pct_change(20)
+        spy = spy_benchmark_frame(spy)
         logger.info(
             'SPY benchmark downloaded: %s rows (%s to %s)', len(spy), spy.index[0].date(), spy.index[-1].date()
         )
@@ -170,8 +175,8 @@ def quant_history_records(ticker: str, df: pd.DataFrame, spy_df: Optional[pd.Dat
     ]
 
 
-def rebuild_quant_history(ticker: str, df: pd.DataFrame, from_date: str) -> int:
-    records = [r for r in quant_history_records(ticker, df, download_spy_benchmark()) if r[1] >= from_date]
+def rebuild_quant_history(ticker: str, df: pd.DataFrame, from_date: str, spy_df: Optional[pd.DataFrame] = None) -> int:
+    records = [r for r in quant_history_records(ticker, df, download_spy_benchmark() if spy_df is None else spy_df) if r[1] >= from_date]
     if not records:
         return 0
     conn = None

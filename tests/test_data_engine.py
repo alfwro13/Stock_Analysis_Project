@@ -456,7 +456,7 @@ class TestLoadOrFetchDailyHistory:
         ):
             result = load_or_fetch_daily_history("NEWTICK")
 
-        mock_fetch.assert_called_once_with(["NEWTICK"], period="2y", interval="1d")
+        mock_fetch.assert_called_once_with(["NEWTICK"], period="2y", interval="1d", repair=True)
         assert result is not None
         assert result["Close"].iloc[0] == 1.2
         assert (tmp_path / "NEWTICK.parquet").exists()
@@ -871,7 +871,7 @@ def test_stale_daily_refresh_bypasses_partial_yahoo_memory_cache(tmp_path):
          patch("time_engine.last_settled_session_close_utc", return_value=_settled_close_hours_ago(1)):
         assert load_or_fetch_daily_history(ticker, cache_only=True)["Close"].iloc[-1] == 11.0
         assert refresh.call_args.args[1]()["Close"].iloc[-1] == 12.0
-    fetch.assert_called_once_with([ticker], period="2y", interval="1d", force_refresh=True)
+    fetch.assert_called_once_with([ticker], period="2y", interval="1d", force_refresh=True, repair=True)
     assert pd.read_parquet(path)["Close"].iloc[-1] == 12.0
 
 
@@ -1190,6 +1190,30 @@ def test_universe_history_is_downloaded_in_batches_without_live_bars(tmp_path):
     intraday.assert_not_called()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["AAA.parquet", "BBB.parquet", "CCC.parquet", "DDD.parquet"]
     assert pd.read_parquet(tmp_path / "AAA.parquet")["Close"].tolist() == [10.0, 11.0]
+
+
+def test_the_history_writers_ask_yahoo_for_repaired_bars_and_the_baselines_do_not(tmp_path):
+    frame = _ohlcv(["2026-07-01", "2026-07-02"], [10.0, 11.0])
+    engine = _universe_engine()
+    calls = []
+
+    def fake_history(tickers, **kwargs):
+        calls.append((tuple(tickers), kwargs.get("repair", False)))
+        return {t: frame.copy() for t in tickers}
+
+    with patch("data_engine.HISTORICAL_DIR", tmp_path), patch("daily_history_writer.HISTORICAL_DIR", tmp_path), \
+         patch("data_engine.time_engine.is_market_open", return_value=False), \
+         patch("data_engine.yahoo_engine.get_price_history", side_effect=fake_history), \
+         patch("data_engine.yahoo_engine.get_intraday", return_value={}), \
+         patch("data_engine.get_mutual_fund_tickers", return_value=set()), \
+         patch("data_engine.GiltDataService"):
+        engine.bulk_download_historical(["AAA"], universe=["BBB"])
+        engine.fetch_market_baseline()
+
+    repair_by_first_ticker = {tickers[0]: repair for tickers, repair in calls}
+    assert repair_by_first_ticker["AAA"] is True
+    assert repair_by_first_ticker["BBB"] is True
+    assert repair_by_first_ticker["^GSPC"] is False
 
 
 def test_universe_history_runs_the_shared_cleaning_path(tmp_path):

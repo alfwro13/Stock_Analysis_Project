@@ -7,6 +7,7 @@ import stat
 import tempfile
 import threading
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 
@@ -15,7 +16,7 @@ from config import DATA_DIR, HISTORICAL_DIR
 from constants import DAILY_BAR_COLUMNS
 from db.database import get_connection
 from quant_signals import QuantEngine
-from utils import normalize_ticker, safe_ticker_filename
+from utils import normalize_ticker, safe_ticker_filename, write_parquet_atomic
 from yahoo_engine import yahoo_engine
 
 
@@ -179,6 +180,54 @@ def refresh_downstream(ticker, from_date, history):
     else:
         caches = "queued"
     return {"history_rows_rebuilt": history_rows, "portfolio_caches": caches}
+
+
+def clean_stored_bar_artifacts(directory):
+    """One-time cleanup run by db.schema.migrate_db: applies the unit-flip rescale and listing-break trim to the stored daily bars, then rebuilds the quant_signals rows of each changed ticker that has any (all deleted first when its history was trimmed); SPY comes from the same folder so it never reaches Yahoo. Returns the number of files rewritten."""
+    from daily_history_writer import fix_unit_flips, trim_listing_break
+    from ml_backfill_engine import rebuild_quant_history, spy_benchmark_frame
+
+    directory = Path(directory)
+    spy = None
+    spy_failed = False
+    rewritten = 0
+    for path in sorted(directory.glob("*.parquet")):
+        ticker = path.stem
+        if ticker.endswith("_BASELINE"):
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except (OSError, ValueError) as e:
+            logger.warning("Skipping unreadable history file %s: %s", path.name, e)
+            continue
+        if not set(BAR_FIELDS) <= set(df.columns):
+            continue
+        fixed = trim_listing_break(fix_unit_flips(ticker, df))
+        if fixed is df:
+            continue
+        write_parquet_atomic(fixed, path)
+        rewritten += 1
+        conn = None
+        try:
+            conn = get_connection()
+            has_rows = conn.execute("SELECT 1 FROM quant_signals WHERE ticker = ? LIMIT 1", (ticker,)).fetchone() is not None
+            if has_rows and len(fixed) < len(df):
+                conn.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+                conn.commit()
+        finally:
+            if conn:
+                conn.close()
+        if not has_rows:
+            continue
+        if spy is None and not spy_failed:
+            try:
+                spy = spy_benchmark_frame(pd.read_parquet(directory / "SPY.parquet"))
+            except (OSError, ValueError, KeyError) as e:
+                spy_failed = True
+                logger.warning("SPY history unavailable, quant_signals rows of changed tickers are left for the next backfill: %s", e)
+        if spy is not None:
+            rebuild_quant_history(ticker, fixed, "", spy_df=spy)
+    return rewritten
 
 
 def remove_daily_bar(ticker, bar_date, fingerprint):

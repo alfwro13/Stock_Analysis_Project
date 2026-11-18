@@ -258,7 +258,7 @@ class YahooEngine:
             return None
         if df.index.tz is not None:
             df.index = df.index.tz_convert(None)
-        return df
+        return df.drop(columns=["Repaired?"], errors="ignore")
 
     def get_price_history(
         self,
@@ -266,13 +266,16 @@ class YahooEngine:
         period: str = "2y",
         interval: str = "1d",
         force_refresh: bool = False,
+        repair: bool = False,
     ) -> dict[str, pd.DataFrame]:
         # Returns {ticker: DataFrame}; missing/failed tickers omitted (a slice whose Close is all NaN is how a multi-ticker
         # download reports a rate-limited or delisted ticker, so it is omitted too) — callers fall back to local Parquet.
         tickers = list(dict.fromkeys(tickers))
         ttl = self._ttl("history")
-        key_fn = lambda t: f"history:{t}:{period}:{interval}"
+        key_fn = lambda t: f"history:{t}:{period}:{interval}" + (":repaired" if repair else "")
 
+        # repair=True is for the daily-history writers only: yfinance then fixes Yahoo's x100 or /100 unit mixups (and dividend
+        # adjustments) with extra requests per repaired ticker, so a repaired frame is cached apart from the plain one.
         # force_refresh=True for the authoritative nightly writers (data_engine.bulk_download_historical,
         # fetch_market_baseline) -- the 4h TTL exists to spare Yahoo from redundant same-session requests,
         # but it can span across market close: an earlier same-day call (a manual single-ticker refresh, a
@@ -298,7 +301,7 @@ class YahooEngine:
                     lambda session: yf.download(
                         missing, period=period, interval=interval,
                         group_by="ticker", auto_adjust=True, progress=False,
-                        session=session,
+                        session=session, repair=repair,
                     ),
                 )
                 if not df_bulk.empty:

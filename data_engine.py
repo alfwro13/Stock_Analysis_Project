@@ -132,7 +132,7 @@ class DataEngine:
     def _bulk_download_with_live_bars(self, tickers: List[str]) -> None:
         logger.info('Bulk downloading 2Y Macro Historical data for %s assets...', len(tickers))
         try:
-            ticker_dfs = yahoo_engine.get_price_history(tickers, period="2y", interval="1d", force_refresh=True)
+            ticker_dfs = yahoo_engine.get_price_history(tickers, period="2y", interval="1d", force_refresh=True, repair=True)
             if not ticker_dfs:
                 logger.warning("Historical bulk download returned empty.")
                 return
@@ -161,7 +161,7 @@ class DataEngine:
                 trips_seen = self._pace_universe_batch(last_started, trips_seen)
                 last_started = time.monotonic()
                 try:
-                    for ticker, df in yahoo_engine.get_price_history(batch, period="2y", interval="1d", force_refresh=True).items():
+                    for ticker, df in yahoo_engine.get_price_history(batch, period="2y", interval="1d", force_refresh=True, repair=True).items():
                         if df is not None and not df.empty and persist_daily_history(ticker, df, None):
                             written.add(ticker)
                 except Exception as e:
@@ -305,7 +305,7 @@ class DataEngine:
                     persisted = True
                     df_live = df_intraday
 
-            _daily = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+            _daily = yahoo_engine.get_price_history([ticker], period="2y", interval="1d", repair=True)
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
                 self._strip_tz(df_daily)
