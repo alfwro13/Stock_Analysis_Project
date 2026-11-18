@@ -1,4 +1,4 @@
-// These charts are server-rendered (visuals_ai.py's fig.to_html()), so config.responsive
+// These charts are server-rendered (visuals/ai.py's fig.to_html()), so config.responsive
 // never actually reacts to container size changes (rotation, fullscreen) — width/height
 // must be relayout'd explicitly, per AGENTS.md rule 18.
 const _AI_CONTAGION_CHART_WRAPPERS = [

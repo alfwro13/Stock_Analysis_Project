@@ -2,7 +2,7 @@
 // Two structural variants: single wrapper (the .fullscreen-btn and the chart share one div,
 // pass only outerWrapperId) or outer/inner wrapper (the button lives on an outer div that gets
 // .is-fullscreen; the chart lives in a separate descendant div, pass innerWrapperId too).
-// Two rendering variants: server-rendered (visuals*.py fig.to_html()) charts don't react to
+// Two rendering variants: server-rendered (visuals/*.py fig.to_html()) charts don't react to
 // config.responsive on container resize and need width+height relayout'd explicitly
 // (opts.forceWidth = true); JS-rendered (Plotly.react()/newPlot()) charts already resize width
 // via config.responsive and only need height relayout'd (opts.forceWidth = false/omitted).

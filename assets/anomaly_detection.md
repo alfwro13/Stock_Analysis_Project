@@ -278,7 +278,7 @@ Configured under `NOTIFICATIONS.ANOMALY_ALERTS` in `config.json`:
 ## 10. Visualisation
 
 **Location:** Stock detail page, below the Macro Trend chart  
-**Function:** `create_anomaly_score_chart(df, ticker, threshold)` in `visuals.py`
+**Function:** `create_anomaly_score_chart(df, ticker, threshold)` in `visuals/ticker_charts.py`
 
 The chart is a two-panel Plotly dark-theme interactive:
 

@@ -23,7 +23,7 @@ from db.database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse
 from auth import STEP_UP_COOKIE_NAME, STEP_UP_COOKIE_PATH
 from utils import normalize_ticker, safe_local_path
-from visuals_ai import (
+from visuals.ai import (
     create_ai_contagion_performance_chart,
     create_ai_contagion_correlation_heatmap,
 )

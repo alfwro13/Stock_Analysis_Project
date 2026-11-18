@@ -7,7 +7,7 @@ function _pensionChartHeight() {
 
 const _PENSION_CHART_WRAPPERS = ['pension-price-chart-outer-wrapper', 'pension-value-chart-outer-wrapper'];
 
-// These charts are embedded server-side (visuals.py's fig.to_html()) rather than created via
+// These charts are embedded server-side (visuals/ticker_charts.py's fig.to_html()) rather than created via
 // the Plotly JS API, and their `config.responsive` never actually reacts to container size
 // changes (rotation, fullscreen) — so width/height must be relayout'd explicitly on every resize.
 const _PENSION_CHART_OPTS = { getHeight: _pensionChartHeight, forceWidth: true };

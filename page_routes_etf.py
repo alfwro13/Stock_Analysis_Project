@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
 from config import load_config
-from visuals_etf import (
+from visuals.etf import (
     create_etf_correlation_chart,
     create_etf_prediction_chart,
     create_etf_contributions_chart,

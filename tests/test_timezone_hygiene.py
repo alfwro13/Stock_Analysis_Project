@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from visuals import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
+from visuals.ticker_charts import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
