@@ -39,6 +39,9 @@ from macro_data_engine import (
     ONS_TAXONOMY,
 )
 
+pytestmark = pytest.mark.restore_tables("macro_indicators")
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -673,6 +676,64 @@ class TestUpdateMacroIndicators:
             self._cleanup_gdp_rows()
 
 
+class TestUpdateMacroIndicatorsDuplicateIndex:
+    """A frame with a repeated publication date must not abort the weekly merge."""
+
+    def test_uk_gdp_release_on_the_window_start_does_not_abort_the_run(self):
+        """14 Nov 2026 minus 730 days is the UK Q3-2024 release date (30 Sep + 45 days)."""
+        quarters = pd.period_range("2023Q2", periods=11, freq="Q")
+        releases = [q.end_time.normalize() + pd.DateOffset(days=45) for q in quarters]
+        levels = [100.0 + i for i in range(len(releases))]
+        uk_gdp = pd.DataFrame({"YBHA": levels}, index=pd.DatetimeIndex(releases))
+        assert pd.Timestamp("2024-11-14") in uk_gdp.index
+
+        def ons_side_effect(session, series_id, *args, **kwargs):
+            return uk_gdp if series_id == "YBHA" else pd.DataFrame()
+
+        base_rate = pd.DataFrame({"IUDBEDR": [4.75, 4.5]}, index=pd.DatetimeIndex(["2024-12-02", "2025-02-06"]))
+
+        def boe_side_effect(session, series_code, *args, **kwargs):
+            return base_rate if series_code == "IUDBEDR" else pd.DataFrame()
+
+        with patch.dict(os.environ, {"FRED_API_KEY": ""}), \
+             patch("macro_data_engine.get_retry_session"), \
+             patch("macro_data_engine.fetch_boe_data", side_effect=boe_side_effect), \
+             patch("macro_data_engine.fetch_ons_taxonomy_data", side_effect=ons_side_effect), \
+             patch("macro_data_engine.time_engine") as mock_te:
+            mock_te.now_local.return_value = datetime(2026, 11, 14, 5, 0)
+            update_macro_indicators()
+
+        conn = _db_module.get_connection()
+        row = conn.execute(
+            "SELECT uk_nominal_gdp_yoy FROM macro_indicators WHERE date='2024-11-14'"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == pytest.approx((levels[5] / levels[1] - 1) * 100)
+
+    def test_duplicate_publication_date_is_logged_and_the_last_row_kept(self, caplog):
+        index = pd.DatetimeIndex(["2026-01-05", "2026-01-05"])
+        boe = pd.DataFrame({"LPMAUYN": [100000.0, 120000.0]}, index=index)
+
+        def boe_side_effect(session, series_code, *args, **kwargs):
+            return boe if series_code == "LPMAUYN" else pd.DataFrame()
+
+        with caplog.at_level("WARNING"), \
+             patch.dict(os.environ, {"FRED_API_KEY": ""}), \
+             patch("macro_data_engine.get_retry_session"), \
+             patch("macro_data_engine.fetch_boe_data", side_effect=boe_side_effect), \
+             patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()), \
+             patch("macro_data_engine.time_engine") as mock_te:
+            mock_te.now_local.return_value = datetime(2026, 11, 14, 5, 0)
+            update_macro_indicators()
+
+        assert "Duplicate publication dates in ['LPMAUYN']" in caplog.text
+        conn = _db_module.get_connection()
+        row = conn.execute("SELECT uk_m4 FROM macro_indicators WHERE date='2026-01-05'").fetchone()
+        conn.close()
+        assert row[0] == pytest.approx(120.0)
+
+
 class TestGetUkCpiYoySeries:
     """The single reusable source for UK CPI YoY%, shared by the Market Sentiment page and the
     Pension account's CPI+target benchmark overlay (accounts_engine.pension_benchmark_overlay)."""
@@ -741,6 +802,18 @@ class TestNominalGdpYoyByRelease:
 
     def test_fewer_than_five_quarters_yields_nothing(self):
         assert nominal_gdp_yoy_by_release(self._levels([100.0, 101.0, 102.0, 103.0]), datetime(2023, 1, 1)).empty
+
+    def test_release_dated_on_the_window_start_is_not_seeded_twice(self):
+        """A release landing exactly on the window start keeps its own value; a seed there would duplicate the index."""
+        levels = self._levels([100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0])
+        window_start = levels.index[5]
+
+        yoy = nominal_gdp_yoy_by_release(levels, window_start.to_pydatetime())
+
+        assert not yoy.index.has_duplicates
+        assert yoy.index[0] == window_start
+        assert yoy.iloc[0] == pytest.approx((105.0 / 101.0 - 1) * 100)
+        assert yoy.index[1] == levels.index[6]
 
 
 def _seed_gdp_rows(rows):
