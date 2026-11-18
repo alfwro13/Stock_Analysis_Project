@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
-from narrow_range_engine import (
+from patterns.narrow_range_engine import (
     _is_narrow_bar,
     phase_label,
     detect,

@@ -5,10 +5,10 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from pattern_geometry_helpers import find_pivots, linreg, slope_pct_per_day
+from patterns.pattern_geometry_helpers import find_pivots, linreg, slope_pct_per_day
 
 # GUI name: "Pattern Detection" (Wedge family). Canonical scheduled-job names live in
-# scheduler_manifest.JOB_GRAPH; the registry contract lives in pattern_detection_engine.py.
+# scheduler_manifest.JOB_GRAPH; the registry contract lives in patterns/pattern_detection_engine.py.
 
 _ORDER = 3
 _WINDOW_DAYS = 40

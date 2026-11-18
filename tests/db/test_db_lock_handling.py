@@ -21,7 +21,7 @@ from db import connection as _conn
 from db import helpers as db_helpers
 import notification_engine
 import scheduler_engine
-from pattern_detection_engine import PatternDetectionEngine
+from patterns.pattern_detection_engine import PatternDetectionEngine
 
 _LOCKED = sqlite3.OperationalError("database is locked")
 _FOREVER = float("inf")
@@ -478,7 +478,7 @@ class TestPatternDetectionSave:
             self._cleanup()
 
     def test_retried_save_does_not_replace_a_newer_scan(self, monkeypatch):
-        monkeypatch.setattr("pattern_detection_engine.replaying_deferred_write", lambda: True)
+        monkeypatch.setattr("patterns.pattern_detection_engine.replaying_deferred_write", lambda: True)
         engine = PatternDetectionEngine({})
         try:
             engine._save_results([self._row(scan_ts="2030-01-01 22:20:00", phase="CONFIRMED")])
@@ -488,7 +488,7 @@ class TestPatternDetectionSave:
             self._cleanup()
 
     def test_retried_stale_clear_does_not_delete_a_newer_row(self, monkeypatch):
-        monkeypatch.setattr("pattern_detection_engine.replaying_deferred_write", lambda: True)
+        monkeypatch.setattr("patterns.pattern_detection_engine.replaying_deferred_write", lambda: True)
         engine = PatternDetectionEngine({})
         try:
             engine._save_results([self._row(scan_ts="2030-01-01 22:20:00")])

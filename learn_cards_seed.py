@@ -2156,7 +2156,7 @@ CARDS = [
             "Pillar Confluence has to be manually retrained on the new pattern",
             "A new database migration is required for every new pattern family",
         ],
-        "explanation": """<p>The Technical pillar never hardcodes a pattern list. It reads <code>pattern_detection_engine.DETECTORS</code> — the same registry <a href="/pattern-detection">Pattern Detection</a> itself is built on — and resolves each result's direction through that family's own <code>PATTERN_TYPES</code> dict at evaluation time. A new pattern family added to the registry is automatically included in Pillar Confluence with no changes needed here.</p>""",
+        "explanation": """<p>The Technical pillar never hardcodes a pattern list. It reads <code>patterns.pattern_detection_engine.DETECTORS</code> — the same registry <a href="/pattern-detection">Pattern Detection</a> itself is built on — and resolves each result's direction through that family's own <code>PATTERN_TYPES</code> dict at evaluation time. A new pattern family added to the registry is automatically included in Pillar Confluence with no changes needed here.</p>""",
     },
     {
         "term_key": "pillar-confluence-window",

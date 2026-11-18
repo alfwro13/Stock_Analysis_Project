@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
-from candlestick_trigger_engine import (
+from patterns.candlestick_trigger_engine import (
     detect,
     phase_label,
     FAMILY,

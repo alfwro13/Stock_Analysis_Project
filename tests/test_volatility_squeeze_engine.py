@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
-from volatility_squeeze_engine import (
+from patterns.volatility_squeeze_engine import (
     _find_latest_squeeze_run,
     phase_label,
     detect,

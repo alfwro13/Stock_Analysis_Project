@@ -18,7 +18,7 @@ from fundamentals_helpers import (
 )
 from bull_bear_trap_engine import phase_label as _trap_phase_label
 from bubble_radar_engine import flag_label as _bubble_flag_label
-from pattern_detection_engine import DETECTORS
+from patterns.pattern_detection_engine import DETECTORS
 
 logger = logging.getLogger(__name__)
 

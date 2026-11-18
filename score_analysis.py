@@ -197,7 +197,7 @@ def _trading_windows_batch(tickers: list[str], conn, as_of: Optional[str] = None
 
 def _pattern_signals_batch(tickers: list[str], conn, trading_windows: dict[str, set]) -> dict[str, list[str]]:
     """Registered pattern families supply direction; only quant-window dates count."""
-    from pattern_detection_engine import DETECTORS
+    from patterns.pattern_detection_engine import DETECTORS
 
     signals: dict[str, list[str]] = {t: [] for t in tickers}
     if not tickers:

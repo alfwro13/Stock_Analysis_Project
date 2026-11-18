@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from pattern_geometry_helpers import (
+from patterns.pattern_geometry_helpers import (
     latest_alternating_run,
     piecewise_r2,
     volume_confirms,
@@ -13,7 +13,7 @@ from pattern_geometry_helpers import (
 )
 
 # GUI name: "Pattern Detection" (Head & Shoulders family). Canonical scheduled-job names
-# live in scheduler_manifest.JOB_GRAPH; the registry contract lives in pattern_detection_engine.py.
+# live in scheduler_manifest.JOB_GRAPH; the registry contract lives in patterns/pattern_detection_engine.py.
 
 _ORDER = 5
 _MIN_BARS = 60

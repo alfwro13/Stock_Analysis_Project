@@ -1197,7 +1197,7 @@ def run_stable_shortlist_job():
 
 
 def run_pattern_detection_job():
-    from pattern_detection_engine import PatternDetectionEngine, DETECTORS
+    from patterns.pattern_detection_engine import PatternDetectionEngine, DETECTORS
     config = load_config()
     _mark_job_started(job_label("pattern_detection_job"))
     # Uses notify(..., source="pattern_detection_job", ...) directly rather than
@@ -1273,7 +1273,7 @@ def run_pattern_detection_job():
 
 
 def run_pattern_detection_accuracy_fill_job():
-    from pattern_detection_engine import fill_pattern_outcomes
+    from patterns.pattern_detection_engine import fill_pattern_outcomes
     _mark_job_started(job_label("pattern_detection_accuracy_fill_job"))
     try:
         count = fill_pattern_outcomes()
@@ -1287,7 +1287,7 @@ def run_pattern_detection_accuracy_fill_job():
 
 
 def run_pattern_detection_backfill_job():
-    from pattern_detection_engine import backfill_historical_patterns
+    from patterns.pattern_detection_engine import backfill_historical_patterns
     _mark_job_started(job_label("pattern_detection_backfill_source"))
     try:
         backfill_historical_patterns()

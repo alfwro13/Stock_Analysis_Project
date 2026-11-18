@@ -43,7 +43,7 @@ def find_pivots(closes: np.ndarray, order: int) -> tuple[list[int], list[int]]:
 def merge_adjacent_pivots(raw_events: list[tuple[int, int]], closes: np.ndarray) -> list[tuple[int, int]]:
     """Collapses consecutive same-type pivots (e.g. a double top/bottom, two nearby swing
     highs with no qualifying low between them) into the single most extreme one — otherwise a
-    common real shape silently breaks a strict alternation check. See head_shoulders_engine.py's
+    common real shape silently breaks a strict alternation check. See patterns/head_shoulders_engine.py's
     original 2026-07-19 SMGB.L case study for the motivating example."""
     merged: list[tuple[int, int]] = []
     for idx, typ in raw_events:
@@ -194,7 +194,7 @@ def detect_pole(
 
 def candle_body_wick_metrics(open_: float, high: float, low: float, close: float) -> dict:
     """Body/wick decomposition for a single OHLC bar — shared by quant_signals.py's
-    Quantamental scoring and candlestick_trigger_engine.py's Pattern Detection family so the
+    Quantamental scoring and patterns/candlestick_trigger_engine.py's Pattern Detection family so the
     two never drift apart on what counts as a body vs. a wick."""
     body = abs(open_ - close)
     rng = max(high - low, 0.001)
