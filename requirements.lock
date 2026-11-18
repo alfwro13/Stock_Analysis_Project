@@ -559,9 +559,9 @@ deprecated==1.3.1 \
     --hash=sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f \
     --hash=sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223
     # via limits
-exchange-calendars==4.13.2 \
-    --hash=sha256:a9459425dd64142cd54fbc639847403c7e0c33d60fbc326c94fc1d6bd127f002 \
-    --hash=sha256:fc5a2ad0d61b5c3a6539a3061cd4cbb55c59f4a903455cec7926e4b798919996
+exchange-calendars==4.13.3 \
+    --hash=sha256:02b95a738b3848ab9c52529330f84a15f76c765edeb7790cfbbf0d45d92cc2b5 \
+    --hash=sha256:e4280cb77f58b32123ee1049018872533483bcecca70f74a5bc7fde2a6c73183
     # via -r requirements.txt
 fake-useragent==2.2.0 \
     --hash=sha256:4e6ab6571e40cc086d788523cf9e018f618d07f9050f822ff409a4dfe17c16b2 \
