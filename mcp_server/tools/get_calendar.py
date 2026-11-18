@@ -5,13 +5,11 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from constants import MCP_CALENDAR_MAX_DAYS, MCP_CALENDAR_MAX_ROWS
-from db.helpers import (
-    get_ex_dividend_dates, get_next_earnings_dates, get_portfolio_tickers, get_upcoming_macro_events,
-    get_watchlist_only_tickers, parse_utc_epoch,
-)
+from db.helpers import get_ex_dividend_dates, get_next_earnings_dates, get_upcoming_macro_events, parse_utc_epoch
 from scheduler_engine import get_all_job_last_runs
 from utils import is_iso_date
 
+from ..discovery import list_flags
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, dated_part, envelope, iso_from_stored_utc, iso_utc
 from ..server import READ_ONLY, server
 
@@ -88,7 +86,7 @@ def get_calendar(days: DaysArg = 7) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
     last_day = (now + timedelta(days=days)).strftime("%Y-%m-%d")
-    lists = {**{t: "watchlist" for t in get_watchlist_only_tickers()}, **{t: "portfolio" for t in get_portfolio_tickers()}}
+    lists = list_flags()
     tickers = sorted(lists)
     missing: list[str] = []
     ex_dividends = get_ex_dividend_dates(tickers)

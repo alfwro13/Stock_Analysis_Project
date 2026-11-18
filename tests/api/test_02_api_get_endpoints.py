@@ -142,13 +142,10 @@ def test_get_freshness_returns_200(client):
 ])
 def test_freshness_prices_state_counts_trading_days_only(monkeypatch, today, expected):
     """A Friday bar stays green over the weekend and on Monday; only missed trading days turn it amber/red."""
-    from unittest.mock import MagicMock
     import api.routes
     import time_engine
 
-    conn = MagicMock()
-    conn.cursor.return_value.fetchone.return_value = {"max_date": "2026-11-06"}
-    monkeypatch.setattr(api.routes, "get_connection", lambda: conn)
+    monkeypatch.setattr(api.routes, "get_latest_quant_date", lambda: "2026-11-06")
     monkeypatch.setattr(time_engine, "now_local", lambda: today)
     monkeypatch.setattr(time_engine, "_load_config", lambda: {"HOME_EXCHANGE": "LSE"})
 

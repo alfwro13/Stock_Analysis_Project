@@ -169,6 +169,17 @@ def get_universe_tickers(include_non_freetrade: bool = False) -> List[str]:
             conn.close()
 
 
+def get_latest_quant_date() -> Optional[str]:
+    """Date (YYYY-MM-DD) of the newest quant_signals row: the as-of of every price-and-technicals screen."""
+    conn = None
+    try:
+        conn = get_connection()
+        return conn.execute("SELECT MAX(date) FROM quant_signals").fetchone()[0]
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_stock_signal_tickers() -> List[str]:
     """Every ticker with a stock_signals row, i.e. the scored universe."""
     conn = None

@@ -41,7 +41,7 @@ from config import (
 from db.database import (
     get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
 )
-from db.helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, ml_fresh_since, sentiment_fresh_since
+from db.helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, get_latest_quant_date
 from accounts.accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
@@ -65,10 +65,9 @@ from pages.page_helpers import intraday_chart_revision
 from cache_refresh_helpers import await_cache_refresh
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
-from fundamentals_helpers import compute_quality_grade, get_earnings_days
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
-from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers, get_quality_on_sale
+from reports_engine import get_screener_rows, get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers, get_quality_on_sale
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import update_daily_ml_predictions
@@ -523,80 +522,12 @@ def api_table_views_preference(body: TableViewsPreferenceBody):
 @api_router.get("/screener-data")
 @limiter.limit("20/minute")
 def get_screener_data(request: Request):
-    conn = None
     try:
-        config_data = load_config()
-        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = """
-        WITH latest_quant AS (
-            SELECT ticker, MAX(date) AS max_date
-            FROM quant_signals
-            GROUP BY ticker
-        ),
-        latest_sentiment AS (
-            SELECT ticker, MAX(date) AS max_date
-            FROM quant_signals
-            WHERE sentiment_score IS NOT NULL AND sentiment_scored_at >= ?
-            GROUP BY ticker
-        )
-        SELECT
-            q.ticker,
-            COALESCE(p.company_name, s.company_name, m.company_name, q.ticker) as company_name,
-            COALESCE(p.sector, s.sector, 'Unclassified') as sector,
-            CASE
-                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
-                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
-                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
-                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
-                ELSE 'US'
-            END as exchange,
-            COALESCE(p.currency, s.currency, 'USD') as currency,
-            q.date, q.close_price,
-            q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200,
-            q.volume_surge, q.bullish_cross,
-            CASE WHEN q.ml_scored_at >= ? THEN q.ml_confidence_score END AS ml_confidence_score,
-            q.var_95, q.cvar_95, q.atr_pct,
-            q.week52_pct,
-            qs_sent.sentiment_score,
-            s.composite_score, s.overall_signal,
-            s.roe, s.peg_ratio, s.trailing_pe, s.debt_to_equity, s.expense_ratio,
-            COALESCE(s.next_earnings_date, ev.next_earnings_date) AS next_earnings_date,
-            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url,
-            COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
-        FROM quant_signals q
-        INNER JOIN latest_quant lq ON q.ticker = lq.ticker AND q.date = lq.max_date
-        INNER JOIN market_universe m ON q.ticker = m.ticker
-        LEFT JOIN asset_profiles p ON q.ticker = p.ticker
-        LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        LEFT JOIN latest_sentiment ls ON q.ticker = ls.ticker
-        LEFT JOIN quant_signals qs_sent
-            ON qs_sent.ticker = ls.ticker
-            AND qs_sent.date = ls.max_date
-            AND qs_sent.sentiment_score IS NOT NULL
-        LEFT JOIN earnings_volatility ev ON q.ticker = ev.ticker
-        """
-        if freetrade_only:
-            query += " WHERE m.is_freetrade = 1"
-
-        cursor.execute(query, (sentiment_fresh_since(), ml_fresh_since()))
-        rows = cursor.fetchall()
-        today_str = time_engine.now_local().strftime('%Y-%m-%d')
-        data = []
-        for row in rows:
-            r = dict(row)
-            r['quality_grade'] = compute_quality_grade(r)
-            r['earnings_days'] = get_earnings_days(r, today_str)
-            data.append(r)
-        return JSONResponse(content={"data": data})
+        freetrade_only = load_config().get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+        return JSONResponse(content={"data": get_screener_rows(freetrade_only)})
     except Exception as e:
         logger.error("Failed to fetch screener data: %s", e, exc_info=True)
         return JSONResponse(status_code=500, content={"error": "An internal error occurred. Check server logs for details.", "data": []})
-    finally:
-        if conn:
-            conn.close()
 
 @api_router.get("/reports/quality-compounders")
 @limiter.limit("10/minute")
@@ -702,18 +633,11 @@ def get_data_freshness():
         model_days, model_date, model_state = None, None, "freshness-stale"
 
     # Price data freshness (latest row in quant_signals)
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT MAX(date) AS max_date FROM quant_signals")
-        row = cursor.fetchone()
-    finally:
-        conn.close()
-
-    if row and row["max_date"]:
-        prices_d     = datetime.strptime(row["max_date"], "%Y-%m-%d").date()
+    latest_quant_date = get_latest_quant_date()
+    if latest_quant_date:
+        prices_d     = datetime.strptime(latest_quant_date, "%Y-%m-%d").date()
         prices_days  = (today - prices_d).days
-        prices_date  = row["max_date"]
+        prices_date  = latest_quant_date
         prices_state = _state(time_engine.trading_days_since(prices_d, today), FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS)
     else:
         prices_days, prices_date, prices_state = None, None, "freshness-stale"

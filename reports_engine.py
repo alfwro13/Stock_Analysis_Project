@@ -1,9 +1,11 @@
 import logging
 from typing import List, Dict, Any
 from db.database import get_connection
-from db.helpers import ml_fresh_since
+import time_engine
+from db.helpers import ml_fresh_since, sentiment_fresh_since
 from utils import is_iso_date
 from fundamentals_helpers import (
+    compute_quality_grade, get_earnings_days,
     QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,
     QUALITY_COMPOUNDER_MIN_GROWTH, QUALITY_COMPOUNDER_MIN_CURRENT_RATIO, QUALITY_COMPOUNDER_MIN_SCORE,
     QUALITY_COMPOUNDER_MIN_PE, QUALITY_COMPOUNDER_MAX_PE,
@@ -14,6 +16,76 @@ from fundamentals_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+def get_screener_rows(freetrade_only: bool = False) -> List[Dict[str, Any]]:
+    """The Market Screener dataset: the newest quant_signals row of every universe ticker with its fundamentals, quality grade and days to earnings."""
+    conn = None
+    try:
+        conn = get_connection()
+        query = """
+        WITH latest_quant AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        ),
+        latest_sentiment AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            WHERE sentiment_score IS NOT NULL AND sentiment_scored_at >= ?
+            GROUP BY ticker
+        )
+        SELECT
+            q.ticker,
+            COALESCE(p.company_name, s.company_name, m.company_name, q.ticker) as company_name,
+            COALESCE(p.sector, s.sector, 'Unclassified') as sector,
+            CASE
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
+            q.date, q.close_price,
+            q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200,
+            q.volume_surge, q.bullish_cross,
+            CASE WHEN q.ml_scored_at >= ? THEN q.ml_confidence_score END AS ml_confidence_score,
+            q.var_95, q.cvar_95, q.atr_pct,
+            q.week52_pct,
+            qs_sent.sentiment_score,
+            s.composite_score, s.overall_signal,
+            s.roe, s.peg_ratio, s.trailing_pe, s.debt_to_equity, s.expense_ratio,
+            COALESCE(s.next_earnings_date, ev.next_earnings_date) AS next_earnings_date,
+            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url,
+            COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
+        FROM quant_signals q
+        INNER JOIN latest_quant lq ON q.ticker = lq.ticker AND q.date = lq.max_date
+        INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
+        LEFT JOIN latest_sentiment ls ON q.ticker = ls.ticker
+        LEFT JOIN quant_signals qs_sent
+            ON qs_sent.ticker = ls.ticker
+            AND qs_sent.date = ls.max_date
+            AND qs_sent.sentiment_score IS NOT NULL
+        LEFT JOIN earnings_volatility ev ON q.ticker = ev.ticker
+        """
+        if freetrade_only:
+            query += " WHERE m.is_freetrade = 1"
+
+        rows = conn.execute(query, (sentiment_fresh_since(), ml_fresh_since())).fetchall()
+        today_str = time_engine.now_local().strftime('%Y-%m-%d')
+        data = []
+        for row in rows:
+            r = dict(row)
+            r['quality_grade'] = compute_quality_grade(r)
+            r['earnings_days'] = get_earnings_days(r, today_str)
+            data.append(r)
+        return data
+    finally:
+        if conn:
+            conn.close()
+
 
 def get_sector_trends() -> List[Dict[str, Any]]:
     """Aggregates RSI/SMA momentum by sector and exchange; EQUITY filter prevents NAV-priced funds from skewing averages."""

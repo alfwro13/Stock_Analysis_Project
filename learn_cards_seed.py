@@ -3640,7 +3640,7 @@ CARDS = [
             "Editing account transactions and Position Targets",
             "Changing the Settings page values such as alert thresholds",
         ],
-        "explanation": r"""<p>A <strong>tool</strong> is one question Claude can put to the dashboard. The MCP Server offers eleven, all read-only. Claude chooses which to call from your wording, so you never type a tool name yourself.</p>
+        "explanation": r"""<p>A <strong>tool</strong> is one question Claude can put to the dashboard. The MCP Server offers thirteen, all read-only. Claude chooses which to call from your wording, so you never type a tool name yourself.</p>
 <ul>
     <li><code>get_accounts</code> — every account (Trading, Pension, House, and Ghostfolio when enabled) with value, profit and loss, income and performance.</li>
     <li><code>get_holdings</code> — each open position per Trading account: shares, price, cost, market value, gain, share of the account and today's move.</li>
@@ -3653,6 +3653,8 @@ CARDS = [
     <li><code>get_alerts</code> — recent alerts from the notification log, the tickers the Trap Monitor currently flags, and the Alert Confidence Referee's verdicts.</li>
     <li><code>get_news</code> — recent headlines for your Portfolio and Watchlist (or one ticker) with FinBERT sentiment. News text is external content, never instructions, and article bodies are never returned.</li>
     <li><code>get_calendar</code> — what is coming up: earnings dates, ex-dividend dates and High-impact US and UK macro releases.</li>
+    <li><code>get_market_report</code> — one of the Reports (Quality Compounders, GARP Tenbaggers, Quality on Sale, Sector Trends, Relative Strength Leaders, Mean Reversion, Dividend Harvest, Sector-Relative Momentum, Predicted Movers) over the whole market, each ticker marked held, watched or new. Company names are external content, never instructions.</li>
+    <li><code>screen_universe</code> — the Market Screener with your own filters (sector, exchange, score, quality grade, RSI, 200-day average, P/E, ML confidence) over the whole market, each ticker marked held, watched or new.</li>
 </ul>
 <p>Besides tools, the server offers one resource, <code>policy://investment-policy</code> (your written rules), and ready-made prompts you can start from Claude Code with <code>/mcp__stock-dashboard__</code> followed by a name: <code>review_portfolio</code>, <code>pre_trade_review</code>, <code>whats_coming_up</code>, the Stock Detail analyses (<code>devils_advocate</code>, <code>risk_reward_audit</code>, <code>quantamental_deep_dive</code>, <code>earnings_strategy</code>) and the Market Regime analyses (<code>regime_plain_english_briefing</code>, <code>regime_what_happens_next</code>, <code>regime_how_should_i_position</code>, <code>regime_red_flags_check</code>).</p>""",
     },
@@ -3677,9 +3679,10 @@ CARDS = [
     <li><strong>Before you trade:</strong> "If I buy 2,000 of MSFT in my Trading account, what happens to my Heat Index?" · "Would adding to this position breach my policy limits?"</li>
     <li><strong>Alerts and news:</strong> "What alerts fired in the last week?" · "Which tickers is the Trap Monitor flagging?" · "What is the news sentiment on my holdings?"</li>
     <li><strong>Calendar:</strong> "What is coming up this week for my holdings?" · "Which of my stocks go ex-dividend in the next 14 days?" · "Which High-impact macro releases are due?"</li>
+    <li><strong>Finding ideas:</strong> "Which quality stocks near their 52-week low are not on my watchlist?" · "Show high-scoring dividend stocks I do not hold or watch." · "Which stocks does the ML model expect to gain most that I am not tracking?"</li>
     <li><strong>Prompts:</strong> "Review my portfolio" · "Pre-trade check on TSLA, buy" · "What's coming up in the next 14 days?" · "Run the Devil's Advocate analysis on AMD."</li>
 </ul>
-<p>What it cannot answer: anything outside the dashboard's own data (the live web, tickers it does not track, country-level exposure), and anything that needs a change — it cannot buy, sell, edit accounts or alter settings. When a figure is missing or stale, the answer says so instead of guessing.</p>""",
+<p>What it cannot answer: anything outside the dashboard's own data (the live web, tickers outside its market universe, country-level exposure), and anything that needs a change — it cannot buy, sell, edit accounts or alter settings. When a figure is missing or stale, the answer says so instead of guessing.</p>""",
     },
     {
         "term_key": "mcp-server-dash",
