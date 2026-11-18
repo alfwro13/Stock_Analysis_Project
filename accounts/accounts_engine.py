@@ -22,7 +22,7 @@ from db.account_store import (
     upsert_value_snapshot_currency,
 )
 from db.database import get_connection
-from fx_conversion_helpers import cached_fx_close, fx_level_on
+from backtesting.fx_conversion_helpers import cached_fx_close, fx_level_on
 from portfolio_service import get_rate_to_base
 from utils import csv_safe_cell, normalize_ticker, ignored_tickers_set, safe_ticker_filename
 from yahoo_engine import yahoo_engine

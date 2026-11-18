@@ -65,7 +65,7 @@ JOB_GRAPH: dict[str, dict] = {
     "bubble_radar_job":               {"label": "Bubble Radar Scan",                              "category": "quant",       "engine": "bubble_radar_engine.py",        "produces": ["bubble_radar_metrics", "bubble_radar_history"],               "consumes": ["quant_signals", "stock_signals", "macro_indicators"],               "settings_anchor": "tools-card"},
     "pairs_spread_monitor_job":       {"label": "Pairs Spread Monitor",                           "category": "quant",       "engine": "pairs_spread_engine.py",        "produces": ["pairs_spread_results"],                                       "consumes": ["historical_parquet", "portfolio", "stock_signals"],                 "settings_anchor": "tools-card"},
     "sector_relative_momentum_job":   {"label": "Sector-Relative Momentum",                       "category": "quant",       "engine": "sector_relative_momentum_engine.py", "produces": ["sector_relative_momentum_results"],                       "consumes": ["historical_parquet", "stock_signals"],                              "settings_anchor": "sector-relative-momentum-card"},
-    "stable_shortlist_job":           {"label": "Stable Shortlist",                               "category": "quant",       "engine": "stable_shortlist_engine.py",    "produces": ["stable_shortlist_snapshots"],                                 "consumes": ["quant_signals", "ml_predictions", "portfolio", "stock_signals"],    "settings_anchor": "stable-shortlist-card"},
+    "stable_shortlist_job":           {"label": "Stable Shortlist",                               "category": "quant",       "engine": "backtesting/stable_shortlist_engine.py",    "produces": ["stable_shortlist_snapshots"],                                 "consumes": ["quant_signals", "ml_predictions", "portfolio", "stock_signals"],    "settings_anchor": "stable-shortlist-card"},
 
     # Pairs Spread Monitor's Universe scope — not a scheduled job; an operator-triggered,
     # on-demand-only full market-universe correlation scan (too expensive to run nightly).
@@ -137,11 +137,11 @@ JOB_GRAPH: dict[str, dict] = {
     # Portfolio Optimizer — not a scheduled job; on-demand calculation over the same
     # xray_returns_cache-derived return series X-ray uses (plus a parquet fallback for
     # never-held Watchlist tickers), no new artifact produced.
-    "portfolio_optimizer_source":    {"label": "Portfolio Optimizer",                            "category": "manual",      "engine": "portfolio_optimizer_engine.py",   "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
+    "portfolio_optimizer_source":    {"label": "Portfolio Optimizer",                            "category": "manual",      "engine": "backtesting/portfolio_optimizer_engine.py",   "produces": [],                                                           "consumes": ["xray_caches", "portfolio"],                                         "non_job": True, "settings_anchor": None},
     # Strategy Backtester — not a scheduled job; on-demand historical replay of the Portfolio
     # Optimizer's allocation rules plus simple rebalancing rules over cached (or separately
     # prepared extended) daily history. Saves each run under data/strategy_backtests/.
-    "strategy_backtester_source":    {"label": "Strategy Backtester",                            "category": "manual",      "engine": "strategy_backtest_engine.py",     "produces": ["strategy_backtest_runs"],                                   "consumes": ["historical_parquet", "portfolio", "stable_shortlist_snapshots"],     "non_job": True, "settings_anchor": None},
+    "strategy_backtester_source":    {"label": "Strategy Backtester",                            "category": "manual",      "engine": "backtesting/strategy_backtest_engine.py",     "produces": ["strategy_backtest_runs"],                                   "consumes": ["historical_parquet", "portfolio", "stable_shortlist_snapshots"],     "non_job": True, "settings_anchor": None},
 
     # Pre-Trade Gatekeeper (Pillar A) — not a scheduled job; on-demand what-if VaR/correlation
     # simulation from the Stock Detail Position Sizing panel, using the same X-ray caches

@@ -23,7 +23,7 @@ from db import database as db
 from db.database import create_account, add_transaction
 from db.account_store import get_watchlist_account, add_watchlist_item, remove_watchlist_ticker
 from xray_engine import BENCHMARK_SYMBOL
-from portfolio_optimizer_engine import (
+from backtesting.portfolio_optimizer_engine import (
     MIN_TICKERS_WARNING,
     MODE_LONG_ONLY,
     NOT_ENOUGH_DATA_WARNING,
@@ -92,7 +92,7 @@ def _bdate_strings(n, start="2025-01-01"):
 
 @pytest.fixture(autouse=True)
 def _base_currency_quotes():
-    with patch("portfolio_optimizer_engine.native_currencies", side_effect=lambda tickers: {t: "GBP" for t in tickers}):
+    with patch("backtesting.portfolio_optimizer_engine.native_currencies", side_effect=lambda tickers: {t: "GBP" for t in tickers}):
         yield
 
 
@@ -175,7 +175,7 @@ class TestReturnsMatrixForCandidates:
             {RM_T3: rng.normal(0, 0.01, 40)}, index=parquet_index
         )
         with patch(
-            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            "backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=fallback_df,
         ):
             df, warnings, _ = _returns_matrix_for_candidates([RM_T1, RM_T3])
@@ -192,7 +192,7 @@ class TestReturnsMatrixForCandidates:
         short = pd.Series(rng.normal(0, 0.01, 10), index=pd.to_datetime(dates[-10:]))
         fallback_df = pd.DataFrame({"POE_RM_SHORT": short}, index=pd.to_datetime(dates))
         with patch(
-            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            "backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=fallback_df,
         ):
             df, _, removed = _returns_matrix_for_candidates([RM_T1, RM_T2, "POE_RM_SHORT"])
@@ -203,7 +203,7 @@ class TestReturnsMatrixForCandidates:
 
     def test_no_data_anywhere_returns_none(self):
         with patch(
-            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            "backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=pd.DataFrame(),
         ):
             df, warnings, _ = _returns_matrix_for_candidates(["NOPE1", "NOPE2"])
@@ -223,8 +223,8 @@ class TestReturnsMatrixCurrencyConversion:
         fx_levels = 0.8 * np.cumprod(1 + rng.normal(0, 0.004, 40))
         fx_close = self._fx(fx_levels, dates)
         quotes = {FX_T1: "GBP", FX_T2: "USD"}
-        with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
-             patch("portfolio_optimizer_engine._cached_fx_close", return_value=fx_close) as loader:
+        with patch("backtesting.portfolio_optimizer_engine.native_currencies", return_value=quotes), \
+             patch("backtesting.portfolio_optimizer_engine._cached_fx_close", return_value=fx_close) as loader:
             df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2])
         loader.assert_called_once_with("USDGBP=X")
         assert df is not None and warnings == []
@@ -236,8 +236,8 @@ class TestReturnsMatrixCurrencyConversion:
         dates = _bdate_strings(40)
         rng = np.random.default_rng(12)
         _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist()}, dates)
-        with patch("portfolio_optimizer_engine.native_currencies", return_value={FX_T1: "GBp", FX_T2: "GBP"}), \
-             patch("portfolio_optimizer_engine._cached_fx_close") as loader:
+        with patch("backtesting.portfolio_optimizer_engine.native_currencies", return_value={FX_T1: "GBp", FX_T2: "GBP"}), \
+             patch("backtesting.portfolio_optimizer_engine._cached_fx_close") as loader:
             df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2])
         loader.assert_not_called()
         assert df is not None and len(df) == 40
@@ -248,9 +248,9 @@ class TestReturnsMatrixCurrencyConversion:
         _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist(),
                              FX_T3: rng.normal(0, 0.01, 40).tolist()}, dates)
         quotes = {FX_T1: "GBP", FX_T2: "GBP", FX_T3: "EUR"}
-        with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
-             patch("portfolio_optimizer_engine._cached_fx_close", return_value=None), \
-             patch("portfolio_optimizer_engine.fetch_close_returns_from_parquet", return_value=pd.DataFrame()) as fallback:
+        with patch("backtesting.portfolio_optimizer_engine.native_currencies", return_value=quotes), \
+             patch("backtesting.portfolio_optimizer_engine._cached_fx_close", return_value=None), \
+             patch("backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet", return_value=pd.DataFrame()) as fallback:
             df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T3])
         assert set(df.columns) == {FX_T1, FX_T2}
         assert any(FX_T3 in w and "EURGBP=X" in w for w in warnings)
@@ -261,7 +261,7 @@ class TestReturnsMatrixCurrencyConversion:
         rng = np.random.default_rng(14)
         _seed_returns_cache({FX_T1: rng.normal(0, 0.01, 40).tolist(), FX_T2: rng.normal(0, 0.01, 40).tolist(),
                              FX_T3: rng.normal(0, 0.01, 40).tolist()}, dates)
-        with patch("portfolio_optimizer_engine.native_currencies", return_value={FX_T1: "GBP", FX_T2: "GBP"}):
+        with patch("backtesting.portfolio_optimizer_engine.native_currencies", return_value={FX_T1: "GBP", FX_T2: "GBP"}):
             df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T3])
         assert set(df.columns) == {FX_T1, FX_T2}
         assert any(FX_T3 in w and "unknown" in w for w in warnings)
@@ -275,8 +275,8 @@ class TestReturnsMatrixCurrencyConversion:
         fx_close = pd.Series(0.8 * np.cumprod(1 + rng.normal(0, 0.004, 41)), index=index)
         history = pd.DataFrame({"Close": usd_close})
         quotes = {FX_T1: "GBP", FX_T2: "GBP", FX_T4: "USD"}
-        with patch("portfolio_optimizer_engine.native_currencies", return_value=quotes), \
-             patch("portfolio_optimizer_engine._cached_fx_close", return_value=fx_close), \
+        with patch("backtesting.portfolio_optimizer_engine.native_currencies", return_value=quotes), \
+             patch("backtesting.portfolio_optimizer_engine._cached_fx_close", return_value=fx_close), \
              patch("price_history_helpers.load_or_fetch_daily_history", return_value=history):
             df, warnings, _ = _returns_matrix_for_candidates([FX_T1, FX_T2, FX_T4])
         expected = (usd_close * fx_close).pct_change().dropna()
@@ -300,7 +300,7 @@ class TestOptimizePortfolio:
         add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
                          quantity=10, unit_price=80, exchange_rate=1.0)
         with patch("xray_engine.load_config", return_value=_builtin_config()), \
-             patch("portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
+             patch("backtesting.portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
             report = optimize_portfolio(f"acct:{aid}")
         assert report["status"] == "success"
         assert report["weights"] is None
@@ -315,7 +315,7 @@ class TestOptimizePortfolio:
         add_transaction(aid, "Buy", "2026-01-05", ticker=T2, currency="GBP",
                          quantity=5, unit_price=50, exchange_rate=1.0)
         with patch("xray_engine.load_config", return_value=_builtin_config()), \
-             patch("portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
+             patch("backtesting.portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
             report = optimize_portfolio(f"acct:{aid}")
         assert report["status"] == "success"
         assert report["weights"] is None
@@ -338,7 +338,7 @@ class TestOptimizePortfolio:
         )
 
         with patch("xray_engine.load_config", return_value=_builtin_config()), \
-             patch("portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
+             patch("backtesting.portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
             report = optimize_portfolio(f"acct:{aid}")
 
         assert report["status"] == "success"
@@ -370,7 +370,7 @@ class TestOptimizePortfolio:
         )
 
         with patch("xray_engine.load_config", return_value=_builtin_config()), \
-             patch("portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
+             patch("backtesting.portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
             report = optimize_portfolio(f"acct:{aid}", include_tickers=[T1, T3])
 
         assert report["status"] == "success"
@@ -571,7 +571,7 @@ def _seed_long_only_account(name, tickers, seed=21, n_days=252):
 
 def _run(aid, **kwargs):
     with patch("xray_engine.load_config", return_value=_builtin_config()), \
-         patch("portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
+         patch("backtesting.portfolio_optimizer_engine.load_config", return_value=_builtin_config()):
         return optimize_portfolio(f"acct:{aid}", **kwargs)
 
 
@@ -647,7 +647,7 @@ class TestOptimizePortfolioLongOnly:
 
     def test_feasibility_uses_tickers_left_after_exclusions(self):
         aid = _seed_long_only_account("PoeLoExclusionAcc", LO_TICKERS[:2], seed=24)
-        with patch("portfolio_optimizer_engine.fetch_close_returns_from_parquet", return_value=pd.DataFrame()):
+        with patch("backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet", return_value=pd.DataFrame()):
             report = _run(aid, include_tickers=LO_TICKERS[:2] + ["POE_LO_NOHIST"],
                           mode=MODE_LONG_ONLY, max_weight=0.4)
 
@@ -749,7 +749,7 @@ class TestShortHistoryWarningInReport:
         dates = _bdate_strings(252)
         short = pd.Series(np.random.default_rng(41).normal(0, 0.01, 15), index=pd.to_datetime(dates[-15:]))
         with patch(
-            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            "backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=pd.DataFrame({"POE_NEWLIST": short}),
         ):
             report = _run(aid, include_tickers=LO_TICKERS[:3] + ["POE_NEWLIST"])
@@ -769,7 +769,7 @@ class TestMinHistoryDays:
 
     def test_history_days_counts_cached_returns_without_fetching(self):
         with patch(
-            "portfolio_optimizer_engine.fetch_close_returns_from_parquet",
+            "backtesting.portfolio_optimizer_engine.fetch_close_returns_from_parquet",
             return_value=self._returns({"A": 60, "B": 12}),
         ) as fetch:
             days = _history_days(["A", "B", "NOPE"])
@@ -779,7 +779,7 @@ class TestMinHistoryDays:
     def test_tickers_below_minimum_are_removed_and_named(self):
         aid = _seed_long_only_account("PoeMinHistAcc", LO_TICKERS[:3], seed=50)
         fake_days = {LO_TICKERS[0]: 251, LO_TICKERS[1]: 251, LO_TICKERS[2]: 80}
-        with patch("portfolio_optimizer_engine._history_days", side_effect=lambda ts: {t: fake_days[t] for t in ts}):
+        with patch("backtesting.portfolio_optimizer_engine._history_days", side_effect=lambda ts: {t: fake_days[t] for t in ts}):
             report = _run(aid, min_history_days=100)
 
         assert {w["symbol"] for w in report["weights"]} == set(LO_TICKERS[:2])
@@ -787,7 +787,7 @@ class TestMinHistoryDays:
 
     def test_minimum_leaving_fewer_than_two_tickers_returns_no_result(self):
         aid = _seed_long_only_account("PoeMinHistAllAcc", LO_TICKERS[:2], seed=51)
-        with patch("portfolio_optimizer_engine._history_days", side_effect=lambda ts: {t: 40 for t in ts}):
+        with patch("backtesting.portfolio_optimizer_engine._history_days", side_effect=lambda ts: {t: 40 for t in ts}):
             report = _run(aid, min_history_days=100)
 
         assert report["weights"] is None
@@ -796,7 +796,7 @@ class TestMinHistoryDays:
 
     def test_zero_minimum_skips_history_lookup(self):
         aid = _seed_long_only_account("PoeMinHistOffAcc", LO_TICKERS[:2], seed=52)
-        with patch("portfolio_optimizer_engine._history_days") as lookup:
+        with patch("backtesting.portfolio_optimizer_engine._history_days") as lookup:
             report = _run(aid)
         lookup.assert_not_called()
         assert len(report["weights"]) == 2
@@ -831,7 +831,7 @@ class TestOptimizePortfolioStrategy:
 
     def test_unavailable_strategy_warns_and_leaves_columns_empty(self):
         aid = _seed_long_only_account("PoeStrategyNoneAcc", LO_TICKERS, seed=34)
-        with patch("strategy_backtest_strategies.snapshot_target", return_value=(None, "no mix")):
+        with patch("backtesting.strategy_backtest_strategies.snapshot_target", return_value=(None, "no mix")):
             report = _run(aid, mode=MODE_LONG_ONLY, max_weight=0.3, strategy="min_variance")
         assert report["strategy"]["available"] is False
         assert report["strategy"]["reason"] == "no mix"

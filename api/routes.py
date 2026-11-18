@@ -85,8 +85,8 @@ from macro_ai_engine import MacroAIEngine
 from visuals.ticker_charts import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 from monte_carlo_engine import run_simulation as _run_mc_simulation
-from portfolio_optimizer_engine import list_candidates as _po_list_candidates, optimize_portfolio as _po_optimize_portfolio
-from strategy_backtest_strategies import STRATEGIES as _BACKTEST_STRATEGIES
+from backtesting.portfolio_optimizer_engine import list_candidates as _po_list_candidates, optimize_portfolio as _po_optimize_portfolio
+from backtesting.strategy_backtest_strategies import STRATEGIES as _BACKTEST_STRATEGIES
 
 logger = logging.getLogger(__name__)
 

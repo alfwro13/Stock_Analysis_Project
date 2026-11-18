@@ -1174,7 +1174,7 @@ def run_sector_relative_momentum_job():
 
 
 def run_stable_shortlist_job():
-    from stable_shortlist_engine import run_stable_shortlist
+    from backtesting.stable_shortlist_engine import run_stable_shortlist
     _mark_job_started(job_label("stable_shortlist_job"))
     try:
         summary = run_stable_shortlist()

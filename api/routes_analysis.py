@@ -614,7 +614,7 @@ async def get_stable_shortlist(
 ):
     """Returns the latest Stable Shortlist snapshot for `signal` and `scope`: members, the changes since the previous snapshot, the other candidates with their reasons, and the forward-only evaluation."""
     try:
-        from stable_shortlist_reads import get_shortlist
+        from backtesting.stable_shortlist_reads import get_shortlist
         data = await run_in_threadpool(get_shortlist, signal, scope)
         return JSONResponse(content={"status": "success", **data})
     except Exception as e:

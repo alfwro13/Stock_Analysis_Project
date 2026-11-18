@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fx_conversion_helpers import (
+from backtesting.fx_conversion_helpers import (
     FX_MAX_FILL_DAYS,
     BaseCurrencyConverter,
     cached_fx_close,
@@ -32,7 +32,7 @@ def _series(values, start="2025-03-03"):
 
 @pytest.fixture(autouse=True)
 def _clear_fx_close_cache():
-    import fx_conversion_helpers
+    from backtesting import fx_conversion_helpers
 
     fx_conversion_helpers._fx_close_cache.clear()
     yield
@@ -151,11 +151,11 @@ class TestCachedFxClose:
         with patch("data_engine.daily_history_cache_revision", side_effect=lambda *a, **k: next(revisions)), \
              patch("data_engine.load_or_fetch_daily_history", return_value=self._history()):
             cached_fx_close("USDGBP=X")
-        import fx_conversion_helpers
+        from backtesting import fx_conversion_helpers
         assert "USDGBP=X" not in fx_conversion_helpers._fx_close_cache
 
     def test_cache_is_bounded_and_drops_the_least_recently_used_pair(self):
-        import fx_conversion_helpers
+        from backtesting import fx_conversion_helpers
         with patch("data_engine.daily_history_cache_revision", return_value=("rev", 1)), \
              patch("data_engine.load_or_fetch_daily_history", return_value=self._history()):
             for n in range(fx_conversion_helpers._FX_CLOSE_CACHE_LIMIT + 1):

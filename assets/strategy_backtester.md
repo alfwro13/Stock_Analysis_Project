@@ -3,7 +3,7 @@
 The Strategy Backtester replays simple allocation rules over the daily prices this app already stores, so rules can be compared against each other with realistic trading mechanics: decisions from completed closes only, trades at the next eligible close, explicit cash, trading costs on both sides and weight drift between rebalances. It is a comparison tool, not a forecast and not advice, and the app has no order execution.
 
 Page route: `GET /strategy-backtester` (Tools hub card)
-Engines: `strategy_backtest_engine.py` (pure simulation), `strategy_backtest_strategies.py` (allocation rules), `strategy_backtest_data.py` (baskets, currency, price history), `strategy_backtest_runs.py` (run lifecycle and storage), `strategy_backtest_reads.py` (saved-run list, result payload, allocation history)
+Engines: `backtesting/strategy_backtest_engine.py` (pure simulation), `backtesting/strategy_backtest_strategies.py` (allocation rules), `backtesting/strategy_backtest_data.py` (baskets, currency, price history), `backtesting/strategy_backtest_runs.py` (run lifecycle and storage), `backtesting/strategy_backtest_reads.py` (saved-run list, result payload, allocation history)
 Front end: `templates/strategy_backtester.html`, `static/js/strategy_backtester.js` (state, helpers, rules, explanations, Optimizer hand-off prefill, run and polling), `static/js/strategy_backtester_basket.js` (accounts, shortlists, candidate lists, extended-history preparation), `static/js/strategy_backtester_results.js` (results, charts, saved runs)
 DB table: `strategy_backtest_runs`
 Files: `data/strategy_backtests/<run_id>/` (run results), `data/backtest_history/` (extended price history)
@@ -23,7 +23,7 @@ Basket sources:
 
 **One currency per run, or convert to the base currency.** Pence and pound quotes (GBp/GBX/GBP) share one bucket (`utils.normalize_currency_bucket`); the currency of a ticker is `stock_signals.currency`. By default a basket spanning several currencies is rejected and the page asks for one; tickers in other currencies are named as excluded, and the benchmark must be quoted in the same bucket (default `SWDA.L` for GBP, `SPY` for USD, editable, or `none`).
 
-Choosing **All currencies — converted to <base currency>** (`convert_currency`) keeps every ticker and the benchmark, whatever their currency, and converts each daily close to `BASE_CURRENCY` before the simulation. Conversion uses `fx_conversion_helpers`: the `{currency}{BASE}=X` daily close on or before each date, at most 3 calendar days old (weekends and holidays); a date with no such rate is dropped, and there is never a live-rate or 1.0 fallback. A ticker with an unknown quote currency, or a missing rate history, stops the run with a message naming it. Rate histories are ordinary daily-history symbols: *Prepare Extended History* downloads them too when converting, and the run reads the same standard or extended source as the prices. The run stores the pairs and their coverage under `inputs.fx_pairs` and the summary warnings state which currencies were converted.
+Choosing **All currencies — converted to <base currency>** (`convert_currency`) keeps every ticker and the benchmark, whatever their currency, and converts each daily close to `BASE_CURRENCY` before the simulation. Conversion uses `backtesting.fx_conversion_helpers`: the `{currency}{BASE}=X` daily close on or before each date, at most 3 calendar days old (weekends and holidays); a date with no such rate is dropped, and there is never a live-rate or 1.0 fallback. A ticker with an unknown quote currency, or a missing rate history, stops the run with a message naming it. Rate histories are ordinary daily-history symbols: *Prepare Extended History* downloads them too when converting, and the run reads the same standard or extended source as the prices. The run stores the pairs and their coverage under `inputs.fx_pairs` and the summary warnings state which currencies were converted.
 
 Between 2 and 40 tickers are allowed.
 
@@ -39,17 +39,17 @@ Between 2 and 40 tickers are allowed.
 | Rolling Steadiest Mix (Min-Variance) | every cadence date | Long-only SLSQP on the trailing lookback window only (Weight Cap default 20%, Cash Reserve default 0%) |
 | Rolling Best Reward-for-Risk Mix (Max-Sharpe) | every cadence date | Same, maximising Sharpe with the configured `RISK_FREE_RATE`; unavailable when no allowed mix beats it |
 
-The two rolling strategies call `portfolio_optimizer_engine.long_only_allocations()`, the same solver the Portfolio Optimizer page uses, so the maths and warnings are identical. A Weight Cap below `(1 - Cash Reserve) / N` is infeasible: those two strategies are skipped with the Optimizer's message while the others still run; if nothing can run the request is rejected.
+The two rolling strategies call `backtesting.portfolio_optimizer_engine.long_only_allocations()`, the same solver the Portfolio Optimizer page uses, so the maths and warnings are identical. A Weight Cap below `(1 - Cash Reserve) / N` is infeasible: those two strategies are skipped with the Optimizer's message while the others still run; if nothing can run the request is rejected.
 
 If a rolling strategy cannot produce a valid mix on its **first** decision it is reported unavailable with the reason. Later failed decisions keep the existing holdings and are written to the decision log as `held`.
 
-**Explanations.** Every strategy carries an ordered list of `steps` next to its one-sentence `description` (`strategy_backtest_strategies.Strategy`), served by `GET /api/strategy-backtester/meta`. The *Show explanations* checkbox in box 2 of the page renders them under each strategy, filling the placeholders (`{n}`, `{each_pct}`, `{period}`, `{lookback}`, `{band_pp}`, `{max_weight_pct}`, `{cash_reserve_pct}`) from the live basket and Rules settings through `utils.js` `strategyStepsHtml()`; the choice is remembered per browser.
+**Explanations.** Every strategy carries an ordered list of `steps` next to its one-sentence `description` (`backtesting.strategy_backtest_strategies.Strategy`), served by `GET /api/strategy-backtester/meta`. The *Show explanations* checkbox in box 2 of the page renders them under each strategy, filling the placeholders (`{n}`, `{each_pct}`, `{period}`, `{lookback}`, `{band_pp}`, `{max_weight_pct}`, `{cash_reserve_pct}`) from the live basket and Rules settings through `utils.js` `strategyStepsHtml()`; the choice is remembered per browser.
 
-**Portfolio Optimizer link.** `strategy_backtest_strategies.snapshot_target()` runs a strategy's own decision rule on a returns matrix as a first decision, so the Optimizer's *Strategy* column, its target mix and trade amounts are the rule the backtest replays, not a second implementation. Both pages open each other pre-filled through query parameters (`account`, `tickers`, `strategy`, `max_weight`, `cash_reserve`); nothing runs until the Run button is clicked. A saved run links to the Optimizer only for an account basket.
+**Portfolio Optimizer link.** `backtesting.strategy_backtest_strategies.snapshot_target()` runs a strategy's own decision rule on a returns matrix as a first decision, so the Optimizer's *Strategy* column, its target mix and trade amounts are the rule the backtest replays, not a second implementation. Both pages open each other pre-filled through query parameters (`account`, `tickers`, `strategy`, `max_weight`, `cash_reserve`); nothing runs until the Run button is clicked. A saved run links to the Optimizer only for an account basket.
 
 **What the model leaves out.** Both pages show the same notice (`templates/partials/_backtest_caveats.html`): hindsight and the short window, UK stamp duty and broker minimums, whole-share rounding, broker FX fees, concentration and tax.
 
-## 3. Simulation rules (`strategy_backtest_engine.py`)
+## 3. Simulation rules (`backtesting/strategy_backtest_engine.py`)
 
 - **Common start.** All selected strategies begin on the same day: the latest start any of them needs (a rolling strategy needs `lookback` sessions of history first). The run fails with an explanation if fewer than 30 sessions remain to test.
 - **Decisions.** Made after the completed close of a session using only data up to and including that session. Cadence dates are the last session of each month, quarter or year; the last session of the data is never a decision.
@@ -77,7 +77,7 @@ Retention: the newest **20** completed or failed runs are kept; older rows and t
 
 ## 6. Lifecycle and threading
 
-`POST /api/strategy-backtester/run` validates the request, saves a `queued` row and returns the run id immediately; the computation runs as a FastAPI background task (`strategy_backtest_runs.execute_run`), so no web thread is held. The page polls `GET /api/strategy-backtester/runs/{id}` (served by `strategy_backtest_reads.get_run`). Expected failures (single-currency violations, too little history) are stored as the run's `error`; any other exception is logged and shown generically. The run fires no notifications.
+`POST /api/strategy-backtester/run` validates the request, saves a `queued` row and returns the run id immediately; the computation runs as a FastAPI background task (`backtesting.strategy_backtest_runs.execute_run`), so no web thread is held. The page polls `GET /api/strategy-backtester/runs/{id}` (served by `backtesting.strategy_backtest_reads.get_run`). Expected failures (single-currency violations, too little history) are stored as the run's `error`; any other exception is logged and shown generically. The run fires no notifications.
 
 ## 7. Defaults (all editable on the page)
 

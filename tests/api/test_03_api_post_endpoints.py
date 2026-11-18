@@ -1407,7 +1407,7 @@ def test_portfolio_optimizer_run_full_report(client):
                          quantity=5, unit_price=50, exchange_rate=1.0)
 
     with patch("xray_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}, "RISK_FREE_RATE": 0.045}), \
-         patch("portfolio_optimizer_engine.load_config", return_value={"RISK_FREE_RATE": 0.045}):
+         patch("backtesting.portfolio_optimizer_engine.load_config", return_value={"RISK_FREE_RATE": 0.045}):
         resp = client.post("/api/portfolio-optimizer/run", json={"account_id": f"acct:{account_id}"})
 
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -1456,7 +1456,7 @@ def test_portfolio_optimizer_run_long_only_respects_cap(client):
                              quantity=10, unit_price=80, exchange_rate=1.0)
 
     with patch("xray_engine.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}, "RISK_FREE_RATE": 0.045}), \
-         patch("portfolio_optimizer_engine.load_config", return_value={"RISK_FREE_RATE": 0.045}):
+         patch("backtesting.portfolio_optimizer_engine.load_config", return_value={"RISK_FREE_RATE": 0.045}):
         resp = client.post("/api/portfolio-optimizer/run", json={
             "account_id": f"acct:{account_id}", "include_tickers": list(tickers),
             "mode": "long_only", "max_weight": 0.3, "cash_reserve": 0.05,

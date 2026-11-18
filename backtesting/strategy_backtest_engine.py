@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 
 from performance_analytics_engine import compute_return_metrics
-from portfolio_optimizer_engine import TRADING_DAYS
-from strategy_backtest_strategies import (
+from backtesting.portfolio_optimizer_engine import TRADING_DAYS
+from backtesting.strategy_backtest_strategies import (
     SCHEDULE_CADENCE,
     SCHEDULE_EVERY_SESSION,
     STRATEGIES,

@@ -39,7 +39,7 @@ def load_signal_enrichments(tickers):
         evaluate_pillar_confluence_batch,
     )
     from sector_relative_momentum_engine import get_column_values as get_sector_momentum_values
-    from stable_shortlist_reads import get_column_values as get_shortlist_values
+    from backtesting.stable_shortlist_reads import get_column_values as get_shortlist_values
 
     with measure_request_stage("enrichment"):
         confluence = evaluate_pillar_confluence_batch(tickers)

@@ -6,7 +6,7 @@ time, records why every name was in or out, and judges the lists only on what ha
 snapshot. It makes suggestions only — the app has no order execution.
 
 Page: `GET /predicted-movers`, tabs **ML Upside Shortlist** and **Quant Score Shortlist**
-Engines: `stable_shortlist_engine.py` (selection, snapshots, outcome resolution, job entry point) and `stable_shortlist_reads.py` (page/API payload, forward-only track record, Portfolio/Watchlist column values)
+Engines: `backtesting/stable_shortlist_engine.py` (selection, snapshots, outcome resolution, job entry point) and `backtesting/stable_shortlist_reads.py` (page/API payload, forward-only track record, Portfolio/Watchlist column values)
 Scheduler job: `stable_shortlist_job` (Settings → Stable Shortlist card; default Friday 19:30 local, enabled)
 DB tables: `stable_shortlist_snapshots`, `stable_shortlist_members`
 Endpoints: `GET /api/predicted-movers/shortlist`, `POST /api/predicted-movers/shortlist/run` (see `assets/api_reference.md` §27)

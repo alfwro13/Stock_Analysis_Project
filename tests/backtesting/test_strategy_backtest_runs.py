@@ -19,11 +19,11 @@ import pandas as pd
 import pytest
 
 from db import database as db
-import strategy_backtest_data as sbd
-import strategy_backtest_reads as sbq
-import strategy_backtest_runs as sbr
+from backtesting import strategy_backtest_data as sbd
+from backtesting import strategy_backtest_reads as sbq
+from backtesting import strategy_backtest_runs as sbr
 from db.database import add_transaction, create_account
-from strategy_backtest_engine import InsufficientHistory
+from backtesting.strategy_backtest_engine import InsufficientHistory
 from xray_engine import resolve_scope_holdings
 
 pytestmark = [pytest.mark.restore_tables("account_transactions", "market_pulse_cache", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
@@ -79,7 +79,7 @@ def histories():
     def fake_loader(ticker, **kwargs):
         return frames.get(ticker)
 
-    with patch("strategy_backtest_data.data_engine.load_or_fetch_daily_history", side_effect=fake_loader):
+    with patch("backtesting.strategy_backtest_data.data_engine.load_or_fetch_daily_history", side_effect=fake_loader):
         yield frames
 
 
@@ -312,8 +312,8 @@ class TestExtendedHistory:
 
     def test_prepare_writes_through_the_canonical_cleaning_path(self):
         frame = self._long(300)
-        with patch("strategy_backtest_data.yahoo_engine.get_price_history", return_value={SBT_A: frame}) as fetch, \
-             patch("strategy_backtest_data.daily_history_writer.prepare_daily_history", side_effect=lambda t, df, live: df) as clean:
+        with patch("backtesting.strategy_backtest_data.yahoo_engine.get_price_history", return_value={SBT_A: frame}) as fetch, \
+             patch("backtesting.strategy_backtest_data.daily_history_writer.prepare_daily_history", side_effect=lambda t, df, live: df) as clean:
             result = sbd.prepare_history_blocking([SBT_A, SBT_B])
         assert fetch.call_args.kwargs["period"] == "5y"
         assert clean.call_count == 1
@@ -322,13 +322,13 @@ class TestExtendedHistory:
         assert sbd._prepare_state[SBT_A] == "ready" and sbd._prepare_state[SBT_B] == "failed"
 
     def test_prepare_with_nothing_fetched_reports_failure_to_the_coordinator(self):
-        with patch("strategy_backtest_data.yahoo_engine.get_price_history", return_value={}):
+        with patch("backtesting.strategy_backtest_data.yahoo_engine.get_price_history", return_value={}):
             assert sbd.prepare_history_blocking([SBT_C]) is None
         assert sbd._prepare_state[SBT_C] == "failed"
 
     def test_prepare_failure_never_leaves_a_ticker_stuck_preparing(self):
         sbd._prepare_state[SBT_C] = "preparing"
-        with patch("strategy_backtest_data.yahoo_engine.get_price_history", side_effect=RuntimeError("down")):
+        with patch("backtesting.strategy_backtest_data.yahoo_engine.get_price_history", side_effect=RuntimeError("down")):
             with pytest.raises(RuntimeError):
                 sbd.prepare_history_blocking([SBT_C])
         assert sbd._prepare_state[SBT_C] == "failed"
@@ -412,7 +412,7 @@ class TestRunLifecycle:
 
     def test_unexpected_crash_is_logged_and_reported_generically(self, account, histories):
         created = sbr.create_run(_request(account, [SBT_A, SBT_B]))
-        with patch("strategy_backtest_runs.run_backtest", side_effect=ZeroDivisionError("secret detail")):
+        with patch("backtesting.strategy_backtest_runs.run_backtest", side_effect=ZeroDivisionError("secret detail")):
             sbr.execute_run(created["run_id"])
         run = sbq.get_run(created["run_id"])["run"]
         assert run["state"] == "failed" and "secret detail" not in run["error"]
@@ -498,7 +498,7 @@ class TestShortlistBasket:
             "snapshot": {"id": 7, "decision_ts": "2026-10-02 19:30:00"},
             "members": [{"ticker": SBT_A}, {"ticker": SBT_B}, {"ticker": SBT_C}],
         }
-        with patch("strategy_backtest_data.get_shortlist", return_value=payload):
+        with patch("backtesting.strategy_backtest_data.get_shortlist", return_value=payload):
             basket = sbd.resolve_basket({
                 "basket_type": "shortlist", "shortlist_signal": "ml_upside", "shortlist_scope": "portfolio",
                 "currency": None, "account_id": "all",
@@ -508,7 +508,7 @@ class TestShortlistBasket:
         assert basket["current_weights"] is None
 
     def test_missing_snapshot_is_rejected(self):
-        with patch("strategy_backtest_data.get_shortlist", return_value={"snapshot": None, "members": []}):
+        with patch("backtesting.strategy_backtest_data.get_shortlist", return_value={"snapshot": None, "members": []}):
             with pytest.raises(sbd.BasketError, match="no snapshot"):
                 sbd.resolve_basket({"basket_type": "shortlist", "shortlist_signal": "ml_upside", "shortlist_scope": "watchlist"})
 
@@ -518,7 +518,7 @@ class TestShortlistBasket:
                 return {"label": "ML Upside Shortlist", "snapshot": {"id": 1, "decision_ts": "2026-10-02 19:30:00"},
                         "members": [{"ticker": SBT_A, "company_name": "A"}, {"ticker": SBT_USD, "company_name": "U"}]}
             return {"label": "x", "snapshot": None, "members": []}
-        with patch("strategy_backtest_data.get_shortlist", side_effect=fake):
+        with patch("backtesting.strategy_backtest_data.get_shortlist", side_effect=fake):
             baskets = sbd.list_shortlist_baskets()
         assert len(baskets) == 1
         assert baskets[0]["by_currency"] == {"GBP": [SBT_A], "USD": [SBT_USD]}
@@ -588,12 +588,12 @@ class TestApi:
         assert data["status"] == "success" and data["tickers"][SBT_A]["standard"]["sessions"] == DAYS
 
     def test_prepare_history_endpoint_starts_background_work(self, client):
-        with patch("strategy_backtest_data.request_cache_refresh", return_value=object()) as submit:
+        with patch("backtesting.strategy_backtest_data.request_cache_refresh", return_value=object()) as submit:
             data = client.post("/api/strategy-backtester/prepare-history", json={"tickers": [SBT_A, SBT_B]}).json()
         assert data["status"] == "success" and submit.call_count == 1
 
     def test_prepare_history_reports_a_refused_submission(self, client):
-        with patch("strategy_backtest_data.request_cache_refresh", return_value=None):
+        with patch("backtesting.strategy_backtest_data.request_cache_refresh", return_value=None):
             data = client.post("/api/strategy-backtester/prepare-history", json={"tickers": [SBT_A]}).json()
         assert data["status"] == "error"
         assert sbd._prepare_state.get(SBT_A) is None

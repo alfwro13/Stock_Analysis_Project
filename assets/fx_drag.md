@@ -17,8 +17,8 @@ Key functions:
 
 | Function | Purpose |
 |----------|---------|
-| `_load_usdgbp_series()` | Loads the cached `USDGBP=X` daily closes (`fx_conversion_helpers.cached_fx_close(..., cache_only=True)`); never fetches inline — a missing file requests a coordinated background refresh and the breakdown is unavailable until it lands |
-| `compute_fx_breakdown(ticker, period_days)` | Returns equity%, fx%, total_gbp%, ref_date, gbpusd_ref, gbpusd_now for a single ticker; the two FX rates are read with `fx_conversion_helpers.fx_level_on()` on the first and last price-bar dates |
+| `_load_usdgbp_series()` | Loads the cached `USDGBP=X` daily closes (`backtesting.fx_conversion_helpers.cached_fx_close(..., cache_only=True)`); never fetches inline — a missing file requests a coordinated background refresh and the breakdown is unavailable until it lands |
+| `compute_fx_breakdown(ticker, period_days)` | Returns equity%, fx%, total_gbp%, ref_date, gbpusd_ref, gbpusd_now for a single ticker; the two FX rates are read with `backtesting.fx_conversion_helpers.fx_level_on()` on the first and last price-bar dates |
 | `portfolio_fx_breakdown(period_days)` | Loops over all USD positions in `portfolio.json`, calls `compute_fx_breakdown` for each, appends GBP exposure |
 | `_lifetime_buy_stats(ticker)` | Scans every Buy transaction for `ticker` across all built-in accounts and returns `(vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy)` |
 | `portfolio_lifetime_fx_breakdown()` | Lifetime mode: aggregates Buy transactions from `account_transactions` (all accounts), derives per-ticker purchase GBPUSD, computes full decomposition |
@@ -47,7 +47,7 @@ For YTD / 1Y / 2Y periods, a shared reference date is used rather than the indiv
 | 1Y | 365 calendar days before today |
 | 2Y | 730 calendar days before today |
 
-The reference price is the first `Close` row in the ticker's Parquet file on or after the reference date. The reference and current FX rates are the latest `USDGBP=X` close on or before the first and last of those price-bar dates, at most 3 days old (`fx_conversion_helpers.fx_level_on`, the same strict rule the Portfolio Optimizer and Strategy Backtester use); `gbpusd_ref`/`gbpusd_now` are shown as `1 / USDGBP`. When no rate falls inside that window the ticker is omitted rather than shown with a stale or substituted rate.
+The reference price is the first `Close` row in the ticker's Parquet file on or after the reference date. The reference and current FX rates are the latest `USDGBP=X` close on or before the first and last of those price-bar dates, at most 3 days old (`backtesting.fx_conversion_helpers.fx_level_on`, the same strict rule the Portfolio Optimizer and Strategy Backtester use); `gbpusd_ref`/`gbpusd_now` are shown as `1 / USDGBP`. When no rate falls inside that window the ticker is omitted rather than shown with a stale or substituted rate.
 
 If no data exists within the period range, `compute_fx_breakdown` returns `None` and the ticker is omitted from the output.
 
