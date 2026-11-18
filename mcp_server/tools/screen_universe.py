@@ -6,12 +6,11 @@ from pydantic import Field
 from constants import MCP_DISCOVERY_DEFAULT_ROWS, MCP_DISCOVERY_TEXT_MAX_CHARS
 from reports_engine import get_screener_rows
 
-from ..discovery import LimitArg, ScopeArg, identity, page, scoped_rows
+from ..discovery import LimitArg, Score, ScopeArg, identity, page, scoped_rows
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope
 from ..server import READ_ONLY, server
 
 TextArg = Annotated[str, Field(min_length=1, max_length=MCP_DISCOVERY_TEXT_MAX_CHARS)]
-Score = Annotated[float, Field(ge=0, le=100)]
 SortArg = Literal["composite_score", "ml_confidence_score", "rsi_14", "week52_pct", "trailing_pe", "sentiment_score", "earnings_days"]
 
 _GRADE_RANK = {"A": 3, "B": 2, "C": 1, "D": 0}

@@ -34,6 +34,8 @@ from xray_engine import (
     native_max_drawdown,
     annualized_return,
     get_scope_return_series,
+    candidate_correlations,
+    XRayScopeUnavailable,
     _country_allocation,
     _generate_xray_recommendations,
     assemble_xray_report,
@@ -1603,6 +1605,74 @@ class TestGetScopeReturnSeries:
         port, bench, warnings = get_scope_return_series([], 0.0)
         assert port is None
         assert bench is None
+
+
+class TestCandidateCorrelations:
+    """candidate_correlations: correlation of a candidate's cached returns with the portfolio series and each holding, null (never 0.0) without enough overlap."""
+
+    DATES = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2025-01-01", periods=60)]
+
+    def _book(self, seed=11):
+        rng = np.random.default_rng(seed)
+        t1 = rng.normal(0.0005, 0.012, 60)
+        t2 = rng.normal(0.0003, 0.010, 60)
+        _seed_returns_cache({T1: t1.tolist(), T2: t2.tolist(), BENCHMARK_SYMBOL: rng.normal(0.0003, 0.007, 60).tolist()}, self.DATES)
+        holdings, total = _make_holdings([{"symbol": T1, "value": 6_000}, {"symbol": T2, "value": 4_000}])
+        return holdings, total, t1, t2, rng
+
+    def _run(self, holdings, total, candidate_returns, tickers):
+        frame = pd.DataFrame(candidate_returns, index=pd.to_datetime(self.DATES)) if candidate_returns else pd.DataFrame()
+        with patch("xray_engine.resolve_scope_holdings", return_value=(holdings, total)), \
+                patch("xray_engine.fetch_close_returns_from_parquet", return_value=frame) as loader:
+            return candidate_correlations("all", tickers), loader
+
+    def test_a_candidate_that_tracks_one_holding_is_most_correlated_with_it(self):
+        holdings, total, t1, _, rng = self._book()
+        twin = t1 * 0.8 + rng.normal(0, 0.001, 60)
+        loner = rng.normal(0.0002, 0.011, 60)
+        result, loader = self._run(holdings, total, {"ZZTWIN": twin, "ZZLONER": loner}, ["ZZTWIN", "ZZLONER"])
+        assert result["ZZTWIN"]["max_holding_corr_with"] == T1
+        assert result["ZZTWIN"]["max_holding_corr"] > 0.9
+        assert result["ZZTWIN"]["corr_to_portfolio"] > 0.5
+        assert abs(result["ZZLONER"]["max_holding_corr"]) < 0.5
+        assert result["ZZTWIN"]["history_days"] == 60
+        loader.assert_called_once_with(["ZZTWIN", "ZZLONER"], read_only=True)
+
+    def test_an_inverse_candidate_has_a_negative_correlation(self):
+        holdings, total, t1, t2, rng = self._book()
+        inverse = -(0.6 * t1 + 0.4 * t2) + rng.normal(0, 0.0005, 60)
+        result, _ = self._run(holdings, total, {"ZZINV": inverse}, ["ZZINV"])
+        assert result["ZZINV"]["corr_to_portfolio"] < -0.8
+
+    def test_fewer_than_30_shared_days_gives_none_not_zero(self):
+        holdings, total, _, _, rng = self._book()
+        short = pd.Series(rng.normal(0, 0.01, 20), index=pd.to_datetime(self.DATES[:20]))
+        frame = pd.DataFrame({"ZZSHORT": short}).reindex(pd.to_datetime(self.DATES))
+        with patch("xray_engine.resolve_scope_holdings", return_value=(holdings, total)), \
+                patch("xray_engine.fetch_close_returns_from_parquet", return_value=frame):
+            result = candidate_correlations("all", ["ZZSHORT"])
+        assert result["ZZSHORT"] == {"corr_to_portfolio": None, "max_holding_corr": None, "max_holding_corr_with": None, "history_days": 20}
+
+    def test_a_candidate_with_no_price_file_is_all_none(self):
+        holdings, total, _, _, _ = self._book()
+        result, _ = self._run(holdings, total, None, ["ZZNOFILE"])
+        assert result["ZZNOFILE"] == {"corr_to_portfolio": None, "max_holding_corr": None, "max_holding_corr_with": None, "history_days": 0}
+
+    def test_a_flat_series_has_no_correlation(self):
+        holdings, total, _, _, _ = self._book()
+        result, _ = self._run(holdings, total, {"ZZFLAT": np.zeros(60)}, ["ZZFLAT"])
+        assert result["ZZFLAT"]["corr_to_portfolio"] is None and result["ZZFLAT"]["max_holding_corr"] is None
+
+    def test_a_portfolio_without_cached_returns_gives_none(self):
+        holdings, total = _make_holdings([{"symbol": T_NORETURNS, "value": 1_000}])
+        rng = np.random.default_rng(3)
+        result, _ = self._run(holdings, total, {"ZZX": rng.normal(0, 0.01, 60)}, ["ZZX"])
+        assert result["ZZX"]["corr_to_portfolio"] is None and result["ZZX"]["max_holding_corr"] is None
+        assert result["ZZX"]["history_days"] == 60
+
+    def test_an_unknown_scope_raises_the_curated_error(self):
+        with pytest.raises(XRayScopeUnavailable):
+            candidate_correlations("acct:999999", ["ZZX"])
 
 
 class TestResolveScopeHoldings:
