@@ -567,9 +567,9 @@ fake-useragent==2.2.0 \
     --hash=sha256:4e6ab6571e40cc086d788523cf9e018f618d07f9050f822ff409a4dfe17c16b2 \
     --hash=sha256:67f35ca4d847b0d298187443aaf020413746e56acd985a611908c73dba2daa24
     # via -r requirements.txt
-fastapi==0.162.6 \
-    --hash=sha256:a530213b59ad47d96d1b64fcf8b7bf9317128a6bdddde9d9ad05f9ae75d57ca9 \
-    --hash=sha256:df12575573c26a49083f690c43496b6dafa483dca72ca66de4b50d1db5940787
+fastapi==0.163.0 \
+    --hash=sha256:7572550ab4935e3ff373dc0191aea410d6c48127cc5477bc290b992fe539e345 \
+    --hash=sha256:ef55fa066d74b922aac7231af7869c4469b88ca00cac5d0421e42ceee213a902
     # via -r requirements.txt
 filelock==4.2.7 \
     --hash=sha256:31f6f7e3a8b6f0bd89114d30c5d5218ea1cfb63e5c4aa695b7559314a209bc7f \
