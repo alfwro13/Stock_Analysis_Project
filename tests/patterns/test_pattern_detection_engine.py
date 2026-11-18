@@ -1,24 +1,20 @@
 """
-tests/test_pattern_detection_engine.py — the generic Pattern Detection orchestrator: registry
+tests/patterns/test_pattern_detection_engine.py — the generic Pattern Detection orchestrator: registry
 dispatch, ticker scoping, DB save/dedup, accuracy resolution, historical backfill, and the
 scheduler runner's alert wiring. Per-family detection math lives in
-tests/test_head_shoulders_engine.py, tests/test_double_top_bottom_engine.py,
-tests/test_flag_engine.py, tests/test_pennant_engine.py, tests/test_triangle_engine.py,
-tests/test_wedge_engine.py, tests/test_volatility_squeeze_engine.py,
-tests/test_narrow_range_engine.py, tests/test_parabolic_stretch_engine.py, and
-tests/test_momentum_divergence_engine.py.
+tests/patterns/test_head_shoulders_engine.py, tests/patterns/test_double_top_bottom_engine.py,
+tests/patterns/test_flag_engine.py, tests/patterns/test_pennant_engine.py, tests/patterns/test_triangle_engine.py,
+tests/patterns/test_wedge_engine.py, tests/patterns/test_volatility_squeeze_engine.py,
+tests/patterns/test_narrow_range_engine.py, tests/patterns/test_parabolic_stretch_engine.py, and
+tests/patterns/test_momentum_divergence_engine.py.
 """
 
-import sys
 from datetime import date, timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as db
 from patterns import candlestick_trigger_engine

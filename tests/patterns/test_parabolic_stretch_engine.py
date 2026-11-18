@@ -1,18 +1,13 @@
 """
-tests/test_parabolic_stretch_engine.py — Parabolic Stretch (Rubber Band) detection math (the
+tests/patterns/test_parabolic_stretch_engine.py — Parabolic Stretch (Rubber Band) detection math (the
 Pattern Detection "parabolic_stretch" family). Orchestration (ticker scans, DB save/dedup,
 scheduler wiring, chart API) is generic across every family and is covered by
-tests/test_pattern_detection_engine.py.
+tests/patterns/test_pattern_detection_engine.py.
 """
-
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
 from patterns.parabolic_stretch_engine import (

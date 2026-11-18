@@ -1,16 +1,11 @@
 """
-tests/test_double_top_bottom_engine.py — Double Top / Double Bottom detection math (the
+tests/patterns/test_double_top_bottom_engine.py — Double Top / Double Bottom detection math (the
 Pattern Detection "double_top_bottom" family).
 """
-
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
 from patterns.double_top_bottom_engine import (
