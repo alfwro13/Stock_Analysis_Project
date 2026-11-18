@@ -13,7 +13,7 @@ import ta
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from db.database import get_connection, get_universe_tickers, log_score_event
 from fundamentals_helpers import calculate_peter_lynch_peg
-from pattern_geometry_helpers import (
+from patterns.pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
 from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker, normalize_ticker

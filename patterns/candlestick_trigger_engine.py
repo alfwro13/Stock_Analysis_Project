@@ -5,13 +5,13 @@ from typing import Optional
 import pandas as pd
 
 from indicators import compute_bollinger_bands
-from pattern_geometry_helpers import (
+from patterns.pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
 
 # GUI name: "Pattern Detection" (Micro-Structure Candlestick Triggers family). Canonical
 # scheduled-job names live in scheduler_manifest.JOB_GRAPH; the registry contract lives in
-# pattern_detection_engine.py.
+# patterns/pattern_detection_engine.py.
 #
 # Unlike every other family, these patterns are only ever one bar old: they either fired on
 # the most recent bar or they didn't, so detect() only ever reports phase="CONFIRMED" (no

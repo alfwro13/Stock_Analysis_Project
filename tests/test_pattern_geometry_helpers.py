@@ -1,6 +1,6 @@
 """
 tests/test_pattern_geometry_helpers.py — shared swing-point/pivot math used by every
-Pattern Detection family (head_shoulders_engine.py, double_top_bottom_engine.py, ...).
+Pattern Detection family (patterns/head_shoulders_engine.py, patterns/double_top_bottom_engine.py, ...).
 """
 
 import sys
@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pattern_geometry_helpers import (
+from patterns.pattern_geometry_helpers import (
     rw_top,
     rw_bottom,
     find_pivots,

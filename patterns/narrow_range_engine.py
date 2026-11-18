@@ -9,7 +9,7 @@ from indicators import compute_true_range
 
 # GUI name: "Pattern Detection" (Narrow Range family — NR4/NR7 Inside Bar Breakout). Canonical
 # scheduled-job names live in scheduler_manifest.JOB_GRAPH; the registry contract lives in
-# pattern_detection_engine.py.
+# patterns/pattern_detection_engine.py.
 
 _MIN_BARS = 60
 _BREAKOUT_LOOKAHEAD_DAYS = 5

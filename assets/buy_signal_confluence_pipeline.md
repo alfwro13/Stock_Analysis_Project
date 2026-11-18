@@ -50,7 +50,7 @@ return `{"bullish_pillars": [...], "bearish_pillars": [...], "confluence": bool,
 
 **The three pillars:**
 - **Technical** — every `pattern_detection_history` row with `phase='CONFIRMED'` for the
-  ticker in the window, direction resolved by iterating `pattern_detection_engine.DETECTORS`
+  ticker in the window, direction resolved by iterating `patterns.pattern_detection_engine.DETECTORS`
   (the same registry Pattern Detection itself is built on — see `assets/pattern_detection.md`)
   and looking up each row's `pattern_type` in that family module's own `PATTERN_TYPES` dict.
   Plus `trap_phase_history.phase`, resolved via `bull_bear_trap_engine._PHASE_EXPECTED_DIRECTION`.
@@ -69,7 +69,7 @@ confluence regardless of the third pillar's vote — genuine disagreement blocks
 
 **5-trading-day window.** Derived from `quant_signals`' own dates (written every trading day
 the nightly quant scan runs), not from `pattern_detection_history`'s own `scan_date` column —
-`pattern_detection_engine.PatternDetectionEngine.run_scan()` deliberately skips logging a
+`patterns.pattern_detection_engine.PatternDetectionEngine.run_scan()` deliberately skips logging a
 history row when a pattern instance is unchanged from the previous scan, so that table's own
 distinct dates are sparse and can silently span far more than 5 trading days for a quiet
 ticker. `score_analysis._trading_windows_batch()` computes the shared window once per batch;
@@ -263,7 +263,7 @@ return `None` (no signal) when a required input is missing, otherwise `{"entry_p
   rather than reimplementing its stop-price formula a second time).
 - **Take-profit** — the highest `pattern_detection_results.measured_target` among **CONFIRMED**
   rows whose own family/pattern_type resolves to an "up" direction (via the same
-  `pattern_detection_engine.DETECTORS` registry Part A's Technical pillar reads — never a
+  `patterns.pattern_detection_engine.DETECTORS` registry Part A's Technical pillar reads — never a
   hardcoded family list, so a new pattern family is automatically eligible with no changes here).
   If no qualifying confirmed pattern exists, falls back to the ML Quantile Regression Q90 band
   (`db.helpers.get_latest_quantile_bands()` — the same band already shown on the Position

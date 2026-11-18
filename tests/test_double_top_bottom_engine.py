@@ -13,7 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
-from double_top_bottom_engine import (
+from patterns.double_top_bottom_engine import (
     _detect_and_build,
     phase_label,
     detect,

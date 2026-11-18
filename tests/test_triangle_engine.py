@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
-from triangle_engine import (
+from patterns.triangle_engine import (
     _detect_and_build,
     _detect_symmetrical,
     phase_label,

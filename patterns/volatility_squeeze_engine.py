@@ -8,7 +8,7 @@ import pandas as pd
 from indicators import compute_bollinger_bands, compute_keltner_channel_series
 
 # GUI name: "Pattern Detection" (Volatility Squeeze family). Canonical scheduled-job names live
-# in scheduler_manifest.JOB_GRAPH; the registry contract lives in pattern_detection_engine.py.
+# in scheduler_manifest.JOB_GRAPH; the registry contract lives in patterns/pattern_detection_engine.py.
 
 _MIN_BARS = 60
 _MAX_SQUEEZE_LOOKBACK_DAYS = 90

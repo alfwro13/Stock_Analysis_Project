@@ -101,11 +101,11 @@ def _latest_atr_pct_batch(tickers: list, conn) -> Dict[str, float]:
 
 def _bullish_measured_targets_batch(tickers: list, conn) -> Dict[str, float]:
     """Best available take-profit target from a CONFIRMED pattern whose own family/pattern_type
-    resolves to an 'up' direction, read through the pattern_detection_engine.DETECTORS registry
+    resolves to an 'up' direction, read through the patterns.pattern_detection_engine.DETECTORS registry
     — never a hardcoded family list, same convention as score_analysis's Technical pillar. A
     ticker can carry more than one simultaneous confirmed pattern across families; the most
     optimistic (highest) qualifying measured_target is used."""
-    from pattern_detection_engine import DETECTORS
+    from patterns.pattern_detection_engine import DETECTORS
 
     if not tickers:
         return {}

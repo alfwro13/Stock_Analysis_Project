@@ -7,17 +7,17 @@ from typing import Optional
 
 import pandas as pd
 
-import candlestick_trigger_engine
-import double_top_bottom_engine
-import flag_engine
-import head_shoulders_engine
-import momentum_divergence_engine
-import narrow_range_engine
-import parabolic_stretch_engine
-import pennant_engine
-import triangle_engine
-import volatility_squeeze_engine
-import wedge_engine
+from patterns import candlestick_trigger_engine
+from patterns import double_top_bottom_engine
+from patterns import flag_engine
+from patterns import head_shoulders_engine
+from patterns import momentum_divergence_engine
+from patterns import narrow_range_engine
+from patterns import parabolic_stretch_engine
+from patterns import pennant_engine
+from patterns import triangle_engine
+from patterns import volatility_squeeze_engine
+from patterns import wedge_engine
 from config import HISTORICAL_DIR, load_config
 from data_engine import load_or_fetch_daily_history
 from db.database import (

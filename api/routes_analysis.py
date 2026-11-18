@@ -412,7 +412,7 @@ def get_pattern_detection_results(request: Request, family: Optional[str] = Quer
     ("up"/"down") resolved from its family's PATTERN_TYPES registry entry, and the response
     also carries the current Portfolio/Watchlist ticker sets so the page can filter by scope
     without a second round-trip."""
-    from pattern_detection_engine import DETECTORS
+    from patterns.pattern_detection_engine import DETECTORS
     from accounts.accounts_engine import get_combined_holdings
     from db.database import get_watchlist_tickers
     conn = None
@@ -499,7 +499,7 @@ def get_pattern_detection_chart(request: Request, ticker: str):
     on a single chart. Each pattern carries a `direction` ("up"/"down") resolved from its
     family's PATTERN_TYPES registry entry, so the frontend can group patterns into
     Bullish/Bearish without hardcoding any family-specific knowledge."""
-    from pattern_detection_engine import DETECTORS
+    from patterns.pattern_detection_engine import DETECTORS
     conn = None
     try:
         ticker = normalize_ticker(ticker)

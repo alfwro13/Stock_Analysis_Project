@@ -21,18 +21,18 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as db
-import candlestick_trigger_engine
-import double_top_bottom_engine
-import flag_engine
-import head_shoulders_engine
-import momentum_divergence_engine
-import narrow_range_engine
-import parabolic_stretch_engine
-import pennant_engine
-import triangle_engine
-import volatility_squeeze_engine
-import wedge_engine
-from pattern_detection_engine import (
+from patterns import candlestick_trigger_engine
+from patterns import double_top_bottom_engine
+from patterns import flag_engine
+from patterns import head_shoulders_engine
+from patterns import momentum_divergence_engine
+from patterns import narrow_range_engine
+from patterns import parabolic_stretch_engine
+from patterns import pennant_engine
+from patterns import triangle_engine
+from patterns import volatility_squeeze_engine
+from patterns import wedge_engine
+from patterns.pattern_detection_engine import (
     PatternDetectionEngine,
     DETECTORS,
     fill_pattern_outcomes,
@@ -207,10 +207,10 @@ class TestSaveResults:
         first = self._row("PDTST6")
         second = self._row("PDTST6")
         second["points"] = [{"label": "Head", "date": "2026-03-20", "price": 125.0}]
-        with patch("pattern_detection_engine.datetime") as mock_dt:
+        with patch("patterns.pattern_detection_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
             self.engine._save_results([first])
-        with patch("pattern_detection_engine.datetime") as mock_dt:
+        with patch("patterns.pattern_detection_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 4, 2, tzinfo=timezone.utc)
             self.engine._save_results([second])
         conn = db.get_connection()
@@ -403,7 +403,7 @@ class TestFillPatternOutcomes:
             (tmp_path / "PDFATST.parquet").parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(tmp_path / "PDFATST.parquet", engine="pyarrow")
 
-            with patch("pattern_detection_engine.HISTORICAL_DIR", tmp_path):
+            with patch("patterns.pattern_detection_engine.HISTORICAL_DIR", tmp_path):
                 count = fill_pattern_outcomes()
 
             conn = db.get_connection()
@@ -451,7 +451,7 @@ class TestBackfillPatternLock:
             conn.close()
 
         try:
-            with patch("pattern_detection_engine.HISTORICAL_DIR", tmp_path):
+            with patch("patterns.pattern_detection_engine.HISTORICAL_DIR", tmp_path):
                 backfill_historical_patterns(tickers=["PDBACKF"])
 
             conn = db.get_connection()
@@ -499,7 +499,7 @@ class TestRunPatternDetectionJobMarketGating:
             conn.close()
 
         with patch(
-            "pattern_detection_engine.PatternDetectionEngine.run_scan",
+            "patterns.pattern_detection_engine.PatternDetectionEngine.run_scan",
             return_value=[self._row("AAPL")],
         ), patch("scheduler_jobs.is_quote_settled", return_value=False) as mock_open, \
            patch("scheduler_jobs.notify") as mock_notify:
@@ -522,7 +522,7 @@ class TestRunPatternDetectionJobMarketGating:
             conn.close()
 
         with patch(
-            "pattern_detection_engine.PatternDetectionEngine.run_scan",
+            "patterns.pattern_detection_engine.PatternDetectionEngine.run_scan",
             return_value=[self._row("AAPL")],
         ), patch("scheduler_jobs.is_quote_settled", return_value=True), \
            patch("scheduler_jobs.notify", return_value=True) as mock_notify:

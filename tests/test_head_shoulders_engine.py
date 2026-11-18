@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from indicators import compute_rsi, compute_volume_sma
-from head_shoulders_engine import (
+from patterns.head_shoulders_engine import (
     _detect_and_build,
     phase_label,
     detect,

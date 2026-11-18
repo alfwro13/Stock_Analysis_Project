@@ -1165,7 +1165,7 @@ class TestFormerlyUntrackedManualTriggers:
             seen["running"] = is_job_running("pattern_detection_backfill_source")
             return 3
 
-        with patch("pattern_detection_engine.backfill_historical_patterns", _fake_backfill):
+        with patch("patterns.pattern_detection_engine.backfill_historical_patterns", _fake_backfill):
             run_manual_job("pattern_detection_backfill_source", _sched_module.run_pattern_detection_backfill_job)
 
         assert "Pattern Detection (historical backfill)" in seen["active"]
@@ -1175,7 +1175,7 @@ class TestFormerlyUntrackedManualTriggers:
         assert (row["trigger_source"], row["status"]) == ("manual", "success")
 
     def test_backfill_runner_failure_is_recorded_as_error(self):
-        with patch("pattern_detection_engine.backfill_historical_patterns", side_effect=RuntimeError("boom")):
+        with patch("patterns.pattern_detection_engine.backfill_historical_patterns", side_effect=RuntimeError("boom")):
             run_manual_job("pattern_detection_backfill_source", _sched_module.run_pattern_detection_backfill_job)
         row = get_job_run_history("pattern_detection_backfill_source")[0]
         assert row["status"] == "error"

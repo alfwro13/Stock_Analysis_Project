@@ -8,7 +8,7 @@ import pandas as pd
 from indicators import compute_smas
 
 # GUI name: "Pattern Detection" (Parabolic Stretch / Rubber Band family). Canonical scheduled-job
-# names live in scheduler_manifest.JOB_GRAPH; the registry contract lives in pattern_detection_engine.py.
+# names live in scheduler_manifest.JOB_GRAPH; the registry contract lives in patterns/pattern_detection_engine.py.
 
 _SMA_WINDOW = 200
 _Z_WINDOW_DAYS = 252
