@@ -132,6 +132,8 @@ execution to actually block a purchase.
 
 **Second caller.** The MCP Server's `pretrade_check` tool calls `evaluate_pretrade_check(..., read_only=True)` directly and never logs: the log write lives in the route, not the engine. `read_only` reaches `simulate_scope_with_hypothetical_holding()` and stops the price-history loader from fetching or queueing a refresh for a ticker with no parquet on disk (it then gets the no-usable-history warning); the route keeps the default `read_only=False`. The result also carries `risk_cache_date`, the date of the X-ray risk cache the baseline report read.
 
+**Correlation of a candidate.** `xray_engine.candidate_correlations(scope, tickers)` gives each ticker's correlation with the scope's weighted portfolio return series and with its most correlated holding, from the same cached series, trailing year and local-currency returns as the Heat Index, for the MCP Server's `find_candidates`. A pair needs at least 30 shared days; fewer, or no price history, gives `null`, never a neutral `0.0`. It reads stored price files only and does not simulate VaR or the verdict.
+
 **Audit trail.** Every check call from the route is logged to `pretrade_check_log` (ticker, scope, proposed
 value, verdict, breached constraint, PHI score, VaR%, max correlation, suggested reduced value,
 timestamp; verdict `unavailable` when no verdict could be computed) — append-only, since the same ticker can be checked many times a day as the user

@@ -796,6 +796,38 @@ def simulate_scope_with_hypothetical_holding(
     }
 
 
+MIN_CORRELATION_OVERLAP_DAYS = 30
+
+
+def _overlap_correlation(a: pd.Series, b: pd.Series) -> Optional[float]:
+    aligned = pd.concat([a, b], axis=1, join="inner").dropna()
+    if len(aligned) < MIN_CORRELATION_OVERLAP_DAYS:
+        return None
+    rho = aligned.iloc[:, 0].corr(aligned.iloc[:, 1])
+    return None if pd.isna(rho) else round(float(rho), 3)
+
+
+def candidate_correlations(scope: str, candidates: List[str]) -> Dict[str, Dict]:
+    """Each candidate's correlation with the scope's weighted portfolio return series and with its most correlated holding, from the cached series the Heat Index reads; None (never 0.0) where fewer than MIN_CORRELATION_OVERLAP_DAYS days overlap or no history exists. Reads stored price files only, never fetches. Raises XRayScopeUnavailable like resolve_scope_holdings()."""
+    holdings, total_value = resolve_scope_holdings(scope)
+    portfolio, _, _ = get_scope_return_series(holdings, total_value)
+    held, _ = get_scope_returns_matrix([h["symbol"] for h in holdings if h.get("weight", 0) > 0], include_benchmark=False)
+    returns = fetch_close_returns_from_parquet(candidates, read_only=True)
+    result: Dict[str, Dict] = {}
+    for ticker in candidates:
+        series = returns[ticker].dropna() if ticker in returns.columns else None
+        row: Dict = {"corr_to_portfolio": None, "max_holding_corr": None, "max_holding_corr_with": None, "history_days": 0 if series is None else len(series)}
+        if series is not None:
+            if portfolio is not None:
+                row["corr_to_portfolio"] = _overlap_correlation(series, portfolio)
+            if held is not None:
+                pairs = [(rho, symbol) for symbol in held.columns if (rho := _overlap_correlation(series, held[symbol])) is not None]
+                if pairs:
+                    row["max_holding_corr"], row["max_holding_corr_with"] = max(pairs)
+        result[ticker] = row
+    return result
+
+
 def annualized_return(returns: pd.Series) -> float:
     """CAGR-style annualisation of a daily return series (252 trading days/year)."""
     return float((1 + returns).prod() ** (252 / len(returns)) - 1)

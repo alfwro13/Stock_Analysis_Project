@@ -8,6 +8,7 @@ from utils import clean_display_text
 
 ScopeArg = Annotated[Literal["all", "new", "watchlist", "portfolio"], Field(description="all, or only tickers that are new (neither held nor watched), watched-only, or held")]
 LimitArg = Annotated[int, Field(ge=1, le=MCP_DISCOVERY_MAX_ROWS)]
+Score = Annotated[float, Field(ge=0, le=100)]
 
 
 def list_flags() -> dict[str, str]:

@@ -6,7 +6,9 @@ from db.database import add_transaction, create_account, get_connection
 from .helpers import ACCOUNT_TABLES
 
 HELD, WATCHED, NEW_BUYABLE, NEW_NOT_BUYABLE, NEW_ODD = "ZZDSH", "ZZDSW", "ZZDSN", "ZZDSX", "ZZDSO"
-TICKERS = (HELD, WATCHED, NEW_BUYABLE, NEW_NOT_BUYABLE, NEW_ODD)
+NEW_LOW, NEW_ETF = "ZZDSL", "ZZDSE"
+CAND_SECTOR = "ZZCandSector"
+TICKERS = (HELD, WATCHED, NEW_BUYABLE, NEW_NOT_BUYABLE, NEW_ODD, NEW_LOW, NEW_ETF)
 SECTOR = "ZZDiscoverySector"
 TABLES = ("market_universe", "quant_signals", "stock_signals", "asset_profiles", "sector_relative_momentum_results")
 
@@ -62,6 +64,23 @@ def seed_universe():
         _signal(conn, NEW_BUYABLE, "New Buyable", score=85, pe=18.0, dividend=0.03, ex_dividend=today(15), price=130.0)
         _signal(conn, NEW_NOT_BUYABLE, "New Not Buyable", score=95, pe=12.0, dividend=0.06, ex_dividend=today(20), price=110.0)
         _signal(conn, NEW_ODD, "New Odd", score=None, pe=None, roe=None, debt=None, margin=None, growth=None, ratio=None, price=50.0)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def seed_candidates():
+    conn = get_connection()
+    try:
+        _universe(conn, NEW_LOW, "New Low Corr", 1)
+        _universe(conn, NEW_ETF, "New Bond ETF", 1)
+        conn.execute("UPDATE market_universe SET sector = ? WHERE ticker = ?", (CAND_SECTOR, NEW_LOW))
+        _quant(conn, NEW_LOW, rsi=55.0, close=40.0, sma_200=35.0, ml=55.0)
+        _quant(conn, NEW_ETF, rsi=50.0, close=20.0, sma_200=19.0, ml=45.0)
+        _signal(conn, NEW_LOW, "New Low Corr", score=65, pe=25.0, price=40.0)
+        conn.execute("UPDATE stock_signals SET sector = ? WHERE ticker = ?", (CAND_SECTOR, NEW_LOW))
+        _signal(conn, NEW_ETF, "New Bond ETF", score=70, pe=None, price=20.0)
+        conn.execute("UPDATE stock_signals SET quote_type = 'ETF', sector = NULL WHERE ticker = ?", (NEW_ETF,))
         conn.commit()
     finally:
         conn.close()
