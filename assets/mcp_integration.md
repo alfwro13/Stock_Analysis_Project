@@ -1,6 +1,6 @@
 # MCP Server
 
-A read-only [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language, replacing the copy/paste of `ai_engine.py` prompts. Canonical name (AGENTS.md rule 8): **MCP Server**. Code: the `mcp_server/` package (layout below); the key check is in `main.py` `auth_middleware`.
+A read-only [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language, replacing the copy/paste of `ai_prompts/ai_engine.py` prompts. Canonical name (AGENTS.md rule 8): **MCP Server**. Code: the `mcp_server/` package (layout below); the key check is in `main.py` `auth_middleware`.
 
 It reads only. No tool changes a setting, places a trade or writes data (`pretrade_check` computes its verdict without logging it), and none may be added that does (AGENTS.md rule 22). Tools are thin wrappers over existing engine functions; they add no calculations.
 

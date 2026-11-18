@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 
 from pages import page_routes_macro
-from ai_engine import AIPromptEngine
-from ai_sentiment_engine import AISentimentPromptEngine
+from ai_prompts.ai_engine import AIPromptEngine
+from ai_prompts.ai_sentiment_engine import AISentimentPromptEngine
 from db.database import get_connection
 
 pytestmark = [pytest.mark.restore_tables("yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
@@ -178,5 +178,5 @@ class TestSentimentPromptEvents:
         assert "forecast=7-0-2, prev=3-0-6" in AISentimentPromptEngine()._fmt_events(events)
 
     def test_a_failed_read_leaves_an_empty_list(self):
-        with patch("ai_sentiment_engine.get_upcoming_macro_events", side_effect=RuntimeError("db down")):
+        with patch("ai_prompts.ai_sentiment_engine.get_upcoming_macro_events", side_effect=RuntimeError("db down")):
             assert AISentimentPromptEngine()._upcoming_events("USD") == []
