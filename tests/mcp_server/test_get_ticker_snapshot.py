@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-import page_data_stock
+from pages import page_data_stock
 from db.database import add_transaction, create_account, get_connection
 from db.account_store import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
 

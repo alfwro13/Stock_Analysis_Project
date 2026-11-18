@@ -31,7 +31,7 @@ from log_config import configure_console_logging, configure_file_logging, uvicor
 from utils import _request_counts, _request_stages, harden_runtime_permissions
 
 from api.routes import api_router
-from page_routes import page_router
+from pages.page_routes import page_router
 from data_engine import run_yfinance_smoke_test
 import mcp_server
 

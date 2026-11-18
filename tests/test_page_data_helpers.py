@@ -2,7 +2,7 @@
 import pytest
 
 from config import BASE_CURRENCY
-from page_data_portfolio import (
+from pages.page_data_portfolio import (
     apply_change_period,
     format_portfolio_summary,
     portfolio_present_tags,
@@ -10,8 +10,8 @@ from page_data_portfolio import (
     watchlist_present_tags,
     watchlist_score_buckets,
 )
-from page_data_stock import data_freshness, parse_json_field
-from page_data_stock_panels import earnings_timing
+from pages.page_data_stock import data_freshness, parse_json_field
+from pages.page_data_stock_panels import earnings_timing
 
 
 PORTFOLIO_JSON = {

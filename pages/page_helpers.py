@@ -24,13 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_pattern_tags_by_ticker(tickers: list) -> dict:
-    """Every currently-active Pattern Detection result for the given tickers, grouped by
-    ticker and resolved to a display label + bullish/bearish direction via each family's
-    own registry entry (DETECTORS[family].phase_label()/.PATTERN_TYPES) — shared by
-    Portfolio, Watchlist, and Stock Detail so a new pattern family shows up as a tag on all
-    three with no per-page changes. Callers fetch this once per page (not once per ticker)
-    and attach each ticker's own list into row_dict['pattern_detections'] before calling
-    compute_badge_tags()."""
+    """Active Pattern Detection results per ticker, labelled through each family's registry entry; callers fetch once per page and attach each list to row_dict['pattern_detections']."""
     if not tickers:
         return {}
     conn = None
@@ -63,14 +57,7 @@ def get_pattern_tags_by_ticker(tickers: list) -> dict:
 
 
 def compute_badge_tags(row_dict: dict) -> dict:
-    """Shared setup/report/trap/bubble/pattern-detection/quality-grade badge computation for
-    a single ticker row — used by Portfolio, Watchlist, and Stock Detail so the three pages
-    never drift apart.
-
-    row_dict must carry: setup_tags (raw JSON string from stock_signals), quant_close_price,
-    market_cap, trap_phase, bubble_flag, pattern_detections (see get_pattern_tags_by_ticker),
-    plus the fundamentals columns compute_quality_grade()/is_*() read directly off stock_signals.
-    """
+    """Badges shared by Portfolio, Watchlist and Stock Detail so they never drift; row_dict needs setup_tags (raw JSON), quant_close_price, market_cap, trap_phase, bubble_flag, pattern_detections and the stock_signals fundamentals."""
     if row_dict.get('setup_tags'):
         try:
             setup_tags_list = json.loads(row_dict['setup_tags'])
@@ -144,8 +131,7 @@ def _fmt_volume(value) -> Optional[str]:
 
 
 def _fmt_price(value, currency: Optional[str], decimals: int = 2, with_symbol: bool = True) -> Optional[str]:
-    """GBp-aware per-share price formatting, matching the inline logic already used
-    throughout portfolio.html/watchlist.html (halve GBp values, show a currency symbol)."""
+    """GBp-aware price formatting: converts pence to pounds and shows a currency symbol, as the inline template logic does."""
     if value is None:
         return None
     val = (value / 100.0) if currency == 'GBp' else value

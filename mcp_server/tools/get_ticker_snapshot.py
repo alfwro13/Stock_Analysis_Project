@@ -11,7 +11,7 @@ from db.account_store import get_holding_price_limits_for_ticker
 from db.helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import get_all_cached_pulse
 from market_session_helpers import extended_quote_from_snapshot, regular_change_from_snapshot
-from page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
+from pages.page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
 from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector
 from yahoo_engine import yahoo_engine
 

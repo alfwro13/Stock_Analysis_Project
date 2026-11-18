@@ -15,7 +15,7 @@ or a new one). See assets/glossary_learning.md for the full checklist.
 
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 
-_PREDICTION_THRESHOLD_PCT = int(PREDICTION_RETURN_THRESHOLD * 100)  # matches page_routes.py's glossary context
+_PREDICTION_THRESHOLD_PCT = int(PREDICTION_RETURN_THRESHOLD * 100)  # matches pages/page_routes.py's glossary context
 
 LEVELS = [
     ("market-fundamentals", "Market Fundamentals"),

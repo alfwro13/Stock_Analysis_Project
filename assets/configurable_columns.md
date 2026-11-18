@@ -39,9 +39,9 @@ Single source of truth for every column on both pages:
   for every optional column, computed server-side by `_format_value()` from a `fmt`
   type (`pct_from_fraction`, `pct_raw`, `ratio2`, `price`, `price_raw`,
   `currency_usd`, `volume`, `date`, `text`, `bool01`, `int`, `client`). `price`/
-  `price_raw` reuse `page_helpers._fmt_price()` (GBp-aware, mirrors the inline
+  `price_raw` reuse `pages.page_helpers._fmt_price()` (GBp-aware, mirrors the inline
   price-formatting already used throughout both templates); `currency_usd`/`volume`
-  reuse the existing `page_helpers._fmt_currency()`/`_fmt_volume()`.
+  reuse the existing `pages.page_helpers._fmt_currency()`/`_fmt_volume()`.
 - `fmt == "client"` marks the 4 Position Sizing columns (`shares`, `position_value`,
   `stop_price`, `risk_amount`) — these have no server-computed value; the templates
   render placeholder `<td class="ps-cell...">` markup and `renderPositionSizing()`
@@ -51,7 +51,7 @@ Single source of truth for every column on both pages:
 
 **Adding a new optional column:** add one entry to `OPTIONAL_COLUMNS`. If the
 source field isn't already in the row dict, add it to the relevant `SELECT` in
-`page_data_signal_rows._SIGNAL_COLUMNS` (and `_SIGNAL_JOINS` if it needs a new JOIN) — the one column list and join
+`pages.page_data_signal_rows._SIGNAL_COLUMNS` (and `_SIGNAL_JOINS` if it needs a new JOIN) — the one column list and join
 block shared by `fetch_portfolio_signal_rows()` and `fetch_watchlist_signal_rows()`, which both `SELECT s.*` from
 `stock_signals` restricted to the page's own tickers (one shared batched `WHERE s.ticker IN (...)` helper) and LEFT JOIN `quant_signals q`/`asset_profiles ap`/
 `market_universe mu`/`ticker_metadata tmeta`/`xray_risk_cache xrisk`/
@@ -93,7 +93,7 @@ Four columns in the `Sector-Relative Momentum` category, on both pages, one pair
 and `sector_rel_rank_63` / `sector_rel_rank_126` (1 = strongest in the cohort, `fmt: "int"`).
 Values come from `sector_relative_momentum_engine.get_column_values()`, one batched read of the
 latest `sector_relative_momentum_results` row per ticker, merged into each row dict by
-`page_data_portfolio.enrich_signal_row()` (used by both pages) before `build_optional_column_cells()`.
+`pages.page_data_portfolio.enrich_signal_row()` (used by both pages) before `build_optional_column_cells()`.
 Only scored rows contribute a value; a ticker that is unavailable (not an equity, no sector, fewer
 than 5 comparable peers, ...) shows `N/A`, and the report at `/sector-relative-momentum` states the
 reason. See `assets/sector_relative_momentum.md`.
@@ -103,7 +103,7 @@ reason. See `assets/sector_relative_momentum.md`.
 Four columns in the `Stable Shortlist` category, on both pages: `ml_shortlist_member` /
 `quant_shortlist_member` (`fmt: "bool01"`, Yes/No) and `ml_shortlist_rank` / `quant_shortlist_rank`
 (`fmt: "int"`, 1 = best). Values come from `stable_shortlist_engine.get_column_values()`, one
-batched read of each list's latest snapshot, merged into each row dict by `page_data_portfolio.enrich_signal_row()`
+batched read of each list's latest snapshot, merged into each row dict by `pages.page_data_portfolio.enrich_signal_row()`
 (used by both pages) before `build_optional_column_cells()`. Rank is the candidate's rank at the
 latest snapshot even when it was not selected; a ticker the snapshot did not track (or no snapshot
 yet) shows `N/A`. See `assets/stable_shortlist.md`.

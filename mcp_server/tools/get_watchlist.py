@@ -7,7 +7,7 @@ from db.database import get_watchlist_tickers
 from db.account_store import get_all_holding_price_limits, get_watchlist_account
 from db.helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import get_all_cached_pulse
-from page_data_signal_rows import fetch_watchlist_signal_rows
+from pages.page_data_signal_rows import fetch_watchlist_signal_rows
 from score_analysis import (
     compute_regime_weighted_score_batch,
     evaluate_buy_recommendation_batch,

@@ -75,7 +75,7 @@ do not appear on the accuracy page.
 1. Resolve scope tickers.
 2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` scored
    inside the `db.helpers.ml_fresh_since()` window (`quantile_scored_at`; the same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
-   `ml_inference_engine.py`, `page_routes.py`, `market_pulse.py`).
+   `ml_inference_engine.py`, `pages/page_routes.py`, `market_pulse.py`).
 3. Resolve current price via `accounts.accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
    re-derive current price from `quant_signals.close_price`, which is the price *at prediction
    time*, not now). Rows with no resolvable current price are dropped.

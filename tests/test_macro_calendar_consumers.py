@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-import page_routes_macro
+from pages import page_routes_macro
 from ai_engine import AIPromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from db.database import get_connection

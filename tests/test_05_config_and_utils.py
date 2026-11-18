@@ -1428,7 +1428,7 @@ class TestCachedFundamentalsExtra:
         assert cached_fundamentals_extra("ZZFX") is None
 
     def test_page_formatter_stays_all_null_without_a_dump_and_formats_with_one(self, tmp_path, monkeypatch):
-        import page_helpers
+        from pages import page_helpers
         self._dump(tmp_path, monkeypatch, "ZZFX", {"marketCap": 2.5e9, "totalCash": 900, "totalDebt": 400, "averageVolume": 6772679, "fullTimeEmployees": 1200})
         shown = page_helpers._load_fundamentals_extra("ZZFX")
         assert (shown["market_cap_fmt"], shown["net_cash_fmt"], shown["average_volume_fmt"], shown["full_time_employees_fmt"]) == ("$2.50B", "$500", "6.8M", "1,200")

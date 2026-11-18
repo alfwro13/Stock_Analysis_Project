@@ -4,7 +4,7 @@ from fundamentals_helpers import compute_quality_grade
 from portfolio_service import get_rate_to_base
 from price_history_helpers import pct_from_anchor
 import table_columns_helpers
-from page_helpers import compute_badge_tags, get_pattern_tags_by_ticker
+from pages.page_helpers import compute_badge_tags, get_pattern_tags_by_ticker
 
 
 def portfolio_scope_tickers(portfolio_json, account_id, ignored_tickers):

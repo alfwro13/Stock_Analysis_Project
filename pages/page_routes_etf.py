@@ -13,7 +13,7 @@ from visuals.etf import (
     create_etf_overlay_chart,
 )
 from constants import CSS_VERSION
-from page_helpers import get_unread_count
+from pages.page_helpers import get_unread_count
 
 logger = logging.getLogger(__name__)
 

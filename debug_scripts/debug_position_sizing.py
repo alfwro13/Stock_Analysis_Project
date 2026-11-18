@@ -59,7 +59,7 @@ def run_diagnostics():
     print(f" -> Rows with atr_pct populated  : {not_null_count:,}")
 
     # 4. Route Query Simulation (What does Jinja actually receive?)
-    print("\n[4] Simulating page_routes.py frontend payload (Sample: AAPL or highest vol stock)...")
+    print("\n[4] Simulating pages/page_routes.py frontend payload (Sample: AAPL or highest vol stock)...")
     route_query = """
         SELECT s.ticker, q.date, q.atr_pct, s.current_price
         FROM stock_signals s

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from page_helpers import _fmt_currency, _fmt_volume, _fmt_price
+from pages.page_helpers import _fmt_currency, _fmt_volume, _fmt_price
 
 PORTFOLIO_CORE_COLUMNS = [
     {"key": "ticker", "label": "Ticker", "pinned": True, "fmt": "text"},
