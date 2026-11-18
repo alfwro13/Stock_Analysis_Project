@@ -2424,7 +2424,7 @@ def _stub_connection(rows=None, row=None):
         ("get", "/api/system/metrics", "api.routes_system.get_all_job_last_runs", {}),
         ("get", "/api/notifications/latest", "api.routes_system.get_connection", _stub_connection()),
         ("post", "/api/system/git-pull", "api.routes_system.subprocess.run", MagicMock(returncode=0, stdout="sha\n", stderr="")),
-        ("get", "/api/freshness", "api.routes.get_connection", _stub_connection(row={"max_date": None})),
+        ("get", "/api/freshness", "api.routes.get_latest_quant_date", None),
         ("get", "/api/fx-drag?period=lifetime", "api.routes.portfolio_lifetime_fx_breakdown", []),
         ("get", "/api/portfolio-optimizer/candidates", "api.routes._po_list_candidates", {"status": "success"}),
         ("get", "/api/alert-referee/status", "alert_referee_engine.get_referee_summary", {}),
