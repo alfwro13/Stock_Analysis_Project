@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -10,10 +10,11 @@ from model_compatibility_engine import load_sklearn_artifact
 from db.database import get_connection, log_notification
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
-    CONTINUOUS_FEATURES, LATEST_FEATURES_QUERY, build_model_features, inference_cross_section,
-    load_feature_stats,
+    CONTINUOUS_FEATURES, INFERENCE_FEATURES_PRESENT, LATEST_FEATURES_QUERY, build_model_features,
+    inference_cross_section, load_feature_stats,
 )
 from notification_engine import notify
+from time_engine import trading_days_since
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,27 @@ def _ever_scored(cursor: Any, tickers: set) -> set:
     return {row[0] for row in cursor.fetchall()}
 
 
+def _one_session_behind(cursor: Any, tickers: set) -> set:
+    """Tickers whose newest complete-feature row is exactly one trading session before the newest such row of any ticker: a date that thin is dropped from inference, so the miss clears when the ticker trades again."""
+    if not tickers:
+        return set()
+    newest = cursor.execute(
+        f"SELECT MAX(date) FROM quant_signals WHERE {INFERENCE_FEATURES_PRESENT.format(a='')}"
+    ).fetchone()[0]
+    if newest is None:
+        return set()
+    placeholders = ",".join("?" for _ in tickers)
+    cursor.execute(
+        f"SELECT ticker, MAX(date) FROM quant_signals WHERE ticker IN ({placeholders}) "
+        f"AND {INFERENCE_FEATURES_PRESENT.format(a='')} GROUP BY ticker",
+        sorted(tickers),
+    )
+    newest_day = date.fromisoformat(newest)
+    return {row[0] for row in cursor.fetchall() if trading_days_since(date.fromisoformat(row[1]), newest_day) == 1}
+
+
 def alert_unscored_holdings(unscored: Optional[List[str]]) -> None:
-    """Warns once per Portfolio/Watchlist ticker that had a score and lost it (re-arms when scored again); a ticker never scored (short history, fund codes) is only logged."""
+    """Warns once per Portfolio/Watchlist ticker that had a score and lost it (re-arms when scored again); a ticker never scored (short history, fund codes) or one session behind is only logged."""
     if unscored is None:
         return
     missing = set(unscored) & set(get_portfolio_watchlist_tickers())
@@ -60,16 +80,25 @@ def alert_unscored_holdings(unscored: Optional[List[str]]) -> None:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        lost = _ever_scored(cursor, missing)
+        ever_scored = _ever_scored(cursor, missing)
+        one_session = _one_session_behind(cursor, ever_scored)
+        lost = ever_scored - one_session
         cursor.execute("SELECT ticker FROM alert_state WHERE engine = ?", (_STALE_FEATURES_ENGINE,))
         warned = {row[0] for row in cursor.fetchall()}
 
-        never_scored = sorted(missing - lost)
+        never_scored = sorted(missing - ever_scored)
         if never_scored:
             logger.info(
                 "Daily ML Inference left %d Portfolio/Watchlist ticker(s) unscored that have never had a score "
                 "(typically fewer than 200 daily bars, or a fund code): %s",
                 len(never_scored), ", ".join(never_scored),
+            )
+
+        if one_session:
+            logger.info(
+                "Daily ML Inference left %d Portfolio/Watchlist ticker(s) that had a score unscored because their "
+                "newest quant row is one trading session behind the latest date (a date that thin is not scored): %s",
+                len(one_session), ", ".join(sorted(one_session)),
             )
 
         new = lost - warned
