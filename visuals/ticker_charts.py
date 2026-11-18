@@ -6,7 +6,7 @@ import pandas as pd
 import ta
 import textwrap
 from quant_signals import get_candlestick_patterns
-from visuals_macro import apply_sentiment_chart_layout
+from visuals.macro import apply_sentiment_chart_layout
 import time_engine
 
 EXCHANGE_DELAYS = {

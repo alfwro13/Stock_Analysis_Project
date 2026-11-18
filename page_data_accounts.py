@@ -61,7 +61,7 @@ def pension_account_context(acc):
         scraped_price_performance,
     )
     from db.database import get_price_history, get_value_history
-    from visuals import create_pension_unit_price_chart, create_pension_value_chart
+    from visuals.ticker_charts import create_pension_unit_price_chart, create_pension_value_chart
 
     account_id = acc["id"]
     price_history = get_price_history(account_id)
@@ -100,7 +100,7 @@ def house_account_context(acc):
 
     price_history = get_price_history(acc["id"])
     if price_history:
-        from visuals import create_house_value_chart
+        from visuals.ticker_charts import create_house_value_chart
         price_df = pd.DataFrame(price_history).set_index("price_date")
         price_df.index = pd.to_datetime(price_df.index)
         chart_html = create_house_value_chart(price_df)

@@ -185,7 +185,7 @@
         }
     };
 
-    // Both charts are server-rendered (visuals.py's fig.to_html()), so config.responsive
+    // Both charts are server-rendered (visuals/ticker_charts.py's fig.to_html()), so config.responsive
     // never actually reacts to container size changes (rotation, fullscreen) — width/height
     // must be relayout'd explicitly, per AGENTS.md rule 18.
     const CHART_WRAPPER_IDS = ['intraday-wrapper', 'macro-wrapper'];

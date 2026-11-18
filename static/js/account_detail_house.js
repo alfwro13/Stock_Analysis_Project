@@ -5,7 +5,7 @@ function _houseChartHeight() {
     return window.innerWidth < 768 ? 400 : 350;
 }
 
-// This chart is embedded server-side (visuals.py's fig.to_html()) rather than created via
+// This chart is embedded server-side (visuals/ticker_charts.py's fig.to_html()) rather than created via
 // the Plotly JS API, and its `config.responsive` never actually reacts to container size
 // changes (rotation, fullscreen) — so width/height must be relayout'd explicitly on every resize.
 const _HOUSE_CHART_OPTS = { getHeight: _houseChartHeight, forceWidth: true };

@@ -27,7 +27,7 @@ import markets_engine
 from utils import NON_YAHOO_REGISTRY_TICKERS, normalize_ticker, safe_ticker_filename
 from indicators import compute_close_only_indicators
 from market_pulse import get_intraday_points
-from visuals import (
+from visuals.ticker_charts import (
     create_macro_chart,
     create_intraday_chart,
     create_yield_history_chart,
@@ -35,7 +35,7 @@ from visuals import (
     intraday_market_tz,
     EXCHANGE_DELAYS,
 )
-from visuals_macro import (
+from visuals.macro import (
     create_us_liquidity_chart,
     create_us_credit_chart,
     create_uk_liquidity_chart,

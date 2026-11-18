@@ -115,7 +115,7 @@ and what should I test?" without grepping the whole codebase first.
 
 | Package | Used for | What could break |
 |---|---|---|
-| `plotly` | All interactive charts (`visuals*.py`, client-side JS) | `fig.to_html()` output format — see AGENTS.md rule 18's server-rendered-chart caveats |
+| `plotly` | All interactive charts (`visuals/*.py`, client-side JS) | `fig.to_html()` output format — see AGENTS.md rule 18's server-rendered-chart caveats |
 | `matplotlib` | Static Fear & Greed chart image (`sentiment_engine.py`), sent as a file attachment via Nextcloud | Rendering/backend changes for headless (non-GUI) image generation |
 | `pillow` | Not imported directly; `matplotlib`'s image backend. Floor `>=12.3` clears published advisories | Rendering of the Fear & Greed PNG |
 | `Jinja2` | Template engine for every page in `templates/` | Template syntax changes (rare — Jinja2 is very stable) |

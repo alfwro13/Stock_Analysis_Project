@@ -95,7 +95,7 @@ function renderAccuracyTable(rows, tbodyId) {
     }).join('');
 }
 
-// These 4 charts are embedded server-side (visuals_etf.py's fig.to_html()) rather than created
+// These 4 charts are embedded server-side (visuals/etf.py's fig.to_html()) rather than created
 // via the Plotly JS API, so config.responsive never reacts to container size changes (resize,
 // rotation, fullscreen) — width/height must be relayout'd explicitly, per AGENTS.md Rule 18.
 const _ETF_CHART_WRAPPERS = [
@@ -108,7 +108,7 @@ const _ETF_CHART_WRAPPERS = [
 function _etfDesktopHeight(plotEl) {
     // Captures the height Python originally rendered (fixed per chart, or dynamic-by-holdings-count
     // for the contributions chart) once, before any relayout overrides it — avoids duplicating that
-    // formula here and drifting out of sync with visuals_etf.py.
+    // formula here and drifting out of sync with visuals/etf.py.
     if (plotEl._etfDesktopHeight == null) {
         plotEl._etfDesktopHeight = (plotEl.layout && plotEl.layout.height) || 450;
     }

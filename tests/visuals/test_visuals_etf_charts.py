@@ -1,5 +1,5 @@
 """
-tests/test_visuals_etf_charts.py — ETF chart functions in visuals_etf.py
+tests/visuals/test_visuals_etf_charts.py — ETF chart functions in visuals/etf.py
 
 Covers:
  - create_etf_correlation_chart
@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import patch
 
-from visuals_etf import (
+from visuals.etf import (
     create_etf_correlation_chart,
     create_etf_prediction_chart,
     create_etf_contributions_chart,
@@ -192,8 +192,8 @@ class TestCreateEtfOverlayChart:
             etf_series = _intraday_series()
         if constituent_series is None:
             constituent_series = {"AAPL": _intraday_series()}
-        with patch("visuals_etf.time_engine.get_user_tz", return_value="Europe/London"), \
-             patch("visuals_etf.time_engine.market_window_utc", return_value=_MOCK_MARKET_WINDOW):
+        with patch("visuals.etf.time_engine.get_user_tz", return_value="Europe/London"), \
+             patch("visuals.etf.time_engine.market_window_utc", return_value=_MOCK_MARKET_WINDOW):
             return create_etf_overlay_chart(
                 etf_ticker="TEST.L",
                 etf_exchange="LSE",
@@ -238,8 +238,8 @@ class TestCreateEtfOverlayChart:
         assert "LSE Open" in result or "NYSE Open" in result
 
     def test_multiple_constituent_exchanges_rendered(self):
-        with patch("visuals_etf.time_engine.get_user_tz", return_value="Europe/London"), \
-             patch("visuals_etf.time_engine.market_window_utc", return_value=_MOCK_MARKET_WINDOW):
+        with patch("visuals.etf.time_engine.get_user_tz", return_value="Europe/London"), \
+             patch("visuals.etf.time_engine.market_window_utc", return_value=_MOCK_MARKET_WINDOW):
             result = create_etf_overlay_chart(
                 etf_ticker="TEST.L",
                 etf_exchange="LSE",

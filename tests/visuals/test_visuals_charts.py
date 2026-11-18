@@ -1,14 +1,14 @@
 """
-tests/test_visuals_charts.py — Chart functions in visuals.py, visuals_macro.py and visuals_ai.py (non-ETF)
+tests/visuals/test_visuals_charts.py — Chart functions in visuals/ticker_charts.py, visuals/macro.py and visuals/ai.py (non-ETF)
 
 Covers:
  - create_anomaly_score_chart (threshold coloring)
  - create_anomaly_feature_radar (AXES normalization and clipping)
- - create_ai_contagion_performance_chart (empty guard, normalisation) [visuals_ai]
- - create_ai_contagion_correlation_heatmap (<2 tickers guard, correlation) [visuals_ai]
+ - create_ai_contagion_performance_chart (empty guard, normalisation) [visuals.ai]
+ - create_ai_contagion_correlation_heatmap (<2 tickers guard, correlation) [visuals.ai]
  - Smoke tests for macro economic charts (return HTML, empty-data guard)
  - create_yield_vs_gdp_chart (gap shading split, GDP step alignment, rule-18 layout)
- - rule-18 layout of every visuals_macro.py Market Sentiment chart (apply_sentiment_chart_layout)
+ - rule-18 layout of every visuals/macro.py Market Sentiment chart (apply_sentiment_chart_layout)
 """
 
 import pytest
@@ -17,14 +17,14 @@ import numpy as np
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from visuals import (
+from visuals.ticker_charts import (
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
     create_intraday_chart,
     create_macro_chart,
     create_pension_value_chart,
 )
-from visuals_macro import (
+from visuals.macro import (
     SENTIMENT_CHART_HEIGHT,
     create_us_inflation_chart,
     create_uk_inflation_chart,
@@ -35,7 +35,7 @@ from visuals_macro import (
     create_yield_curve_chart,
     create_yield_vs_gdp_chart,
 )
-from visuals_ai import (
+from visuals.ai import (
     create_ai_contagion_performance_chart,
     create_ai_contagion_correlation_heatmap,
 )

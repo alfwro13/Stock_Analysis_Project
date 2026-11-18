@@ -82,7 +82,7 @@ from curl_cffi import requests as cffi_requests
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
-from visuals import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
+from visuals.ticker_charts import create_intraday_chart, intraday_market_tz, EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 from monte_carlo_engine import run_simulation as _run_mc_simulation
 from portfolio_optimizer_engine import list_candidates as _po_list_candidates, optimize_portfolio as _po_optimize_portfolio
