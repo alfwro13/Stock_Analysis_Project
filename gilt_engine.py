@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import HISTORICAL_DIR
@@ -147,57 +147,12 @@ class GiltDataService:
             logger.error("Sovereign sync terminated: Historical data frame returned empty.")
             return False
 
-        df_boe = df_boe.set_index("Date")
-
-        live_yield = self.fetch_live_ft_yield()
-        # BoE-only alternative if FT.com scraping fails (BoE IADB publishes today's yield by ~4 pm)
-        # df_today = self.fetch_historical_boe(
-        #     start_date=(datetime.now(timezone.utc) - timedelta(days=7)).strftime("%d/%b/%Y")
-        # )
-        # live_yield = float(df_today["Close"].iloc[-1]) if df_today is not None and not df_today.empty else None
-        if live_yield is not None:
-            today_dt = pd.Timestamp(datetime.now(timezone.utc).date())
-
-            # Weekend: map to the preceding Friday (no gilt market session on Sat/Sun)
-            current_weekday = today_dt.weekday()
-            if current_weekday == 5:    # Saturday
-                target_date = today_dt - pd.Timedelta(days=1)
-            elif current_weekday == 6:  # Sunday
-                target_date = today_dt - pd.Timedelta(days=2)
-            else:
-                target_date = today_dt
-
-            # Capture max before the insert: the insert may add a new row, shifting the index max
-            last_boe_date = df_boe.index.max()
-
-            df_boe.loc[target_date, "Close"] = live_yield
-
-            gap_days = (target_date - last_boe_date).days
-            if gap_days < 0:
-                logger.warning(
-                    "BoE index is ahead of target date (%s > %s); skipping weekend fill — check timezone or BoE publication lead.",
-                    last_boe_date.date(), target_date.date(),
-                )
-
-            # Only fill weekend calendar days — working-day gaps mean BoE hasn't published yet
-            if gap_days > 1:
-                weekend_fills = 0
-                for d in range(1, gap_days):
-                    fill_date = last_boe_date + pd.Timedelta(days=d)
-                    if fill_date.weekday() >= 5:  # Saturday or Sunday only
-                        df_boe.loc[fill_date, "Close"] = live_yield
-                        weekend_fills += 1
-                if weekend_fills:
-                    logger.info("Padded %d weekend days with live FT yield.", weekend_fills)
-
-        df_boe.index = pd.to_datetime(df_boe.index)
-        df_boe = df_boe.sort_index()
+        df_boe = df_boe.set_index("Date").sort_index()
         df_boe = df_boe[~df_boe.index.duplicated(keep="last")]
-        df_boe.index.name = "Date"
 
         try:
             write_parquet_atomic(df_boe, self.parquet_path)
-            logger.info("Synchronized Hybrid Pipeline: Written %d rows to local Parquet storage.", len(df_boe))
+            logger.info("Synchronized BoE gilt baseline: Written %d rows to local Parquet storage.", len(df_boe))
             return True
         except Exception as e:
             logger.error("Failed to persist unified Parquet matrix: %s", e)

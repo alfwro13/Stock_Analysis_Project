@@ -10,6 +10,7 @@ from sklearn.ensemble import IsolationForest
 from db.database import get_connection, get_auction_summary
 from model_compatibility_engine import dump_sklearn_artifact
 from config import HISTORICAL_DIR
+from gilt_engine import GiltDataService
 from sentiment_engine import get_latest_fear_greed
 from yahoo_engine import yahoo_engine
 from constants import (
@@ -651,27 +652,25 @@ def _round_or_none(value: Optional[float], digits: int) -> Optional[float]:
     return None if value is None else round(value, digits)
 
 
-def _gilt_readings() -> tuple[Optional[float], Optional[float]]:
-    """Latest UK gilt yield and the one 4+ days earlier from the baseline file; (None, None) when either is unavailable."""
-    gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
-    if not gilt_path.exists():
-        logger.warning("UK Gilt Baseline Parquet missing. UK yield threat not computed.")
+def _gilt_readings(latest_date: str) -> tuple[Optional[float], Optional[float]]:
+    """Live FT 10Y gilt yield and the one stored in macro_regimes 4-10 days earlier (one series, so no FT-vs-BoE basis); None for a reading that is unavailable."""
+    curr_gilt = GiltDataService().fetch_live_ft_yield()
+    if curr_gilt is None:
+        logger.warning("Live FT gilt yield unavailable. UK yield threat not computed.")
         return None, None
+    conn = None
     try:
-        gilt_df = pd.read_parquet(gilt_path, columns=['Close'])
-        # Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
-        gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
-    except Exception as e:
-        logger.warning("UK Gilt Baseline Parquet unreadable: %s. UK yield threat not computed.", e)
-        return None, None
-    if gilt_df.empty:
-        logger.warning("UK Gilt Baseline Parquet has no weekday rows. UK yield threat not computed.")
-        return None, None
-    past_rows = gilt_df[gilt_df.index <= gilt_df.index[-1] - pd.Timedelta(days=4)]
-    if past_rows.empty:
-        logger.warning("UK Gilt Baseline Parquet has no value 4+ days back. UK yield threat not computed.")
-        return None, None
-    return float(gilt_df['Close'].iloc[-1]), float(past_rows['Close'].iloc[-1])
+        conn = get_connection()
+        # the 10-day bound matches the ^TNX window, so a long FT outage cannot stretch the velocity over weeks
+        row = conn.execute(
+            "SELECT uk_gilt_close FROM macro_regimes WHERE uk_gilt_close IS NOT NULL "
+            "AND date <= date(?, '-4 days') AND date >= date(?, '-10 days') ORDER BY date DESC LIMIT 1",
+            (latest_date, latest_date),
+        ).fetchone()
+    finally:
+        if conn:
+            conn.close()
+    return curr_gilt, None if row is None else float(row["uk_gilt_close"])
 
 
 def calculate_systemic_macro_threat() -> None:
@@ -698,7 +697,8 @@ def calculate_systemic_macro_threat() -> None:
         curr_tyx = _last_close(tyx)
         curr_dxy = _last_close(dxy)
         curr_gbpusd = _last_close(gbpusd)
-        curr_gilt, past_gilt = _gilt_readings()
+        latest_date = tnx.index[-1].strftime('%Y-%m-%d')
+        curr_gilt, past_gilt = _gilt_readings(latest_date)
 
         unavailable = [name for name, value in (("^TYX", curr_tyx), ("DX-Y.NYB", curr_dxy), ("GBPUSD=X", curr_gbpusd)) if value is None]
         if unavailable:
@@ -720,6 +720,9 @@ def calculate_systemic_macro_threat() -> None:
         # calibrated to higher UK gilt premiums: 30bps/3-day or 5.0% = RED, 15bps or 4.5% = YELLOW
         if curr_gilt is None:
             gilt_velocity_bps = uk_threat_level = None
+        elif past_gilt is None:
+            logger.warning("Macro threat: no FT gilt reading 4+ days back. UK yield threat not computed.")
+            gilt_velocity_bps = uk_threat_level = None
         else:
             gilt_velocity_bps = (curr_gilt - past_gilt) * 100.0
             if gilt_velocity_bps >= 30.0 or curr_gilt >= 5.0:
@@ -728,8 +731,6 @@ def calculate_systemic_macro_threat() -> None:
                 uk_threat_level = "YELLOW"
             else:
                 uk_threat_level = "GREEN"
-
-        latest_date = tnx.index[-1].strftime('%Y-%m-%d')
 
         conn = None
         try:
@@ -765,7 +766,7 @@ def calculate_systemic_macro_threat() -> None:
             ))
             conn.commit()
             us_summary = "n/a" if us_velocity_bps is None else "%s (Vel: %+.2f bps, Lvl: %.2f%%)" % (us_threat_level, us_velocity_bps, curr_tnx)
-            uk_summary = "n/a" if curr_gilt is None else "%s (Vel: %+.2f bps, Lvl: %.2f%%)" % (uk_threat_level, gilt_velocity_bps, curr_gilt)
+            uk_summary = "n/a" if gilt_velocity_bps is None else "%s (Vel: %+.2f bps, Lvl: %.2f%%)" % (uk_threat_level, gilt_velocity_bps, curr_gilt)
             logger.info("Macro Risk Evaluated | US: %s | UK: %s", us_summary, uk_summary)
         except Exception as e:
             if conn:
