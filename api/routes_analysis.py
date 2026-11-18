@@ -16,9 +16,9 @@ from constants import ETF_CONSTITUENTS_MAX
 
 from config import HISTORICAL_DIR
 from db.database import get_connection
-from ai_engine import AIPromptEngine
-from ai_regime_engine import AIRegimePromptEngine
-from ai_sentiment_engine import AISentimentPromptEngine
+from ai_prompts.ai_engine import AIPromptEngine
+from ai_prompts.ai_regime_engine import AIRegimePromptEngine
+from ai_prompts.ai_sentiment_engine import AISentimentPromptEngine
 from data_engine import DataEngine
 from fundamentals_helpers import ALTMAN_Z_DISTRESS
 from regime_engine import current_hmm_regime, macro_conditions_snapshot, market_stress_snapshot

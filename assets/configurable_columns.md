@@ -74,7 +74,7 @@ Five columns that need their own JOIN:
 - `xray_dividend_yield` — from `xray_dividend_cache.dividend_yield_pct`, read via a
   correlated `ORDER BY last_updated DESC LIMIT 1` subquery (not a plain JOIN) since
   the table's real key is `(ticker, data_source)` and `data_source` varies per
-  holding — this mirrors the exact pattern `ai_engine.py`/`xray_engine.py` already
+  holding — this mirrors the exact pattern `ai_prompts/ai_engine.py`/`xray_engine.py` already
   use to read this table. **Different scale from the existing `dividend_yield`
   column**: this one comes from Ghostfolio already in percentage form (`2.5` = 2.5%,
   `fmt: "pct_raw"`), while `stock_signals.dividend_yield` (Yahoo-sourced) is a

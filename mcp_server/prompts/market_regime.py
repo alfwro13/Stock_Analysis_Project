@@ -1,4 +1,4 @@
-from ai_regime_engine import AIRegimePromptEngine
+from ai_prompts.ai_regime_engine import AIRegimePromptEngine
 
 from ..server import server
 from .shared import dashboard_analysis_message

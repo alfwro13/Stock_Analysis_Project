@@ -1,8 +1,8 @@
 """AI-prompt modes as MCP prompts: the app's own text is served unchanged after a short preamble, arguments are validated, nothing is written."""
 import pytest
 
-from ai_engine import AIPromptEngine
-from ai_regime_engine import AIRegimePromptEngine
+from ai_prompts.ai_engine import AIPromptEngine
+from ai_prompts.ai_regime_engine import AIRegimePromptEngine
 from db.database import get_connection
 from mcp_server.prompts.market_regime import REGIME_MODES
 from mcp_server.prompts.shared import policy_step
@@ -56,7 +56,7 @@ class TestModeTables:
         assert {name: mode for name, mode, _ in STOCK_MODES} == PAGE_MODES
 
     def test_regime_modes_are_the_engines_allowed_modes(self):
-        from ai_regime_engine import _ALLOWED_MODES
+        from ai_prompts.ai_regime_engine import _ALLOWED_MODES
         assert {mode for _, mode, _ in REGIME_MODES} == set(_ALLOWED_MODES)
 
 

@@ -5,7 +5,7 @@ from pydantic import Field
 from mcp.shared.exceptions import MCPError
 from mcp_types import INVALID_PARAMS
 
-from ai_engine import AIPromptEngine
+from ai_prompts.ai_engine import AIPromptEngine
 from portfolio_service import persisted_fx_reads
 
 from ..server import server

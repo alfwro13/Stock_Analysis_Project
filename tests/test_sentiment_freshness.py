@@ -21,7 +21,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db import database as _db
-import ai_engine
+from ai_prompts import ai_engine
 from db import helpers as db_helpers
 from db import schema as db_schema
 import market_pulse as _mp

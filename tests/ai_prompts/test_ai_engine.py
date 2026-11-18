@@ -23,9 +23,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from ai_engine import AIPromptEngine
+from ai_prompts.ai_engine import AIPromptEngine
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -489,7 +489,7 @@ class TestVCPRatio:
         parquet_path = tmp_path / "TEST_VCP.parquet"
         df.to_parquet(parquet_path)
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             engine = AIPromptEngine()
             result = engine._get_technical_indicators("TEST_VCP")
 
@@ -508,7 +508,7 @@ class TestVCPRatio:
         parquet_path = tmp_path / "TEST_VCP2.parquet"
         df.to_parquet(parquet_path)
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             engine = AIPromptEngine()
             result = engine._get_technical_indicators("TEST_VCP2")
 
@@ -523,7 +523,7 @@ class TestVCPRatio:
         parquet_path = tmp_path / "TEST_VCP3.parquet"
         df.to_parquet(parquet_path)
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             engine = AIPromptEngine()
             result = engine._get_technical_indicators("TEST_VCP3")
 
@@ -535,7 +535,7 @@ class TestVCPRatio:
         parquet_path = tmp_path / "TEST_SHORT.parquet"
         df.to_parquet(parquet_path)
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             engine = AIPromptEngine()
             result = engine._get_technical_indicators("TEST_SHORT")
 
@@ -563,7 +563,7 @@ class TestADXAndBollingerBands:
         df = self._make_df(closes)
         (tmp_path / "ADX_TREND.parquet").exists() or df.to_parquet(tmp_path / "ADX_TREND.parquet")
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             result = AIPromptEngine()._get_technical_indicators("ADX_TREND")
 
         assert result["adx"] != "N/A", "ADX should be computed for 60-bar series"
@@ -577,7 +577,7 @@ class TestADXAndBollingerBands:
         df = pd.DataFrame({"Close": closes, "Volume": [1e6] * 60})
         df.to_parquet(tmp_path / "ADX_NOHL.parquet")
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             result = AIPromptEngine()._get_technical_indicators("ADX_NOHL")
 
         assert result["adx"] == "N/A"
@@ -588,7 +588,7 @@ class TestADXAndBollingerBands:
         df = self._make_df(closes)
         df.to_parquet(tmp_path / "BB_TEST.parquet")
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             result = AIPromptEngine()._get_technical_indicators("BB_TEST")
 
         assert result["bb_pband"] != "N/A", f"bb_pband should be set, got: {result['bb_pband']}"
@@ -601,7 +601,7 @@ class TestADXAndBollingerBands:
         df = self._make_df(closes)
         df.to_parquet(tmp_path / "BB_ABOVE.parquet")
 
-        with patch("ai_engine.HISTORICAL_DIR", tmp_path):
+        with patch("ai_prompts.ai_engine.HISTORICAL_DIR", tmp_path):
             result = AIPromptEngine()._get_technical_indicators("BB_ABOVE")
 
         assert "ABOVE" in result["bb_pband"] or "Near upper" in result["bb_pband"], (
@@ -612,8 +612,8 @@ class TestADXAndBollingerBands:
         """generate_prompt output must include the ADX and Bollinger Band lines."""
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, "Quantamental Deep-Dive")
@@ -687,8 +687,8 @@ class TestXRayContext:
     def test_prompt_contains_xray_section(self):
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, "Risk/Reward Audit")
@@ -705,8 +705,8 @@ class TestPromptCache:
         engine = AIPromptEngine()
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             first = engine.generate_prompt(CORE_TICKER, "Quantamental Deep-Dive")
@@ -717,8 +717,8 @@ class TestPromptCache:
         engine = AIPromptEngine()
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             result_a = engine.generate_prompt(CORE_TICKER, "Risk/Reward Audit")
@@ -729,8 +729,8 @@ class TestPromptCache:
         engine = AIPromptEngine()
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             engine.generate_prompt(CORE_TICKER, "Risk/Reward Audit")
@@ -754,8 +754,8 @@ class TestPromptCache:
 class TestGeneratePrompt:
     def test_unknown_ticker_returns_none(self):
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
         ):
             result = ENGINE.generate_prompt("TICKER_DOES_NOT_EXIST_XYZ", "Quantamental Deep-Dive")
         assert result is None
@@ -769,8 +769,8 @@ class TestGeneratePrompt:
     def test_known_modes_return_string(self, mode):
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("accounts.accounts_engine.get_combined_holdings", return_value={}),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, mode)
@@ -781,10 +781,10 @@ class TestGeneratePrompt:
         _seed_core_stock(CORE_TICKER)
         import logging
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
-            caplog.at_level(logging.WARNING, logger="ai_engine"),
+            caplog.at_level(logging.WARNING, logger="ai_prompts.ai_engine"),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, "UNKNOWN_MODE_XYZ")
         assert result is not None
@@ -796,8 +796,8 @@ class TestGeneratePrompt:
     def test_prompt_contains_system_metadata_header(self):
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, "Quantamental Deep-Dive")
@@ -808,8 +808,8 @@ class TestGeneratePrompt:
     def test_prompt_contains_ticker_name(self):
         _seed_core_stock(CORE_TICKER)
         with (
-            patch("ai_engine.get_rate_to_base", return_value=1.0),
-            patch("ai_engine.get_latest_regime", return_value=None),
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
             patch("builtins.open", MagicMock(side_effect=FileNotFoundError)),
         ):
             result = ENGINE.generate_prompt(CORE_TICKER, "Risk/Reward Audit")

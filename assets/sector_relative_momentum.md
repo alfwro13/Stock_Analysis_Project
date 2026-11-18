@@ -41,7 +41,7 @@ Readers always take the latest `as_of_date` per ticker and window and show it, s
 
 - **Reports → Sector-Relative Momentum** — scope toggle (Portfolio + Watchlist / Universe) and window toggle (63 / 126 Sessions).
 - **Portfolio and Watchlist optional columns** (category "Sector-Relative Momentum"): `sector_rel_mom_63`, `sector_rel_rank_63`, `sector_rel_mom_126`, `sector_rel_rank_126` — see `assets/configurable_columns.md`.
-- **AI prompt** — `ai_engine._get_sector_peer_context()` reads the persisted 63-session standing (rank, percentile, LEADER / MID-PACK / LAGGARD, strongest and weakest cohort members) rather than ranking `rel_strength_20d` itself. One calculation, three surfaces, identical numbers.
+- **AI prompt** — `ai_prompts.ai_engine._get_sector_peer_context()` reads the persisted 63-session standing (rank, percentile, LEADER / MID-PACK / LAGGARD, strongest and weakest cohort members) rather than ranking `rel_strength_20d` itself. One calculation, three surfaces, identical numbers.
 
 The Reports card "Relative Strength Leaders" is unrelated: it is an RSI / MACD screen of stocks above their 50-day SMA.
 

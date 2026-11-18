@@ -26,7 +26,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import ai_engine
+from ai_prompts import ai_engine
 from db import database as _db
 from db import helpers as db_helpers
 from pages import page_data_signal_rows

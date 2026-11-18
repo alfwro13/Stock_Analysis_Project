@@ -17,10 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from db import database as _db_module
-from ai_regime_engine import AIRegimePromptEngine, _ALLOWED_MODES
+from ai_prompts.ai_regime_engine import AIRegimePromptEngine, _ALLOWED_MODES
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -200,14 +200,14 @@ class TestGeneratePrompt:
         _seed_regime(conn, _SEED_DATE)
         conn.close()
         mode = "Plain English Briefing"
-        with patch("ai_regime_engine.datetime") as mock_dt:
+        with patch("ai_prompts.ai_regime_engine.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-20"
             self.engine.generate_prompt(mode)
             cache_size_day1 = len(self.engine._cache)
 
         # Simulate new day
         self.engine._cache_date = "2026-06-19"   # force stale
-        with patch("ai_regime_engine.datetime") as mock_dt:
+        with patch("ai_prompts.ai_regime_engine.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-20"
             self.engine.generate_prompt(mode)
 
