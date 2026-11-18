@@ -1,4 +1,4 @@
-# GUI name: "Strategy Backtester". Pure allocation rules; the simulation loop lives in strategy_backtest_engine.py.
+# GUI name: "Strategy Backtester". Pure allocation rules; the simulation loop lives in backtesting/strategy_backtest_engine.py.
 
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
@@ -6,7 +6,7 @@ from typing import Callable, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from portfolio_optimizer_engine import TRADING_DAYS, long_only_allocations
+from backtesting.portfolio_optimizer_engine import TRADING_DAYS, long_only_allocations
 
 SCHEDULE_INITIAL_ONLY = "initial_only"
 SCHEDULE_CADENCE = "cadence"

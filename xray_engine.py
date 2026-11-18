@@ -554,7 +554,7 @@ def get_scope_returns_matrix(
 ) -> Tuple[Optional[pd.DataFrame], List[str]]:
     """Per-ticker daily-return DataFrame (dates x tickers) read from xray_returns_cache and
     date-aligned via dropna, before any weighting/blending — the shared read path behind
-    get_scope_return_series() (portfolio-level blend) and portfolio_optimizer_engine.py (needs
+    get_scope_return_series() (portfolio-level blend) and backtesting/portfolio_optimizer_engine.py (needs
     the raw per-ticker matrix). None if fewer than 2 tickers resolve or fewer than 30 overlapping
     cached days. `series_transform(ticker, returns)` may rewrite each ticker's own series before
     alignment (None drops the ticker); the benchmark series is never transformed."""

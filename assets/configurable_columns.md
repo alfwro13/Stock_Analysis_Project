@@ -102,7 +102,7 @@ reason. See `assets/sector_relative_momentum.md`.
 
 Four columns in the `Stable Shortlist` category, on both pages: `ml_shortlist_member` /
 `quant_shortlist_member` (`fmt: "bool01"`, Yes/No) and `ml_shortlist_rank` / `quant_shortlist_rank`
-(`fmt: "int"`, 1 = best). Values come from `stable_shortlist_engine.get_column_values()`, one
+(`fmt: "int"`, 1 = best). Values come from `backtesting.stable_shortlist_engine.get_column_values()`, one
 batched read of each list's latest snapshot, merged into each row dict by `pages.page_data_portfolio.enrich_signal_row()`
 (used by both pages) before `build_optional_column_cells()`. Rank is the candidate's rank at the
 latest snapshot even when it was not selected; a ticker the snapshot did not track (or no snapshot

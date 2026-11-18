@@ -10,7 +10,7 @@ from accounts.accounts_engine import native_currencies
 from config import load_config
 from db.database import get_connection
 from db.account_store import get_watchlist_tickers
-from fx_conversion_helpers import BaseCurrencyConverter, cached_fx_close
+from backtesting.fx_conversion_helpers import BaseCurrencyConverter, cached_fx_close
 from utils import normalize_currency_bucket
 from xray_engine import (
     fetch_close_returns_from_parquet,
@@ -469,7 +469,7 @@ def optimize_portfolio(
     strategy_info = None
     w_strategy = None
     if strategy:
-        from strategy_backtest_strategies import STRATEGIES, snapshot_target  # that module imports this one at load time
+        from backtesting.strategy_backtest_strategies import STRATEGIES, snapshot_target  # that module imports this one at load time
 
         w_strategy, reason = snapshot_target(strategy, returns_df, {
             "current_weights": held_weights, "risk_free_rate": rf,

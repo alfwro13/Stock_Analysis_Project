@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from accounts.accounts_engine import list_scope_accounts_with_values
 from api.deps import _error_500, limiter, refuse_writes_during_restore
 from config import BASE_CURRENCY
-from strategy_backtest_data import (
+from backtesting.strategy_backtest_data import (
     COST_PRESETS,
     DEFAULT_BENCHMARKS,
     EXTENDED_PERIOD,
@@ -20,10 +20,10 @@ from strategy_backtest_data import (
     list_shortlist_baskets,
     request_history_preparation,
 )
-from strategy_backtest_engine import CADENCES, MIN_TEST_SESSIONS
-from strategy_backtest_reads import get_allocations, get_run, list_runs
-from strategy_backtest_runs import DEFAULTS, MAX_SAVED_RUNS, create_run, delete_run, execute_run
-from strategy_backtest_strategies import STRATEGIES
+from backtesting.strategy_backtest_engine import CADENCES, MIN_TEST_SESSIONS
+from backtesting.strategy_backtest_reads import get_allocations, get_run, list_runs
+from backtesting.strategy_backtest_runs import DEFAULTS, MAX_SAVED_RUNS, create_run, delete_run, execute_run
+from backtesting.strategy_backtest_strategies import STRATEGIES
 
 logger = logging.getLogger(__name__)
 

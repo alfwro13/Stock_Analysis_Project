@@ -13,19 +13,15 @@ Covers:
 
 import json
 import random
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from db import database as db
 import scheduler_jobs
-import stable_shortlist_engine as sse
-from stable_shortlist_engine import (
+from backtesting import stable_shortlist_engine as sse
+from backtesting.stable_shortlist_engine import (
     SIGNAL_ML,
     SIGNAL_QUANT,
     resolve_outcomes,
@@ -33,7 +29,7 @@ from stable_shortlist_engine import (
     select_members,
     take_snapshot,
 )
-from stable_shortlist_reads import get_column_values, get_evaluation, get_shortlist
+from backtesting.stable_shortlist_reads import get_column_values, get_evaluation, get_shortlist
 
 pytestmark = pytest.mark.restore_tables("quant_signals", "stock_signals")
 
@@ -243,8 +239,8 @@ def clean_tables():
 def scope_tickers():
     """Patches the engine's Portfolio list; Watchlist stays empty."""
     holder = {"portfolio": [], "watchlist": []}
-    with patch("stable_shortlist_engine.get_portfolio_tickers", side_effect=lambda: list(holder["portfolio"])), \
-         patch("stable_shortlist_engine.get_watchlist_only_tickers", side_effect=lambda: list(holder["watchlist"])):
+    with patch("backtesting.stable_shortlist_engine.get_portfolio_tickers", side_effect=lambda: list(holder["portfolio"])), \
+         patch("backtesting.stable_shortlist_engine.get_watchlist_only_tickers", side_effect=lambda: list(holder["watchlist"])):
         yield holder
 
 
@@ -388,7 +384,7 @@ class TestResolveOutcomes:
 
     def test_fills_forward_return_direction_and_band(self, clean_tables, scope_tickers):
         snapshot_id = self._snapshot_with(scope_tickers, "2026-10-22", 120.0)
-        with patch("stable_shortlist_engine.datetime") as mock_dt:
+        with patch("backtesting.stable_shortlist_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 10, 23, tzinfo=timezone.utc)
             mock_dt.strptime = datetime.strptime
             assert resolve_outcomes() == 2
@@ -402,7 +398,7 @@ class TestResolveOutcomes:
 
     def test_outside_band_and_wrong_direction(self, clean_tables, scope_tickers):
         snapshot_id = self._snapshot_with(scope_tickers, "2026-10-22", 90.0)
-        with patch("stable_shortlist_engine.datetime") as mock_dt:
+        with patch("backtesting.stable_shortlist_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 10, 23, tzinfo=timezone.utc)
             resolve_outcomes()
         row = _members(snapshot_id)["SL_O1"]
@@ -411,11 +407,11 @@ class TestResolveOutcomes:
 
     def test_pending_until_target_date_and_catches_up_later(self, clean_tables, scope_tickers):
         snapshot_id = self._snapshot_with(scope_tickers, "2026-10-22", 120.0)
-        with patch("stable_shortlist_engine.datetime") as mock_dt:
+        with patch("backtesting.stable_shortlist_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 10, 20, tzinfo=timezone.utc)
             assert resolve_outcomes() == 0
         assert _members(snapshot_id)["SL_O1"]["actual_price"] is None
-        with patch("stable_shortlist_engine.datetime") as mock_dt:
+        with patch("backtesting.stable_shortlist_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 11, 20, tzinfo=timezone.utc)
             assert resolve_outcomes() == 2
             assert resolve_outcomes() == 0
@@ -428,7 +424,7 @@ class TestResolveOutcomes:
         snapshot_id = take_snapshot(SIGNAL_ML, "portfolio", PARAMS, now=NOW)["snapshot_id"]
         _seed_quant("SL_OS", "2026-10-22", 130.0)
         _seed_quant("SL_OF", "2026-10-22", 130.0)
-        with patch("stable_shortlist_engine.datetime") as mock_dt:
+        with patch("backtesting.stable_shortlist_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 11, 1, tzinfo=timezone.utc)
             assert resolve_outcomes() == 1
         assert _members(snapshot_id)["SL_OS"]["actual_price"] is None
@@ -443,7 +439,7 @@ class TestEvaluationAndPayloads:
         result = take_snapshot(SIGNAL_QUANT, "portfolio", {**PARAMS, "TOPK": 2}, now=NOW)
         for t, close in (("SL_E1", 110.0), ("SL_E2", 104.0), ("SL_E3", 100.0), ("SL_E4", 98.0)):
             _seed_quant(t, "2026-10-22", close)
-        with patch("stable_shortlist_engine.datetime") as mock_dt:
+        with patch("backtesting.stable_shortlist_engine.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 11, 1, tzinfo=timezone.utc)
             resolve_outcomes()
         return result["snapshot_id"]
@@ -495,8 +491,8 @@ class TestEvaluationAndPayloads:
 class TestRunners:
     def test_run_resolves_then_snapshots_every_list(self):
         calls = []
-        with patch("stable_shortlist_engine.resolve_outcomes", side_effect=lambda: calls.append("resolve") or 4), \
-             patch("stable_shortlist_engine.take_snapshot",
+        with patch("backtesting.stable_shortlist_engine.resolve_outcomes", side_effect=lambda: calls.append("resolve") or 4), \
+             patch("backtesting.stable_shortlist_engine.take_snapshot",
                    side_effect=lambda sig, scope, params: calls.append((sig, scope)) or {"status": "created"}):
             summary = run_stable_shortlist()
         assert calls[0] == "resolve"
@@ -509,7 +505,7 @@ class TestRunners:
             {"signal_type": "ml_upside", "scope": "portfolio", "status": "created"},
             {"signal_type": "ml_upside", "scope": "watchlist", "status": "empty_scope"},
         ]}
-        with patch("stable_shortlist_engine.run_stable_shortlist", return_value=summary), \
+        with patch("backtesting.stable_shortlist_engine.run_stable_shortlist", return_value=summary), \
              patch("scheduler_jobs.log_sched_notification") as notify, \
              patch("scheduler_jobs.record_job_run") as record:
             scheduler_jobs.run_stable_shortlist_job()
@@ -523,14 +519,14 @@ class TestRunners:
         summary = {"resolved": 0, "snapshots": [
             {"signal_type": "ml_upside", "scope": "portfolio", "status": "error", "message": "boom"},
         ]}
-        with patch("stable_shortlist_engine.run_stable_shortlist", return_value=summary), \
+        with patch("backtesting.stable_shortlist_engine.run_stable_shortlist", return_value=summary), \
              patch("scheduler_jobs.log_sched_notification") as notify, \
              patch("scheduler_jobs.record_job_run"):
             scheduler_jobs.run_stable_shortlist_job()
         assert notify.call_args.args[0] == "Error" and "boom" in notify.call_args.args[1]
 
     def test_job_runner_survives_an_engine_exception(self):
-        with patch("stable_shortlist_engine.run_stable_shortlist", side_effect=RuntimeError("dead")), \
+        with patch("backtesting.stable_shortlist_engine.run_stable_shortlist", side_effect=RuntimeError("dead")), \
              patch("scheduler_jobs.log_sched_notification") as notify, \
              patch("scheduler_jobs.record_job_run") as record:
             scheduler_jobs.run_stable_shortlist_job()

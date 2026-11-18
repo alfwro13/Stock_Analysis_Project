@@ -1,4 +1,4 @@
-# GUI name: "Strategy Backtester". Read side of strategy_backtest_runs.py: the saved-run list, a run's result payload and its allocation history.
+# GUI name: "Strategy Backtester". Read side of backtesting/strategy_backtest_runs.py: the saved-run list, a run's result payload and its allocation history.
 
 import json
 from typing import Dict, List, Optional
@@ -7,8 +7,8 @@ import pandas as pd
 
 import time_engine
 from db.database import get_connection
-from stable_shortlist_reads import SIGNAL_LABELS
-from strategy_backtest_runs import (
+from backtesting.stable_shortlist_reads import SIGNAL_LABELS
+from backtesting.strategy_backtest_runs import (
     MAX_TRANSACTIONS_PER_STRATEGY,
     STATE_COMPLETED,
     expire_interrupted_runs,

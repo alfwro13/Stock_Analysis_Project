@@ -15,8 +15,8 @@ import time_engine
 from accounts.accounts_engine import native_currencies
 from config import BACKTEST_RUNS_DIR, load_config
 from db.database import get_connection
-from portfolio_optimizer_engine import cap_infeasible_warning, cap_is_infeasible
-from strategy_backtest_data import (
+from backtesting.portfolio_optimizer_engine import cap_infeasible_warning, cap_is_infeasible
+from backtesting.strategy_backtest_data import (
     COST_PRESETS,
     BasketError,
     build_price_matrix,
@@ -27,8 +27,8 @@ from strategy_backtest_data import (
     resolve_benchmark,
     session_close_resolver,
 )
-from strategy_backtest_engine import CADENCES, InsufficientHistory, run_backtest
-from strategy_backtest_strategies import STRATEGIES
+from backtesting.strategy_backtest_engine import CADENCES, InsufficientHistory, run_backtest
+from backtesting.strategy_backtest_strategies import STRATEGIES
 from utils import sanitize_floats
 
 logger = logging.getLogger(__name__)

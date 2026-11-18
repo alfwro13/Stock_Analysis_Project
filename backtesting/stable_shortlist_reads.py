@@ -10,11 +10,11 @@ import time_engine
 from config import load_config
 from db.database import get_connection
 from db.helpers import get_company_names
-from stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
+from backtesting.stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
 
 logger = logging.getLogger(__name__)
 
-# GUI name: "Stable Shortlist". Read side of stable_shortlist_engine.py: the page/API payload, the forward-only track record and the Portfolio/Watchlist column values.
+# GUI name: "Stable Shortlist". Read side of backtesting/stable_shortlist_engine.py: the page/API payload, the forward-only track record and the Portfolio/Watchlist column values.
 
 SIGNAL_LABELS = {SIGNAL_ML: "ML Upside Shortlist", SIGNAL_QUANT: "Quant Score Shortlist"}
 

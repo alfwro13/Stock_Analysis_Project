@@ -1,4 +1,4 @@
-# GUI name: "Strategy Backtester". Basket, currency and price-history preparation; the simulation lives in strategy_backtest_engine.py.
+# GUI name: "Strategy Backtester". Basket, currency and price-history preparation; the simulation lives in backtesting/strategy_backtest_engine.py.
 
 import hashlib
 import logging
@@ -15,13 +15,13 @@ import time_engine
 from accounts.accounts_engine import native_currencies
 from cache_refresh_helpers import request_cache_refresh
 from config import BACKTEST_HISTORY_DIR, BASE_CURRENCY
-from fx_conversion_helpers import BaseCurrencyConverter
-from portfolio_optimizer_engine import list_candidates
+from backtesting.fx_conversion_helpers import BaseCurrencyConverter
+from backtesting.portfolio_optimizer_engine import list_candidates
 from portfolio_service import fx_pair
 from price_history_helpers import normalized_close
-from stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
-from stable_shortlist_reads import get_shortlist
-from strategy_backtest_engine import InsufficientHistory
+from backtesting.stable_shortlist_engine import SIGNAL_ML, SIGNAL_QUANT
+from backtesting.stable_shortlist_reads import get_shortlist
+from backtesting.strategy_backtest_engine import InsufficientHistory
 from utils import is_excluded_from_yahoo_fetch, normalize_currency_bucket, safe_ticker_filename, write_parquet_atomic
 from xray_engine import resolve_scope_holdings
 from yahoo_engine import yahoo_engine
