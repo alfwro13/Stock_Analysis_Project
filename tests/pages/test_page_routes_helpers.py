@@ -1,17 +1,13 @@
 """
-tests/test_page_routes_helpers.py
+tests/pages/test_page_routes_helpers.py
 
-Pure-function tests for page_routes helpers that contain business logic.
+Pure-function tests for the pages/ helpers that contain business logic.
 No network calls, no DB access, no template rendering.
 """
 
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pages.page_routes import _build_rss_base_url
 from pages.page_routes_macro import enrich_macro_events, _parse_cb_nlp_message
