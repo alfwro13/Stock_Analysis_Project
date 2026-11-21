@@ -4,7 +4,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 import pandas as pd
 import numpy as np
@@ -44,9 +44,9 @@ MACRO_RF_PATH = MODELS_DIR / MACRO_RF_FILE
 MACRO_XGB_PATH = MODELS_DIR / MACRO_XGB_FILE
 
 
-def discard_persisted_models(models_dir: Path) -> None:
-    """Delete the persisted consensus-miss and volatility models so no stale estimator keeps scoring events."""
-    for name in (MACRO_RF_FILE, MACRO_XGB_FILE):
+def discard_persisted_models(models_dir: Path, files: Tuple[str, ...] = (MACRO_RF_FILE, MACRO_XGB_FILE)) -> None:
+    """Delete the persisted consensus-miss and volatility models (or the given files) so no stale estimator keeps scoring events."""
+    for name in files:
         remove_sklearn_artifact(models_dir / name)
 
 

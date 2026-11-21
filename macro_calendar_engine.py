@@ -225,6 +225,18 @@ def remove_synthetic_seed_rows() -> int:
         if conn:
             conn.close()
 
+def clear_unmeasured_spy_gaps() -> int:
+    """Sets every post_event_spy_gap of exactly 0.0 back to NULL: an earlier writer stored 0.0 for a release with no SPY bar in its window."""
+    conn = None
+    try:
+        conn = get_connection()
+        cleared = conn.execute("UPDATE macro_calendar SET post_event_spy_gap = NULL WHERE post_event_spy_gap = 0").rowcount
+        conn.commit()
+        return cleared
+    finally:
+        if conn:
+            conn.close()
+
 def upsert_calendar_events(events: List[Tuple]) -> None:
     if not events:
         logger.info("No high-impact events found matching criteria. Exiting.")
@@ -232,7 +244,7 @@ def upsert_calendar_events(events: List[Tuple]) -> None:
     write_or_defer("Macro calendar events", lambda: _write_calendar_events(events))
 
 def reconcile_past_events() -> None:
-    """Calculate post-release SPY gap for events passed in the last 7 days with no gap data."""
+    """Calculate post-release SPY gap for events passed in the last 7 days with no gap data; an event with no SPY bar in its window keeps a NULL gap, never 0.0."""
     logger.info("Reconciling ground-truth SPY gaps for passed macro events...")
     conn = None
     try:
@@ -255,7 +267,8 @@ def reconcile_past_events() -> None:
             return
 
         logger.info("Fetching SPY intraday data to reconcile %s events.", len(events_to_reconcile))
-        _spy_result = yahoo_engine.get_intraday(["SPY"], period="7d", interval="5m")
+        # prepost: an 08:30 ET release prints before the 09:30 open, so only extended-hours bars cover its window
+        _spy_result = yahoo_engine.get_intraday(["SPY"], period="7d", interval="5m", prepost=True)
         spy_df = _spy_result.get("SPY")
         if spy_df is None or spy_df.empty:
             logger.error("Failed to fetch SPY data for reconciliation.")
@@ -276,7 +289,7 @@ def reconcile_past_events() -> None:
 
                 event_window = spy_df[(spy_df.index >= event_dt) & (spy_df.index <= window_end)]
 
-                if not event_window.empty and len(event_window) >= 1:
+                if not event_window.empty:
                     # anchor = open of the first 5m candle; measure max absolute swing within 30m window
                     anchor_price = event_window['Open'].iloc[0]
                     max_price = event_window['High'].max()
@@ -289,8 +302,7 @@ def reconcile_past_events() -> None:
                     updates.append((max_abs_gap, row['event_id']))
                     logger.info("Reconciled %s - SPY Gap: %.2f%%", row['event_id'], max_abs_gap)
                 else:
-                    logger.debug("Event %s at %s fell outside market hours. Assigning 0.0 gap.", row['event_id'], event_dt)
-                    updates.append((0.0, row['event_id']))
+                    logger.debug("Event %s at %s has no SPY bar in its window; the gap stays NULL.", row['event_id'], event_dt)
 
             except Exception as e:
                 logger.error("Failed to process reconciliation for event %s: %s", row['event_id'], e)
