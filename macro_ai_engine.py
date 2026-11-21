@@ -384,13 +384,12 @@ class MacroAIEngine:
                 logger.info("No upcoming Tier-1 events in the next 48H to run inference on.")
                 return
                 
-            if self.xgb_model is None:
-                logger.warning("XGBoost Volatility model is untrained. Bypassing stacked inference.")
-                return
-
             if self.rf_model is None:
                 logger.warning("Consensus Miss model is untrained. Bypassing stacked inference.")
                 return
+
+            if self.xgb_model is None:
+                logger.warning("XGBoost Volatility model is untrained. Scoring the consensus-miss probability only; the volatility warning stays NULL.")
 
             updates_count = 0
             for event in events:
@@ -402,10 +401,12 @@ class MacroAIEngine:
 
                 rf_consensus_miss_prob = float(self._consensus_miss_probability([f_val], [p_val])[0])
 
-                # clamp before expm1 (not after): correct inversion of log1p; log1p(0)=0, so clamp at 0
-                X_infer = self._volatility_features(self._expected_change([f_val], [p_val]), [current_vix], [current_hmm_state], [rf_consensus_miss_prob])
-                predicted_gap = float(np.expm1(max(0.0, float(self.xgb_model.predict(X_infer)[0]))))
-                
+                predicted_gap = None
+                if self.xgb_model is not None:
+                    # clamp before expm1 (not after): correct inversion of log1p; log1p(0)=0, so clamp at 0
+                    X_infer = self._volatility_features(self._expected_change([f_val], [p_val]), [current_vix], [current_hmm_state], [rf_consensus_miss_prob])
+                    predicted_gap = float(np.expm1(max(0.0, float(self.xgb_model.predict(X_infer)[0]))))
+
                 cursor.execute("""
                     UPDATE macro_calendar 
                     SET ai_volatility_warning = ?, 
@@ -414,7 +415,7 @@ class MacroAIEngine:
                 """, (predicted_gap, rf_consensus_miss_prob, event['event_id']))
                 updates_count += 1
                 
-                if predicted_gap > MACRO_SEVERE_VOL_THRESHOLD:
+                if predicted_gap is not None and predicted_gap > MACRO_SEVERE_VOL_THRESHOLD:
                     logger.warning("🚨 SEVERE VOLATILITY PREDICTED: Event ID %s (Miss Prob: %.2f%%) — Absolute Volatility Shock Magnitude: ±%.2f%% (direction unknown)", event['event_id'], rf_consensus_miss_prob * 100, predicted_gap)
 
             self.conn.commit()
