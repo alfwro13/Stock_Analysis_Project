@@ -5,7 +5,9 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from db import database
+import config
+import regime_engine
+from db import database, schema as db_schema
 from regime_engine import (
     calculate_market_regime,
     get_latest_regime,
@@ -13,13 +15,14 @@ from regime_engine import (
     _classify_regime,
     classify_macro_regime,
     _build_if_features,
+    _hmm_close_problem,
     run_price_regime_hmm,
     run_market_stress_if,
     _IF_FEATURE_COLS,
 )
 from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL, IF_STRESS_MIN_ROWS
 
-pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_regimes", "market_regimes", "price_hmm_states", "system_notifications")]
+pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_regimes", "market_regimes", "price_hmm_states", "system_notifications", "data_migrations")]
 
 
 def _make_spy_vix_ftse(spy_daily_std, ftse_daily_std=None, n=252):
@@ -587,6 +590,165 @@ class TestRunPriceRegimeHmm:
         finally:
             conn.close()
         assert count > 0
+
+
+def _polluted_spy_cache():
+    """The cache found on prod: a synthetic series near 100, a 144-day gap, then real prices near 700."""
+    synthetic = pd.DataFrame(
+        {"Close": 100 + np.random.default_rng(0).normal(0, 1, 252).cumsum() * 0.2},
+        index=pd.date_range("2025-01-01", periods=252, freq="B"),
+    )
+    real = pd.DataFrame(
+        {"Close": 700 + np.random.default_rng(1).normal(0, 2, 130).cumsum() * 0.2},
+        index=pd.date_range("2026-05-11", periods=130, freq="B"),
+    )
+    return pd.concat([synthetic, real])
+
+
+def _history_by_period(full, tail):
+    calls = []
+
+    def fake(tickers, period="2y", interval="1d", force_refresh=False, repair=False):
+        calls.append((period, repair))
+        frame = full if period == "5y" else tail
+        return {} if frame is None else {"SPY": frame}
+
+    return fake, calls
+
+
+class TestHmmCacheValidation:
+
+    def test_regime_caches_are_not_the_real_historical_files(self):
+        assert regime_engine._HMM_CACHE_PATH.parent != config.HISTORICAL_DIR
+        assert regime_engine._IF_CACHE_PATH.parent != config.HISTORICAL_DIR
+        assert regime_engine._IF_MODEL_PATH.parent != config.HISTORICAL_DIR
+
+    @pytest.mark.parametrize("frame, expected", [
+        (lambda: _make_spy_df(n=300), None),
+        (lambda: _make_spy_df(n=100), "100 bars"),
+        (lambda: _polluted_spy_cache(), "-day gap between bars"),
+        (lambda: _make_spy_df(n=300).assign(Close=lambda d: d.Close.where(d.index != d.index[150], d.Close * 1.5)), "one-day log return"),
+        (lambda: _make_spy_df(n=300).assign(Close=lambda d: d.Close.where(d.index != d.index[150], -1.0)), "non-positive"),
+        (lambda: _make_spy_df(n=300).iloc[::-1], "out of order"),
+    ])
+    def test_close_problem(self, frame, expected):
+        problem = _hmm_close_problem(frame())
+        if expected is None:
+            assert problem is None
+        else:
+            assert expected in problem
+
+    def test_polluted_cache_is_rebuilt_from_a_full_fetch(self):
+        full = _make_spy_df(n=400)
+        tail = full.iloc[-20:]
+        _polluted_spy_cache().to_parquet(regime_engine._HMM_CACHE_PATH, engine="pyarrow")
+        fake, calls = _history_by_period(full, tail)
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake):
+            result = run_price_regime_hmm()
+        assert [c[0] for c in calls] == ["1mo", "5y"]
+        assert result["date"] == full.index[-1].strftime("%Y-%m-%d")
+        stored = pd.read_parquet(regime_engine._HMM_CACHE_PATH)
+        assert len(stored) == 400 and float(stored.Close.max()) < 1000
+        assert _hmm_close_problem(stored) is None
+
+    def test_valid_cache_gets_only_the_tail(self):
+        full = _make_spy_df(n=400)
+        full.iloc[:380].to_parquet(regime_engine._HMM_CACHE_PATH, engine="pyarrow")
+        fake, calls = _history_by_period(full, full.iloc[-25:])
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake):
+            result = run_price_regime_hmm()
+        assert [c[0] for c in calls] == ["1mo"]
+        assert result["date"] == full.index[-1].strftime("%Y-%m-%d")
+        assert len(pd.read_parquet(regime_engine._HMM_CACHE_PATH)) == 400
+
+    def test_failed_tail_fetch_keeps_a_valid_cache(self):
+        full = _make_spy_df(n=300)
+        full.to_parquet(regime_engine._HMM_CACHE_PATH, engine="pyarrow")
+        fake, calls = _history_by_period(None, None)
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake):
+            result = run_price_regime_hmm()
+        assert [c[0] for c in calls] == ["1mo"]
+        assert result["date"] == full.index[-1].strftime("%Y-%m-%d")
+
+    def test_unreadable_cache_is_rebuilt(self):
+        regime_engine._HMM_CACHE_PATH.write_bytes(b"not a parquet file")
+        full = _make_spy_df(n=300)
+        fake, calls = _history_by_period(full, None)
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake):
+            result = run_price_regime_hmm()
+        assert [c[0] for c in calls] == ["5y"]
+        assert result["date"] == full.index[-1].strftime("%Y-%m-%d")
+        assert len(pd.read_parquet(regime_engine._HMM_CACHE_PATH)) == 300
+
+    def test_both_fetches_ask_yahoo_to_repair(self):
+        full = _make_spy_df(n=400)
+        _polluted_spy_cache().to_parquet(regime_engine._HMM_CACHE_PATH, engine="pyarrow")
+        fake, calls = _history_by_period(full, full.iloc[-20:])
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake):
+            run_price_regime_hmm()
+        assert calls == [("1mo", True), ("5y", True)]
+
+    def test_invalid_full_fetch_stores_nothing(self):
+        full = _make_spy_df(n=300)
+        full.iloc[150:, 0] *= 1.6
+        fake, _ = _history_by_period(full, None)
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake):
+            result = run_price_regime_hmm()
+        assert result == {}
+        assert not regime_engine._HMM_CACHE_PATH.exists()
+
+    def test_degenerate_fit_is_not_stored(self):
+        full = _make_spy_df(n=300)
+        fake, _ = _history_by_period(full, None)
+        model = MagicMock()
+        model.means_ = np.array([[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]])
+        states = np.zeros(299, dtype=int)
+        states[-1] = 2
+        model.predict.return_value = states
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM price_hmm_states")
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("regime_engine.yahoo_engine.get_price_history", side_effect=fake), \
+             patch("hmmlearn.hmm.GaussianHMM", return_value=model):
+            result = run_price_regime_hmm()
+        assert result == {}
+        conn = database.get_connection()
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM price_hmm_states").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+
+class TestHmmHistoryMigration:
+
+    def test_clears_the_stored_hmm_history_once(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = 'price_hmm_history_clean_input'")
+            conn.execute("INSERT INTO price_hmm_states (date, state, label, probability) VALUES ('2031-01-02', 1, 'Chop', 1.0)")
+            conn.execute(
+                "INSERT INTO market_regimes (date, vix_close, us_regime_label, price_hmm_state, price_hmm_label, price_hmm_prob, market_stress_score) "
+                "VALUES ('2031-01-02', 21.5, 'Volatile', 0, 'Bull', 1.0, 0.4)"
+            )
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            row = conn.execute("SELECT * FROM market_regimes WHERE date = '2031-01-02'").fetchone()
+            assert (row["price_hmm_state"], row["price_hmm_label"], row["price_hmm_prob"]) == (None, None, None)
+            assert (row["vix_close"], row["us_regime_label"], row["market_stress_score"]) == (21.5, "Volatile", 0.4)
+            assert conn.execute("SELECT COUNT(*) FROM price_hmm_states").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = 'price_hmm_history_clean_input'").fetchone()[0] == 1
+
+            conn.execute("INSERT INTO price_hmm_states (date, state, label, probability) VALUES ('2031-01-03', 2, 'Crash', 0.9)")
+            conn.execute("UPDATE market_regimes SET price_hmm_state = 2, price_hmm_label = 'Crash', price_hmm_prob = 0.9 WHERE date = '2031-01-02'")
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT COUNT(*) FROM price_hmm_states").fetchone()[0] == 1
+            assert conn.execute("SELECT price_hmm_label FROM market_regimes WHERE date = '2031-01-02'").fetchone()[0] == "Crash"
+        finally:
+            conn.close()
 
 
 class TestRunMarketStressIf:

@@ -12,9 +12,11 @@ from model_compatibility_engine import dump_sklearn_artifact
 from config import HISTORICAL_DIR
 from gilt_engine import GiltDataService
 from sentiment_engine import get_latest_fear_greed
+from utils import write_parquet_atomic
 from yahoo_engine import yahoo_engine
 from constants import (
     MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL,
+    HMM_CACHE_MAX_ABS_LOG_RETURN, HMM_CACHE_MAX_GAP_DAYS, HMM_CACHE_MIN_ROWS, HMM_MIN_STATE_FRACTION,
     IF_STRESS_N_ESTIMATORS, IF_STRESS_CONTAMINATION, IF_STRESS_MIN_ROWS,
     IF_STRESS_VOL_WINDOW, IF_STRESS_ALERT_THRESHOLD, IF_STRESS_ALERT_DAYS,
 )
@@ -31,47 +33,77 @@ _IF_TICKERS = ["^VIX", "HYG", "^TNX", "SPY"]
 _IF_FEATURE_COLS = ["vix_level", "vix_ma_ratio", "hyg_return", "tnx_change", "spy_vol_zscore", "spy_return"]
 
 
+def _hmm_close_problem(df_spy: pd.DataFrame) -> Optional[str]:
+    close = df_spy["Close"]
+    if len(close) < HMM_CACHE_MIN_ROWS:
+        return f"{len(close)} bars, fewer than {HMM_CACHE_MIN_ROWS}"
+    if not (np.isfinite(close) & (close > 0)).all():
+        return "a non-positive or non-finite Close"
+    if not (close.index.is_monotonic_increasing and close.index.is_unique):
+        return "dates out of order or repeated"
+    gap = int(close.index.to_series().diff().dt.days.max())
+    if gap > HMM_CACHE_MAX_GAP_DAYS:
+        return f"a {gap}-day gap between bars"
+    move = float(np.log(close / close.shift(1)).abs().max())
+    if move > HMM_CACHE_MAX_ABS_LOG_RETURN:
+        return f"a one-day log return of {move:.2f}"
+    return None
+
+
+def _load_hmm_close() -> Optional[pd.DataFrame]:
+    df_cached = None
+    if _HMM_CACHE_PATH.exists():
+        try:
+            df_cached = pd.read_parquet(_HMM_CACHE_PATH)[["Close"]]
+        except Exception as e:
+            logger.warning("HMM: cached SPY history unreadable (%s) — rebuilding from a full 5y fetch.", e)
+    if df_cached is not None:
+        tail_dfs = yahoo_engine.get_price_history(["SPY"], period="1mo", interval="1d", repair=True)
+        if tail_dfs and "SPY" in tail_dfs and not tail_dfs["SPY"].empty:
+            df_spy = pd.concat([df_cached, tail_dfs["SPY"][["Close"]]])
+            df_spy = df_spy[~df_spy.index.duplicated(keep="last")].sort_index()
+        else:
+            df_spy = df_cached
+        df_spy = df_spy.dropna(subset=["Close"])
+        problem = _hmm_close_problem(df_spy)
+        if problem is None:
+            logger.info("HMM: merged cache (%d rows) with 1-month tail", len(df_cached))
+            return df_spy
+        logger.warning("HMM: cached SPY history rejected (%s) — rebuilding from a full 5y fetch.", problem)
+
+    full_dfs = yahoo_engine.get_price_history(["SPY"], period="5y", interval="1d", repair=True)
+    if not full_dfs or "SPY" not in full_dfs or full_dfs["SPY"].empty:
+        logger.error("HMM: 5y SPY bootstrap fetch failed.")
+        return None
+    df_spy = full_dfs["SPY"][["Close"]].dropna(subset=["Close"])
+    problem = _hmm_close_problem(df_spy)
+    if problem is not None:
+        logger.error("HMM: 5y SPY fetch rejected (%s) — nothing stored.", problem)
+        return None
+    logger.info("HMM: bootstrapped 5y SPY cache (%d rows)", len(df_spy))
+    return df_spy
+
+
 def run_price_regime_hmm() -> dict:
     # 3-state GaussianHMM on SPY log-returns + EWMA vol; incremental Parquet cache; returns {state, label, probability, previous_state, previous_label, date}
     from hmmlearn import hmm as hmmlib
     from sklearn.preprocessing import StandardScaler
 
     try:
-        if _HMM_CACHE_PATH.exists():
-            df_cached = pd.read_parquet(_HMM_CACHE_PATH)
-            tail_dfs = yahoo_engine.get_price_history(["SPY"], period="1mo", interval="1d")
-            if tail_dfs and "SPY" in tail_dfs and not tail_dfs["SPY"].empty:
-                df_tail = tail_dfs["SPY"][["Close"]].copy()
-                df_spy = pd.concat([df_cached[["Close"]], df_tail])
-                df_spy = df_spy[~df_spy.index.duplicated(keep="last")].sort_index()
-            else:
-                df_spy = df_cached[["Close"]].copy()
-            logger.info("HMM: merged cache (%d rows) with 1-month tail", len(df_cached))
-        else:
-            full_dfs = yahoo_engine.get_price_history(["SPY"], period="5y", interval="1d")
-            if not full_dfs or "SPY" not in full_dfs or full_dfs["SPY"].empty:
-                logger.error("HMM: 5y SPY bootstrap fetch failed.")
-                return {}
-            df_spy = full_dfs["SPY"][["Close"]].copy()
-            logger.info("HMM: bootstrapped 5y SPY cache (%d rows)", len(df_spy))
-
-        df_spy.to_parquet(_HMM_CACHE_PATH, engine="pyarrow")
-
+        df_spy = _load_hmm_close()
+        if df_spy is None:
+            return {}
+        write_parquet_atomic(df_spy, _HMM_CACHE_PATH)
     except Exception as e:
         logger.error("HMM: Parquet cache update failed: %s", e)
         return {}
 
-    df_spy = df_spy.dropna(subset=["Close"])
     log_returns = np.log(df_spy["Close"] / df_spy["Close"].shift(1))
     ewma_vol = (log_returns ** 2).ewm(
         alpha=(1 - _HMM_EWMA_LAMBDA), adjust=False
     ).mean().apply(lambda v: np.sqrt(v) * np.sqrt(252) * 100.0)
 
     features = pd.DataFrame({"returns": log_returns, "vol": ewma_vol}).dropna()
-
-    if len(features) < 60:
-        logger.warning("HMM: only %d feature rows — insufficient to fit.", len(features))
-        return {}
 
     scaler = StandardScaler()
     X = scaler.fit_transform(features.values)
@@ -90,6 +122,13 @@ def run_price_regime_hmm() -> dict:
     remap[state_order] = np.arange(len(state_order))
 
     raw_states = model.predict(X)
+    state_share = np.bincount(raw_states, minlength=MACRO_HMM_N_STATES) / len(raw_states)
+    if state_share.min() < HMM_MIN_STATE_FRACTION:
+        logger.error(
+            "HMM: degenerate fit, state shares %s fall below the %.0f%% minimum — nothing stored.",
+            np.round(state_share, 3).tolist(), HMM_MIN_STATE_FRACTION * 100,
+        )
+        return {}
     canonical_states = remap[raw_states]
     posterior_probs = model.predict_proba(X)  # shape (n_obs, n_components)
 
