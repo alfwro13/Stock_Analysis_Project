@@ -2987,6 +2987,20 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to remove the synthetic macro calendar rows: %s", e)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'macro_calendar_unmeasured_spy_gaps_cleared'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            from macro_calendar_engine import clear_unmeasured_spy_gaps
+            from macro_ai_engine import MACRO_XGB_FILE, discard_persisted_models
+            cleared = clear_unmeasured_spy_gaps()
+            discard_persisted_models(MODELS_DIR, (MACRO_XGB_FILE,))
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('macro_calendar_unmeasured_spy_gaps_cleared')")
+            conn.commit()
+            logger.info("[MIGRATION] Cleared %d macro calendar SPY gap(s) stored as 0.0 and the volatility model trained on them.", cleared)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to clear the unmeasured macro calendar SPY gaps: %s", e)
+
+    try:
         cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'stored_bar_artifacts'")
         if cursor.fetchone() is None:
             conn.commit()

@@ -398,6 +398,19 @@ class TestStackedScoring:
             [[1 / 3, macro_ai_engine.MACRO_VIX_DEFAULT, 0, 0.7]],
         )
 
+    def test_without_the_volatility_model_the_probability_is_scored_and_the_warning_is_null(self, engine):
+        engine.conn.execute(
+            "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, ai_volatility_warning, is_event_passed) VALUES (1, '2026-06-05', '0.3', '0.2', 1.8, 0)"
+        )
+        engine.conn.commit()
+        engine.rf_model = MagicMock()
+        engine.rf_model.predict_proba.return_value = np.array([[0.3, 0.7]])
+        engine.xgb_model = None
+        engine.run_macro_inference("2026-06-05")
+        row = engine.conn.execute("SELECT ai_volatility_warning, ai_consensus_miss_prob FROM macro_calendar WHERE event_id = 1").fetchone()
+        assert row["ai_consensus_miss_prob"] == pytest.approx(0.7)
+        assert row["ai_volatility_warning"] is None
+
 
 class TestDiscardPersistedModels:
 
@@ -408,6 +421,12 @@ class TestDiscardPersistedModels:
         macro_ai_engine.discard_persisted_models(tmp_path)
         assert sorted(p.name for p in tmp_path.iterdir()) == ["macro_hmm.joblib", "macro_hmm.joblib.sklearn-version"]
         macro_ai_engine.discard_persisted_models(tmp_path)
+
+    def test_given_files_are_the_only_ones_removed(self, tmp_path):
+        for name in ("macro_rf.joblib", "macro_xgb.joblib"):
+            _persisted(tmp_path / name)
+        macro_ai_engine.discard_persisted_models(tmp_path, (macro_ai_engine.MACRO_XGB_FILE,))
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["macro_rf.joblib", "macro_rf.joblib.sklearn-version"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

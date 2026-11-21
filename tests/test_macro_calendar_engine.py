@@ -35,7 +35,7 @@ from db.database import get_connection
 import macro_calendar_engine
 from macro_calendar_engine import (
     ACTUAL_SOURCES, _fetch_bls_series, _fetch_ons_cpi_rate, _fetch_rate_series, _load_actual_series, _shift_month,
-    clean_value, correct_eastern_event_times, fetch_and_process_calendar, fill_released_actuals, generate_event_id,
+    clean_value, clear_unmeasured_spy_gaps, correct_eastern_event_times, fetch_and_process_calendar, fill_released_actuals, generate_event_id,
     has_actual_source, remove_synthetic_seed_rows, resolve_actual, update_macro_calendar, upsert_calendar_events, vote_split_text,
 )
 from time_engine import localize_naive_to_utc, parse_stored_utc, utc_to_exchange_local
@@ -417,7 +417,112 @@ class TestRemoveSyntheticSeedRows:
         assert [r[0] for r in sqlite3.connect(cal_db_path).execute("SELECT event_id FROM macro_calendar")] == [feed_id]
 
 
+class TestReconcilePastEvents:
+
+    def _conn(self, db_path):
+        def connect():
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        return connect
+
+    def _stamp(self, hour, minute, days_ago=1):
+        day = datetime.now(timezone.utc) - timedelta(days=days_ago)
+        return day.replace(hour=hour, minute=minute, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _bars(self, start, opens, highs, lows):
+        index = pd.date_range(start=pd.Timestamp(start, tz="UTC"), periods=len(opens), freq="5min")
+        return pd.DataFrame({"Open": opens, "High": highs, "Low": lows, "Close": opens, "Volume": 1000}, index=index)
+
+    def _run(self, db_path, rows, spy_df):
+        conn = sqlite3.connect(db_path)
+        conn.executemany("INSERT INTO macro_calendar VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        conn.commit()
+        conn.close()
+        fake_yahoo = MagicMock()
+        fake_yahoo.get_intraday.return_value = {"SPY": spy_df}
+        with patch("macro_calendar_engine.get_connection", side_effect=self._conn(db_path)), patch("macro_calendar_engine.yahoo_engine", fake_yahoo):
+            macro_calendar_engine.reconcile_past_events()
+        conn = sqlite3.connect(db_path)
+        gaps = dict(conn.execute("SELECT event_id, post_event_spy_gap FROM macro_calendar").fetchall())
+        conn.close()
+        return gaps, fake_yahoo
+
+    def test_a_release_before_the_open_is_measured_on_the_pre_market_bars(self, cal_db_path):
+        release = self._stamp(12, 30)
+        spy = self._bars(release, [100.0] * 6, [100.0, 100.5, 100.2, 100.1, 100.0, 100.0], [100.0, 99.9, 99.7, 99.8, 99.9, 99.9])
+        gaps, fake_yahoo = self._run(cal_db_path, [_make_row(event_id="nfp", event_date=release, is_passed=1)], spy)
+        assert gaps["nfp"] == pytest.approx(0.5)
+        assert fake_yahoo.get_intraday.call_args.kwargs["prepost"] is True
+
+    def test_a_release_with_no_spy_bar_in_its_window_keeps_a_null_gap(self, cal_db_path):
+        release = self._stamp(6, 0)
+        measured = self._stamp(14, 0)
+        spy = self._bars(measured, [100.0, 100.0], [101.0, 100.4], [99.5, 99.9])
+        gaps, _ = self._run(cal_db_path, [
+            _make_row(event_id="uk_cpi", event_date=release, currency="GBP", is_passed=1),
+            _make_row(event_id="ism", event_date=measured, is_passed=1),
+        ], spy)
+        assert gaps["uk_cpi"] is None
+        assert gaps["ism"] == pytest.approx(1.0)
+
+    def test_an_event_with_a_stored_gap_is_not_measured_again(self, cal_db_path):
+        release = self._stamp(14, 0)
+        spy = self._bars(release, [100.0], [105.0], [95.0])
+        gaps, _ = self._run(cal_db_path, [_make_row(event_id="done", event_date=release, spy_gap=0.3, is_passed=1)], spy)
+        assert gaps["done"] == pytest.approx(0.3)
+
+
+class TestClearUnmeasuredSpyGaps:
+
+    def test_only_gaps_of_exactly_zero_are_cleared(self, cal_db_path):
+        conn = sqlite3.connect(cal_db_path)
+        conn.executemany("INSERT INTO macro_calendar VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+            _make_row(event_id="zero", spy_gap=0.0, is_passed=1),
+            _make_row(event_id="measured", spy_gap=0.31, is_passed=1),
+            _make_row(event_id="pending", spy_gap=None, is_passed=1),
+        ])
+        conn.commit()
+        conn.close()
+
+        def _conn():
+            conn = sqlite3.connect(cal_db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        with patch("macro_calendar_engine.get_connection", side_effect=_conn):
+            assert clear_unmeasured_spy_gaps() == 1
+            assert clear_unmeasured_spy_gaps() == 0
+        gaps = dict(sqlite3.connect(cal_db_path).execute("SELECT event_id, post_event_spy_gap FROM macro_calendar").fetchall())
+        assert gaps == {"zero": None, "measured": pytest.approx(0.31), "pending": None}
+
+
 class TestMigrationRunsOnce:
+
+    def test_migrate_db_clears_the_zero_gaps_and_the_volatility_model_once(self, tmp_path, monkeypatch):
+        models = tmp_path / "models"
+        models.mkdir()
+        for name in ("macro_rf.joblib", "macro_xgb.joblib", "macro_xgb.joblib.xgboost-version"):
+            (models / name).write_text("x")
+        monkeypatch.setattr(db_schema, "MODELS_DIR", models)
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = 'macro_calendar_unmeasured_spy_gaps_cleared'")
+            conn.executemany(
+                "INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, post_event_spy_gap, is_event_passed) VALUES (?, ?, 'USD', 'High', ?, ?, 1)",
+                [("zz_zero", "2031-06-05 12:30:00", "ZZ Zero", 0.0), ("zz_measured", "2031-06-05 14:00:00", "ZZ Measured", 0.4)],
+            )
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            gaps = dict(conn.execute("SELECT event_id, post_event_spy_gap FROM macro_calendar WHERE event_id LIKE 'zz_%'").fetchall())
+            assert gaps == {"zz_zero": None, "zz_measured": pytest.approx(0.4)}
+            assert sorted(p.name for p in models.iterdir()) == ["macro_rf.joblib"]
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = 'macro_calendar_unmeasured_spy_gaps_cleared'").fetchone()[0] == 1
+            conn.execute("UPDATE macro_calendar SET post_event_spy_gap = 0.0 WHERE event_id = 'zz_zero'")
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT post_event_spy_gap FROM macro_calendar WHERE event_id = 'zz_zero'").fetchone()[0] == 0.0
+        finally:
+            conn.close()
 
     def test_migrate_db_removes_the_synthetic_rows_and_their_models_once(self, tmp_path, monkeypatch):
         models = tmp_path / "models"
