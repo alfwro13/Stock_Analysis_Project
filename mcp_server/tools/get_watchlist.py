@@ -45,6 +45,7 @@ _UNITS = {
     "trap_phase": "the ticker's current Market Trap & Recovery Monitor phase, null when it has none",
     "pillar_confluence": "bullish or bearish when at least two of the technical, statistical and ML pillars agree over the last 5 trading days and none disagrees; null means no confluence, not missing data",
     "buy_recommendation": "present only for a bullish pillar confluence with the inputs for a reward:risk estimate; recommended is true when risk_reward (a ratio) reaches the Settings minimum",
+    "bullish_confluence_count/buy_recommended_count": "tickers with a bullish Signal Pillar Confluence and tickers with a Buy Recommendation marked recommended, counted over every Watchlist ticker that passes scope and min_composite_score (not only the returned page, and not narrowed by only_buy_recommended). A buy_recommendation column that is null on every row is expected when bullish_confluence_count is 0",
     "regime_weighted_score": "0-100 Regime-Weighted Conviction Score; null when the market regime vetoes it (Crash, or market stress at the threshold), no regime exists yet, or the ticker lacks a composite score or ML confidence",
     "position_targets": "the Watchlist's low_limit (buy) and high_limit (sell) prices in price.currency, null when unset",
     "next_earnings_date": "YYYY-MM-DD from the nightly Quant Scan / weekly Universe Fundamentals sync; null when unknown or when Yahoo has not published a date after the last report (a past date is never returned)",
@@ -102,12 +103,13 @@ def get_watchlist(
             if t in by_ticker and by_ticker[t]["composite_score"] is not None and by_ticker[t]["composite_score"] >= min_composite_score
         ]
 
-    scored = tickers if only_buy_recommended else tickers[offset:offset + limit]
-    confluence = evaluate_pillar_confluence_batch(scored)
-    regime_scores = compute_regime_weighted_score_batch(scored)
+    confluence = evaluate_pillar_confluence_batch(tickers)
+    regime_scores = compute_regime_weighted_score_batch(tickers)
     recommendations = evaluate_buy_recommendation_batch(
-        scored, confluence_by_ticker=confluence, regime_score_by_ticker=regime_scores,
+        tickers, confluence_by_ticker=confluence, regime_score_by_ticker=regime_scores,
     )
+    bullish_confluences = sum(1 for t in tickers if (confluence.get(t) or {}).get("direction") == "bullish")
+    buy_recommended = sum(1 for t in tickers if (recommendations.get(t) or {}).get("recommended"))
     if only_buy_recommended:
         tickers = [t for t in tickers if (recommendations.get(t) or {}).get("recommended")]
     total = len(tickers)
@@ -179,7 +181,10 @@ def get_watchlist(
     known = [e for e in epochs if e is not None]
     next_offset = offset + len(entries) if offset + len(entries) < total else None
     return envelope(
-        {"count": len(entries), "total_matches": total, "truncated": next_offset is not None, "next_offset": next_offset, "tickers": entries},
+        {
+            "count": len(entries), "total_matches": total, "truncated": next_offset is not None, "next_offset": next_offset,
+            "bullish_confluence_count": bullish_confluences, "buy_recommended_count": buy_recommended, "tickers": entries,
+        },
         as_of=min(known) if known else None, units=_UNITS, missing=missing,
         stale_after_seconds=NIGHTLY_STALE_AFTER_SECONDS,
     )
