@@ -11,7 +11,8 @@ from ..server import READ_ONLY, server
 _ACCOUNT_UNITS = {
     "amounts": "BASE_CURRENCY (base_currency); not the account's own currency",
     "equity_value": "market value of holdings; cash_balance is separate, total is their sum",
-    "gain_1d/1w/1m/3m/1y": "BASE_CURRENCY gain over the window excluding deposits and withdrawals (an amount, not a percent)",
+    "gain_1d/1w/1m/3m/1y": "BASE_CURRENCY gain over the window excluding deposits and withdrawals (an amount, not a percent), measured from the nightly account-value snapshot dated that many days back. gain_1d is therefore the move since yesterday's close snapshot, not the last session's move: it is 0 until quotes move past that close and it includes currency moves; day_pnl is the last session's move",
+    "day_pnl": "Trading only: the last regular session's move in BASE_CURRENCY, the sum over open positions of day_change x shares at the current FX rate (the figures get_holdings shows; currency movement and extended-hours moves are not included). null, with a line in missing, when any position has no day change or FX rate, never a partial sum",
     "mwrr_pct": "percent, since inception (Modified Dietz)",
     "performance_pct": "percent over 1m / ytd / 1y from the scraped price history (Pension and House only)",
     "snapshot_at": "UTC time of the performance snapshot the Trading row was read from",
@@ -28,12 +29,13 @@ _COST_BASIS_DEPENDENT = (
 
 @server.tool(name="get_accounts", annotations=READ_ONLY)
 def get_accounts() -> dict[str, Any]:
-    """List every account (Trading, Pension, House, plus Ghostfolio accounts when enabled) with cash, equity value, P/L and period gains in the base currency."""
+    """List every account (Trading, Pension, House, plus Ghostfolio accounts when enabled) with cash, equity value, P/L, period gains and the last session's move (day_pnl) in the base currency."""
     missing = []
     with persisted_fx_reads():
         scope_accounts, _ = list_scope_accounts_with_values()
         trading = portfolio_metrics_engine.account_metrics_list(refresh_missing=False)["accounts"]
         other = portfolio_metrics_engine.other_accounts_list()["accounts"]
+        day_pnl = portfolio_metrics_engine.account_day_pnl()
 
     scope_by_id = {a["id"]: a for a in scope_accounts}
     rows = []
@@ -50,9 +52,13 @@ def get_accounts() -> dict[str, Any]:
         if unpriced:
             metrics = {**metrics, **dict.fromkeys(_COST_BASIS_DEPENDENT)}
             missing.append(f"account {account_id}: {unpriced} holding(s) have no usable price or FX rate and are valued at cost, so equity, P/L, period gains and MWRR are unavailable")
+        account_day_pnl = day_pnl.get(account_id, {"day_pnl": None, "unavailable": []})
+        if account_day_pnl["day_pnl"] is None and not unpriced:
+            missing.append(f"account {account_id}: day_pnl unavailable, no day change or FX rate for {', '.join(account_day_pnl['unavailable']) or 'a position'}")
         scope_id = f"acct:{account_id}"
         rows.append({
             **metrics,
+            "day_pnl": account_day_pnl["day_pnl"],
             "account_type": "Trading",
             "scope_id": scope_id if scope_id in scope_by_id else None,
             "snapshot_at": None if snapshot_at is None else iso_utc(snapshot_at),

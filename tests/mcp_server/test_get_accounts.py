@@ -1,7 +1,7 @@
 """get_accounts tool: snapshot and missing-snapshot Trading rows, Pension, soft-deleted and Ghostfolio accounts."""
 from unittest.mock import patch
 
-from db.database import get_performance_cache
+from db.database import get_connection, get_performance_cache
 
 from .helpers import call, tool_data
 
@@ -107,3 +107,73 @@ class TestGetAccounts:
         with patch("mcp_server.tools.get_accounts.portfolio_metrics_engine.other_accounts_list", side_effect=spy):
             tool_data(call(mcp_client, "get_accounts"))
         assert seen == [True]
+
+
+class TestDayPnl:
+    def _seed_change(self, ticker, change_pts):
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, 50.0, ?, 1.0, 1, 0)",
+                (ticker, ticker, change_pts),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _accounts(self, mcp_client):
+        data = tool_data(call(mcp_client, "get_accounts"))
+        return data, {row["account_id"]: row for row in data["data"]["accounts"] if row["account_id"] is not None}
+
+    def test_day_pnl_is_the_sum_of_the_day_change_get_holdings_shows_times_shares(self, mcp_client, holdings_book):
+        self._seed_change("ZZMCPB", -0.5)
+        first = holdings_book["first"]
+        holdings = tool_data(call(mcp_client, "get_holdings", {"account": f"acct:{first}"}))["data"]["holdings"]
+        expected = round(sum(h["day_change"] * h["shares"] for h in holdings), 2)
+        data, rows = self._accounts(mcp_client)
+        assert rows[first]["day_pnl"] == expected == 12.5
+        assert not any(f"account {first}:" in item and "day_pnl" in item for item in data["missing"])
+
+    def test_day_pnl_is_independent_of_gain_1d_and_its_snapshot_baseline(self, mcp_client, seeded_accounts):
+        self._seed_change("ZZMCP", -2.0)
+        try:
+            _, rows = self._accounts(mcp_client)
+        finally:
+            conn = get_connection()
+            try:
+                conn.execute("DELETE FROM market_pulse_cache WHERE ticker = 'ZZMCP'")
+                conn.commit()
+            finally:
+                conn.close()
+        row = rows[seeded_accounts["snapshot"]]
+        assert row["day_pnl"] == -20.0
+        assert row["gain_1d"] == get_performance_cache(seeded_accounts["snapshot"])["return_1d"]
+
+    def test_day_pnl_is_null_and_named_in_missing_when_a_position_has_no_fx_rate(self, mcp_client, holdings_book):
+        self._seed_change("ZZMCPB", -0.5)
+        second = holdings_book["second"]
+        data, rows = self._accounts(mcp_client)
+        assert rows[second]["day_pnl"] is None
+        assert any(f"account {second}: day_pnl unavailable" in item and "ZZMCPU" in item for item in data["missing"])
+        assert data["incomplete"] is True
+
+    def test_day_pnl_is_null_and_named_in_missing_when_a_position_has_no_day_change(self, mcp_client, seeded_accounts):
+        data, rows = self._accounts(mcp_client)
+        account_id = seeded_accounts["snapshot"]
+        assert rows[account_id]["day_pnl"] is None
+        assert any(f"account {account_id}: day_pnl unavailable" in item and "ZZMCP" in item for item in data["missing"])
+
+    def test_account_without_positions_has_a_real_zero(self, mcp_client, holdings_book):
+        _, rows = self._accounts(mcp_client)
+        assert rows[holdings_book["empty"]]["day_pnl"] == 0.0
+
+    def test_pension_and_ghostfolio_rows_carry_no_day_pnl(self, mcp_client, holdings_book):
+        with patch("mcp_server.tools.get_accounts.list_scope_accounts_with_values", return_value=([{"id": "uuid-1", "name": "GF Main", "value": 1.0}], 1.0)):
+            data, rows = self._accounts(mcp_client)
+        assert "day_pnl" not in rows[holdings_book["pension"]]
+        assert all("day_pnl" not in r for r in data["data"]["accounts"] if r["account_type"] in ("Pension", "House", "Ghostfolio"))
+
+    def test_units_explain_the_baseline_of_gain_1d_and_the_meaning_of_day_pnl(self, mcp_client, seeded_accounts):
+        data, _ = self._accounts(mcp_client)
+        assert "snapshot" in data["units"]["gain_1d/1w/1m/3m/1y"] and "day_pnl" in data["units"]["gain_1d/1w/1m/3m/1y"]
+        assert "get_holdings" in data["units"]["day_pnl"] and "never a partial sum" in data["units"]["day_pnl"]
