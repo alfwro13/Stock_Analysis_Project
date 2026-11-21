@@ -293,7 +293,7 @@ class TestPayloadControls:
 
     @pytest.mark.parametrize("arguments, name", [
         ({"limit": MCP_WATCHLIST_MAX_ROWS + 1}, "limit"), ({"limit": 0}, "limit"), ({"offset": -1}, "offset"),
-        ({"offset": MCP_WATCHLIST_MAX_OFFSET + 1}, "offset"), ({"min_composite_score": 101}, "min_composite_score"),
+        ({"offset": MCP_WATCHLIST_MAX_OFFSET + 1}, "offset"), ({"min_composite_score": 101}, "min_composite_score"), ({"min_composite_score": -101}, "min_composite_score"),
         ({"scope": "everything"}, "scope"),
     ])
     def test_a_value_past_a_cap_is_refused_not_clamped(self, mcp_client, watchlist, arguments, name):
@@ -335,6 +335,17 @@ class TestPayloadControls:
         assert set(_tickers(_watchlist(mcp_client, min_composite_score=60))) & set(_TICKERS) == {HELD}
         kept = set(_tickers(_watchlist(mcp_client, min_composite_score=0))) & set(_TICKERS)
         assert kept == {HELD, WATCHED, STALE}
+
+    def test_min_composite_score_accepts_a_negative_floor(self, mcp_client, watchlist):
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE stock_signals SET composite_score = -20 WHERE ticker = ?", (STALE,))
+            conn.commit()
+        finally:
+            conn.close()
+        assert STALE in set(_tickers(_watchlist(mcp_client, min_composite_score=-20)))
+        assert STALE not in set(_tickers(_watchlist(mcp_client, min_composite_score=-19)))
+        assert STALE not in set(_tickers(_watchlist(mcp_client, min_composite_score=0)))
 
     def test_only_buy_recommended_filters_before_paging(self, mcp_client, watchlist):
         recommendation = {"recommended": True, "pillar_confluence": None, "risk_reward": {"passes": True, "risk_reward": 2.0}, "regime_weighted_score": None}

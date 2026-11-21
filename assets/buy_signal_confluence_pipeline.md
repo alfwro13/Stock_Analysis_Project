@@ -104,7 +104,9 @@ a range-bound (Chop) market, trend-following scores matter more in a trending (B
 "components": {...}}` or `None` ("no signal").
 
 **Inputs**, each normalized to 0-100 before weighting:
-- `stock_signals.composite_score` (already 0-100).
+- `stock_signals.composite_score` (clamped to -100..+100, so rescaled with `(composite + 100) / 2`
+  by `score_analysis._composite_to_100()`: -100 -> 0, 0 -> 50, +100 -> 100). The `components`
+  entry carries the rescaled value, so a flat composite of 0 contributes 50 points x its weight.
 - `stock_signals.ml_confidence` — `ml_inference_engine.update_daily_ml_predictions()` mirrors
   `quant_signals.ml_confidence_score` onto it in the same `UPDATE` pass, every time the daily
   ML Inference job (`ml_inference_job`) runs — needed as a one-row-per-ticker join target this
@@ -174,7 +176,7 @@ schedule/config (`SCHEDULING.ALERT_REFEREE_TRAINING_CONFLUENCE`, mirroring
 Monitor's own RSI/EMA/volume-ratio features:
 - `pillar_technical_up`/`_down`, `pillar_statistical_up`/`_down`, `pillar_ml_up`/`_down` — one-hot
   per Part A pillar (both 0 means that pillar abstained that day).
-- `regime_weighted_score` — Part B's 0-100 score (or `NaN`→0 via the existing `fillna(0.0)`
+- `regime_weighted_score` — Part B's 0-100 score, on the rescaled-composite scale (or `NaN`→0 via the existing `fillna(0.0)`
   pattern when Part B itself returned "no signal").
 
 **New columns, forward-populated only.** `trap_phase_history` and `pattern_detection_history`
@@ -191,7 +193,9 @@ computed."
 
 **Historical backfill.** `alert_referee_engine.backfill_historical_confluence_features()`
 reconstructs these columns for rows logged before this shipped
-(`confluence_features_ts IS NULL`), using `score_analysis.evaluate_pillar_confluence_as_of(ticker,
+(`confluence_features_ts IS NULL`; a `migrate_db()` step clears the marker on rows whose stored
+`regime_weighted_score` was computed on a different formula, which queues them for the next training
+run's recompute), using `score_analysis.evaluate_pillar_confluence_as_of(ticker,
 scan_date)` / `compute_regime_weighted_score_as_of(ticker, scan_date)` — as-of variants of Part
 A/B's own batch functions (an optional `as_of` cutoff threaded through `_trading_windows_batch()`/
 `_pattern_signals_batch()`/`_trap_signals_batch()`/`_statistical_signals_batch()`/

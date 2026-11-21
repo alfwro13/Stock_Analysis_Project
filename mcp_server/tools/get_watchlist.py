@@ -24,7 +24,7 @@ from score_analysis import (
 from utils import is_missing_sector, upcoming_iso_date
 from xray_engine import BENCHMARK_SYMBOL
 
-from ..discovery import Score, list_flags
+from ..discovery import CompositeScore, list_flags
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_utc
 from ..server import READ_ONLY, server
 from .get_ticker_snapshot import cached_price
@@ -37,7 +37,7 @@ _UNITS = {
     "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
     "price.stale": f"judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close. Nothing refreshes a Watchlist-only quote unless a Watchlist page is open, so a quote from before the last close is replaced by the nightly price, with its own price.as_of (and no day_change)",
     "held": "true when the ticker is also held in a Trading or Ghostfolio account; the Watchlist page lists held tickers too",
-    "overall_signal/composite_score": "the nightly Quant Scan's System Verdict and its 0-100 composite score",
+    "overall_signal/composite_score": "the nightly Quant Scan's System Verdict and its -100 to +100 composite score (negative is bearish)",
     "trend_50d/trend_200d": "UP when the nightly price is above the 50- or 200-day average, else DOWN; null when the average or price is missing",
     "rsi_14": "0-100",
     "atr_pct, mom_1m, mom_3m, week52_pct": "fractions (0.05 = 5%); week52_pct is the position inside the 52-week range, 0 at the low and 1 at the high",
@@ -84,7 +84,7 @@ def _without_nulls(value: Any) -> Any:
 @server.tool(name="get_watchlist", annotations=READ_ONLY)
 def get_watchlist(
     scope: Annotated[Literal["all", "held", "watchlist_only"], Field(description="all, only tickers you also hold, or only tickers you do not hold")] = "all",
-    min_composite_score: Annotated[Optional[Score], Field(description="keep tickers whose composite score is at least this (0-100); a ticker with no score is left out")] = None,
+    min_composite_score: Annotated[Optional[CompositeScore], Field(description="keep tickers whose composite score is at least this (-100 to 100); a ticker with no score is left out")] = None,
     only_buy_recommended: Annotated[bool, Field(description="keep only tickers with a Buy Recommendation marked recommended")] = False,
     limit: Annotated[int, Field(ge=1, le=MCP_WATCHLIST_MAX_ROWS)] = MCP_WATCHLIST_DEFAULT_ROWS,
     offset: Annotated[int, Field(ge=0, le=MCP_WATCHLIST_MAX_OFFSET, description="matching tickers to skip, to read the next page")] = 0,

@@ -2196,7 +2196,7 @@ CARDS = [
             "As a tie-breaker whenever the System Verdict and ML confidence disagree",
             "As a confirmation step required before the System Verdict is trusted",
         ],
-        "explanation": """<p>The <strong>Regime-Weighted Conviction Score</strong> is a 0-100 blend of four existing per-ticker signals — the composite Quant Score, the ML confidence score, Pattern Detection's confirmed patterns, and Trap Monitor's current phase — combined with a weight vector that switches depending on the current Market Regime. It's a complementary, regime-aware lens on data this app already computes, not a replacement for the <code>overall_signal</code> System Verdict shown elsewhere — the two are never meant to agree or disagree, since they answer different questions.</p>""",
+        "explanation": """<p>The <strong>Regime-Weighted Conviction Score</strong> is a 0-100 blend of four existing per-ticker signals — the composite Quant Score (which runs from -100 to +100 and is rescaled to 0-100 first), the ML confidence score, Pattern Detection's confirmed patterns, and Trap Monitor's current phase — combined with a weight vector that switches depending on the current Market Regime. It's a complementary, regime-aware lens on data this app already computes, not a replacement for the <code>overall_signal</code> System Verdict shown elsewhere — the two are never meant to agree or disagree, since they answer different questions.</p>""",
     },
     {
         "term_key": "regime-switched-weights",
@@ -2373,7 +2373,7 @@ CARDS = [
             "Names must also pass the Min Quant Score to join the ML list",
             "Unheld names are limited to half the list size",
         ],
-        "explanation": """<p>The <strong>ML Upside Shortlist</strong> ranks names by their predicted upside: the middle of the 10-trading-day quantile price band compared with the closing price the prediction was made on. Only names with positive predicted upside qualify, so the list can be shorter than its size. The <strong>Quant Score Shortlist</strong> ranks by the nightly 0–100 composite quant score, and names below the <strong>Min Quant Score</strong> setting never qualify.</p>
+        "explanation": """<p>The <strong>ML Upside Shortlist</strong> ranks names by their predicted upside: the middle of the 10-trading-day quantile price band compared with the closing price the prediction was made on. Only names with positive predicted upside qualify, so the list can be shorter than its size. The <strong>Quant Score Shortlist</strong> ranks by the nightly composite quant score (−100 to +100), and names below the <strong>Min Quant Score</strong> setting never qualify.</p>
 <p>Both lists only use a signal that is recent enough: anything older than the <strong>Signal Max Age</strong> is treated as stale and cannot qualify. The two lists are never blended into one combined score. Ties are broken alphabetically by ticker so a snapshot can always be reproduced.</p>""",
     },
     {

@@ -30,7 +30,7 @@ function _slMovement(row) {
 function _slSignalHeader(signal) {
     return signal === 'ml_upside'
         ? '<th class="tm-th-amber tm-th-right"><abbr title="Predicted move from the reference close to the middle of the 10-trading-day quantile price band.">Predicted Upside</abbr></th>'
-        : '<th class="tm-th-amber tm-th-right"><abbr title="0-100 composite quant score on the signal date.">Quant Score</abbr></th>';
+        : '<th class="tm-th-amber tm-th-right"><abbr title="Composite quant score (-100 to +100) on the signal date.">Quant Score</abbr></th>';
 }
 
 function _slSignalCell(signal, row) {

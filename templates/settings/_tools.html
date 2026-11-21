@@ -293,7 +293,7 @@
                         <input type="number" id="STABLE_SHORTLIST_MAX_SIGNAL_AGE_DAYS" class="form-control" value="{{ sl_sched.MAX_SIGNAL_AGE_DAYS | default(4) }}" min="1" max="30">
                     </div>
                     <div class="form-group flex-1">
-                        <label><abbr title="The Quant Score Shortlist only considers names with at least this composite score (0-100).">Min Quant Score</abbr></label>
+                        <label><abbr title="The Quant Score Shortlist only considers names with at least this composite score (the setting accepts 0-100; the score itself runs from -100 to +100).">Min Quant Score</abbr></label>
                         <input type="number" id="STABLE_SHORTLIST_MIN_QUANT_SCORE" class="form-control" value="{{ sl_sched.MIN_QUANT_SCORE | default(50) }}" min="0" max="100">
                     </div>
                 </div>

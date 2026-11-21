@@ -4,6 +4,7 @@ from typing import Optional
 
 import pandas as pd
 
+from constants import COMPOSITE_SCORE_MAX
 from db.database import get_connection, get_watchlist_tickers
 from db.helpers import ml_fresh_since
 
@@ -424,6 +425,10 @@ def _direction_to_100(signals: list[str]) -> float:
     return {"up": 100.0, "down": 0.0}.get(vote, 50.0)
 
 
+def _composite_to_100(composite_score: float) -> float:
+    return (composite_score + COMPOSITE_SCORE_MAX) / 2
+
+
 def _regime_as_of(as_of: str) -> Optional[dict]:
     """Most recent market_regimes row on or before as_of ('YYYY-MM-DD') — the historical
     equivalent of regime_engine.get_latest_regime() for the Cross-Engine Alert Referee's
@@ -446,8 +451,8 @@ def _regime_as_of(as_of: str) -> Optional[dict]:
 
 
 def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str] = None) -> dict[str, Optional[dict]]:
-    """Regime-Weighted Conviction Score: a 0-100 blend of stock_signals.composite_score,
-    stock_signals.ml_confidence, and Idea A's two Technical-pillar sources (Pattern Detection,
+    """Regime-Weighted Conviction Score: a 0-100 blend of stock_signals.composite_score (-100..+100,
+    rescaled to 0-100 first), stock_signals.ml_confidence, and Idea A's two Technical-pillar sources (Pattern Detection,
     Trap Monitor — kept separate here since the weight vector moves them independently, unlike
     Idea A's merged single vote), weighted by the current market regime
     (regime_engine.get_latest_regime()'s price_hmm_label).
@@ -521,7 +526,7 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
             continue
 
         components = {
-            "composite_score": float(row["composite_score"]),
+            "composite_score": _composite_to_100(float(row["composite_score"])),
             "ml_confidence": float(row["ml_confidence"]),
             "pattern": _direction_to_100(pattern_signals.get(ticker, [])),
             "trap": _direction_to_100(trap_signals.get(ticker, [])),

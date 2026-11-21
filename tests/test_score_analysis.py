@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
-from db import database as _db_module
+from db import database as _db_module, schema as _db_schema
 from score_analysis import (
     _available_from,
     _compute_return,
@@ -21,7 +21,7 @@ from score_analysis import (
     pillar_confluence_label,
 )
 
-pytestmark = pytest.mark.restore_tables("pattern_detection_history", "quant_signals", "trap_phase_history")
+pytestmark = pytest.mark.restore_tables("data_migrations", "pattern_detection_history", "quant_signals", "trap_phase_history")
 
 _DEFAULT_META_SCORING = {
     "REGIME_WEIGHTS": {
@@ -488,9 +488,9 @@ class TestComputeRegimeWeightedScore:
             result = compute_regime_weighted_score("RWA")
         assert result is not None
         assert result["regime"] == "Bull"
-        # 80*.40 + 60*.30 + 50(neutral pattern)*.20 + 50(neutral trap)*.10
-        assert result["score"] == pytest.approx(65.0)
-        assert result["components"] == {"composite_score": 80.0, "ml_confidence": 60.0, "pattern": 50.0, "trap": 50.0}
+        # 90(80 rescaled)*.40 + 60*.30 + 50(neutral pattern)*.20 + 50(neutral trap)*.10
+        assert result["score"] == pytest.approx(69.0)
+        assert result["components"] == {"composite_score": 90.0, "ml_confidence": 60.0, "pattern": 50.0, "trap": 50.0}
 
     def test_chop_regime_uses_different_weights(self):
         _seed_stock_signals("RWB", composite_score=80, ml_confidence=60)
@@ -499,8 +499,28 @@ class TestComputeRegimeWeightedScore:
             result = compute_regime_weighted_score("RWB")
         assert result is not None
         assert result["regime"] == "Chop"
-        # 80*.25 + 60*.25 + 50*.35 + 50*.15
-        assert result["score"] == pytest.approx(60.0)
+        # 90*.25 + 60*.25 + 50*.35 + 50*.15
+        assert result["score"] == pytest.approx(62.5)
+
+    def test_negative_composite_is_rescaled_not_subtracted(self):
+        _seed_stock_signals("RWK", composite_score=-40, ml_confidence=60)
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            result = compute_regime_weighted_score("RWK")
+        # 30(-40 rescaled)*.40 + 60*.30 + 50*.20 + 50*.10
+        assert result["components"]["composite_score"] == pytest.approx(30.0)
+        assert result["score"] == pytest.approx(45.0)
+
+    @pytest.mark.parametrize("composite, expected_component", [(-100, 0.0), (0, 50.0), (100, 100.0)])
+    def test_composite_extremes_keep_every_component_within_0_100(self, composite, expected_component):
+        ticker = f"RWX{composite + 100}"
+        _seed_stock_signals(ticker, composite_score=composite, ml_confidence=0)
+        p1, p2 = _patched_regime("Bull")
+        with p1, p2:
+            result = compute_regime_weighted_score(ticker)
+        assert result["components"]["composite_score"] == expected_component
+        assert all(0.0 <= v <= 100.0 for v in result["components"].values())
+        assert 0.0 <= result["score"] <= 100.0
 
     def test_crash_regime_returns_none(self):
         _seed_stock_signals("RWC", composite_score=80, ml_confidence=60)
@@ -551,8 +571,8 @@ class TestComputeRegimeWeightedScore:
             result = compute_regime_weighted_score("RWH")
         assert result["components"]["pattern"] == 100.0
         assert result["components"]["trap"] == 50.0
-        # 50*.40 + 50*.30 + 100*.20 + 50*.10
-        assert result["score"] == pytest.approx(60.0)
+        # 75(50 rescaled)*.40 + 50*.30 + 100*.20 + 50*.10
+        assert result["score"] == pytest.approx(70.0)
 
     def test_batch_matches_single_ticker_result(self):
         _seed_stock_signals("RWI", composite_score=70, ml_confidence=40)
@@ -584,8 +604,8 @@ class TestComputeRegimeWeightedScore:
         with p1, p2:
             result = compute_regime_weighted_score("RWJ")
         assert result is not None
-        # 80*.5 + 60*.5 + 50*0(missing) + 50*0(missing)
-        assert result["score"] == pytest.approx(70.0)
+        # 90(80 rescaled)*.5 + 60*.5 + 50*0(missing) + 50*0(missing)
+        assert result["score"] == pytest.approx(75.0)
 
 
 # ---------------------------------------------------------------------------
@@ -633,8 +653,16 @@ class TestComputeRegimeWeightedScoreAsOf:
             result = compute_regime_weighted_score_as_of("ASOF4", _AS_OF_DATE)
         assert result is not None
         assert result["regime"] == "Bull"
-        # 80*.40 + 60*.30 + 50(neutral pattern)*.20 + 50(neutral trap)*.10
-        assert result["score"] == pytest.approx(65.0)
+        # 90(80 rescaled)*.40 + 60*.30 + 50(neutral pattern)*.20 + 50(neutral trap)*.10
+        assert result["score"] == pytest.approx(69.0)
+
+    def test_negative_composite_is_rescaled_as_of_too(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "Bull")
+        _seed_quant_signal_as_of("ASOF8", _AS_OF_DATE, composite_score=-40, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF8", _AS_OF_DATE)
+        assert result["components"]["composite_score"] == pytest.approx(30.0)
+        assert result["score"] == pytest.approx(45.0)
 
     def test_uses_most_recent_regime_on_or_before_as_of_date(self):
         _seed_market_regime_as_of("2020-01-10", "Chop")
@@ -860,4 +888,55 @@ def test_trading_and_technical_queries_keep_ticker_specific_as_of_windows():
         assert _trap_signals_batch(["WINDOW1"], conn, {}) == {"WINDOW1": []}
     finally:
         if conn:
+            conn.close()
+
+
+class TestRescaledCompositeMigration:
+    _NAME = "regime_weighted_score_composite_rescaled"
+
+    def _insert(self, conn):
+        ts = "2031-01-02 00:00:00"
+        for ticker, phase in (("MIGA", "BULL_TRAP"), ("MIGB", "NEUTRAL")):
+            conn.execute(
+                """INSERT INTO trap_phase_history (ticker, phase, scan_date, scan_ts, regime_weighted_score, confluence_features_ts)
+                   VALUES (?, ?, '2031-01-02', ?, 55.0, ?)""",
+                (ticker, phase, ts, ts),
+            )
+        for ticker, phase in (("MIGC", "CONFIRMED"), ("MIGD", "FORMING")):
+            conn.execute(
+                """INSERT INTO pattern_detection_history
+                   (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, regime_weighted_score, confluence_features_ts)
+                   VALUES (?, 'flag', 'bull_flag', ?, '2031-01-02', ?, 55.0, ?)""",
+                (ticker, phase, ts, ts),
+            )
+        conn.execute(
+            """INSERT INTO trap_phase_history (ticker, phase, scan_date, scan_ts, regime_weighted_score, confluence_features_ts)
+               VALUES ('MIGE', 'BULL_TRAP', '2031-01-02', ?, NULL, ?)""",
+            (ts, ts),
+        )
+        conn.commit()
+
+    def test_queues_training_rows_for_recompute_and_drops_unused_scores_once(self):
+        conn = _db_module.get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = ?", (self._NAME,))
+            self._insert(conn)
+            _db_schema.migrate_db(conn, conn.cursor())
+
+            def state(table, ticker):
+                row = conn.execute(f"SELECT regime_weighted_score, confluence_features_ts FROM {table} WHERE ticker = ?", (ticker,)).fetchone()
+                return row["regime_weighted_score"], row["confluence_features_ts"]
+
+            assert state("trap_phase_history", "MIGA") == (55.0, None)
+            assert state("pattern_detection_history", "MIGC") == (55.0, None)
+            assert state("trap_phase_history", "MIGB") == (None, "2031-01-02 00:00:00")
+            assert state("pattern_detection_history", "MIGD") == (None, "2031-01-02 00:00:00")
+            assert state("trap_phase_history", "MIGE") == (None, "2031-01-02 00:00:00")
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = ?", (self._NAME,)).fetchone()[0] == 1
+
+            conn.execute("UPDATE trap_phase_history SET confluence_features_ts = '2031-02-01 00:00:00' WHERE ticker = 'MIGA'")
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+            assert state("trap_phase_history", "MIGA") == (55.0, "2031-02-01 00:00:00")
+        finally:
             conn.close()

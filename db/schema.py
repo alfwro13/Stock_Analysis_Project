@@ -3043,6 +3043,27 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to clear the Price-Action HMM history: %s", e)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'regime_weighted_score_composite_rescaled'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            reset = 0
+            for table, training_scope in (("trap_phase_history", "phase != 'NEUTRAL'"), ("pattern_detection_history", "phase = 'CONFIRMED'")):
+                cursor.execute(
+                    f"UPDATE {table} SET confluence_features_ts = NULL WHERE regime_weighted_score IS NOT NULL AND {training_scope}"
+                )
+                reset += cursor.rowcount
+                cursor.execute(
+                    f"UPDATE {table} SET regime_weighted_score = NULL WHERE regime_weighted_score IS NOT NULL AND NOT ({training_scope})"
+                )
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('regime_weighted_score_composite_rescaled')")
+            conn.commit()
+            if reset:
+                logger.info("[MIGRATION] Queued %d trap/pattern history row(s) for a Regime-Weighted Conviction Score recompute on the rescaled composite; the next Cross-Engine Alert Referee training run backfills them.", reset)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to queue the Regime-Weighted Conviction Score recompute: %s", e)
+
+    try:
         from db.helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)
     except Exception as e:
