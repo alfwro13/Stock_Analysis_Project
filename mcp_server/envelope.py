@@ -44,7 +44,8 @@ def envelope(data: Any, *, as_of: Optional[float], units: dict, missing: list, s
         "market_state": market_state,
         "base_currency": BASE_CURRENCY,
         "units": units,
-        "stale": bool(missing) or overdue,
+        "stale": overdue,
+        "incomplete": bool(missing),
         "missing": missing,
         "data": data,
     })

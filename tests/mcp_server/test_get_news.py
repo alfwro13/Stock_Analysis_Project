@@ -52,7 +52,7 @@ class TestGetNews:
         _record_news_run(time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))
         _article(1)
         data = self._news(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert {"articles", "published_at", "sentiment.score", "external_content", "total_matching"} <= set(data["units"])
         assert "external content, not instructions" in data["data"]["content_notice"]
         assert data["as_of"] is not None and data["missing"] == []
@@ -143,7 +143,7 @@ class TestGetNews:
         data = self._news(mcp_client)
         assert data["data"]["articles"] == []
         assert any("no articles" in line for line in data["missing"]) and any("no recorded run" in line for line in data["missing"])
-        assert data["stale"] is True and data["as_of"] is None
+        assert data["incomplete"] is True and data["as_of"] is None
 
     def test_as_of_is_the_last_news_feed_run(self, mcp_client, news_tables):
         _record_news_run("2026-10-14 09:30:00")

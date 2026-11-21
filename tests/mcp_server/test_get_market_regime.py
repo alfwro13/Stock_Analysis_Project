@@ -181,7 +181,7 @@ class TestGetMarketRegime:
     def test_nothing_computed_yet_lists_every_part_as_missing(self, mcp_client):
         body = self._regime(mcp_client)
         assert body["data"] == {key: None for key in ("market_regime", "market_stress", "macro_threat", "treasury_auctions", "fear_greed", "market_pulse")}
-        assert body["as_of"] is None and body["stale"] is True
+        assert body["as_of"] is None and body["incomplete"] is True
         assert tool._MISSING_REGIME in body["missing"] and tool._MISSING_STRESS in body["missing"]
         assert tool._MISSING_MACRO in body["missing"] and tool._MISSING_AUCTIONS in body["missing"]
         assert tool._MISSING_FEAR_GREED in body["missing"] and tool._NO_TILES in body["missing"]

@@ -55,7 +55,7 @@ class TestBuy:
     def test_envelope_verdict_and_units(self, mcp_client):
         with patch.object(pretrade_tool, "evaluate_pretrade_check", return_value=dict(_CHECK)) as engine:
             data = tool_data(_check(mcp_client))
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["amount/proposed_value"].startswith("BASE_CURRENCY")
         body = data["data"]
         assert (body["side"], body["ticker"], body["account"], body["proposed_value"]) == ("buy", "ZZPT", "all", 1000.0)
@@ -92,7 +92,7 @@ class TestBuy:
         assert body["var"] == {"pct_of_equity": None, "tier": None}
         assert body["max_correlation"] == {"value": None, "tier": None}
         assert body["max_drawdown"] == {"pct": 6.1, "tier": "GREEN"}
-        assert data["stale"] is True
+        assert data["incomplete"] is True
         assert any("No usable return history" in line for line in data["missing"])
         assert any(line.startswith("No verdict") and "VaR, correlation" in line for line in data["missing"])
 

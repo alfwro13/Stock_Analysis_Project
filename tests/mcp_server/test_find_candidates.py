@@ -165,7 +165,7 @@ def test_no_correlation_at_all_is_reported_missing(mcp_client, monkeypatch):
     with patch("mcp_server.tools.find_candidates.assemble_xray_report", side_effect=lambda scope: _report()), \
             patch("mcp_server.tools.find_candidates.candidate_correlations", side_effect=lambda scope, tickers: {t: dict(_NO_CORRELATION) for t in tickers}):
         result = tool_data(call(mcp_client, "find_candidates", {"goal": "lower_heat"}))
-    assert any("No correlation could be computed" in line for line in result["missing"]) and result["stale"] is True
+    assert any("No correlation could be computed" in line for line in result["missing"]) and result["incomplete"] is True
 
 
 def test_add_to_watchlist_does_not_need_correlations(mcp_client, engine):

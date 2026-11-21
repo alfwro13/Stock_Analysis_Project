@@ -3625,7 +3625,7 @@ CARDS = [
         ],
         "explanation": """<p>The <strong>MCP Server</strong> is a read-only endpoint at <code>/mcp</code> that lets Claude (Claude Code, Claude Desktop) query this dashboard in natural language through tools such as <code>get_accounts</code>, instead of you copying prompts across. It can only read: it cannot change settings, place trades or write data.</p>
 <p>It has its own keys, created in Settings → MCP Server → Local/LAN Access (one per computer, each with a name, shown only once and deletable on its own), sent as <code>Authorization: Bearer &lt;key&gt;</code>. An MCP key works only on <code>/mcp</code> and the Home Assistant API Key does not, so a leaked key of one cannot be used with the other. While Local/LAN Access is disabled or no key exists, <code>/mcp</code> refuses every request from your own network.</p>
-<p>Every answer states when its data was produced (<code>as_of</code>), whether the LSE and NYSE are open, the units used, and what is stale or missing. A missing value is returned as <code>null</code>, never as zero.</p>
+<p>Every answer states when its data was produced (<code>as_of</code>), whether the LSE and NYSE are open, the units used, and what is stale (the data is old), incomplete (something is unavailable) or missing. A missing value is returned as <code>null</code>, never as zero.</p>
 <p>You can give Claude your own rules by writing them in <code>data/investment_policy.md</code>. Claude reads that file before it analyses anything and measures its suggestions against it. If the file is missing, empty or too long, Claude is told to say so instead of inventing a policy. Claude only reads the file; you edit it yourself.</p>""",
     },
     # --- mcp-server ---

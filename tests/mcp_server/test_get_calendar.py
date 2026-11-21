@@ -89,7 +89,7 @@ def _calendar(client, **arguments):
 class TestTickerDates:
     def test_envelope_and_window(self, mcp_client, calendar):
         data = _calendar(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert (data["data"]["days"], data["data"]["from"], data["data"]["to"]) == (7, _day(0), _day(7))
 
     def test_earnings_inside_the_window_soonest_first_with_the_list(self, mcp_client, calendar):
@@ -187,7 +187,7 @@ class TestMacroEvents:
         finally:
             conn.close()
         data = _calendar(mcp_client, days=30)
-        assert any("only lists events up to" in m for m in data["missing"]) and data["stale"] is True
+        assert any("only lists events up to" in m for m in data["missing"]) and data["incomplete"] is True
 
     def test_no_recorded_run_and_no_events_are_explicit(self, mcp_client, calendar):
         conn = get_connection()

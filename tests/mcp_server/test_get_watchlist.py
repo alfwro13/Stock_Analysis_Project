@@ -107,7 +107,7 @@ def _row(data, ticker):
 class TestRows:
     def test_envelope_and_every_watchlist_ticker_with_held_flagged(self, mcp_client, watchlist):
         data = _watchlist(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["data"]["count"] == len(data["data"]["tickers"])
         assert {t["ticker"] for t in data["data"]["tickers"]} >= set(_TICKERS)
         assert _row(data, HELD)["held"] is True
@@ -173,7 +173,7 @@ class TestMissingAndStale:
         assert row["composite_score"] is None and row["signals_as_of"] is None and row["signals_stale"] is False
         assert any(NO_SIGNALS in line and "no stock_signals row" in line for line in data["missing"])
         assert any(BARE in line and "no cached price" in line for line in data["missing"])
-        assert data["stale"] is True
+        assert data["incomplete"] is True
 
     def test_signals_older_than_five_days_are_flagged_per_row(self, mcp_client, watchlist):
         data = _watchlist(mcp_client)
