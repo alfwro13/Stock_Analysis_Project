@@ -13,7 +13,7 @@ from score_analysis import (
     evaluate_buy_recommendation_batch,
     evaluate_pillar_confluence_batch,
 )
-from utils import is_iso_date, is_missing_sector
+from utils import is_missing_sector, upcoming_iso_date
 from xray_engine import BENCHMARK_SYMBOL
 
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_utc
@@ -35,7 +35,7 @@ _UNITS = {
     "buy_recommendation": "present only for a bullish pillar confluence with the inputs for a reward:risk estimate; recommended is true when risk_reward (a ratio) reaches the Settings minimum",
     "regime_weighted_score": "0-100 Regime-Weighted Conviction Score; null when the market regime vetoes it (Crash, or market stress at the threshold), no regime exists yet, or the ticker lacks a composite score or ML confidence",
     "position_targets": "the Watchlist's low_limit (buy) and high_limit (sell) prices in price.currency, null when unset",
-    "next_earnings_date": "YYYY-MM-DD from the nightly Quant Scan / weekly Universe Fundamentals sync, null when unknown",
+    "next_earnings_date": "YYYY-MM-DD from the nightly Quant Scan / weekly Universe Fundamentals sync; null when unknown or when Yahoo has not published a date after the last report (a past date is never returned)",
     "signals_as_of": "UTC time of the nightly stock_signals row behind the signals; signals_stale is true when it is older than 5 days (a missed nightly run)",
 }
 
@@ -126,7 +126,7 @@ def get_watchlist() -> dict[str, Any]:
             "buy_recommendation": _buy_recommendation(recommendations.get(ticker)),
             "regime_weighted_score": _regime_score(regime_scores.get(ticker)),
             "position_targets": {"low_limit": target.get("low_limit"), "high_limit": target.get("high_limit")},
-            "next_earnings_date": earnings_date if is_iso_date(earnings_date) else None,
+            "next_earnings_date": upcoming_iso_date(earnings_date),
             "signals_as_of": None if signals_epoch is None else iso_utc(signals_epoch),
             "signals_stale": signals_epoch is not None and time.time() - signals_epoch > NIGHTLY_STALE_AFTER_SECONDS,
         })

@@ -300,6 +300,18 @@ def epoch_to_iso_date(value: Any) -> Optional[str]:
         return None
 
 
+def next_earnings_iso_date(info: dict) -> Optional[str]:
+    """The next upcoming earnings date from a Yahoo info dict: `earningsTimestamp` stays on the last report until Yahoo posts the next one, which then shows only in `earningsTimestampStart`/`End`. With no upcoming date the last reported one is kept (the Stock Detail page's Post-Earnings notice reads it); None when Yahoo has none."""
+    dates = [d for d in (epoch_to_iso_date(info.get(key)) for key in ("earningsTimestamp", "earningsTimestampStart", "earningsTimestampEnd")) if d]
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return next((d for d in dates if d >= today), dates[0] if dates else None)
+
+
+def upcoming_iso_date(value: Any) -> Optional[str]:
+    """`value` when it is an ISO date from today (UTC) on, else None; a stored earnings date still in the past is the last report, not the next one."""
+    return value if is_iso_date(value) and value >= datetime.now(timezone.utc).strftime("%Y-%m-%d") else None
+
+
 def write_parquet_atomic(df: Any, path: Any) -> None:
     """Atomic replace, so a reader never meets a half-written file; the temp name never ends in .parquet, so a crash cannot leave a file that looks like a ticker."""
     path = Path(path)

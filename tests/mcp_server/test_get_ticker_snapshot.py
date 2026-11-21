@@ -330,7 +330,8 @@ class TestStaleAndMissingData:
         data = _snapshot(mcp_client)
         assert data["data"]["forensic_scores"]["piotroski_f_score"] is None and data["data"]["forensic_scores"]["as_of"] is None
         assert any("Forensic scores have not been computed" in item for item in data["missing"])
-        assert any("next earnings date is in the past" in item for item in data["missing"])
+        assert any("Yahoo has not published the next earnings date" in item for item in data["missing"])
+        assert data["data"]["next_earnings"]["date"] is None
         assert data["stale"] is True
 
     def test_an_unparseable_earnings_date_is_null_not_a_placeholder(self, mcp_client, book):

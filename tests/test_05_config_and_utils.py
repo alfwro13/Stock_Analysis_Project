@@ -469,6 +469,31 @@ def test_epoch_to_iso_date_converts_yahoo_epochs_and_passes_iso_dates_through():
 
 
 @pytest.mark.config
+def test_next_earnings_iso_date_prefers_the_upcoming_date_and_keeps_the_last_report_otherwise():
+    """`earningsTimestamp` stays on the last report until Yahoo posts the next one, which shows only in
+    `earningsTimestampStart`/`End` (TSM: 2026-10-15 last, 2027-01-14 next); with no upcoming date the last one is kept."""
+    from datetime import datetime, timedelta, timezone
+    from utils import next_earnings_iso_date, upcoming_iso_date
+
+    def epoch(days):
+        return int((datetime.now(timezone.utc) + timedelta(days=days)).timestamp())
+
+    def day(days):
+        return (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d")
+
+    assert next_earnings_iso_date({"earningsTimestamp": epoch(-30), "earningsTimestampStart": epoch(60), "earningsTimestampEnd": epoch(60)}) == day(60)
+    assert next_earnings_iso_date({"earningsTimestamp": epoch(10), "earningsTimestampStart": epoch(5)}) == day(10)
+    assert next_earnings_iso_date({"earningsTimestamp": epoch(-4), "earningsTimestampStart": epoch(-4), "earningsTimestampEnd": epoch(-4)}) == day(-4)
+    assert next_earnings_iso_date({"earningsTimestampEnd": epoch(20)}) == day(20)
+    assert next_earnings_iso_date({}) is None
+    assert next_earnings_iso_date({"earningsTimestamp": None, "earningsTimestampStart": 0}) is None
+    assert upcoming_iso_date(day(0)) == day(0)
+    assert upcoming_iso_date(day(3)) == day(3)
+    for bad in (day(-1), "Unknown", None, "garbage"):
+        assert upcoming_iso_date(bad) is None, repr(bad)
+
+
+@pytest.mark.config
 def test_ignored_tickers_set_normalizes_and_uses_supplied_config():
     """ignored_tickers_set() must uppercase/strip entries and honor an explicitly-passed config
     dict rather than always reloading from disk — callers that already hold a loaded config
