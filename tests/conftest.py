@@ -346,6 +346,15 @@ def _block_navigation_cache_refresh():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_regime_caches(tmp_path):
+    """A test that reaches `run_price_regime_hmm()` or `run_market_stress_if()` without patching the cache paths would write its synthetic series over the real `data/historical` regime caches."""
+    with patch("regime_engine._HMM_CACHE_PATH", tmp_path / "SPY_hmm.parquet"), \
+         patch("regime_engine._IF_CACHE_PATH", tmp_path / "market_stress_if.parquet"), \
+         patch("regime_engine._IF_MODEL_PATH", tmp_path / "market_stress_if.joblib"):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _block_explicit_fx_refresh():
     from portfolio_service import refresh_fx_rates
     with patch("portfolio_service.refresh_fx_rates"):

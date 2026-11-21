@@ -13,6 +13,10 @@ QUANT_SCAN_ALWAYS_TICKERS = ("SPY",)  # the ML benchmark and regime proxy: its f
 # ── Market regime classification ───────────────────────────────────────────────
 REGIME_CRASH_VOL    = 35.0  # annualised vol % at or above which regime = Crash
 REGIME_VOLATILE_VOL = 20.0  # annualised vol % at or above which regime = Volatile
+HMM_CACHE_MIN_ROWS = 252  # SPY_hmm.parquet with fewer bars is rebuilt from a full fetch
+HMM_CACHE_MAX_GAP_DAYS = 10  # calendar days between consecutive bars; the longest real closure is about 5
+HMM_CACHE_MAX_ABS_LOG_RETURN = 0.25  # a larger one-day SPY log return is a bad bar (the worst S&P 500 day on record, 19 Oct 1987, was about -0.23)
+HMM_MIN_STATE_FRACTION = 0.05  # a Price-Action HMM state covering less of the path is a degenerate fit and is not stored
 
 # ── RSI bands ─────────────────────────────────────────────────────────────────
 RSI_HEALTHY_MIN         = 40.0  # scoring model: RSI "room to run" lower bound

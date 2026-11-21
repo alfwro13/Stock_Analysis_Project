@@ -2994,6 +2994,24 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to clear orphaned Position Targets: %s", e)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'price_hmm_history_clean_input'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            cursor.execute("DELETE FROM price_hmm_states")
+            cursor.execute(
+                "UPDATE market_regimes SET price_hmm_state = NULL, price_hmm_label = NULL, price_hmm_prob = NULL "
+                "WHERE price_hmm_state IS NOT NULL OR price_hmm_label IS NOT NULL OR price_hmm_prob IS NOT NULL"
+            )
+            cleared = cursor.rowcount
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('price_hmm_history_clean_input')")
+            conn.commit()
+            if cleared:
+                logger.info("[MIGRATION] Cleared the Price-Action HMM state of %d market_regimes row(s) fitted on an invalid SPY cache; the next Market Regime (HMM) run refits.", cleared)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to clear the Price-Action HMM history: %s", e)
+
+    try:
         from db.helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)
     except Exception as e:
