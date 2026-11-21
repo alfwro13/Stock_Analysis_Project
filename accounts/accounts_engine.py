@@ -205,6 +205,16 @@ def clear_targets_of_closed_positions(account_id: int) -> None:
         delete_stale_holding_price_limits(account_id, _ledger_for_account(account_id)[0], "the position is closed")
 
 
+def clear_orphaned_position_targets() -> None:
+    """One pass of the targets-follow-the-position rule over every account, for rows written before a ledger or Watchlist write could clear them."""
+    for account in get_accounts(include_deleted=True):
+        if account["deleted_at"] or account["account_type"] == "Trading":
+            clear_targets_of_closed_positions(account["id"])
+        elif account["account_type"] == "Watchlist":
+            watched = [item["ticker"] for item in get_watchlist_items(account["id"])]
+            delete_stale_holding_price_limits(account["id"], watched, "the ticker left the Watchlist")
+
+
 register_ledger_listener(clear_targets_of_closed_positions)
 
 
