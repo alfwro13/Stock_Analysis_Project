@@ -1539,6 +1539,43 @@ class TestFundSectorGeoLookThrough:
         assert regions["Asia"] == pytest.approx(1.0, abs=0.02)
         assert "Other" not in regions
 
+    def test_holdings_without_a_profile_take_their_country_from_the_ticker_suffix(self):
+        """A UCITS fund's Asian constituents have no asset_profiles row, so their Yahoo suffix names the country;
+        a symbol with a profile keeps the profile's country and a symbol with neither stays out of the split."""
+        ticker = "XRAY_ETF_SUFFIX"
+        _seed_fund_signal(
+            ticker, 100.0, "GBP", "ETF",
+            top_holdings=json.dumps([
+                {"symbol": "7203.T", "name": "Toyota", "weight": 0.3},
+                {"symbol": "2330.TW", "name": "TSMC", "weight": 0.3},
+                {"symbol": "XRAY_SFX_PROFILED.AX", "name": "Profiled", "weight": 0.2},
+                {"symbol": "XRAY_SFX_BARE", "name": "Bare", "weight": 0.2},
+            ]),
+        )
+        _seed_asset_profile("XRAY_SFX_PROFILED.AX", "Materials", "New Zealand")
+        aid = create_account("XrayFundSuffixAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        countries = {c["name"]: c["weight"] for c in result["country_allocation"]}
+        assert "Unknown" not in countries
+        assert countries["Japan"] == pytest.approx(0.375, abs=0.01)
+        assert countries["Taiwan"] == pytest.approx(0.375, abs=0.01)
+        assert countries["New Zealand"] == pytest.approx(0.25, abs=0.01)
+        assert "Australia" not in countries
+
+    def test_suffix_country_covers_every_registered_suffix_and_ignores_the_rest(self):
+        from xray_engine import _SUFFIX_TO_COUNTRY, _COUNTRY_NAME_TO_CODE_CONTINENT, _suffix_country
+        from time_engine import ticker_exchange_or_none
+        assert _suffix_country("005930.KQ") == "South Korea" and _suffix_country("d05.si") == "Singapore"
+        assert _suffix_country("AAPL") is None and _suffix_country("A.B.XX") is None and _suffix_country(None) is None
+        assert set(_SUFFIX_TO_COUNTRY.values()) <= set(_COUNTRY_NAME_TO_CODE_CONTINENT)
+        for suffix in _SUFFIX_TO_COUNTRY:
+            assert ticker_exchange_or_none("SYM" + suffix) is not None, suffix
+
     def test_no_cached_composition_falls_back_to_unclassified(self):
         ticker = "XRAY_ETF4"
         _seed_fund_signal(ticker, 100.0, "GBP", "ETF")  # no top_holdings/sector_weightings cached yet
