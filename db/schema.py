@@ -2970,6 +2970,17 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to correct stored daily-history bars: %s", e)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'position_targets_follow_positions'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            from accounts.accounts_engine import clear_orphaned_position_targets
+            clear_orphaned_position_targets()
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('position_targets_follow_positions')")
+            conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to clear orphaned Position Targets: %s", e)
+
+    try:
         from db.helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)
     except Exception as e:
