@@ -114,7 +114,8 @@ MCP_NEWS_SUMMARY_MAX_CHARS  = 400              # summary returned by get_news (e
 MCP_PRETRADE_AMOUNT_MAX     = 1_000_000_000_000  # `amount` of pretrade_check, in BASE_CURRENCY; a bound so a typo cannot reach the simulation
 MCP_CALENDAR_MAX_DAYS       = 30               # `days` of get_calendar: earnings and ex-dividend dates a month ahead; the macro feed itself only lists the current week
 MCP_CALENDAR_MAX_ROWS       = 50               # rows returned per list by get_calendar
-MACRO_ACTUALS_LOOKBACK_DAYS = 2                # a released event gets its actual from the daily Macro Calendar run, so get_calendar lists macro events this many days back and the run fills the same span
+MACRO_ACTUALS_LOOKBACK_DAYS = 2                # get_calendar lists macro events this many days back so a release and its actual stay visible
+MACRO_ACTUALS_BACKFILL_DAYS = 365              # the daily Macro Calendar run fills every released event of this many days back that still has no actual; the BLS, ONS, FRED and Bank of England series cover the span
 MCP_WATCHLIST_DEFAULT_ROWS  = 25               # tickers get_watchlist returns when `limit` is left out (a row is about 1.3k characters, and a client cuts a reply off near 100k)
 MCP_WATCHLIST_MAX_ROWS      = 50               # `limit` of get_watchlist; a larger value is refused, not clamped
 MCP_WATCHLIST_MAX_OFFSET    = 10_000           # `offset` of get_watchlist; a larger value is refused
@@ -193,7 +194,7 @@ ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process sampl
 ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.209" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.210" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

@@ -121,6 +121,16 @@ def test_dump_writes_current_version_sidecar(tmp_path):
     assert compatibility._version_path(artifact_path).read_text() == compatibility.sklearn_version
 
 
+def test_remove_deletes_the_artifact_and_both_sidecars_and_tolerates_a_missing_one(tmp_path):
+    path = tmp_path / "model.joblib"
+    compatibility.dump_sklearn_artifact({"model": 1}, path)
+    (tmp_path / "model.joblib.xgboost-version").write_text("3.0.0")
+    (tmp_path / "other.joblib").write_text("keep")
+    compatibility.remove_sklearn_artifact(path)
+    assert [p.name for p in tmp_path.iterdir()] == ["other.joblib"]
+    compatibility.remove_sklearn_artifact(path)
+
+
 def test_dump_records_xgboost_version_only_for_artifacts_embedding_xgboost(tmp_path):
     from xgboost import XGBClassifier
 

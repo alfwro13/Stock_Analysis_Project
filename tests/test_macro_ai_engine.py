@@ -10,6 +10,7 @@ do not require a trained ML model:
   _ensure_training_log_table()— DB schema
   training guards             — early-return paths when data is insufficient
   run_macro_inference()       — no-events and untrained-model paths
+  consensus-miss training     — scale-free feature, time order, skip-and-discard, stacked scoring
   _load_persisted_models()    — joblib load-on-init round trip
 """
 
@@ -236,6 +237,155 @@ class TestRunMacroInference:
             "SELECT ai_volatility_warning FROM macro_calendar WHERE event_id=1"
         ).fetchone()
         assert row["ai_volatility_warning"] is None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5b. Consensus Miss model: scale-free feature, skip-and-discard, stacked scoring
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestExpectedChange:
+
+    def test_percent_releases_payrolls_and_rates_share_one_scale(self, engine):
+        out = engine._expected_change([0.3, 150_000.0, 4.0], [0.2, 100_000.0, 4.0])
+        np.testing.assert_allclose(out, [1 / 3, 1 / 3, 0.0])
+
+    def test_zero_forecast_and_previous_is_no_change_not_nan(self, engine):
+        np.testing.assert_array_equal(engine._expected_change([0.0, 0.0], [0.0, -0.1]), [0.0, 1.0])
+
+    def test_a_negative_previous_stays_inside_minus_two_and_two(self, engine):
+        out = engine._expected_change([0.1, -0.1], [-0.1, 0.1])
+        np.testing.assert_allclose(out, [2.0, -2.0])
+
+
+def _seed_rows(engine, rows):
+    engine.conn.executemany(
+        "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, actual_val, is_event_passed) VALUES (?, ?, ?, ?, ?, 1)",
+        [(i, date, f, p, a) for i, (date, f, p, a) in enumerate(rows)],
+    )
+    engine.conn.commit()
+
+
+def _persisted(path):
+    joblib.dump("stale", path)
+    (path.parent / f"{path.name}.sklearn-version").write_text("0")
+    return path
+
+
+class TestConsensusMissTraining:
+
+    def _rows(self, n):
+        return [(f"2026-06-{i + 1:02d}", str(3.0 + (i % 4)), "3.0", str(3.0 + (i % 3))) for i in range(n)]
+
+    def test_trains_on_expected_change_in_event_date_order_and_persists(self, engine, tmp_path):
+        rows = self._rows(24)
+        _seed_rows(engine, list(reversed(rows)))
+        rf_path = tmp_path / "macro_rf.joblib"
+        with patch.object(macro_ai_engine, "MACRO_RF_PATH", rf_path), \
+                patch.object(macro_ai_engine, "cross_val_score", return_value=np.array([0.6, 0.5, 0.7])) as cv:
+            engine.train_consensus_miss_probability()
+        X = cv.call_args.args[1]
+        assert X.shape == (24, 1)
+        np.testing.assert_allclose(X[:, 0], engine._expected_change([float(r[1]) for r in rows], [float(r[2]) for r in rows]))
+        assert rf_path.exists() and engine.rf_model is not None
+        assert engine.rf_model.n_features_in_ == 1
+        assert engine.conn.execute("SELECT n_samples FROM model_training_log WHERE model_name = 'rf_consensus_miss'").fetchone()[0] == 24
+
+    def test_too_few_labeled_rows_skip_training_and_discard_the_persisted_model(self, engine, tmp_path):
+        _seed_rows(engine, self._rows(3))
+        rf_path = _persisted(tmp_path / "macro_rf.joblib")
+        engine.rf_model = "stale"
+        with patch.object(macro_ai_engine, "MACRO_RF_PATH", rf_path):
+            engine.train_consensus_miss_probability()
+        assert engine.rf_model is None
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_single_outcome_class_skips_training_and_discards_the_persisted_model(self, engine, tmp_path):
+        _seed_rows(engine, [(f"2026-06-{i + 1:02d}", "3.0", "3.0", "3.0") for i in range(15)])
+        rf_path = _persisted(tmp_path / "macro_rf.joblib")
+        with patch.object(macro_ai_engine, "MACRO_RF_PATH", rf_path):
+            engine.train_consensus_miss_probability()
+        assert engine.rf_model is None
+        assert not rf_path.exists()
+
+    def test_a_failed_read_keeps_the_persisted_model(self, engine, tmp_path):
+        rf_path = _persisted(tmp_path / "macro_rf.joblib")
+        engine.conn.execute("DROP TABLE macro_calendar")
+        with patch.object(macro_ai_engine, "MACRO_RF_PATH", rf_path):
+            engine.train_consensus_miss_probability()
+        assert rf_path.exists()
+
+    def test_volatility_training_with_too_few_gap_rows_discards_the_persisted_model(self, engine, tmp_path):
+        engine.conn.execute(
+            "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, post_event_spy_gap, is_event_passed) VALUES (1, '2026-06-01', '3.0', '3.1', 0.5, 1)"
+        )
+        engine.conn.commit()
+        xgb_path = _persisted(tmp_path / "macro_xgb.joblib")
+        engine.xgb_model = "stale"
+        with patch.object(macro_ai_engine, "MACRO_XGB_PATH", xgb_path):
+            engine.train_volatility_magnitude()
+        assert engine.xgb_model is None
+        assert not xgb_path.exists()
+
+
+class TestVolatilityTraining:
+
+    def test_stacks_the_consensus_miss_probability_of_the_scale_free_feature_and_persists(self, engine, tmp_path, caplog):
+        engine.conn.executemany(
+            "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, post_event_spy_gap, is_event_passed) VALUES (?, ?, ?, ?, ?, 1)",
+            [(i, f"2026-06-{i + 1:02d}", str(3.0 + (i % 3)), "3.0", 0.2 + 0.1 * (i % 5)) for i in range(14)],
+        )
+        engine.conn.commit()
+        engine.rf_model = MagicMock()
+        engine.rf_model.predict_proba.side_effect = lambda X: np.column_stack([1 - X[:, 0] ** 2, X[:, 0] ** 2])
+        xgb_path = tmp_path / "macro_xgb.joblib"
+        with patch.object(macro_ai_engine, "MACRO_XGB_PATH", xgb_path), caplog.at_level("INFO", logger="macro_ai_engine"):
+            engine.train_volatility_magnitude()
+        assert xgb_path.exists() and engine.xgb_model is not None
+        assert engine.rf_model.predict_proba.call_args.args[0].shape == (14, 1)
+        assert engine.xgb_model.n_features_in_ == 5
+        assert "VIX join" in caplog.text
+        assert engine.conn.execute("SELECT n_samples FROM model_training_log WHERE model_name = 'xgb_volatility'").fetchone()[0] == 14
+
+
+class TestStackedScoring:
+
+    def _event(self, engine):
+        engine.conn.execute(
+            "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, is_event_passed) VALUES (1, '2026-06-05', '0.3', '0.2', 0)"
+        )
+        engine.conn.commit()
+
+    def test_an_untrained_consensus_miss_model_leaves_the_event_unscored(self, engine):
+        self._event(engine)
+        engine.xgb_model = MagicMock()
+        engine.rf_model = None
+        engine.run_macro_inference("2026-06-05")
+        row = engine.conn.execute("SELECT ai_volatility_warning, ai_consensus_miss_prob FROM macro_calendar WHERE event_id = 1").fetchone()
+        assert (row["ai_volatility_warning"], row["ai_consensus_miss_prob"]) == (None, None)
+        engine.xgb_model.predict.assert_not_called()
+
+    def test_both_models_score_the_event_from_the_scale_free_feature(self, engine):
+        self._event(engine)
+        engine.rf_model = MagicMock()
+        engine.rf_model.predict_proba.return_value = np.array([[0.3, 0.7]])
+        engine.xgb_model = MagicMock()
+        engine.xgb_model.predict.return_value = np.array([np.log1p(1.5)])
+        engine.run_macro_inference("2026-06-05")
+        row = engine.conn.execute("SELECT ai_volatility_warning, ai_consensus_miss_prob FROM macro_calendar WHERE event_id = 1").fetchone()
+        assert row["ai_consensus_miss_prob"] == pytest.approx(0.7)
+        assert row["ai_volatility_warning"] == pytest.approx(1.5)
+        np.testing.assert_allclose(engine.rf_model.predict_proba.call_args.args[0], [[1 / 3]])
+
+
+class TestDiscardPersistedModels:
+
+    def test_removes_the_consensus_miss_and_volatility_models_with_their_sidecars_and_keeps_the_hmm(self, tmp_path):
+        for name in ("macro_rf.joblib", "macro_xgb.joblib", "macro_hmm.joblib"):
+            _persisted(tmp_path / name)
+        (tmp_path / "macro_xgb.joblib.xgboost-version").write_text("0")
+        macro_ai_engine.discard_persisted_models(tmp_path)
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["macro_hmm.joblib", "macro_hmm.joblib.sklearn-version"]
+        macro_ai_engine.discard_persisted_models(tmp_path)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

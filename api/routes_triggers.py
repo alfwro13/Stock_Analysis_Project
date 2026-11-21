@@ -36,7 +36,6 @@ from ml_inference_engine import alert_unscored_holdings, update_daily_ml_predict
 from ml_training_process import TrainingFailed, run_training_child
 from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, load_blacklist, remove_from_blacklist
-from seed_macro_calendar import seed_calendar
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
@@ -107,7 +106,6 @@ def bg_init_macro_pipeline():
     try:
         logger.info("Starting Macro AI Initialization Sequence...")
 
-        seed_calendar()
         update_macro_calendar()
         update_macro_indicators()
 
@@ -145,6 +143,8 @@ def bg_run_macro_pipeline():
 
         ai_engine = MacroAIEngine()
         try:
+            ai_engine.train_consensus_miss_probability()
+            ai_engine.train_volatility_magnitude()
             scan_date = time_engine.now_local().strftime('%Y-%m-%d')
             ai_engine.run_macro_inference(scan_date)
         finally:
