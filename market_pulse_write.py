@@ -222,7 +222,7 @@ def _derive_quote(ticker: str, t_daily: pd.DataFrame, t_live: pd.DataFrame,
 def _quote_is_plausible(ticker: str, quote: _Quote, t_daily: pd.DataFrame) -> bool:
     if ticker.endswith("=X") and (not math.isfinite(quote.price) or quote.price <= 0):
         return False
-    if abs(quote.change_pct) > 50.0:
+    if abs(quote.change_pct) > 50.0 and not ticker.startswith("^"):
         daily_closes = [(d.date().isoformat(), round(float(c), 4)) for d, c in t_daily['Close'].tail(2).items()]
         logger.warning(
             "Skipping %s: implausible daily change %.1f%% (possible split mismatch); price=%s change=%s "

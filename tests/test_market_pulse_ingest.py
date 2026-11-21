@@ -679,6 +679,26 @@ class TestImplausibleQuoteGuard:
         assert _read_cache(NORMAL_TICKER) is None
         assert "regular_previous_close=None" in caplog.text
 
+    @pytest.mark.parametrize("ticker", ["^VIX", "^GSPC"])
+    def test_index_ticker_with_a_real_large_move_is_written(self, ticker, caplog):
+        daily = _flat_daily_df([16.61, 28.18])
+        snap = _snapshot(
+            28.18, regular_change=11.57, regular_change_pct=69.66, market_state="CLOSED",
+            regular_previous_close=16.61,
+        )
+        p1, p2 = _pulse_patches(ticker, daily, pd.DataFrame())
+        try:
+            with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap), \
+                 caplog.at_level("WARNING", logger="market_pulse_write"):
+                _mw.fetch_and_save_pulse([ticker])
+
+            row = _read_cache(ticker)
+            assert row["price"] == pytest.approx(28.18)
+            assert row["change_pct"] == pytest.approx(69.66)
+            assert "implausible" not in caplog.text
+        finally:
+            _clear_cache(ticker)
+
     def test_plausible_quote_is_written_without_a_warning(self, caplog):
         daily = _flat_daily_df([100.0, 101.0])
         snap = _snapshot(
