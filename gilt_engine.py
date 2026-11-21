@@ -137,8 +137,11 @@ class GiltDataService:
 
             logger.warning("Financial Times content layout has shifted. Yield token missed.")
             return None
+        except requests.RequestException as e:
+            logger.warning("Financial Times request failed after retries, keeping the stored value: %s: %s", type(e).__name__, e)
+            return None
         except Exception:
-            logger.exception("Network transport error hitting Financial Times data layers.")
+            logger.exception("Unexpected error reading the Financial Times quote.")
             return None
 
     def sync_gilt_data(self) -> bool:

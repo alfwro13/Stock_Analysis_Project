@@ -342,6 +342,24 @@ class TestPatchSessionWithRetries:
         assert session._transient_failures == 1
         assert "timed out" in session._last_transient_error
 
+    def test_http2_framing_error_is_recorded_as_transient(self):
+        session = MagicMock()
+        session.request = MagicMock(side_effect=Exception(
+            "Failed to perform, curl: (16) Error in the HTTP2 framing layer."))
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        with pytest.raises(Exception, match="HTTP2 framing"):
+            session.request("GET", "http://example.com")
+        assert session._transient_failures == 1
+        assert "curl: (16)" in session._last_transient_error
+
+    def test_other_libcurl_codes_are_not_transient(self):
+        session = MagicMock()
+        session.request = MagicMock(side_effect=Exception("curl: (60) SSL certificate problem"))
+        ne._patch_session_with_retries(session, "test-ctx", timeout=5)
+        with pytest.raises(Exception, match="SSL certificate"):
+            session.request("GET", "http://example.com")
+        assert session._transient_failures == 0
+
     def test_non_transient_error_is_not_recorded(self):
         session = MagicMock()
         session.request = MagicMock(side_effect=ValueError("bad url"))
@@ -428,6 +446,15 @@ class TestBoundaryRaiseOnTransient:
     def test_failure_swallowed_by_the_caller_still_raises_transient(self, make_session):
         session = make_session(MagicMock(side_effect=Exception("curl: (28) Operation timed out")))
         with pytest.raises(ne._TransientNetworkError, match="timed out"):
+            with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True):
+                try:
+                    session.request("GET", "http://example.com")
+                except Exception:
+                    pass
+
+    def test_http2_framing_error_swallowed_by_the_caller_raises_transient(self, make_session):
+        session = make_session(MagicMock(side_effect=Exception("curl: (16) Error in the HTTP2 framing layer")))
+        with pytest.raises(ne._TransientNetworkError, match="HTTP2 framing"):
             with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True):
                 try:
                     session.request("GET", "http://example.com")
@@ -575,6 +602,25 @@ class TestCreateFailoverSession:
             result = session.request("GET", "http://example.com")
         assert result is ok_response
         assert original.call_count == 2
+
+    @pytest.mark.parametrize("message", [
+        "curl: (16) Error in the HTTP2 framing layer",
+        "curl: (28) Operation timed out",
+        "bind failed: Cannot assign requested address",
+    ])
+    def test_retries_a_transient_libcurl_error_then_succeeds(self, message):
+        ok_response = MagicMock(status_code=200)
+        mock_session = MagicMock()
+        original = MagicMock(side_effect=[Exception(message), ok_response])
+        mock_session.request = original
+        with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine.time.sleep"), \
+             patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
+            session = ne.create_failover_session("::1", "test-ctx", {})
+            result = session.request("GET", "http://example.com")
+        assert result is ok_response
+        assert original.call_count == 2
+        mock_alert.assert_not_called()
 
     def test_raises_transient_http_error_after_exhausting_retries_and_skips_ipv6_fault_alert(self):
         err_response = MagicMock(status_code=500)
