@@ -293,6 +293,10 @@ DEFAULT_CONFIG = {
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],
             "TIME": "19:25"
         },
+        "XRAY_RISK_CACHE": {
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "19:00"
+        },
         "SECTOR_RELATIVE_MOMENTUM": {
             "ENABLED": True,
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],

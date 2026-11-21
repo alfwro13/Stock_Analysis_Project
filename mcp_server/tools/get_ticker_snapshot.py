@@ -13,6 +13,7 @@ from db.helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import QuoteSessionJudge, get_all_cached_pulse, is_price_fresh
 from market_session_helpers import extended_quote_from_snapshot, regular_change_from_snapshot
 from pages.page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
+from price_history_helpers import last_session_change
 from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector, upcoming_iso_date
 from yahoo_engine import yahoo_engine
 
@@ -24,9 +25,9 @@ TickerArg = Annotated[str, Field(max_length=MCP_TICKER_MAX_CHARS)]
 
 _UNITS = {
     "price.value": "latest regular-session price in price.currency, in the instrument's own quote unit; GBp means pence, not pounds. Never an extended-hours tick",
-    "price.source": "shared_cache: the dashboard's price cache (Market Pulse cache, or the nightly stock_signals price when the cache was last refreshed before the ticker's own exchange's last close or is stuck behind the nightly price); yahoo_live: one live Yahoo quote, used only when no cached price exists, and nothing is stored",
-    "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
-    "price.stale": f"shared_cache: judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close, so a Watchlist quote nothing has refreshed since an earlier session is stale. A mutual fund (one NAV a day) and a Markets-registry instrument are never stale for being past the last close. yahoo_live is never stale",
+    "price.source": "shared_cache: the Market Pulse cache; nightly_price: the nightly stock_signals price, used when the cache was last refreshed before the ticker's own exchange's last close or is stuck behind the nightly price (or the cache has no price); yahoo_live: one live Yahoo quote, used only when no cached price exists, and nothing is stored",
+    "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. For nightly_price it is the move between the last two stored daily closes, and null when the stored history does not end at that price",
+    "price.stale": f"shared_cache and nightly_price: judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close, so a Watchlist quote nothing has refreshed since an earlier session is stale. A mutual fund (one NAV a day) and a Markets-registry instrument are never stale for being past the last close. yahoo_live is never stale",
     "price.market_state": "Yahoo's own session state (REGULAR, PRE, POST, CLOSED ...); only present for yahoo_live",
     "extended_hours": "pre- or post-market price in price.currency and its change in percent versus the regular close; a separate object, never mixed into price; null outside extended hours. as_of is the UTC time of the tick itself (Yahoo's preMarketTime / postMarketTime), not of the dashboard's last fetch, and null when Yahoo sent none; a thinly traded name's last print can be old, and there is no stale flag: compare as_of with the envelope's clock",
     "trend": "trend_50d/trend_200d: UP when the nightly stock_signals price is above the SMA, else DOWN; null when the SMA or price is missing. SMAs and 52-week range in price.currency; atr_stop_loss is a price",
@@ -102,11 +103,12 @@ def cached_price(ticker: str, currency: Optional[str], pulse: Optional[dict] = N
         price_currency = priced[1] or currency
         refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
         market_open, floor = QuoteSessionJudge([ticker]).session(ticker, price_currency)
+        day_change, day_change_pct = last_session_change(ticker, priced[0]) or (None, None)
         return {
-            "value": priced[0], "currency": price_currency, "source": "shared_cache",
+            "value": priced[0], "currency": price_currency, "source": "nightly_price",
             "as_of": None if epoch is None else iso_utc(epoch),
             "stale": epoch is not None and not is_price_fresh(epoch, priced[0], refresh_rate, market_open, floor),
-            "day_change": None, "day_change_pct": None,
+            "day_change": day_change, "day_change_pct": day_change_pct,
         }, None, epoch
     return None
 
@@ -115,6 +117,8 @@ def _price(ticker: str, currency: Optional[str], missing: list) -> tuple:
     """(price part, extended-hours part, epoch of the quote): shared cache first, one live Yahoo quote only when no cached price exists."""
     cached = cached_price(ticker, currency)
     if cached:
+        if cached[0]["day_change"] is None:
+            missing.append("No day change is available for the cached price: price.day_change is null")
         return cached
 
     snapshot = None if is_excluded_from_yahoo_fetch(ticker) else yahoo_engine.get_quote_snapshot(ticker)

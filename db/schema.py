@@ -6,7 +6,7 @@ from db.database import get_connection
 from config import BASE_CURRENCY, BASE_DIR, DATA_DIR, FUNDAMENTALS_DIR, HISTORICAL_DIR, WATCHLIST_PATH
 import time_engine
 import learn_cards_seed
-from utils import contained_ticker_path, is_valid_ticker
+from utils import contained_ticker_path, is_valid_ticker, publisher_from_url, repair_feed_summary
 
 logger = logging.getLogger(__name__)
 
@@ -3062,6 +3062,25 @@ def migrate_db(conn, cursor) -> None:
     except Exception as e:
         conn.rollback()
         logger.error("[MIGRATION ERROR] Failed to queue the Regime-Weighted Conviction Score recompute: %s", e)
+
+    try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'news_articles_feed_text_repaired'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            repaired = 0
+            for row in cursor.execute("SELECT id, summary, publisher, url FROM news_articles").fetchall():
+                summary = repair_feed_summary(row["summary"]) if row["summary"] else row["summary"]
+                publisher = row["publisher"] or publisher_from_url(row["url"])
+                if summary != row["summary"] or publisher != row["publisher"]:
+                    conn.execute("UPDATE news_articles SET summary = ?, publisher = ? WHERE id = ?", (summary, publisher, row["id"]))
+                    repaired += 1
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('news_articles_feed_text_repaired')")
+            conn.commit()
+            if repaired:
+                logger.info("[MIGRATION] Repaired the summary or publisher of %d stored news article(s).", repaired)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to repair stored news article text: %s", e)
 
     try:
         from db.helpers import refresh_job_average_duration

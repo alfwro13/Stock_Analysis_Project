@@ -1106,15 +1106,20 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Intraday Dip Radar reset for %s: %s", _exch, e)
 
-    # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
-    # No config flag required; the X-ray report is always available.
+    # Always-on: X-ray Risk Cache. The Heat Index reads it, and it reads the daily bars the Quantamental
+    # Analysis Engine writes, so its run time (SCHEDULING.XRAY_RISK_CACHE) belongs after that job.
+    xray_cfg = scheduling.get("XRAY_RISK_CACHE", {})
     try:
+        days = ",".join(xray_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
+        time_str = xray_cfg.get("TIME", "19:00")
+        run_h, run_m = map(int, time_str.split(":"))
         scheduler.add_job(
             run_xray_risk_cache_job,
-            CronTrigger(day_of_week='mon-fri', hour=19, minute=0, timezone=user_tz),
+            CronTrigger(day_of_week=days, hour=run_h, minute=run_m, timezone=user_tz),
             id='xray_risk_cache_job',
+            replace_existing=True,
         )
-        logger.info("X-ray Risk Cache job scheduled for mon-fri at 19:00.")
+        logger.info("X-ray Risk Cache job scheduled for %s at %s.", days, time_str)
     except Exception as e:
         logger.error("Failed to schedule X-ray Risk Cache job: %s", e)
 

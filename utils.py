@@ -248,6 +248,24 @@ def clean_display_text(value: Any, max_chars: int) -> Optional[str]:
     return cleaned if len(cleaned) <= max_chars else cleaned[:max_chars - 1].rstrip() + "…"
 
 
+_FEED_NUMBER_SPLIT_RE = re.compile(r"(?<!\d)(\d{1,3}(?:,\d{3})*)\. (?=\d)")
+_FEED_HEADING_GLUE_RE = re.compile(r"^Key Takeaways(?=[\w$(\u201c\u2018\"'])")
+
+
+def repair_feed_summary(text: Optional[str]) -> str:
+    """A Yahoo news summary with the two splits its feed introduces undone: a decimal point followed by a space ('$3. 34' to '$3.34', only after a number of up to three digits so a year ending a sentence stays) and the 'Key Takeaways' heading glued to the first word."""
+    return _FEED_HEADING_GLUE_RE.sub("Key Takeaways ", _FEED_NUMBER_SPLIT_RE.sub(r"\1.", text or ""))
+
+
+def publisher_from_url(url: Optional[str]) -> str:
+    """The host of an article URL without a leading 'www.', or '' when the URL has none: the only publisher hint Yahoo's RSS feed carries."""
+    try:
+        host = urlsplit(url or "").hostname or ""
+    except ValueError:
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
 def safe_local_path(value: Optional[str]) -> Optional[str]:
     """Same-origin relative path or None — browsers drop tab/CR/LF before parsing a URL, so '/<TAB>/host' must not pass as local."""
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:

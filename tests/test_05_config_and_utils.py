@@ -1309,6 +1309,23 @@ def test_clean_display_text_makes_third_party_text_one_capped_line():
         assert clean_display_text(empty, 10) is None
 
 
+def test_repair_feed_summary_joins_a_split_decimal_and_the_glued_heading_only():
+    from utils import repair_feed_summary
+    assert repair_feed_summary("Key TakeawaysAlphabet is worth $3. 34 trillion against $3.") == "Key Takeaways Alphabet is worth $3.34 trillion against $3."
+    assert repair_feed_summary("revenue rose 39% to $782. 5 million, up 15. 5% and 1,234. 5 units") == "revenue rose 39% to $782.5 million, up 15.5% and 1,234.5 units"
+    assert repair_feed_summary("It ended in 2025. 3 analysts disagreed. 12 more agreed.") == "It ended in 2025. 3 analysts disagreed. 12 more agreed."
+    assert repair_feed_summary("Key Takeaways: fine") == "Key Takeaways: fine"
+    assert repair_feed_summary(None) == ""
+
+
+def test_publisher_from_url_is_the_host_without_www():
+    from utils import publisher_from_url
+    assert publisher_from_url("https://www.fool.com/investing/x?.tsrc=rss") == "fool.com"
+    assert publisher_from_url("https://247wallst.com/a") == "247wallst.com"
+    assert publisher_from_url("https://finance.yahoo.com/m/1/x.html") == "finance.yahoo.com"
+    assert publisher_from_url("") == "" and publisher_from_url(None) == "" and publisher_from_url("not a url") == ""
+
+
 class TestSettingsBlockShapeValidators:
     def test_xray_targets_accept_a_new_band_name_and_a_negative_unbounded_threshold(self):
         import config

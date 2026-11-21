@@ -21,7 +21,7 @@ from tools.network_engine import (
     suppress_yf_delisted_noise, transient_backoff_seconds, wait_for_yahoo_rate_limit_reset, yahoo_connection_boundary,
 )
 from notification_engine import notify
-from utils import measure_request_stage
+from utils import measure_request_stage, publisher_from_url, repair_feed_summary
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ def _parse_rss_news(xml_text: str) -> list[dict]:
             continue
         items.append(_news_item(
             node.findtext("guid") or link or title, title,
-            _clean_feed_text(node.findtext("description")), published, "", link,
+            repair_feed_summary(_clean_feed_text(node.findtext("description"))), published, publisher_from_url(link), link,
         ))
     return items
 

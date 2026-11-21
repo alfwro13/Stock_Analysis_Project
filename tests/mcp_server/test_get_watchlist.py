@@ -173,8 +173,22 @@ class TestRows:
 
     def test_price_falls_back_to_the_nightly_stock_signals_price(self, mcp_client, watchlist):
         price = _row(_watchlist(mcp_client), WATCHED)["price"]
-        assert (price["value"], price["currency"]) == (40.0, "USD")
+        assert (price["value"], price["currency"], price["source"]) == (40.0, "USD", "nightly_price")
         assert (price["day_change"], price["day_change_pct"]) == (None, None)
+
+    def test_nightly_price_carries_the_move_between_the_last_two_stored_closes(self, mcp_client, watchlist):
+        with patch("mcp_server.tools.get_ticker_snapshot.last_session_change", return_value=(2.0, 5.26)) as change:
+            data = _watchlist(mcp_client)
+        price = _row(data, WATCHED)["price"]
+        change.assert_any_call(WATCHED, 40.0)
+        assert (price["source"], price["day_change"], price["day_change_pct"]) == ("nightly_price", 2.0, 5.26)
+        assert not any("no day change" in line for line in data["missing"])
+
+    def test_a_nightly_price_without_a_day_change_is_named_in_missing(self, mcp_client, watchlist):
+        data = _watchlist(mcp_client)
+        line = next(line for line in data["missing"] if "no day change" in line)
+        assert WATCHED in line
+        assert HELD not in line
 
     def test_a_cached_quote_from_before_the_tickers_last_close_gives_way_to_the_nightly_price_with_its_own_as_of(self, mcp_client, watchlist):
         _seed_cache(WATCHED, 36.0, 5 * 3600)

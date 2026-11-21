@@ -163,7 +163,7 @@
                             <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="xray_risk_cache_job" data-job-label="{{ scheduler_job_label('xray_risk_cache_job') | e }}">{{ scheduler_job_label('xray_risk_cache_job') }}</span></td>
                             <td><span class="status-pill status-scheduled">ALWAYS ON</span></td>
                             <td>MON-FRI</td>
-                            <td class="font-monospace">19:00</td>
+                            <td class="font-monospace">{{ config.SCHEDULING.XRAY_RISK_CACHE.TIME | default('19:00') }}</td>
                             <td class="text-muted font-monospace" data-sched-key="XRAY_RISK_CACHE">—</td>
                         </tr>
                         <tr>

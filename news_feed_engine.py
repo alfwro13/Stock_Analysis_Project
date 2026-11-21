@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Dict, Optional
@@ -46,6 +47,30 @@ def fetch_articles(
     finally:
         if conn:
             conn.close()
+
+
+_COMPANY_SUFFIXES = frozenset({
+    "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "plc", "sa", "se", "ag", "nv",
+    "lp", "llc", "holdings", "group", "the", "ord", "adr", "class",
+})
+_MIN_MATCH_CHARS = 3
+
+
+def mentions_ticker(ticker: str, company_name: Optional[str], headline: Optional[str], summary: Optional[str]) -> bool:
+    """True when the headline or summary names the ticker's symbol (whole word, at least 3 characters, exchange suffix dropped) or the first two words of its company name before any corporate suffix; False means neither appears, not that the article is unrelated (an article may call the company by another name)."""
+    text = f"{headline or ''} {summary or ''}"
+    symbol = ticker.split(".")[0]
+    if len(symbol) >= _MIN_MATCH_CHARS and re.search(rf"(?<![A-Za-z0-9]){re.escape(symbol)}(?![A-Za-z0-9])", text):
+        return True
+    words = [re.sub(r"[^a-z0-9&'-]", "", w) for w in (company_name or "").lower().split()]
+    significant = []
+    for word in words:
+        if word in _COMPANY_SUFFIXES and significant:
+            break
+        if word and word != "the":
+            significant.append(word)
+    name = " ".join(significant[:2])
+    return len(name) >= _MIN_MATCH_CHARS and re.search(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", text.lower()) is not None
 
 
 def _build_ticker_source_map() -> Dict[str, str]:

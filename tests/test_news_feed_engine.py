@@ -15,8 +15,11 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.restore_tables("data_migrations", "news_articles")
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database
+from db import schema as _db_schema
 from db import connection as _conn
 import news_feed_engine
 import outbound_fetch_helpers
@@ -24,6 +27,7 @@ from news_feed_engine import (
     _make_article_id,
     _build_ticker_source_map,
     _fetch_full_text,
+    mentions_ticker,
 )
 
 
@@ -207,3 +211,70 @@ class TestScoreUnscoredRows:
         assert [(r["article_id"], r["sentiment_score"]) for r in rows] == [
             ("_LOCKTEST_0", -0.5), ("_LOCKTEST_1", None), ("_LOCKTEST_2", -0.5),
         ]
+
+
+class TestMentionsTicker:
+    def test_symbol_as_a_whole_word(self):
+        assert mentions_ticker("NVDA", "NVIDIA Corporation", "Why NVDA fell today", "")
+        assert mentions_ticker("BE", "Bloom Energy Corporation", "Bloom Energy (NYSE:BE) pitches fuel cells", "")
+
+    def test_symbol_inside_another_word_does_not_count(self):
+        assert not mentions_ticker("AMD", "Advanced Micro Devices, Inc.", "Cinema DAMDEN opens", "")
+
+    def test_short_symbol_is_not_matched_on_its_own(self):
+        assert not mentions_ticker("ET", "Energy Transfer LP", "Results due 8 a.m. ET", "")
+        assert mentions_ticker("ET", "Energy Transfer LP", "Energy Transfer raises payout", "")
+
+    def test_company_name_without_its_corporate_suffix_is_case_insensitive(self):
+        assert mentions_ticker("GOOGL", "Alphabet Inc.", "Microsoft Is Worth More Than ALPHABET", "")
+        assert mentions_ticker("TXN", "Texas Instruments Incorporated", "", "texas instruments guided lower")
+        assert mentions_ticker("SCHW", "Charles Schwab Corporation (The", "Charles Schwab results", "")
+        assert mentions_ticker("NSRGY", "Nestle S.A.", "Nestle cuts outlook", "")
+
+    def test_exchange_suffix_is_dropped_from_the_symbol(self):
+        assert mentions_ticker("PRY.MI", "PRYSMIAN", "Cable maker PRY rallies", "")
+
+    def test_an_article_naming_neither_is_false(self):
+        assert not mentions_ticker("META", "Meta Platforms, Inc.", "Wall Street Thinks Oklo Is a Buy", "Nearly every analyst is bullish on Oklo stock.")
+        assert not mentions_ticker("PFE", "Pfizer Inc.", "Trump gas price plan", None)
+
+    def test_missing_company_name_still_matches_the_symbol(self):
+        assert mentions_ticker("AAPL", None, "AAPL gains", "")
+        assert not mentions_ticker("AAPL", None, "Apple gains", "")
+
+
+class TestFeedTextMigration:
+    _NAME = "news_articles_feed_text_repaired"
+
+    def _insert(self, conn, article_id, summary, publisher, url):
+        conn.execute(
+            "INSERT INTO news_articles (article_id, ticker, company_name, source_list, headline, summary, url, publisher, published_at, is_premium, fetched_at) "
+            "VALUES (?, 'ZZMIG', 'Mig Co', 'portfolio', 'h', ?, ?, ?, 1, 0, 1)",
+            (article_id, summary, url, publisher),
+        )
+
+    def test_repairs_summary_and_empty_publisher_once_and_keeps_a_real_publisher(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = ?", (self._NAME,))
+            self._insert(conn, "zzmig-1", "Key TakeawaysAkamai bought about $2. 6 million.", "", "https://www.tikr.com/blog/a")
+            self._insert(conn, "zzmig-2", None, "24/7 Wall St.", "https://247wallst.com/b")
+            self._insert(conn, "zzmig-3", "Clean text.", "", "")
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+
+            def stored(article_id):
+                row = conn.execute("SELECT summary, publisher FROM news_articles WHERE article_id = ?", (article_id,)).fetchone()
+                return row["summary"], row["publisher"]
+
+            assert stored("zzmig-1") == ("Key Takeaways Akamai bought about $2.6 million.", "tikr.com")
+            assert stored("zzmig-2") == (None, "24/7 Wall St.")
+            assert stored("zzmig-3") == ("Clean text.", "")
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = ?", (self._NAME,)).fetchone()[0] == 1
+
+            conn.execute("UPDATE news_articles SET summary = 'Edited $1. 5 after' WHERE article_id = 'zzmig-3'")
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+            assert stored("zzmig-3")[0] == "Edited $1. 5 after"
+        finally:
+            conn.close()

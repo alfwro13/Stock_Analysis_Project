@@ -34,8 +34,9 @@ _UNITS = {
     "limit/offset": f"limit is 1 to {MCP_WATCHLIST_MAX_ROWS} (default {MCP_WATCHLIST_DEFAULT_ROWS}), offset counts matching tickers in the Watchlist page's order; a larger limit is refused. total_matches counts every match, truncated says more remain, and next_offset is the offset of the next page (null on the last). missing names only the tickers on the returned page",
     "compact": "when true a field whose value is null is left out of the row (price, position_targets and the like disappear when empty), so an absent field means not available, never zero",
     "price.value": "latest regular-session price in price.currency, in the instrument's own quote unit; GBp means pence, not pounds. Never an extended-hours tick",
-    "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
-    "price.stale": f"judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close. Nothing refreshes a Watchlist-only quote unless a Watchlist page is open, so a quote from before the last close is replaced by the nightly price, with its own price.as_of (and no day_change)",
+    "price.source": "shared_cache: the Market Pulse cache; nightly_price: the nightly stock_signals price, used when the cache was last refreshed before the ticker's own exchange's last close or is stuck behind the nightly price (or the cache has no price)",
+    "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. For nightly_price it is the move between the last two stored daily closes, and null when the stored history does not end at that price",
+    "price.stale": f"judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close. Nothing refreshes a Watchlist-only quote unless a Watchlist page is open, so a quote from before the last close is replaced by the nightly price, with its own price.as_of",
     "held": "true when the ticker is also held in a Trading or Ghostfolio account; the Watchlist page lists held tickers too",
     "overall_signal/composite_score": "the nightly Quant Scan's System Verdict and its -100 to +100 composite score (negative is bearish)",
     "trend_50d/trend_200d": "UP when the nightly price is above the 50- or 200-day average, else DOWN; null when the average or price is missing",
@@ -125,6 +126,7 @@ def get_watchlist(
     epochs = []
     no_signals = []
     no_price = []
+    no_change = []
     for ticker in page:
         row = by_ticker.get(ticker)
         currency = (row or {}).get("currency") or currencies.get(ticker)
@@ -132,6 +134,8 @@ def get_watchlist(
         price = priced[0] if priced else None
         if priced:
             epochs.append(priced[2])
+            if price["day_change"] is None:
+                no_change.append(ticker)
         else:
             no_price.append(ticker)
 
@@ -178,6 +182,8 @@ def get_watchlist(
         missing.append(f"{len(no_signals)} Watchlist ticker(s) have no stock_signals row yet, so their signals are null: " + ", ".join(no_signals))
     if no_price:
         missing.append(f"{len(no_price)} Watchlist ticker(s) have no cached price, so price is null: " + ", ".join(no_price))
+    if no_change:
+        missing.append(f"{len(no_change)} Watchlist ticker(s) have no day change, so price.day_change and day_change_pct are null: " + ", ".join(no_change))
     known = [e for e in epochs if e is not None]
     next_offset = offset + len(entries) if offset + len(entries) < total else None
     return envelope(

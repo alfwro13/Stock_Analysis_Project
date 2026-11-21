@@ -129,7 +129,7 @@ The correlation/z-score thresholds are shared by both scopes (one engine config,
 Universe-specific thresholds) — keeping this simple was a deliberate choice over adding a
 second set of tunables for a scope that's used occasionally and on demand.
 
-The scheduled scan runs 10 minutes after `xray_risk_cache_job`'s 19:00 slot purely to avoid
+The scheduled scan runs 10 minutes after `xray_risk_cache_job`'s default 19:00 slot purely to avoid
 resource contention on the shared parquet read path — there is no data dependency between the
 two jobs (Pairs Spread Monitor computes its own correlation matrix independently, since its
 Portfolio + Watchlist universe includes Watchlist tickers that `xray_correlation_matrix` —

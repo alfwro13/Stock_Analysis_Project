@@ -701,6 +701,33 @@ class TestIntradayOrchestratorTrigger:
         reload_scheduler()
 
 
+class TestXrayRiskCacheSchedule:
+    def _fields(self):
+        job = _sched_module.scheduler.get_job("xray_risk_cache_job")
+        return {f.name: str(f) for f in job.trigger.fields}
+
+    def test_runs_at_the_configured_time_on_the_configured_days(self):
+        config = _config_module.load_config()
+        config["SCHEDULING"]["XRAY_RISK_CACHE"] = {"DAYS": ["mon", "wed"], "TIME": "23:05"}
+        with patch("scheduler_engine.load_config", return_value=config):
+            reload_scheduler()
+            fields = self._fields()
+        reload_scheduler()
+        assert (fields["day_of_week"], fields["hour"], fields["minute"]) == ("mon,wed", "23", "5")
+
+    def test_default_time_is_19_00_on_weekdays(self):
+        config = _config_module.load_config()
+        config["SCHEDULING"].pop("XRAY_RISK_CACHE", None)
+        with patch("scheduler_engine.load_config", return_value=config):
+            reload_scheduler()
+            fields = self._fields()
+        reload_scheduler()
+        assert (fields["day_of_week"], fields["hour"], fields["minute"]) == ("mon,tue,wed,thu,fri", "19", "0")
+
+    def test_default_config_carries_the_key(self):
+        assert _config_module.DEFAULT_CONFIG["SCHEDULING"]["XRAY_RISK_CACHE"] == {"DAYS": ["mon", "tue", "wed", "thu", "fri"], "TIME": "19:00"}
+
+
 class TestBuildWorkflowGraph:
     def test_returns_nodes_and_edges(self):
         graph = build_workflow_graph()

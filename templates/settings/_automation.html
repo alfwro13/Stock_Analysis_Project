@@ -105,11 +105,11 @@
 
                 <div class="settings-panel border-left-cyan">
                     <h4 class="settings-panel-header text-cyan">&#128302; Portfolio X-ray Risk Cache</h4>
-                    <p class="settings-desc-sm">Pre-computes portfolio beta, annualised volatility, pairwise correlation matrix, and dividend yields for the X-ray report. Always scheduled — no toggle required. Fetches 1-year trailing returns from Yahoo Finance for all portfolio tickers plus the SWDA.L benchmark.</p>
+                    <p class="settings-desc-sm">Pre-computes portfolio beta, annualised volatility, pairwise correlation matrix, and dividend yields for the X-ray report. Always scheduled Mon–Fri — no toggle required. Fetches 1-year trailing returns from Yahoo Finance for all portfolio tickers plus the SWDA.L benchmark. The Portfolio Heat Index reads this cache, so set the run time after the Quantamental Analysis Engine has written the day's closing prices and before the Risk Orchestrator Scan.</p>
                     <div class="flex-gap-15 align-end">
                         <div class="form-group mb-0">
-                            <label>Schedule</label>
-                            <input type="text" class="form-control settings-readonly min-w-280" value="Mon–Fri at 19:00 (after market close)" disabled>
+                            <label>Run Time</label>
+                            <input type="time" id="XRAY_RISK_CACHE_TIME" class="form-control" value="{{ config.SCHEDULING.XRAY_RISK_CACHE.TIME | default('19:00') }}">
                         </div>
                         <button type="button" class="btn btn-primary mt-0" onclick="triggerXrayRiskCache()">&#9654;&#65039; Run Now</button>
                     </div>

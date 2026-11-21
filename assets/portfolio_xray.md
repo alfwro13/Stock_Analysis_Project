@@ -118,7 +118,7 @@ The expensive calculations — beta, annualised volatility, and the pairwise cor
 ## 🔄 5. The Scheduler Job
 
 **Job ID:** `xray_risk_cache_job`  
-**Schedule:** Mon–Fri at 19:00 (after market close)  
+**Schedule:** Mon–Fri at `SCHEDULING.XRAY_RISK_CACHE.TIME` (default 19:00, `USER_TIMEZONE` wall-clock; Settings → Background Automation Schedulers → Portfolio X-ray Risk Cache). The job reads the daily bars the Quantamental Analysis Engine writes and the Heat Index reads its cache, so the time belongs after the former and before the Risk Orchestrator Scan; a time before the close leaves the cache, the Heat Index and `get_xray`/`get_heat_index` one session behind.  
 **Entry point:** `xray_engine.run_xray_precompute()`
 
 The job:

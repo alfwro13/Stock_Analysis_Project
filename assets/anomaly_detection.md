@@ -327,7 +327,7 @@ Shows: `Isolation Forest Models — N Models` (count of `.joblib` files in `data
 | Isolation Forest Anomaly Detection | `run_anomaly_training_job()` | Mon–Fri 18:30 | `NOTIFICATIONS.ANOMALY_ALERTS.ENABLED` |
 
 **Timing rationale:**  
-18:30 UTC is after the overnight `quant_analysis_job` at 18:00 (which writes fresh `quant_signals` rows) and before the `xray_risk_cache_job` at 19:00. This ensures models are trained on the most recent daily data.
+18:30 UTC is after the overnight `quant_analysis_job` at 18:00 (which writes fresh `quant_signals` rows) and before the `xray_risk_cache_job` at its default 19:00. This ensures models are trained on the most recent daily data.
 
 ---
 

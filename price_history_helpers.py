@@ -1,6 +1,7 @@
 """Per-ticker calendar-period price returns (5D/1M/6M/YTD/1Y), trailing N-session window returns and the canonical daily-close loader, derived from the parquet history every ticker already has cached; no DB, no Yahoo Finance calls of its own."""
 import calendar
 import logging
+import math
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 from threading import Lock
@@ -129,3 +130,15 @@ def load_daily_close(ticker: str, *, cache_only: bool = False, read_only: bool =
     if df is None or "Close" not in df.columns:
         return None
     return normalized_close(df["Close"], tail)
+
+
+def last_session_change(ticker: str, price: float) -> Optional[Tuple[float, float]]:
+    """(change per share, change %) between the last two stored daily closes, only when the last stored close is `price`; None otherwise, so a price from another source never gets a change measured against a different bar."""
+    close = load_daily_close(ticker, read_only=True, tail=2)
+    if close is None or len(close) < 2 or not math.isclose(float(close.iloc[-1]), price, rel_tol=1e-4):
+        return None
+    previous = float(close.iloc[-2])
+    if previous <= 0:
+        return None
+    change = float(close.iloc[-1]) - previous
+    return round(change, 6), round(change / previous * 100, 6)

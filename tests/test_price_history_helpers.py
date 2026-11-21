@@ -21,6 +21,7 @@ from price_history_helpers import (
     _anchor_closes_for_ticker,
     _calendar_offset,
     get_period_anchor_closes,
+    last_session_change,
     load_daily_close,
     normalized_close,
     pct_from_anchor,
@@ -427,3 +428,31 @@ class TestLoadDailyClose:
             assert load_daily_close("AAA") is None
         with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame().rename(columns={"Close": "Open"})):
             assert load_daily_close("AAA") is None
+
+
+class TestLastSessionChange:
+    def _frame(self, closes):
+        index = pd.date_range("2026-11-16", periods=len(closes), freq="B")
+        return pd.DataFrame({"Close": closes}, index=index)
+
+    def test_change_between_the_last_two_stored_closes_when_the_last_close_is_the_price(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([100.0, 80.0, 90.0])) as load:
+            change = last_session_change("AAA", 90.0)
+        load.assert_called_once_with("AAA", cache_only=False, read_only=True)
+        assert change == (10.0, 12.5)
+
+    def test_a_fall_is_negative(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([200.0, 150.0])):
+            assert last_session_change("AAA", 150.0) == (-50.0, -25.0)
+
+    def test_none_when_the_last_stored_close_is_not_the_price(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([100.0, 90.0])):
+            assert last_session_change("AAA", 95.0) is None
+
+    def test_none_with_one_bar_no_history_or_a_zero_previous_close(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([90.0])):
+            assert last_session_change("AAA", 90.0) is None
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):
+            assert last_session_change("AAA", 90.0) is None
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([0.0, 90.0])):
+            assert last_session_change("AAA", 90.0) is None
