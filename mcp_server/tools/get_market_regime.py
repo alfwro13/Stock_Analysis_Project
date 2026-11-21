@@ -25,7 +25,7 @@ _REGIME_UNITS = {
     "fear_greed.value": "0-100: CNN-style Fear & Greed index. Extreme Fear below 25, Fear below 45, Neutral below 56, Greed below 76, Extreme Greed otherwise",
     "market_pulse.tiles": "the Market Pulse tiles in registry order, each in its own instrument units (index points, a rate, a price, a yield in percent); change_pct is percent since the previous regular close",
     "market_pulse.tiles.change_bp": "yield tiles only (registry type Rate): change since the previous close in basis points, 1 bp = 0.01 percentage point; unlike change_pct, which is relative to the yield (0.30 on a 5.0% yield is 1.5 bp)",
-    "market_pulse.tiles.extended": "pre- or post-market move, kept apart from price and change_pct; null outside extended hours",
+    "market_pulse.tiles.extended": "pre- or post-market move, kept apart from price and change_pct; null outside extended hours. as_of is the UTC time of the tick itself (Yahoo's preMarketTime / postMarketTime), null when Yahoo sent none",
     "<part>.as_of": "dated parts: the data date (YYYY-MM-DD); Market Pulse: UTC time of the oldest tile price. stale is true when a dated part is older than 5 days (a missed nightly run) or a Market Pulse tile is past its refresh interval; treasury_auctions never ages (auctions are irregular, as_of is the latest one)",
 }
 _MISSING_REGIME = "Market Regime (HMM) has not been computed yet"
@@ -126,8 +126,11 @@ def _pulse_part(missing, epochs):
             "stale": row["is_stale"],
             "extended": None if row["extended_price"] is None else {
                 "session": row["extended_session"], "price": row["extended_price"], "change_pct": row["extended_change_pct"],
+                "as_of": None if row["extended_quote_time"] is None else iso_utc(row["extended_quote_time"]),
             },
         }
+        if row["extended_price"] is not None and row["extended_quote_time"] is None:
+            missing.append(f"Market Pulse {ticker}: Yahoo sent no time for the extended-hours tick, so extended.as_of is null")
         if ticker in rates:
             if row["change_pts"] is None:
                 missing.append(f"Market Pulse {ticker}: change since the previous close is not available")

@@ -837,7 +837,7 @@ def held_tickers_lightweight() -> list:
     return [t for t in tickers if normalize_ticker(t) not in ignored]
 
 
-def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
+def tickers_needing_refresh(tickers: list, refresh_rate: int, extended_hours_only: bool = False) -> list:
     """Held tickers whose market_pulse_cache row is older than refresh_rate seconds, while
     either of the two markets this app tracks (`GET /api/system/market-status`'s own scope —
     UK/US) is open, in pre-market, or in after-hours (market_session_helpers.get_exchange_session_state() !=
@@ -859,7 +859,7 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     this gate is left on its last cached price and logged at debug level rather than acted on —
     see AGENTS.md's central-engine rule for is_quote_settled(). Used by the HA-polled accounts
     endpoints to trigger a real fetch when due, mirroring the same needs_refresh pattern
-    GET /api/market-pulse already uses."""
+    GET /api/market-pulse already uses. extended_hours_only (the Extended-Hours Quote Refresh job) keeps only tickers in their own exchange's modelled PRE/POST session and drops the missing-row bootstrap."""
     if not tickers:
         return []
     conn = None
@@ -888,16 +888,23 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     lse_state = market_session_helpers.get_exchange_session_state("LSE")
     nyse_state = market_session_helpers.get_exchange_session_state("NYSE")
     if lse_state == "closed" and nyse_state == "closed":
-        return missing
+        return [] if extended_hours_only else missing
 
     now = time.time()
     registry_exchange_map = market_session_helpers.build_registry_exchange_map()
     registry_future_tickers = market_session_helpers.build_registry_future_tickers()
     exchange_state_memo: dict = {}
+    extended_memo: dict = {}
     stale = []
     for t in tickers:
         if t in cache_map and now - cache_map[t] <= refresh_rate:
             continue
+        if extended_hours_only:
+            exchange = market_session_helpers.resolve_ticker_exchange(t, currency_map.get(t, ""), registry_exchange_map)
+            if exchange not in extended_memo:
+                extended_memo[exchange] = market_session_helpers.is_extended_session(exchange)
+            if not extended_memo[exchange]:
+                continue
         if t in cache_map and not market_session_helpers.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map, registry_future_tickers, exchange_state_memo):
             logger.debug("Refresh skipped for %s — quote not yet settled since open.", t)
             continue

@@ -82,8 +82,8 @@ def book(fundamentals_dir):
             )
         conn.execute(
             "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
-            "extended_price, extended_change_pts, extended_change_pct, extended_session) VALUES (?, 'Held Corp', 121.0, 1.5, 1.25, 1, ?, 125.0, 4.0, 3.3, 'pre')",
-            (HELD, live_epoch),
+            "extended_price, extended_change_pts, extended_change_pct, extended_session, extended_quote_time) VALUES (?, 'Held Corp', 121.0, 1.5, 1.25, 1, ?, 125.0, 4.0, 3.3, 'pre', ?)",
+            (HELD, live_epoch, live_epoch - 300),
         )
         conn.commit()
     finally:
@@ -146,7 +146,27 @@ class TestHeldTicker:
     def test_extended_hours_is_a_separate_object_never_merged_into_the_price(self, mcp_client, book):
         body = _snapshot(mcp_client)["data"]
         assert body["price"]["value"] == 121.0 and body["price"]["day_change_pct"] == 1.25
-        assert body["extended_hours"] == {"session": "pre", "price": 125.0, "change": 4.0, "change_pct": 3.3}
+        assert body["extended_hours"] == {"session": "pre", "price": 125.0, "change": 4.0, "change_pct": 3.3, "as_of": body["extended_hours"]["as_of"]}
+
+    def test_extended_hours_carries_the_time_of_the_tick_not_of_the_price_row(self, mcp_client, book):
+        body = _snapshot(mcp_client)["data"]
+        moment = lambda text: datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ")
+        assert (moment(body["price"]["as_of"]) - moment(body["extended_hours"]["as_of"])).total_seconds() == pytest.approx(300, abs=1)
+
+    def test_extended_hours_without_a_tick_time_is_null_and_named_in_missing(self, mcp_client, book):
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE market_pulse_cache SET extended_quote_time = NULL WHERE ticker = ?", (HELD,))
+            conn.commit()
+        finally:
+            conn.close()
+        data = _snapshot(mcp_client)
+        assert data["data"]["extended_hours"]["as_of"] is None and data["data"]["extended_hours"]["price"] == 125.0
+        assert any("extended_hours.as_of is null" in item for item in data["missing"]) and data["incomplete"] is True
+
+    def test_units_explain_that_extended_hours_as_of_is_the_tick_time(self, mcp_client, book):
+        units = _snapshot(mcp_client)["units"]["extended_hours"]
+        assert "preMarketTime" in units and "no stale flag" in units
 
     def test_trend_and_technicals_use_the_documented_units(self, mcp_client, book):
         body = _snapshot(mcp_client)["data"]
@@ -234,10 +254,10 @@ class TestUniverseOnlyTicker:
         yahoo.get_quote_snapshot.side_effect = None
         for state, expected in (
             ("REGULAR", None),
-            ("PRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0}),
-            ("POST", {"session": "post", "price": 99.0, "change": -1.0, "change_pct": -1.0}),
+            ("PRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0, "as_of": "2026-11-20T11:30:00Z"}),
+            ("POST", {"session": "post", "price": 99.0, "change": -1.0, "change_pct": -1.0, "as_of": None}),
         ):
-            yahoo.get_quote_snapshot.return_value = {**_SNAPSHOT, "market_state": state}
+            yahoo.get_quote_snapshot.return_value = {**_SNAPSHOT, "market_state": state, "pre_market_time": 1795174200.0}
             body = _snapshot(mcp_client, UNIVERSE)["data"]
             assert body["price"]["value"] == 101.5 and body["price"]["day_change_pct"] == 1.5
             assert (body["price"]["previous_close"], body["price"]["market_state"]) == (100.0, state)

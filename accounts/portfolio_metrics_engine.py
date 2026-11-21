@@ -59,7 +59,7 @@ def _market_pulse_change_map(tickers: list) -> dict:
         cursor = conn.cursor()
         placeholders = ",".join("?" * len(tickers))
         cursor.execute(
-            f"""SELECT ticker, change_pts, change_pct, extended_change_pct, extended_session
+            f"""SELECT ticker, change_pts, change_pct, extended_change_pct, extended_session, extended_quote_time
                 FROM market_pulse_cache WHERE ticker IN ({placeholders})""",
             tickers
         )
@@ -69,6 +69,7 @@ def _market_pulse_change_map(tickers: list) -> dict:
                 "change_pct": r["change_pct"],
                 "extended_change_pct": r["extended_change_pct"],
                 "extended_session": r["extended_session"],
+                "extended_quote_time": r["extended_quote_time"],
             }
             for r in cursor.fetchall()
         }
@@ -141,6 +142,7 @@ def holdings_with_metrics_all_accounts() -> dict:
             extended_session = pulse.get("extended_session")
             pre_market_change_pct = pulse.get("extended_change_pct") if extended_session == "pre" else None
             post_market_change_pct = pulse.get("extended_change_pct") if extended_session == "post" else None
+            extended_quote_time = pulse.get("extended_quote_time") if extended_session in ("pre", "post") else None
             if tbill_txn_id is not None:
                 asset_class = "Fixed Income"
                 bill = get_treasury_bill_by_ticker(ticker)
@@ -175,6 +177,7 @@ def holdings_with_metrics_all_accounts() -> dict:
                 "market_change_pct_24h": market_change_pct_24h,
                 "pre_market_change_pct": pre_market_change_pct,
                 "post_market_change_pct": post_market_change_pct,
+                "extended_quote_time": extended_quote_time,
                 "rsi": signals.get("rsi_14"),
                 "trend_50d": signals.get("trend_50d"),
                 "trend_200d": signals.get("trend_200d"),

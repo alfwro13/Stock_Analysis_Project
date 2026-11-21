@@ -106,7 +106,7 @@ def _pulse_patches(ticker, daily_df, live_df):
 
 def _snapshot(regular_price, regular_change=None, regular_change_pct=None, market_state=None,
               regular_previous_close=None, pre_price=None, pre_change=None, pre_change_pct=None,
-              post_price=None, post_change=None, post_change_pct=None):
+              post_price=None, post_change=None, post_change_pct=None, pre_time=None, post_time=None):
     """Builds a yahoo_engine.get_quote_snapshot()-shaped dict for tests."""
     return {
         "market_state": market_state,
@@ -117,9 +117,11 @@ def _snapshot(regular_price, regular_change=None, regular_change_pct=None, marke
         "pre_market_price": pre_price,
         "pre_market_change": pre_change,
         "pre_market_change_pct": pre_change_pct,
+        "pre_market_time": pre_time,
         "post_market_price": post_price,
         "post_market_change": post_change,
         "post_market_change_pct": post_change_pct,
+        "post_market_time": post_time,
     }
 
 
@@ -534,6 +536,47 @@ class TestQuoteSnapshotSessionTagging:
         assert row["extended_price"] == pytest.approx(101.5)
         assert row["extended_change_pct"] == pytest.approx(1.0)
         assert row["extended_session"] == "pre"
+
+    def test_pre_market_tick_time_is_stored_with_the_tick(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.5)
+        snap = _snapshot(
+            100.5, regular_change=0.0, regular_change_pct=0.0, market_state="PRE",
+            pre_price=101.5, pre_change=1.0, pre_change_pct=1.0, pre_time=1795174200.0, post_time=1795000000.0,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        assert _read_cache(NORMAL_TICKER)["extended_quote_time"] == 1795174200.0
+
+    def test_extended_tick_without_a_time_stores_null_never_the_fetch_time(self):
+        daily = _flat_daily_df([100.0, 102.0])
+        live = _flat_live_df(101.0)
+        snap = _snapshot(
+            102.0, regular_change=2.0, regular_change_pct=2.0, market_state="POST",
+            post_price=101.0, post_change=-1.0, post_change_pct=-0.98,
+        )
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+            _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["extended_session"] == "post" and row["extended_quote_time"] is None
+
+    def test_a_regular_refresh_clears_the_tick_time_with_the_rest_of_the_tick(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        pre = _snapshot(100.5, regular_change=0.0, regular_change_pct=0.0, market_state="PRE",
+                        pre_price=101.5, pre_change=1.0, pre_change_pct=1.0, pre_time=1795174200.0)
+        regular = _snapshot(101.0, regular_change=0.5, regular_change_pct=0.5, market_state="REGULAR", pre_time=1795174200.0)
+        for snap in (pre, regular):
+            p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+            with p1, p2, patch("market_pulse_write.yahoo_engine.get_quote_snapshot", return_value=snap):
+                _mw.fetch_and_save_pulse([NORMAL_TICKER])
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["extended_price"] is None and row["extended_quote_time"] is None
 
     def test_post_market_tick_never_contaminates_regular_price_column(self):
         daily = _flat_daily_df([100.0, 102.0])
@@ -964,6 +1007,40 @@ class TestUpsertLivePrice:
         assert row["name"] == "Original Name"
         assert row["price"] == 105.0
 
+    def _seed_extended_tick(self):
+        conn = _conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
+            "extended_price, extended_change_pts, extended_change_pct, extended_session, extended_quote_time) "
+            "VALUES (?, 'Test Co', 100.0, 0, 0, 1, 1.0, 101.5, 1.5, 1.5, 'pre', 1795174200.0)", (self.TICKER,))
+        conn.commit()
+        conn.close()
+
+    def test_a_write_in_the_regular_session_ends_the_extended_tick(self):
+        self._seed_extended_tick()
+        with patch("market_pulse_write.is_exchange_open", return_value=True):
+            _mw.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0)
+        row = _read_cache(self.TICKER)
+        assert row["price"] == 110.0
+        assert (row["extended_price"], row["extended_change_pts"], row["extended_change_pct"],
+                row["extended_session"], row["extended_quote_time"]) == (None, None, None, None, None)
+
+    def test_a_write_outside_the_regular_session_keeps_the_extended_tick(self):
+        self._seed_extended_tick()
+        with patch("market_pulse_write.is_exchange_open", return_value=False):
+            _mw.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0)
+        row = _read_cache(self.TICKER)
+        assert row["price"] == 110.0
+        assert (row["extended_price"], row["extended_session"], row["extended_quote_time"]) == (101.5, "pre", 1795174200.0)
+
+    def test_session_is_judged_on_the_tickers_own_exchange(self):
+        seen = []
+        with patch("market_pulse_write.is_exchange_open", side_effect=lambda exchange, *a, **k: seen.append(exchange) or False):
+            _mw.upsert_live_price("ZZLONDON.L", "Test Co", 110.0, 100.0)
+            _mw.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0)
+        _clear_cache("ZZLONDON.L")
+        assert seen == ["LSE", "NYSE"]
+
     def test_accepts_an_existing_open_connection_without_closing_it(self):
         conn = _conn()
         _mw.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0, conn=conn)
@@ -1334,14 +1411,15 @@ class TestExtendedQuoteFromSnapshot:
 
     SNAP = {
         "pre_market_price": 103.0, "pre_market_change": 3.0, "pre_market_change_pct": 3.0,
+        "pre_market_time": 1795174200.0,
         "post_market_price": 99, "post_market_change": None, "post_market_change_pct": -1.0,
     }
 
     @pytest.mark.parametrize("state,expected", [
-        ("PRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0}),
-        ("PREPRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0}),
-        ("POST", {"session": "post", "price": 99.0, "change": None, "change_pct": -1.0}),
-        ("POSTPOST", {"session": "post", "price": 99.0, "change": None, "change_pct": -1.0}),
+        ("PRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0, "time": 1795174200.0}),
+        ("PREPRE", {"session": "pre", "price": 103.0, "change": 3.0, "change_pct": 3.0, "time": 1795174200.0}),
+        ("POST", {"session": "post", "price": 99.0, "change": None, "change_pct": -1.0, "time": None}),
+        ("POSTPOST", {"session": "post", "price": 99.0, "change": None, "change_pct": -1.0, "time": None}),
         ("REGULAR", None), ("CLOSED", None), (None, None),
     ])
     def test_session_comes_from_the_market_state_only(self, state, expected):
@@ -1351,3 +1429,16 @@ class TestExtendedQuoteFromSnapshot:
     def test_a_missing_tick_for_the_active_session_is_none(self):
         from market_session_helpers import extended_quote_from_snapshot
         assert extended_quote_from_snapshot({"market_state": "PRE", "pre_market_price": None, "post_market_price": 99.0}) is None
+
+
+class TestIsExtendedSession:
+    """An exchange is in an extended session only while Yahoo says PRE or POST and the exchange models one."""
+
+    @pytest.mark.parametrize("exchange,state,expected", [
+        ("NYSE", "pre", True), ("NYSE", "post", True), ("NYSE", "open", False), ("NYSE", "closed", False),
+        ("LSE", "post", False), ("LSE", "pre", False), ("XETRA", "post", False),
+    ])
+    def test_only_an_exchange_with_extended_hours_in_pre_or_post(self, exchange, state, expected):
+        import market_session_helpers
+        with patch.object(market_session_helpers, "get_exchange_session_state", return_value=state):
+            assert market_session_helpers.is_extended_session(exchange) is expected
