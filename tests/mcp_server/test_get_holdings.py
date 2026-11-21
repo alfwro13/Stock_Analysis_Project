@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
+from db.database import get_connection
+
 from .helpers import call, table_counts, tool_data
 
 
@@ -34,6 +36,24 @@ class TestGetHoldings:
         row = rows[(holdings_book["first"], "ZZMCPA")]
         assert row["market_price"] == 120.0 and row["day_change_pct"] == 1.27
         assert row["pre_market_change_pct"] == 4.2 and row["post_market_change_pct"] is None
+
+    def test_extended_hours_as_of_is_the_tick_time_and_null_without_a_tick(self, mcp_client, holdings_book):
+        data, rows = self._rows(mcp_client, f"acct:{holdings_book['first']}")
+        assert rows[(holdings_book["first"], "ZZMCPA")]["extended_hours_as_of"].endswith("Z")
+        assert rows[(holdings_book["first"], "ZZMCPB")]["extended_hours_as_of"] is None
+        assert not any("extended-hours tick" in item for item in data["missing"])
+        assert "preMarketTime" in data["units"]["extended_hours_as_of"]
+
+    def test_a_tick_without_a_time_is_named_in_missing(self, mcp_client, holdings_book):
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE market_pulse_cache SET extended_quote_time = NULL WHERE ticker = 'ZZMCPA'")
+            conn.commit()
+        finally:
+            conn.close()
+        data, rows = self._rows(mcp_client, f"acct:{holdings_book['first']}")
+        assert rows[(holdings_book["first"], "ZZMCPA")]["extended_hours_as_of"] is None
+        assert any("ZZMCPA" in item and "extended_hours_as_of is null" in item for item in data["missing"])
 
     def test_same_ticker_in_two_accounts_is_two_rows(self, mcp_client, holdings_book):
         _, rows = self._rows(mcp_client)

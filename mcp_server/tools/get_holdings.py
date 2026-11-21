@@ -4,7 +4,7 @@ from accounts import portfolio_metrics_engine
 from accounts.accounts_engine import oldest_quote_epoch
 from portfolio_service import persisted_fx_reads
 
-from ..envelope import envelope
+from ..envelope import envelope, iso_utc
 from ..scope import ACCOUNT_ALL, AccountArg, ghostfolio_scope_ids, resolve_scope
 from ..server import READ_ONLY, server
 
@@ -18,6 +18,7 @@ _HOLDING_UNITS = {
     "day_change": "change since the previous close, per share, in market_price_currency",
     "day_change_pct": "percent change since the previous close (regular session only)",
     "pre_market_change_pct/post_market_change_pct": "percent versus the regular close, extended-hours only; never mixed into market_price or day_change",
+    "extended_hours_as_of": "UTC time of the pre- or post-market tick itself (Yahoo's preMarketTime / postMarketTime), not of the dashboard's last fetch; null when the row has no extended-hours tick or Yahoo sent no time",
     "priced_at_cost": "true when no usable price or FX rate exists; market_value, gain_value, gain_pct and allocation_pct are then null",
     "as_of": "oldest market quote behind the prices; Treasury Bills are priced analytically and mutual funds are priced once a day, so neither sets it",
 }
@@ -38,6 +39,7 @@ def _holding_row(h: dict) -> dict:
         "accumulated_dividends": h["accumulated_dividends"],
         "day_change": h["market_change_24h"], "day_change_pct": h["market_change_pct_24h"],
         "pre_market_change_pct": h["pre_market_change_pct"], "post_market_change_pct": h["post_market_change_pct"],
+        "extended_hours_as_of": None if h["extended_quote_time"] is None else iso_utc(h["extended_quote_time"]),
         "priced_at_cost": unpriced,
     }
 
@@ -55,6 +57,10 @@ def get_holdings(account: AccountArg = ACCOUNT_ALL) -> dict[str, Any]:
     missing = [
         f"{r['ticker']} ({r['account_name']}): no usable price or FX rate, so market value, gain and allocation are null"
         for r in rows if r["priced_at_cost"]
+    ]
+    missing += [
+        f"{r['ticker']} ({r['account_name']}): Yahoo sent no time for the extended-hours tick, so extended_hours_as_of is null"
+        for r in rows if r["extended_quote_time"] is None and (r["pre_market_change_pct"] is not None or r["post_market_change_pct"] is not None)
     ]
     if scope == ACCOUNT_ALL and ghostfolio_scope_ids():
         missing.append("Ghostfolio accounts are not covered by get_holdings; get_xray includes them")

@@ -107,6 +107,13 @@ _NEWS_SEARCH_COUNT = 10
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
+def _epoch_or_none(value) -> Optional[float]:
+    """A tick time as epoch seconds; yfinance turns some payload shapes into a formatted string, which is no usable time."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    return float(value)
+
+
 def _news_item(uid: str, title: str, summary: str, published: datetime, publisher: str, url: str) -> dict:
     """Headline in the nested `content` shape every news consumer reads."""
     return {
@@ -546,9 +553,11 @@ class YahooEngine:
                 "pre_market_price": info.get("preMarketPrice"),
                 "pre_market_change": info.get("preMarketChange"),
                 "pre_market_change_pct": info.get("preMarketChangePercent"),
+                "pre_market_time": _epoch_or_none(info.get("preMarketTime")),
                 "post_market_price": info.get("postMarketPrice"),
                 "post_market_change": info.get("postMarketChange"),
                 "post_market_change_pct": info.get("postMarketChangePercent"),
+                "post_market_time": _epoch_or_none(info.get("postMarketTime")),
             }
             self._set(key, snapshot, _TTLS["quote_snapshot"])
             return snapshot

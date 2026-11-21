@@ -764,12 +764,31 @@ class TestGetQuoteSnapshot:
             mock_tk_cls.return_value.info = {
                 "marketState": "PRE", "regularMarketPrice": 100.0,
                 "preMarketPrice": 100.8, "preMarketChange": 0.8, "preMarketChangePercent": 0.8,
+                "preMarketTime": 1795174200,
             }
             result = self.eng.get_quote_snapshot("AAPL")
 
         assert result["market_state"] == "PRE"
         assert result["pre_market_price"] == 100.8
+        assert result["pre_market_time"] == 1795174200.0
         assert result["post_market_price"] is None
+        assert result["post_market_time"] is None
+
+    @pytest.mark.parametrize("sent", ["4:00PM EST", None, 0, -5, True, float("nan")])
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_a_tick_time_that_is_not_an_epoch_is_none(self, mock_ctx, sent):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {
+                "marketState": "POST", "regularMarketPrice": 100.0,
+                "postMarketPrice": 99.0, "postMarketTime": sent,
+            }
+            result = self.eng.get_quote_snapshot("AAPL")
+
+        assert result["post_market_price"] == 99.0
+        assert result["post_market_time"] is None
 
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_caches_result(self, mock_ctx):

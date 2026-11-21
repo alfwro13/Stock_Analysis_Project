@@ -94,17 +94,18 @@ def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
 
 
 def _seed_market_pulse_cache(ticker: str, price: float, change_pts: float, change_pct: float,
-                              extended_change_pct: float = None, extended_session: str = None) -> None:
+                              extended_change_pct: float = None, extended_session: str = None,
+                              extended_quote_time: float = None) -> None:
     conn = None
     try:
         conn = get_connection()
         conn.execute(
             """INSERT OR REPLACE INTO market_pulse_cache
                (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
-                extended_price, extended_change_pct, extended_session)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                extended_price, extended_change_pct, extended_session, extended_quote_time)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ticker, ticker, price, change_pts, change_pct, int(change_pts >= 0), 0,
-             price if extended_session else None, extended_change_pct, extended_session),
+             price if extended_session else None, extended_change_pct, extended_session, extended_quote_time),
         )
         conn.commit()
     finally:
@@ -123,6 +124,21 @@ def test_holdings_with_metrics_all_accounts_pre_market_change_pct_populated_only
     row = next(r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"] if r["ticker"] == "ZZPRE")
     assert row["pre_market_change_pct"] == pytest.approx(1.25)
     assert row["post_market_change_pct"] is None
+
+
+@pytest.mark.db
+def test_holdings_with_metrics_all_accounts_carries_the_extended_tick_time_only_with_an_extended_session():
+    _seed_stock_signal("ZZTICK", 100.0, "GBP")
+    _seed_market_pulse_cache("ZZTICK", 100.0, 0.5, 0.5, extended_change_pct=1.0, extended_session="pre", extended_quote_time=1795174200.0)
+    _seed_stock_signal("ZZNOTICK", 100.0, "GBP")
+    _seed_market_pulse_cache("ZZNOTICK", 100.0, 0.5, 0.5, extended_quote_time=1795174200.0)
+    aid = create_account("TickTimeAcc", "GBP")
+    for ticker in ("ZZTICK", "ZZNOTICK"):
+        add_transaction(aid, "Buy", "2026-01-05", ticker=ticker, currency="GBP", quantity=1, unit_price=80, exchange_rate=1.0)
+
+    rows = {r["ticker"]: r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"]}
+    assert rows["ZZTICK"]["extended_quote_time"] == 1795174200.0
+    assert rows["ZZNOTICK"]["extended_quote_time"] is None
 
 
 @pytest.mark.db

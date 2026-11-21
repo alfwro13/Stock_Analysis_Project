@@ -1263,3 +1263,49 @@ class TestFormerlyUntrackedManualTriggers:
         row = get_job_run_history("etf_predictor_43_post_job")[0]
         assert row["status"] == "error"
         assert "no rows" in row["error_detail"]
+
+
+class TestExtendedHoursQuoteRefreshJob:
+    """The scheduled refresh of held tickers in a US pre/post-market session, which no page load or poll does on a schedule."""
+
+    def test_runner_fetches_the_extended_hours_tickers_and_records_the_run(self):
+        calls = {}
+
+        def fake_select(tickers, refresh_rate, extended_hours_only=False):
+            calls["select"] = (list(tickers), refresh_rate, extended_hours_only)
+            return ["ZZEXTJOB"]
+
+        with patch("scheduler_jobs.held_tickers_lightweight", return_value=["ZZEXTJOB", "ZZOTHER"]), \
+             patch("scheduler_jobs.tickers_needing_refresh", fake_select), \
+             patch("scheduler_jobs.fetch_and_save_pulse") as fetch:
+            _sched_module.run_extended_hours_quote_refresh()
+
+        assert calls["select"][0] == ["ZZEXTJOB", "ZZOTHER"] and calls["select"][2] is True
+        fetch.assert_called_once_with(["ZZEXTJOB"])
+        assert _sched_module.get_all_job_last_runs()["extended_hours_quote_refresh_job"]["last_run"]
+
+    def test_runner_does_not_fetch_when_nothing_is_due(self):
+        with patch("scheduler_jobs.held_tickers_lightweight", return_value=["ZZEXTJOB"]), \
+             patch("scheduler_jobs.tickers_needing_refresh", return_value=[]), \
+             patch("scheduler_jobs.fetch_and_save_pulse") as fetch:
+            _sched_module.run_extended_hours_quote_refresh()
+        fetch.assert_not_called()
+
+    def test_runner_reports_a_failure_under_its_canonical_label_and_still_records_the_run(self):
+        seen = []
+        with patch("scheduler_jobs.held_tickers_lightweight", side_effect=RuntimeError("db locked")), \
+             patch("scheduler_jobs.log_sched_notification", lambda kind, text: seen.append((kind, text))):
+            _sched_module.run_extended_hours_quote_refresh()
+        assert seen == [("Error", "Extended-Hours Quote Refresh failed: db locked")]
+        assert _sched_module.get_all_job_last_runs()["extended_hours_quote_refresh_job"]["last_run"]
+
+    def test_job_is_scheduled_every_ten_minutes_on_weekdays_in_utc_with_its_canonical_label(self):
+        reload_scheduler()
+        job = _sched_module.scheduler.get_job("extended_hours_quote_refresh_job")
+        assert job is not None
+        fields = {f.name: str(f) for f in job.trigger.fields}
+        assert (fields["day_of_week"], fields["hour"], fields["minute"]) == ("mon-fri", "8-23", "4-59/10")
+        assert str(job.trigger.timezone) == "UTC"
+        assert job_label("extended_hours_quote_refresh_job") == "Extended-Hours Quote Refresh"
+        node = next(n for n in build_workflow_graph()["nodes"] if n["id"] == "extended_hours_quote_refresh_job")
+        assert node["label"] == "Extended-Hours Quote Refresh"

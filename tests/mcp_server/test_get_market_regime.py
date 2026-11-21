@@ -105,14 +105,14 @@ def _auction(cusip, auction_date, alert):
         conn.close()
 
 
-def _pulse(ticker, price=5000.0, change_pct=0.5, updated=None, extended=None):
+def _pulse(ticker, price=5000.0, change_pct=0.5, updated=None, extended=None, tick_time=None):
     extended_price, extended_pct, session = extended or (None, None, None)
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated, extended_price, extended_change_pct, extended_session) "
-            "VALUES (?, ?, ?, 1.0, ?, 1, ?, ?, ?, ?)",
-            (ticker, _PULSE[ticker], price, change_pct, updated or time.time() - 60, extended_price, extended_pct, session),
+            "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated, extended_price, extended_change_pct, extended_session, extended_quote_time) "
+            "VALUES (?, ?, ?, 1.0, ?, 1, ?, ?, ?, ?, ?)",
+            (ticker, _PULSE[ticker], price, change_pct, updated or time.time() - 60, extended_price, extended_pct, session, tick_time),
         )
         conn.commit()
     finally:
@@ -249,12 +249,21 @@ class TestGetMarketRegime:
         assert [t["ticker"] for t in tiles] == ["ZZMRA"]
 
     def test_extended_hours_move_is_kept_apart_from_the_price(self, mcp_client):
-        _pulse("ZZMRA", price=5000.0, change_pct=0.5, extended=(5050.0, 1.0, "post"))
+        _pulse("ZZMRA", price=5000.0, change_pct=0.5, extended=(5050.0, 1.0, "post"), tick_time=1795174200.0)
         _pulse("ZZMRB", price=1.27, change_pct=-0.1)
-        tiles = {t["ticker"]: t for t in self._regime(mcp_client)["data"]["market_pulse"]["tiles"]}
+        data = self._regime(mcp_client)
+        tiles = {t["ticker"]: t for t in data["data"]["market_pulse"]["tiles"]}
         assert tiles["ZZMRA"]["price"] == 5000.0 and tiles["ZZMRA"]["change_pct"] == 0.5
-        assert tiles["ZZMRA"]["extended"] == {"session": "post", "price": 5050.0, "change_pct": 1.0}
+        assert tiles["ZZMRA"]["extended"] == {"session": "post", "price": 5050.0, "change_pct": 1.0, "as_of": "2026-11-20T11:30:00Z"}
         assert tiles["ZZMRB"]["extended"] is None
+        assert not any("extended-hours tick" in item for item in data["missing"])
+
+    def test_an_extended_tick_without_a_time_is_named_in_missing(self, mcp_client):
+        _pulse("ZZMRA", price=5000.0, change_pct=0.5, extended=(5050.0, 1.0, "post"))
+        data = self._regime(mcp_client)
+        tile = next(t for t in data["data"]["market_pulse"]["tiles"] if t["ticker"] == "ZZMRA")
+        assert tile["extended"]["as_of"] is None
+        assert any("ZZMRA" in item and "extended.as_of is null" in item for item in data["missing"])
 
     def test_yield_tiles_carry_the_change_in_basis_points_and_other_tiles_do_not(self, mcp_client):
         _pulse("ZZMRA")

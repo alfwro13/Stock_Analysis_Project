@@ -8,7 +8,7 @@ from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from accounts.account_reminders_engine import create_due_reminder, reminder_job_display_name
-from accounts.accounts_engine import refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts
+from accounts.accounts_engine import held_tickers_lightweight, refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts, tickers_needing_refresh
 from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
@@ -17,6 +17,7 @@ from db.helpers import get_ticker_currency_map
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import backfill_earnings_drift_outcomes, format_failure_reasons, log_near_earnings_predictions, run_earnings_vol_scan
+from market_pulse_write import fetch_and_save_pulse
 from market_session_helpers import is_quote_settled
 from accounts.freetrade_engine import sync_freetrade_universe
 from accounts.ghostfolio_sync import GhostfolioSyncEngine
@@ -175,6 +176,18 @@ def run_account_performance_refresh_job():
         log_sched_notification("Error", f"Account Performance Refresh failed: {e}")
     finally:
         record_job_run('account_performance_refresh_job')
+
+def run_extended_hours_quote_refresh():
+    """Refreshes the pre/post-market quote of held tickers whose exchange is in an extended session, which no page load or poll does on a schedule; silent on success like the Dip Radar scan."""
+    try:
+        refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
+        stale = tickers_needing_refresh(held_tickers_lightweight(), refresh_rate, extended_hours_only=True)
+        if stale:
+            fetch_and_save_pulse(stale)
+    except Exception as e:
+        log_sched_notification("Error", f"{job_label('extended_hours_quote_refresh_job')} failed: {e}")
+    finally:
+        record_job_run('extended_hours_quote_refresh_job')
 
 def run_memory_telemetry_job():
     """Writes one process-memory line to app.log every MEMORY_SAMPLE_INTERVAL_MINUTES; silent on success like the Dip Radar scan."""

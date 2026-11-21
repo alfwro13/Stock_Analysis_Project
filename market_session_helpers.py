@@ -26,7 +26,7 @@ POST_MARKET_STATES = {"POST", "POSTPOST"}
 
 
 def extended_quote_from_snapshot(snapshot: dict) -> Optional[dict]:
-    """The pre- or post-market tick of a yahoo_engine.get_quote_snapshot() dict, chosen by Yahoo's own marketState and never the clock; None outside extended hours."""
+    """The pre- or post-market tick of a yahoo_engine.get_quote_snapshot() dict, chosen by Yahoo's own marketState and never the clock; None outside extended hours. time is the epoch of the tick itself, None when Yahoo sent none."""
     state = snapshot.get("market_state")
     if state in PRE_MARKET_STATES:
         session, prefix = "pre", "pre_market"
@@ -42,6 +42,7 @@ def extended_quote_from_snapshot(snapshot: dict) -> Optional[dict]:
         "session": session, "price": float(price),
         "change": None if change is None else float(change),
         "change_pct": None if change_pct is None else float(change_pct),
+        "time": snapshot.get(f"{prefix}_time"),
     }
 
 
@@ -107,6 +108,11 @@ def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
         return is_trading_session(exchange, include_premarket=honor_premarket)
     allowed_states = OPEN_MARKET_STATES | PRE_MARKET_STATES if honor_premarket else OPEN_MARKET_STATES
     return row["market_state"] in allowed_states
+
+
+def is_extended_session(exchange: str) -> bool:
+    """True while an exchange that models extended hours (NYSE) is in Yahoo's PRE or POST state; an exchange with no extended session of its own never is."""
+    return "premarket_open" in EXCHANGE_HOURS.get(exchange, {}) and get_exchange_session_state(exchange) in ("pre", "post")
 
 
 def get_exchange_session_state(exchange: str) -> str:

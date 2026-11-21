@@ -222,7 +222,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT c.ticker, c.name, c.price, c.change_pts, c.change_pct, c.is_positive, c.last_updated, "
-            "c.extended_price, c.extended_change_pts, c.extended_change_pct, c.extended_session, "
+            "c.extended_price, c.extended_change_pts, c.extended_change_pct, c.extended_session, c.extended_quote_time, "
             "s.current_price AS fallback_price, s.last_updated AS fallback_last_updated, s.currency AS currency "
             "FROM market_pulse_cache c LEFT JOIN stock_signals s ON s.ticker = c.ticker"
         )
@@ -258,6 +258,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
             "extended_change_pts": row['extended_change_pts'],
             "extended_change_pct": row['extended_change_pct'],
             "extended_session": row['extended_session'],
+            "extended_quote_time": row['extended_quote_time'],
         }
     return cache
 

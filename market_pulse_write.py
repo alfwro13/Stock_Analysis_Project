@@ -1,3 +1,4 @@
+# GUI name: "Market Pulse"; its scheduled job is "Extended-Hours Quote Refresh". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import logging
 import math
 import threading
@@ -15,6 +16,7 @@ from gilt_engine import GiltDataService
 from market_pulse import SPARKLINE_MAX_POINTS, get_index_tickers
 from market_session_helpers import (
     build_registry_exchange_map,
+    cached_registry_exchange_map,
     extended_quote_from_snapshot,
     is_exchange_open,
     regular_change_from_snapshot,
@@ -42,15 +44,17 @@ class _Quote(NamedTuple):
     extended_change_pts: Optional[float] = None
     extended_change_pct: Optional[float] = None
     extended_session: Optional[str] = None
+    extended_quote_time: Optional[float] = None
     regular_previous_close: Optional[float] = None
 
 
 def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn: Any = None) -> None:
-    """Shares a price another engine already fetched for its own use instead of it being discarded; keeps an existing name if one is already on record."""
+    """Shares a price another engine already fetched for its own use instead of it being discarded; keeps an existing name if one is already on record. A write made while the ticker's regular session is open ends any pre/post tick still on the row."""
     if price is None or not prev_close:
         return
     if ticker.endswith("=X") and (not math.isfinite(float(price)) or price <= 0):
         return
+    regular_session = is_exchange_open(resolve_ticker_exchange(ticker, registry_exchange_map=cached_registry_exchange_map(), suffix_only=True))
     change_pts = price - prev_close
     change_pct = (change_pts / prev_close) * 100.0
     owns_conn = conn is None
@@ -69,6 +73,10 @@ def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn:
                 is_positive = excluded.is_positive,
                 last_updated = excluded.last_updated
         ''', (ticker, name, price, change_pts, change_pct, int(change_pts >= 0), time.time()))
+        if regular_session:
+            cursor.execute(
+                "UPDATE market_pulse_cache SET extended_price = NULL, extended_change_pts = NULL, extended_change_pct = NULL, "
+                "extended_session = NULL, extended_quote_time = NULL WHERE ticker = ?", (ticker,))
         if ticker.endswith("=X"):
             upsert_fx_quote(ticker, float(price), time.time(), conn=conn)
         conn.commit()
@@ -129,9 +137,10 @@ def _quote_from_snapshot(ticker: str, snapshot: dict, t_daily: pd.DataFrame) -> 
     extended = extended_quote_from_snapshot(snapshot)
     extended_session = extended["session"] if extended else None
     extended_fields = (extended["price"], extended["change"], extended["change_pct"]) if extended else (None, None, None)
+    extended_time = extended["time"] if extended else None
 
     raw_prev_close = snapshot.get('regular_previous_close')
-    return _Quote(current_price, change_pts, change_pct, market_state, *extended_fields, extended_session,
+    return _Quote(current_price, change_pts, change_pct, market_state, *extended_fields, extended_session, extended_time,
                   float(raw_prev_close) if raw_prev_close is not None else None)
 
 
@@ -286,8 +295,8 @@ def _write_pulse_row(cursor: Any, conn: Any, ticker: str, name: str, quote: _Quo
     cursor.execute('''
         INSERT INTO market_pulse_cache
         (ticker, name, price, change_pts, change_pct, is_positive, last_updated,
-         market_state, extended_price, extended_change_pts, extended_change_pct, extended_session)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         market_state, extended_price, extended_change_pts, extended_change_pct, extended_session, extended_quote_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ticker) DO UPDATE SET
             name = excluded.name,
             price = excluded.price,
@@ -299,10 +308,11 @@ def _write_pulse_row(cursor: Any, conn: Any, ticker: str, name: str, quote: _Quo
             extended_price = excluded.extended_price,
             extended_change_pts = excluded.extended_change_pts,
             extended_change_pct = excluded.extended_change_pct,
-            extended_session = excluded.extended_session
+            extended_session = excluded.extended_session,
+            extended_quote_time = excluded.extended_quote_time
     ''', (ticker, name, quote.price, quote.change_pts, quote.change_pct, int(quote.change_pts >= 0), current_time,
           quote.market_state, quote.extended_price, quote.extended_change_pts, quote.extended_change_pct,
-          quote.extended_session))
+          quote.extended_session, quote.extended_quote_time))
     if ticker.endswith("=X"):
         upsert_fx_quote(ticker, quote.price, time.time(), conn=conn)
 

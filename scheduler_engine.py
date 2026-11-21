@@ -1063,6 +1063,19 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to schedule Account Performance Refresh: %s", e)
 
+    # Window spans both US extended sessions in winter and summer time; Yahoo's marketState, not the cron hour, decides which tickers refresh.
+    try:
+        scheduler.add_job(
+            run_extended_hours_quote_refresh,
+            CronTrigger(day_of_week='mon-fri', hour='8-23', minute='4-59/10', timezone=timezone.utc),
+            id='extended_hours_quote_refresh_job',
+            replace_existing=True,
+            misfire_grace_time=60,
+        )
+        logger.info("Extended-Hours Quote Refresh scheduled mon-fri 08:00–23:59 UTC every 10 min.")
+    except Exception as e:
+        logger.error("Failed to schedule Extended-Hours Quote Refresh: %s", e)
+
     try:
         scheduler.add_job(
             run_memory_telemetry_job,
@@ -1315,7 +1328,7 @@ from scheduler_jobs import (
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
     register_account_reminder_job, unregister_account_reminder_job, _run_account_reminder_job,
     run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job, run_mcp_pairing_window_check,
-    run_memory_telemetry_job,
+    run_memory_telemetry_job, run_extended_hours_quote_refresh,
 )
 
 

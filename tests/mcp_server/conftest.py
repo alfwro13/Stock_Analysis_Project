@@ -128,8 +128,8 @@ def holdings_book(monkeypatch):
             )
         conn.execute(
             "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated, "
-            "extended_price, extended_change_pct, extended_session) VALUES ('ZZMCPA', 'A', 120.0, 1.5, 1.27, 1, ?, 125.0, 4.2, 'pre')",
-            (live_epoch,),
+            "extended_price, extended_change_pct, extended_session, extended_quote_time) VALUES ('ZZMCPA', 'A', 120.0, 1.5, 1.27, 1, ?, 125.0, 4.2, 'pre', ?)",
+            (live_epoch, live_epoch - 300),
         )
         conn.commit()
     finally:

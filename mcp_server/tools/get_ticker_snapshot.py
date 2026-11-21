@@ -28,7 +28,7 @@ _UNITS = {
     "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
     "price.stale": f"shared_cache: judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close, so a Watchlist quote nothing has refreshed since an earlier session is stale. A mutual fund (one NAV a day) and a Markets-registry instrument are never stale for being past the last close. yahoo_live is never stale",
     "price.market_state": "Yahoo's own session state (REGULAR, PRE, POST, CLOSED ...); only present for yahoo_live",
-    "extended_hours": "pre- or post-market price in price.currency and its change in percent versus the regular close; a separate object, never mixed into price; null outside extended hours",
+    "extended_hours": "pre- or post-market price in price.currency and its change in percent versus the regular close; a separate object, never mixed into price; null outside extended hours. as_of is the UTC time of the tick itself (Yahoo's preMarketTime / postMarketTime), not of the dashboard's last fetch, and null when Yahoo sent none; a thinly traded name's last print can be old, and there is no stale flag: compare as_of with the envelope's clock",
     "trend": "trend_50d/trend_200d: UP when the nightly stock_signals price is above the SMA, else DOWN; null when the SMA or price is missing. SMAs and 52-week range in price.currency; atr_stop_loss is a price",
     "technicals": "rsi_14 0-100; macd, macd_signal, macd_hist in price units; atr_pct, hist_vol_20, mom_* and rel_strength_* are fractions (0.05 = 5%); volume in shares; close_price is the quant scan's daily close",
     "valuation": "trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book, price_to_sales, beta are ratios; dividend_yield, short_interest and institutional_ownership are fractions (0.03 = 3%); target_price is the analyst mean target in price.currency; ex_dividend_date is YYYY-MM-DD",
@@ -64,13 +64,25 @@ def _oldest(*epochs) -> Optional[float]:
     return min(known) if known else None
 
 
+def _extended_part(session: str, price: float, change: Optional[float], change_pct: Optional[float], epoch: Optional[float]) -> dict:
+    return {
+        "session": session, "price": price, "change": change, "change_pct": change_pct,
+        "as_of": None if epoch is None else iso_utc(epoch),
+    }
+
+
 def _pulse_extended(row: dict) -> Optional[dict]:
     if row["extended_price"] is None:
         return None
-    return {
-        "session": row["extended_session"], "price": row["extended_price"],
-        "change": row["extended_change_pts"], "change_pct": row["extended_change_pct"],
-    }
+    return _extended_part(
+        row["extended_session"], row["extended_price"], row["extended_change_pts"], row["extended_change_pct"],
+        row["extended_quote_time"],
+    )
+
+
+def _snapshot_extended(snapshot: dict) -> Optional[dict]:
+    tick = extended_quote_from_snapshot(snapshot)
+    return None if tick is None else _extended_part(tick["session"], tick["price"], tick["change"], tick["change_pct"], tick["time"])
 
 
 def cached_price(ticker: str, currency: Optional[str], pulse: Optional[dict] = None) -> Optional[tuple]:
@@ -116,7 +128,7 @@ def _price(ticker: str, currency: Optional[str], missing: list) -> tuple:
         "as_of": iso_utc(now), "stale": False,
         "day_change": day_change, "day_change_pct": day_change_pct,
         "previous_close": snapshot["regular_previous_close"], "market_state": snapshot["market_state"],
-    }, extended_quote_from_snapshot(snapshot), now
+    }, _snapshot_extended(snapshot), now
 
 
 def _position_targets(ticker: str, asset: Optional[dict], watched: bool) -> list:
@@ -194,6 +206,8 @@ def get_ticker_snapshot(ticker: TickerArg) -> dict[str, Any]:
 
     price, extended, price_epoch = _price(ticker, currency, missing)
     epochs.append(price_epoch)
+    if extended is not None and extended["as_of"] is None:
+        missing.append("Yahoo sent no time for the extended-hours tick: extended_hours.as_of is null")
 
     signals_epoch = parse_utc_epoch(row["last_updated"]) or None
     quant_epoch = date_epoch(row["quant_date"])

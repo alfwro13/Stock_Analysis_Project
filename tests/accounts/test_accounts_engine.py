@@ -2156,6 +2156,47 @@ def test_tickers_needing_refresh_includes_stale_ticker_during_premarket(monkeypa
     assert "ZZPREMARKETREF" in stale
 
 
+def _force_session_state(monkeypatch, states):
+    monkeypatch.setattr(accounts_engine.market_session_helpers, "get_exchange_session_state", lambda exchange: states[exchange])
+    monkeypatch.setattr(accounts_engine.market_session_helpers, "is_quote_settled", lambda exchange, include_premarket=False: states[exchange] == "open")
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_extended_hours_only_keeps_a_us_ticker_in_premarket_and_drops_an_lse_ticker(monkeypatch):
+    import time
+
+    _force_session_state(monkeypatch, {"NYSE": "pre", "LSE": "open"})
+    _seed_market_pulse("ZZEXTUS", 100.0, time.time() - 3600)
+    _seed_market_pulse("ZZEXTUK.L", 100.0, time.time() - 3600)
+    _seed_stock_signal("ZZEXTUS", 100.0, "USD")
+    _seed_stock_signal("ZZEXTUK.L", 100.0, "GBp")
+
+    assert accounts_engine.tickers_needing_refresh(["ZZEXTUS", "ZZEXTUK.L"], 60, extended_hours_only=True) == ["ZZEXTUS"]
+    assert accounts_engine.tickers_needing_refresh(["ZZEXTUS", "ZZEXTUK.L"], 60) == ["ZZEXTUS", "ZZEXTUK.L"]
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_extended_hours_only_skips_the_regular_session_and_fresh_rows(monkeypatch):
+    import time
+
+    _seed_market_pulse("ZZEXTREG", 100.0, time.time() - 3600)
+    _seed_market_pulse("ZZEXTFRESH", 100.0, time.time() - 5)
+    _seed_stock_signal("ZZEXTREG", 100.0, "USD")
+    _seed_stock_signal("ZZEXTFRESH", 100.0, "USD")
+    _force_session_state(monkeypatch, {"NYSE": "open", "LSE": "closed"})
+    assert accounts_engine.tickers_needing_refresh(["ZZEXTREG"], 60, extended_hours_only=True) == []
+
+    _force_session_state(monkeypatch, {"NYSE": "post", "LSE": "closed"})
+    assert accounts_engine.tickers_needing_refresh(["ZZEXTREG", "ZZEXTFRESH"], 60, extended_hours_only=True) == ["ZZEXTREG"]
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_extended_hours_only_does_not_bootstrap_a_missing_row_while_closed(monkeypatch):
+    _force_session_state(monkeypatch, {"NYSE": "closed", "LSE": "closed"})
+    assert accounts_engine.tickers_needing_refresh(["ZZEXTMISSING"], 60) == ["ZZEXTMISSING"]
+    assert accounts_engine.tickers_needing_refresh(["ZZEXTMISSING"], 60, extended_hours_only=True) == []
+
+
 @pytest.mark.db
 def test_tickers_needing_refresh_skips_stale_ticker_when_quote_not_yet_settled(monkeypatch):
     import time
