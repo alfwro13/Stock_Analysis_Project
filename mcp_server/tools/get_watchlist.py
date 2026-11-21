@@ -1,8 +1,15 @@
 import time
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
-from accounts.accounts_engine import get_combined_holdings, native_currencies
-from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS
+from pydantic import Field
+
+from accounts.accounts_engine import native_currencies
+from constants import (
+    MCP_WATCHLIST_DEFAULT_ROWS,
+    MCP_WATCHLIST_MAX_OFFSET,
+    MCP_WATCHLIST_MAX_ROWS,
+    ML_FEATURE_MAX_AGE_TRADING_DAYS,
+)
 from db.database import get_watchlist_tickers
 from db.account_store import get_all_holding_price_limits, get_watchlist_account
 from db.helpers import get_next_earnings_dates, parse_utc_epoch
@@ -16,11 +23,15 @@ from score_analysis import (
 from utils import is_missing_sector, upcoming_iso_date
 from xray_engine import BENCHMARK_SYMBOL
 
+from ..discovery import Score, list_flags
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_utc
 from ..server import READ_ONLY, server
 from .get_ticker_snapshot import cached_price
 
 _UNITS = {
+    "filters": "scope (all, held, or watchlist_only = not held), min_composite_score and only_buy_recommended all apply before paging; a ticker with no composite score never matches min_composite_score, and one with no Buy Recommendation never matches only_buy_recommended",
+    "limit/offset": f"limit is 1 to {MCP_WATCHLIST_MAX_ROWS} (default {MCP_WATCHLIST_DEFAULT_ROWS}), offset counts matching tickers in the Watchlist page's order; a larger limit is refused. total_matches counts every match, truncated says more remain, and next_offset is the offset of the next page (null on the last). missing names only the tickers on the returned page",
+    "compact": "when true a field whose value is null is left out of the row (price, position_targets and the like disappear when empty), so an absent field means not available, never zero",
     "price.value": "latest regular-session price in price.currency, in the instrument's own quote unit; GBp means pence, not pounds. Never an extended-hours tick",
     "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
     "price.stale": "true when the cached quote is past its refresh interval while a market is open",
@@ -61,22 +72,49 @@ def _regime_score(result: Optional[dict]) -> Optional[dict]:
     return None if not result else {"score": result["score"], "regime": result["regime"]}
 
 
+def _without_nulls(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    kept = {key: _without_nulls(item) for key, item in value.items()}
+    return {key: item for key, item in kept.items() if item is not None and item != {}}
+
+
 @server.tool(name="get_watchlist", annotations=READ_ONLY)
-def get_watchlist() -> dict[str, Any]:
-    """Every Watchlist ticker with its key signals, as the Watchlist page shows them: regular-session price, System Verdict and composite score, trend, RSI, momentum, ML confidence, Trap Monitor phase, Signal Pillar Confluence, Buy Recommendation, Regime-Weighted Conviction Score, Position Targets and next earnings. Tickers you also hold are included and flagged held. A value that is not available is null and listed in missing."""
+def get_watchlist(
+    scope: Annotated[Literal["all", "held", "watchlist_only"], Field(description="all, only tickers you also hold, or only tickers you do not hold")] = "all",
+    min_composite_score: Annotated[Optional[Score], Field(description="keep tickers whose composite score is at least this (0-100); a ticker with no score is left out")] = None,
+    only_buy_recommended: Annotated[bool, Field(description="keep only tickers with a Buy Recommendation marked recommended")] = False,
+    limit: Annotated[int, Field(ge=1, le=MCP_WATCHLIST_MAX_ROWS)] = MCP_WATCHLIST_DEFAULT_ROWS,
+    offset: Annotated[int, Field(ge=0, le=MCP_WATCHLIST_MAX_OFFSET, description="matching tickers to skip, to read the next page")] = 0,
+    compact: Annotated[bool, Field(description="leave out every field that is null, to shorten each row")] = False,
+) -> dict[str, Any]:
+    """Watchlist tickers with their key signals, as the Watchlist page shows them and in its order: regular-session price, System Verdict and composite score, trend, RSI, momentum, ML confidence, Trap Monitor phase, Signal Pillar Confluence, Buy Recommendation, Regime-Weighted Conviction Score, Position Targets and next earnings. Tickers you also hold are included and flagged held. Returns one page (default 25, at most 50 tickers); total_matches, truncated and next_offset say whether to ask for more with offset, and scope, min_composite_score and only_buy_recommended narrow the list first. A value that is not available is null and listed in missing."""
     tickers = list(dict.fromkeys(get_watchlist_tickers()))
+    held = {ticker for ticker, flag in list_flags().items() if flag == "portfolio"}
+    if scope != "all":
+        tickers = [t for t in tickers if (t in held) == (scope == "held")]
     rows, _ = fetch_watchlist_signal_rows(BENCHMARK_SYMBOL, tickers)
     by_ticker = {row["ticker"]: dict(row) for row in rows}
+    if min_composite_score is not None:
+        tickers = [
+            t for t in tickers
+            if t in by_ticker and by_ticker[t]["composite_score"] is not None and by_ticker[t]["composite_score"] >= min_composite_score
+        ]
 
-    held = set(get_combined_holdings())
-    pulse = get_all_cached_pulse()
-    currencies = native_currencies(tickers)
-    earnings = get_next_earnings_dates(tickers)
-    confluence = evaluate_pillar_confluence_batch(tickers)
-    regime_scores = compute_regime_weighted_score_batch(tickers)
+    scored = tickers if only_buy_recommended else tickers[offset:offset + limit]
+    confluence = evaluate_pillar_confluence_batch(scored)
+    regime_scores = compute_regime_weighted_score_batch(scored)
     recommendations = evaluate_buy_recommendation_batch(
-        tickers, confluence_by_ticker=confluence, regime_score_by_ticker=regime_scores,
+        scored, confluence_by_ticker=confluence, regime_score_by_ticker=regime_scores,
     )
+    if only_buy_recommended:
+        tickers = [t for t in tickers if (recommendations.get(t) or {}).get("recommended")]
+    total = len(tickers)
+    page = tickers[offset:offset + limit]
+
+    pulse = get_all_cached_pulse()
+    currencies = native_currencies(page)
+    earnings = get_next_earnings_dates(page)
     account = get_watchlist_account()
     limits = get_all_holding_price_limits()
 
@@ -84,7 +122,7 @@ def get_watchlist() -> dict[str, Any]:
     epochs = []
     no_signals = []
     no_price = []
-    for ticker in tickers:
+    for ticker in page:
         row = by_ticker.get(ticker)
         currency = (row or {}).get("currency") or currencies.get(ticker)
         priced = cached_price(ticker, currency, pulse)
@@ -104,7 +142,7 @@ def get_watchlist() -> dict[str, Any]:
         earnings_date = (earnings.get(ticker) or {}).get("next_earnings_date")
         target = limits.get((account["id"], ticker), {}) if account else {}
         name = row["resolved_company_name"] if row else None
-        entries.append({
+        entry = {
             "ticker": ticker,
             "name": None if name == ticker else name,
             "sector": None if row is None or is_missing_sector(row["sector"]) else row["sector"],
@@ -129,7 +167,8 @@ def get_watchlist() -> dict[str, Any]:
             "next_earnings_date": upcoming_iso_date(earnings_date),
             "signals_as_of": None if signals_epoch is None else iso_utc(signals_epoch),
             "signals_stale": signals_epoch is not None and time.time() - signals_epoch > NIGHTLY_STALE_AFTER_SECONDS,
-        })
+        }
+        entries.append(_without_nulls(entry) if compact else entry)
 
     missing = []
     if no_signals:
@@ -137,8 +176,9 @@ def get_watchlist() -> dict[str, Any]:
     if no_price:
         missing.append(f"{len(no_price)} Watchlist ticker(s) have no cached price, so price is null: " + ", ".join(no_price))
     known = [e for e in epochs if e is not None]
+    next_offset = offset + len(entries) if offset + len(entries) < total else None
     return envelope(
-        {"count": len(entries), "tickers": entries},
+        {"count": len(entries), "total_matches": total, "truncated": next_offset is not None, "next_offset": next_offset, "tickers": entries},
         as_of=min(known) if known else None, units=_UNITS, missing=missing,
         stale_after_seconds=NIGHTLY_STALE_AFTER_SECONDS,
     )

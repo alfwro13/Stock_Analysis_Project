@@ -1,4 +1,4 @@
-"""get_watchlist tool: the Watchlist page's tickers with held flagged, key signals from the page's shared signal rows, cache-first price with no Yahoo call, null versus real values, page enrichments, stale signals, empty Watchlist, no write to the database."""
+"""get_watchlist tool: the Watchlist page's tickers with held flagged, key signals from the page's shared signal rows, cache-first price with no Yahoo call, null versus real values, page enrichments, stale signals, empty Watchlist, filters, paging, compact rows and refused caps, no write to the database."""
 import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -9,7 +9,9 @@ import yahoo_engine
 from db.database import add_transaction, create_account, get_connection
 from db.account_store import add_watchlist_item, get_watchlist_account, upsert_holding_price_limit
 
-from .helpers import ACCOUNT_TABLES, call, table_counts, tool_data
+from constants import MCP_WATCHLIST_DEFAULT_ROWS, MCP_WATCHLIST_MAX_OFFSET, MCP_WATCHLIST_MAX_ROWS
+
+from .helpers import ACCOUNT_TABLES, call, error_text, rpc, table_counts, tool_data
 
 HELD, WATCHED, NO_SIGNALS, STALE, BARE = "ZZWLH", "ZZWLW", "ZZWLN", "ZZWLS", "ZZWLB"
 _TICKERS = (HELD, WATCHED, NO_SIGNALS, STALE, BARE)
@@ -96,8 +98,12 @@ def watchlist():
             conn.close()
 
 
-def _watchlist(client):
-    return tool_data(call(client, "get_watchlist"))
+def _watchlist(client, **arguments):
+    return tool_data(call(client, "get_watchlist", {"limit": MCP_WATCHLIST_MAX_ROWS, **arguments}))
+
+
+def _tickers(data):
+    return [row["ticker"] for row in data["data"]["tickers"]]
 
 
 def _row(data, ticker):
@@ -184,7 +190,7 @@ class TestMissingAndStale:
     def test_empty_watchlist(self, mcp_client):
         with patch("mcp_server.tools.get_watchlist.get_watchlist_tickers", return_value=[]):
             data = _watchlist(mcp_client)
-        assert data["data"] == {"count": 0, "tickers": []}
+        assert data["data"] == {"count": 0, "total_matches": 0, "truncated": False, "next_offset": None, "tickers": []}
         assert data["as_of"] is None and data["missing"] == []
 
 
@@ -219,3 +225,96 @@ class TestReadOnly:
         before = table_counts()
         _watchlist(mcp_client)
         assert table_counts() == before
+
+
+class TestPayloadControls:
+    def test_schema_has_only_optional_arguments_and_the_caps(self, mcp_client):
+        tool = {t["name"]: t for t in rpc(mcp_client, "tools/list").json()["result"]["tools"]}["get_watchlist"]
+        properties = tool["inputSchema"]["properties"]
+        assert tool["inputSchema"].get("required", []) == []
+        assert (properties["limit"]["maximum"], properties["limit"]["default"]) == (MCP_WATCHLIST_MAX_ROWS, MCP_WATCHLIST_DEFAULT_ROWS)
+        assert properties["offset"]["maximum"] == MCP_WATCHLIST_MAX_OFFSET
+        assert set(properties) == {"scope", "min_composite_score", "only_buy_recommended", "limit", "offset", "compact"}
+
+    @pytest.mark.parametrize("arguments, name", [
+        ({"limit": MCP_WATCHLIST_MAX_ROWS + 1}, "limit"), ({"limit": 0}, "limit"), ({"offset": -1}, "offset"),
+        ({"offset": MCP_WATCHLIST_MAX_OFFSET + 1}, "offset"), ({"min_composite_score": 101}, "min_composite_score"),
+        ({"scope": "everything"}, "scope"),
+    ])
+    def test_a_value_past_a_cap_is_refused_not_clamped(self, mcp_client, watchlist, arguments, name):
+        assert name in error_text(call(mcp_client, "get_watchlist", arguments))
+
+    def test_no_arguments_returns_the_first_default_page(self, mcp_client, watchlist):
+        data = tool_data(call(mcp_client, "get_watchlist"))
+        assert data["data"]["count"] == len(data["data"]["tickers"]) <= MCP_WATCHLIST_DEFAULT_ROWS
+        assert data["data"]["total_matches"] >= len(_TICKERS)
+
+    def test_pages_follow_the_watchlist_order_and_cover_every_ticker_once(self, mcp_client, watchlist):
+        full = _tickers(_watchlist(mcp_client))
+        seen, offset = [], 0
+        while offset is not None:
+            page = _watchlist(mcp_client, limit=2, offset=offset)
+            assert page["data"]["total_matches"] == len(full)
+            assert page["data"]["count"] == len(page["data"]["tickers"]) <= 2
+            assert page["data"]["truncated"] is (page["data"]["next_offset"] is not None)
+            seen += _tickers(page)
+            offset = page["data"]["next_offset"]
+        assert seen == full
+
+    def test_an_offset_past_the_end_is_an_empty_last_page(self, mcp_client, watchlist):
+        data = _watchlist(mcp_client, offset=MCP_WATCHLIST_MAX_OFFSET)["data"]
+        assert data["tickers"] == [] and data["count"] == 0
+        assert data["total_matches"] > 0 and data["truncated"] is False and data["next_offset"] is None
+
+    def test_scope_keeps_held_or_not_held_tickers(self, mcp_client, watchlist):
+        held = _watchlist(mcp_client, scope="held")
+        assert HELD in _tickers(held)
+        assert all(row["held"] is True for row in held["data"]["tickers"])
+        not_held = _watchlist(mcp_client, scope="watchlist_only")
+        assert HELD not in _tickers(not_held)
+        assert {WATCHED, NO_SIGNALS, STALE, BARE} <= set(_tickers(not_held))
+        assert all(row["held"] is False for row in not_held["data"]["tickers"])
+        assert held["data"]["total_matches"] + not_held["data"]["total_matches"] == _watchlist(mcp_client)["data"]["total_matches"]
+
+    def test_min_composite_score_leaves_out_lower_and_missing_scores(self, mcp_client, watchlist):
+        assert set(_tickers(_watchlist(mcp_client, min_composite_score=60))) & set(_TICKERS) == {HELD}
+        kept = set(_tickers(_watchlist(mcp_client, min_composite_score=0))) & set(_TICKERS)
+        assert kept == {HELD, WATCHED, STALE}
+
+    def test_only_buy_recommended_filters_before_paging(self, mcp_client, watchlist):
+        recommendation = {"recommended": True, "pillar_confluence": None, "risk_reward": {"passes": True, "risk_reward": 2.0}, "regime_weighted_score": None}
+        results = {HELD: recommendation, WATCHED: {**recommendation, "recommended": False}}
+        with patch("mcp_server.tools.get_watchlist.evaluate_buy_recommendation_batch", return_value=results) as batch:
+            data = _watchlist(mcp_client, only_buy_recommended=True, limit=1)
+        assert _tickers(data) == [HELD]
+        assert (data["data"]["total_matches"], data["data"]["truncated"]) == (1, False)
+        assert set(_TICKERS) <= set(batch.call_args.args[0])
+
+    def test_enrichments_run_only_for_the_returned_page_without_the_recommendation_filter(self, mcp_client, watchlist):
+        with patch("mcp_server.tools.get_watchlist.evaluate_pillar_confluence_batch", return_value={}) as confluence:
+            data = _watchlist(mcp_client, limit=2)
+        assert confluence.call_args.args[0] == _tickers(data)
+
+    def test_compact_leaves_out_null_fields_and_keeps_real_values(self, mcp_client, watchlist):
+        full = _row(_watchlist(mcp_client), WATCHED)
+        compact = _row(_watchlist(mcp_client, compact=True), WATCHED)
+        assert compact["composite_score"] == 0 and compact["held"] is False
+        assert "rsi_14" not in compact and "position_targets" not in compact and "pillar_confluence" not in compact
+        assert full["price"]["day_change"] is None and "day_change" not in compact["price"]
+        assert compact["price"]["value"] == full["price"]["value"]
+        held = _row(_watchlist(mcp_client, compact=True), HELD)
+        assert held["position_targets"] == {"low_limit": 90.0, "high_limit": 140.0}
+        assert all(value is not None for value in held.values())
+
+    def test_compact_row_of_a_ticker_without_signals_keeps_only_what_exists(self, mcp_client, watchlist):
+        assert _row(_watchlist(mcp_client, compact=True), NO_SIGNALS) == {"ticker": NO_SIGNALS, "held": False, "signals_stale": False}
+
+    def test_missing_names_only_the_tickers_on_the_returned_page(self, mcp_client, watchlist):
+        data = _watchlist(mcp_client, scope="held")
+        assert NO_SIGNALS not in " ".join(data["missing"])
+
+    def test_units_explain_the_filters_paging_and_compact(self, mcp_client, watchlist):
+        units = _watchlist(mcp_client)["units"]
+        assert "next_offset" in units["limit/offset"] and "refused" in units["limit/offset"]
+        assert "never zero" in units["compact"]
+        assert "never matches" in units["filters"]
