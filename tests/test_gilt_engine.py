@@ -272,6 +272,27 @@ class TestFetchLiveFtYield:
             result = svc.fetch_live_ft_yield()
         assert result is None
 
+    def test_network_failure_logs_one_warning_without_a_traceback(self, caplog):
+        """A request that still fails after its retries is a self-healing WARNING (the stored value stays), not an ERROR with a stack."""
+        svc = GiltDataService()
+        with caplog.at_level("WARNING", logger="gilt_engine"), \
+             patch.object(svc, "_get_with_retry", side_effect=requests.exceptions.ReadTimeout("Read timed out.")):
+            assert svc.fetch_live_ft_quote() is None
+        records = [r for r in caplog.records if r.name == "gilt_engine"]
+        assert [r.levelname for r in records] == ["WARNING"]
+        assert records[0].exc_info is None
+        assert "ReadTimeout" in records[0].getMessage()
+
+    def test_unexpected_error_keeps_the_error_with_traceback(self, caplog):
+        svc = GiltDataService()
+        with caplog.at_level("WARNING", logger="gilt_engine"), \
+             patch.object(svc, "_get_with_retry", return_value=_mock_resp(200, text=FT_QUOTE_HTML)), \
+             patch.object(GiltDataService, "_parse_ft_change", side_effect=RuntimeError("boom")):
+            assert svc.fetch_live_ft_quote() is None
+        records = [r for r in caplog.records if r.name == "gilt_engine" and r.levelname == "ERROR"]
+        assert len(records) == 1
+        assert records[0].exc_info is not None
+
 
 FT_QUOTE_HTML = (
     '<ul><li><span class="mod-ui-data-list__label">Yield</span><span class="mod-ui-data-list__value">5.20</span></li>'

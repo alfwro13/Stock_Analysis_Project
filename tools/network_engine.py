@@ -118,6 +118,17 @@ class _TransientNetworkError(Exception):
 TRANSIENT_MAX_RETRIES = 3
 TRANSIENT_BASE_DELAY = 2.0
 
+_TRANSIENT_ERROR_TERMS = ("timeout", "timed out", "connection reset", "curl: (28)", "(28)", "curl: (16)")
+_IPV6_BIND_ERROR_TERMS = ("bind failed", "cannot assign requested address", "errno 99")
+_TRANSIENT_ERROR_TYPES = {"timeout", "connectiontimeout", "connectionerror"}
+
+
+def _is_transient_error(e: Exception, extra_terms: tuple = ()) -> bool:
+    error_str = str(e).lower()
+    return type(e).__name__.lower() in _TRANSIENT_ERROR_TYPES or any(
+        term in error_str for term in _TRANSIENT_ERROR_TERMS + extra_terms
+    )
+
 
 def transient_backoff_seconds(attempt: int) -> float:
     return (TRANSIENT_BASE_DELAY ** attempt) + random.uniform(0.5, 1.5)
@@ -302,14 +313,8 @@ def _patch_session_with_retries(session: cffi_requests.Session, action_context: 
         except Exception as e:
             if isinstance(e, _RateLimitedError):
                 raise
-            error_str = str(e)
-            if (
-                type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
-                or any(term in error_str.lower() for term in [
-                    "timeout", "timed out", "connection reset", "curl: (28)", "(28)",
-                ])
-            ):
-                record_transient(error_str)
+            if _is_transient_error(e):
+                record_transient(str(e))
             raise
         if response.status_code == 429:
             _enter_yahoo_rate_limit(action_context)
@@ -384,13 +389,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     raise e
 
                 # bind errors (errno 99) are a startup race — IPv6 interface may still be in DAD; retry before hard-faulting.
-                is_transient = (
-                    type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
-                    or any(term in error_str.lower() for term in [
-                        "timeout", "timed out", "connection reset", "curl: (28)", "(28)",
-                        "bind failed", "cannot assign requested address", "errno 99",
-                    ])
-                )
+                is_transient = _is_transient_error(e, _IPV6_BIND_ERROR_TERMS)
                 if is_transient and attempt < max_retries:
                     sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
                     logger.warning("Transient network error on IPv6 '%s': %s. Retrying in %.2fs (Attempt %d/%d).", ipv6_address, error_str, sleep_time, attempt + 1, max_retries)
