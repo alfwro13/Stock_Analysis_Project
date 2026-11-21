@@ -295,7 +295,7 @@ Tables added after initial schema creation. All managed via `db/schema.py:init_d
 
 #### `news_articles`
 * **Purpose:** Full-text news articles with FinBERT sentiment scores, deduped by `article_id`.
-* **Key Columns:** `id` (PK autoincrement), `article_id` (UNIQUE), `ticker`, `source_list`, `headline`, `published_at`, `sentiment_score`, `sentiment_label`.
+* **Key Columns:** `id` (PK autoincrement), `article_id` (UNIQUE), `ticker`, `source_list`, `headline`, `published_at`, `sentiment_score`, `sentiment_label`. `publisher` is the name Yahoo sent or, for its RSS feed, the article link's host; `summary` has the feed's split decimals and glued `Key Takeaways` heading repaired at write time.
 * **Read by:** `news_feed_engine.fetch_articles()` — `GET /api/news-feed` (full row, including the trafilatura `full_text`) and the MCP Server's `get_news` (`include_full_text=False`, so the body is never selected).
 
 #### `smgb_predictions`

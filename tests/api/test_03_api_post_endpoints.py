@@ -362,6 +362,19 @@ def test_post_settings_with_risk_orchestrator(client, step_up_headers):
 
 
 @pytest.mark.api
+def test_post_settings_with_xray_risk_cache_time_round_trips(client, step_up_headers):
+    """SCHEDULING.XRAY_RISK_CACHE must be a field of SchedulingConfig, or Pydantic drops the X-ray Risk Cache run time on every save."""
+    import config as _config
+    original = _config.load_config().get("SCHEDULING", {}).get("XRAY_RISK_CACHE", {}).get("TIME", "19:00")
+    try:
+        resp = client.post("/api/settings", json={"SCHEDULING": {"XRAY_RISK_CACHE": {"DAYS": ["mon", "tue", "wed", "thu", "fri"], "TIME": "23:00"}}}, headers=step_up_headers)
+        assert resp.status_code == 200, resp.text
+        assert _config.load_config()["SCHEDULING"]["XRAY_RISK_CACHE"]["TIME"] == "23:00"
+    finally:
+        client.post("/api/settings", json={"SCHEDULING": {"XRAY_RISK_CACHE": {"TIME": original}}}, headers=step_up_headers)
+
+
+@pytest.mark.api
 def test_post_settings_with_stable_shortlist_round_trips(client, step_up_headers):
     """POST /api/settings with SCHEDULING.STABLE_SHORTLIST must persist every field and reload the scheduler."""
     import config as _config

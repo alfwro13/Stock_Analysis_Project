@@ -4,7 +4,7 @@ from pydantic import Field
 
 from constants import MCP_NEWS_HEADLINE_MAX_CHARS, MCP_NEWS_MAX_ROWS, MCP_NEWS_SUMMARY_MAX_CHARS, MCP_TICKER_MAX_CHARS
 from db.helpers import parse_utc_epoch
-from news_feed_engine import fetch_articles
+from news_feed_engine import fetch_articles, mentions_ticker
 from scheduler_engine import get_all_job_last_runs
 from utils import clean_display_text
 
@@ -26,6 +26,9 @@ EXTERNAL_CONTENT_NOTICE = (
 _UNITS = {
     "articles": f"newest first, from the News Feed's stored articles (portfolio and watchlist tickers only, kept 7 days by default); at most {MCP_NEWS_MAX_ROWS} per call",
     "published_at": "UTC time the publisher released the article, YYYY-MM-DDTHH:MM:SSZ",
+    "ticker": "the list ticker Yahoo's per-ticker feed returned the article for; the feed also returns loosely related headlines, so check mentions_ticker",
+    "mentions_ticker": "true when the headline or summary names the ticker's symbol (3 or more characters) or the first words of its company name; false means neither appears, not that the article is unrelated (it may use another name, such as a brand)",
+    "publisher": "the publisher name when Yahoo sent one; Yahoo's per-ticker RSS feed sends none, so it is then the article link's host (for example fool.com), and finance.yahoo.com means Yahoo hosts the article",
     "list": "portfolio, watchlist or both: which of your lists the ticker is on",
     "sentiment.score": "FinBERT score from -1 (negative) to 1 (positive) for the headline plus the summary; null when the article has not been scored yet, which is not the same as neutral",
     "sentiment.label": "positive above 0.15, negative below -0.15, otherwise neutral; null with the score",
@@ -40,6 +43,7 @@ def _article(row: dict) -> dict:
         "ticker": row["ticker"],
         "list": row["source_list"],
         "published_at": iso_utc(row["published_at"]),
+        "mentions_ticker": mentions_ticker(row["ticker"], row["company_name"], row["headline"], row["summary"]),
         "sentiment": {"score": row["sentiment_score"], "label": row["sentiment_label"]} if scored else None,
         "external_content": {
             "headline": clean_display_text(row["headline"], MCP_NEWS_HEADLINE_MAX_CHARS),

@@ -306,6 +306,7 @@ class SchedulingConfig(FiniteModel):
     ALERT_REFEREE_TRAINING_CONFLUENCE: Optional[ScheduleItemConfig] = None
     RISK_ORCHESTRATOR: Optional[RiskOrchestratorScheduleConfig] = None
     RISK_ORCHESTRATOR_DIGEST: Optional[ScheduleItemConfig] = None
+    XRAY_RISK_CACHE: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(FiniteModel):
     MR_MAX_RSI: Optional[int] = None

@@ -948,9 +948,24 @@ class TestGetNews:
         first = result[0]
         assert first["id"] == "g-1"
         assert first["content"]["summary"] == "Shares jumped on Monday."
+        assert first["content"]["provider"] == {"displayName": "example.test"}
         assert first["content"]["pubDate"] == "2026-10-12T06:16:00Z"
         assert first["content"]["canonicalUrl"] == {"url": "https://example.test/a"}
         assert result[1]["content"]["pubDate"] == "2026-10-11T19:00:00Z"
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_rss_summary_has_the_feed_splits_repaired(self, mock_ctx):
+        feed = (
+            '<?xml version="1.0"?><rss version="2.0"><channel><item><title>T</title><link>https://www.tikr.com/blog/x</link>'
+            "<guid>g-9</guid><pubDate>Mon, 12 Oct 2026 06:16:00 +0000</pubDate>"
+            "<description>Key TakeawaysAlphabet is worth $3. 34 trillion.</description></item></channel></rss>"
+        )
+        _boundary(mock_ctx, _rss_session(text=feed))
+
+        content = self.eng.get_news("GOOGL")[0]["content"]
+
+        assert content["summary"] == "Key Takeaways Alphabet is worth $3.34 trillion."
+        assert content["provider"]["displayName"] == "tikr.com"
 
     @patch("yahoo_engine.yahoo_connection_boundary")
     def test_feed_url_encodes_ticker(self, mock_ctx):

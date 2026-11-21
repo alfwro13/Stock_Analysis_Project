@@ -364,6 +364,10 @@ async function saveSettings(silent = false) {
                 "DAYS": ['mon','tue','wed','thu','fri'],
                 "TIME": document.getElementById('RISK_ORCHESTRATOR_DIGEST_TIME').value
             },
+            "XRAY_RISK_CACHE": {
+                "DAYS": ['mon','tue','wed','thu','fri'],
+                "TIME": document.getElementById('XRAY_RISK_CACHE_TIME').value
+            },
             "PAIRS_SPREAD_MONITOR": {
                 "ENABLED": document.getElementById('PAIRS_SPREAD_ENABLED').checked,
                 "DAYS": document.getElementById('PAIRS_SPREAD_FREQ').value === 'mon-sun'

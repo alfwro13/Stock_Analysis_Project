@@ -228,7 +228,7 @@ class TestWatchlistOnlyTicker:
         body = data["data"]
         assert body["position"] == {"held": False, "in_watchlist": True, "total_shares": None}
         assert [r["account_type"] for r in body["position_targets"]] == ["Watchlist"]
-        assert body["price"]["value"] == 40.0 and body["price"]["currency"] == "USD" and body["price"]["source"] == "shared_cache"
+        assert body["price"]["value"] == 40.0 and body["price"]["currency"] == "USD" and body["price"]["source"] == "nightly_price"
         assert body["price"]["day_change_pct"] is None and body["extended_hours"] is None
         assert body["technicals"]["rsi_14"] is None
         assert any("No quant_signals row" in item for item in data["missing"])

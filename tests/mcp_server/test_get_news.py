@@ -67,7 +67,7 @@ class TestGetNews:
         response = call(mcp_client, "get_news")
         assert "FULL-ARTICLE-BODY-SENTINEL" not in response.text
         article = tool_data(response)["data"]["articles"][0]
-        assert set(article) == {"ticker", "list", "published_at", "sentiment", "external_content"}
+        assert set(article) == {"ticker", "list", "published_at", "mentions_ticker", "sentiment", "external_content"}
         assert set(article["external_content"]) == {"headline", "summary", "publisher"}
         assert "example.invalid" not in response.text
 
@@ -98,6 +98,15 @@ class TestGetNews:
         _article(3, score=-0.61, label="negative")
         articles = self._news(mcp_client)["data"]["articles"]
         assert [a["sentiment"] for a in articles] == [None, {"score": 0.0, "label": "neutral"}, {"score": -0.61, "label": "negative"}]
+
+    def test_mentions_ticker_marks_an_article_that_names_neither_symbol_nor_company(self, mcp_client, news_tables):
+        _article(1, ticker="ZZNW1", headline="ZZNW1 beats estimates", age_minutes=5)
+        _article(2, ticker="ZZNW1", headline="An unrelated crypto story", summary="Nothing about the company.", age_minutes=10)
+        articles = self._news(mcp_client)["data"]["articles"]
+        assert [(a["external_content"]["headline"], a["mentions_ticker"]) for a in articles] == [
+            ("ZZNW1 beats estimates", True), ("An unrelated crypto story", False),
+        ]
+        assert {"ticker", "mentions_ticker", "publisher"} <= set(self._news(mcp_client)["units"])
 
     def test_newest_first_with_a_ticker_filter_and_total(self, mcp_client, news_tables):
         _article(1, ticker="ZZNW1", headline="older", age_minutes=30)
