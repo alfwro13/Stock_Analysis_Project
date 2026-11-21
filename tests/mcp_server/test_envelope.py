@@ -11,7 +11,7 @@ class TestEnvelope:
     def test_envelope_fields(self):
         with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"):
             result = envelope({"x": 1}, as_of=1_700_000_000.0, units={"u": "v"}, missing=[])
-        assert set(result) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(result) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert result["as_of"] == "2023-11-14T22:13:20Z"
         assert result["market_state"] == {"LSE": "closed", "NYSE": "closed"}
         assert result["data"] == {"x": 1}
@@ -22,13 +22,21 @@ class TestEnvelope:
         ("open", 10, [], False),
         ("closed", STALE_AFTER_SECONDS * 100, [], False),
         ("post", STALE_AFTER_SECONDS * 100, [], False),
-        ("closed", 10, ["account 1: performance snapshot not computed yet"], True),
+        ("closed", 10, ["account 1: performance snapshot not computed yet"], False),
+        ("open", 10, ["account 1: performance snapshot not computed yet"], False),
+        ("open", STALE_AFTER_SECONDS + 60, ["account 1: performance snapshot not computed yet"], True),
     ])
-    def test_stale_marker(self, state, age, missing, stale):
+    def test_stale_marker_is_about_age_only(self, state, age, missing, stale):
         with patch("mcp_server.envelope.get_exchange_session_state", return_value=state), patch("mcp_server.envelope.time.time", return_value=2_000_000_000.0):
             result = envelope({}, as_of=2_000_000_000.0 - age, units={}, missing=missing)
         assert result["stale"] is stale
         assert result["missing"] == missing
+
+    @pytest.mark.parametrize("missing, incomplete", [([], False), (["x: not available"], True)])
+    def test_incomplete_marker_follows_missing(self, missing, incomplete):
+        with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"):
+            result = envelope({}, as_of=None, units={}, missing=missing)
+        assert result["incomplete"] is incomplete
 
     def test_no_data_point_is_not_stale_by_age(self):
         with patch("mcp_server.envelope.get_exchange_session_state", return_value="open"):

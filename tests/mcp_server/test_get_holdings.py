@@ -13,7 +13,7 @@ class TestGetHoldings:
 
     def test_envelope_and_units(self, mcp_client, holdings_book):
         data, _ = self._rows(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["allocation_pct"].startswith("percent of that row's own account")
         assert data["units"]["market_price"].count("GBp means pence")
 
@@ -52,7 +52,7 @@ class TestGetHoldings:
         assert row["market_price_in_base_currency"] == 50.0
         assert row["market_value"] == 100.0
 
-    def test_unavailable_fx_gives_nulls_a_marker_and_stale(self, mcp_client, holdings_book):
+    def test_unavailable_fx_gives_nulls_a_marker_and_incomplete(self, mcp_client, holdings_book):
         data, rows = self._rows(mcp_client, f"acct:{holdings_book['second']}")
         row = rows[(holdings_book["second"], "ZZMCPU")]
         assert row["priced_at_cost"] is True
@@ -61,7 +61,7 @@ class TestGetHoldings:
         assert row["market_value"] is None and row["gain_value"] is None and row["gain_pct"] is None and row["allocation_pct"] is None
         assert row["total_investment"] == 19.2
         assert any(item.startswith("ZZMCPU (McpBookB)") for item in data["missing"])
-        assert data["stale"] is True
+        assert data["incomplete"] is True
         assert all(rows[key]["priced_at_cost"] is False for key in rows if key[1] != "ZZMCPU")
 
     def test_as_of_is_the_oldest_quote_behind_the_prices(self, mcp_client, holdings_book):

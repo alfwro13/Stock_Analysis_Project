@@ -7,7 +7,8 @@ server = MCPServer(
     "MCP Server",
     instructions=(
         "Read-only view of the Quantamental Dashboard. Every tool response carries as_of (when the data was "
-        "produced), market_state, units, and stale/missing markers. A null value means unavailable, never zero."
+        "produced), market_state, units, and stale (the data is old), incomplete (something is unavailable) and missing markers. "
+        "A null value means unavailable, never zero."
     ),
 )
 

@@ -69,7 +69,7 @@ class TestGetAlerts:
     def test_envelope_units_and_default_window(self, mcp_client, alert_tables):
         _trap("ZZAL1", "ACTIVE_SELLOFF", _ago(minutes=10))
         data = self._alerts(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert {"days", "notifications", "trap_monitor", "referee"} <= set(data["units"])
         assert data["data"]["days"] == 7
         assert set(data["data"]) == {"days", "since", "notifications", "trap_monitor", "referee"}
@@ -151,13 +151,13 @@ class TestGetAlerts:
         data = self._alerts(mcp_client, days=3)
         assert data["data"]["trap_monitor"]["rows"] == []
         assert data["data"]["trap_monitor"]["last_scan_at"] is not None
-        assert any("before the requested window" in line for line in data["missing"]) and data["stale"] is True
+        assert any("before the requested window" in line for line in data["missing"]) and data["incomplete"] is True
 
     def test_no_trap_monitor_results_is_marked_missing(self, mcp_client, alert_tables):
         data = self._alerts(mcp_client)
         assert data["data"]["trap_monitor"] == {"last_scan_at": None, "rows": [], "truncated": False}
         assert data["as_of"] is None
-        assert any("no results yet" in line for line in data["missing"]) and data["stale"] is True
+        assert any("no results yet" in line for line in data["missing"]) and data["incomplete"] is True
 
     def test_trap_monitor_rows_are_capped(self, mcp_client, alert_tables):
         for index in range(MCP_ALERTS_MAX_ROWS + 2):
@@ -205,7 +205,7 @@ class TestGetAlerts:
         assert data["data"]["referee"][TRAP_MONITOR_ENGINE] is None
         assert [r["ticker"] for r in data["data"]["referee"][CONFLUENCE_ENGINE]["rows"]] == ["ZZAL2"]
         assert data["missing"] == [f"Alert Confidence Referee log for {TRAP_MONITOR_ENGINE} could not be read"]
-        assert data["stale"] is True
+        assert data["incomplete"] is True
         assert "locked" not in str(data)
         assert [n["text"] for n in data["data"]["notifications"]["rows"]] == ["ZZAL1 crashed"]
         assert [r["ticker"] for r in data["data"]["trap_monitor"]["rows"]] == ["ZZAL1"]

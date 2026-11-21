@@ -57,7 +57,7 @@ class TestGetHeatIndex:
         persist_heat_index(dict(_HEAT_ROW))
         persist_ticker_contributions([_contribution("ZZH1", 80.0, "RED")])
         data = self._heat(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["phi_score"].startswith("0-100 composite")
         heat = data["data"]["heat_index"]
         assert (heat["phi_score"], heat["tier"]) == (62.5, "YELLOW")
@@ -80,7 +80,7 @@ class TestGetHeatIndex:
     def test_not_computed_yet_is_null_and_marked_missing(self, mcp_client, heat_tables):
         data = self._heat(mcp_client)
         assert data["data"] == {"heat_index": None, "top_risk_contributors": []}
-        assert data["as_of"] is None and data["stale"] is True
+        assert data["as_of"] is None and data["incomplete"] is True
         assert any("has not been computed yet" in item for item in data["missing"])
 
     def test_unavailable_input_is_flagged_not_shown_as_zero(self, mcp_client, heat_tables):

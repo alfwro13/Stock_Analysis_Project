@@ -13,7 +13,7 @@ class TestGetAccounts:
 
     def test_envelope_is_present_on_the_tool_response(self, mcp_client, seeded_accounts):
         data, _ = self._rows(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert set(data["market_state"]) == {"LSE", "NYSE"}
         assert set(data["market_state"].values()) <= {"open", "pre", "post", "closed"}
         assert data["units"]["amounts"].startswith("BASE_CURRENCY")
@@ -47,7 +47,7 @@ class TestGetAccounts:
             assert row[field] is None, field
         assert row["cash_balance"] == cached["cash_balance"]
         assert any(f"account {account_id}:" in item and "valued at cost" in item for item in data["missing"])
-        assert data["stale"] is True
+        assert data["incomplete"] is True
 
     def test_fully_priced_account_keeps_its_figures(self, mcp_client, seeded_accounts):
         _, rows = self._rows(mcp_client)
@@ -63,7 +63,7 @@ class TestGetAccounts:
         assert row["equity_value"] is None and row["cash_balance"] is None and row["gain_1d"] is None
         assert row["snapshot_at"] is None
         assert any(f"account {account_id}:" in item for item in data["missing"])
-        assert data["stale"] is True
+        assert data["incomplete"] is True
         assert get_performance_cache(account_id) is None
 
     def test_pension_without_price_history_is_null_not_zero(self, mcp_client, seeded_accounts):

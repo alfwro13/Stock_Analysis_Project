@@ -68,7 +68,7 @@ class TestGetXray:
     def test_envelope_units_and_summary_for_one_account(self, mcp_client, holdings_book):
         with self._patched_targets():
             data = self._xray(mcp_client, f"acct:{holdings_book['first']}")
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["weights"].startswith("fraction of invested capital")
         body = data["data"]
         assert body["scope_id"] == f"acct:{holdings_book['first']}"
@@ -95,7 +95,7 @@ class TestGetXray:
     def test_without_a_risk_cache_the_risk_figures_are_null_and_marked_missing(self, mcp_client, holdings_book):
         data = self._xray(mcp_client, f"acct:{holdings_book['first']}")
         assert data["data"]["risk"]["portfolio_beta"] is None
-        assert data["as_of"] is None and data["stale"] is True
+        assert data["as_of"] is None and data["incomplete"] is True
         assert any(item.startswith("risk.portfolio_beta") for item in data["missing"])
         assert any(item.startswith("correlation.maximum") for item in data["missing"])
         assert data["data"]["data_warnings"]
@@ -170,6 +170,20 @@ class TestGetXray:
         body, missing = get_xray_tool._xray_summary(report)
         assert missing == ["country_exposure.Unknown: 25.0% of invested capital has no known country"]
         assert [c["name"] for c in body["country_exposure"]] == ["Germany", "Unknown"]
+
+    def test_a_fresh_cache_with_unknown_country_is_incomplete_not_stale(self, mcp_client):
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        report = _fake_report(country_allocation=[
+            {"name": "Germany", "code": "DE", "continent": "Europe", "weight": 0.75},
+            {"name": "Unknown", "code": "", "continent": "Other", "weight": 0.25},
+        ])
+        report["risk_metrics"]["cache_date"] = today
+        with patch.object(get_xray_tool, "assemble_xray_report", return_value=report), \
+             patch("mcp_server.envelope.get_exchange_session_state", return_value="open"):
+            data = self._xray(mcp_client)
+        assert data["stale"] is False and data["incomplete"] is True
+        assert data["missing"] == ["country_exposure.Unknown: 25.0% of invested capital has no known country"]
 
     def test_null_risk_metrics_are_listed_as_missing(self):
         report = _fake_report()

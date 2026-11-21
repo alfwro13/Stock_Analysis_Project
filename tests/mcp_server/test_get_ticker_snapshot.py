@@ -125,7 +125,7 @@ def _snapshot(client, ticker=HELD):
 class TestHeldTicker:
     def test_envelope_and_coverage(self, mcp_client, book):
         data = _snapshot(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         body = data["data"]
         assert (body["ticker"], body["name"], body["coverage"]) == (HELD, "Held Corp", "full")
         assert (body["sector"], body["country"], body["quote_type"]) == ("Technology", "United Kingdom", "EQUITY")
@@ -223,7 +223,7 @@ class TestUniverseOnlyTicker:
         assert body["position"]["held"] is False and body["position_targets"] == []
         assert body["quote_type"] is None and body["country"] is None
         assert body["price"]["source"] == "yahoo_live" and body["price"]["currency"] is None
-        assert any("Universe scan only" in item for item in data["missing"]) and data["stale"] is True
+        assert any("Universe scan only" in item for item in data["missing"]) and data["incomplete"] is True
         yahoo.get_quote_snapshot.assert_called_once_with(UNIVERSE)
 
     def test_yahoo_price_keeps_regular_and_extended_values_apart_by_yahoos_own_market_state(self, mcp_client, book, yahoo):
@@ -253,7 +253,7 @@ class TestUniverseOnlyTicker:
         yahoo.get_quote_snapshot.return_value = None
         data = _snapshot(mcp_client, UNIVERSE)
         assert data["data"]["price"] is None and data["data"]["extended_hours"] is None
-        assert any("price is null" in item for item in data["missing"]) and data["stale"] is True
+        assert any("price is null" in item for item in data["missing"]) and data["incomplete"] is True
 
     def test_a_placeholder_cache_row_does_not_count_as_a_cached_price(self, mcp_client, book, yahoo):
         conn = get_connection()
@@ -280,7 +280,7 @@ class TestHeldTickerWithoutData:
         assert all(body[part] is None for part in ("trend", "technicals", "valuation", "fundamentals", "forensic_scores", "ml", "next_earnings"))
         assert body["position"]["held"] is True and body["position"]["total_shares"] == 3
         assert any("No stock_signals or quant_signals data yet" in item for item in data["missing"])
-        assert data["stale"] is True
+        assert data["incomplete"] is True
 
     def test_synthetic_treasury_bill_ticker_is_excluded_from_yahoo(self, mcp_client, book, yahoo):
         with patch("mcp_server.tools.get_ticker_snapshot.get_combined_holdings", return_value={"TBILL-77": {"global_shares": 1, "accounts": []}}):
@@ -332,7 +332,7 @@ class TestStaleAndMissingData:
         assert any("Forensic scores have not been computed" in item for item in data["missing"])
         assert any("Yahoo has not published the next earnings date" in item for item in data["missing"])
         assert data["data"]["next_earnings"]["date"] is None
-        assert data["stale"] is True
+        assert data["incomplete"] is True
 
     def test_an_unparseable_earnings_date_is_null_not_a_placeholder(self, mcp_client, book):
         conn = get_connection()
