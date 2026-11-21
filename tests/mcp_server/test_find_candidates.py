@@ -132,6 +132,10 @@ def test_score_floor_and_asset_type(mcp_client, engine):
     assert seed.NEW_ODD not in _tickers(mcp_client, min_composite_score=0)
 
 
+def test_a_negative_score_floor_is_accepted(mcp_client, engine):
+    assert call(mcp_client, "find_candidates", {"goal": "lower_heat", "min_composite_score": -100}).json()["result"]["isError"] is False
+
+
 def test_only_the_best_pool_by_score_is_correlated(mcp_client, engine, monkeypatch):
     monkeypatch.setattr("mcp_server.tools.find_candidates.MCP_CANDIDATE_POOL_ROWS", 2)
     data = _find(mcp_client)
@@ -187,7 +191,7 @@ def test_a_scope_with_no_holdings_gets_the_curated_message(mcp_client):
         assert "No holdings found" in error_text(call(mcp_client, "find_candidates", {"goal": "lower_heat"}))
 
 
-@pytest.mark.parametrize("arguments", [{"goal": "buy_more"}, {"goal": "lower_heat", "limit": MCP_DISCOVERY_MAX_ROWS + 1}, {"goal": "lower_heat", "limit": 0}, {"goal": "lower_heat", "min_composite_score": 101}, {"goal": "lower_heat", "asset_type": "FUND"}, {}])
+@pytest.mark.parametrize("arguments", [{"goal": "buy_more"}, {"goal": "lower_heat", "limit": MCP_DISCOVERY_MAX_ROWS + 1}, {"goal": "lower_heat", "limit": 0}, {"goal": "lower_heat", "min_composite_score": 101}, {"goal": "lower_heat", "min_composite_score": -101}, {"goal": "lower_heat", "asset_type": "FUND"}, {}])
 def test_arguments_outside_the_schema_are_refused(mcp_client, engine, arguments):
     assert call(mcp_client, "find_candidates", arguments).json()["result"]["isError"] is True
 

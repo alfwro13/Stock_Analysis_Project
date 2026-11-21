@@ -8,7 +8,7 @@ Stock Detail's **Refresh** button offers **Refresh Values** and **Repair Data**.
 
 ### 1. The Relational Database (`data/analysis.db`)
 This SQLite database stores all structured, queryable data:
-* **System Verdicts & Scores:** The 0-100 composite scores and "STRONG BUY" / "BEARISH" signals.
+* **System Verdicts & Scores:** The composite scores (−100 to +100) and "STRONG BUY" / "BEARISH" signals.
 * **Algorithmic Breakdown:** The text-based explanations of why an asset received its score.
 * **Setup Tags:** The UI badges (e.g., `🔥 VCP Breakout`, `🐂 Bullish Engulfing`, `🤖 AI Buy`).
 * **Fundamental Data:** P/E ratios, Debt-to-Equity, Sector classifications.

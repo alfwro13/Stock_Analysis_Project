@@ -13,7 +13,7 @@ Full detail on every feature lives in the in-app Glossary and `assets/` docs —
 **Prediction & Signals**
 * **Ensemble ML Prediction Engine** — XGBoost + Random Forest soft-voting classifier scoring 10-day upside probability.
 * **Entry & Exit Zone Analysis** — Volume Profile, Keltner Channel Z-Score, and ML Quantile Price Bands, with a **Position Targets** box to set your own buy/sell alerts.
-* **Proprietary Scoring (0–100)** — composite technical grade from MA alignment, RSI, volatility contraction, MACD, and OBV.
+* **Proprietary Scoring (−100 to +100)** — composite technical grade from MA alignment, RSI, volatility contraction, MACD, and OBV.
 * **Hierarchical Candlestick Recognition** — 11 scored candlestick patterns across three tiers, tagged inline and on the macro chart.
 * **Pattern Detection** — daily swing-pattern scan (Head & Shoulders, Double Top/Bottom, Flags, Pennants, Triangles, Wedges, Volatility Squeeze, NR4/NR7, Parabolic Stretch, Divergence, candlestick triggers) via an extensible per-family registry.
 * **Signal Pillar Confluence** — flags a ticker when Technical, Statistical, and ML signals independently agree.

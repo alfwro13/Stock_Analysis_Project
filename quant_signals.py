@@ -20,6 +20,7 @@ from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker,
 from constants import (
     DAILY_BAR_COLUMNS, QUANT_SCAN_ALWAYS_TICKERS,
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
+    COMPOSITE_SCORE_MAX,
     SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL,
 )
 
@@ -724,7 +725,7 @@ class QuantEngine:
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            score = max(-100, min(score, 100))
+            score = max(-COMPOSITE_SCORE_MAX, min(score, COMPOSITE_SCORE_MAX))
             _has_tech = df is not None and len(df) >= 21
             if not _has_tech:
                 signal = "INSUFFICIENT DATA"

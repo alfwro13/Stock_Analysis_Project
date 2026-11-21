@@ -2,13 +2,14 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from constants import MCP_DISCOVERY_MAX_ROWS, MCP_DISCOVERY_NAME_MAX_CHARS, MCP_DISCOVERY_TEXT_MAX_CHARS
+from constants import COMPOSITE_SCORE_MAX, MCP_DISCOVERY_MAX_ROWS, MCP_DISCOVERY_NAME_MAX_CHARS, MCP_DISCOVERY_TEXT_MAX_CHARS
 from db.helpers import get_portfolio_tickers, get_universe_tickers, get_watchlist_only_tickers
 from utils import clean_display_text
 
 ScopeArg = Annotated[Literal["all", "new", "watchlist", "portfolio"], Field(description="all, or only tickers that are new (neither held nor watched), watched-only, or held")]
 LimitArg = Annotated[int, Field(ge=1, le=MCP_DISCOVERY_MAX_ROWS)]
 Score = Annotated[float, Field(ge=0, le=100)]
+CompositeScore = Annotated[float, Field(ge=-COMPOSITE_SCORE_MAX, le=COMPOSITE_SCORE_MAX)]
 
 
 def list_flags() -> dict[str, str]:

@@ -28,6 +28,7 @@ SCORE_BULLISH     =  20
 SCORE_NEUTRAL     =   0
 SCORE_BEARISH     = -30
 SCORE_STRONG_SELL = -60
+COMPOSITE_SCORE_MAX = 100  # stock_signals.composite_score is clamped to -COMPOSITE_SCORE_MAX..+COMPOSITE_SCORE_MAX
 
 # ── Data freshness thresholds (UI staleness badge) ────────────────────────────
 FRESHNESS_MODEL_WARN_DAYS   = 7   # model file older than this → amber
@@ -194,7 +195,7 @@ ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process sampl
 ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.210" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.211" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

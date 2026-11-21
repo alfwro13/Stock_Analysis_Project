@@ -90,6 +90,12 @@ def test_filters(mcp_client, arguments, expected):
     assert set(_tickers(mcp_client, **arguments)) == expected
 
 
+def test_min_composite_score_accepts_the_whole_signed_range(mcp_client):
+    assert set(_tickers(mcp_client, min_composite_score=-100)) >= {seed.HELD, seed.WATCHED, seed.NEW_BUYABLE}
+    for bound in (-101, 101):
+        assert call(mcp_client, "screen_universe", {"min_composite_score": bound}).json()["result"]["isError"] is True
+
+
 def test_a_row_with_no_value_for_a_filter_never_matches_it(mcp_client):
     for arguments in ({"min_composite_score": 0}, {"max_trailing_pe": 1000}, {"min_ml_confidence": 0}, {"above_sma_200": True}, {"above_sma_200": False}):
         assert seed.NEW_ODD not in _tickers(mcp_client, **arguments), arguments

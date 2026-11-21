@@ -21,7 +21,7 @@ Two signals × two scopes, each with its own membership, snapshots and track rec
 | Signal | Ranks by | Qualifies when |
 |---|---|---|
 | **ML Upside** (`ml_upside`) | Signed predicted upside, `((Q10 + Q90) / 2) / reference_close − 1`, from the existing 10-trading-day quantile models | Upside is positive. The list is never padded with non-positive names, so it can be shorter than the list size |
-| **Quant Score** (`quant_score`) | The nightly 0–100 composite quant score | Score is at least **Min Quant Score** (default 50) |
+| **Quant Score** (`quant_score`) | The nightly composite quant score (−100 to +100) | Score is at least **Min Quant Score** (default 50) |
 
 Scopes are **Portfolio** (`db.helpers.get_portfolio_tickers()`) and **Watchlist**
 (`get_watchlist_only_tickers()` — Watchlist tickers you do not hold). A ticker in both belongs to
@@ -111,7 +111,7 @@ alerts.
 ## 6. Limits
 
 - Forward-only: a new install shows no track record until snapshots are at least ~10 trading days old.
-- The Quant Score list is only as stable as an integer 0–100 score allows; many ties are broken
+- The Quant Score list is only as stable as an integer score between −100 and +100 allows; many ties are broken
   alphabetically, which is deterministic but not meaningful.
 - Sectors come from `stock_signals.sector`; a missing sector is an `Unknown` group, not an error.
 - No basket backtest: evaluating a shortlist as a rebalanced basket over longer history belongs to the

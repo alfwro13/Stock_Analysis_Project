@@ -575,7 +575,7 @@ The ML model age is in calendar days. The price-data state counts only trading d
 ### `POST /api/trigger-quant-scan`
 
 Runs the full daily quant scan for all portfolio and watchlist tickers:
-1. Candlestick patterns and composite score (0–100)
+1. Candlestick patterns and composite score (−100 to +100)
 2. RSI, MACD, moving average signals
 3. ML ensemble inference (XGBoost + Random Forest)
 4. Historical simulation VaR/CVaR tail risk
