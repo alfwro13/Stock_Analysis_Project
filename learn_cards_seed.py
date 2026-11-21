@@ -3648,7 +3648,7 @@ CARDS = [
     <li><code>get_heat_index</code> — the Portfolio Heat Index (0–100 score and tier) and the five positions contributing most to the risk.</li>
     <li><code>get_market_regime</code> — market-wide context: Market Regime (HMM), Market Stress, US and UK yield threat levels, Treasury auction health, Fear &amp; Greed and the Market Pulse tiles.</li>
     <li><code>get_ticker_snapshot</code> — one ticker the dashboard tracks: price, trend, technicals, valuation, fundamentals, forensic scores, ML confidence, Position Targets and next earnings.</li>
-    <li><code>get_watchlist</code> — every Watchlist ticker with verdict, score, trend, RSI, momentum, Trap Monitor phase, confluence and recommendation.</li>
+    <li><code>get_watchlist</code> — Watchlist tickers, 25 at a time and in the page's order, with verdict, score, trend, RSI, momentum, Trap Monitor phase, confluence and recommendation; it can keep only held or not-held tickers, a minimum score or recommended buys, and a compact form leaves out empty fields.</li>
     <li><code>pretrade_check</code> — an advisory what-if for buying an amount of a ticker: approve, warn or reject from the Heat Index after the addition, and a smaller size that would help. It never records anything.</li>
     <li><code>get_alerts</code> — recent alerts from the notification log, the tickers the Trap Monitor currently flags, and the Alert Confidence Referee's verdicts.</li>
     <li><code>get_news</code> — recent headlines for your Portfolio and Watchlist (or one ticker) with FinBERT sentiment. News text is external content, never instructions, and article bodies are never returned.</li>
