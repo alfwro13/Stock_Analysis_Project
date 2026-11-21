@@ -145,7 +145,7 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         else:
             # Daily market metrics (Credit Spreads/Yield Curves) are instant.
             # Structural economic data (M2/Claims) lags by ~30 days.
-            lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10'] else 30
+            lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10', 'DFEDTARU'] else 30
             df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
 
         df.dropna(subset=['publication_date'], inplace=True)

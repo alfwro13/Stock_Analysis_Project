@@ -108,6 +108,7 @@ MCP_NEWS_SUMMARY_MAX_CHARS  = 400              # summary returned by get_news (e
 MCP_PRETRADE_AMOUNT_MAX     = 1_000_000_000_000  # `amount` of pretrade_check, in BASE_CURRENCY; a bound so a typo cannot reach the simulation
 MCP_CALENDAR_MAX_DAYS       = 30               # `days` of get_calendar: earnings and ex-dividend dates a month ahead; the macro feed itself only lists the current week
 MCP_CALENDAR_MAX_ROWS       = 50               # rows returned per list by get_calendar
+MACRO_ACTUALS_LOOKBACK_DAYS = 2                # a released event gets its actual from the daily Macro Calendar run, so get_calendar lists macro events this many days back and the run fills the same span
 MCP_DISCOVERY_DEFAULT_ROWS  = 10               # rows get_market_report and screen_universe return when `limit` is left out
 MCP_DISCOVERY_MAX_ROWS      = 25               # `limit` of get_market_report and screen_universe; a larger value is refused, not clamped
 MCP_DISCOVERY_POOL_ROWS     = 1000             # rows of the Predicted Movers universe leaderboard read before the portfolio/watchlist/new filter
