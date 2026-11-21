@@ -11,8 +11,12 @@ RENDER_ARGUMENTS = {
     "review_portfolio": [{}, {"account": "all"}],
     "pre_trade_review": [{"ticker": "AAPL", "side": "buy", "amount": "5000"}, {"ticker": "AAPL", "side": "sell"}],
     "whats_coming_up": [{}, {"days": "14", "account": "all"}],
+    "deploy_cash": [{"amount": "5000"}, {"amount": "250", "account": "all"}],
+    "diversify_account": [{}, {"account": "all"}],
+    "suggest_watchlist_additions": [{}, {"account": "all"}],
+    "lower_heat_index": [{}, {"amount": "1000", "account": "all"}],
 }
-TOOL_NAME = re.compile(r"\b(get_[a-z_]+|pretrade_check)\(")
+TOOL_NAME = re.compile(r"\b(get_[a-z_]+|pretrade_check|find_candidates|screen_universe)\(")
 
 
 def _listed(client):
@@ -28,12 +32,19 @@ class TestPromptList:
         titles = {p["name"]: p["title"] for p in _listed(mcp_client)}
         assert titles["review_portfolio"] == "Review my portfolio" and titles["pre_trade_review"] == "Pre-trade check"
         assert titles["whats_coming_up"] == "What's coming up?"
+        assert titles["deploy_cash"] == "Deploy cash" and titles["diversify_account"] == "Diversify account"
+        assert titles["suggest_watchlist_additions"] == "What should I add to my watchlist?"
+        assert titles["lower_heat_index"] == "Lower my Heat Index"
 
     def test_argument_requirements(self, mcp_client):
         required = {p["name"]: {a["name"]: a["required"] for a in p.get("arguments", [])} for p in _listed(mcp_client)}
         assert required["review_portfolio"] == {"account": False}
         assert required["pre_trade_review"] == {"ticker": True, "side": True, "amount": False, "account": False}
         assert required["whats_coming_up"] == {"days": False, "account": False}
+        assert required["deploy_cash"] == {"amount": True, "account": False}
+        assert required["diversify_account"] == {"account": False}
+        assert required["suggest_watchlist_additions"] == {"account": False}
+        assert required["lower_heat_index"] == {"amount": False, "account": False}
 
     def test_every_argument_is_described(self, mcp_client):
         for prompt in _listed(mcp_client):
