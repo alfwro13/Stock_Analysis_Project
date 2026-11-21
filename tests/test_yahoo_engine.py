@@ -664,7 +664,7 @@ class TestGetTickerInfo:
             assert self.eng.get_ticker_info("GONE", raise_errors=True) is None
 
     @patch("yahoo_engine.yahoo_connection_boundary")
-    def test_passes_singleton_lock_to_connection_boundary(self, mock_ctx):
+    def test_asks_the_connection_boundary_to_raise_on_transient_errors(self, mock_ctx):
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -672,8 +672,7 @@ class TestGetTickerInfo:
             mock_tk_cls.return_value.info = {"symbol": "AAPL"}
             self.eng.get_ticker_info("AAPL")
 
-        import yahoo_engine as ye
-        mock_ctx.assert_called_once_with("Ticker Info: AAPL", lock=ye._yf_singleton_lock, raise_on_transient=True)
+        mock_ctx.assert_called_once_with("Ticker Info: AAPL", raise_on_transient=True)
 
 
 class TestYahooCallRetry:
@@ -685,7 +684,7 @@ class TestYahooCallRetry:
         attempts = []
         lock_state = []
 
-        def boundary(ctx, lock=None, raise_on_transient=False):
+        def boundary(ctx, raise_on_transient=False):
             attempts.append(raise_on_transient)
             if len(attempts) == 1:
                 raise _TransientNetworkError("curl: (28) timed out")
@@ -705,7 +704,7 @@ class TestYahooCallRetry:
 
         flags = []
 
-        def boundary(ctx, lock=None, raise_on_transient=False):
+        def boundary(ctx, raise_on_transient=False):
             flags.append(raise_on_transient)
             if raise_on_transient:
                 raise _TransientNetworkError("timed out")
@@ -722,14 +721,14 @@ class TestYahooCallRetry:
 
         seen = []
 
-        def boundary(ctx, lock=None, raise_on_transient=False):
-            seen.append((lock, ye._yf_singleton_lock._lock.locked()))
+        def boundary(ctx, raise_on_transient=False):
+            seen.append(ye._yf_singleton_lock._lock.locked())
             return MagicMock(__enter__=lambda s: "session", __exit__=lambda *a: False)
 
         with patch("yahoo_engine.yahoo_connection_boundary", side_effect=boundary):
             ye._yahoo_call("ctx", lambda session: None, locked=False)
 
-        assert seen == [(None, False)]
+        assert seen == [False]
 
 
 class TestGetQuoteSnapshot:

@@ -134,25 +134,6 @@ def transient_backoff_seconds(attempt: int) -> float:
     return (TRANSIENT_BASE_DELAY ** attempt) + random.uniform(0.5, 1.5)
 
 
-def _sleep_outside_lock(seconds: float, lock=None) -> None:
-    """Retry backoff must never sleep while holding the lock serializing access to yfinance's
-    process-wide session/crumb singleton (yahoo_engine._yf_singleton_lock) — otherwise one
-    thread's flaky-network retry stalls every other concurrent Yahoo caller in the process for
-    the full backoff duration (AGENTS.md rule 10). Safe to release mid-retry: this thread's crumb
-    and request params were already resolved by yfinance before this specific request executed,
-    so a concurrent caller mutating the singleton's active session while we sleep can't corrupt
-    this already-in-flight retry — only the lock object's own __enter__ (which re-checks the 429
-    circuit breaker) is used to reacquire, so a 429 tripped elsewhere during the sleep is honored."""
-    if lock is None:
-        time.sleep(seconds)
-        return
-    lock.release()
-    try:
-        time.sleep(seconds)
-    finally:
-        lock.__enter__()
-
-
 def _select_interface(use_ipv4: bool, use_ipv6: bool) -> str:
     global _routing_counter
     if use_ipv4 and use_ipv6:
@@ -288,6 +269,11 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     notify("network_fault", "Network Fault", msg, nextcloud_text=alert_msg, level="error")
 
 
+def _record_transient_failure(session: cffi_requests.Session, detail: str) -> None:
+    session._last_transient_error = detail
+    session._transient_failures += 1
+
+
 def _patch_session_with_retries(session: cffi_requests.Session, action_context: str, timeout: int = 30) -> None:
     # Retries are not done here: this wrapper runs on yfinance's own worker threads, which cannot
     # release the lock their caller holds (AGENTS.md rule 10). It only records a retryable failure on
@@ -300,10 +286,6 @@ def _patch_session_with_retries(session: cffi_requests.Session, action_context: 
     original_request = session.request
     session._transient_failures = 0
 
-    def record_transient(detail: str) -> None:
-        session._last_transient_error = detail
-        session._transient_failures += 1
-
     def wrapped_request(method, url, **kwargs):
         action_context = session._retry_action_context
         kwargs.setdefault("timeout", timeout)
@@ -314,13 +296,13 @@ def _patch_session_with_retries(session: cffi_requests.Session, action_context: 
             if isinstance(e, _RateLimitedError):
                 raise
             if _is_transient_error(e):
-                record_transient(str(e))
+                _record_transient_failure(session, str(e))
             raise
         if response.status_code == 429:
             _enter_yahoo_rate_limit(action_context)
             raise _RateLimitedError("HTTP 429. URL: %s" % url)
         if response.status_code >= 500:
-            record_transient("HTTP %d from Yahoo Finance" % response.status_code)
+            _record_transient_failure(session, "HTTP %d from Yahoo Finance" % response.status_code)
             raise _TransientHTTPError(
                 "HTTP %d from Yahoo Finance during '%s'. URL: %s" % (response.status_code, action_context, url)
             )
@@ -330,10 +312,15 @@ def _patch_session_with_retries(session: cffi_requests.Session, action_context: 
     session._retry_patched = True
 
 
-def create_failover_session(ipv6_address: str, action_context: str, config: dict, lock=None) -> cffi_requests.Session:
+def create_failover_session(ipv6_address: str, action_context: str, config: dict, defer_retry: bool = False) -> cffi_requests.Session:
     # Impersonates Chrome to bypass Yahoo TLS fingerprinting; monkey-patches request to catch IPv6 bind faults and HTTP 429s.
+    # Retries are not done here (AGENTS.md rule 10): with defer_retry a retryable failure is only recorded on the
+    # session and re-raised, so yahoo_connection_boundary(raise_on_transient=True) hands it to _yahoo_call, which
+    # backs off outside the lock. Without it (the last attempt) a retryable IPv6 error trips the fault latch.
     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
     session.fallback_triggered = False
+    session._transient_failures = 0
+    owner = session
     original_request = session.request
 
     def failover_request(method, url, **kwargs):
@@ -341,8 +328,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
         nonlocal session, original_request
         global GLOBAL_IPV6_STATUS
         kwargs.setdefault("timeout", 30)
-        max_retries = 3
-        base_delay = 2.0
+        max_retries = TRANSIENT_MAX_RETRIES
 
         for attempt in range(max_retries + 1):
             _raise_if_rate_limited(url)
@@ -354,17 +340,10 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     raise _RateLimitedError("HTTP 429 on IPv6 interface. URL: %s" % url)
 
                 if response.status_code >= 500:
-                    if attempt < max_retries:
-                        sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
-                        logger.warning(
-                            "Transient network error during '%s': HTTP %d from Yahoo Finance. Retrying in %.2fs (Attempt %d/%d).",
-                            action_context, response.status_code, sleep_time, attempt + 1, max_retries,
-                        )
-                        _sleep_outside_lock(sleep_time, lock)
-                        continue
+                    _record_transient_failure(owner, "HTTP %d from Yahoo Finance" % response.status_code)
                     raise _TransientHTTPError(
-                        "HTTP %d from Yahoo Finance during '%s' on IPv6 interface after %d attempts. URL: %s"
-                        % (response.status_code, action_context, max_retries + 1, url)
+                        "HTTP %d from Yahoo Finance during '%s' on IPv6 interface. URL: %s"
+                        % (response.status_code, action_context, url)
                     )
 
                 if not getattr(session, 'fallback_triggered', False):
@@ -389,12 +368,9 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     raise e
 
                 # bind errors (errno 99) are a startup race — IPv6 interface may still be in DAD; retry before hard-faulting.
-                is_transient = _is_transient_error(e, _IPV6_BIND_ERROR_TERMS)
-                if is_transient and attempt < max_retries:
-                    sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
-                    logger.warning("Transient network error on IPv6 '%s': %s. Retrying in %.2fs (Attempt %d/%d).", ipv6_address, error_str, sleep_time, attempt + 1, max_retries)
-                    _sleep_outside_lock(sleep_time, lock)
-                    continue
+                if defer_retry and _is_transient_error(e, _IPV6_BIND_ERROR_TERMS):
+                    _record_transient_failure(owner, error_str)
+                    raise
 
                 error_summary = "%s: %s" % (type(e).__name__, error_str)
                 detailed_trace = (
@@ -537,7 +513,7 @@ def _cached_plain_session(cache_key: str, factory) -> cffi_requests.Session:
 
 
 @contextmanager
-def yahoo_connection_boundary(action_context: str, lock=None, raise_on_transient: bool = False):
+def yahoo_connection_boundary(action_context: str, raise_on_transient: bool = False):
     _maybe_restore_latch()
     _ensure_yf_error_filter()
     config = load_config()
@@ -557,7 +533,7 @@ def yahoo_connection_boundary(action_context: str, lock=None, raise_on_transient
     is_cached_session = False
     if interface == "ipv6" and not use_ipv4:
         # IPv6-only: use existing failover session (retains hard-fail latch + emergency IPv4 fallback)
-        session = create_failover_session(ipv6_addr, action_context, config, lock=lock)
+        session = create_failover_session(ipv6_addr, action_context, config, defer_retry=raise_on_transient)
     elif interface == "ipv6":
         # Dual mode: plain IPv6 session — round-robin handles failures naturally, no failover needed
         session = _cached_plain_session(

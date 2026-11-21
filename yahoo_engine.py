@@ -40,10 +40,6 @@ class _RateLimitAwareLock:
     def __exit__(self, *args):
         return self._lock.__exit__(*args)
 
-    def release(self) -> None:
-        """Lets the IPv6-only failover session's retry (tools.network_engine._sleep_outside_lock) drop this lock during its backoff sleep; reacquire goes back through __enter__ so a 429 tripped meanwhile is honored."""
-        self._lock.release()
-
 
 # Prevents concurrent writes to the yfinance process-global YfData singleton; without this,
 # parallel callers corrupt the session/crumb and trigger an infinite 401 re-fetch loop. Held for
@@ -59,9 +55,7 @@ def _yahoo_call(action_context: str, fetch, *, locked: bool = True):
         last = attempt == TRANSIENT_MAX_RETRIES
         try:
             with _yf_singleton_lock if locked else contextlib.nullcontext():
-                with yahoo_connection_boundary(
-                    action_context, lock=_yf_singleton_lock if locked else None, raise_on_transient=not last,
-                ) as session:
+                with yahoo_connection_boundary(action_context, raise_on_transient=not last) as session:
                     return fetch(session)
         except _TransientNetworkError as e:
             sleep_time = transient_backoff_seconds(attempt)

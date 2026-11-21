@@ -198,8 +198,19 @@ class TestYahooConnectionBoundary:
              patch("tools.network_engine._increment_api_stat"):
             with ne.yahoo_connection_boundary("test") as session:
                 assert session is mock_session
-        mock_cfs.assert_called_once_with("::1", "test", self._ipv6_only_cfg, lock=None)
+        mock_cfs.assert_called_once_with("::1", "test", self._ipv6_only_cfg, defer_retry=False)
         mock_session.close.assert_called_once()
+
+    def test_ipv6_only_defers_the_retry_to_the_caller_when_asked_to_raise_on_transient(self):
+        mock_session = MagicMock()
+        mock_session._transient_failures = 0
+        with patch("tools.network_engine.load_config", return_value=self._ipv6_only_cfg), \
+             patch("tools.network_engine.create_failover_session", return_value=mock_session) as mock_cfs, \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine._increment_api_stat"):
+            with ne.yahoo_connection_boundary("test", raise_on_transient=True):
+                pass
+        mock_cfs.assert_called_once_with("::1", "test", self._ipv6_only_cfg, defer_retry=True)
 
     def test_dual_mode_uses_plain_ipv6_session(self):
         mock_session = MagicMock()
@@ -485,29 +496,6 @@ class TestBoundaryRaiseOnTransient:
             session.request("GET", "http://example.com")
 
 
-class TestSleepOutsideLock:
-    def test_no_lock_just_sleeps(self):
-        with patch("tools.network_engine.time.sleep") as mock_sleep:
-            ne._sleep_outside_lock(1.5, lock=None)
-        mock_sleep.assert_called_once_with(1.5)
-
-    def test_releases_before_sleeping_and_reacquires_after(self):
-        mock_lock = MagicMock()
-        calls = []
-        mock_lock.release.side_effect = lambda: calls.append("release")
-        mock_lock.__enter__.side_effect = lambda: calls.append("enter")
-        with patch("tools.network_engine.time.sleep", side_effect=lambda s: calls.append("sleep")):
-            ne._sleep_outside_lock(1.0, lock=mock_lock)
-        assert calls == ["release", "sleep", "enter"]
-
-    def test_reacquires_even_if_sleep_raises(self):
-        mock_lock = MagicMock()
-        with patch("tools.network_engine.time.sleep", side_effect=RuntimeError("boom")):
-            with pytest.raises(RuntimeError):
-                ne._sleep_outside_lock(1.0, lock=mock_lock)
-        mock_lock.__enter__.assert_called_once()
-
-
 class TestClearYfinanceCrumb:
     """yfinance holds YfData._cookie_lock (a plain Lock) while it fetches the crumb, and a 429 on that very
     request reaches _clear_yfinance_crumb on the same thread: waiting for the lock hung prod's Yahoo callers."""
@@ -590,51 +578,116 @@ class TestCreateFailoverSession:
                 session.request("GET", "http://example.com")
         original.assert_not_called()
 
-    def test_retries_on_500_then_succeeds(self):
-        ok_response = MagicMock(status_code=200)
-        err_response = MagicMock(status_code=500)
+    def test_a_500_is_recorded_and_raised_without_sleeping_or_retrying(self):
         mock_session = MagicMock()
-        original = MagicMock(side_effect=[err_response, ok_response])
+        original = MagicMock(return_value=MagicMock(status_code=500))
         mock_session.request = original
         with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
-             patch("tools.network_engine.time.sleep"):
+             patch("tools.network_engine.time.sleep") as mock_sleep, \
+             patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
             session = ne.create_failover_session("::1", "test-ctx", {})
-            result = session.request("GET", "http://example.com")
-        assert result is ok_response
-        assert original.call_count == 2
+            with pytest.raises(ne._TransientHTTPError, match="test-ctx"):
+                session.request("GET", "http://example.com")
+        assert original.call_count == 1
+        assert session._transient_failures == 1
+        mock_sleep.assert_not_called()
+        mock_alert.assert_not_called()
 
     @pytest.mark.parametrize("message", [
         "curl: (16) Error in the HTTP2 framing layer",
         "curl: (28) Operation timed out",
         "bind failed: Cannot assign requested address",
     ])
-    def test_retries_a_transient_libcurl_error_then_succeeds(self, message):
-        ok_response = MagicMock(status_code=200)
+    def test_a_transient_libcurl_error_is_recorded_and_reraised_when_the_retry_is_deferred(self, message):
         mock_session = MagicMock()
-        original = MagicMock(side_effect=[Exception(message), ok_response])
+        original = MagicMock(side_effect=Exception(message))
         mock_session.request = original
         with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
-             patch("tools.network_engine.time.sleep"), \
+             patch("tools.network_engine.time.sleep") as mock_sleep, \
              patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
-            session = ne.create_failover_session("::1", "test-ctx", {})
-            result = session.request("GET", "http://example.com")
-        assert result is ok_response
-        assert original.call_count == 2
+            session = ne.create_failover_session("::1", "test-ctx", {}, defer_retry=True)
+            with pytest.raises(Exception, match=message.split(":")[0]):
+                session.request("GET", "http://example.com")
+        assert original.call_count == 1
+        assert session._transient_failures == 1
+        assert session._last_transient_error == message
+        assert not session.fallback_triggered
+        mock_sleep.assert_not_called()
         mock_alert.assert_not_called()
 
-    def test_raises_transient_http_error_after_exhausting_retries_and_skips_ipv6_fault_alert(self):
-        err_response = MagicMock(status_code=500)
-        mock_session = MagicMock()
-        original = MagicMock(return_value=err_response)
-        mock_session.request = original
-        with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
-             patch("tools.network_engine.time.sleep"), \
+    def test_a_transient_error_on_the_last_attempt_trips_the_latch_and_falls_back_to_ipv4(self):
+        ok_response = MagicMock(status_code=200)
+        primary_request = MagicMock(side_effect=Exception("bind failed: Cannot assign requested address"))
+        primary = MagicMock()
+        primary.request = primary_request
+        fallback = MagicMock()
+        fallback.request = MagicMock(return_value=ok_response)
+        with patch("tools.network_engine.cffi_requests.Session", side_effect=[primary, fallback]), \
+             patch("tools.network_engine.time.sleep") as mock_sleep, \
+             patch("tools.network_engine._clear_yfinance_crumb"), \
              patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
-            session = ne.create_failover_session("::1", "test-ctx", {})
-            with pytest.raises(ne._TransientHTTPError, match="test-ctx"):
-                session.request("GET", "http://example.com")
+            session = ne.create_failover_session("::1", "test-ctx", {}, defer_retry=False)
+            result = session.request("GET", "http://example.com")
+        assert result is ok_response
+        assert primary_request.call_count == 1
+        mock_alert.assert_called_once()
+        mock_sleep.assert_not_called()
+        fallback.close.assert_called_once()
+
+    def test_a_non_transient_error_trips_the_latch_even_when_the_retry_is_deferred(self):
+        ok_response = MagicMock(status_code=200)
+        primary = MagicMock()
+        primary.request = MagicMock(side_effect=Exception("Network is unreachable"))
+        fallback = MagicMock()
+        fallback.request = MagicMock(return_value=ok_response)
+        with patch("tools.network_engine.cffi_requests.Session", side_effect=[primary, fallback]), \
+             patch("tools.network_engine._clear_yfinance_crumb"), \
+             patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
+            session = ne.create_failover_session("::1", "test-ctx", {}, defer_retry=True)
+            assert session.request("GET", "http://example.com") is ok_response
+        mock_alert.assert_called_once()
+        assert session._transient_failures == 0
+
+    def test_boundary_turns_a_swallowed_ipv6_failure_into_a_transient_error_for_the_caller(self):
+        mock_session = MagicMock()
+        mock_session.request = MagicMock(side_effect=Exception("curl: (28) Operation timed out"))
+        cfg = {"YAHOO_IPV6_ADDRESS": "::1", "YAHOO_USE_IPV4": False, "YAHOO_USE_IPV6": True}
+        with patch("tools.network_engine.load_config", return_value=cfg), \
+             patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine._maybe_restore_latch"), \
+             patch("tools.network_engine._increment_api_stat"), \
+             patch("tools.network_engine._trigger_fallback_alert") as mock_alert:
+            with pytest.raises(ne._TransientNetworkError, match="timed out"):
+                with ne.yahoo_connection_boundary("test-ctx", raise_on_transient=True) as session:
+                    try:
+                        session.request("GET", "http://example.com")
+                    except Exception:
+                        pass
         mock_alert.assert_not_called()
-        assert original.call_count == 4
+
+    def test_concurrent_worker_failures_never_touch_the_lock_the_caller_holds(self):
+        lock = threading.Lock()
+        mock_session = MagicMock()
+        mock_session.request = MagicMock(side_effect=Exception("curl: (28) Operation timed out"))
+        with patch("tools.network_engine.cffi_requests.Session", return_value=mock_session), \
+             patch("tools.network_engine._trigger_fallback_alert"):
+            session = ne.create_failover_session("::1", "test-ctx", {}, defer_retry=True)
+
+            def worker():
+                try:
+                    session.request("GET", "http://example.com")
+                except Exception:
+                    pass
+
+            with lock:
+                threads = [threading.Thread(target=worker) for _ in range(6)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(5)
+                assert lock.locked()
+        assert not lock.locked()
+        assert session._transient_failures == 6
 
 
 class TestYfErrorNoiseFilter:
