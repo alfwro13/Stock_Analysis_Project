@@ -12,7 +12,7 @@ from db.helpers import get_next_earnings_dates, parse_utc_epoch
 from market_pulse import get_all_cached_pulse
 from market_session_helpers import extended_quote_from_snapshot, regular_change_from_snapshot
 from pages.page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
-from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector
+from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector, upcoming_iso_date
 from yahoo_engine import yahoo_engine
 
 from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_utc
@@ -37,7 +37,7 @@ _UNITS = {
     "ml": f"confidence is 0-100: the latest model probability for the ticker; price_q10/price_q90 are the ML Quantile Price Band in price.currency; each is null once it was scored more than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days ago, and none has a timestamp of its own",
     "position": "held: in any Trading or Ghostfolio account; total_shares across them",
     "position_targets": "one row per Trading account holding the ticker, plus the Watchlist when it is watched; low_limit (buy) and high_limit (sell) are prices in price.currency, null when unset; shares is null for the Watchlist",
-    "next_earnings": "date is YYYY-MM-DD from the nightly Quant Scan / weekly Universe Fundamentals sync, null when unknown",
+    "next_earnings": "date is YYYY-MM-DD from the nightly Quant Scan / weekly Universe Fundamentals sync; null when unknown or when Yahoo has not published a date after the last report (a past date is never returned)",
     "<part>.as_of": "the data date or UTC time of the oldest source behind that part; stale is true when it is older than 5 days (a missed nightly run)",
 }
 
@@ -222,12 +222,10 @@ def get_ticker_snapshot(ticker: TickerArg) -> dict[str, Any]:
     elif in_universe:
         missing.append("Universe scan only (no stock_signals row): valuation, fundamentals, forensic scores and earnings are null")
 
-    earnings_date = (get_next_earnings_dates([ticker]).get(ticker) or {}).get("next_earnings_date")
-    if not is_iso_date(earnings_date):
-        earnings_date = None
-    earnings_epoch = date_epoch(earnings_date)
-    if earnings_epoch is not None and earnings_epoch < time.time() - 86400:
-        missing.append("The stored next earnings date is in the past: the nightly Quant Scan has not refreshed it")
+    stored_earnings = (get_next_earnings_dates([ticker]).get(ticker) or {}).get("next_earnings_date")
+    earnings_date = upcoming_iso_date(stored_earnings)
+    if is_iso_date(stored_earnings) and earnings_date is None:
+        missing.append("Yahoo has not published the next earnings date yet: the last one stored is in the past")
     next_earnings = {"as_of": None if signals_epoch is None else iso_utc(signals_epoch), "date": earnings_date} if covered else None
 
     sector = None if is_missing_sector(row["sector"]) else row["sector"]

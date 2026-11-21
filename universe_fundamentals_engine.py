@@ -10,7 +10,7 @@ from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
 from time_engine import parse_stored_utc
-from utils import epoch_to_iso_date, safe_ticker_filename
+from utils import epoch_to_iso_date, next_earnings_iso_date, safe_ticker_filename
 
 logger = logging.getLogger(__name__)
 
@@ -230,8 +230,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     fifty_two_week_low    = info.get('fiftyTwoWeekLow')
     fifty_two_week_high   = info.get('fiftyTwoWeekHigh')
 
-    earnings_ts = info.get('earningsTimestamp')
-    next_earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).strftime('%Y-%m-%d') if earnings_ts else 'Unknown'
+    next_earnings_date = next_earnings_iso_date(info) or 'Unknown'
 
     # Compute PEG after pence misquote correction so dividend_yield is already in decimal form.
     peter_lynch_peg = calculate_peter_lynch_peg(

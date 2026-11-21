@@ -128,6 +128,15 @@ class TestRows:
         assert row["position_targets"] == {"low_limit": 90.0, "high_limit": 140.0}
         assert row["next_earnings_date"] == _day(20)
 
+    def test_a_past_earnings_date_is_null_because_it_is_the_last_report(self, mcp_client, watchlist):
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE stock_signals SET next_earnings_date = ? WHERE ticker = ?", (_day(-3), HELD))
+            conn.commit()
+        finally:
+            conn.close()
+        assert _row(_watchlist(mcp_client), HELD)["next_earnings_date"] is None
+
     def test_price_is_regular_session_from_the_shared_cache(self, mcp_client, watchlist):
         row = _row(_watchlist(mcp_client), HELD)
         price = row["price"]

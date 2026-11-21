@@ -16,7 +16,7 @@ from fundamentals_helpers import calculate_peter_lynch_peg
 from patterns.pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker, normalize_ticker
+from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker, next_earnings_iso_date, normalize_ticker
 from constants import (
     DAILY_BAR_COLUMNS, QUANT_SCAN_ALWAYS_TICKERS,
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
@@ -587,8 +587,7 @@ class QuantEngine:
             target_price = info.get('targetMeanPrice', None)
             analyst_rating = (info.get('recommendationKey') or 'None').upper()
             
-            earnings_ts = info.get('earningsTimestamp', None)
-            next_earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).strftime('%Y-%m-%d') if earnings_ts else "Unknown"
+            next_earnings_date = next_earnings_iso_date(info) or "Unknown"
 
             short_interest = info.get('shortPercentOfFloat', None)
             institutional_ownership = info.get('heldPercentInstitutions', None)
