@@ -1031,3 +1031,69 @@ def test_cached_portfolio_totals_serves_the_previous_answer_and_queues_a_refresh
         assert len(counted_totals) == 2
     finally:
         account_store.soft_delete_account(aid)
+
+
+def _day_pnl_rates(monkeypatch, usd=0.8):
+    def rate(currency, **kwargs):
+        return {"USD": usd, "GBp": 0.01}.get(currency, 1.0)
+
+    monkeypatch.setattr(accounts_engine, "get_rate_to_base", rate)
+    monkeypatch.setattr(portfolio_metrics_engine, "get_rate_to_base", rate)
+
+
+@pytest.mark.db
+def test_account_day_pnl_sums_day_change_times_shares_at_each_quote_currency_rate(monkeypatch):
+    _day_pnl_rates(monkeypatch)
+    for ticker, price, currency, change in (("ZZDPGBP", 100.0, "GBP", 1.5), ("ZZDPPENCE", 5000.0, "GBp", -50.0), ("ZZDPUSD", 10.0, "USD", 2.0)):
+        _seed_stock_signal(ticker, price, currency)
+        _seed_market_pulse_cache(ticker, price, change, 1.0)
+    aid = create_account("DayPnlMixAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPGBP", currency="GBP", quantity=10, unit_price=90, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPPENCE", currency="GBP", quantity=2, unit_price=40, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPUSD", currency="USD", quantity=3, unit_price=8, exchange_rate=0.8)
+
+    assert portfolio_metrics_engine.account_day_pnl()[aid] == {"day_pnl": 18.8, "unavailable": []}
+
+
+@pytest.mark.db
+def test_account_day_pnl_matches_the_day_change_the_holdings_rows_carry(monkeypatch):
+    _day_pnl_rates(monkeypatch)
+    _seed_stock_signal("ZZDPSAME", 100.0, "USD")
+    _seed_market_pulse_cache("ZZDPSAME", 100.0, -4.0, -3.8)
+    aid = create_account("DayPnlSameAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPSAME", currency="USD", quantity=5, unit_price=90, exchange_rate=0.8)
+
+    row = next(r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"] if r["account_id"] == aid)
+    expected = round(row["market_change_24h"] * row["shares"] * 0.8, 2)
+    assert portfolio_metrics_engine.account_day_pnl()[aid]["day_pnl"] == expected == -16.0
+
+
+@pytest.mark.db
+def test_account_day_pnl_is_null_when_a_position_has_no_day_change_never_a_partial_sum(monkeypatch):
+    _day_pnl_rates(monkeypatch)
+    _seed_stock_signal("ZZDPOK", 100.0, "GBP")
+    _seed_market_pulse_cache("ZZDPOK", 100.0, 1.0, 1.0)
+    _seed_stock_signal("ZZDPNOCHANGE", 50.0, "GBP")
+    aid = create_account("DayPnlNoChangeAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPOK", currency="GBP", quantity=10, unit_price=90, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPNOCHANGE", currency="GBP", quantity=4, unit_price=40, exchange_rate=1.0)
+
+    assert portfolio_metrics_engine.account_day_pnl()[aid] == {"day_pnl": None, "unavailable": ["ZZDPNOCHANGE"]}
+
+
+@pytest.mark.db
+def test_account_day_pnl_is_null_when_the_fx_rate_is_unavailable(monkeypatch):
+    _day_pnl_rates(monkeypatch, usd=None)
+    _seed_stock_signal("ZZDPNOFX", 10.0, "USD")
+    _seed_market_pulse_cache("ZZDPNOFX", 10.0, 1.0, 1.0)
+    aid = create_account("DayPnlNoFxAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDPNOFX", currency="USD", quantity=3, unit_price=8, exchange_rate=0.8)
+
+    assert portfolio_metrics_engine.account_day_pnl()[aid] == {"day_pnl": None, "unavailable": ["ZZDPNOFX"]}
+
+
+@pytest.mark.db
+def test_account_day_pnl_of_an_account_without_positions_is_a_real_zero():
+    aid = create_account("DayPnlEmptyAcc", "GBP", initial_cash=100.0)
+
+    assert portfolio_metrics_engine.account_day_pnl()[aid] == {"day_pnl": 0.0, "unavailable": []}

@@ -386,6 +386,24 @@ def account_metrics_list(refresh_missing: bool = True) -> dict:
     return {"base_currency": BASE_CURRENCY, "accounts": accounts}
 
 
+def account_day_pnl() -> dict:
+    """Last regular session's move per Trading account; None (tickers in `unavailable`) when any position lacks a day change or FX rate, never a partial sum."""
+    holdings = holdings_with_metrics_all_accounts()["holdings"]
+    result = {acc["id"]: {"day_pnl": 0.0, "unavailable": []} for acc in _trading_accounts()}
+    for h in holdings:
+        entry = result.setdefault(h["account_id"], {"day_pnl": 0.0, "unavailable": []})
+        change = h["market_change_24h"]
+        rate = None if change is None or h["priced_at_cost"] else get_rate_to_base(h["market_price_currency"])
+        if rate is None:
+            entry["unavailable"].append(h["ticker"])
+        else:
+            entry["day_pnl"] += change * h["shares"] * rate
+    return {
+        account_id: {"day_pnl": None if entry["unavailable"] else round(entry["day_pnl"], 2), "unavailable": entry["unavailable"]}
+        for account_id, entry in result.items()
+    }
+
+
 def _other_accounts() -> list:
     return [a for a in get_accounts() if a["account_type"] in ("Pension", "House")]
 
