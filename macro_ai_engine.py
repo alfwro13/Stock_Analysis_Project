@@ -99,6 +99,10 @@ class MacroAIEngine:
     def _consensus_miss_probability(self, forecast: Any, previous: Any) -> np.ndarray:
         return self.rf_model.predict_proba(self._expected_change(forecast, previous).reshape(-1, 1))[:, 1]
 
+    @staticmethod
+    def _volatility_features(expected_change: Any, vix: Any, hmm_state: Any, rf_prob: Any) -> np.ndarray:
+        return np.column_stack([expected_change, vix, hmm_state, rf_prob])
+
     def _discard_persisted_model(self, attribute: str, path: Path) -> None:
         setattr(self, attribute, None)
         remove_sklearn_artifact(path)
@@ -301,13 +305,12 @@ class MacroAIEngine:
                 except Exception as ex:
                     logger.warning("Batched RF predict_proba failed, using 0.5 fallback: %s", ex)
 
-            X = np.column_stack([
-                df_cal['forecast_num'].values,
-                df_cal['previous_num'].values,
+            X = self._volatility_features(
+                self._expected_change(df_cal['forecast_num'], df_cal['previous_num']),
                 df_cal['vix_close'].values,
                 hmm_states,
                 rf_probs,
-            ])
+            )
 
             tscv = TimeSeriesSplit(n_splits=MACRO_CV_N_SPLITS)
             cv_scores = cross_val_score(
@@ -400,7 +403,7 @@ class MacroAIEngine:
                 rf_consensus_miss_prob = float(self._consensus_miss_probability([f_val], [p_val])[0])
 
                 # clamp before expm1 (not after): correct inversion of log1p; log1p(0)=0, so clamp at 0
-                X_infer = np.array([[f_val, p_val, current_vix, current_hmm_state, rf_consensus_miss_prob]])
+                X_infer = self._volatility_features(self._expected_change([f_val], [p_val]), [current_vix], [current_hmm_state], [rf_consensus_miss_prob])
                 predicted_gap = float(np.expm1(max(0.0, float(self.xgb_model.predict(X_infer)[0]))))
                 
                 cursor.execute("""
