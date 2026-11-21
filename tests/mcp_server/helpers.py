@@ -77,7 +77,7 @@ def emptied_tables(*tables):
             conn.close()
 
 
-TOOL_PROMPTS = {"review_portfolio", "pre_trade_review", "whats_coming_up"}
+TOOL_PROMPTS = {"review_portfolio", "pre_trade_review", "whats_coming_up", "deploy_cash", "diversify_account", "suggest_watchlist_additions", "lower_heat_index"}
 AI_ENGINE_PROMPTS = {"devils_advocate", "risk_reward_audit", "quantamental_deep_dive", "earnings_strategy"}
 REGIME_PROMPTS = {"regime_plain_english_briefing", "regime_what_happens_next", "regime_how_should_i_position", "regime_red_flags_check"}
 EXPECTED_PROMPTS = TOOL_PROMPTS | AI_ENGINE_PROMPTS | REGIME_PROMPTS
