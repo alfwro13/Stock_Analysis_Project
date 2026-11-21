@@ -115,7 +115,7 @@ class MacroAIEngine:
             )
             self.conn.commit()
         except Exception:
-            logger.exception(f"Failed to persist training score for {model_name}.")
+            logger.exception("Failed to persist training score for %s.", model_name)
 
     def _remap_hmm_states(self, raw_states: np.ndarray) -> np.ndarray:
         """Remap raw HMM indices to canonical order by ascending us_high_yield_spread mean (0=expansion, 2=recession/crash); identity fallback if hmm_state_order unset."""
@@ -161,7 +161,7 @@ class MacroAIEngine:
                 eval_hmm = hmm.GaussianHMM(n_components=MACRO_HMM_N_STATES, covariance_type="full", n_iter=MACRO_HMM_N_ITER, random_state=42)
                 eval_hmm.fit(X[:split])
                 ll_per_sample = eval_hmm.score(X[split:]) / len(X[split:])
-                logger.info(f"HMM held-out log-likelihood/sample: {ll_per_sample:.4f} (n_train={split}, n_test={len(X)-split}; scores are noisy below ~200 samples)")
+                logger.info("HMM held-out log-likelihood/sample: %.4f (n_train=%d, n_test=%d; scores are noisy below ~200 samples)", ll_per_sample, split, len(X) - split)
                 self._log_training_score('hmm_regime', len(X), ll_per_sample, None, 'log_likelihood_per_sample')
 
             self.hmm_model = hmm.GaussianHMM(
@@ -174,7 +174,7 @@ class MacroAIEngine:
 
             # argsort on means_[:,2] (us_high_yield_spread) gives a stable canonical ordering: 0=expansion, 2=recession
             self.hmm_state_order = np.argsort(self.hmm_model.means_[:, 2])
-            logger.info(f"HMM state canonical order (raw->canonical): {dict(enumerate(self.hmm_state_order))}")
+            logger.info("HMM state canonical order (raw->canonical): %s", dict(enumerate(self.hmm_state_order)))
 
             dump_sklearn_artifact({"model": self.hmm_model, "scaler": self.hmm_scaler, "state_order": self.hmm_state_order}, MACRO_HMM_PATH)
 
@@ -211,7 +211,7 @@ class MacroAIEngine:
                 RandomForestClassifier(n_estimators=MACRO_RF_N_ESTIMATORS, max_depth=MACRO_RF_MAX_DEPTH, random_state=42),
                 X, y, cv=tscv, scoring='accuracy',
             )
-            logger.info(f"RF Consensus Miss CV accuracy: {cv_scores.mean():.3f} ± {cv_scores.std():.3f} (n={len(X)}; scores are noisy below ~100 samples)")
+            logger.info("RF Consensus Miss CV accuracy: %.3f ± %.3f (n=%d; scores are noisy below ~100 samples)", cv_scores.mean(), cv_scores.std(), len(X))
             self._log_training_score('rf_consensus_miss', len(X), float(cv_scores.mean()), float(cv_scores.std()), 'accuracy')
 
             # Restrict depth to prevent overfitting on sparse early data
@@ -219,7 +219,7 @@ class MacroAIEngine:
             self.rf_model.fit(X, y)
             dump_sklearn_artifact(self.rf_model, MACRO_RF_PATH)
 
-            logger.info(f"Successfully trained Random Forest Consensus Miss model on {len(X)} historical events.")
+            logger.info("Successfully trained Random Forest Consensus Miss model on %d historical events.", len(X))
         except Exception:
             logger.exception("Failed to train Consensus Miss Probability.")
 
@@ -250,17 +250,18 @@ class MacroAIEngine:
             vix_match_rate = vix_matched / vix_total if vix_total else 0.0
             if vix_match_rate == 0.0:
                 logger.error(
-                    f"XGBoost training: 0% VIX join match ({vix_matched}/{vix_total} rows). "
+                    "XGBoost training: 0%% VIX join match (%d/%d rows). "
                     "date(event_date) and market_regimes.date formats likely diverge. "
-                    "Entire model will train on constant VIX=20.0 — investigate date storage format."
+                    "Entire model will train on constant VIX=20.0 — investigate date storage format.",
+                    vix_matched, vix_total,
                 )
             elif vix_match_rate < 0.5:
                 logger.warning(
-                    f"XGBoost training: low VIX join match rate {vix_match_rate:.1%} "
-                    f"({vix_matched}/{vix_total} rows) — remaining rows fall back to VIX=20.0."
+                    "XGBoost training: low VIX join match rate %.1f%% (%d/%d rows) — remaining rows fall back to VIX=20.0.",
+                    vix_match_rate * 100, vix_matched, vix_total,
                 )
             else:
-                logger.info(f"XGBoost training: VIX join match rate {vix_match_rate:.1%} ({vix_matched}/{vix_total} rows).")
+                logger.info("XGBoost training: VIX join match rate %.1f%% (%d/%d rows).", vix_match_rate * 100, vix_matched, vix_total)
 
             df_cal['vix_close'] = df_cal['vix_close'].fillna(MACRO_VIX_DEFAULT)
             
@@ -283,7 +284,7 @@ class MacroAIEngine:
                         for d, s in zip(df_ind_clean['date'], predicted_states):
                             hmm_state_map[d] = int(s)
                 except Exception as ex:
-                    logger.error(f"Failed to compile historical HMM feature states for stacking: {ex}")
+                    logger.error("Failed to compile historical HMM feature states for stacking: %s", ex)
 
             # log1p-transform: post_event_spy_gap is right-skewed + non-negative; log-space symmetrises MSE; inverted with expm1 at inference
             y = np.log1p(df_cal['post_event_spy_gap'].values)
@@ -298,7 +299,7 @@ class MacroAIEngine:
                 try:
                     rf_probs = self._consensus_miss_probability(df_cal['forecast_num'], df_cal['previous_num'])
                 except Exception as ex:
-                    logger.warning(f"Batched RF predict_proba failed, using 0.5 fallback: {ex}")
+                    logger.warning("Batched RF predict_proba failed, using 0.5 fallback: %s", ex)
 
             X = np.column_stack([
                 df_cal['forecast_num'].values,
@@ -314,7 +315,7 @@ class MacroAIEngine:
                 X, y, cv=tscv, scoring='neg_root_mean_squared_error',
             )
             rmse_scores = -cv_scores
-            logger.info(f"XGBoost Volatility CV RMSE (log1p-space): {rmse_scores.mean():.4f} ± {rmse_scores.std():.4f} (n={len(X)}; scores are noisy below ~100 samples)")
+            logger.info("XGBoost Volatility CV RMSE (log1p-space): %.4f ± %.4f (n=%d; scores are noisy below ~100 samples)", rmse_scores.mean(), rmse_scores.std(), len(X))
             self._log_training_score('xgb_volatility', len(X), float(rmse_scores.mean()), float(rmse_scores.std()), 'rmse_log1p')
 
             self.xgb_model = xgb.XGBRegressor(
@@ -327,13 +328,13 @@ class MacroAIEngine:
             self.xgb_model.fit(X, y)
             dump_sklearn_artifact(self.xgb_model, MACRO_XGB_PATH)
 
-            logger.info(f"Successfully trained Stacking XGBoost Volatility model on {len(X)} historical events.")
+            logger.info("Successfully trained Stacking XGBoost Volatility model on %d historical events.", len(X))
         except Exception:
             logger.exception("Failed to train Volatility Magnitude model.")
 
     def run_macro_inference(self, target_date: str) -> None:
         """Run live stacked inference for upcoming 48h macro events; writes ai_volatility_warning and ai_consensus_miss_prob."""
-        logger.info(f"Running Stacked Macro AI Inference for 48H window starting: {target_date}")
+        logger.info("Running Stacked Macro AI Inference for 48H window starting: %s", target_date)
         try:
             cursor = self.conn.cursor()
             
@@ -411,10 +412,10 @@ class MacroAIEngine:
                 updates_count += 1
                 
                 if predicted_gap > MACRO_SEVERE_VOL_THRESHOLD:
-                    logger.warning(f"🚨 SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} (Miss Prob: {rf_consensus_miss_prob:.2%}) — Absolute Volatility Shock Magnitude: ±{predicted_gap:.2f}% (direction unknown)")
+                    logger.warning("🚨 SEVERE VOLATILITY PREDICTED: Event ID %s (Miss Prob: %.2f%%) — Absolute Volatility Shock Magnitude: ±%.2f%% (direction unknown)", event['event_id'], rf_consensus_miss_prob * 100, predicted_gap)
 
             self.conn.commit()
-            logger.info(f"Successfully processed {updates_count} events for Stacked AI Volatility and Surprise Warnings.")
+            logger.info("Successfully processed %d events for Stacked AI Volatility and Surprise Warnings.", updates_count)
 
         except Exception:
             self.conn.rollback()

@@ -327,6 +327,26 @@ class TestConsensusMissTraining:
         assert not xgb_path.exists()
 
 
+class TestVolatilityTraining:
+
+    def test_stacks_the_consensus_miss_probability_of_the_scale_free_feature_and_persists(self, engine, tmp_path, caplog):
+        engine.conn.executemany(
+            "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, post_event_spy_gap, is_event_passed) VALUES (?, ?, ?, ?, ?, 1)",
+            [(i, f"2026-06-{i + 1:02d}", str(3.0 + (i % 3)), "3.0", 0.2 + 0.1 * (i % 5)) for i in range(14)],
+        )
+        engine.conn.commit()
+        engine.rf_model = MagicMock()
+        engine.rf_model.predict_proba.side_effect = lambda X: np.column_stack([1 - X[:, 0] ** 2, X[:, 0] ** 2])
+        xgb_path = tmp_path / "macro_xgb.joblib"
+        with patch.object(macro_ai_engine, "MACRO_XGB_PATH", xgb_path), caplog.at_level("INFO", logger="macro_ai_engine"):
+            engine.train_volatility_magnitude()
+        assert xgb_path.exists() and engine.xgb_model is not None
+        assert engine.rf_model.predict_proba.call_args.args[0].shape == (14, 1)
+        assert engine.xgb_model.n_features_in_ == 5
+        assert "VIX join" in caplog.text
+        assert engine.conn.execute("SELECT n_samples FROM model_training_log WHERE model_name = 'xgb_volatility'").fetchone()[0] == 14
+
+
 class TestStackedScoring:
 
     def _event(self, engine):
