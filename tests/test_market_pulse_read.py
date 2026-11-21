@@ -14,6 +14,7 @@ Covers get_cached_pulse_from_db() and get_all_cached_pulse():
 import contextlib
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,9 +30,11 @@ import market_session_helpers as _ms
 
 
 @contextlib.contextmanager
-def _patch_trading_session(value):
+def _patch_trading_session(value, last_close_ago=2 * 86400):
+    last_close = datetime.now(timezone.utc) - timedelta(seconds=last_close_ago)
     with patch("market_pulse.is_trading_session", return_value=value), \
-         patch("market_session_helpers.is_trading_session", return_value=value):
+         patch("market_session_helpers.is_trading_session", return_value=value), \
+         patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
         yield
 
 
@@ -253,21 +256,22 @@ class TestGetAllCachedPulse:
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
         config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}
         with patch("market_pulse.load_config", return_value=config_patch), \
-             patch("market_pulse.is_trading_session", return_value=True):
+             _patch_trading_session(True):
             result = _mp.get_all_cached_pulse()
         assert result[ASSET_TICKER]["is_stale"] is True
 
-    def test_market_hours_evaluated_once_for_all_rows(self):
+    def test_each_exchange_session_evaluated_once_for_all_rows(self):
         extra = ("_MPR_TEST_ASSET2", "_MPR_TEST_ASSET3")
         try:
             for t in (ASSET_TICKER, *extra):
                 _seed_pulse(t, last_updated=time.time() - 3600)
             config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}
             with patch("market_pulse.load_config", return_value=config_patch), \
-                 patch("market_pulse.is_trading_session", return_value=True) as session:
+                 patch("market_session_helpers.last_settled_session_close_utc", return_value=datetime.now(timezone.utc)), \
+                 patch("market_session_helpers.is_trading_session", return_value=True) as session:
                 result = _mp.get_all_cached_pulse()
             assert all(result[t]["is_stale"] is True for t in (ASSET_TICKER, *extra))
-            session.assert_called_once_with()
+            assert session.call_count == 1
         finally:
             _clear(*extra)
 
@@ -389,16 +393,17 @@ class TestClosedMarketStaleness:
         assert asset["needs_refresh"] is True
         assert asset["is_stale"] is True
 
-    def test_get_cached_pulse_from_db_evaluates_session_and_exchange_state_once(self):
+    def test_get_cached_pulse_from_db_evaluates_each_exchange_session_and_state_once(self):
         tickers = ["_MPR_TEST_ASSET", "_MPR_TEST_ASSET2", "_MPR_TEST_ASSET3"]
         try:
             for t in tickers:
                 _seed_pulse(t, last_updated=time.time() - 3600)
-            with patch("market_pulse.is_trading_session", return_value=True) as session, \
+            with patch("market_session_helpers.is_trading_session", return_value=True) as session, \
+                 patch("market_session_helpers.last_settled_session_close_utc", return_value=datetime.now(timezone.utc)), \
                  patch("market_session_helpers.is_quote_settled", return_value=True) as settled:
                 result = _mp.get_cached_pulse_from_db(tickers, refresh_rate=60)
             assert [r["needs_refresh"] for r in result["assets"]] == [True, True, True]
-            session.assert_called_once_with()
+            assert session.call_count == 1
             assert settled.call_count == 1
         finally:
             _clear(*tickers[1:])
@@ -1066,3 +1071,128 @@ class TestTickersNeedingRefresh:
         _seed_pulse("^KS200", last_updated=time.time() - 120)
         assert _mp.tickers_needing_refresh(["^KS200"], max_age_seconds=60) == ["^KS200"]
         assert _mp.tickers_needing_refresh(["^KS200"], max_age_seconds=300) == []
+
+
+# ── per-ticker session judgement of a cached quote ────────────────────────────
+
+WATCH_ONLY = "_MPR_WATCH_ONLY"
+FUND = "0P_MPR_FUND.L"
+
+
+def _gmt(epoch):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(epoch))
+
+
+@contextlib.contextmanager
+def _exchange_sessions(open_exchanges=(), last_close_ago=3600):
+    """NYSE/LSE open only where listed; every exchange's last settled close is `last_close_ago` seconds back."""
+    last_close = datetime.now(timezone.utc) - timedelta(seconds=last_close_ago)
+    with patch("market_session_helpers.is_trading_session", side_effect=lambda exchange, include_premarket=False: exchange in open_exchanges), \
+         patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+        yield
+
+
+class TestQuoteSessionFloor:
+    def test_floor_is_the_real_close_less_the_feed_delay_and_the_grace(self):
+        now = datetime.now(timezone.utc)
+        with _exchange_sessions(last_close_ago=0):
+            nyse_open, nyse_floor = _ms.quote_session_floor("ZZ_US", "USD")
+            lse_open, lse_floor = _ms.quote_session_floor("ZZ_UK.L", "GBp")
+        assert nyse_open is False and lse_open is False
+        assert nyse_floor == pytest.approx(now.timestamp() - 900, abs=5)
+        assert lse_floor == pytest.approx(now.timestamp() - 15 * 60 - 900, abs=5)
+
+    def test_open_state_is_the_tickers_own_exchange_not_the_home_exchange(self):
+        with _exchange_sessions(open_exchanges=("NYSE",)):
+            assert _ms.quote_session_floor("ZZ_US", "USD")[0] is True
+            assert _ms.quote_session_floor("ZZ_UK.L", "GBp")[0] is False
+
+    def test_each_exchange_is_judged_once_with_a_memo(self):
+        memo = {}
+        with _exchange_sessions() as _, patch("market_session_helpers.is_trading_session", return_value=False) as session:
+            for ticker in ("ZZ_A", "ZZ_B", "ZZ_C"):
+                _ms.quote_session_floor(ticker, "USD", {}, memo)
+        assert session.call_count == 1
+
+
+class TestIsPriceFreshSessionFloor:
+    def test_closed_market_needs_a_quote_at_or_after_the_floor(self):
+        floor = time.time() - 3600
+        assert _mp.is_price_fresh(floor + 1, 100.0, 60, market_open=False, session_floor=floor) is True
+        assert _mp.is_price_fresh(floor - 1, 100.0, 60, market_open=False, session_floor=floor) is False
+
+    def test_open_market_ignores_the_floor(self):
+        assert _mp.is_price_fresh(time.time() - 30, 100.0, 60, market_open=True, session_floor=time.time() + 3600) is True
+
+    def test_no_floor_keeps_a_closed_market_fresh(self):
+        assert _mp.is_price_fresh(time.time() - 86400 * 3, 100.0, 60, market_open=False) is True
+
+
+class TestWatchlistOnlyQuotes:
+    """A Watchlist-only quote is refreshed only while a Watchlist page is open, so its row can predate the last close by days."""
+
+    def teardown_method(self):
+        _clear(WATCH_ONLY, FUND, "ZZ_MPR_UK")
+
+    def _seed(self, cache_age, nightly_age=None, ticker=WATCH_ONLY, currency="USD"):
+        now = time.time()
+        _seed_pulse(ticker, price=186.99, change_pct=0.3, last_updated=now - cache_age)
+        if nightly_age is not None:
+            _seed_stock_signal(ticker, 193.94, _gmt(now - nightly_age), currency)
+        return now
+
+    def test_cache_from_before_the_last_close_yields_to_the_newer_nightly_price_inside_the_6_hour_gap(self):
+        now = self._seed(cache_age=5 * 3600, nightly_age=1800)
+        with _exchange_sessions(last_close_ago=3600):
+            row = _mp.get_all_cached_pulse()[WATCH_ONLY]
+        assert row["price"] == 193.94
+        assert row["change_pct"] is None and row["change_pts"] is None
+        assert row["price_as_of"] == pytest.approx(now - 1800, abs=2)
+        assert row["is_stale"] is False
+
+    def test_cache_from_after_the_last_close_is_kept(self):
+        self._seed(cache_age=600, nightly_age=300)
+        with _exchange_sessions(last_close_ago=3600):
+            row = _mp.get_all_cached_pulse()[WATCH_ONLY]
+        assert row["price"] == 186.99 and row["is_stale"] is False
+
+    def test_cache_from_before_the_last_close_without_a_newer_nightly_price_is_stale(self):
+        self._seed(cache_age=5 * 3600, nightly_age=6 * 3600)
+        with _exchange_sessions(last_close_ago=3600):
+            row = _mp.get_all_cached_pulse()[WATCH_ONLY]
+        assert row["price"] == 186.99 and row["is_stale"] is True
+
+    def test_nightly_price_is_stale_while_its_own_exchange_is_open(self):
+        self._seed(cache_age=3 * 86400, nightly_age=3 * 3600)
+        with _exchange_sessions(open_exchanges=("NYSE",), last_close_ago=20 * 3600):
+            row = _mp.get_all_cached_pulse()[WATCH_ONLY]
+        assert row["price"] == 193.94 and row["is_stale"] is True
+
+    def test_another_exchange_being_open_does_not_make_a_closed_exchanges_quote_stale(self):
+        self._seed(cache_age=1800, ticker="ZZ_MPR_UK", currency="GBp")
+        with _exchange_sessions(open_exchanges=("NYSE",), last_close_ago=3600):
+            row = _mp.get_all_cached_pulse()["ZZ_MPR_UK"]
+        assert row["is_stale"] is False
+
+    def test_a_us_quote_is_stale_while_nyse_is_open_even_with_the_home_exchange_closed(self):
+        self._seed(cache_age=3600, nightly_age=2 * 86400)
+        with _exchange_sessions(open_exchanges=("NYSE",)):
+            assert _mp.get_all_cached_pulse()[WATCH_ONLY]["is_stale"] is True
+
+    def test_a_mutual_fund_quote_is_never_judged_against_the_close(self):
+        now = time.time()
+        _seed_pulse(FUND, price=1.5, last_updated=now - 3 * 86400)
+        with _exchange_sessions(last_close_ago=3600):
+            assert _mp.get_all_cached_pulse()[FUND]["is_stale"] is False
+
+    def test_a_registry_tile_is_never_judged_against_the_close(self):
+        _seed_pulse(INDEX_TICKER, last_updated=time.time() - 3 * 86400)
+        with _exchange_sessions(last_close_ago=3600):
+            assert _mp.get_all_cached_pulse()[INDEX_TICKER]["is_stale"] is False
+
+    def test_the_asset_rows_of_the_live_pulse_use_the_same_judgement(self):
+        now = self._seed(cache_age=5 * 3600, nightly_age=1800)
+        with _exchange_sessions(last_close_ago=3600):
+            result = _mp.get_cached_pulse_from_db([WATCH_ONLY], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == WATCH_ONLY)
+        assert asset["price"] == 193.94 and asset["is_stale"] is False

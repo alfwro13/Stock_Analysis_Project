@@ -70,6 +70,7 @@ def resolve_live_price(
     fallback_price: Optional[float],
     fallback_last_updated_utc: Optional[str],
     max_gap_seconds: int = LIVE_PRICE_OVERRIDE_MAX_GAP_SECONDS,
+    live_floor_epoch: Optional[float] = None,
 ) -> "tuple[Optional[float], bool]":
     """Picks between a live-cache price (e.g. `market_pulse_cache`) and a slower-cadence fallback
     (e.g. `stock_signals.current_price`), trusting the live price only while it isn't stuck more
@@ -87,12 +88,17 @@ def resolve_live_price(
     change_pts/change_pct computed relative to the live price need to know when the price they're
     showing came from the fallback instead, so they can drop those now-inconsistent figures rather
     than inferring the switch by comparing the returned value back against the live price (which
-    would silently miss the case where both sources happen to agree on the exact same number)."""
+    would silently miss the case where both sources happen to agree on the exact same number).
+    `live_floor_epoch` (a display caller's per-ticker quote_session_floor()) also drops a live price taken
+    before it once the fallback was written after it: a quote from before its session's close, with a
+    post-close price available, is not the session's final price, however small the gap between the two."""
     if fallback_price is None:
         return live_price, False
     if live_price is None or not live_last_updated_epoch:
         return fallback_price, True
     fallback_epoch = parse_utc_epoch(fallback_last_updated_utc)
+    if live_floor_epoch is not None and live_last_updated_epoch < live_floor_epoch < fallback_epoch:
+        return fallback_price, True
     if fallback_epoch - live_last_updated_epoch <= max_gap_seconds:
         return live_price, False
     return fallback_price, True

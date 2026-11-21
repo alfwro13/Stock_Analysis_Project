@@ -294,7 +294,7 @@ class TestGetMarketRegime:
 
     def test_tile_past_its_refresh_interval_makes_the_part_stale(self, mcp_client):
         _pulse("ZZMRA", updated=time.time() - 3600)
-        with patch("market_pulse.is_trading_session", return_value=True):
+        with patch("market_session_helpers.is_trading_session", return_value=True):
             part = self._regime(mcp_client)["data"]["market_pulse"]
         assert part["stale"] is True and part["tiles"][0]["stale"] is True
 

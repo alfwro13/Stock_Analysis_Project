@@ -9,6 +9,7 @@ from constants import (
     MCP_WATCHLIST_MAX_OFFSET,
     MCP_WATCHLIST_MAX_ROWS,
     ML_FEATURE_MAX_AGE_TRADING_DAYS,
+    QUOTE_CLOSE_GRACE_SECONDS,
 )
 from db.database import get_watchlist_tickers
 from db.account_store import get_all_holding_price_limits, get_watchlist_account
@@ -34,7 +35,7 @@ _UNITS = {
     "compact": "when true a field whose value is null is left out of the row (price, position_targets and the like disappear when empty), so an absent field means not available, never zero",
     "price.value": "latest regular-session price in price.currency, in the instrument's own quote unit; GBp means pence, not pounds. Never an extended-hours tick",
     "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
-    "price.stale": "true when the cached quote is past its refresh interval while a market is open",
+    "price.stale": f"judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close. Nothing refreshes a Watchlist-only quote unless a Watchlist page is open, so a quote from before the last close is replaced by the nightly price, with its own price.as_of (and no day_change)",
     "held": "true when the ticker is also held in a Trading or Ghostfolio account; the Watchlist page lists held tickers too",
     "overall_signal/composite_score": "the nightly Quant Scan's System Verdict and its 0-100 composite score",
     "trend_50d/trend_200d": "UP when the nightly price is above the 50- or 200-day average, else DOWN; null when the average or price is missing",

@@ -87,6 +87,8 @@ UNIVERSE_HISTORY_MIN_WRITTEN = 0.99      # a universe-history refresh that write
 UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST = 5  # consecutive counted nights a universe-history ticker may come back without a usable bar before it is blacklisted and purged; a night with a 429 trip or a degraded write neither counts nor resets
 QUOTE_CHANGE_TOLERANCE_PCT = 0.5  # a Yahoo regularMarketChange within this many percent of regularMarketPreviousClose (of its size) from the negative of it is the glitch that sent -19.92 for a 19.92 previous close; any other disagreement is left to Yahoo's fields, because regularMarketPreviousClose is sometimes a session stale (^AXJO, ^HSI, DX-Y.NYB)
 
+QUOTE_CLOSE_GRACE_SECONDS = 900  # a cached quote taken this close before its exchange's close still counts as that session's last one: the intraday scan runs every 10 minutes and stops at the close, so its final quote is up to 10 minutes short of it
+
 PORTFOLIO_TOTALS_CACHE_MAX_AGE_SECONDS = 600 # GET /api/accounts/portfolio-totals treats its answer as current this long, even when no input changed
 PORTFOLIO_TOTALS_STALE_MAX_AGE_SECONDS = 1800  # a price, FX or snapshot change, or an expired answer, is served while a background recompute runs, but never older than this (LR-10)
 

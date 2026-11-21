@@ -5,11 +5,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from accounts.accounts_engine import current_price_map, get_combined_holdings, native_currencies, oldest_quote_epoch, position_target_accounts
-from constants import MCP_TICKER_MAX_CHARS, ML_FEATURE_MAX_AGE_TRADING_DAYS
+from config import load_config
+from constants import MCP_TICKER_MAX_CHARS, ML_FEATURE_MAX_AGE_TRADING_DAYS, QUOTE_CLOSE_GRACE_SECONDS
 from db.database import get_watchlist_tickers
 from db.account_store import get_holding_price_limits_for_ticker
 from db.helpers import get_next_earnings_dates, parse_utc_epoch
-from market_pulse import get_all_cached_pulse
+from market_pulse import QuoteSessionJudge, get_all_cached_pulse, is_price_fresh
 from market_session_helpers import extended_quote_from_snapshot, regular_change_from_snapshot
 from pages.page_data_stock import QUANT_ONLY_SIGNAL, UNKNOWN_SIGNAL, load_stock_row
 from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector, upcoming_iso_date
@@ -23,9 +24,9 @@ TickerArg = Annotated[str, Field(max_length=MCP_TICKER_MAX_CHARS)]
 
 _UNITS = {
     "price.value": "latest regular-session price in price.currency, in the instrument's own quote unit; GBp means pence, not pounds. Never an extended-hours tick",
-    "price.source": "shared_cache: the dashboard's price cache (Market Pulse cache, or the nightly stock_signals price when the cache is stuck behind it); yahoo_live: one live Yahoo quote, used only when no cached price exists, and nothing is stored",
+    "price.source": "shared_cache: the dashboard's price cache (Market Pulse cache, or the nightly stock_signals price when the cache was last refreshed before the ticker's own exchange's last close or is stuck behind the nightly price); yahoo_live: one live Yahoo quote, used only when no cached price exists, and nothing is stored",
     "price.day_change/day_change_pct": "change since the previous regular close: per share in price.currency, and percent. null when the price came from the nightly price",
-    "price.stale": "shared_cache: true when the cached quote is past its refresh interval while a market is open; yahoo_live is never stale",
+    "price.stale": f"shared_cache: judged on the ticker's own exchange session, not the envelope's markets. While that exchange is open, true when the quote is older than the dashboard's refresh floor (5 minutes or twice the refresh interval); while it is closed, true when the quote was taken more than {QUOTE_CLOSE_GRACE_SECONDS // 60} minutes before that exchange's last close, so a Watchlist quote nothing has refreshed since an earlier session is stale. A mutual fund (one NAV a day) and a Markets-registry instrument are never stale for being past the last close. yahoo_live is never stale",
     "price.market_state": "Yahoo's own session state (REGULAR, PRE, POST, CLOSED ...); only present for yahoo_live",
     "extended_hours": "pre- or post-market price in price.currency and its change in percent versus the regular close; a separate object, never mixed into price; null outside extended hours",
     "trend": "trend_50d/trend_200d: UP when the nightly stock_signals price is above the SMA, else DOWN; null when the SMA or price is missing. SMAs and 52-week range in price.currency; atr_stop_loss is a price",
@@ -86,10 +87,13 @@ def cached_price(ticker: str, currency: Optional[str], pulse: Optional[dict] = N
     priced = current_price_map([ticker]).get(ticker)
     if priced and priced[0]:
         epoch = oldest_quote_epoch([ticker])
+        price_currency = priced[1] or currency
+        refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
+        market_open, floor = QuoteSessionJudge([ticker]).session(ticker, price_currency)
         return {
-            "value": priced[0], "currency": priced[1] or currency, "source": "shared_cache",
+            "value": priced[0], "currency": price_currency, "source": "shared_cache",
             "as_of": None if epoch is None else iso_utc(epoch),
-            "stale": epoch is not None and time.time() - epoch > NIGHTLY_STALE_AFTER_SECONDS,
+            "stale": epoch is not None and not is_price_fresh(epoch, priced[0], refresh_rate, market_open, floor),
             "day_change": None, "day_change_pct": None,
         }, None, epoch
     return None

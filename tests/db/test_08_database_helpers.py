@@ -663,3 +663,22 @@ def test_get_connection_retries_past_transient_lock():
         conn.close()
     finally:
         th.join()
+
+
+def _utc_stamp(epoch):
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_resolve_live_price_floor_drops_a_live_price_from_before_it_once_a_later_fallback_exists():
+    live_epoch, floor, fallback_epoch = 1_000_000.0, 1_010_000.0, 1_020_000.0
+    stamp = _utc_stamp(fallback_epoch)
+    assert db_helpers.resolve_live_price(186.99, live_epoch, 193.94, stamp, live_floor_epoch=floor) == (193.94, True)
+    assert db_helpers.resolve_live_price(186.99, floor + 1, 193.94, stamp, live_floor_epoch=floor) == (186.99, False)
+    assert db_helpers.resolve_live_price(186.99, live_epoch, 193.94, stamp) == (186.99, False)
+
+
+def test_resolve_live_price_floor_keeps_the_live_price_when_the_fallback_is_not_after_the_floor():
+    live_epoch, floor = 1_000_000.0, 1_010_000.0
+    stamp = _utc_stamp(live_epoch + 60)
+    assert db_helpers.resolve_live_price(186.99, live_epoch, 193.94, stamp, live_floor_epoch=floor) == (186.99, False)

@@ -1,12 +1,13 @@
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from constants import QUOTE_CHANGE_TOLERANCE_PCT
+from constants import QUOTE_CHANGE_TOLERANCE_PCT, QUOTE_CLOSE_GRACE_SECONDS
 from db.database import get_connection, get_instrument_sessions, get_ticker_registry
 from time_engine import (
-    EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, market_window_utc, reported_window_open,
+    EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, last_reported_session_end_utc,
+    last_settled_session_close_utc, market_window_utc, reported_window_open,
     ticker_exchange, ticker_exchange_from_suffix, ticker_exchange_or_none,
 )
 
@@ -297,6 +298,33 @@ def resolve_ticker_exchange(
     if suffix_only:
         return ticker_exchange_from_suffix(ticker)
     return ticker_exchange(ticker, currency)
+
+
+def quote_session_floor(
+    ticker: str,
+    currency: str = "",
+    registry_exchange_map: Optional[Dict[str, str]] = None,
+    session_memo: Optional[Dict[Any, tuple]] = None,
+) -> tuple:
+    """(session open now, earliest epoch a cached quote may carry to count as taken at the end of the last session) judged on `ticker`'s own session: the window Yahoo reports for FX/futures/rates, else its exchange's calendar, never the operator's HOME_EXCHANGE. The floor is the last real close (the quote-feed delay taken back off) less QUOTE_CLOSE_GRACE_SECONDS. A caller looping over many tickers passes one `session_memo` so each exchange is judged once."""
+    session = reported_session(ticker)
+    if session is not None:
+        key: Any = session
+    else:
+        key = resolve_ticker_exchange(ticker, currency, registry_exchange_map)
+    if session_memo is not None and key in session_memo:
+        return session_memo[key]
+    if session is not None:
+        open_now = reported_window_open(*session)
+        last_close = last_reported_session_end_utc(*session)
+    else:
+        open_now = is_trading_session(key)
+        delay = timedelta(minutes=EXCHANGE_HOURS.get(key, {}).get("quote_delay_minutes", 0))
+        last_close = last_settled_session_close_utc(key) - delay
+    result = (open_now, last_close.timestamp() - QUOTE_CLOSE_GRACE_SECONDS)
+    if session_memo is not None:
+        session_memo[key] = result
+    return result
 
 
 def is_ticker_quote_settled(
