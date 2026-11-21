@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from constants import MCP_CALENDAR_MAX_DAYS, MCP_CALENDAR_MAX_ROWS
+from constants import MACRO_ACTUALS_LOOKBACK_DAYS, MCP_CALENDAR_MAX_DAYS, MCP_CALENDAR_MAX_ROWS
 from db.database import add_transaction, create_account, get_connection
 from db.account_store import add_watchlist_item, get_watchlist_account
 
@@ -56,7 +56,7 @@ def calendar():
             _event(conn, "zz-cpi", _at(2), "CPI y/y", forecast=3.1, previous=3.0, miss=0.62, vol=1.4)
             _event(conn, "zz-boe", _at(4, 12), "BoE Official Bank Rate", currency="GBP", forecast=4.5, previous=4.5)
             _event(conn, "zz-mpc", _at(5, 12), "MPC Vote", currency="GBP", forecast_text="7-0-2", previous_text="3-0-6")
-            _event(conn, "zz-past", _at(-2), "Old release", actual=1.0)
+            _event(conn, "zz-past", _at(-3), "Old release", actual=1.0)
             _event(conn, "zz-late", _at(25), "Beyond the window")
             conn.execute("INSERT OR REPLACE INTO scheduler_run_log (job_id, last_run) VALUES ('macro_calendar_job', ?)", (_stamp(hours=3),))
             conn.commit()
@@ -155,6 +155,15 @@ class TestTickerDates:
         assert next(r for r in rows if r["ticker"] == HELD)["list"] == "portfolio"
 
 
+def _delete_event(event_id):
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM macro_calendar WHERE event_id = ?", (event_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 class TestMacroEvents:
     def test_events_in_the_window_with_the_model_fields(self, mcp_client, calendar):
         rows = _calendar(mcp_client)["data"]["macro_events"]["rows"]
@@ -178,16 +187,58 @@ class TestMacroEvents:
         names = {r["name"] for r in _calendar(mcp_client)["data"]["macro_events"]["rows"]}
         assert not names & {"Old release", "Beyond the window"}
 
-    def test_a_window_beyond_the_stored_events_is_reported_missing(self, mcp_client, calendar):
-        assert not any("only lists events up to" in m for m in _calendar(mcp_client, days=20)["missing"])
+    def test_a_window_beyond_the_feed_week_is_reported_missing_with_the_week_end(self, mcp_client, calendar):
+        assert not any("feed covers" in m for m in _calendar(mcp_client, days=20)["missing"])
+        _delete_event("zz-late")
+        data = _calendar(mcp_client, days=30)
+        covered_to = data["data"]["macro_events"]["covered_to"]
+        assert any(f"week ending Saturday {covered_to}" in m for m in data["missing"]) and data["incomplete"] is True
+
+    def test_covered_to_is_the_saturday_ending_the_feed_week_of_the_newest_event(self, mcp_client, calendar):
+        _delete_event("zz-late")
+        newest = datetime.strptime(_at(5, 12), _STAMP)
+        covered_to = datetime.strptime(_calendar(mcp_client)["data"]["macro_events"]["covered_to"], "%Y-%m-%d")
+        assert covered_to.weekday() == 5 and 0 <= (covered_to - newest.replace(hour=0)).days <= 6
+
+    def test_a_quiet_day_inside_the_feed_week_is_not_reported_missing(self, mcp_client, calendar):
+        _delete_event("zz-late")
+        data = _calendar(mcp_client, days=5)
+        assert not any("feed covers" in m for m in data["missing"])
+
+    @pytest.mark.parametrize("newest, saturday", [
+        ("2026-11-15 10:00:00", "2026-11-21"), ("2026-11-18 10:00:00", "2026-11-21"), ("2026-11-21 23:00:00", "2026-11-21"), ("2026-11-22 00:00:00", "2026-11-28"),
+    ])
+    def test_the_feed_week_runs_sunday_to_saturday(self, newest, saturday):
+        from mcp_server.tools.get_calendar import _feed_week_end
+        assert _feed_week_end(newest) == saturday
+
+    def test_released_events_of_the_last_days_are_listed_with_their_actual(self, mcp_client, calendar):
         conn = get_connection()
         try:
-            conn.execute("DELETE FROM macro_calendar WHERE event_id = 'zz-late'")
+            _event(conn, "zz-done", _at(-1), "CPI m/m", forecast=0.3, previous=0.2, actual=0.4)
+            _event(conn, "zz-edge", _at(-MACRO_ACTUALS_LOOKBACK_DAYS, 1), "Unemployment Rate", forecast=4.2, previous=4.2, actual=4.3)
             conn.commit()
         finally:
             conn.close()
-        data = _calendar(mcp_client, days=30)
-        assert any("only lists events up to" in m for m in data["missing"]) and data["incomplete"] is True
+        rows = _calendar(mcp_client)["data"]["macro_events"]["rows"]
+        assert [r["name"] for r in rows][:3] == ["Unemployment Rate", "CPI m/m", "CPI y/y"]
+        assert (rows[1]["forecast"], rows[1]["actual"]) == (0.3, 0.4)
+
+    def test_a_released_event_whose_actual_is_still_due_is_named_in_missing(self, mcp_client, calendar):
+        conn = get_connection()
+        try:
+            _event(conn, "zz-due", _at(-1), "Unemployment Rate")
+            _event(conn, "zz-speech", _at(-1, 15), "Fed Chairman Warsh Speaks")
+            _event(conn, "zz-done", _at(-1, 16), "CPI m/m", actual=0.4)
+            _event(conn, "zz-ahead", _at(1, 3), "Core CPI m/m")
+            conn.commit()
+        finally:
+            conn.close()
+        data = _calendar(mcp_client)
+        line = next(m for m in data["missing"] if m.startswith("The actual is not stored yet"))
+        assert f"Unemployment Rate ({_day(-1)})" in line
+        assert "Warsh" not in line and "CPI m/m" not in line and "Core CPI" not in line
+        assert data["incomplete"] is True
 
     def test_no_recorded_run_and_no_events_are_explicit(self, mcp_client, calendar):
         conn = get_connection()
@@ -198,7 +249,7 @@ class TestMacroEvents:
         finally:
             conn.close()
         data = _calendar(mcp_client)
-        assert data["data"]["macro_events"] == {"as_of": None, "stale": True, "rows": [], "truncated": False}
+        assert data["data"]["macro_events"] == {"as_of": None, "stale": True, "covered_to": None, "rows": [], "truncated": False}
         assert any("no recorded run" in m for m in data["missing"]) and any("holds no events" in m for m in data["missing"])
 
     def test_an_old_macro_run_is_flagged_stale(self, mcp_client, calendar):

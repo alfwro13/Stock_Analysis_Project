@@ -8,6 +8,7 @@ Tests for deterministic pure functions:
   upsert_calendar_events() — DB write / upsert behaviour
   feed times            — the feed's UTC times stored as they are
   correct_eastern_event_times() — one-time shift of rows stored by the Eastern-time parser
+  resolve_actual() / fill_released_actuals() — the released events' actuals from BLS, ONS, FRED and the Bank of England
 """
 
 import hashlib
@@ -17,18 +18,23 @@ import sys
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from db import schema as db_schema
 from db.database import get_connection
+import macro_calendar_engine
 from macro_calendar_engine import (
-    clean_value, correct_eastern_event_times, fetch_and_process_calendar, generate_event_id, upsert_calendar_events, vote_split_text,
+    ACTUAL_SOURCES, _fetch_bls_series, _fetch_ons_cpi_rate, _fetch_rate_series, _load_actual_series, _shift_month,
+    clean_value, correct_eastern_event_times, fetch_and_process_calendar, fill_released_actuals, generate_event_id,
+    has_actual_source, resolve_actual, update_macro_calendar, upsert_calendar_events, vote_split_text,
 )
 from time_engine import localize_naive_to_utc, utc_to_exchange_local
 
@@ -405,3 +411,191 @@ class TestMigrationRunsOnce:
             assert conn.execute("SELECT event_date FROM macro_calendar WHERE event_name = 'ZZ CPI y/y'").fetchone()[0] == "2031-11-18 07:00:00"
         finally:
             conn.close()
+
+
+def _utc(year, month, day, hour=12):
+    return datetime(year, month, day, hour, tzinfo=timezone.utc)
+
+
+class TestResolveActual:
+
+    def test_shift_month_crosses_the_year(self):
+        assert _shift_month((2027, 1), 1) == (2026, 12)
+        assert _shift_month((2026, 11), 12) == (2025, 11)
+        assert _shift_month((2026, 3), 0) == (2026, 3)
+
+    def test_month_over_month_reads_the_month_before_the_release_month(self):
+        data = {"CUSR0000SA0": {(2026, 9): 100.0, (2026, 10): 100.3, (2026, 11): 150.0}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "CPI m/m")], _utc(2026, 11, 18), data) == pytest.approx(0.3)
+
+    def test_year_over_year_compares_the_same_month_a_year_earlier(self):
+        data = {"CUUR0000SA0": {(2025, 10): 100.0, (2026, 9): 90.0, (2026, 10): 103.6}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "CPI y/y")], _utc(2026, 11, 18), data) == pytest.approx(3.6)
+
+    def test_a_january_release_reads_december_of_the_previous_year(self):
+        data = {"CUSR0000SA0": {(2026, 11): 100.0, (2026, 12): 99.0}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "CPI m/m")], _utc(2027, 1, 13), data) == pytest.approx(-1.0)
+
+    def test_a_level_series_is_returned_as_published(self):
+        data = {"LNS14000000": {(2026, 10): 4.2}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "Unemployment Rate")], _utc(2026, 11, 6), data) == 4.2
+        assert resolve_actual(ACTUAL_SOURCES[("GBP", "CPI y/y")], _utc(2026, 11, 18), {"D7G7": {(2026, 10): 3.6}}) == 3.6
+
+    def test_payroll_change_is_in_persons_from_thousands(self):
+        data = {"CES0000000001": {(2026, 9): 159_000.0, (2026, 10): 159_065.0}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "Non-Farm Employment Change")], _utc(2026, 11, 6), data) == 65_000.0
+
+    def test_a_month_the_source_has_not_published_is_none_never_an_older_month(self):
+        data = {"CUSR0000SA0": {(2026, 8): 99.0, (2026, 9): 100.0}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "CPI m/m")], _utc(2026, 11, 18), data) is None
+
+    def test_a_missing_prior_month_is_none(self):
+        data = {"CUSR0000SA0": {(2026, 10): 100.3}}
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "CPI m/m")], _utc(2026, 11, 18), data) is None
+        assert resolve_actual(ACTUAL_SOURCES[("USD", "CPI m/m")], _utc(2026, 11, 18), {}) is None
+
+    def test_the_fed_rate_is_the_value_on_the_day_after_the_decision(self):
+        spec = ACTUAL_SOURCES[("USD", "Federal Funds Rate")]
+        assert resolve_actual(spec, _utc(2026, 9, 16, 19), {"DFEDTARU": {date(2026, 9, 16): 3.75, date(2026, 9, 17): 4.0}}) == 4.0
+        assert resolve_actual(spec, _utc(2026, 9, 16, 19), {"DFEDTARU": {date(2026, 9, 16): 3.75}}) is None
+
+    def test_the_bank_rate_is_the_value_on_the_decision_day(self):
+        spec = ACTUAL_SOURCES[("GBP", "Official Bank Rate")]
+        assert resolve_actual(spec, _utc(2026, 11, 5, 12), {"IUDBEDR": {date(2026, 11, 4): 3.75, date(2026, 11, 5): 4.0}}) == 4.0
+
+    def test_has_actual_source_names_only_the_core_events(self):
+        assert has_actual_source("USD", "CPI y/y") and has_actual_source("GBP", "CPI y/y")
+        assert not has_actual_source("USD", "FOMC Meeting Minutes")
+        assert not has_actual_source("GBP", "GDP m/m")
+
+
+class TestActualReaders:
+
+    def _post(self, body=None, error=None):
+        response = MagicMock()
+        response.json.return_value = body
+        if error:
+            return patch("macro_calendar_engine.requests.post", side_effect=error)
+        return patch("macro_calendar_engine.requests.post", return_value=response)
+
+    def test_bls_series_are_keyed_by_year_and_month_and_annual_rows_are_skipped(self):
+        body = {"status": "REQUEST_SUCCEEDED", "Results": {"series": [{"seriesID": "LNS14000000", "data": [
+            {"year": "2026", "period": "M10", "value": "4.2"},
+            {"year": "2026", "period": "M13", "value": "4.0"},
+            {"year": "2026", "period": "M09", "value": "-"},
+        ]}]}}
+        with self._post(body) as post:
+            assert _fetch_bls_series(["LNS14000000"], 2026) == {"LNS14000000": {(2026, 10): 4.2}}
+        assert post.call_args.kwargs["json"]["startyear"] == "2025"
+
+    def test_a_refused_or_failed_bls_request_is_empty(self):
+        import requests
+        with self._post({"status": "REQUEST_NOT_PROCESSED", "message": ["daily threshold"]}):
+            assert _fetch_bls_series(["X"], 2026) == {}
+        with self._post(error=requests.ConnectionError("down")):
+            assert _fetch_bls_series(["X"], 2026) == {}
+
+    def test_ons_cpi_rate_is_keyed_by_year_and_month(self):
+        session = MagicMock()
+        session.get.return_value.json.return_value = {"months": [{"date": "2026 OCT", "value": "3.6"}, {"date": "bad", "value": "1"}]}
+        with patch("macro_calendar_engine.get_retry_session", return_value=session):
+            assert _fetch_ons_cpi_rate() == {"D7G7": {(2026, 10): 3.6}}
+
+    def test_the_fed_rate_is_skipped_without_a_fred_key_and_the_bank_rate_is_still_read(self):
+        boe = pd.DataFrame({"IUDBEDR": [4.0]}, index=pd.to_datetime(["2026-11-05"]))
+        with patch.dict(os.environ, {"FRED_API_KEY": ""}), patch("macro_calendar_engine.get_retry_session"), \
+                patch("macro_calendar_engine.fetch_fred_api") as fred, patch("macro_calendar_engine.fetch_boe_data", return_value=boe) as boe_read:
+            out = _fetch_rate_series({"fred", "boe"}, _utc(2026, 11, 6))
+        fred.assert_not_called()
+        assert out == {"IUDBEDR": {date(2026, 11, 5): 4.0}}
+        assert boe_read.call_args.kwargs["lag_days"] == 0
+
+    def test_the_fed_rate_is_keyed_by_observation_date(self):
+        fed = pd.DataFrame({"DFEDTARU": [3.75, 4.0]}, index=pd.to_datetime(["2026-09-16", "2026-09-17"]))
+        with patch.dict(os.environ, {"FRED_API_KEY": "key"}), patch("macro_calendar_engine.get_retry_session"), \
+                patch("macro_calendar_engine.fetch_fred_api", return_value=fed):
+            out = _fetch_rate_series({"fred"}, _utc(2026, 9, 20))
+        assert out == {"DFEDTARU": {date(2026, 9, 16): 3.75, date(2026, 9, 17): 4.0}}
+
+    def test_only_the_sources_an_event_needs_are_read(self):
+        with patch("macro_calendar_engine._fetch_bls_series", return_value={}) as bls, patch("macro_calendar_engine._fetch_ons_cpi_rate", return_value={}) as ons, \
+                patch("macro_calendar_engine._fetch_rate_series", return_value={}) as rates:
+            _load_actual_series({ACTUAL_SOURCES[("GBP", "CPI y/y")]}, _utc(2026, 11, 19))
+        bls.assert_not_called()
+        ons.assert_called_once()
+        assert rates.call_args.args[0] == {"ons"}
+
+
+class TestFillReleasedActuals:
+
+    def _conn(self, db_path):
+        def connect():
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        return connect
+
+    def _stamp(self, days_ago):
+        return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _seed(self, db_path, rows):
+        conn = sqlite3.connect(db_path)
+        conn.executemany("INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, actual_val, actual_text) VALUES (?, ?, ?, 'High', ?, ?, ?)", rows)
+        conn.commit()
+        conn.close()
+
+    def _actuals(self, db_path):
+        conn = sqlite3.connect(db_path)
+        out = dict(conn.execute("SELECT event_id, actual_val FROM macro_calendar").fetchall())
+        conn.close()
+        return out
+
+    def test_released_events_in_the_lookback_get_their_actual_and_nothing_else_changes(self, cal_db_path):
+        recent = datetime.now(timezone.utc) - timedelta(days=1)
+        ref = _shift_month((recent.year, recent.month), 1)
+        self._seed(cal_db_path, [
+            ("rate", self._stamp(1), "USD", "Unemployment Rate", None, None),
+            ("speech", self._stamp(1), "USD", "Fed Chairman Warsh Speaks", None, None),
+            ("known", self._stamp(1), "USD", "CPI y/y", 3.3, None),
+            ("old", self._stamp(6), "USD", "Unemployment Rate", None, None),
+            ("future", self._stamp(-1), "USD", "Unemployment Rate", None, None),
+            ("split", self._stamp(1), "GBP", "Official Bank Rate", None, "6-0-3"),
+        ])
+        with patch("macro_calendar_engine.get_connection", side_effect=self._conn(cal_db_path)), \
+                patch("macro_calendar_engine._load_actual_series", return_value={"LNS14000000": {ref: 4.2}}) as load:
+            assert fill_released_actuals() == 1
+        assert self._actuals(cal_db_path) == {"rate": 4.2, "speech": None, "known": 3.3, "old": None, "future": None, "split": None}
+        assert load.call_args.args[0] == {ACTUAL_SOURCES[("USD", "Unemployment Rate")]}
+
+    def test_a_source_without_the_value_leaves_the_actual_null_for_the_next_run(self, cal_db_path):
+        self._seed(cal_db_path, [("rate", self._stamp(1), "USD", "Unemployment Rate", None, None)])
+        with patch("macro_calendar_engine.get_connection", side_effect=self._conn(cal_db_path)), \
+                patch("macro_calendar_engine._load_actual_series", return_value={}):
+            assert fill_released_actuals() == 0
+        assert self._actuals(cal_db_path) == {"rate": None}
+
+    def test_no_pending_event_reads_no_source(self, cal_db_path):
+        self._seed(cal_db_path, [("speech", self._stamp(1), "USD", "Fed Chairman Warsh Speaks", None, None)])
+        with patch("macro_calendar_engine.get_connection", side_effect=self._conn(cal_db_path)), \
+                patch("macro_calendar_engine._load_actual_series") as load:
+            assert fill_released_actuals() == 0
+        load.assert_not_called()
+
+    def test_a_later_feed_upsert_without_an_actual_keeps_the_filled_one(self, cal_db_path):
+        recent = datetime.now(timezone.utc) - timedelta(days=1)
+        ref = _shift_month((recent.year, recent.month), 1)
+        self._seed(cal_db_path, [("rate", self._stamp(1), "USD", "Unemployment Rate", None, None)])
+        with patch("macro_calendar_engine.get_connection", side_effect=self._conn(cal_db_path)), \
+                patch("macro_calendar_engine._load_actual_series", return_value={"LNS14000000": {ref: 4.2}}):
+            fill_released_actuals()
+            upsert_calendar_events([_make_row(event_id="rate", actual=None)])
+        assert self._actuals(cal_db_path)["rate"] == 4.2
+
+    def test_the_daily_run_fills_actuals_after_storing_the_feed_and_before_reconciling(self):
+        calls = []
+        with patch.object(macro_calendar_engine, "fetch_and_process_calendar", side_effect=lambda: calls.append("fetch") or []), \
+                patch.object(macro_calendar_engine, "upsert_calendar_events", side_effect=lambda _: calls.append("upsert")), \
+                patch.object(macro_calendar_engine, "fill_released_actuals", side_effect=lambda: calls.append("actuals")), \
+                patch.object(macro_calendar_engine, "reconcile_past_events", side_effect=lambda: calls.append("reconcile")):
+            update_macro_calendar()
+        assert calls == ["fetch", "upsert", "actuals", "reconcile"]

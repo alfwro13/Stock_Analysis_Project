@@ -1,12 +1,15 @@
 import logging
 import hashlib
+import os
 import re
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
-from typing import Optional, List, Tuple
-from datetime import datetime, timedelta, timezone
+from typing import Dict, Optional, List, Tuple
+from datetime import date, datetime, timedelta, timezone
+from constants import MACRO_ACTUALS_LOOKBACK_DAYS
 from db.database import get_connection, write_or_defer
+from macro_data_engine import ONS_TAXONOMY, fetch_boe_data, fetch_fred_api, get_retry_session
 from time_engine import parse_stored_utc, utc_to_exchange_local
 from yahoo_engine import yahoo_engine
 
@@ -20,6 +23,22 @@ EASTERN_PARSER_FIRST_EVENT = "2026-06-08 00:00:00"
 TARGET_CURRENCIES = {'USD', 'GBP'}
 TARGET_IMPACT = 'High'
 VOTE_SPLIT_RE = re.compile(r'\d+-\d+(-\d+)?')
+BLS_URL = "https://api.bls.gov/publicAPI/v1/timeseries/data/"
+FED_TARGET_SERIES = "DFEDTARU"
+BOE_RATE_SERIES = "IUDBEDR"
+ONS_CPI_SERIES = "D7G7"
+ACTUAL_SOURCES = {
+    ("USD", "CPI m/m"): ("bls", "CUSR0000SA0", "mom"),
+    ("USD", "Core CPI m/m"): ("bls", "CUSR0000SA0L1E", "mom"),
+    ("USD", "CPI y/y"): ("bls", "CUUR0000SA0", "yoy"),
+    ("USD", "Core CPI y/y"): ("bls", "CUUR0000SA0L1E", "yoy"),
+    ("USD", "Unemployment Rate"): ("bls", "LNS14000000", "level"),
+    ("USD", "Non-Farm Employment Change"): ("bls", "CES0000000001", "change"),
+    ("USD", "Average Hourly Earnings m/m"): ("bls", "CES0500000003", "mom"),
+    ("GBP", "CPI y/y"): ("ons", ONS_CPI_SERIES, "level"),
+    ("USD", "Federal Funds Rate"): ("fred", FED_TARGET_SERIES, "day_after"),
+    ("GBP", "Official Bank Rate"): ("boe", BOE_RATE_SERIES, "same_day"),
+}
 
 def vote_split_text(val_str: Optional[str]) -> Optional[str]:
     """Return a central-bank vote split such as '7-0-2' as written in the feed, or None for any other value."""
@@ -275,10 +294,150 @@ def reconcile_past_events() -> None:
         if conn:
             conn.close()
 
+def has_actual_source(currency: str, event_name: str) -> bool:
+    return (currency, event_name) in ACTUAL_SOURCES
+
+def _shift_month(period: Tuple[int, int], months_back: int) -> Tuple[int, int]:
+    index = period[0] * 12 + period[1] - 1 - months_back
+    return index // 12, index % 12 + 1
+
+def _fetch_bls_series(series_ids: List[str], year: int) -> Dict[str, dict]:
+    payload = {"seriesid": sorted(series_ids), "startyear": str(year - 1), "endyear": str(year)}
+    try:
+        response = requests.post(BLS_URL, json=payload, timeout=20)
+        response.raise_for_status()
+        body = response.json()
+    except (requests.RequestException, ValueError) as e:
+        logger.error("Failed to fetch BLS series: %s", e)
+        return {}
+    if body.get("status") != "REQUEST_SUCCEEDED":
+        logger.error("BLS refused the request: %s", body.get("message"))
+        return {}
+    out: Dict[str, dict] = {}
+    for series in body.get("Results", {}).get("series", []):
+        values = out.setdefault(series["seriesID"], {})
+        for row in series.get("data", []):
+            period = row.get("period", "")
+            if not re.fullmatch(r"M(0[1-9]|1[0-2])", period):
+                continue
+            try:
+                values[(int(row["year"]), int(period[1:]))] = float(row["value"])
+            except ValueError:
+                continue
+    return out
+
+def _fetch_ons_cpi_rate() -> Dict[str, dict]:
+    try:
+        response = get_retry_session().get(f"https://www.ons.gov.uk{ONS_TAXONOMY[ONS_CPI_SERIES]}", timeout=15)
+        response.raise_for_status()
+        months = response.json().get("months", [])
+    except (requests.RequestException, ValueError) as e:
+        logger.error("Failed to fetch ONS %s: %s", ONS_CPI_SERIES, e)
+        return {}
+    values = {}
+    for obs in months:
+        try:
+            observed = datetime.strptime(obs["date"], "%Y %b")
+            values[(observed.year, observed.month)] = float(obs["value"])
+        except (KeyError, ValueError):
+            continue
+    return {ONS_CPI_SERIES: values}
+
+def _daily_values(frame: pd.DataFrame, column: str) -> Dict[date, float]:
+    if frame.empty or column not in frame.columns:
+        return {}
+    return {stamp.date(): float(value) for stamp, value in frame[column].items() if pd.notna(value)}
+
+def _fetch_rate_series(sources: set, now: datetime) -> Dict[str, dict]:
+    start = now - timedelta(days=MACRO_ACTUALS_LOOKBACK_DAYS + 7)
+    session = get_retry_session()
+    out: Dict[str, dict] = {}
+    if "fred" in sources:
+        api_key = os.environ.get("FRED_API_KEY", "")
+        if api_key:
+            out[FED_TARGET_SERIES] = _daily_values(fetch_fred_api(session, FED_TARGET_SERIES, start, now, api_key), FED_TARGET_SERIES)
+        else:
+            logger.warning("FRED_API_KEY is not configured: the Federal Funds Rate actual cannot be read.")
+    if "boe" in sources:
+        out[BOE_RATE_SERIES] = _daily_values(fetch_boe_data(session, BOE_RATE_SERIES, start, now, lag_days=0), BOE_RATE_SERIES)
+    return out
+
+def _load_actual_series(specs: set, now: datetime) -> Dict[str, dict]:
+    sources = {source for source, _, _ in specs}
+    data: Dict[str, dict] = {}
+    if "bls" in sources:
+        data.update(_fetch_bls_series([series for source, series, _ in specs if source == "bls"], now.year))
+    if "ons" in sources:
+        data.update(_fetch_ons_cpi_rate())
+    data.update(_fetch_rate_series(sources, now))
+    return data
+
+def resolve_actual(spec: Tuple[str, str, str], event_dt: datetime, data: Dict[str, dict]) -> Optional[float]:
+    """A release's result from its source: the monthly series for the month before the release month, or the policy rate on the decision's effective day; None until the source holds it."""
+    _, series, how = spec
+    values = data.get(series) or {}
+    if how in ("day_after", "same_day"):
+        return values.get(event_dt.date() + timedelta(days=1 if how == "day_after" else 0))
+    reference = _shift_month((event_dt.year, event_dt.month), 1)
+    current = values.get(reference)
+    if current is None or how == "level":
+        return current
+    prior = values.get(_shift_month(reference, 12 if how == "yoy" else 1))
+    if prior is None:
+        return None
+    if how == "change":
+        return float(round((current - prior) * 1000))
+    return round((current / prior - 1) * 100, 1)
+
+def _write_actuals(updates: List[Tuple[float, str]]) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.executemany("UPDATE macro_calendar SET actual_val = ? WHERE event_id = ? AND actual_val IS NULL", updates)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+def fill_released_actuals() -> int:
+    """The feed carries no actual, so the released High events of the last MACRO_ACTUALS_LOOKBACK_DAYS days get theirs from BLS, ONS, FRED and the Bank of England; returns the number filled."""
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=MACRO_ACTUALS_LOOKBACK_DAYS)).replace(hour=0, minute=0, second=0, microsecond=0)
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT event_id, event_date, currency, event_name FROM macro_calendar "
+            "WHERE actual_val IS NULL AND actual_text IS NULL AND event_date BETWEEN ? AND ?",
+            (since.strftime(STAMP_FORMAT), now.strftime(STAMP_FORMAT)),
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    pending = []
+    for row in rows:
+        spec = ACTUAL_SOURCES.get((row["currency"], row["event_name"]))
+        event_dt = parse_stored_utc(row["event_date"])
+        if spec and event_dt:
+            pending.append((row["event_id"], event_dt, spec))
+    if not pending:
+        return 0
+    data = _load_actual_series({spec for _, _, spec in pending}, now)
+    updates = []
+    for event_id, event_dt, spec in pending:
+        actual = resolve_actual(spec, event_dt, data)
+        if actual is not None:
+            updates.append((actual, event_id))
+    if updates:
+        write_or_defer("Macro calendar actuals", lambda: _write_actuals(updates))
+    logger.info("Macro actuals: %s of %s released events filled.", len(updates), len(pending))
+    return len(updates)
+
 def update_macro_calendar() -> None:
     logger.info("Starting Macro Calendar Ingestion...")
     data = fetch_and_process_calendar()
     upsert_calendar_events(data)
+    fill_released_actuals()
     reconcile_past_events()
     logger.info("Macro Calendar Ingestion Complete.")
 

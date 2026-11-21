@@ -23,7 +23,7 @@ def whats_coming_up(
         "Do these steps in this order:\n"
         f"1. {policy_step()}\n"
         f"2. Call get_calendar(days={days}) for the earnings dates, ex-dividend dates and High-impact US and UK macro releases. "
-        "Its macro calendar only covers the current week: if it says later releases are not known, say so instead of assuming none.\n"
+        "Its macro calendar only covers the current week: if it says later releases are not published yet, say so instead of assuming none, and read covered_to to tell a quiet day from the end of the feed. Releases of the last two days carry their actual once the source holds it; say so when one is still due.\n"
         f'3. Call get_holdings(account="{scope}") for the size of each position that has an earnings or ex-dividend date, and which of those I hold versus only watch.\n'
         "4. Call get_market_regime() for the market regime, stress and Fear & Greed that the macro releases land in.\n"
         "5. Call get_news(ticker=...) for the few held tickers with the nearest earnings date.\n\n"
