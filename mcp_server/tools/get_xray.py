@@ -22,7 +22,7 @@ _XRAY_UNITS = {
     "risk.portfolio_beta": "versus the benchmark named in risk.benchmark over the trailing year of trading days",
     "correlation": "-1 to 1, from the cached pairwise matrix",
     "geographic_exposure": "by continent (look-through); see country_exposure for countries",
-    "country_exposure": "by country (look-through): a stock counts fully toward its Yahoo country, an ETF or fund is split by the countries of its top-10 holdings rescaled to 100%; 'Unknown' is invested capital with no known country; code is ISO 3166-1 alpha-2 ('' when not mapped)",
+    "country_exposure": "by country (look-through): a stock counts fully toward its Yahoo country, an ETF or fund is split by the countries of its top-10 holdings rescaled to 100% (a holding's country comes from its stored profile, else from its exchange suffix); 'Unknown' is invested capital with no known country; code is ISO 3166-1 alpha-2 ('' when not mapped)",
     "currency_exposure": "weight by the currency each position is recorded in",
     "findings": "breaches of the X-Ray Allocation Targets set in Settings, first findings_cap of findings_total in report order; targets_checked counts every target evaluated",
     "risk_cache_date": "UTC date of the nightly risk cache the beta, volatility and correlation come from (as_of is that date at 00:00 UTC)",

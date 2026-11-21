@@ -100,6 +100,23 @@ _COUNTRY_NAME_TO_CODE_CONTINENT: Dict[str, Tuple[str, str]] = {
 }
 
 
+# Country of a fund holding that has no asset_profiles row (the profile table covers the scanned US/UK universe), from the Yahoo ticker suffix.
+_SUFFIX_TO_COUNTRY: Dict[str, str] = {
+    ".L": "United Kingdom", ".DE": "Germany", ".F": "Germany", ".PA": "France", ".AS": "Netherlands",
+    ".BR": "Belgium", ".LS": "Portugal", ".SW": "Switzerland", ".MI": "Italy", ".MC": "Spain",
+    ".ST": "Sweden", ".HE": "Finland", ".CO": "Denmark", ".OL": "Norway", ".VI": "Austria",
+    ".WA": "Poland", ".T": "Japan", ".AX": "Australia", ".KS": "South Korea", ".KQ": "South Korea",
+    ".HK": "Hong Kong", ".SI": "Singapore", ".NS": "India", ".BO": "India", ".SS": "China",
+    ".SZ": "China", ".TW": "Taiwan", ".TWO": "Taiwan", ".TO": "Canada", ".V": "Canada",
+    ".SA": "Brazil", ".MX": "Mexico", ".JO": "South Africa", ".TA": "Israel", ".SR": "Saudi Arabia",
+}
+
+
+def _suffix_country(symbol: Optional[str]) -> Optional[str]:
+    _, dot, tail = str(symbol or "").rpartition(".")
+    return _SUFFIX_TO_COUNTRY.get("." + tail.upper()) if dot else None
+
+
 def _country_code_continent(country_name: Optional[str]) -> Tuple[str, str]:
     return _COUNTRY_NAME_TO_CODE_CONTINENT.get(country_name or "", ("", "Other"))
 
@@ -1130,6 +1147,8 @@ def _fund_geo_breakdown(top_holdings_json: Optional[str], underlying_profiles: D
     for h in raw:
         profile = underlying_profiles.get(h.get("symbol"), {})
         country_name = profile.get("country")
+        if not country_name or country_name == "Unknown":
+            country_name = _suffix_country(h.get("symbol"))
         if not country_name:
             continue
         weight = float(h.get("weight") or 0)
