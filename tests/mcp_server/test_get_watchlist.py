@@ -1,4 +1,5 @@
 """get_watchlist tool: the Watchlist page's tickers with held flagged, key signals from the page's shared signal rows, cache-first price with no Yahoo call, null versus real values, page enrichments, stale signals, empty Watchlist, filters, paging, compact rows and refused caps, no write to the database."""
+import contextlib
 import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -98,6 +99,26 @@ def watchlist():
             conn.close()
 
 
+@contextlib.contextmanager
+def _sessions(open_exchanges=(), last_close_ago=7200):
+    last_close = datetime.now(timezone.utc) - timedelta(seconds=last_close_ago)
+    with patch("market_session_helpers.is_trading_session", side_effect=lambda exchange, include_premarket=False: exchange in open_exchanges), \
+         patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+        yield
+
+
+def _seed_cache(ticker, price, seconds_ago):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, 'W', ?, 0.5, 0.3, 1, ?)",
+            (ticker, price, time.time() - seconds_ago),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _watchlist(client, **arguments):
     return tool_data(call(client, "get_watchlist", {"limit": MCP_WATCHLIST_MAX_ROWS, **arguments}))
 
@@ -154,6 +175,37 @@ class TestRows:
         price = _row(_watchlist(mcp_client), WATCHED)["price"]
         assert (price["value"], price["currency"]) == (40.0, "USD")
         assert (price["day_change"], price["day_change_pct"]) == (None, None)
+
+    def test_a_cached_quote_from_before_the_tickers_last_close_gives_way_to_the_nightly_price_with_its_own_as_of(self, mcp_client, watchlist):
+        _seed_cache(WATCHED, 36.0, 5 * 3600)
+        with _sessions(last_close_ago=7200):
+            price = _row(_watchlist(mcp_client), WATCHED)["price"]
+        assert (price["value"], price["stale"]) == (40.0, False)
+        assert (price["day_change"], price["day_change_pct"]) == (None, None)
+        nightly = datetime.now(timezone.utc) - timedelta(seconds=3600)
+        assert abs(datetime.strptime(price["as_of"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) - nightly) < timedelta(seconds=10)
+
+    def test_a_cached_quote_from_before_the_last_close_with_no_newer_nightly_price_is_stale(self, mcp_client, watchlist):
+        _seed_cache(WATCHED, 36.0, 5 * 3600)
+        with _sessions(last_close_ago=1800):
+            price = _row(_watchlist(mcp_client), WATCHED)["price"]
+        assert (price["value"], price["stale"]) == (36.0, True)
+
+    def test_price_staleness_follows_the_tickers_own_exchange(self, mcp_client, watchlist):
+        _seed_cache(WATCHED, 36.0, 600)
+        with _sessions(open_exchanges=("NYSE",)):
+            assert _row(_watchlist(mcp_client), WATCHED)["price"]["stale"] is True
+        with _sessions(open_exchanges=("LSE",)):
+            assert _row(_watchlist(mcp_client), WATCHED)["price"]["stale"] is False
+
+    def test_the_nightly_price_is_stale_while_its_exchange_is_open_and_fresh_after_the_close(self, mcp_client, watchlist):
+        with _sessions(open_exchanges=("NYSE",)):
+            assert _row(_watchlist(mcp_client), WATCHED)["price"]["stale"] is True
+        with _sessions(last_close_ago=7200):
+            assert _row(_watchlist(mcp_client), WATCHED)["price"]["stale"] is False
+
+    def test_units_state_that_staleness_is_judged_on_the_tickers_own_exchange(self, mcp_client, watchlist):
+        assert "own exchange" in _watchlist(mcp_client)["units"]["price.stale"]
 
     def test_zero_score_is_kept_and_a_missing_value_is_null(self, mcp_client, watchlist):
         data = _watchlist(mcp_client)

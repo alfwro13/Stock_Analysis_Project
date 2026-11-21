@@ -139,6 +139,10 @@ class TestHeldTicker:
         assert price["as_of"] == datetime.fromtimestamp(book["live_epoch"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         yahoo.get_quote_snapshot.assert_not_called()
 
+    def test_units_state_the_per_exchange_staleness_rule_with_its_grace_minutes(self, mcp_client, book):
+        units = _snapshot(mcp_client)["units"]["price.stale"]
+        assert "own exchange session" in units and "15 minutes" in units and "{" not in units
+
     def test_extended_hours_is_a_separate_object_never_merged_into_the_price(self, mcp_client, book):
         body = _snapshot(mcp_client)["data"]
         assert body["price"]["value"] == 121.0 and body["price"]["day_change_pct"] == 1.25

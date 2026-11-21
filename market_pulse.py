@@ -4,12 +4,14 @@ from typing import List, Dict, Any, Optional
 
 from config import load_config
 from db.database import get_connection, get_ticker_registry
-from db.helpers import parse_utc_epoch, resolve_live_price, sentiment_fresh_since
+from db.helpers import get_mutual_fund_tickers, parse_utc_epoch, resolve_live_price, sentiment_fresh_since
 from market_session_helpers import (
     MARKET_STATUS_PROXY,
     build_registry_exchange_map,
     build_registry_future_tickers,
+    cached_registry_exchange_map,
     is_ticker_quote_settled,
+    quote_session_floor,
     reset_registry_exchange_cache,
 )
 from utils import normalize_ticker, ignored_tickers_set
@@ -71,23 +73,30 @@ SPARKLINE_MAX_POINTS = 60
 _DISPLAY_STALE_FLOOR_SECONDS = 300
 
 
-def is_price_fresh(last_updated: float, price: float, refresh_rate: int, market_open: Optional[bool] = None) -> bool:
-    """Display-only staleness check ('should the UI grey this out'), not a data-selection gate
-    — see accounts_engine.current_price_map() for the latter, which compares timestamps
-    directly instead of using an absolute cutoff. A cache row counts as fresh outside market
-    hours as long as it has ever been populated; during market hours it must also be within a
-    floor of 5 minutes (or 2x the refresh interval if that's larger) — a floor comfortably
-    wider than the ~10-minute background scan that actually keeps the cache warm, so normal
-    scan-to-scan gaps and occasional fetch latency don't flip the display to stale every cycle.
-    A caller checking many rows passes market_open (one is_trading_session() for the whole loop)."""
+def is_price_fresh(last_updated: float, price: float, refresh_rate: int, market_open: Optional[bool] = None, session_floor: Optional[float] = None) -> bool:
+    """Display-only staleness (not data selection): an open market needs a quote within max(2x refresh_rate, 5 min), a floor wider than scan-to-scan gaps; a closed one needs a quote at or after `session_floor` (quote_session_floor()) when given, else any populated row. A loop passes market_open from one judgement per exchange."""
     has_data = last_updated > 0 and price != 0.0
     if not has_data:
         return False
     if market_open is None:
         market_open = is_trading_session()
     if not market_open:
-        return True
+        return session_floor is None or last_updated >= session_floor
     return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
+
+
+class QuoteSessionJudge:
+    """Judges cached quotes on each ticker's own session for one batch of tickers: (session open now, last-close floor) from quote_session_floor(), memoised per exchange. The floor is None for registry tiles, which are refreshed only while their exchange is open or in an extended session, and for mutual funds, which have one NAV a day refreshed on demand: for both the last cached quote is the best available, so a closed market never greys it."""
+
+    def __init__(self, tickers: List[str], registry_exchange_map: Optional[Dict[str, str]] = None):
+        self._exchange_map = cached_registry_exchange_map() if registry_exchange_map is None else registry_exchange_map
+        self._unjudged = set(get_index_tickers()) | get_mutual_fund_tickers(list(tickers))
+        self._memo: Dict[Any, tuple] = {}
+
+    def session(self, ticker: str, currency: Optional[str]) -> tuple:
+        market_open, floor = quote_session_floor(ticker, currency or '', self._exchange_map, self._memo)
+        return market_open, None if ticker in self._unjudged else floor
+
 
 def tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 300) -> List[str]:
     """Which of the given tickers have a missing or stale market_pulse_cache row. Shared by
@@ -203,7 +212,10 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     same protection accounts_engine.current_price_map() already applies to the P&L math, applied
     here to what's actually displayed. A ticker falling back loses its change_pct/change_pts too,
     since those are computed relative to the same stuck snapshot and would misleadingly imply a
-    day-over-day move for the fallback price that never happened."""
+    day-over-day move for the fallback price that never happened. A row not refreshed since before
+    its own exchange's last close (a Watchlist-only ticker nothing keeps warm) also yields to the newer
+    nightly price, and is_stale judges the price returned, on the ticker's own session (never the
+    operator's home exchange)."""
     conn = None
     try:
         conn = get_connection()
@@ -211,7 +223,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
         cursor.execute(
             "SELECT c.ticker, c.name, c.price, c.change_pts, c.change_pct, c.is_positive, c.last_updated, "
             "c.extended_price, c.extended_change_pts, c.extended_change_pct, c.extended_session, "
-            "s.current_price AS fallback_price, s.last_updated AS fallback_last_updated "
+            "s.current_price AS fallback_price, s.last_updated AS fallback_last_updated, s.currency AS currency "
             "FROM market_pulse_cache c LEFT JOIN stock_signals s ON s.ticker = c.ticker"
         )
         rows = cursor.fetchall()
@@ -225,11 +237,14 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     config_data = load_config()
     refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
 
-    market_open = is_trading_session()
+    judge = QuoteSessionJudge([row['ticker'] for row in rows])
     cache: Dict[str, Dict[str, Any]] = {}
     for row in rows:
-        is_stale = not is_price_fresh(row['last_updated'], row['price'], refresh_rate, market_open)
-        price, used_fallback = resolve_live_price(row['price'], row['last_updated'], row['fallback_price'], row['fallback_last_updated'])
+        market_open, floor = judge.session(row['ticker'], row['currency'])
+        price, used_fallback = resolve_live_price(
+            row['price'], row['last_updated'], row['fallback_price'], row['fallback_last_updated'], live_floor_epoch=floor,
+        )
+        price_as_of = (parse_utc_epoch(row['fallback_last_updated']) or None) if used_fallback else row['last_updated']
         cache[row['ticker']] = {
             "ticker": row['ticker'],
             "name": row['name'],
@@ -237,8 +252,8 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
             "change_pts": None if used_fallback else row['change_pts'],
             "change_pct": None if used_fallback else row['change_pct'],
             "is_positive": bool(row['is_positive']),
-            "is_stale": is_stale,
-            "price_as_of": (parse_utc_epoch(row['fallback_last_updated']) or None) if used_fallback else row['last_updated'],
+            "is_stale": not is_price_fresh(price_as_of or 0, price, refresh_rate, market_open, floor),
+            "price_as_of": price_as_of,
             "extended_price": row['extended_price'],
             "extended_change_pts": row['extended_change_pts'],
             "extended_change_pct": row['extended_change_pct'],
@@ -369,7 +384,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     registry_future_tickers = build_registry_future_tickers(registry_rows)
 
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
-    market_open = is_trading_session()
+    judge = QuoteSessionJudge(requested_assets, registry_exchange_map)
     exchange_state_memo: Dict[Any, bool] = {}
 
     for t in all_tickers:
@@ -383,11 +398,15 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             row = db_map[t]
             age = current_time - row['last_updated']
             has_data = row['last_updated'] > 0 and row['price'] != 0.0
-            is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate, market_open)
+            market_open, floor = judge.session(t, equity_currency_map.get(t))
             settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers, exchange_state_memo)
             needs_refresh: bool = False if not settled else (not has_data or age > int(refresh_rate))
             fallback = fallback_price_map.get(t)
-            price, used_fallback = resolve_live_price(row['price'], row['last_updated'], fallback[0] if fallback else None, fallback[1] if fallback else None)
+            price, used_fallback = resolve_live_price(
+                row['price'], row['last_updated'], fallback[0] if fallback else None, fallback[1] if fallback else None, live_floor_epoch=floor,
+            )
+            price_epoch = (parse_utc_epoch(fallback[1]) or 0) if used_fallback else row['last_updated']
+            is_stale: bool = not is_price_fresh(price_epoch, price, refresh_rate, market_open, floor)
             data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],
