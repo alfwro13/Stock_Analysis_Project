@@ -811,15 +811,14 @@ The macro engine combines FRED API data (US M2, jobless claims, yield spreads) w
 ### `POST /api/macro/init-pipeline`
 
 Full one-time initialisation sequence:
-1. Seed the macro calendar with known economic events
-2. Sync the calendar from external sources
-3. Fetch all macro indicators from FRED and UK data sources
-4. Train the HMM regime clustering model (3 states: expansion / choppy / recession)
-5. Train the Random Forest consensus miss probability model
-6. Train the XGBoost volatility magnitude model
-7. Run inference for today's date
+1. Sync the calendar from the external feed and fill the actuals of released events
+2. Fetch all macro indicators from FRED and UK data sources
+3. Train the HMM regime clustering model (3 states: expansion / choppy / recession)
+4. Train the Random Forest consensus miss probability model
+5. Train the XGBoost volatility magnitude model
+6. Run inference for today's date
 
-Steps 4–6 persist their trained models to `models/macro_hmm.joblib`, `models/macro_rf.joblib`, and `models/macro_xgb.joblib`; `MacroAIEngine.__init__` loads them back on every subsequent instantiation (including inside `/macro/run-pipeline`, which otherwise builds a fresh, untrained instance).
+Steps 3–5 persist their trained models to `models/macro_hmm.joblib`, `models/macro_rf.joblib`, and `models/macro_xgb.joblib`; `MacroAIEngine.__init__` loads them back on every subsequent instantiation (including inside `/macro/run-pipeline`, which otherwise builds a fresh instance with only the persisted models). Steps 4 and 5 train on stored calendar rows only (see `MacroAIEngine` in `assets/db_schema_and_architecture.md`): with fewer than 10 usable rows the step is skipped and its persisted model is deleted, and inference then leaves the upcoming events unscored.
 
 Only needs to be run once. Runs asynchronously — may take 5–15 minutes.
 
@@ -879,10 +878,11 @@ stored 4 to 10 days back (the writer stores `NULL`, never `0.0` or a Treasury-ba
 
 ### `POST /api/macro/run-pipeline`
 
-Standard daily macro update (after initialisation is complete):
-1. Sync macro calendar events
+Standard macro update (after initialisation is complete):
+1. Sync macro calendar events and fill the actuals of released events
 2. Refresh FRED and UK macro indicators
-3. Run inference for today
+3. Retrain the Random Forest consensus miss model and the XGBoost volatility model on the stored calendar rows (skipped, with the persisted model deleted, while fewer than 10 usable rows exist)
+4. Run inference for today (an event is scored only while both models exist)
 
 **Request body:** none  
 **Response:** standard background task response

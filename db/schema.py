@@ -3,12 +3,14 @@ import os
 import logging
 
 from db.database import get_connection
-from config import BASE_CURRENCY, DATA_DIR, FUNDAMENTALS_DIR, HISTORICAL_DIR, WATCHLIST_PATH
+from config import BASE_CURRENCY, BASE_DIR, DATA_DIR, FUNDAMENTALS_DIR, HISTORICAL_DIR, WATCHLIST_PATH
 import time_engine
 import learn_cards_seed
 from utils import contained_ticker_path, is_valid_ticker
 
 logger = logging.getLogger(__name__)
+
+MODELS_DIR = BASE_DIR / "models"
 
 _EXCHANGE_HOURS_PATH = os.path.join(DATA_DIR, "exchange_hours.json")
 
@@ -2968,6 +2970,20 @@ def migrate_db(conn, cursor) -> None:
                 logger.info("[MIGRATION] Corrected the UTC time of %d stored macro calendar event(s) and cleared their SPY gap.", corrected)
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to correct macro calendar event times: %s", e)
+
+    try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'macro_calendar_synthetic_rows_removed'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            from macro_calendar_engine import remove_synthetic_seed_rows
+            from macro_ai_engine import discard_persisted_models
+            removed = remove_synthetic_seed_rows()
+            discard_persisted_models(MODELS_DIR)
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('macro_calendar_synthetic_rows_removed')")
+            conn.commit()
+            logger.info("[MIGRATION] Removed %d synthetic macro calendar row(s) and the macro consensus-miss and volatility models trained on them.", removed)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to remove the synthetic macro calendar rows: %s", e)
 
     try:
         cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'stored_bar_artifacts'")

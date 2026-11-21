@@ -139,7 +139,7 @@ async function triggerMacroInit() {
     btn.innerText = "⚙️ Initializing Macro Engine...";
     try {
         const job = await postJobTrigger('/api/macro/init-pipeline');
-        alert(job.ok ? "Macro AI Pipeline initialized in the background. It will seed the calendar, sync events, and train the models sequentially. Check system notifications for progress. The page will reload once complete to update the button state." : (job.message || "The server did not start the job."));
+        alert(job.ok ? "Macro AI Pipeline initialized in the background. It will sync the calendar and indicators, then train the models sequentially. Check system notifications for progress. The page will reload once complete to update the button state." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Macro AI Pipeline. Network or server error.");
     }

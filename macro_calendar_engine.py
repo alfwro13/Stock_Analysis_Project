@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from typing import Dict, Optional, List, Tuple
 from datetime import date, datetime, timedelta, timezone
-from constants import MACRO_ACTUALS_LOOKBACK_DAYS
+from constants import MACRO_ACTUALS_BACKFILL_DAYS
 from db.database import get_connection, write_or_defer
 from macro_data_engine import ONS_TAXONOMY, fetch_boe_data, fetch_fred_api, get_retry_session
 from time_engine import parse_stored_utc, utc_to_exchange_local
@@ -213,6 +213,18 @@ def correct_eastern_event_times() -> int:
         if conn:
             conn.close()
 
+def remove_synthetic_seed_rows() -> int:
+    """Deletes rows with a UUID event_id (random training rows an earlier seeder wrote); a feed row's id is a SHA-256 hex digest."""
+    conn = None
+    try:
+        conn = get_connection()
+        removed = conn.execute("DELETE FROM macro_calendar WHERE length(event_id) = 36").rowcount
+        conn.commit()
+        return removed
+    finally:
+        if conn:
+            conn.close()
+
 def upsert_calendar_events(events: List[Tuple]) -> None:
     if not events:
         logger.info("No high-impact events found matching criteria. Exiting.")
@@ -301,8 +313,8 @@ def _shift_month(period: Tuple[int, int], months_back: int) -> Tuple[int, int]:
     index = period[0] * 12 + period[1] - 1 - months_back
     return index // 12, index % 12 + 1
 
-def _fetch_bls_series(series_ids: List[str], year: int) -> Dict[str, dict]:
-    payload = {"seriesid": sorted(series_ids), "startyear": str(year - 1), "endyear": str(year)}
+def _fetch_bls_series(series_ids: List[str], first_event_year: int, year: int) -> Dict[str, dict]:
+    payload = {"seriesid": sorted(series_ids), "startyear": str(first_event_year - 2), "endyear": str(year)}
     try:
         response = requests.post(BLS_URL, json=payload, timeout=20)
         response.raise_for_status()
@@ -348,8 +360,8 @@ def _daily_values(frame: pd.DataFrame, column: str) -> Dict[date, float]:
         return {}
     return {stamp.date(): float(value) for stamp, value in frame[column].items() if pd.notna(value)}
 
-def _fetch_rate_series(sources: set, now: datetime) -> Dict[str, dict]:
-    start = now - timedelta(days=MACRO_ACTUALS_LOOKBACK_DAYS + 7)
+def _fetch_rate_series(sources: set, since: datetime, now: datetime) -> Dict[str, dict]:
+    start = since - timedelta(days=7)
     session = get_retry_session()
     out: Dict[str, dict] = {}
     if "fred" in sources:
@@ -362,14 +374,14 @@ def _fetch_rate_series(sources: set, now: datetime) -> Dict[str, dict]:
         out[BOE_RATE_SERIES] = _daily_values(fetch_boe_data(session, BOE_RATE_SERIES, start, now, lag_days=0), BOE_RATE_SERIES)
     return out
 
-def _load_actual_series(specs: set, now: datetime) -> Dict[str, dict]:
+def _load_actual_series(specs: set, since: datetime, now: datetime) -> Dict[str, dict]:
     sources = {source for source, _, _ in specs}
     data: Dict[str, dict] = {}
     if "bls" in sources:
-        data.update(_fetch_bls_series([series for source, series, _ in specs if source == "bls"], now.year))
+        data.update(_fetch_bls_series([series for source, series, _ in specs if source == "bls"], since.year, now.year))
     if "ons" in sources:
         data.update(_fetch_ons_cpi_rate())
-    data.update(_fetch_rate_series(sources, now))
+    data.update(_fetch_rate_series(sources, since, now))
     return data
 
 def resolve_actual(spec: Tuple[str, str, str], event_dt: datetime, data: Dict[str, dict]) -> Optional[float]:
@@ -400,9 +412,9 @@ def _write_actuals(updates: List[Tuple[float, str]]) -> None:
             conn.close()
 
 def fill_released_actuals() -> int:
-    """The feed carries no actual, so the released High events of the last MACRO_ACTUALS_LOOKBACK_DAYS days get theirs from BLS, ONS, FRED and the Bank of England; returns the number filled."""
+    """The feed carries no actual, so every released event of the last MACRO_ACTUALS_BACKFILL_DAYS days that still has none gets it from BLS, ONS, FRED and the Bank of England; returns the number filled."""
     now = datetime.now(timezone.utc)
-    since = (now - timedelta(days=MACRO_ACTUALS_LOOKBACK_DAYS)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = (now - timedelta(days=MACRO_ACTUALS_BACKFILL_DAYS)).replace(hour=0, minute=0, second=0, microsecond=0)
     conn = None
     try:
         conn = get_connection()
@@ -422,7 +434,7 @@ def fill_released_actuals() -> int:
             pending.append((row["event_id"], event_dt, spec))
     if not pending:
         return 0
-    data = _load_actual_series({spec for _, _, spec in pending}, now)
+    data = _load_actual_series({spec for _, _, spec in pending}, min(event_dt for _, event_dt, _ in pending), now)
     updates = []
     for event_id, event_dt, spec in pending:
         actual = resolve_actual(spec, event_dt, data)

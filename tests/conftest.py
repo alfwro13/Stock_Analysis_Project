@@ -93,6 +93,8 @@ from db import schema as _db_schema_module  # noqa: E402
 _db_schema_module.WATCHLIST_PATH = TEST_DB_PATH.with_suffix(".watchlist.json")
 # migrate_db() rewrites stored daily bars once; it must never scan the real data/historical in a test run.
 _db_schema_module.HISTORICAL_DIR = TEST_DB_PATH.with_suffix(".historical")
+# migrate_db() deletes the persisted macro models once; it must never touch the real models/ in a test run.
+_db_schema_module.MODELS_DIR = TEST_DB_PATH.with_suffix(".models")
 
 # ── 3. Initialise the schema in the temp DB ───────────────────────────────────
 _db_module.init_db()

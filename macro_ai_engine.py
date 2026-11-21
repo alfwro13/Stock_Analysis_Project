@@ -3,6 +3,7 @@ import sqlite3
 import logging
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
@@ -30,15 +31,23 @@ from constants import (
     MACRO_XGB_N_ESTIMATORS,
 )
 from db.database import get_connection
-from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact
+from model_compatibility_engine import dump_sklearn_artifact, load_sklearn_artifact, remove_sklearn_artifact
 
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MACRO_HMM_PATH = MODELS_DIR / "macro_hmm.joblib"
-MACRO_RF_PATH = MODELS_DIR / "macro_rf.joblib"
-MACRO_XGB_PATH = MODELS_DIR / "macro_xgb.joblib"
+MACRO_RF_FILE = "macro_rf.joblib"
+MACRO_XGB_FILE = "macro_xgb.joblib"
+MACRO_RF_PATH = MODELS_DIR / MACRO_RF_FILE
+MACRO_XGB_PATH = MODELS_DIR / MACRO_XGB_FILE
+
+
+def discard_persisted_models(models_dir: Path) -> None:
+    """Delete the persisted consensus-miss and volatility models so no stale estimator keeps scoring events."""
+    for name in (MACRO_RF_FILE, MACRO_XGB_FILE):
+        remove_sklearn_artifact(models_dir / name)
 
 
 class MacroAIEngine:
@@ -78,6 +87,21 @@ class MacroAIEngine:
                 self.xgb_model = load_sklearn_artifact(MACRO_XGB_PATH, "macro_model_training_job")
         except Exception:
             logger.exception("Failed to load persisted XGBoost volatility model from %s.", MACRO_XGB_PATH)
+
+    @staticmethod
+    def _expected_change(forecast: Any, previous: Any) -> np.ndarray:
+        """Forecast minus previous as a share of the larger magnitude (0 when both are 0), so percent releases, payrolls in persons and policy rates share one scale."""
+        forecast = np.asarray(forecast, dtype=float)
+        previous = np.asarray(previous, dtype=float)
+        scale = np.maximum(np.abs(forecast), np.abs(previous))
+        return np.divide(forecast - previous, scale, out=np.zeros_like(scale), where=scale > 0)
+
+    def _consensus_miss_probability(self, forecast: Any, previous: Any) -> np.ndarray:
+        return self.rf_model.predict_proba(self._expected_change(forecast, previous).reshape(-1, 1))[:, 1]
+
+    def _discard_persisted_model(self, attribute: str, path: Path) -> None:
+        setattr(self, attribute, None)
+        remove_sklearn_artifact(path)
 
     def _log_training_score(self, model_name: str, n_samples: int, cv_mean: float, cv_std: Optional[float], metric: str) -> None:
         try:
@@ -162,7 +186,7 @@ class MacroAIEngine:
         """Random Forest classifier predicting whether actual macro releases exceed Wall Street forecasts."""
         logger.info("Training Consensus Miss Probability model (Random Forest)...")
         try:
-            query = "SELECT forecast_val, previous_val, actual_val FROM macro_calendar WHERE is_event_passed = 1"
+            query = "SELECT forecast_val, previous_val, actual_val FROM macro_calendar WHERE is_event_passed = 1 ORDER BY event_date"
             df = pd.read_sql_query(query, self.conn)
             
             df['forecast_num'] = df['forecast_val'].apply(self._extract_numeric)
@@ -171,13 +195,15 @@ class MacroAIEngine:
             
             df = df.dropna(subset=['forecast_num', 'previous_num', 'actual_num'])
             
-            if len(df) < MACRO_CAL_MIN_TRAIN_ROWS:
-                logger.warning("Insufficient verified ground-truth data to train Consensus Miss model. Skipping.")
-                return
-
-            X = df[['forecast_num', 'previous_num']].values
             # Target classification: 1 if Actual > Forecast, else 0
             y = (df['actual_num'] > df['forecast_num']).astype(int).values
+
+            if len(df) < MACRO_CAL_MIN_TRAIN_ROWS or len(set(y)) < 2:
+                logger.warning("Insufficient verified ground-truth data to train Consensus Miss model (%d rows, %d outcome classes). Skipping and discarding the persisted model.", len(df), len(set(y)))
+                self._discard_persisted_model("rf_model", MACRO_RF_PATH)
+                return
+
+            X = self._expected_change(df['forecast_num'], df['previous_num']).reshape(-1, 1)
             
             # CV score before final fit (accuracy is robust to class imbalance in sparse folds)
             tscv = TimeSeriesSplit(n_splits=MACRO_CV_N_SPLITS)
@@ -206,11 +232,13 @@ class MacroAIEngine:
                 FROM macro_calendar c
                 LEFT JOIN market_regimes r ON date(c.event_date) = r.date
                 WHERE c.is_event_passed = 1 AND c.post_event_spy_gap IS NOT NULL AND c.post_event_spy_gap >= 0
+                ORDER BY c.event_date
             """
             df_cal = pd.read_sql_query(query, self.conn)
             
             if df_cal.empty:
-                logger.warning("No verified calendar rows found for XGBoost training. Skipping.")
+                logger.warning("No verified calendar rows found for XGBoost training. Skipping and discarding the persisted model.")
+                self._discard_persisted_model("xgb_model", MACRO_XGB_PATH)
                 return
                 
             df_cal['forecast_num'] = df_cal['forecast_val'].apply(self._extract_numeric)
@@ -239,7 +267,8 @@ class MacroAIEngine:
             df_cal = df_cal.dropna(subset=['forecast_num', 'previous_num', 'post_event_spy_gap'])
             
             if len(df_cal) < MACRO_CAL_MIN_TRAIN_ROWS:
-                logger.warning("Insufficient verified SPY gap data to train Volatility Magnitude model. Skipping.")
+                logger.warning("Insufficient verified SPY gap data to train Volatility Magnitude model. Skipping and discarding the persisted model.")
+                self._discard_persisted_model("xgb_model", MACRO_XGB_PATH)
                 return
 
             hmm_state_map = {}
@@ -267,9 +296,7 @@ class MacroAIEngine:
             rf_probs = np.full(len(df_cal), 0.5)
             if self.rf_model is not None:
                 try:
-                    rf_probs = self.rf_model.predict_proba(
-                        df_cal[['forecast_num', 'previous_num']].values
-                    )[:, 1]
+                    rf_probs = self._consensus_miss_probability(df_cal['forecast_num'], df_cal['previous_num'])
                 except Exception as ex:
                     logger.warning(f"Batched RF predict_proba failed, using 0.5 fallback: {ex}")
 
@@ -357,6 +384,10 @@ class MacroAIEngine:
                 logger.warning("XGBoost Volatility model is untrained. Bypassing stacked inference.")
                 return
 
+            if self.rf_model is None:
+                logger.warning("Consensus Miss model is untrained. Bypassing stacked inference.")
+                return
+
             updates_count = 0
             for event in events:
                 f_val = self._extract_numeric(event['forecast_val'])
@@ -365,12 +396,7 @@ class MacroAIEngine:
                 if pd.isna(f_val) or pd.isna(p_val):
                     continue
 
-                rf_consensus_miss_prob = 0.5
-                if self.rf_model is not None:
-                    try:
-                        rf_consensus_miss_prob = float(self.rf_model.predict_proba([[f_val, p_val]])[0][1])
-                    except Exception as ex:
-                        logger.debug(f"Failed to infer consensus miss probability for event {event['event_id']}: {ex}")
+                rf_consensus_miss_prob = float(self._consensus_miss_probability([f_val], [p_val])[0])
 
                 # clamp before expm1 (not after): correct inversion of log1p; log1p(0)=0, so clamp at 0
                 X_infer = np.array([[f_val, p_val, current_vix, current_hmm_state, rf_consensus_miss_prob]])

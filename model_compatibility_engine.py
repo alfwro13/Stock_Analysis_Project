@@ -74,6 +74,13 @@ def dump_sklearn_artifact(artifact: T, path: Path) -> None:
         xgboost_path.unlink(missing_ok=True)
 
 
+def remove_sklearn_artifact(path: Path) -> None:
+    """Delete a persisted estimator with its version sidecars."""
+    path.unlink(missing_ok=True)
+    _version_path(path).unlink(missing_ok=True)
+    _xgboost_version_path(path).unlink(missing_ok=True)
+
+
 def load_sklearn_artifact(path: Path, retraining_job_id: str) -> T:
     """Load a trusted local artifact and reject estimators trained by another scikit-learn or XGBoost version."""
     version_path = _version_path(path) if isinstance(path, Path) else None

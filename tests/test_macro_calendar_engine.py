@@ -26,17 +26,19 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
+from constants import MACRO_ACTUALS_BACKFILL_DAYS
 from db import schema as db_schema
 from db.database import get_connection
 import macro_calendar_engine
 from macro_calendar_engine import (
     ACTUAL_SOURCES, _fetch_bls_series, _fetch_ons_cpi_rate, _fetch_rate_series, _load_actual_series, _shift_month,
     clean_value, correct_eastern_event_times, fetch_and_process_calendar, fill_released_actuals, generate_event_id,
-    has_actual_source, resolve_actual, update_macro_calendar, upsert_calendar_events, vote_split_text,
+    has_actual_source, remove_synthetic_seed_rows, resolve_actual, update_macro_calendar, upsert_calendar_events, vote_split_text,
 )
-from time_engine import localize_naive_to_utc, utc_to_exchange_local
+from time_engine import localize_naive_to_utc, parse_stored_utc, utc_to_exchange_local
 
 pytestmark = pytest.mark.restore_tables("macro_calendar", "data_migrations")
 
@@ -392,7 +394,54 @@ class TestCorrectEasternEventTimes:
         assert self._run(cal_db_path, rows) == 0
 
 
+class TestRemoveSyntheticSeedRows:
+
+    def test_rows_with_a_uuid_event_id_are_deleted_and_feed_rows_are_kept(self, cal_db_path):
+        feed_id = generate_event_id("2026-11-06 13:30:00", "USD", "CPI y/y")
+        conn = sqlite3.connect(cal_db_path)
+        conn.executemany("INSERT INTO macro_calendar VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+            _make_row(event_id=str(uuid.uuid4()), event_name="Fed Interest Rate Decision", actual=4.5),
+            _make_row(event_id=str(uuid.uuid4()), event_name="BoE Official Bank Rate", actual=4.0),
+            _make_row(event_id=feed_id, event_name="CPI y/y"),
+        ])
+        conn.commit()
+        conn.close()
+
+        def _conn():
+            conn = sqlite3.connect(cal_db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        with patch("macro_calendar_engine.get_connection", side_effect=_conn):
+            assert remove_synthetic_seed_rows() == 2
+            assert remove_synthetic_seed_rows() == 0
+        assert [r[0] for r in sqlite3.connect(cal_db_path).execute("SELECT event_id FROM macro_calendar")] == [feed_id]
+
+
 class TestMigrationRunsOnce:
+
+    def test_migrate_db_removes_the_synthetic_rows_and_their_models_once(self, tmp_path, monkeypatch):
+        models = tmp_path / "models"
+        models.mkdir()
+        for name in ("macro_rf.joblib", "macro_rf.joblib.sklearn-version", "macro_xgb.joblib", "macro_xgb.joblib.xgboost-version", "macro_hmm.joblib"):
+            (models / name).write_text("x")
+        monkeypatch.setattr(db_schema, "MODELS_DIR", models)
+        feed_id = generate_event_id("2031-11-18 07:00:00", "GBP", "ZZ Seed CPI y/y")
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = 'macro_calendar_synthetic_rows_removed'")
+            conn.execute("INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, actual_val) VALUES (?, '2031-01-01 14:00:00', 'USD', 'High', 'ZZ Seed Fed', 4.5)", (str(uuid.uuid4()),))
+            conn.execute("INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name) VALUES (?, '2031-11-18 07:00:00', 'GBP', 'High', 'ZZ Seed CPI y/y')", (feed_id,))
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT COUNT(*) FROM macro_calendar WHERE event_name = 'ZZ Seed Fed'").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM macro_calendar WHERE event_id = ?", (feed_id,)).fetchone()[0] == 1
+            assert sorted(p.name for p in models.iterdir()) == ["macro_hmm.joblib"]
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = 'macro_calendar_synthetic_rows_removed'").fetchone()[0] == 1
+            (models / "macro_rf.joblib").write_text("retrained")
+            db_schema.migrate_db(conn, conn.cursor())
+            assert (models / "macro_rf.joblib").exists()
+        finally:
+            conn.close()
 
     def test_migrate_db_corrects_the_stored_times_once(self):
         shifted = "2031-11-18 12:00:00"
@@ -485,15 +534,16 @@ class TestActualReaders:
             {"year": "2026", "period": "M09", "value": "-"},
         ]}]}}
         with self._post(body) as post:
-            assert _fetch_bls_series(["LNS14000000"], 2026) == {"LNS14000000": {(2026, 10): 4.2}}
-        assert post.call_args.kwargs["json"]["startyear"] == "2025"
+            assert _fetch_bls_series(["LNS14000000"], 2026, 2026) == {"LNS14000000": {(2026, 10): 4.2}}
+        assert post.call_args.kwargs["json"]["startyear"] == "2024"
+        assert post.call_args.kwargs["json"]["endyear"] == "2026"
 
     def test_a_refused_or_failed_bls_request_is_empty(self):
         import requests
         with self._post({"status": "REQUEST_NOT_PROCESSED", "message": ["daily threshold"]}):
-            assert _fetch_bls_series(["X"], 2026) == {}
+            assert _fetch_bls_series(["X"], 2026, 2026) == {}
         with self._post(error=requests.ConnectionError("down")):
-            assert _fetch_bls_series(["X"], 2026) == {}
+            assert _fetch_bls_series(["X"], 2026, 2026) == {}
 
     def test_ons_cpi_rate_is_keyed_by_year_and_month(self):
         session = MagicMock()
@@ -505,25 +555,31 @@ class TestActualReaders:
         boe = pd.DataFrame({"IUDBEDR": [4.0]}, index=pd.to_datetime(["2026-11-05"]))
         with patch.dict(os.environ, {"FRED_API_KEY": ""}), patch("macro_calendar_engine.get_retry_session"), \
                 patch("macro_calendar_engine.fetch_fred_api") as fred, patch("macro_calendar_engine.fetch_boe_data", return_value=boe) as boe_read:
-            out = _fetch_rate_series({"fred", "boe"}, _utc(2026, 11, 6))
+            out = _fetch_rate_series({"fred", "boe"}, _utc(2026, 11, 1), _utc(2026, 11, 6))
         fred.assert_not_called()
         assert out == {"IUDBEDR": {date(2026, 11, 5): 4.0}}
         assert boe_read.call_args.kwargs["lag_days"] == 0
+        assert boe_read.call_args.args[2] == _utc(2026, 10, 25)
 
     def test_the_fed_rate_is_keyed_by_observation_date(self):
         fed = pd.DataFrame({"DFEDTARU": [3.75, 4.0]}, index=pd.to_datetime(["2026-09-16", "2026-09-17"]))
         with patch.dict(os.environ, {"FRED_API_KEY": "key"}), patch("macro_calendar_engine.get_retry_session"), \
                 patch("macro_calendar_engine.fetch_fred_api", return_value=fed):
-            out = _fetch_rate_series({"fred"}, _utc(2026, 9, 20))
+            out = _fetch_rate_series({"fred"}, _utc(2026, 9, 10), _utc(2026, 9, 20))
         assert out == {"DFEDTARU": {date(2026, 9, 16): 3.75, date(2026, 9, 17): 4.0}}
 
     def test_only_the_sources_an_event_needs_are_read(self):
         with patch("macro_calendar_engine._fetch_bls_series", return_value={}) as bls, patch("macro_calendar_engine._fetch_ons_cpi_rate", return_value={}) as ons, \
                 patch("macro_calendar_engine._fetch_rate_series", return_value={}) as rates:
-            _load_actual_series({ACTUAL_SOURCES[("GBP", "CPI y/y")]}, _utc(2026, 11, 19))
+            _load_actual_series({ACTUAL_SOURCES[("GBP", "CPI y/y")]}, _utc(2026, 11, 1), _utc(2026, 11, 19))
         bls.assert_not_called()
         ons.assert_called_once()
-        assert rates.call_args.args[0] == {"ons"}
+        assert rates.call_args.args == ({"ons"}, _utc(2026, 11, 1), _utc(2026, 11, 19))
+
+    def test_bls_is_read_from_two_years_before_the_earliest_event(self):
+        with patch("macro_calendar_engine._fetch_bls_series", return_value={}) as bls, patch("macro_calendar_engine._fetch_rate_series", return_value={}):
+            _load_actual_series({ACTUAL_SOURCES[("USD", "CPI y/y")]}, _utc(2026, 1, 13), _utc(2026, 11, 19))
+        assert bls.call_args.args == (["CUUR0000SA0"], 2026, 2026)
 
 
 class TestFillReleasedActuals:
@@ -550,22 +606,26 @@ class TestFillReleasedActuals:
         conn.close()
         return out
 
-    def test_released_events_in_the_lookback_get_their_actual_and_nothing_else_changes(self, cal_db_path):
+    def test_released_events_still_without_an_actual_get_it_and_nothing_else_changes(self, cal_db_path):
         recent = datetime.now(timezone.utc) - timedelta(days=1)
+        earlier = datetime.now(timezone.utc) - timedelta(days=40)
         ref = _shift_month((recent.year, recent.month), 1)
+        earlier_ref = _shift_month((earlier.year, earlier.month), 1)
         self._seed(cal_db_path, [
             ("rate", self._stamp(1), "USD", "Unemployment Rate", None, None),
+            ("backfill", self._stamp(40), "USD", "Unemployment Rate", None, None),
             ("speech", self._stamp(1), "USD", "Fed Chairman Warsh Speaks", None, None),
             ("known", self._stamp(1), "USD", "CPI y/y", 3.3, None),
-            ("old", self._stamp(6), "USD", "Unemployment Rate", None, None),
+            ("beyond", self._stamp(MACRO_ACTUALS_BACKFILL_DAYS + 5), "USD", "Unemployment Rate", None, None),
             ("future", self._stamp(-1), "USD", "Unemployment Rate", None, None),
             ("split", self._stamp(1), "GBP", "Official Bank Rate", None, "6-0-3"),
         ])
         with patch("macro_calendar_engine.get_connection", side_effect=self._conn(cal_db_path)), \
-                patch("macro_calendar_engine._load_actual_series", return_value={"LNS14000000": {ref: 4.2}}) as load:
-            assert fill_released_actuals() == 1
-        assert self._actuals(cal_db_path) == {"rate": 4.2, "speech": None, "known": 3.3, "old": None, "future": None, "split": None}
+                patch("macro_calendar_engine._load_actual_series", return_value={"LNS14000000": {ref: 4.2, earlier_ref: 4.4}}) as load:
+            assert fill_released_actuals() == 2
+        assert self._actuals(cal_db_path) == {"rate": 4.2, "backfill": 4.4, "speech": None, "known": 3.3, "beyond": None, "future": None, "split": None}
         assert load.call_args.args[0] == {ACTUAL_SOURCES[("USD", "Unemployment Rate")]}
+        assert load.call_args.args[1] == parse_stored_utc(self._stamp(40))
 
     def test_a_source_without_the_value_leaves_the_actual_null_for_the_next_run(self, cal_db_path):
         self._seed(cal_db_path, [("rate", self._stamp(1), "USD", "Unemployment Rate", None, None)])
