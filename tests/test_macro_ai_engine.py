@@ -329,12 +329,15 @@ class TestConsensusMissTraining:
 
 class TestVolatilityTraining:
 
-    def test_stacks_the_consensus_miss_probability_of_the_scale_free_feature_and_persists(self, engine, tmp_path, caplog):
+    def _seed(self, engine, rows):
         engine.conn.executemany(
             "INSERT INTO macro_calendar (event_id, event_date, forecast_val, previous_val, post_event_spy_gap, is_event_passed) VALUES (?, ?, ?, ?, ?, 1)",
-            [(i, f"2026-06-{i + 1:02d}", str(3.0 + (i % 3)), "3.0", 0.2 + 0.1 * (i % 5)) for i in range(14)],
+            [(i, f"2026-06-{i + 1:02d}", f, p, 0.2 + 0.1 * (i % 5)) for i, (f, p) in enumerate(rows)],
         )
         engine.conn.commit()
+
+    def test_stacks_the_consensus_miss_probability_of_the_scale_free_feature_and_persists(self, engine, tmp_path, caplog):
+        self._seed(engine, [(str(3.0 + (i % 3)), "3.0") for i in range(14)])
         engine.rf_model = MagicMock()
         engine.rf_model.predict_proba.side_effect = lambda X: np.column_stack([1 - X[:, 0] ** 2, X[:, 0] ** 2])
         xgb_path = tmp_path / "macro_xgb.joblib"
@@ -342,9 +345,24 @@ class TestVolatilityTraining:
             engine.train_volatility_magnitude()
         assert xgb_path.exists() and engine.xgb_model is not None
         assert engine.rf_model.predict_proba.call_args.args[0].shape == (14, 1)
-        assert engine.xgb_model.n_features_in_ == 5
+        assert engine.xgb_model.n_features_in_ == 4
         assert "VIX join" in caplog.text
         assert engine.conn.execute("SELECT n_samples FROM model_training_log WHERE model_name = 'xgb_volatility'").fetchone()[0] == 14
+
+    def test_the_event_features_are_the_expected_change_not_the_raw_forecast_and_previous(self, engine, tmp_path):
+        rows = [("0.3", "0.2"), ("150000", "100000"), ("4.0", "4.0")] * 5
+        self._seed(engine, rows)
+        engine.rf_model = MagicMock()
+        engine.rf_model.predict_proba.return_value = np.tile([0.4, 0.6], (len(rows), 1))
+        with patch.object(macro_ai_engine, "MACRO_XGB_PATH", tmp_path / "macro_xgb.joblib"), \
+                patch.object(macro_ai_engine, "cross_val_score", return_value=np.array([0.1, 0.2, 0.3])) as cv:
+            engine.train_volatility_magnitude()
+        X = cv.call_args.args[1].astype(float)
+        assert X.shape == (15, 4)
+        np.testing.assert_allclose(X[:3, 0], [1 / 3, 1 / 3, 0.0])
+        np.testing.assert_allclose(X[:, 1], macro_ai_engine.MACRO_VIX_DEFAULT)
+        np.testing.assert_allclose(X[:, 3], 0.6)
+        assert np.abs(X[:, 0]).max() <= 2.0
 
 
 class TestStackedScoring:
@@ -375,6 +393,10 @@ class TestStackedScoring:
         assert row["ai_consensus_miss_prob"] == pytest.approx(0.7)
         assert row["ai_volatility_warning"] == pytest.approx(1.5)
         np.testing.assert_allclose(engine.rf_model.predict_proba.call_args.args[0], [[1 / 3]])
+        np.testing.assert_allclose(
+            engine.xgb_model.predict.call_args.args[0],
+            [[1 / 3, macro_ai_engine.MACRO_VIX_DEFAULT, 0, 0.7]],
+        )
 
 
 class TestDiscardPersistedModels:
