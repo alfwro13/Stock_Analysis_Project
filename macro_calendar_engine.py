@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
 from db.database import get_connection, write_or_defer
-from time_engine import localize_naive_to_utc, parse_stored_utc
+from time_engine import parse_stored_utc, utc_to_exchange_local
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 # GUI name: "Macroeconomic Automation Schedulers (Calendar)". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+STAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+EASTERN_PARSER_FIRST_EVENT = "2026-06-08 00:00:00"
 TARGET_CURRENCIES = {'USD', 'GBP'}
 TARGET_IMPACT = 'High'
 VOTE_SPLIT_RE = re.compile(r'\d+-\d+(-\d+)?')
@@ -94,14 +96,15 @@ def fetch_and_process_calendar() -> List[Tuple]:
             event_name = event.findtext('title', '').strip()
 
             formatted_date = ""
+            # The feed's times are UTC (US Retail Sales 8:30 ET is listed at 1:30pm, UK CPI 07:00 London at 7:00am), so a feed time is stored as it is.
             try:
                 time_clean = time_str.replace(' ', '').lower()
                 dt_naive = datetime.strptime(f"{date_str} {time_clean}", "%m-%d-%Y %I:%M%p")
-                formatted_date = localize_naive_to_utc(dt_naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
+                formatted_date = dt_naive.strftime(STAMP_FORMAT)
             except ValueError:
                 try:
                     dt_naive = datetime.strptime(date_str, "%m-%d-%Y")
-                    formatted_date = localize_naive_to_utc(dt_naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
+                    formatted_date = dt_naive.strftime(STAMP_FORMAT)
                 except ValueError:
                     logger.warning("Could not parse date: %s %s", date_str, time_str)
                     formatted_date = f"{date_str} {time_str}"
@@ -162,6 +165,31 @@ def _write_calendar_events(events: List[Tuple]) -> None:
         ''', events)
         conn.commit()
         logger.info("Successfully upserted %s macro events.", cursor.rowcount)
+    finally:
+        if conn:
+            conn.close()
+
+def correct_eastern_event_times() -> int:
+    """Moves the events stored since the Eastern-time parser (first event 2026-06-08) back to the feed's own UTC time, under their new event_id, and clears their SPY gap, which was measured in the wrong window."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT event_id, event_date, currency, event_name FROM macro_calendar WHERE event_date >= ?", (EASTERN_PARSER_FIRST_EVENT,)
+        ).fetchall()
+        corrected = 0
+        for row in rows:
+            stored = parse_stored_utc(row["event_date"])
+            if stored is None:
+                continue
+            event_date = utc_to_exchange_local(stored, "NYSE").replace(tzinfo=None).strftime(STAMP_FORMAT)
+            conn.execute(
+                "UPDATE macro_calendar SET event_id = ?, event_date = ?, post_event_spy_gap = NULL WHERE event_id = ?",
+                (generate_event_id(event_date, row["currency"], row["event_name"]), event_date, row["event_id"]),
+            )
+            corrected += 1
+        conn.commit()
+        return corrected
     finally:
         if conn:
             conn.close()

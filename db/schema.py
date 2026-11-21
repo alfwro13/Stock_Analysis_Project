@@ -2957,6 +2957,19 @@ def migrate_db(conn, cursor) -> None:
         logger.info("[MIGRATION] Removed %d exchange test-symbol history/fundamentals file(s).", files_removed)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'macro_calendar_utc_event_times'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            from macro_calendar_engine import correct_eastern_event_times
+            corrected = correct_eastern_event_times()
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('macro_calendar_utc_event_times')")
+            conn.commit()
+            if corrected:
+                logger.info("[MIGRATION] Corrected the UTC time of %d stored macro calendar event(s) and cleared their SPY gap.", corrected)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to correct macro calendar event times: %s", e)
+
+    try:
         cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'stored_bar_artifacts'")
         if cursor.fetchone() is None:
             conn.commit()
