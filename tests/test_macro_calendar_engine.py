@@ -6,7 +6,8 @@ Tests for deterministic pure functions:
   clean_value()         — financial magnitude string → float conversion
   generate_event_id()   — deterministic SHA-256 dedup hash
   upsert_calendar_events() — DB write / upsert behaviour
-  _ET / UTC conversion  — ForexFactory ET timestamps stored as UTC
+  feed times            — the feed's UTC times stored as they are
+  correct_eastern_event_times() — one-time shift of rows stored by the Eastern-time parser
 """
 
 import hashlib
@@ -24,10 +25,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import datetime, timezone
 
+from db import schema as db_schema
+from db.database import get_connection
 from macro_calendar_engine import (
-    clean_value, fetch_and_process_calendar, generate_event_id, upsert_calendar_events, vote_split_text,
+    clean_value, correct_eastern_event_times, fetch_and_process_calendar, generate_event_id, upsert_calendar_events, vote_split_text,
 )
-from time_engine import localize_naive_to_utc
+from time_engine import localize_naive_to_utc, utc_to_exchange_local
+
+pytestmark = pytest.mark.restore_tables("macro_calendar", "data_migrations")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -94,6 +99,10 @@ _FEED_XML = """<weeklyevents>
 <forecast>7-0-2</forecast><previous>3-0-6</previous><actual></actual></event>
 <event><title>CPI y/y</title><country>USD</country><date>06-18-2026</date><time>8:30am</time><impact>High</impact>
 <forecast>3.1%</forecast><previous>3.0%</previous><actual></actual></event>
+<event><title>FOMC Meeting Minutes</title><country>USD</country><date>11-18-2026</date><time>7:00pm</time><impact>High</impact>
+<forecast></forecast><previous></previous><actual></actual></event>
+<event><title>Bank Holiday Speech</title><country>GBP</country><date>11-19-2026</date><time>All Day</time><impact>High</impact>
+<forecast></forecast><previous></previous><actual></actual></event>
 </weeklyevents>"""
 
 
@@ -113,6 +122,14 @@ class TestFetchAndProcessCalendar:
         row = self._events()["CPI y/y"]
         assert row[5] == pytest.approx(3.1) and row[6] == pytest.approx(3.0)
         assert row[12:15] == (None, None, None)
+
+    def test_feed_times_are_utc_and_stored_as_they_are(self):
+        events = self._events()
+        assert events["CPI y/y"][1] == "2026-06-18 08:30:00"
+        assert events["MPC Vote"][1] == "2026-06-18 11:00:00"
+        assert events["FOMC Meeting Minutes"][1] == "2026-11-18 19:00:00"
+        assert events["Bank Holiday Speech"][1] == "2026-11-19 00:00:00"
+        assert events["FOMC Meeting Minutes"][0] == generate_event_id("2026-11-18 19:00:00", "USD", "FOMC Meeting Minutes")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -147,25 +164,16 @@ class TestGenerateEventId:
 # 3. ET → UTC timezone conversion (via localize_naive_to_utc)
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestEasternToUTC:
+class TestUtcToExchangeLocal:
 
-    def test_08_30_et_becomes_12_30_utc_during_edt(self):
-        # During EDT (UTC-4): 08:30 ET == 12:30 UTC
-        naive = datetime(2026, 6, 7, 8, 30, 0)   # summer — EDT
-        utc_str = localize_naive_to_utc(naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
-        assert utc_str == "2026-06-07 12:30:00"
+    def test_inverts_localize_naive_to_utc_in_summer_and_winter(self):
+        for naive in (datetime(2026, 6, 10, 12, 30), datetime(2026, 11, 18, 7, 0), datetime(2026, 3, 8, 12, 0)):
+            stamp = localize_naive_to_utc(naive, "NYSE")
+            assert utc_to_exchange_local(stamp, "NYSE").replace(tzinfo=None) == naive
 
-    def test_08_30_et_becomes_13_30_utc_during_est(self):
-        # During EST (UTC-5): 08:30 ET == 13:30 UTC
-        naive = datetime(2026, 1, 7, 8, 30, 0)   # winter — EST
-        utc_str = localize_naive_to_utc(naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
-        assert utc_str == "2026-01-07 13:30:00"
-
-    def test_midnight_et_date_only_event_is_offset(self):
-        # A date-only event (no time) is stored as midnight ET → UTC offset applied
-        naive = datetime(2026, 6, 7, 0, 0, 0)
-        utc_str = localize_naive_to_utc(naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
-        assert utc_str == "2026-06-07 04:00:00"   # EDT offset
+    def test_new_york_summer_and_winter_offsets(self):
+        assert utc_to_exchange_local(datetime(2026, 6, 10, 16, 30, tzinfo=timezone.utc), "NYSE").hour == 12
+        assert utc_to_exchange_local(datetime(2026, 11, 6, 18, 30, tzinfo=timezone.utc), "NYSE").hour == 13
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -326,3 +334,74 @@ class TestUpsertCalendarEventsUnderLock:
             with pytest.raises(sqlite3.OperationalError, match="no such table"):
                 upsert_calendar_events([_make_row()])
         assert deferred_queue == []
+
+
+def _shifted_row(event_date, name, currency="USD", **kw):
+    return _make_row(event_id=generate_event_id(event_date, currency, name), event_date=event_date, currency=currency, event_name=name, **kw)
+
+
+class TestCorrectEasternEventTimes:
+
+    def _run(self, cal_db_path, rows):
+        def _conn():
+            conn = sqlite3.connect(cal_db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        conn = sqlite3.connect(cal_db_path)
+        conn.executemany("INSERT INTO macro_calendar VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        conn.commit()
+        conn.close()
+        with patch("macro_calendar_engine.get_connection", side_effect=_conn):
+            return correct_eastern_event_times()
+
+    def _ids(self, cal_db_path):
+        conn = sqlite3.connect(cal_db_path)
+        conn.row_factory = sqlite3.Row
+        rows = {r["event_name"] + "|" + r["event_date"]: dict(r) for r in conn.execute("SELECT * FROM macro_calendar")}
+        conn.close()
+        return rows
+
+    def test_rows_from_the_eastern_parser_return_to_the_feed_time_with_a_new_id_and_no_gap(self, cal_db_path):
+        rows = [
+            _shifted_row("2026-11-18 12:00:00", "CPI y/y", "GBP", spy_gap=0.4, ai_warn=1.5, actual=3.4),
+            _shifted_row("2026-11-06 18:30:00", "Non-Farm Employment Change", spy_gap=0.2),
+            _shifted_row("2026-08-07 16:30:00", "Non-Farm Employment Change", spy_gap=0.1),
+        ]
+        assert self._run(cal_db_path, rows) == 3
+        found = self._ids(cal_db_path)
+        cpi = found["CPI y/y|2026-11-18 07:00:00"]
+        assert cpi["event_id"] == generate_event_id("2026-11-18 07:00:00", "GBP", "CPI y/y")
+        assert cpi["post_event_spy_gap"] is None and cpi["ai_volatility_warning"] == pytest.approx(1.5) and cpi["actual_val"] == pytest.approx(3.4)
+        assert set(found) == {"CPI y/y|2026-11-18 07:00:00", "Non-Farm Employment Change|2026-11-06 13:30:00", "Non-Farm Employment Change|2026-08-07 12:30:00"}
+
+    def test_rows_stored_before_the_eastern_parser_are_left_alone(self, cal_db_path):
+        rows = [_shifted_row("2026-06-05 12:30:00", "Non-Farm Employment Change", spy_gap=0.0), _shifted_row("2026-05-08 12:30:00", "Non-Farm Employment Change", spy_gap=0.3, actual=115000.0)]
+        assert self._run(cal_db_path, rows) == 0
+        found = self._ids(cal_db_path)
+        assert found["Non-Farm Employment Change|2026-05-08 12:30:00"]["post_event_spy_gap"] == pytest.approx(0.3)
+        assert found["Non-Farm Employment Change|2026-06-05 12:30:00"]["post_event_spy_gap"] == 0.0
+
+    def test_an_unparseable_event_date_is_skipped(self, cal_db_path):
+        rows = [_shifted_row("11-19-2026 All Day", "Bank Holiday Speech", "GBP")]
+        assert self._run(cal_db_path, rows) == 0
+
+
+class TestMigrationRunsOnce:
+
+    def test_migrate_db_corrects_the_stored_times_once(self):
+        shifted = "2031-11-18 12:00:00"
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = 'macro_calendar_utc_event_times'")
+            conn.execute(
+                "INSERT INTO macro_calendar (event_id, event_date, currency, impact, event_name, post_event_spy_gap) VALUES (?, ?, 'GBP', 'High', 'ZZ CPI y/y', 0.4)",
+                (generate_event_id(shifted, "GBP", "ZZ CPI y/y"), shifted),
+            )
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT event_date FROM macro_calendar WHERE event_name = 'ZZ CPI y/y'").fetchone()[0] == "2031-11-18 07:00:00"
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = 'macro_calendar_utc_event_times'").fetchone()[0] == 1
+            db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT event_date FROM macro_calendar WHERE event_name = 'ZZ CPI y/y'").fetchone()[0] == "2031-11-18 07:00:00"
+        finally:
+            conn.close()

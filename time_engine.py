@@ -241,6 +241,11 @@ def localize_naive_to_utc(dt_naive: datetime, exchange: str) -> datetime:
     return dt_naive.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
+def utc_to_exchange_local(dt_utc: datetime, exchange: str) -> datetime:
+    """Aware UTC datetime as the exchange's local wall-clock time (the inverse of `localize_naive_to_utc`)."""
+    return dt_utc.astimezone(ZoneInfo(exchange_tz(exchange)))
+
+
 def _local_today(tz: ZoneInfo):
     return datetime.now(timezone.utc).astimezone(tz).date()
 
