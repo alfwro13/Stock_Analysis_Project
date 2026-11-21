@@ -242,7 +242,10 @@ class TestMissingAndStale:
     def test_empty_watchlist(self, mcp_client):
         with patch("mcp_server.tools.get_watchlist.get_watchlist_tickers", return_value=[]):
             data = _watchlist(mcp_client)
-        assert data["data"] == {"count": 0, "total_matches": 0, "truncated": False, "next_offset": None, "tickers": []}
+        assert data["data"] == {
+            "count": 0, "total_matches": 0, "truncated": False, "next_offset": None,
+            "bullish_confluence_count": 0, "buy_recommended_count": 0, "tickers": [],
+        }
         assert data["as_of"] is None and data["missing"] == []
 
 
@@ -342,10 +345,26 @@ class TestPayloadControls:
         assert (data["data"]["total_matches"], data["data"]["truncated"]) == (1, False)
         assert set(_TICKERS) <= set(batch.call_args.args[0])
 
-    def test_enrichments_run_only_for_the_returned_page_without_the_recommendation_filter(self, mcp_client, watchlist):
-        with patch("mcp_server.tools.get_watchlist.evaluate_pillar_confluence_batch", return_value={}) as confluence:
-            data = _watchlist(mcp_client, limit=2)
-        assert confluence.call_args.args[0] == _tickers(data)
+    def test_counts_cover_every_matching_ticker_not_only_the_returned_page(self, mcp_client, watchlist):
+        bullish = {"bullish_pillars": ["technical", "ml"], "bearish_pillars": [], "confluence": True, "direction": "bullish"}
+        bearish = {"bullish_pillars": [], "bearish_pillars": ["technical", "ml"], "confluence": True, "direction": "bearish"}
+        confluence = {HELD: bullish, WATCHED: bullish, STALE: bearish}
+        recommendation = {"recommended": True, "pillar_confluence": bullish, "risk_reward": {"passes": True, "risk_reward": 2.0}, "regime_weighted_score": None}
+        results = {HELD: recommendation, WATCHED: {**recommendation, "recommended": False}}
+        with patch("mcp_server.tools.get_watchlist.evaluate_pillar_confluence_batch", return_value=confluence) as batch, \
+             patch("mcp_server.tools.get_watchlist.evaluate_buy_recommendation_batch", return_value=results):
+            data = _watchlist(mcp_client, limit=1)
+            narrowed = _watchlist(mcp_client, limit=1, only_buy_recommended=True)
+        assert data["data"]["count"] == 1
+        assert (data["data"]["bullish_confluence_count"], data["data"]["buy_recommended_count"]) == (2, 1)
+        assert (narrowed["data"]["bullish_confluence_count"], narrowed["data"]["buy_recommended_count"]) == (2, 1)
+        assert set(_TICKERS) <= set(batch.call_args.args[0])
+
+    def test_counts_are_zero_when_nothing_is_bullish(self, mcp_client, watchlist):
+        with patch("mcp_server.tools.get_watchlist.evaluate_pillar_confluence_batch", return_value={}):
+            data = _watchlist(mcp_client)
+        assert (data["data"]["bullish_confluence_count"], data["data"]["buy_recommended_count"]) == (0, 0)
+        assert "bullish_confluence_count" in data["units"]["bullish_confluence_count/buy_recommended_count"]
 
     def test_compact_leaves_out_null_fields_and_keeps_real_values(self, mcp_client, watchlist):
         full = _row(_watchlist(mcp_client), WATCHED)
