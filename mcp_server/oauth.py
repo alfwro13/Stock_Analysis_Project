@@ -17,7 +17,7 @@ from constants import (
     MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_CONNECTED_APPS_MAX, MCP_OAUTH_GRANT_DAYS,
     MCP_OAUTH_LAST_USED_WRITE_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_PENDING_MAX,
     MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_AHEAD_SECONDS, MCP_OAUTH_REFRESH_BEHIND_SECONDS, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS,
-    MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
+    MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_TOKEN_BOOST_SECONDS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
 from time_engine import parse_stored_utc
 from utils import clean_display_text
@@ -271,34 +271,41 @@ def claim_authorization(binding: str) -> Optional[str]:
     return redirect_url({"code": code, "state": row["client_state"]})
 
 
-def access_token_seconds(now: datetime) -> int:
-    """The life a token issued at `now` gets: the saved choice until its revert time, the default after it (or when the stored values are not valid)."""
-    saved = config.load_config()
+def _saved_access_token_seconds(saved: dict) -> int:
     seconds = saved.get("MCP_ACCESS_TOKEN_SECONDS")
-    if seconds not in MCP_OAUTH_ACCESS_TOKEN_CHOICES:
-        return MCP_OAUTH_ACCESS_TOKEN_SECONDS
-    revert_at = saved.get("MCP_ACCESS_TOKEN_REVERT_AT") or ""
-    if revert_at and (parse_stored_utc(revert_at) or now) <= now:
-        return MCP_OAUTH_ACCESS_TOKEN_SECONDS
-    return seconds
+    return seconds if seconds in MCP_OAUTH_ACCESS_TOKEN_CHOICES else MCP_OAUTH_ACCESS_TOKEN_SECONDS
+
+
+def _boost_until(saved: dict, now: datetime) -> Optional[str]:
+    stamp = saved.get("MCP_ACCESS_TOKEN_BOOST_UNTIL")
+    until = parse_stored_utc(stamp) if isinstance(stamp, str) else None
+    return stamp if until is not None and until > now else None
+
+
+def access_token_seconds(now: datetime) -> int:
+    """The life a token issued at `now` gets: the saved life, raised to the boost life while the extension runs."""
+    saved = config.load_config()
+    seconds = _saved_access_token_seconds(saved)
+    return max(seconds, MCP_OAUTH_TOKEN_BOOST_SECONDS) if _boost_until(saved, now) else seconds
 
 
 def access_token_life() -> dict:
-    now = _now()
-    seconds = access_token_seconds(now)
-    revert_at = config.load_config().get("MCP_ACCESS_TOKEN_REVERT_AT") or None
+    saved = config.load_config()
     return {
-        "seconds": seconds, "default_seconds": MCP_OAUTH_ACCESS_TOKEN_SECONDS, "choices": list(MCP_OAUTH_ACCESS_TOKEN_CHOICES),
-        "revert_at": revert_at if seconds != MCP_OAUTH_ACCESS_TOKEN_SECONDS else None,
+        "seconds": _saved_access_token_seconds(saved), "default_seconds": MCP_OAUTH_ACCESS_TOKEN_SECONDS, "choices": list(MCP_OAUTH_ACCESS_TOKEN_CHOICES),
+        "boost_seconds": MCP_OAUTH_TOKEN_BOOST_SECONDS, "boost_until": _boost_until(saved, _now()),
     }
 
 
-def save_access_token_life(seconds: int, revert_hours: int) -> None:
-    """Stores the life for tokens issued from now on; a longer life reverts to the default after `revert_hours` (0 keeps it until changed back)."""
-    revert_at = ""
-    if seconds != MCP_OAUTH_ACCESS_TOKEN_SECONDS and revert_hours:
-        revert_at = _stamp(_now() + timedelta(hours=revert_hours))
-    update_config_atomic({"MCP_ACCESS_TOKEN_SECONDS": seconds, "MCP_ACCESS_TOKEN_REVERT_AT": revert_at})
+def save_access_token_life(seconds: int) -> None:
+    update_config_atomic({"MCP_ACCESS_TOKEN_SECONDS": seconds})
+
+
+def start_token_boost() -> str:
+    """Tokens issued during the next MCP_OAUTH_TOKEN_BOOST_SECONDS last at least that long; the stamp is when the extension ends."""
+    until = _stamp(_now() + timedelta(seconds=MCP_OAUTH_TOKEN_BOOST_SECONDS))
+    update_config_atomic({"MCP_ACCESS_TOKEN_BOOST_UNTIL": until})
+    return until
 
 
 def refresh_due_seconds() -> Optional[int]:

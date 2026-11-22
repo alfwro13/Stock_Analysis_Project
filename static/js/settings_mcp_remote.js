@@ -125,20 +125,17 @@ function mcpLifeLabel(seconds) {
 function renderMcpTokenLife(life) {
     mcpTokenLifeDefault = life.default_seconds;
     const lifeSelect = document.getElementById('mcp_token_life');
-    const revertSelect = document.getElementById('mcp_token_revert');
-    if (!lifeSelect.options.length) {
-        lifeSelect.replaceChildren(...life.choices.map(s => new Option(mcpLifeLabel(s), s)));
-        revertSelect.replaceChildren(...life.revert_hours_choices.map(h => new Option(
-            h === 0 ? 'Keep it until I change it back' : 'Go back to ' + mcpLifeLabel(life.default_seconds) + ' after ' + mcpLifeLabel(h * 3600), h)));
-        revertSelect.value = '8';
-    }
+    if (!lifeSelect.options.length) lifeSelect.replaceChildren(...life.choices.map(s => new Option(mcpLifeLabel(s), s)));
     if (lifeSelect.dataset.edited !== '1') lifeSelect.value = String(life.seconds);
-    const longer = life.seconds !== life.default_seconds;
-    const state = document.getElementById('mcp_token_life_state');
-    state.textContent = longer
-        ? 'Tokens are issued for ' + mcpLifeLabel(life.seconds) + (life.revert_display ? ', going back to ' + mcpLifeLabel(life.default_seconds) + ' at ' + life.revert_display + '.' : ' until you change it back.')
-        : 'Tokens are issued for ' + mcpLifeLabel(life.default_seconds) + '.';
-    state.className = longer ? 'text-warning' : 'text-muted-small';
+    document.getElementById('mcp_token_life_state').textContent = 'Tokens are issued for ' + mcpLifeLabel(life.seconds) + '.';
+    const boosted = !!life.boost_until_display;
+    const needless = life.seconds >= life.boost_seconds;
+    document.getElementById('mcp-token-boost-btn').disabled = needless;
+    const state = document.getElementById('mcp_token_boost_state');
+    state.textContent = boosted
+        ? 'Active until ' + life.boost_until_display + ': tokens issued before then last ' + mcpLifeLabel(life.boost_seconds) + ', then ' + mcpLifeLabel(life.seconds) + ' again.'
+        : needless ? 'Not needed: the saved life is already ' + mcpLifeLabel(life.boost_seconds) + ' or longer.' : 'Not active.';
+    state.className = boosted ? 'text-warning' : 'text-muted-small';
 }
 
 function renderMcpRemote(data) {
@@ -220,9 +217,8 @@ async function saveMcpPublicHost() {
 
 async function saveMcpTokenLife() {
     const seconds = Number(document.getElementById('mcp_token_life').value);
-    const revertHours = Number(document.getElementById('mcp_token_revert').value);
     setStatus('mcp-token-life-msg', 'info', 'Saving…');
-    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds, revert_hours: revertHours }) };
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds }) };
     const res = seconds === mcpTokenLifeDefault ? await fetch('/api/mcp-remote/token-life', options) : await stepUpFetch('/api/mcp-remote/token-life', options);
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -231,6 +227,18 @@ async function saveMcpTokenLife() {
         loadMcpRemote();
     } else {
         setStatus('mcp-token-life-msg', 'error', mcpRemoteErrorText(data, 'Failed to save.'));
+    }
+}
+
+async function startMcpTokenBoost() {
+    setStatus('mcp-token-boost-msg', 'info', 'Starting…');
+    const res = await stepUpFetch('/api/mcp-remote/token-boost', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-token-boost-msg', 'success', 'Extension started. Apps get the longer token the next time they refresh.');
+        loadMcpRemote();
+    } else {
+        setStatus('mcp-token-boost-msg', 'error', mcpRemoteErrorText(data, 'Failed to start the extension.'));
     }
 }
 

@@ -465,7 +465,7 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 
 #### `mcp_oauth_tokens`
 * **Purpose:** The access and refresh tokens of every grant, hashed.
-* **Key Columns:** `token_hash` (TEXT PK, SHA-256 hex; the token is never stored), `kind` (`access` / `refresh`), `grant_id` (indexed), `created_at`, `expires_at` (the saved access token life for access, 15 minutes by default; 30 days idle for refresh; never past the grant's end), `rotated_at` (set when a refresh token is used; a rotated token presented again revokes the grant).
+* **Key Columns:** `token_hash` (TEXT PK, SHA-256 hex; the token is never stored), `kind` (`access` / `refresh`), `grant_id` (indexed), `created_at`, `expires_at` (the saved access token life for access, 15 minutes by default, or 8 hours during the Settings extension; 30 days idle for refresh; never past the grant's end), `rotated_at` (set when a refresh token is used; a rotated token presented again revokes the grant).
 * **Writes:** `create_grant()`, `add_tokens()` (refresh), `rotate_refresh_token()`; expired rows are deleted when a connection request or a refresh is written.
 * **Reads:** `oauth.verify_access_token()` (behind an in-memory cache), `refresh_tokens()`, `revoke_token()`.
 
