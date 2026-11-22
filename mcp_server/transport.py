@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse, Response
 
 from constants import MCP_REQUEST_MAX_BYTES
 
-from . import audit, limits
+from . import audit, caller, limits
 from .server import MCP_PATH, server
 
 
@@ -81,6 +81,8 @@ class _Endpoint:
             if limits.first_refusal(("key", limit_key)):
                 log_call()
             return
+        who = caller.Caller("oauth", grant_id, address) if grant_id is not None else caller.Caller("key", key_id, address) if key_id is not None else None
+        caller_token = caller.current.set(who)
         try:
             if scope["method"] == "POST" and self.active:
                 try:
@@ -91,6 +93,7 @@ class _Endpoint:
                 method, name = audit.describe_request(body)
             await self._respond(scope, receive, traced_send)
         finally:
+            caller.current.reset(caller_token)
             limits.release(limit_key)
             log_call()
 

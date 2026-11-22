@@ -76,6 +76,7 @@ def get_mcp_remote(request: Request):
     return {
         "status": "success",
         "enabled": bool(saved.get("MCP_REMOTE_ENABLED")),
+        "writes_enabled": bool(saved.get("MCP_WRITES_ENABLED")),
         "public_host": host,
         "host_active": bool(host) and host == config.MCP_PUBLIC_HOST,
         "endpoint_url": f"https://{host}/mcp" if host else None,
@@ -95,6 +96,7 @@ def get_mcp_remote(request: Request):
             {
                 "id": row["id"], "client_id": row["client_id"], "connected_display": time_engine.fmt_stored_utc(row["created_at"]), "expires_display": time_engine.fmt_stored_utc(row["expires_at"]),
                 "last_used_display": time_engine.fmt_stored_utc(row["last_used_at"]), "last_address": row["last_address"],
+                "write_allowed": bool(row["write_allowed"]),
             }
             for row in oauth.connected_apps()
         ],
@@ -182,6 +184,17 @@ def revoke_mcp_remote_grant(request: Request, grant_id: int = _GRANT_ID):
         raise HTTPException(status_code=404, detail="That app is no longer connected.")
     audit.record_action("revoke-grant", request.client.host if request.client else None, grant_id)
     return {"status": "success"}
+
+
+@mcp_remote_router.post("/mcp-remote/grants/{grant_id}/writes")
+@limiter.limit("20/minute")
+def set_mcp_remote_grant_writes(request: Request, body: McpRemoteToggle, grant_id: int = _GRANT_ID):
+    if body.enabled:
+        require_step_up(request)
+    if not oauth.set_grant_write_allowed(grant_id, body.enabled):
+        raise HTTPException(status_code=404, detail="That app is no longer connected.")
+    audit.record_action(f"writes-{'on' if body.enabled else 'off'}", request.client.host if request.client else None, grant_id)
+    return {"status": "success", "enabled": body.enabled}
 
 
 @mcp_remote_router.post("/mcp-remote/revoke-all")

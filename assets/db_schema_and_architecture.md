@@ -434,8 +434,8 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 
 #### `mcp_api_keys`
 * **Purpose:** The named keys that authenticate the MCP Server (`/mcp`). One row per client, so a single key can be deleted without breaking the others.
-* **Key Columns:** `id` (PK AUTOINCREMENT), `name` (TEXT, UNIQUE, case-insensitive), `key_hash` (TEXT UNIQUE, SHA-256 hex of the key; the key itself is never stored), `created_at` and `last_used_at` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, `last_used_at` NULL until first use).
-* **Writes:** `mcp_server.keys.create_key()` / `delete_key()` through `db/mcp_keys.py`; `record_use()` writes `last_used_at` at most once per minute per key, on a worker thread.
+* **Key Columns:** `id` (PK AUTOINCREMENT), `name` (TEXT, UNIQUE, case-insensitive), `key_hash` (TEXT UNIQUE, SHA-256 hex of the key; the key itself is never stored), `created_at` and `last_used_at` (TEXT UTC `YYYY-MM-DD HH:MM:SS`, `last_used_at` NULL until first use), `write_allowed` (INTEGER 0/1, default 0: whether the key may propose Watchlist changes; read on every write-tool call).
+* **Writes:** `mcp_server.keys.create_key()` / `delete_key()` / `set_write_allowed()` through `db/mcp_keys.py`; `record_use()` writes `last_used_at` at most once per minute per key, on a worker thread.
 * **Reads:** `mcp_server.keys` caches the hashes in memory and drops the cache on every create or delete, so authenticating a request needs no query.
 
 #### `mcp_audit_log`
@@ -444,6 +444,13 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 * **Writes:** `mcp_server.audit.record()` queues the row; a single worker thread inserts it through `db.mcp_audit.add_entry()`. The queue holds 1,000 rows, then drops. Each request is written once, at the end. Rows with `credential_kind` `none` are capped at 600 a minute (`session` and authenticated rows are never capped) (`MCP_AUDIT_UNAUTH_ROWS_PER_MINUTE`); the rows left out are replaced by one summary row per minute with `mcp_method` `audit`, `key_id` and `client_address` NULL, `status` 0 and a `mcp_name` of the form `<N> rows without a credential not stored`.
 * **Retention:** 90 days; `db.mcp_audit.prune_older_than()` runs from `MaintenanceEngine.prune_mcp_audit_log()` in the weekly Database & File Maintenance job.
 * **Reads:** none in the app yet.
+
+#### `mcp_write_log`
+* **Purpose:** One row per Watchlist change that Claude proposed through the MCP Server, from the stored proposal to the executed change and its undo: the only place a previous and a new value are kept (`mcp_audit_log` never holds argument values).
+* **Key Columns:** `id` (TEXT PK, 10 characters from an unambiguous alphabet; it is the `proposal_id` and, once executed, the `change_id`), `kind` (`watchlist_add`, `watchlist_remove`, `undo_watchlist_add`, `undo_watchlist_remove`), `credential_kind` (`key` or `oauth`) and `credential_id` (the key id or grant id; no foreign key), `ticker`, `account_id` (NULL for the Watchlist), `expected` and `proposed` (JSON: the state read when the proposal was made and the state it asks for), `summary` (the text shown to the user), `status` (`pending`, `executing`, `executed`, `failed`, `expired`, `refused`, `undone`), `created_at`, `expires_at` (10 minutes later), `executed_at`, `undone_at` (TEXT UTC), `previous_state` and `new_state` (JSON, filled when executed; the data an undo needs), `undo_of` (the change an undo reverses), `failure_reason` (a key into a fixed message table, never exception text). Indexed on `(credential_kind, credential_id, created_at)` and `created_at`.
+* **Writes:** `mcp_server.writes` through `db/mcp_write_log.py`: `insert()` for a proposal or a cap refusal, `claim()` (one conditional `UPDATE` from `pending` to `executing`), `finish()`, `expire()`, `mark_undone()`.
+* **Reads:** the same module; `counts()` gives the per-credential caps (proposals in the last hour, pending proposals, changes and additions since the UTC day start), so the caps survive a restart.
+* **Retention:** 90 days; `db.mcp_write_log.prune_older_than()` runs from `MaintenanceEngine.prune_mcp_write_log()` in the weekly Database & File Maintenance job. Produced by the MCP Server node as the `mcp_write_log` artifact in the Workflow Monitor.
 
 #### `mcp_oauth_client`
 * **Purpose:** The single OAuth client (Claude) that may connect to the public MCP host, plus the pairing-window flag. At most one row.
@@ -459,8 +466,8 @@ Before every training run, `alert_referee_engine.backfill_historical_features()`
 
 #### `mcp_oauth_grants`
 * **Purpose:** One approved connection. A grant ends when it is revoked or reaches its absolute expiry; its tokens are checked against it on every use.
-* **Key Columns:** `id` (PK AUTOINCREMENT, also the `key_id` of its `mcp_audit_log` rows), `client_id`, `scope`, `resource` (`https://<MCP_PUBLIC_HOST>/mcp` when issued), `created_at`, `expires_at` (90 days), `last_used_at` and `last_address` (written at most once a minute), `revoked_at` (NULL while live).
-* **Writes:** `db.mcp_oauth.create_grant()` at the code exchange (one transaction: it inserts the grant, links it to its approved request and checks the client is still current, and rolls back with `None` when the request was deleted or the client replaced), `revoke_grant()` on the Revoke button, refresh-token reuse or code reuse, `revoke_all()` on Revoke All Remote Access, and `clear_remote_access()` (revoke every grant, clear `pairing_open_until`, delete every request) for a new client and for a Backup & Recovery restore (on the staged database copy), `touch_grant()` from `oauth.record_use()`.
+* **Key Columns:** `id` (PK AUTOINCREMENT, also the `key_id` of its `mcp_audit_log` rows), `client_id`, `scope`, `resource` (`https://<MCP_PUBLIC_HOST>/mcp` when issued), `created_at`, `expires_at` (90 days), `last_used_at` and `last_address` (written at most once a minute), `revoked_at` (NULL while live), `write_allowed` (INTEGER 0/1, default 0: whether the app may propose Watchlist changes; a column added to an existing table by `migrate_db()`).
+* **Writes:** `db.mcp_oauth.create_grant()` at the code exchange (one transaction: it inserts the grant, links it to its approved request and checks the client is still current, and rolls back with `None` when the request was deleted or the client replaced), `revoke_grant()` on the Revoke button, refresh-token reuse or code reuse, `revoke_all()` on Revoke All Remote Access, and `clear_remote_access()` (revoke every grant, clear `pairing_open_until`, delete every request) for a new client and for a Backup & Recovery restore (on the staged database copy), `touch_grant()` from `oauth.record_use()`, `set_grant_write_allowed()` from the Changes box.
 * **Reads:** `oauth.connected_apps()` (the Connected Apps table, live grants only) and `count_active_grants()` (the Diagnostics count).
 
 #### `mcp_oauth_tokens`

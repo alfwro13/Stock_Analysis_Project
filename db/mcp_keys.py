@@ -28,7 +28,7 @@ def list_keys() -> List[dict]:
     conn = None
     try:
         conn = get_connection()
-        rows = conn.execute("SELECT id, name, created_at, last_used_at FROM mcp_api_keys ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id, name, created_at, last_used_at, write_allowed FROM mcp_api_keys ORDER BY id").fetchall()
         return [dict(r) for r in rows]
     finally:
         if conn:
@@ -63,6 +63,29 @@ def touch_key(key_id: int, used_at: str) -> None:
         conn = get_connection()
         conn.execute("UPDATE mcp_api_keys SET last_used_at = ? WHERE id = ?", (used_at, key_id))
         conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+def key_write_allowed(key_id: int) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute("SELECT write_allowed FROM mcp_api_keys WHERE id = ?", (key_id,)).fetchone()
+        return bool(row and row["write_allowed"])
+    finally:
+        if conn:
+            conn.close()
+
+
+def set_key_write_allowed(key_id: int, allowed: bool) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        changed = conn.execute("UPDATE mcp_api_keys SET write_allowed = ? WHERE id = ?", (1 if allowed else 0, key_id)).rowcount
+        conn.commit()
+        return changed > 0
     finally:
         if conn:
             conn.close()

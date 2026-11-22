@@ -2336,6 +2336,40 @@ def test_has_stock_signals_row_false_when_missing():
 
 
 @pytest.mark.db
+def test_add_watchlist_ticker_stores_the_resolved_metadata_and_refuses_an_unsafe_ticker(monkeypatch):
+    from db.database import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
+    monkeypatch.setattr(accounts_engine, "resolve_watchlist_metadata", lambda ticker: {
+        "company_name": "Zz Engine Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+    })
+    watchlist = get_watchlist_account()["id"]
+    try:
+        item_id = accounts_engine.add_watchlist_ticker(watchlist, "ZZENGADD")
+        row = next(i for i in get_watchlist_items(watchlist) if i["ticker"] == "ZZENGADD")
+        assert row["id"] == item_id and (row["company_name"], row["currency"], row["exchange"]) == ("Zz Engine Inc.", "USD", "NYSE")
+        assert accounts_engine.add_watchlist_ticker(watchlist, "ZZENGADD") == item_id
+        assert accounts_engine.add_watchlist_ticker(watchlist, "../bad") is None
+    finally:
+        remove_watchlist_ticker(watchlist, "ZZENGADD")
+
+
+@pytest.mark.db
+def test_queue_ticker_data_queues_only_what_is_missing_and_nothing_for_an_excluded_ticker(monkeypatch):
+    from unittest.mock import patch
+    queued = []
+    with patch("profile_engine.update_single_profile") as profile, patch("data_engine.fetch_and_save_single_ticker") as fetch, patch("quant_signals.QuantEngine") as engine:
+        monkeypatch.setattr(accounts_engine, "_ticker_known", lambda ticker: False)
+        monkeypatch.setattr(accounts_engine, "_has_stock_signals_row", lambda ticker: True)
+        monkeypatch.setattr(accounts_engine, "has_cached_fundamentals", lambda ticker: False)
+        accounts_engine.queue_ticker_data("ZZQUEUE", lambda fn, *args: queued.append((fn, args)))
+        assert queued == [(profile, ("ZZQUEUE",)), (fetch, ("ZZQUEUE",))]
+        engine.return_value.analyze_ticker.assert_not_called()
+        queued.clear()
+        monkeypatch.setattr(accounts_engine, "is_excluded_from_yahoo_fetch", lambda ticker: True)
+        accounts_engine.queue_ticker_data("ZZQUEUE", lambda fn, *args: queued.append((fn, args)))
+        assert queued == []
+
+
+@pytest.mark.db
 def test_fx_rate_on_date_without_a_date_uses_the_bounded_quote_and_may_be_unavailable(monkeypatch):
     monkeypatch.setattr(accounts_engine, "get_rate_to_base", lambda currency: 0.9)
     assert accounts_engine.fx_rate_on_date("EUR", None) == 0.9

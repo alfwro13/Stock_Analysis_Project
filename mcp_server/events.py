@@ -11,20 +11,22 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "mcp_remote_access_alert"
 MESSAGE_TYPE = "MCP Remote Access"
+WRITE_SOURCE = "mcp_write_alert"
+WRITE_MESSAGE_TYPE = "MCP Write Access"
 _ADDRESS_MAX_CHARS = 64
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mcp-remote-notify")
 
 
-def _send(text: str, level: str) -> None:
+def _send(text: str, level: str, source: str, message_type: str) -> None:
     try:
-        notify(SOURCE, MESSAGE_TYPE, text, nextcloud_text=f"{MESSAGE_TYPE}: {text}", level=level)
+        notify(source, message_type, text, nextcloud_text=f"{message_type}: {text}", level=level)
     except Exception as e:
-        logger.warning("Could not send an MCP Remote Access notification: %s", e)
+        logger.warning("Could not send an %s notification: %s", message_type, e)
 
 
-def _emit(text: str, level: str = "info") -> None:
+def _emit(text: str, level: str = "info", source: str = SOURCE, message_type: str = MESSAGE_TYPE) -> None:
     # Off the caller's thread: a Nextcloud Talk call must never delay an OAuth or /mcp response (rule 10).
-    _executor.submit(_send, text, level)
+    _executor.submit(_send, text, level, source, message_type)
 
 
 def _address(address: str) -> str:
@@ -57,3 +59,12 @@ def off_range_request(address: str, proxy_like: bool = False) -> None:
 
 def window_closed_unused() -> None:
     _emit("The pairing window closed without a connection request.")
+
+
+def change_made(text: str) -> None:
+    _emit(text, source=WRITE_SOURCE, message_type=WRITE_MESSAGE_TYPE)
+
+
+def writes_capped(caller_label: str, reason: str) -> None:
+    if limits.notify_due(("write_cap", caller_label, reason), MCP_NOTIFY_COOLDOWN_SECONDS):
+        _emit(f"Changes from {caller_label} were refused: {reason}.", "warning", WRITE_SOURCE, WRITE_MESSAGE_TYPE)

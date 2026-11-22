@@ -79,7 +79,10 @@ def record_use(key_id: int) -> None:
 
 def list_keys() -> List[dict]:
     return [
-        {"id": row["id"], "name": row["name"], "created_at": time_engine.fmt_stored_utc(row["created_at"]), "last_used_at": time_engine.fmt_stored_utc(row["last_used_at"])}
+        {
+            "id": row["id"], "name": row["name"], "created_at": time_engine.fmt_stored_utc(row["created_at"]),
+            "last_used_at": time_engine.fmt_stored_utc(row["last_used_at"]), "write_allowed": bool(row["write_allowed"]),
+        }
         for row in db_mcp_keys.list_keys()
     ]
 
@@ -102,3 +105,11 @@ def delete_key(key_id: int) -> bool:
     deleted = db_mcp_keys.delete_key(key_id)
     invalidate()
     return deleted
+
+
+def write_allowed(key_id: int) -> bool:
+    return db_mcp_keys.key_write_allowed(key_id)
+
+
+def set_write_allowed(key_id: int, allowed: bool) -> bool:
+    return db_mcp_keys.set_key_write_allowed(key_id, allowed)

@@ -68,19 +68,49 @@ async function toggleMcpLan(box) {
     applyMcpLanState();
 }
 
+async function toggleMcpWrites(box) {
+    const enabled = box.checked;
+    setStatus('mcp-writes-enabled-msg', 'info', 'Saving…');
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) };
+    const res = enabled ? await stepUpFetch('/api/mcp-writes/enabled', options) : await fetch('/api/mcp-writes/enabled', options);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-writes-enabled-msg', 'success', enabled ? 'MCP Write Access enabled. Keys and apps with their Changes box ticked can now propose Watchlist changes.' : 'MCP Write Access disabled. Pending proposals can no longer be confirmed.');
+    } else {
+        box.checked = !enabled;
+        setStatus('mcp-writes-enabled-msg', 'error', typeof data.detail === 'string' ? data.detail : 'Failed to save.');
+    }
+}
+
+async function setMcpKeyWrites(box) {
+    const enabled = box.checked;
+    setStatus('mcp-key-msg', 'info', 'Saving…');
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) };
+    const url = '/api/mcp-keys/' + encodeURIComponent(box.dataset.keyWrites) + '/writes';
+    const res = enabled ? await stepUpFetch(url, options) : await fetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-key-msg', 'success', enabled ? 'This key may now propose Watchlist changes.' : 'This key can no longer make changes.');
+    } else {
+        box.checked = !enabled;
+        setStatus('mcp-key-msg', 'error', typeof data.detail === 'string' ? data.detail : 'Failed to save.');
+    }
+}
+
 async function loadMcpKeys() {
     const body = document.getElementById('mcp-keys-body');
     const res = await fetch('/api/mcp-keys');
     if (!res.ok) {
-        body.innerHTML = '<tr><td colspan="4" class="text-muted">Could not load the keys.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" class="text-muted">Could not load the keys.</td></tr>';
         return;
     }
     const keys = (await res.json()).keys;
     if (!keys.length) {
-        body.innerHTML = '<tr><td colspan="4" class="text-warning">No MCP keys yet — create one below.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5" class="text-warning">No MCP keys yet — create one below.</td></tr>';
         return;
     }
     body.innerHTML = keys.map(k => `<tr><td>${escapeHtml(k.name)}</td><td>${escapeHtml(k.created_at)}</td><td>${escapeHtml(k.last_used_at || 'Never')}</td>`
+        + `<td><input type="checkbox" class="form-check-input" data-key-writes="${escapeHtml(String(k.id))}" aria-label="Allow ${escapeHtml(k.name)} to propose changes"${k.write_allowed ? ' checked' : ''}></td>`
         + `<td><button type="button" class="btn btn-danger mt-0" data-key-id="${escapeHtml(String(k.id))}" data-key-name="${escapeHtml(k.name)}">🗑️ Delete</button></td></tr>`).join('');
     applyMcpLanState();
 }
@@ -124,6 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
     keysBody.addEventListener('click', e => {
         const btn = e.target.closest('button[data-key-id]');
         if (btn) deleteMcpKey(btn.dataset.keyId, btn.dataset.keyName);
+    });
+    keysBody.addEventListener('change', e => {
+        if (e.target.matches('input[data-key-writes]')) setMcpKeyWrites(e.target);
     });
     loadMcpKeys();
 });

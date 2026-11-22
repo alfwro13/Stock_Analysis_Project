@@ -35,7 +35,7 @@ def _mcp_key(monkeypatch):
         oauth.invalidate()
         conn = get_connection()
         try:
-            for table in ("mcp_audit_log", "mcp_oauth_client", "mcp_oauth_requests", "mcp_oauth_grants", "mcp_oauth_tokens"):
+            for table in ("mcp_audit_log", "mcp_write_log", "mcp_oauth_client", "mcp_oauth_requests", "mcp_oauth_grants", "mcp_oauth_tokens"):
                 conn.execute(f"DELETE FROM {table}")
             conn.commit()
         finally:

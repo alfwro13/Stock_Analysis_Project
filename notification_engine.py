@@ -76,6 +76,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "universe_history_degraded": {"label": "Universe History Refresh Degraded", "job_id": "quant_analysis_job", "default": dict(_ON)},
     "failed_login_alert":      {"label": "Failed Login Alert",              "job_id": None,                     "default": dict(_ON)},
     "mcp_remote_access_alert": {"label": "MCP Remote Access",               "job_id": "claude_mcp_server_source", "default": dict(_ON)},
+    "mcp_write_alert":         {"label": "MCP Write Access",                "job_id": "claude_mcp_server_source", "alert_type": "MCP Write Access", "default": dict(_ON)},
     "nextcloud_talk_health":   {"label": "Nextcloud Talk Delivery Warning", "job_id": None,                     "default": dict(_NO_TALK)},
 }
 

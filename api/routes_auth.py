@@ -10,7 +10,7 @@ from api.deps import FiniteModel, enforce_login_lockout, limiter, record_passwor
 from config import BASE_DIR, load_config, update_config_atomic
 from constants import INVESTMENT_POLICY_MAX_CHARS, MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
 from db.database import get_connection
-from mcp_server import keys as mcp_keys
+from mcp_server import audit, keys as mcp_keys
 from mcp_server.auth import lan_enabled
 from mcp_server.resources import investment_policy
 from utils import clean_display_text, write_text_atomic
@@ -122,7 +122,7 @@ class McpKeyBody(BaseModel):
 
 @auth_router.get("/mcp-keys")
 def list_mcp_keys():
-    return {"status": "success", "keys": mcp_keys.list_keys()}
+    return {"status": "success", "keys": mcp_keys.list_keys(), "writes_enabled": bool(load_config().get("MCP_WRITES_ENABLED"))}
 
 
 def _require_mcp_lan_enabled() -> None:
@@ -165,6 +165,26 @@ def set_mcp_lan_enabled(request: Request, body: McpLanToggle):
     if body.enabled:
         require_step_up(request)
     update_config_atomic({"MCP_LAN_ENABLED": body.enabled})
+    return {"status": "success", "enabled": body.enabled}
+
+
+@auth_router.post("/mcp-writes/enabled")
+@limiter.limit("10/minute")
+def set_mcp_writes_enabled(request: Request, body: McpLanToggle):
+    if body.enabled:
+        require_step_up(request)
+    update_config_atomic({"MCP_WRITES_ENABLED": body.enabled})
+    return {"status": "success", "enabled": body.enabled}
+
+
+@auth_router.post("/mcp-keys/{key_id}/writes")
+@limiter.limit("20/minute")
+def set_mcp_key_writes(request: Request, key_id: int, body: McpLanToggle):
+    if body.enabled:
+        require_step_up(request)
+    if not mcp_keys.set_write_allowed(key_id, body.enabled):
+        raise HTTPException(status_code=404, detail="No such MCP key.")
+    audit.record_action(f"writes-{'on' if body.enabled else 'off'}: key #{key_id}", request.client.host if request.client else None)
     return {"status": "success", "enabled": body.enabled}
 
 

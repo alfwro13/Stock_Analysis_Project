@@ -5,7 +5,14 @@ from db.database import get_connection
 
 MCP_KEY = "test-mcp-key-do-not-use-in-production"
 RPC_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot", "get_alerts", "get_news", "get_watchlist", "pretrade_check", "get_calendar", "get_market_report", "screen_universe", "find_candidates"}
+EXPECTED_TOOLS = {"get_accounts", "get_holdings", "get_xray", "get_heat_index", "get_market_regime", "get_ticker_snapshot", "get_alerts", "get_news", "get_watchlist", "pretrade_check", "get_calendar", "get_market_report", "screen_universe", "find_candidates", "propose_watchlist_change", "propose_undo", "confirm_change"}
+
+CHANGE_TOOLS = {"propose_watchlist_change", "propose_undo", "confirm_change"}
+CHANGE_TOOL_ARGUMENTS = {
+    "propose_watchlist_change": {"action": "add", "ticker": "ZZMCP"},
+    "propose_undo": {"change_id": "ABCDEFGHJK"},
+    "confirm_change": {"proposal_id": "ABCDEFGHJK"},
+}
 
 
 def rpc(client, method, params=None, key=MCP_KEY, headers=None):
@@ -33,7 +40,7 @@ def table_counts():
     conn = get_connection()
     try:
         tables = [
-            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'mcp_audit_log'")
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('mcp_audit_log', 'mcp_write_log')")
         ]
         return {t: conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] for t in tables}
     finally:
