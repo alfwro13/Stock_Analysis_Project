@@ -150,7 +150,11 @@ MCP_AUDIT_TEXT_MAX_CHARS    = 100            # request-derived text (JSON-RPC me
 MCP_AUDIT_ADDRESS_MAX_CHARS = 64               # client address stored in mcp_audit_log
 MCP_PUBLIC_HOST_MAX_CHARS   = 253              # MCP_PUBLIC_HOST in the Settings save schema (longest DNS name)
 MCP_REMOTE_CIDRS_MAX        = 16               # networks in MCP_REMOTE_ALLOWED_CIDRS
-MCP_OAUTH_ACCESS_TOKEN_SECONDS = 15 * 60       # life of an OAuth access token
+MCP_OAUTH_ACCESS_TOKEN_SECONDS = 15 * 60       # default life of an OAuth access token
+MCP_OAUTH_ACCESS_TOKEN_CHOICES = (15 * 60, 60 * 60, 8 * 60 * 60, 24 * 60 * 60)  # lives the Settings box offers; a stored value outside this list is ignored
+MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS = (0, 1, 4, 8, 24)  # how long a longer life lasts before it reverts to the default (0 = until changed back)
+MCP_OAUTH_REFRESH_AHEAD_SECONDS = 120          # a restart warns when a connected app's access token expires within this many seconds
+MCP_OAUTH_REFRESH_BEHIND_SECONDS = 300         # a client sees an expired token up to one long-held request (about 4 minutes) late, so a refresh is still expected this long after expiry
 MCP_OAUTH_REFRESH_TOKEN_DAYS = 30              # idle life of a refresh token; each rotation starts a new one
 MCP_OAUTH_GRANT_DAYS        = 90               # absolute life of a grant; after it the operator approves again
 MCP_OAUTH_CODE_SECONDS      = 60               # life of an authorization code, counted from the moment the bound browser claims it
@@ -195,7 +199,7 @@ ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process sampl
 ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.212" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.213" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

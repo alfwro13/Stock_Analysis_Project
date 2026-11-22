@@ -1,6 +1,7 @@
 const MCP_REMOTE_POLL_MS = 3000;
 let mcpRemoteTimer = null;
 let mcpRemoteHasClient = false;
+let mcpTokenLifeDefault = 900;
 
 function mcpRemoteCell(text) {
     const td = document.createElement('td');
@@ -115,7 +116,33 @@ function renderMcpRemoteAddressCheck(trust, last) {
     peer.className = last.proxy_like ? 'text-warning' : 'text-muted';
 }
 
+function mcpLifeLabel(seconds) {
+    if (seconds < 3600) return (seconds / 60) + ' minutes';
+    const hours = seconds / 3600;
+    return hours + (hours === 1 ? ' hour' : ' hours');
+}
+
+function renderMcpTokenLife(life) {
+    mcpTokenLifeDefault = life.default_seconds;
+    const lifeSelect = document.getElementById('mcp_token_life');
+    const revertSelect = document.getElementById('mcp_token_revert');
+    if (!lifeSelect.options.length) {
+        lifeSelect.replaceChildren(...life.choices.map(s => new Option(mcpLifeLabel(s), s)));
+        revertSelect.replaceChildren(...life.revert_hours_choices.map(h => new Option(
+            h === 0 ? 'Keep it until I change it back' : 'Go back to ' + mcpLifeLabel(life.default_seconds) + ' after ' + mcpLifeLabel(h * 3600), h)));
+        revertSelect.value = '8';
+    }
+    if (lifeSelect.dataset.edited !== '1') lifeSelect.value = String(life.seconds);
+    const longer = life.seconds !== life.default_seconds;
+    const state = document.getElementById('mcp_token_life_state');
+    state.textContent = longer
+        ? 'Tokens are issued for ' + mcpLifeLabel(life.seconds) + (life.revert_display ? ', going back to ' + mcpLifeLabel(life.default_seconds) + ' at ' + life.revert_display + '.' : ' until you change it back.')
+        : 'Tokens are issued for ' + mcpLifeLabel(life.default_seconds) + '.';
+    state.className = longer ? 'text-warning' : 'text-muted-small';
+}
+
 function renderMcpRemote(data) {
+    renderMcpTokenLife(data.token_life);
     document.getElementById('MCP_REMOTE_ENABLED').checked = data.enabled;
     const hostInput = document.getElementById('mcp_public_host');
     if (document.activeElement !== hostInput && hostInput.dataset.edited !== '1') hostInput.value = data.public_host;
@@ -191,6 +218,22 @@ async function saveMcpPublicHost() {
     }
 }
 
+async function saveMcpTokenLife() {
+    const seconds = Number(document.getElementById('mcp_token_life').value);
+    const revertHours = Number(document.getElementById('mcp_token_revert').value);
+    setStatus('mcp-token-life-msg', 'info', 'Saving…');
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds, revert_hours: revertHours }) };
+    const res = seconds === mcpTokenLifeDefault ? await fetch('/api/mcp-remote/token-life', options) : await stepUpFetch('/api/mcp-remote/token-life', options);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        document.getElementById('mcp_token_life').dataset.edited = '';
+        setStatus('mcp-token-life-msg', 'success', 'Saved. Apps get the new life the next time they refresh.');
+        loadMcpRemote();
+    } else {
+        setStatus('mcp-token-life-msg', 'error', mcpRemoteErrorText(data, 'Failed to save.'));
+    }
+}
+
 async function createMcpRemoteClient() {
     if (mcpRemoteHasClient && !confirm('Rotate the client secret? Every connected app is signed out and must be added to Claude again.')) return;
     setStatus('mcp-remote-client-msg', 'info', 'Creating…');
@@ -262,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const card = document.getElementById('mcp-server-card');
     if (!card) return;
     document.getElementById('mcp_public_host').addEventListener('input', e => { e.target.dataset.edited = '1'; });
+    document.getElementById('mcp_token_life').addEventListener('change', e => { e.target.dataset.edited = '1'; });
     document.getElementById('mcp-remote-requests-body').addEventListener('click', e => {
         const btn = e.target.closest('button[data-request-id]');
         if (btn) decideMcpRemoteRequest(btn.dataset.action, btn.dataset.requestId);

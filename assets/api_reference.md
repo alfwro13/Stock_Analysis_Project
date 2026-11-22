@@ -1608,7 +1608,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-lan/enabled` (only when enabling), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-lan/enabled` (only when enabling), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/token-life` (only for a life above 900 seconds), `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
@@ -1708,6 +1708,7 @@ State of the MCP Remote Access panel (Settings → MCP Server → Remote Access)
   "endpoint_url": "https://mcp.example.com/mcp",
   "client": { "client_id": "mcp-1a2b3c4d5e6f7a8b", "created_display": "2026-10-21 14:02 BST" },
   "pairing": { "open": true, "until_display": "2026-10-21 14:32 BST", "seconds_left": 480 },
+  "token_life": { "seconds": 28800, "default_seconds": 900, "choices": [900, 3600, 28800, 86400], "revert_hours_choices": [0, 1, 4, 8, 24], "revert_display": "2026-10-21 22:30 BST" },
   "proxy_trust": { "state": "list", "value": "192.168.1.72" },
   "last_public_request": { "address": "160.79.104.5", "at_display": "2026-10-21 14:25 BST", "proxy_like": false },
   "requests": [ { "id": "<22 characters>", "code": "K7P2QX", "requested_display": "2026-10-21 14:25 BST", "address": "203.0.113.5", "user_agent": "Mozilla/5.0 ...", "seconds_left": 240 } ],
@@ -1715,7 +1716,7 @@ State of the MCP Remote Access panel (Settings → MCP Server → Remote Access)
 }
 ```
 
-`public_host` is the saved value and `host_active` is false until a restart applies it. `proxy_trust` is the service's `FORWARDED_ALLOW_IPS` setting: `state` is `unset`, `loopback`, `wildcard` or `list`, `value` the cleaned, capped text. `last_public_request` is the peer address of the newest request that reached the public host's route check while Remote Access was on (in memory, so `null` after a restart), with `proxy_like` true for a loopback, private or link-local address, which on that host means the reverse proxy is not trusted. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50; `id` is the grant id used by the revoke route and shown as `App #<id>` in the activity list, and `last_used_display` / `last_address` are updated at most once a minute per grant.
+`public_host` is the saved value and `host_active` is false until a restart applies it. `token_life` is the life a token issued at the time of the request gets (`seconds`: the saved choice until its revert time, 900 after it) and the time it goes back to 900 (`revert_display`, `null` when the life is the default or has no revert time). `proxy_trust` is the service's `FORWARDED_ALLOW_IPS` setting: `state` is `unset`, `loopback`, `wildcard` or `list`, `value` the cleaned, capped text. `last_public_request` is the peer address of the newest request that reached the public host's route check while Remote Access was on (in memory, so `null` after a restart), with `proxy_like` true for a loopback, private or link-local address, which on that host means the reverse proxy is not trusted. `client` is `null` before the first client is created. `requests` holds pending, unexpired requests only; `address` and `user_agent` are cleaned, length-capped text and must be rendered with `textContent`. `apps` lists live (unrevoked, unexpired) grants, at most 50; `id` is the grant id used by the revoke route and shown as `App #<id>` in the activity list, and `last_used_display` / `last_address` are updated at most once a minute per grant.
 
 ---
 
@@ -1725,6 +1726,26 @@ Turns Remote Access on or off by writing `MCP_REMOTE_ENABLED` to `config.json` (
 
 ```json
 { "status": "success", "enabled": true }
+```
+
+---
+
+### `POST /api/mcp-remote/token-life`
+
+Sets the life of the OAuth access tokens issued after the save by writing `MCP_ACCESS_TOKEN_SECONDS` and `MCP_ACCESS_TOKEN_REVERT_AT` to `config.json`. Body: `{ "seconds": 28800, "revert_hours": 8 }`. `seconds` is one of 900, 3600, 28800, 86400 and `revert_hours` one of 0, 1, 4, 8, 24 (default 0, meaning until changed back); any other value is `422`. A longer life goes back to 900 seconds `revert_hours` after the save; `revert_hours` is ignored when `seconds` is 900. **A `seconds` above 900 requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); 900 does not, because the short life is the safe direction. Tokens already issued keep their expiry. The save is recorded in `mcp_audit_log` as a dashboard action. Limited to 10 requests per minute. Session required; the API key and the MCP key are refused.
+
+```json
+{ "status": "success", "token_life": { "seconds": 28800, "default_seconds": 900, "choices": [900, 3600, 28800, 86400], "revert_hours_choices": [0, 1, 4, 8, 24], "revert_display": "2026-10-21 22:30 BST" } }
+```
+
+---
+
+### `GET /api/mcp-remote/restart-risk`
+
+Whether restarting the service at the time of the request could land on a connected app's token refresh. Read by the Restart Service and Force Restart buttons before they post. `refresh_due` is true when Remote Access is on and a live app's newest access token expires within the next 120 seconds or expired up to 300 seconds ago; `seconds` is the time until that expiry (negative once it has passed) for the soonest such app, otherwise `null`. Session required; the API key and the MCP key are refused. Limited to 60 requests per minute.
+
+```json
+{ "status": "success", "refresh_due": true, "seconds": 45 }
 ```
 
 ---
@@ -5466,7 +5487,7 @@ Served only for `Host: <MCP_PUBLIC_HOST>` (`404` with an empty body on any other
 | `GET /oauth/authorize` | query: `client_id`, `redirect_uri`, `response_type=code`, `code_challenge`, `code_challenge_method=S256`, `state`, `scope`, `resource` | `302` to `/oauth/approve` and an `mcp_oauth_binding` cookie | `403` plain text while no pairing window is open (nothing written); `400` JSON for an unknown client, a redirect URI that is not exactly `https://claude.ai/api/mcp/auth_callback` or a repeated/over-long parameter; `302` to the redirect URI with `error`, `error_description`, `state`, `iss` for a missing `state` (no `state` echoed), a bad `response_type`, PKCE, `scope` or `resource`; `429` with `Retry-After` past 5 pending or 10 per hour |
 | `GET /oauth/approve` | none | `200` HTML waiting page (`Cache-Control: no-store`), self-contained: its CSS and JS are inlined, it loads nothing from `/static`, and it contains no code or secret | |
 | `GET /oauth/approve-status` | the `mcp_oauth_binding` cookie | `200` JSON `{"state": "pending", "code": "K7P2QX"}`, `{"state": "approved", "redirect": "https://claude.ai/api/mcp/auth_callback?code=...&state=...&iss=..."}` (once; the authorization code is minted by this call), `{"state": "denied"}`, `{"state": "expired"}`, `{"state": "done"}` (already handed over) or `{"state": "unknown"}` (no or unrecognised cookie); `Cache-Control: no-store`. Not written to `mcp_audit_log` | |
-| `POST /oauth/token` | `application/x-www-form-urlencoded`, at most 8 KiB; client authentication by `Authorization: Basic` or `client_id` + `client_secret` in the body; `grant_type=authorization_code` with `code`, `redirect_uri`, `code_verifier`, optional `resource`, or `grant_type=refresh_token` with `refresh_token`, optional `scope`, `resource` | `200` JSON `access_token`, `token_type`, `expires_in`, `refresh_token`, `scope`; `Cache-Control: no-store` | `401 invalid_client` (one message for every client failure); `400` `invalid_request`, `unsupported_grant_type`, `invalid_grant` (code or refresh failures), `invalid_scope`, `invalid_target`; `413` for an oversized body; `429` with `Retry-After` for an address in the lockout |
+| `POST /oauth/token` | `application/x-www-form-urlencoded`, at most 8 KiB; client authentication by `Authorization: Basic` or `client_id` + `client_secret` in the body; `grant_type=authorization_code` with `code`, `redirect_uri`, `code_verifier`, optional `resource`, or `grant_type=refresh_token` with `refresh_token`, optional `scope`, `resource` | `200` JSON `access_token`, `token_type`, `expires_in` (the life saved under Settings → MCP Server → Access Token Life, 900 seconds by default, shortened to the grant's end), `refresh_token`, `scope`; `Cache-Control: no-store` | `401 invalid_client` (one message for every client failure); `400` `invalid_request`, `unsupported_grant_type`, `invalid_grant` (code or refresh failures), `invalid_scope`, `invalid_target`; `413` for an oversized body; `429` with `Retry-After` for an address in the lockout |
 | `POST /oauth/revoke` | form: client authentication as above and `token` | `200` with an empty body, also for an unknown token | `401 invalid_client`, `400 invalid_request`, `429` |
 
 Errors are JSON `{"error": "...", "error_description": "..."}` and never echo the request. Each call writes one `mcp_audit_log` row (rows without a credential are capped per minute; see `assets/mcp_integration.md`).

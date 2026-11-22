@@ -9,7 +9,7 @@ import pickle
 from pathlib import Path
 from dotenv import load_dotenv
 
-from constants import MCP_PUBLIC_HOST_MAX_CHARS, MCP_REMOTE_CIDRS_MAX
+from constants import MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_PUBLIC_HOST_MAX_CHARS, MCP_REMOTE_CIDRS_MAX
 
 load_dotenv()
 
@@ -92,6 +92,8 @@ DEFAULT_CONFIG = {
     "MCP_LAN_ENABLED": False,
     "MCP_REMOTE_ENABLED": False,
     "MCP_PUBLIC_HOST": "",
+    "MCP_ACCESS_TOKEN_SECONDS": MCP_OAUTH_ACCESS_TOKEN_SECONDS,
+    "MCP_ACCESS_TOKEN_REVERT_AT": "",
     "MCP_REMOTE_ALLOWED_CIDRS": ["160.79.104.0/21"],
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
