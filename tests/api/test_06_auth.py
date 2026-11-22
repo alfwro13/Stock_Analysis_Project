@@ -634,6 +634,7 @@ _GATED_ROUTES = [
     "/api/mcp-keys",
     "/api/mcp-remote/client",
     "/api/mcp-remote/pairing",
+    "/api/mcp-remote/token-boost",
     "/api/mcp-remote/requests/AAAAAAAAAAAAAAAAAAAAAA/approve",
     "/api/save-account-email",
     "/api/save-nextcloud-settings",

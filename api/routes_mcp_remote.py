@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 import config
 from api.deps import limiter, require_step_up
 from config import load_config, update_config_atomic
-from constants import MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS
+from constants import MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS
 from mcp_server import audit, limits, oauth
 from mcp_server.public_host import forwarded_trust, is_proxy_like
 from scheduler_engine import arm_mcp_pairing_window_check
@@ -50,7 +50,6 @@ class McpRemoteToggle(BaseModel):
 
 class McpTokenLife(BaseModel):
     seconds: int
-    revert_hours: int = 0
 
     @field_validator("seconds")
     @classmethod
@@ -59,19 +58,12 @@ class McpTokenLife(BaseModel):
             raise ValueError("Choose one of the offered token lives.")
         return value
 
-    @field_validator("revert_hours")
-    @classmethod
-    def _known_revert(cls, value: int) -> int:
-        if value not in MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS:
-            raise ValueError("Choose one of the offered revert times.")
-        return value
-
 
 def _token_life_state() -> dict:
     life = oauth.access_token_life()
     return {
         "seconds": life["seconds"], "default_seconds": life["default_seconds"], "choices": life["choices"],
-        "revert_hours_choices": list(MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS), "revert_display": time_engine.fmt_stored_utc(life["revert_at"]),
+        "boost_seconds": life["boost_seconds"], "boost_until_display": time_engine.fmt_stored_utc(life["boost_until"]),
     }
 
 
@@ -127,8 +119,16 @@ def set_mcp_remote_enabled(request: Request, body: McpRemoteToggle):
 def set_mcp_token_life(request: Request, body: McpTokenLife):
     if body.seconds != MCP_OAUTH_ACCESS_TOKEN_SECONDS:
         require_step_up(request)
-    oauth.save_access_token_life(body.seconds, body.revert_hours)
-    audit.record_action(f"token-life: {body.seconds} s, revert after {body.revert_hours} h", request.client.host if request.client else None)
+    oauth.save_access_token_life(body.seconds)
+    audit.record_action(f"token-life: {body.seconds} s", request.client.host if request.client else None)
+    return {"status": "success", "token_life": _token_life_state()}
+
+
+@mcp_remote_router.post("/mcp-remote/token-boost", dependencies=[Depends(require_step_up)])
+@limiter.limit("10/minute")
+def start_mcp_token_boost(request: Request):
+    until = oauth.start_token_boost()
+    audit.record_action(f"token-boost: until {until} UTC", request.client.host if request.client else None)
     return {"status": "success", "token_life": _token_life_state()}
 
 

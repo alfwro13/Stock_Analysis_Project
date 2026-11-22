@@ -1,5 +1,6 @@
-"""Access token life and the restart warning: the saved life reaches the token response, a longer life reverts to the default on its own,
-the Settings route is gated when it lengthens the life, and the restart-risk route reports a connected app that is due to refresh."""
+"""Access token life, the 8-hour extension and the restart warning: the saved life reaches the token response, the extension raises it for a fixed
+time and then the saved life applies again, the Settings routes are gated when they lengthen the life, and the restart-risk route reports a
+connected app that is due to refresh."""
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -8,7 +9,10 @@ from unittest.mock import patch
 import pytest
 
 import config
-from constants import MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_REFRESH_AHEAD_SECONDS, MCP_OAUTH_REFRESH_BEHIND_SECONDS
+from constants import (
+    MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_REFRESH_AHEAD_SECONDS, MCP_OAUTH_REFRESH_BEHIND_SECONDS,
+    MCP_OAUTH_TOKEN_BOOST_SECONDS,
+)
 from mcp_server import oauth
 
 from .helpers import MCP_KEY
@@ -36,8 +40,8 @@ def remote_on(monkeypatch):
     return values
 
 
-def _revert_stamp(clock, hours):
-    return (clock.now + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+def _stamp(clock, **delta):
+    return (clock.now + timedelta(**delta)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class TestLifeAtIssue:
@@ -55,17 +59,8 @@ class TestLifeAtIssue:
         remote.clock.advance(seconds=800)
         assert refresh(remote, body["refresh_token"]).json()["expires_in"] == 8 * HOUR
 
-    def test_the_life_reverts_to_the_default_at_the_revert_time(self, remote, life):
-        life["MCP_ACCESS_TOKEN_SECONDS"] = 8 * HOUR
-        life["MCP_ACCESS_TOKEN_REVERT_AT"] = _revert_stamp(remote.clock, 1)
-        body = tokens(remote)
-        assert body["expires_in"] == 8 * HOUR
-        remote.clock.advance(seconds=HOUR + 1)
-        assert refresh(remote, body["refresh_token"]).json()["expires_in"] == 900
-
-    def test_no_revert_time_keeps_the_life_until_changed(self, remote, life):
+    def test_a_saved_life_stays_until_changed(self, remote, life):
         life["MCP_ACCESS_TOKEN_SECONDS"] = DAY
-        life["MCP_ACCESS_TOKEN_REVERT_AT"] = ""
         body = tokens(remote)
         remote.clock.advance(days=20)
         assert refresh(remote, body["refresh_token"]).json()["expires_in"] == DAY
@@ -73,11 +68,6 @@ class TestLifeAtIssue:
     @pytest.mark.parametrize("stored", [1, 0, -900, 7200, 10 ** 9, "3600", None, 3600.5])
     def test_a_stored_life_outside_the_offered_choices_is_ignored(self, remote, life, stored):
         life["MCP_ACCESS_TOKEN_SECONDS"] = stored
-        assert tokens(remote)["expires_in"] == 900
-
-    def test_an_unreadable_revert_time_means_the_default(self, remote, life):
-        life["MCP_ACCESS_TOKEN_SECONDS"] = DAY
-        life["MCP_ACCESS_TOKEN_REVERT_AT"] = "tomorrow-ish"
         assert tokens(remote)["expires_in"] == 900
 
     def test_the_stored_expiry_matches_the_life(self, remote, life):
@@ -88,47 +78,83 @@ class TestLifeAtIssue:
         assert (expires - created).total_seconds() == 8 * HOUR
 
 
-class TestSavedState:
-    def test_a_longer_life_stores_the_revert_time(self, remote):
-        with patch("mcp_server.oauth.update_config_atomic") as update:
-            oauth.save_access_token_life(8 * HOUR, 4)
-        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": 8 * HOUR, "MCP_ACCESS_TOKEN_REVERT_AT": _revert_stamp(remote.clock, 4)})
+class TestExtension:
+    def test_the_extension_is_eight_hours(self):
+        assert MCP_OAUTH_TOKEN_BOOST_SECONDS == 8 * HOUR
+        assert "Long Tokens for 8 Hours" in (ROOT / "templates" / "settings" / "_account.html").read_text()
 
-    def test_zero_hours_keeps_it_until_changed_back(self, remote):
-        with patch("mcp_server.oauth.update_config_atomic") as update:
-            oauth.save_access_token_life(DAY, 0)
-        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": DAY, "MCP_ACCESS_TOKEN_REVERT_AT": ""})
+    def test_tokens_issued_during_the_extension_last_eight_hours(self, remote, life):
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, hours=8)
+        assert tokens(remote)["expires_in"] == 8 * HOUR
 
-    def test_the_default_life_clears_any_revert_time(self, remote):
-        with patch("mcp_server.oauth.update_config_atomic") as update:
-            oauth.save_access_token_life(900, 8)
-        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": 900, "MCP_ACCESS_TOKEN_REVERT_AT": ""})
+    def test_the_saved_life_applies_again_after_the_extension(self, remote, life):
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, hours=8)
+        body = tokens(remote)
+        remote.clock.advance(hours=8, seconds=1)
+        assert refresh(remote, body["refresh_token"]).json()["expires_in"] == 900
 
-    def test_the_state_shows_a_revert_time_only_while_the_life_is_longer(self, remote, life):
-        life["MCP_ACCESS_TOKEN_SECONDS"] = 8 * HOUR
-        life["MCP_ACCESS_TOKEN_REVERT_AT"] = _revert_stamp(remote.clock, 1)
+    def test_the_saved_life_applies_to_the_second_when_the_extension_ends(self, remote, life):
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, seconds=100)
+        assert oauth.access_token_seconds(remote.clock.now + timedelta(seconds=99)) == 8 * HOUR
+        assert oauth.access_token_seconds(remote.clock.now + timedelta(seconds=100)) == 900
+
+    @pytest.mark.parametrize("saved", [900, 3600])
+    def test_the_extension_lifts_a_shorter_saved_life(self, remote, life, saved):
+        life["MCP_ACCESS_TOKEN_SECONDS"] = saved
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, hours=1)
+        assert tokens(remote)["expires_in"] == 8 * HOUR
+
+    def test_the_extension_never_shortens_a_longer_saved_life(self, remote, life):
+        life["MCP_ACCESS_TOKEN_SECONDS"] = DAY
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, hours=1)
+        assert tokens(remote)["expires_in"] == DAY
+
+    @pytest.mark.parametrize("stored", ["", None, "tomorrow-ish", 12345, "2000-01-01 00:00:00"])
+    def test_an_empty_unreadable_or_past_end_time_is_no_extension(self, remote, life, stored):
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = stored
+        assert tokens(remote)["expires_in"] == 900
+
+    def test_starting_it_stores_the_end_time(self, remote):
+        with patch("mcp_server.oauth.update_config_atomic") as update:
+            until = oauth.start_token_boost()
+        assert until == _stamp(remote.clock, hours=8)
+        update.assert_called_once_with({"MCP_ACCESS_TOKEN_BOOST_UNTIL": until})
+
+    def test_the_state_shows_the_end_time_only_while_it_runs(self, remote, life):
+        life["MCP_ACCESS_TOKEN_SECONDS"] = 3600
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, hours=1)
         state = oauth.access_token_life()
-        assert state["seconds"] == 8 * HOUR and state["revert_at"] == life["MCP_ACCESS_TOKEN_REVERT_AT"]
-        remote.clock.advance(seconds=HOUR + 1)
-        state = oauth.access_token_life()
-        assert state["seconds"] == 900 and state["revert_at"] is None
+        assert state["seconds"] == 3600 and state["boost_until"] == life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] and state["boost_seconds"] == 8 * HOUR
+        remote.clock.advance(hours=1, seconds=1)
+        assert oauth.access_token_life()["boost_until"] is None
+
+
+class TestSavedLife:
+    def test_saving_writes_only_the_life(self, remote):
+        with patch("mcp_server.oauth.update_config_atomic") as update:
+            oauth.save_access_token_life(DAY)
+        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": DAY})
 
 
 class TestTokenLifeRoute:
-    @pytest.mark.parametrize("method,path", [("post", "/api/mcp-remote/token-life"), ("get", "/api/mcp-remote/restart-risk")])
+    @pytest.mark.parametrize("method,path", [
+        ("post", "/api/mcp-remote/token-life"), ("post", "/api/mcp-remote/token-boost"), ("get", "/api/mcp-remote/restart-risk"),
+    ])
     def test_needs_a_session_and_refuses_both_keys(self, raw_client, method, path):
         assert getattr(raw_client, method)(path).status_code in (302, 401, 403, 422)
         assert getattr(raw_client, method)(path, headers={"X-API-Key": os.environ["API_KEY"]}).status_code == 403
         assert getattr(raw_client, method)(path, headers={"Authorization": f"Bearer {MCP_KEY}"}).status_code == 302
 
-    def test_the_status_carries_the_life(self, client, remote_on, life):
+    def test_the_status_carries_the_life_and_the_extension(self, client, remote_on, life):
         state = client.get("/api/mcp-remote").json()["token_life"]
         assert state["seconds"] == 900 and state["default_seconds"] == 900
-        assert state["choices"] == list(MCP_OAUTH_ACCESS_TOKEN_CHOICES) and 0 in state["revert_hours_choices"] and state["revert_display"] is None
+        assert state["choices"] == list(MCP_OAUTH_ACCESS_TOKEN_CHOICES)
+        assert state["boost_seconds"] == 8 * HOUR and state["boost_until_display"] is None
+        assert "revert_display" not in state and "revert_hours_choices" not in state
 
     def test_a_longer_life_needs_the_password(self, client, auth_cookies):
         with patch("mcp_server.oauth.update_config_atomic") as update:
-            response = client.post("/api/mcp-remote/token-life", json={"seconds": 8 * HOUR, "revert_hours": 8}, headers=_plain(auth_cookies))
+            response = client.post("/api/mcp-remote/token-life", json={"seconds": 8 * HOUR}, headers=_plain(auth_cookies))
         assert response.status_code == 403 and response.headers["X-Step-Up-Required"] == "1"
         update.assert_not_called()
 
@@ -136,25 +162,41 @@ class TestTokenLifeRoute:
         with patch("mcp_server.oauth.update_config_atomic") as update:
             response = client.post("/api/mcp-remote/token-life", json={"seconds": 900}, headers=_plain(auth_cookies))
         assert response.status_code == 200 and response.json()["token_life"]["default_seconds"] == 900
-        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": 900, "MCP_ACCESS_TOKEN_REVERT_AT": ""})
+        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": 900})
 
-    def test_saving_a_longer_life_writes_the_keys_and_an_audit_row(self, client, step_up_headers):
+    def test_saving_a_longer_life_writes_the_key_and_an_audit_row(self, client, step_up_headers):
         with patch("mcp_server.oauth.update_config_atomic") as update:
-            response = client.post("/api/mcp-remote/token-life", json={"seconds": 8 * HOUR, "revert_hours": 8}, headers=step_up_headers)
+            response = client.post("/api/mcp-remote/token-life", json={"seconds": 8 * HOUR}, headers=step_up_headers)
         assert response.status_code == 200
-        saved = update.call_args.args[0]
-        assert saved["MCP_ACCESS_TOKEN_SECONDS"] == 8 * HOUR and saved["MCP_ACCESS_TOKEN_REVERT_AT"]
+        update.assert_called_once_with({"MCP_ACCESS_TOKEN_SECONDS": 8 * HOUR})
         names = [row["mcp_name"] for row in sql("SELECT mcp_name FROM mcp_audit_log WHERE mcp_method = 'dashboard'")]
-        assert any(name.startswith("token-life: 28800 s") for name in names)
+        assert "token-life: 28800 s" in names
 
-    @pytest.mark.parametrize("body", [
-        {"seconds": 7200}, {"seconds": 0}, {"seconds": -900}, {"seconds": 900, "revert_hours": 3}, {"seconds": 900, "revert_hours": -1},
-        {"revert_hours": 8}, {"seconds": "soon"}, {"seconds": 1e9},
-    ])
+    @pytest.mark.parametrize("body", [{"seconds": 7200}, {"seconds": 0}, {"seconds": -900}, {}, {"seconds": "soon"}, {"seconds": 1e9}])
     def test_only_the_offered_values_are_accepted(self, client, step_up_headers, body):
         with patch("mcp_server.oauth.update_config_atomic") as update:
             assert client.post("/api/mcp-remote/token-life", json=body, headers=step_up_headers).status_code == 422
         update.assert_not_called()
+
+    def test_the_extension_needs_the_password(self, client, auth_cookies):
+        with patch("mcp_server.oauth.update_config_atomic") as update:
+            response = client.post("/api/mcp-remote/token-boost", headers=_plain(auth_cookies))
+        assert response.status_code == 403 and response.headers["X-Step-Up-Required"] == "1"
+        update.assert_not_called()
+
+    def test_starting_the_extension_writes_the_end_time_and_an_audit_row(self, client, step_up_headers, remote):
+        with patch("mcp_server.oauth.update_config_atomic") as update:
+            response = client.post("/api/mcp-remote/token-boost", headers=step_up_headers)
+        assert response.status_code == 200
+        until = _stamp(remote.clock, hours=8)
+        update.assert_called_once_with({"MCP_ACCESS_TOKEN_BOOST_UNTIL": until})
+        names = [row["mcp_name"] for row in sql("SELECT mcp_name FROM mcp_audit_log WHERE mcp_method = 'dashboard'")]
+        assert f"token-boost: until {until} UTC" in names
+
+    def test_the_status_shows_a_running_extension(self, client, remote_on, life, remote):
+        life["MCP_ACCESS_TOKEN_BOOST_UNTIL"] = _stamp(remote.clock, hours=3)
+        state = client.get("/api/mcp-remote").json()["token_life"]
+        assert state["boost_until_display"]
 
 
 class TestRestartRisk:
