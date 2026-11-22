@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from mcp_server import transport
 
-from .helpers import EXPECTED_TOOLS, call, rpc, table_counts, tool_data
+from .helpers import CHANGE_TOOL_ARGUMENTS, CHANGE_TOOLS, EXPECTED_TOOLS, call, error_text, rpc, table_counts, tool_data
 
 
 class TestHostHandling:
@@ -44,10 +44,13 @@ class TestTransport:
         tools = rpc(mcp_client, "tools/list").json()["result"]["tools"]
         assert {tool["name"] for tool in tools} == EXPECTED_TOOLS
 
-    def test_every_tool_is_declared_read_only(self, mcp_client):
+    def test_every_tool_but_the_three_change_tools_is_declared_read_only(self, mcp_client):
+        changing = set()
         for tool in rpc(mcp_client, "tools/list").json()["result"]["tools"]:
-            assert tool["annotations"]["readOnlyHint"] is True
             assert tool["annotations"]["destructiveHint"] is False
+            if tool["annotations"]["readOnlyHint"] is not True:
+                changing.add(tool["name"])
+        assert changing == CHANGE_TOOLS
 
     def test_server_identifies_by_its_canonical_name(self, mcp_client):
         response = rpc(mcp_client, "initialize", {
@@ -99,10 +102,14 @@ class TestTransport:
 
 
 class TestReadOnlyGuarantee:
-    def test_every_tool_leaves_the_database_unchanged(self, mcp_client, seeded_accounts):
+    def test_every_tool_leaves_the_database_unchanged_while_changes_are_not_enabled(self, mcp_client, seeded_accounts):
         before = table_counts()
         tools = rpc(mcp_client, "tools/list").json()["result"]["tools"]
         for tool in tools:
+            if tool["name"] in CHANGE_TOOLS:
+                refused = error_text(call(mcp_client, tool["name"], CHANGE_TOOL_ARGUMENTS[tool["name"]]))
+                assert refused == "Changes are not enabled for this connection."
+                continue
             arguments = {"ticker": "ZZMCP"} if "ticker" in tool["inputSchema"].get("properties", {}) else {}
             if "side" in tool["inputSchema"].get("properties", {}):
                 arguments["side"] = "sell"

@@ -18,7 +18,7 @@ from accounts.accounts_engine import get_combined_holdings, resolve_watchlist_me
 from portfolio_service import fx_pair
 from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
-from db import mcp_audit as db_mcp_audit
+from db import mcp_audit as db_mcp_audit, mcp_write_log as db_mcp_write_log
 from constants import (
     MCP_AUDIT_RETENTION_DAYS, NEXTCLOUD_TALK_STATS_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
 )
@@ -38,6 +38,7 @@ class MaintenanceEngine:
             "pulse_cache_deleted": 0,
             "scheduler_runs_deleted": 0,
             "mcp_audit_deleted": 0,
+            "mcp_write_log_deleted": 0,
             "vacuum_success": False,
             "ghostfolio_files_purged": 0,
             "benchmark_watchlist_tickers_added": 0,
@@ -159,6 +160,14 @@ class MaintenanceEngine:
             logger.info("Removed %d old MCP audit log entries", self.metrics["mcp_audit_deleted"])
         except Exception as e:
             logger.error("Error pruning the MCP audit log: %s", e)
+
+    def prune_mcp_write_log(self):
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=MCP_AUDIT_RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            self.metrics["mcp_write_log_deleted"] = db_mcp_write_log.prune_older_than(cutoff)
+            logger.info("Removed %d old MCP write log entries", self.metrics["mcp_write_log_deleted"])
+        except Exception as e:
+            logger.error("Error pruning the MCP write log: %s", e)
 
     def prune_nextcloud_talk_stats(self):
         try:
@@ -305,6 +314,7 @@ class MaintenanceEngine:
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
                 f"• Old Scheduler Runs Trimmed: {self.metrics['scheduler_runs_deleted']}\n"
                 f"• Old MCP Audit Log Entries Trimmed: {self.metrics['mcp_audit_deleted']}\n"
+                f"• Old MCP Write Log Entries Trimmed: {self.metrics['mcp_write_log_deleted']}\n"
                 f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}"
                 f"{files_section}\n"
                 f"• Ghostfolio Files Purged (integration disabled): {self.metrics['ghostfolio_files_purged']}\n"
@@ -376,6 +386,7 @@ class MaintenanceEngine:
         self.prune_database_logs()
         self.prune_scheduler_run_history()
         self.prune_mcp_audit_log()
+        self.prune_mcp_write_log()
         self.prune_nextcloud_talk_stats()
         self.prune_pulse_cache()
         self.garbage_collect_files()

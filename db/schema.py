@@ -1427,7 +1427,8 @@ def init_db() -> None:
                 name         TEXT NOT NULL UNIQUE COLLATE NOCASE,
                 key_hash     TEXT NOT NULL UNIQUE,
                 created_at   TEXT NOT NULL,
-                last_used_at TEXT
+                last_used_at TEXT,
+                write_allowed INTEGER NOT NULL DEFAULT 0
             )
         ''')
 
@@ -1503,9 +1504,35 @@ def init_db() -> None:
                 expires_at   TEXT NOT NULL,
                 last_used_at TEXT,
                 last_address TEXT,
-                revoked_at   TEXT
+                revoked_at   TEXT,
+                write_allowed INTEGER NOT NULL DEFAULT 0
             )
         ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS mcp_write_log (
+                id              TEXT PRIMARY KEY,
+                kind            TEXT NOT NULL,
+                credential_kind TEXT NOT NULL,
+                credential_id   INTEGER NOT NULL,
+                ticker          TEXT NOT NULL,
+                account_id      INTEGER,
+                expected        TEXT NOT NULL,
+                proposed        TEXT NOT NULL,
+                summary         TEXT NOT NULL,
+                status          TEXT NOT NULL,
+                created_at      TEXT NOT NULL,
+                expires_at      TEXT NOT NULL,
+                executed_at     TEXT,
+                undone_at       TEXT,
+                previous_state  TEXT,
+                new_state       TEXT,
+                undo_of         TEXT,
+                failure_reason  TEXT
+            )
+        ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_write_log_credential ON mcp_write_log (credential_kind, credential_id, created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_write_log_created_at ON mcp_write_log (created_at)")
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
@@ -1946,6 +1973,15 @@ def migrate_db(conn, cursor) -> None:
                 cursor.execute(f"ALTER TABLE profile_empty_strikes ADD COLUMN {strike_col} {strike_type}")
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed on profile_empty_strikes.%s: %s", strike_col, e)
+
+    for table in ("mcp_api_keys", "mcp_oauth_grants"):
+        cursor.execute(f"PRAGMA table_info({table})")
+        if 'write_allowed' not in [info['name'] for info in cursor.fetchall()]:
+            try:
+                logger.info("[MIGRATION] Adding column: write_allowed to %s...", table)
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN write_allowed INTEGER NOT NULL DEFAULT 0")
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on %s: %s", table, e)
 
     cursor.execute("PRAGMA table_info(backup_history)")
     if 'sha256' not in [info['name'] for info in cursor.fetchall()]:

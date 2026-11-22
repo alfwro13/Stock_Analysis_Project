@@ -185,7 +185,7 @@ def list_active_grants(now: str, limit: int) -> List[dict]:
     try:
         conn = get_connection()
         rows = conn.execute(
-            "SELECT id, client_id, created_at, expires_at, last_used_at, last_address FROM mcp_oauth_grants "
+            "SELECT id, client_id, created_at, expires_at, last_used_at, last_address, write_allowed FROM mcp_oauth_grants "
             "WHERE revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC, id DESC LIMIT ?",
             (now, limit),
         ).fetchall()
@@ -357,6 +357,34 @@ def touch_grant(grant_id: int, used_at: str, address: str) -> None:
         conn = get_connection()
         conn.execute("UPDATE mcp_oauth_grants SET last_used_at = ?, last_address = ? WHERE id = ?", (used_at, address, grant_id))
         conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+def grant_write_allowed(grant_id: int, now: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT write_allowed FROM mcp_oauth_grants WHERE id = ? AND revoked_at IS NULL AND expires_at > ?", (grant_id, now)
+        ).fetchone()
+        return bool(row and row["write_allowed"])
+    finally:
+        if conn:
+            conn.close()
+
+
+def set_grant_write_allowed(grant_id: int, allowed: bool, now: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        changed = conn.execute(
+            "UPDATE mcp_oauth_grants SET write_allowed = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?",
+            (1 if allowed else 0, grant_id, now),
+        ).rowcount
+        conn.commit()
+        return changed > 0
     finally:
         if conn:
             conn.close()

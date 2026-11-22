@@ -24,7 +24,7 @@ def _create_account(client, **overrides) -> int:
 
 
 def _post_txn(client, account_id, txn_type, ticker, quantity):
-    with patch("api.routes_accounts.resnapshot_account"), patch("api.routes_accounts.update_single_profile"):
+    with patch("api.routes_accounts.resnapshot_account"), patch("profile_engine.update_single_profile"):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": txn_type, "txn_date": "2026-01-15", "ticker": ticker,
             "currency": "GBP", "quantity": quantity, "unit_price": 100.0, "exchange_rate": 1.0,
@@ -371,7 +371,7 @@ def test_create_transaction_rejects_unstorable_date_or_currency(client, field, v
         "quantity": 1, "unit_price": 100.0, "exchange_rate": 0.8,
     }
     body[field] = value
-    with patch("api.routes_accounts.update_single_profile") as mock_profile:
+    with patch("profile_engine.update_single_profile") as mock_profile:
         resp = client.post(f"/api/accounts/{account_id}/transactions", json=body)
     assert resp.status_code == 422
     assert fragment in _json(resp)["message"]
@@ -385,7 +385,7 @@ def test_create_transaction_rejects_unstorable_date_or_currency(client, field, v
 @pytest.mark.api
 def test_update_transaction_rejects_unstorable_date_or_currency(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         txn_id = _json(client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "MSFT",
             "currency": "USD", "quantity": 5, "unit_price": 300.0, "exchange_rate": 0.8,
@@ -468,7 +468,7 @@ def test_csv_import_skip_notification_quotes_and_truncates_raw_values():
 @pytest.mark.api
 def test_create_and_list_buy_transaction(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile") as mock_profile:
+    with patch("profile_engine.update_single_profile") as mock_profile:
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL",
             "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.5,
@@ -489,7 +489,7 @@ def test_create_and_list_buy_transaction(client):
 @pytest.mark.api
 def test_create_transaction_with_explicit_fee_currency_and_rate(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL",
             "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.54,
@@ -510,7 +510,7 @@ def test_create_transaction_fee_currency_defaults_to_trade_currency(client):
     """No fee_currency supplied — must default to the trade currency/rate, matching pre-existing
     behaviour where the fee was always assumed to share the trade's currency."""
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL",
             "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.54,
@@ -531,7 +531,7 @@ def test_create_transaction_preserves_gbp_pence_currency_case(client):
     """Currency must not be uppercased server-side — 'GBp' (pence) and 'GBP' (pounds) are
     distinct codes and uppercasing would silently break the pence-conversion logic."""
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "VOD.L",
             "currency": "GBp", "quantity": 10, "unit_price": 150.0, "exchange_rate": 1.0,
@@ -549,7 +549,7 @@ def test_create_transaction_preserves_gbp_pence_currency_case(client):
 @pytest.mark.api
 def test_create_transaction_with_unknown_ticker_triggers_profile_update(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile") as mock_profile:
+    with patch("profile_engine.update_single_profile") as mock_profile:
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZZNOTREAL",
             "currency": "USD", "quantity": 1, "unit_price": 1.0, "exchange_rate": 1.0,
@@ -567,8 +567,8 @@ def test_create_transaction_with_unknown_ticker_triggers_price_fetch(client):
     not just a metadata update — otherwise it stays unpriced until the next nightly run."""
     account_id = _create_account(client)
     with (
-        patch("api.routes_accounts.update_single_profile"),
-        patch("api.routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+        patch("profile_engine.update_single_profile"),
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
     ):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZZNOTREAL2",
@@ -602,9 +602,9 @@ def test_create_transaction_known_ticker_without_signals_row_triggers_analyze(cl
 
     mock_engine = MagicMock()
     with (
-        patch("api.routes_accounts.update_single_profile") as mock_profile,
-        patch("api.routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes_accounts.QuantEngine", return_value=mock_engine),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZBUYANALYZE",
@@ -629,9 +629,9 @@ def test_create_transaction_synthetic_ticker_never_reaches_yahoo(client):
     account_id = _create_account(client)
     mock_engine = MagicMock()
     with (
-        patch("api.routes_accounts.update_single_profile") as mock_profile,
-        patch("api.routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes_accounts.QuantEngine", return_value=mock_engine),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "TBILL-999",
@@ -650,7 +650,7 @@ def test_create_transaction_synthetic_ticker_never_reaches_yahoo(client):
 def test_create_transaction_blank_exchange_rate_is_auto_filled(client):
     account_id = _create_account(client)
     with (
-        patch("api.routes_accounts.update_single_profile"),
+        patch("profile_engine.update_single_profile"),
         patch("api.routes_accounts.fx_rate_on_date", return_value=1.27) as mock_fx,
     ):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
@@ -670,7 +670,7 @@ def test_create_transaction_blank_exchange_rate_is_auto_filled(client):
 @pytest.mark.api
 def test_update_transaction(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         create_resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "MSFT",
             "currency": "USD", "quantity": 5, "unit_price": 300.0, "exchange_rate": 0.8,
@@ -693,7 +693,7 @@ def test_update_transaction(client):
 @pytest.mark.api
 def test_create_and_update_transaction_isin_roundtrip(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         create_resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "FGP.L", "isin": "GB0003452173",
             "currency": "GBP", "quantity": 6, "unit_price": 0.73,
@@ -716,7 +716,7 @@ def test_create_and_update_transaction_isin_roundtrip(client):
 def test_update_transaction_for_wrong_account_returns_404(client):
     account_a = _create_account(client, name="Account A")
     account_b = _create_account(client, name="Account B")
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         create_resp = client.post(f"/api/accounts/{account_a}/transactions", json={
             "txn_type": "Cash", "txn_date": "2026-01-01", "currency": "GBP",
         })
@@ -735,7 +735,7 @@ def test_update_transaction_for_wrong_account_returns_404(client):
 @pytest.mark.api
 def test_delete_transaction(client):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         create_resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Cash", "txn_date": "2026-01-01", "currency": "GBP",
         })
@@ -1067,7 +1067,7 @@ def test_create_transfer_triggers_resnapshot_for_both_accounts(client):
 @pytest.mark.api
 def test_export_transactions_returns_csv(client):
     account_id = _create_account(client, name="ExportApiAcc")
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Cash", "txn_date": "2026-01-01", "unit_price": 100,
         })
@@ -1175,12 +1175,12 @@ def test_watchlist_items_add_list_and_bulk_delete(client):
     wl_id = _db.get_watchlist_account()["id"]
 
     with (
-        patch("api.routes_accounts.resolve_watchlist_metadata", return_value={
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value={
             "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
         }),
-        patch("api.routes_accounts.update_single_profile"),
-        patch("api.routes_accounts.fetch_and_save_single_ticker"),
-        patch("api.routes_accounts.QuantEngine"),
+        patch("profile_engine.update_single_profile"),
+        patch("data_engine.fetch_and_save_single_ticker"),
+        patch("quant_signals.QuantEngine"),
     ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -1208,12 +1208,12 @@ def test_watchlist_item_readd_is_idempotent(client):
     wl_id = _db.get_watchlist_account()["id"]
 
     with (
-        patch("api.routes_accounts.resolve_watchlist_metadata", return_value={
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value={
             "company_name": "Microsoft Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
         }),
-        patch("api.routes_accounts.update_single_profile"),
-        patch("api.routes_accounts.fetch_and_save_single_ticker"),
-        patch("api.routes_accounts.QuantEngine"),
+        patch("profile_engine.update_single_profile"),
+        patch("data_engine.fetch_and_save_single_ticker"),
+        patch("quant_signals.QuantEngine"),
     ):
         first = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
         second = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
@@ -1243,12 +1243,12 @@ def test_add_watchlist_item_unknown_ticker_triggers_yahoo_fetch(client):
     wl_id = _db.get_watchlist_account()["id"]
 
     with (
-        patch("api.routes_accounts.resolve_watchlist_metadata", return_value={
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value={
             "company_name": "Zzz Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
         }),
-        patch("api.routes_accounts.update_single_profile") as mock_profile,
-        patch("api.routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes_accounts.QuantEngine"),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine"),
     ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "ZZZNOTREAL4"})
     assert resp.status_code == 200
@@ -1280,12 +1280,12 @@ def test_add_watchlist_item_missing_stock_signals_row_triggers_analyze(client):
 
     mock_engine = MagicMock()
     with (
-        patch("api.routes_accounts.resolve_watchlist_metadata", return_value={
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value={
             "company_name": "Analyze Me Too Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
         }),
-        patch("api.routes_accounts.update_single_profile") as mock_profile,
-        patch("api.routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes_accounts.QuantEngine", return_value=mock_engine),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "ZZANALYZEME2"})
     assert resp.status_code == 200
@@ -1322,12 +1322,12 @@ def test_add_watchlist_item_existing_stock_signals_row_skips_analyze(client):
 
     mock_engine = MagicMock()
     with (
-        patch("api.routes_accounts.resolve_watchlist_metadata", return_value={
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value={
             "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
         }),
-        patch("api.routes_accounts.update_single_profile"),
-        patch("api.routes_accounts.fetch_and_save_single_ticker"),
-        patch("api.routes_accounts.QuantEngine", return_value=mock_engine),
+        patch("profile_engine.update_single_profile"),
+        patch("data_engine.fetch_and_save_single_ticker"),
+        patch("quant_signals.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -2538,7 +2538,7 @@ def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client)
     integration polls) must itself trigger a real Yahoo Finance refresh for a held ticker
     whose market_pulse_cache is due — not just read whatever's already cached."""
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="HoldingsListRefreshTriggerAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZTRIGGERREF",
@@ -2560,7 +2560,7 @@ def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client)
 @pytest.mark.api
 def test_holdings_list_does_not_trigger_refresh_for_cached_ticker_when_market_closed(client):
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="HoldingsListNoRefreshAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZNOTRIGGERREF",
@@ -2594,7 +2594,7 @@ def test_holdings_list_bootstraps_missing_ticker_even_when_market_closed(client)
     # Weekend/restart regression: a held ticker with no market_pulse_cache row at all must
     # still get refreshed even while the market is closed, or it can never self-heal.
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="HoldingsListBootstrapAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZBOOTSTRAPREF",
@@ -2616,7 +2616,7 @@ def test_holdings_list_bootstraps_missing_ticker_even_when_market_closed(client)
 @pytest.mark.api
 def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(client):
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="PortfolioTotalsRefreshTriggerAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZPTTRIGGERREF",
@@ -2639,7 +2639,7 @@ def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(clie
 def test_price_refresh_is_followed_by_a_portfolio_totals_refresh(client):
     """Without the follow-up, every poll that triggers a price fetch finds a changed fingerprint and serves the previous figures, so Home Assistant would run one poll behind all market hours (LR-10)."""
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="PriceRefreshTotalsFollowUpAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZPTFOLLOWUP",
@@ -2673,7 +2673,7 @@ def test_no_portfolio_totals_refresh_is_queued_when_no_price_fetch_is_due(client
 @pytest.mark.api
 def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(client):
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="ListWithMetricsRefreshTriggerAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZLWMTRIGGERREF",
@@ -2774,7 +2774,7 @@ def test_accounts_list_with_metrics_zero_trading_accounts_returns_empty_list(cli
 @pytest.mark.api
 def test_api_holdings_list_status_success(client):
     with patch("api.routes_accounts.resnapshot_account"), \
-         patch("api.routes_accounts.update_single_profile"):
+         patch("profile_engine.update_single_profile"):
         account_id = _create_account(client, name="HoldingsListAcc")
         client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZHOLDLIST",
@@ -2985,7 +2985,7 @@ assert.ok(html.includes('editTransaction(7, 3)'));
 def test_create_transaction_without_an_available_exchange_rate_is_rejected(client):
     account_id = _create_account(client)
     with (
-        patch("api.routes_accounts.update_single_profile"),
+        patch("profile_engine.update_single_profile"),
         patch("api.routes_accounts.fx_rate_on_date", return_value=None),
     ):
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
@@ -3237,7 +3237,7 @@ def test_price_history_import_csv_over_the_row_cap_returns_422(client):
 @pytest.mark.parametrize("bad", ["../X", "/X/Y", "../../etc/Z", "<img src=x>", "A B"])
 def test_create_transaction_rejects_an_unsafe_ticker_before_any_yahoo_work(client, bad):
     account_id = _create_account(client)
-    with patch("api.routes_accounts.update_single_profile") as mock_profile:
+    with patch("profile_engine.update_single_profile") as mock_profile:
         resp = client.post(f"/api/accounts/{account_id}/transactions", json={
             "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": bad, "currency": "USD",
             "quantity": 1, "unit_price": 100.0, "exchange_rate": 0.8,
@@ -3256,7 +3256,7 @@ def test_update_transaction_rejects_an_unsafe_ticker(client):
     account_id = _create_account(client)
     good = {"txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "MSFT",
             "currency": "USD", "quantity": 5, "unit_price": 300.0, "exchange_rate": 0.8}
-    with patch("api.routes_accounts.update_single_profile"):
+    with patch("profile_engine.update_single_profile"):
         txn_id = _json(client.post(f"/api/accounts/{account_id}/transactions", json=good))["id"]
 
     resp = client.put(f"/api/accounts/{account_id}/transactions/{txn_id}", json={**good, "ticker": "../X"})
@@ -3272,7 +3272,7 @@ def test_update_transaction_rejects_an_unsafe_ticker(client):
 def test_watchlist_items_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
     from db import database as _db
     wl_id = _db.get_watchlist_account()["id"]
-    with patch("api.routes_accounts.resolve_watchlist_metadata") as mock_meta:
+    with patch("accounts.accounts_engine.resolve_watchlist_metadata") as mock_meta:
         resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "../X"})
     assert resp.status_code == 422
     assert "ticker" in _json(resp)["message"]
@@ -3328,7 +3328,7 @@ def _post_dividend(client, account_id, ticker, **extra):
         "currency": "GBP", "quantity": 10, "unit_price": 1.0, "exchange_rate": 1.0,
     }
     body.update(extra)
-    with patch("api.routes_accounts.resnapshot_account"), patch("api.routes_accounts.update_single_profile"):
+    with patch("api.routes_accounts.resnapshot_account"), patch("profile_engine.update_single_profile"):
         return client.post(f"/api/accounts/{account_id}/transactions", json=body)
 
 

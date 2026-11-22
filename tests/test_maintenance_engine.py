@@ -281,6 +281,63 @@ class TestPruneMcpAuditLog:
         assert eng.metrics["mcp_audit_deleted"] == 0
 
 
+class TestPruneMcpWriteLog:
+    def setup_method(self):
+        self._clear()
+
+    def teardown_method(self):
+        self._clear()
+
+    @staticmethod
+    def _clear():
+        conn = None
+        try:
+            conn = _conn()
+            conn.execute("DELETE FROM mcp_write_log")
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    @staticmethod
+    def _stamp(days_ago: float) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def test_prunes_rows_older_than_the_retention_and_keeps_the_rest(self):
+        conn = None
+        try:
+            conn = _conn()
+            for index, days in enumerate((91, 120, 89, 0)):
+                conn.execute(
+                    "INSERT INTO mcp_write_log (id, kind, credential_kind, credential_id, ticker, expected, proposed, summary, status, created_at, expires_at) "
+                    "VALUES (?, 'watchlist_add', 'key', 1, 'ZZPRUNE', '{}', '{}', 'x', 'executed', ?, ?)",
+                    (f"PRUNE{index:05d}", self._stamp(days), self._stamp(days)),
+                )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+        eng = _engine()
+        eng.prune_mcp_write_log()
+
+        conn = None
+        try:
+            conn = _conn()
+            remaining = [r[0] for r in conn.execute("SELECT created_at FROM mcp_write_log")]
+        finally:
+            if conn:
+                conn.close()
+        assert len(remaining) == 2 and all(stamp >= self._stamp(90) for stamp in remaining)
+        assert eng.metrics["mcp_write_log_deleted"] == 2
+
+    def test_a_database_error_is_logged_and_does_not_stop_maintenance(self):
+        eng = _engine()
+        with patch("maintenance_engine.db_mcp_write_log.prune_older_than", side_effect=RuntimeError("locked")):
+            eng.prune_mcp_write_log()
+        assert eng.metrics["mcp_write_log_deleted"] == 0
+
+
 # ── prune_nextcloud_talk_stats ────────────────────────────────────────────────
 
 class TestPruneNextcloudTalkStats:

@@ -224,6 +224,14 @@ def connected_apps() -> List[dict]:
     return db_mcp_oauth.list_active_grants(_stamp(_now()), MCP_OAUTH_CONNECTED_APPS_MAX)
 
 
+def grant_write_allowed(grant_id: int) -> bool:
+    return db_mcp_oauth.grant_write_allowed(grant_id, _stamp(_now()))
+
+
+def set_grant_write_allowed(grant_id: int, allowed: bool) -> bool:
+    return db_mcp_oauth.set_grant_write_allowed(grant_id, allowed, _stamp(_now()))
+
+
 def revoke_grant(grant_id: int) -> bool:
     return _revoke(grant_id, _now())
 

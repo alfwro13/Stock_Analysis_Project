@@ -71,8 +71,16 @@ function renderMcpRemoteApps(apps) {
         revoke.dataset.grantId = a.id;
         revoke.textContent = '⛔ Revoke';
         actions.append(revoke);
+        const changes = document.createElement('td');
+        const writes = document.createElement('input');
+        writes.type = 'checkbox';
+        writes.className = 'form-check-input';
+        writes.checked = !!a.write_allowed;
+        writes.dataset.grantWrites = a.id;
+        writes.setAttribute('aria-label', 'Allow app #' + a.id + ' to propose changes');
+        changes.append(writes);
         tr.append(mcpRemoteCell('#' + a.id), mcpRemoteCell(a.client_id), mcpRemoteCell(a.connected_display), mcpRemoteCell(a.expires_display),
-            mcpRemoteCell(a.last_used_display || 'Never'), mcpRemoteCell(a.last_address), actions);
+            mcpRemoteCell(a.last_used_display || 'Never'), mcpRemoteCell(a.last_address), changes, actions);
         return tr;
     }));
 }
@@ -296,6 +304,22 @@ async function revokeMcpRemoteGrant(grantId) {
     loadMcpRemote();
 }
 
+async function setMcpRemoteGrantWrites(box) {
+    const enabled = box.checked;
+    setStatus('mcp-remote-apps-msg', 'info', 'Saving…');
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) };
+    const url = '/api/mcp-remote/grants/' + encodeURIComponent(box.dataset.grantWrites) + '/writes';
+    const res = enabled ? await stepUpFetch(url, options) : await fetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-remote-apps-msg', 'success', enabled ? 'This app may now propose Watchlist changes.' : 'This app can no longer make changes.');
+    } else {
+        box.checked = !enabled;
+        setStatus('mcp-remote-apps-msg', 'error', mcpRemoteErrorText(data, 'Failed to save.'));
+    }
+    loadMcpRemote();
+}
+
 async function revokeAllMcpRemoteAccess() {
     if (!confirm('Revoke all remote access? Every connected app is signed out, the pairing window closes and waiting connection requests are discarded.')) return;
     setStatus('mcp-remote-apps-msg', 'info', 'Revoking…');
@@ -321,6 +345,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('mcp-remote-apps-body').addEventListener('click', e => {
         const btn = e.target.closest('button[data-grant-id]');
         if (btn) revokeMcpRemoteGrant(btn.dataset.grantId);
+    });
+    document.getElementById('mcp-remote-apps-body').addEventListener('change', e => {
+        if (e.target.matches('input[data-grant-writes]')) setMcpRemoteGrantWrites(e.target);
     });
     card.addEventListener('toggle', () => { if (card.open) startMcpRemotePolling(); else stopMcpRemotePolling(); });
     if (card.open) startMcpRemotePolling();

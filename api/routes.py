@@ -39,10 +39,10 @@ from config import (
     INTRADAY_DIR
 )
 from db.database import (
-    get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
+    get_connection, get_universe_tickers, get_watchlist_account, remove_watchlist_ticker,
 )
 from db.helpers import add_ticker_note, update_ticker_note, delete_ticker_note, get_all_ticker_notes_grouped, get_company_names, get_latest_quant_date
-from accounts.accounts_engine import resolve_watchlist_metadata, list_scope_accounts_with_values, _ticker_known, _has_stock_signals_row
+from accounts.accounts_engine import add_watchlist_ticker, list_scope_accounts_with_values, queue_ticker_data
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, run_manual_job, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import XRAY_SCOPE_MESSAGES, XRayScopeUnavailable, assemble_xray_report
@@ -58,7 +58,7 @@ from ai_prompts.ai_regime_engine import AIRegimePromptEngine
 from ai_prompts.ai_sentiment_engine import AISentimentPromptEngine
 from news_feed_engine import fetch_articles, run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
-from data_engine import DataEngine, fetch_and_save_single_ticker, load_or_fetch_intraday_history
+from data_engine import DataEngine, load_or_fetch_intraday_history
 import glossary_learn_engine
 from utils import INVALID_TICKER_MESSAGE, normalize_ticker, measure_request_stage, is_excluded_from_yahoo_fetch, is_valid_ticker, safe_ticker_filename
 from pages.page_helpers import intraday_chart_revision
@@ -131,16 +131,9 @@ async def api_watchlist_add(req: TickerRequest, background_tasks: BackgroundTask
     wl = get_watchlist_account()
     if wl is None:
         return JSONResponse(status_code=500, content={"status": "error", "message": "Watchlist account not found."})
-    meta = await asyncio.to_thread(resolve_watchlist_metadata, ticker)
-    item_id = await asyncio.to_thread(
-        add_watchlist_item, wl["id"], ticker, meta["company_name"], meta["currency"], meta["quote_type"], meta["exchange"]
-    )
+    item_id = await asyncio.to_thread(add_watchlist_ticker, wl["id"], ticker)
     if item_id is not None:
-        if not await asyncio.to_thread(_ticker_known, ticker):
-            background_tasks.add_task(update_single_profile, ticker)
-            background_tasks.add_task(fetch_and_save_single_ticker, ticker)
-        if not await asyncio.to_thread(_has_stock_signals_row, ticker):
-            background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
+        await asyncio.to_thread(queue_ticker_data, ticker, background_tasks.add_task)
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to watchlist."})
 

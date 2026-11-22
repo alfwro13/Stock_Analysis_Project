@@ -1608,7 +1608,7 @@ On success the server sets a `stepup` cookie: signed, `HttpOnly`, `SameSite=Stri
 
 **Step-up-gated routes.** These return `403` with the header `X-Step-Up-Required: 1` and detail `Password confirmation required.` until a valid `stepup` cookie is present; the Settings page reacts by opening the password prompt and retrying the action:
 
-`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-lan/enabled` (only when enabling), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/token-life` (only for a life above 900 seconds), `/api/mcp-remote/token-boost`, `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
+`POST /api/settings`, `/api/system/git-pull`, `/api/system/restart`, `/api/system/force-restart`, `/api/system/terminate-jobs`, `/api/backup/restore`, `/api/generate-api-key`, `/api/generate-embed-token`, `/api/mcp-keys` (create and delete), `/api/mcp-lan/enabled` (only when enabling), `/api/mcp-writes/enabled` (only when enabling), `/api/mcp-keys/{id}/writes` (only when enabling), `/api/mcp-remote/grants/{id}/writes` (only when enabling), `/api/mcp-remote/enabled` (only when enabling), `/api/mcp-remote/token-life` (only for a life above 900 seconds), `/api/mcp-remote/token-boost`, `/api/mcp-remote/client`, `/api/mcp-remote/pairing`, `/api/mcp-remote/requests/{id}/approve`, `/api/save-account-email`, `/api/save-nextcloud-settings`, `/api/test-nextcloud-message`, `/api/save-ghostfolio-settings`, `/api/save-fred-api-key`, `/api/save-hf-token`, `/api/test-hf-token`, `/api/change-username`, `/api/rotate-app-secret`, `/api/logout-everywhere`, `/api/save-smtp-settings`, `/api/send-test-email`.
 
 ---
 
@@ -1656,10 +1656,10 @@ Generates a new API key (32-byte hex) and persists it to `.env` as `API_KEY`, in
 Lists the MCP Server keys (session required; the API key and the MCP key are refused). Never returns a key or its hash.
 
 ```json
-{ "status": "success", "keys": [ { "id": 1, "name": "dev box 1", "created_at": "2026-10-17 10:05 BST", "last_used_at": null } ] }
+{ "status": "success", "writes_enabled": false, "keys": [ { "id": 1, "name": "dev box 1", "created_at": "2026-10-17 10:05 BST", "last_used_at": null, "write_allowed": false } ] }
 ```
 
-Times are in the display timezone; `last_used_at` is `null` until the key is first used.
+Times are in the display timezone; `last_used_at` is `null` until the key is first used. `write_allowed` is the key's **Changes** flag and `writes_enabled` the global `MCP_WRITES_ENABLED` switch (see `POST /api/mcp-writes/enabled`).
 
 ---
 
@@ -1679,6 +1679,26 @@ Deletes one MCP Server key; the client using it is refused from the next request
 
 ```json
 { "status": "success" }
+```
+
+---
+
+### `POST /api/mcp-keys/{key_id}/writes`
+
+Sets the **Changes** flag of one MCP Server key (`mcp_api_keys.write_allowed`, default off): whether the key may propose Watchlist changes that the user then approves in the chat. Body `{ "enabled": true|false }`; anything else is `422`. **Turning it on requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); turning it off does not. `404` for an unknown key. Takes effect on the next `/mcp` request and ends the key's pending proposals. Writes one `mcp_audit_log` row (`credential_kind` `session`, `mcp_name` `writes-on: key #<id>` or `writes-off: key #<id>`). Limited to 20 requests per minute. The key also needs `MCP_WRITES_ENABLED`.
+
+```json
+{ "status": "success", "enabled": true }
+```
+
+---
+
+### `POST /api/mcp-writes/enabled`
+
+Turns MCP Write Access on or off by writing `MCP_WRITES_ENABLED` to `config.json` (default `false`). Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); disabling does not. The key is not part of the `POST /api/settings` schema. Takes effect on the next `/mcp` request, with no restart, and ends every pending proposal. Limited to 10 requests per minute. A key or a connected app can change data only when this switch and its own flag are both on (`assets/mcp_integration.md`, **Write access**).
+
+```json
+{ "status": "success", "enabled": true }
 ```
 
 ---
@@ -1703,6 +1723,7 @@ State of the MCP Remote Access panel (Settings → MCP Server → Remote Access)
 {
   "status": "success",
   "enabled": true,
+  "writes_enabled": false,
   "public_host": "mcp.example.com",
   "host_active": true,
   "endpoint_url": "https://mcp.example.com/mcp",
@@ -1712,7 +1733,7 @@ State of the MCP Remote Access panel (Settings → MCP Server → Remote Access)
   "proxy_trust": { "state": "list", "value": "192.168.1.72" },
   "last_public_request": { "address": "160.79.104.5", "at_display": "2026-10-21 14:25 BST", "proxy_like": false },
   "requests": [ { "id": "<22 characters>", "code": "K7P2QX", "requested_display": "2026-10-21 14:25 BST", "address": "203.0.113.5", "user_agent": "Mozilla/5.0 ...", "seconds_left": 240 } ],
-  "apps": [ { "id": 3, "client_id": "mcp-1a2b3c4d5e6f7a8b", "connected_display": "2026-10-21 14:26 BST", "expires_display": "2027-01-19 14:26 GMT", "last_used_display": null, "last_address": null } ]
+  "apps": [ { "id": 3, "client_id": "mcp-1a2b3c4d5e6f7a8b", "connected_display": "2026-10-21 14:26 BST", "expires_display": "2027-01-19 14:26 GMT", "last_used_display": null, "last_address": null, "write_allowed": false } ]
 }
 ```
 
@@ -1806,6 +1827,16 @@ Revokes one connected app: its access and refresh tokens stop working on the nex
 
 ```json
 { "status": "success" }
+```
+
+---
+
+### `POST /api/mcp-remote/grants/{grant_id}/writes`
+
+Sets the **Changes** flag of one connected app (`mcp_oauth_grants.write_allowed`, default off): whether the app may propose Watchlist changes that the user then approves in the chat. The OAuth scope stays `mcp:read`, so no new approval is needed. Body `{ "enabled": true|false }`; anything else is `422`. **Turning it on requires a password step-up**; turning it off does not. `grant_id` has the same shape as for revoke; `404` for a revoked, expired or unknown app. Takes effect on the next `/mcp` request. Writes one `mcp_audit_log` row (`credential_kind` `session`, `key_id` the grant id, `mcp_name` `writes-on` or `writes-off`). Limited to 20 requests per minute. The app also needs `MCP_WRITES_ENABLED`.
+
+```json
+{ "status": "success", "enabled": true }
 ```
 
 ---

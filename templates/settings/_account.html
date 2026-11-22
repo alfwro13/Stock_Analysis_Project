@@ -266,8 +266,8 @@
                 <h5 class="settings-panel-header">Connected Apps</h5>
                 <p class="settings-desc">Each row is one approved connection. Revoking it signs that app out at once; it must be approved again to reconnect.</p>
                 <table class="table table-hover w-100">
-                    <thead><tr><th>App</th><th>Client</th><th>Connected</th><th>Expires</th><th>Last used</th><th>Last address</th><th></th></tr></thead>
-                    <tbody id="mcp-remote-apps-body"><tr><td colspan="7" class="text-muted">Loading…</td></tr></tbody>
+                    <thead><tr><th>App</th><th>Client</th><th>Connected</th><th>Expires</th><th>Last used</th><th>Last address</th><th><abbr title="Lets this app propose Watchlist changes that you then approve in the chat. It also needs the MCP Write Access switch.">Changes</abbr></th><th></th></tr></thead>
+                    <tbody id="mcp-remote-apps-body"><tr><td colspan="8" class="text-muted">Loading…</td></tr></tbody>
                 </table>
                 <div class="flex-gap-10">
                     <button type="button" class="btn btn-danger mt-0 btn-nowrap" onclick="revokeAllMcpRemoteAccess()">⛔ Revoke All Remote Access</button>
@@ -330,14 +330,24 @@
                     </div>
                 </div>
                 <table class="table table-hover w-100">
-                    <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th></th></tr></thead>
-                    <tbody id="mcp-keys-body"><tr><td colspan="4" class="text-muted">Loading…</td></tr></tbody>
+                    <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th><abbr title="Lets this key propose Watchlist changes that you then approve in the chat. It also needs the MCP Write Access switch.">Changes</abbr></th><th></th></tr></thead>
+                    <tbody id="mcp-keys-body"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
                 </table>
                 <div class="flex-gap-10">
                     <input type="text" id="mcp_key_name" class="form-control flex-1" maxlength="{{ mcp_key_name_max }}" placeholder="Key name, e.g. dev box 1" aria-label="MCP key name"{% if not config.MCP_LAN_ENABLED %} disabled{% endif %}>
                     <button type="button" class="btn btn-primary mt-0 btn-nowrap" id="mcp-key-create-btn" onclick="createMcpKey()"{% if not config.MCP_LAN_ENABLED %} disabled{% endif %}>➕ Create Key</button>
                 </div>
                 <div id="mcp-key-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20" id="mcp-write-panel" data-search-keywords="mcp write access, claude changes, watchlist changes, propose, confirm">
+                <h4 class="settings-panel-header text-blue">MCP Write Access</h4>
+                <p class="settings-desc">Lets Claude add a ticker to your Watchlist or remove one, but only after it shows you the exact change and you approve it in the chat; nothing happens on its own and every change can be undone. A key or a connected app can make changes only when this switch and its own <strong>Changes</strong> box are both on; both are off until you turn them on. Every change is logged and sent to you as an <strong>MCP Write Access</strong> notification, and a limit on proposals and changes per day stops a runaway loop.</p>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="MCP_WRITES_ENABLED" {% if config.MCP_WRITES_ENABLED %}checked{% endif %} onchange="toggleMcpWrites(this)">
+                    <label for="MCP_WRITES_ENABLED">Enable MCP Write Access</label>
+                </div>
+                <div id="mcp-writes-enabled-msg"></div>
             </div>
         </details>
 

@@ -42,12 +42,17 @@ class TestWorkflowEntry:
         meta = JOB_GRAPH["claude_mcp_server_source"]
         assert meta["label"] == "MCP Server"
         assert meta["category"] == "external"
-        assert meta["produces"] == ["mcp_audit_log", "mcp_oauth_requests"]
+        assert meta["produces"] == ["mcp_audit_log", "mcp_oauth_requests", "mcp_write_log", "watchlist_items", "holding_price_limits"]
 
     def test_audit_log_has_one_producer_and_the_maintenance_job_prunes_it(self):
         producers = [job_id for job_id, other in JOB_GRAPH.items() if "mcp_audit_log" in other["produces"]]
         assert producers == ["claude_mcp_server_source"]
         assert "mcp_audit_log" in JOB_GRAPH["maintenance_job"]["consumes"]
+
+    def test_write_log_has_one_producer_and_the_maintenance_job_prunes_it(self):
+        producers = [job_id for job_id, other in JOB_GRAPH.items() if "mcp_write_log" in other["produces"]]
+        assert producers == ["claude_mcp_server_source"]
+        assert "mcp_write_log" in JOB_GRAPH["maintenance_job"]["consumes"]
 
     def test_node_keeps_consumes_and_every_artifact_has_a_producer(self):
         meta = JOB_GRAPH["claude_mcp_server_source"]
