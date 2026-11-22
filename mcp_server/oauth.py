@@ -11,12 +11,13 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import config
+from config import update_config_atomic
 from db import mcp_oauth as db_mcp_oauth
 from constants import (
-    MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_CONNECTED_APPS_MAX, MCP_OAUTH_GRANT_DAYS,
+    MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_CACHE_MAX_ENTRIES, MCP_OAUTH_CODE_SECONDS, MCP_OAUTH_CONNECTED_APPS_MAX, MCP_OAUTH_GRANT_DAYS,
     MCP_OAUTH_LAST_USED_WRITE_SECONDS, MCP_OAUTH_PAIRING_MINUTES, MCP_OAUTH_PARAM_MAX_CHARS, MCP_OAUTH_PENDING_MAX,
-    MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS, MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS,
-    MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
+    MCP_OAUTH_PRUNE_AFTER_DAYS, MCP_OAUTH_REFRESH_AHEAD_SECONDS, MCP_OAUTH_REFRESH_BEHIND_SECONDS, MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS,
+    MCP_OAUTH_REFRESH_TOKEN_DAYS, MCP_OAUTH_REQUEST_SECONDS, MCP_OAUTH_REQUESTS_PER_HOUR, MCP_OAUTH_STATE_MAX_CHARS, MCP_OAUTH_USER_AGENT_MAX_CHARS,
 )
 from time_engine import parse_stored_utc
 from utils import clean_display_text
@@ -270,6 +271,44 @@ def claim_authorization(binding: str) -> Optional[str]:
     return redirect_url({"code": code, "state": row["client_state"]})
 
 
+def access_token_seconds(now: datetime) -> int:
+    """The life a token issued at `now` gets: the saved choice until its revert time, the default after it (or when the stored values are not valid)."""
+    saved = config.load_config()
+    seconds = saved.get("MCP_ACCESS_TOKEN_SECONDS")
+    if seconds not in MCP_OAUTH_ACCESS_TOKEN_CHOICES:
+        return MCP_OAUTH_ACCESS_TOKEN_SECONDS
+    revert_at = saved.get("MCP_ACCESS_TOKEN_REVERT_AT") or ""
+    if revert_at and (parse_stored_utc(revert_at) or now) <= now:
+        return MCP_OAUTH_ACCESS_TOKEN_SECONDS
+    return seconds
+
+
+def access_token_life() -> dict:
+    now = _now()
+    seconds = access_token_seconds(now)
+    revert_at = config.load_config().get("MCP_ACCESS_TOKEN_REVERT_AT") or None
+    return {
+        "seconds": seconds, "default_seconds": MCP_OAUTH_ACCESS_TOKEN_SECONDS, "choices": list(MCP_OAUTH_ACCESS_TOKEN_CHOICES),
+        "revert_at": revert_at if seconds != MCP_OAUTH_ACCESS_TOKEN_SECONDS else None,
+    }
+
+
+def save_access_token_life(seconds: int, revert_hours: int) -> None:
+    """Stores the life for tokens issued from now on; a longer life reverts to the default after `revert_hours` (0 keeps it until changed back)."""
+    revert_at = ""
+    if seconds != MCP_OAUTH_ACCESS_TOKEN_SECONDS and revert_hours:
+        revert_at = _stamp(_now() + timedelta(hours=revert_hours))
+    update_config_atomic({"MCP_ACCESS_TOKEN_SECONDS": seconds, "MCP_ACCESS_TOKEN_REVERT_AT": revert_at})
+
+
+def refresh_due_seconds() -> Optional[int]:
+    """Seconds until the soonest connected app is expected to refresh its token (negative once it is late), None when no app is inside the restart window."""
+    now = _now()
+    due = [int(_epoch(stamp) - now.timestamp()) for stamp in db_mcp_oauth.newest_access_expiries(_stamp(now))]
+    inside = [seconds for seconds in due if -MCP_OAUTH_REFRESH_BEHIND_SECONDS <= seconds <= MCP_OAUTH_REFRESH_AHEAD_SECONDS]
+    return min(inside) if inside else None
+
+
 def _grant_refused() -> OAuthError:
     return OAuthError("invalid_grant", _GRANT_REFUSED)
 
@@ -277,7 +316,7 @@ def _grant_refused() -> OAuthError:
 def _new_tokens(now: datetime, grant_expires: datetime) -> Tuple[List[dict], dict]:
     access = ACCESS_PREFIX + secrets.token_urlsafe(32)
     refresh = REFRESH_PREFIX + secrets.token_urlsafe(32)
-    access_expires = min(now + timedelta(seconds=MCP_OAUTH_ACCESS_TOKEN_SECONDS), grant_expires)
+    access_expires = min(now + timedelta(seconds=access_token_seconds(now)), grant_expires)
     refresh_expires = min(now + timedelta(days=MCP_OAUTH_REFRESH_TOKEN_DAYS), grant_expires)
     rows = [
         {"hash": hash_key(access), "kind": "access", "created_at": _stamp(now), "expires_at": _stamp(access_expires)},

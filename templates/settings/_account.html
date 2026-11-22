@@ -275,6 +275,19 @@
                 </div>
                 <div id="mcp-remote-apps-msg"></div>
 
+                <h5 class="settings-panel-header">Access Token Life</h5>
+                <p class="settings-desc">A connected app signs in again each time its <abbr title="The short-lived token an app sends with every request. When it expires the app asks the dashboard for a new one with its refresh token.">access token</abbr> expires. While you are restarting the service often, pick a longer life so no refresh falls into a restart; it goes back to 15 minutes on its own. Only tokens issued after you save get the new life; revoking an app still signs it out at once.</p>
+                <div class="form-group">
+                    <label for="mcp_token_life">Access token life</label>
+                    <div class="flex-gap-10">
+                        <select id="mcp_token_life" class="form-select flex-1" aria-label="Access token life"></select>
+                        <select id="mcp_token_revert" class="form-select flex-1" aria-label="Go back to 15 minutes after"></select>
+                        <button type="button" class="btn btn-primary mt-0 btn-nowrap" onclick="saveMcpTokenLife()">💾 Save</button>
+                    </div>
+                    <div id="mcp_token_life_state" class="text-muted-small">Loading…</div>
+                    <div id="mcp-token-life-msg"></div>
+                </div>
+
                 <h5 class="settings-panel-header">Recent Activity</h5>
                 <p class="settings-desc">The last {{ mcp_activity_rows }} events, newest first: requests to the MCP Server and its sign-in endpoints (refused ones too) and your own revokes.</p>
                 <div class="table-responsive mcp-activity-scroll">

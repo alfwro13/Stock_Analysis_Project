@@ -164,6 +164,22 @@ def count_active_grants(now: str) -> int:
             conn.close()
 
 
+def newest_access_expiries(now: str) -> List[str]:
+    """The expiry of the newest access token of each live grant."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT MAX(t.expires_at) FROM mcp_oauth_tokens t JOIN mcp_oauth_grants g ON g.id = t.grant_id "
+            "WHERE t.kind = 'access' AND g.revoked_at IS NULL AND g.expires_at > ? GROUP BY t.grant_id",
+            (now,),
+        ).fetchall()
+        return [row[0] for row in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
 def list_active_grants(now: str, limit: int) -> List[dict]:
     conn = None
     try:

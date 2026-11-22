@@ -59,9 +59,27 @@ async function waitForDependencyInstall(statusId, startMessage) {
     }
 }
 
+async function confirmRestartOutsideMcpRefresh() {
+    try {
+        const response = await fetch('/api/mcp-remote/restart-risk', { cache: 'no-store' });
+        if (!response.ok) return true;
+        const risk = await response.json();
+        if (!risk.refresh_due) return true;
+        const when = risk.seconds > 0 ? 'in about ' + risk.seconds + ' seconds' : 'about now';
+        return confirm('A connected Claude app is due to refresh its sign-in token ' + when + '. A restart now can leave it disconnected until you reconnect it in claude.ai.\n\nOK restarts anyway. Cancel lets you wait a few minutes and try again.');
+    } catch (_) {
+        return true;
+    }
+}
+
 async function restartSystem() {
     const btn = document.querySelector('button[onclick="restartSystem()"]');
     btn.disabled = true;
+    if (!(await confirmRestartOutsideMcpRefresh())) {
+        btn.disabled = false;
+        setStatus('git-status-msg', 'info', 'Restart cancelled.');
+        return;
+    }
     setStatus('git-status-msg', 'warning', "Sending restart signal...");
     try {
         const response = await stepUpFetch('/api/system/restart', { method: 'POST' });
@@ -107,6 +125,11 @@ async function restartSystem() {
 async function forceRestart() {
     const btn = document.querySelector('button[onclick="forceRestart()"]');
     btn.disabled = true;
+    if (!(await confirmRestartOutsideMcpRefresh())) {
+        btn.disabled = false;
+        setStatus('manual-actions-status', 'info', 'Restart cancelled.');
+        return;
+    }
     setStatus('manual-actions-status', 'warning', "Sending force restart signal...");
     try {
         const response = await stepUpFetch('/api/system/force-restart', { method: 'POST' });

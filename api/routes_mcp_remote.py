@@ -2,11 +2,12 @@ from typing import Optional
 
 import time_engine
 from fastapi import APIRouter, Depends, HTTPException, Path as PathParam, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 import config
 from api.deps import limiter, require_step_up
 from config import load_config, update_config_atomic
+from constants import MCP_OAUTH_ACCESS_TOKEN_CHOICES, MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS
 from mcp_server import audit, limits, oauth
 from mcp_server.public_host import forwarded_trust, is_proxy_like
 from scheduler_engine import arm_mcp_pairing_window_check
@@ -47,6 +48,33 @@ class McpRemoteToggle(BaseModel):
     enabled: bool
 
 
+class McpTokenLife(BaseModel):
+    seconds: int
+    revert_hours: int = 0
+
+    @field_validator("seconds")
+    @classmethod
+    def _known_life(cls, value: int) -> int:
+        if value not in MCP_OAUTH_ACCESS_TOKEN_CHOICES:
+            raise ValueError("Choose one of the offered token lives.")
+        return value
+
+    @field_validator("revert_hours")
+    @classmethod
+    def _known_revert(cls, value: int) -> int:
+        if value not in MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS:
+            raise ValueError("Choose one of the offered revert times.")
+        return value
+
+
+def _token_life_state() -> dict:
+    life = oauth.access_token_life()
+    return {
+        "seconds": life["seconds"], "default_seconds": life["default_seconds"], "choices": life["choices"],
+        "revert_hours_choices": list(MCP_OAUTH_TOKEN_LIFE_REVERT_HOURS), "revert_display": time_engine.fmt_stored_utc(life["revert_at"]),
+    }
+
+
 @mcp_remote_router.get("/mcp-remote")
 @limiter.limit("120/minute")
 def get_mcp_remote(request: Request):
@@ -61,6 +89,7 @@ def get_mcp_remote(request: Request):
         "endpoint_url": f"https://{host}/mcp" if host else None,
         "client": {"client_id": client["client_id"], "created_display": time_engine.fmt_stored_utc(client["created_at"])} if client else None,
         "pairing": _pairing_state(),
+        "token_life": _token_life_state(),
         "proxy_trust": forwarded_trust(),
         "last_public_request": _last_public_request(),
         "requests": [
@@ -91,6 +120,23 @@ def set_mcp_remote_enabled(request: Request, body: McpRemoteToggle):
             raise HTTPException(status_code=409, detail="FORWARDED_ALLOW_IPS is '*'. Set it to the reverse proxy's address and restart the service first.")
     update_config_atomic({"MCP_REMOTE_ENABLED": body.enabled})
     return {"status": "success", "enabled": body.enabled}
+
+
+@mcp_remote_router.post("/mcp-remote/token-life")
+@limiter.limit("10/minute")
+def set_mcp_token_life(request: Request, body: McpTokenLife):
+    if body.seconds != MCP_OAUTH_ACCESS_TOKEN_SECONDS:
+        require_step_up(request)
+    oauth.save_access_token_life(body.seconds, body.revert_hours)
+    audit.record_action(f"token-life: {body.seconds} s, revert after {body.revert_hours} h", request.client.host if request.client else None)
+    return {"status": "success", "token_life": _token_life_state()}
+
+
+@mcp_remote_router.get("/mcp-remote/restart-risk")
+@limiter.limit("60/minute")
+def get_mcp_restart_risk(request: Request):
+    seconds = oauth.refresh_due_seconds() if load_config().get("MCP_REMOTE_ENABLED") else None
+    return {"status": "success", "refresh_due": seconds is not None, "seconds": seconds}
 
 
 @mcp_remote_router.post("/mcp-remote/client", dependencies=[Depends(require_step_up)])
