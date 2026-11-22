@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from accounts.accounts_engine import (
-    _ticker_known, _has_stock_signals_row, account_summary, confirm_autotopup, create_transfer,
+    account_summary, add_watchlist_ticker, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, derive_account_holdings, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, held_tickers_lightweight,
-    reconcile_cash, refresh_performance_cache, resnapshot_account, resolve_watchlist_metadata,
+    queue_ticker_data, reconcile_cash, refresh_performance_cache, resnapshot_account,
     sync_house_purchase_price, sync_pension_opening_balance,
     tickers_needing_refresh, watchlist_summary,
 )
@@ -30,8 +30,6 @@ from db.account_reminders import get_reminders
 from api.deps import FiniteModel, job_busy_response, limiter, refuse_writes_during_restore, _error_500
 from config import load_config
 from constants import ACCOUNT_NAME_MAX_CHARS, CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
-from data_engine import fetch_and_save_single_ticker
-from quant_signals import QuantEngine
 from db.database import (
     get_accounts,
     get_account,
@@ -47,7 +45,6 @@ from db.database import (
     get_performance_cache,
     get_value_history,
     get_watchlist_items,
-    add_watchlist_item,
     delete_watchlist_items,
     get_treasury_bill,
     update_treasury_bill_auto_reinvest,
@@ -56,7 +53,6 @@ from market_pulse_write import fetch_and_save_pulse
 from markets_engine import registry_lookup_tickers
 from notification_engine import notify
 from portfolio_service import persisted_fx_reads
-from profile_engine import update_single_profile
 from scheduler_engine import (
     get_all_job_last_runs, register_account_scraper_job, register_account_topup_job,
     run_account_value_snapshot, run_manual_job, run_treasury_bill_maturity_sweep,
@@ -64,7 +60,7 @@ from scheduler_engine import (
 )
 from accounts.treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
 from utils import (
-    INVALID_TICKER_MESSAGE, attachment_content_disposition, has_cached_fundamentals, is_currency_code, is_excluded_from_yahoo_fetch,
+    INVALID_TICKER_MESSAGE, attachment_content_disposition, is_currency_code,
     is_iso_date, is_valid_ticker, measure_request_stage, normalize_ticker,
 )
 from yahoo_engine import yahoo_engine
@@ -180,22 +176,6 @@ class TreasuryBillAutoReinvestBody(BaseModel):
 class TreasuryBillConfirmYtmBody(FiniteModel):
     confirmed_ytm: Optional[float] = None
     face_value: Optional[float] = None
-
-
-def _ensure_ticker_data(ticker: str, background_tasks: BackgroundTasks) -> None:
-    """Queues whichever of profile / fundamentals+price / stock_signals row this ticker is still
-    missing, so it renders correctly on the Portfolio and Watchlist pages straight away. The three
-    gates are deliberately independent: a universe-scraped ticker has an `asset_profiles` row but
-    no fundamentals dump, and analyzing it without one silently writes 'USD'/'EQUITY'/'Unknown'
-    defaults over the profile's real values."""
-    if is_excluded_from_yahoo_fetch(ticker):
-        return
-    if not _ticker_known(ticker):
-        background_tasks.add_task(update_single_profile, ticker)
-    if not has_cached_fundamentals(ticker):
-        background_tasks.add_task(fetch_and_save_single_ticker, ticker)
-    if not _has_stock_signals_row(ticker):
-        background_tasks.add_task(QuantEngine().analyze_ticker, ticker)
 
 
 def _missing_fx_response(*currencies: Optional[str], txn_date: str) -> JSONResponse:
@@ -485,7 +465,7 @@ def api_create_transaction(
         if not_held:
             return not_held
         if ticker:
-            _ensure_ticker_data(ticker, background_tasks)
+            queue_ticker_data(ticker, background_tasks.add_task)
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         if exchange_rate is None:
             return _missing_fx_response(currency, txn_date=body.txn_date)
@@ -743,13 +723,10 @@ def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistIte
         invalid = _invalid_input_response(ticker=ticker)
         if invalid:
             return invalid
-        meta = resolve_watchlist_metadata(ticker)
-        item_id = add_watchlist_item(
-            acc["id"], ticker, meta["company_name"], meta["currency"], meta["quote_type"], meta["exchange"]
-        )
+        item_id = add_watchlist_ticker(acc["id"], ticker)
         if item_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add ticker to watchlist."})
-        _ensure_ticker_data(ticker, background_tasks)
+        queue_ticker_data(ticker, background_tasks.add_task)
         return JSONResponse(content={"status": "success", "id": item_id})
     except Exception as e:
         logger.error("api_add_watchlist_item failed for account %s: %s", account_id, e)
@@ -813,7 +790,7 @@ def api_import_csv(request: Request, account_id: int, background_tasks: Backgrou
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
         tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
         for ticker in tickers:
-            _ensure_ticker_data(ticker, background_tasks)
+            queue_ticker_data(ticker, background_tasks.add_task)
         background_tasks.add_task(resnapshot_account, account_id)
         skipped_rows = result["skipped_rows"]
         if skipped_rows:

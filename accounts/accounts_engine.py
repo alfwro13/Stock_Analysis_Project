@@ -6,7 +6,7 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -15,7 +15,7 @@ import market_session_helpers
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db.helpers import get_mutual_fund_tickers, parse_utc_epoch, resolve_live_price
 from db.account_store import (
-    add_price_history, add_transaction, delete_stale_holding_price_limits, delete_transaction, get_account, get_accounts,
+    add_price_history, add_transaction, add_watchlist_item, delete_stale_holding_price_limits, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
     get_value_history, get_watchlist_account, get_watchlist_items, register_ledger_listener, resolve_pending_topup, update_account,
     update_transaction, upsert_performance_cache, upsert_value_snapshot,
@@ -24,7 +24,7 @@ from db.account_store import (
 from db.database import get_connection
 from backtesting.fx_conversion_helpers import cached_fx_close, fx_level_on
 from portfolio_service import get_rate_to_base
-from utils import csv_safe_cell, normalize_ticker, ignored_tickers_set, safe_ticker_filename
+from utils import csv_safe_cell, has_cached_fundamentals, is_excluded_from_yahoo_fetch, normalize_ticker, ignored_tickers_set, safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,28 @@ def resolve_watchlist_metadata(ticker: str) -> dict:
         "quote_type": info.get("quoteType"),
         "exchange": time_engine.ticker_exchange(ticker, currency) if currency else None,
     }
+
+
+def add_watchlist_ticker(account_id: int, ticker: str) -> Optional[int]:
+    """The one insert of a validated ticker into the Watchlist account: metadata lookup, then the row; the item id, or None when the insert failed."""
+    meta = resolve_watchlist_metadata(ticker)
+    return add_watchlist_item(account_id, ticker, meta["company_name"], meta["currency"], meta["quote_type"], meta["exchange"])
+
+
+def queue_ticker_data(ticker: str, enqueue: Callable[..., None]) -> None:
+    """Queues the missing profile, fundamentals+price and stock_signals row; the three gates are independent because a universe-scraped ticker has a profile but no fundamentals dump, and analysing it without one writes USD/EQUITY/Unknown defaults over the profile's real values."""
+    if is_excluded_from_yahoo_fetch(ticker):
+        return
+    from data_engine import fetch_and_save_single_ticker
+    from profile_engine import update_single_profile
+    from quant_signals import QuantEngine
+
+    if not _ticker_known(ticker):
+        enqueue(update_single_profile, ticker)
+    if not has_cached_fundamentals(ticker):
+        enqueue(fetch_and_save_single_ticker, ticker)
+    if not _has_stock_signals_row(ticker):
+        enqueue(QuantEngine().analyze_ticker, ticker)
 
 
 def _ticker_known(ticker: str) -> bool:

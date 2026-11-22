@@ -615,10 +615,10 @@ def test_post_watchlist_add_with_mock(client):
     from db import database as _db
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
-        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api.routes.update_single_profile"),
-        patch("api.routes.fetch_and_save_single_ticker"),
-        patch("api.routes.QuantEngine"),
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("profile_engine.update_single_profile"),
+        patch("data_engine.fetch_and_save_single_ticker"),
+        patch("quant_signals.QuantEngine"),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -635,10 +635,10 @@ def test_post_watchlist_add_unknown_ticker_triggers_yahoo_fetch(client):
     from db import database as _db
     fake_meta = {"company_name": "Zzz Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
-        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api.routes.update_single_profile") as mock_profile,
-        patch("api.routes.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes.QuantEngine"),
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine"),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "ZZZNOTREAL3"})
     assert resp.status_code == 200
@@ -665,10 +665,11 @@ def test_post_watchlist_add_known_ticker_skips_yahoo_fetch(client):
 
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     with (
-        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api.routes.update_single_profile") as mock_profile,
-        patch("api.routes.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes.QuantEngine"),
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("accounts.accounts_engine.has_cached_fundamentals", return_value=True),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine"),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -677,6 +678,58 @@ def test_post_watchlist_add_known_ticker_skips_yahoo_fetch(client):
 
     wl = _db.get_watchlist_account()
     _db.remove_watchlist_ticker(wl["id"], "AAPL")
+
+
+@pytest.mark.api
+def test_post_watchlist_add_known_ticker_without_fundamentals_dump_fetches_it(client):
+    """A universe-scraped ticker has a profile but no fundamentals dump; analysing it without one would write
+    USD/EQUITY/Unknown defaults over the profile, so the add queues the fetch (the same gates as the Accounts route)."""
+    from db import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.execute("INSERT OR IGNORE INTO asset_profiles (ticker, company_name) VALUES (?, ?)", ("ZZNODUMP", "No Dump Inc."))
+        conn.commit()
+    finally:
+        conn.close()
+    fake_meta = {"company_name": "No Dump Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
+    with (
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("accounts.accounts_engine.has_cached_fundamentals", return_value=False),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine"),
+    ):
+        resp = client.post("/api/watchlist/add", json={"ticker": "ZZNODUMP"})
+    assert resp.status_code == 200
+    mock_profile.assert_not_called()
+    mock_fetch.assert_called_once_with("ZZNODUMP")
+    _db.remove_watchlist_ticker(_db.get_watchlist_account()["id"], "ZZNODUMP")
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM asset_profiles WHERE ticker = 'ZZNODUMP'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.api
+def test_post_watchlist_add_ticker_excluded_from_yahoo_is_added_without_a_fetch(client):
+    from db import database as _db
+    fake_meta = {"company_name": None, "currency": None, "quote_type": None, "exchange": None}
+    with (
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("accounts.accounts_engine.is_excluded_from_yahoo_fetch", return_value=True),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine") as mock_engine,
+    ):
+        resp = client.post("/api/watchlist/add", json={"ticker": "ZZEXCLUDED"})
+    assert resp.status_code == 200
+    assert "ZZEXCLUDED" in _db.get_watchlist_tickers()
+    mock_profile.assert_not_called()
+    mock_fetch.assert_not_called()
+    mock_engine.assert_not_called()
+    _db.remove_watchlist_ticker(_db.get_watchlist_account()["id"], "ZZEXCLUDED")
 
 
 @pytest.mark.api
@@ -700,10 +753,11 @@ def test_post_watchlist_add_missing_stock_signals_row_triggers_analyze(client):
     fake_meta = {"company_name": "Analyze Me Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     mock_engine = MagicMock()
     with (
-        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api.routes.update_single_profile") as mock_profile,
-        patch("api.routes.fetch_and_save_single_ticker") as mock_fetch,
-        patch("api.routes.QuantEngine", return_value=mock_engine),
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("accounts.accounts_engine.has_cached_fundamentals", return_value=True),
+        patch("profile_engine.update_single_profile") as mock_profile,
+        patch("data_engine.fetch_and_save_single_ticker") as mock_fetch,
+        patch("quant_signals.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "ZZANALYZEME"})
     assert resp.status_code == 200
@@ -739,10 +793,10 @@ def test_post_watchlist_add_existing_stock_signals_row_skips_analyze(client):
     fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
     mock_engine = MagicMock()
     with (
-        patch("api.routes.resolve_watchlist_metadata", return_value=fake_meta),
-        patch("api.routes.update_single_profile"),
-        patch("api.routes.fetch_and_save_single_ticker"),
-        patch("api.routes.QuantEngine", return_value=mock_engine),
+        patch("accounts.accounts_engine.resolve_watchlist_metadata", return_value=fake_meta),
+        patch("profile_engine.update_single_profile"),
+        patch("data_engine.fetch_and_save_single_ticker"),
+        patch("quant_signals.QuantEngine", return_value=mock_engine),
     ):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
     assert resp.status_code == 200
@@ -2360,7 +2414,7 @@ def test_fx_refresh_base_currency_needs_no_network(client, monkeypatch, currency
 @pytest.mark.api
 def test_post_watchlist_add_rejects_an_unsafe_ticker_without_a_yahoo_lookup(client):
     from db import database as _db
-    with patch("api.routes.resolve_watchlist_metadata") as mock_meta:
+    with patch("accounts.accounts_engine.resolve_watchlist_metadata") as mock_meta:
         resp = client.post("/api/watchlist/add", json={"ticker": "../X"})
     assert resp.status_code == 422
     assert "ticker" in _json(resp)["message"]
