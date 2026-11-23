@@ -2409,9 +2409,9 @@ slowapi==0.1.10 \
     --hash=sha256:3acb61561dc9d687e3d3669362ff6a439de9ba44e2fed3a9c165da26b4b83e28 \
     --hash=sha256:d320d5bc04d9f171a77fb16700faf3036d85b00f420f22924c8a225f95bd14f9
     # via -r requirements.txt
-soupsieve==2.10 \
-    --hash=sha256:49e9380d7d2905463583bafe285e818c7366a9ed7b3aee221c1ac79c905d8bc0 \
-    --hash=sha256:8596eb8967d744174820280fa62b4542a2e955bfaccca73ed8a13c6eb8e9b502
+soupsieve==4.1.3 \
+    --hash=sha256:13f70186c8f40bf8d0ff7bbab09a18fb149600b465269207b5e5b588f55fda08 \
+    --hash=sha256:7a390d1a57d1ab7bb228531e9b8a750a5ebf87db774e0ef6faeeac057d22a5bf
     # via beautifulsoup4
 sse-starlette==3.5.0 \
     --hash=sha256:3e6e1070df3f0f5d9cea81496de92dbb72f6721871d99748ece67441dd8b7997 \
