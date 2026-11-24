@@ -77,7 +77,10 @@ def _macro(start: str, end: str, last_day: str, missing: list) -> tuple:
     else:
         covered_to = _feed_week_end(latest)
         if covered_to < last_day:
-            missing.append(f"The macro calendar feed covers the week ending Saturday {covered_to}; releases after that are not published yet")
+            line = f"The macro calendar feed covers the week ending Saturday {covered_to}; releases after that are not published yet"
+            if covered_to < datetime.now(timezone.utc).strftime("%Y-%m-%d"):
+                line += ", because the feed has not switched to the new week; the Macro Calendar job stores it on its Sunday evening run or its next daily run"
+            missing.append(line)
     now = datetime.now(timezone.utc)
     awaiting = [
         f"{e['event_name']} ({e['event_date'][:10]})" for e in result["events"]

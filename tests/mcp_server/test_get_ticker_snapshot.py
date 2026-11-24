@@ -125,7 +125,7 @@ def _snapshot(client, ticker=HELD):
 class TestHeldTicker:
     def test_envelope_and_coverage(self, mcp_client, book):
         data = _snapshot(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         body = data["data"]
         assert (body["ticker"], body["name"], body["coverage"]) == (HELD, "Held Corp", "full")
         assert (body["sector"], body["country"], body["quote_type"]) == ("Technology", "United Kingdom", "EQUITY")

@@ -213,6 +213,7 @@ DEFAULT_CONFIG = {
             "ENABLED": True,
             "INITIALIZED": False,
             "CALENDAR_TIME": "04:00",
+            "CALENDAR_SUNDAY_TIME": "23:00",
             "DATA_DAY": "sat",
             "DATA_TIME": "05:00"
         },

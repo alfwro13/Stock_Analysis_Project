@@ -68,7 +68,7 @@ class TestGetXray:
     def test_envelope_units_and_summary_for_one_account(self, mcp_client, holdings_book):
         with self._patched_targets():
             data = self._xray(mcp_client, f"acct:{holdings_book['first']}")
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["weights"].startswith("fraction of invested capital")
         body = data["data"]
         assert body["scope_id"] == f"acct:{holdings_book['first']}"

@@ -642,6 +642,20 @@ class TestWorkflowManifest:
         assert node["produces"] == ["stable_shortlist_snapshots"]
         assert display_name_for_config_key("STABLE_SHORTLIST") == "Stable Shortlist"
 
+    def test_macro_calendar_job_runs_daily_and_again_on_sunday_evening(self):
+        cfg = {"SCHEDULING": {"MACRO_ENGINE": {"ENABLED": True, "CALENDAR_TIME": "04:00", "CALENDAR_SUNDAY_TIME": "22:30", "DATA_DAY": "sat", "DATA_TIME": "05:00"}}}
+        with patch("scheduler_engine.load_config", return_value=cfg):
+            reload_scheduler()
+            triggers = _sched_module.scheduler.get_job("macro_calendar_job").trigger.triggers
+        described = [{f.name: str(f) for f in t.fields} for t in triggers]
+        assert any(d["day_of_week"] == "mon-sun" and d["hour"] == "4" and d["minute"] == "0" for d in described)
+        assert any(d["day_of_week"] == "sun" and d["hour"] == "22" and d["minute"] == "30" for d in described)
+        reload_scheduler()
+
+    def test_next_run_epoch_is_none_for_an_unscheduled_job(self):
+        from scheduler_engine import next_run_epoch
+        assert next_run_epoch("no_such_job_id") is None
+
     def test_dynamic_etf_job_resolves(self):
         assert _resolve_manifest("etf_predictor_7_pre_job") is not None
         assert _resolve_manifest("etf_predictor_12_post_job") is not None

@@ -353,6 +353,14 @@ def exchange_had_session(exchange: str, session_date) -> bool:
     return bool(calendar.is_session(pd.Timestamp(session_date)))
 
 
+def session_neighbours(exchange: str) -> dict:
+    """Today's local date on *exchange*, whether it holds a session today, and the nearest session dates before and after today (None when none lies within 14 days)."""
+    today = exchange_local_date(exchange)
+    previous = next((d for d in (today - timedelta(days=n) for n in range(1, 15)) if exchange_had_session(exchange, d)), None)
+    following = next((d for d in (today + timedelta(days=n) for n in range(1, 15)) if exchange_had_session(exchange, d)), None)
+    return {"today": today, "trading_day": exchange_had_session(exchange, today), "last_session": previous, "next_session": following}
+
+
 def trading_days_since(after_date, through_date, exchanges: Optional[tuple[str, ...]] = None) -> int:
     """Dates in (after_date, through_date] on which any of *exchanges* (default NYSE and HOME_EXCHANGE) held a session."""
     if exchanges is None:

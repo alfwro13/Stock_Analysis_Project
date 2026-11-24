@@ -3,8 +3,9 @@ from typing import Any
 from db.helpers import parse_utc_epoch
 from pages.page_helpers import get_portfolio_heat_row
 from risk_orchestrator_engine import get_ticker_risk_contributions
+from scheduler_engine import next_run_epoch
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_from_stored_utc
+from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, envelope, iso_from_stored_utc, iso_utc
 from ..scope import ACCOUNT_ALL
 from ..server import READ_ONLY, server
 
@@ -19,6 +20,7 @@ _HEAT_UNITS = {
     "top_risk_contributors.marginal_var_contribution_pct": "percent of the portfolio's VaR that comes from this position",
     "top_risk_contributors.stop_distance_pct": "percent of price above the ATR stop-loss; negative means the price is through the stop",
     "computed_at": "UTC time of the Risk Orchestrator Scan that wrote the figures (daily on weekdays)",
+    "next_scan_at": "UTC time of the next scheduled Risk Orchestrator Scan; null when the scan is not scheduled. Until it runs, the figures are those of the previous scan, so a call made earlier in the day than the scan reads the previous session's figures",
 }
 _HEAT_INPUTS = (("var_pct_of_equity", "VaR"), ("max_correlation", "correlation"), ("drawdown_pct", "drawdown"))
 
@@ -54,10 +56,12 @@ def get_heat_index() -> dict[str, Any]:
             missing.append("No per-position Risk Contribution rows exist yet")
         elif any(c["risk_score"] is None for c in contributors):
             missing.append("Some positions have no Risk Contribution score because an input (VaR share, correlation or stop distance) is not available")
+    next_scan = next_run_epoch("risk_orchestrator_job")
     epochs = [e for e in (parse_utc_epoch(r["last_updated"]) for r in [*([row] if row else []), *contributors]) if e]
     return envelope(
         {
             "heat_index": heat,
+            "next_scan_at": None if next_scan is None else iso_utc(next_scan),
             "top_risk_contributors": [
                 {key: c[key] for key in ("ticker", "risk_score", "risk_tier", "marginal_var_contribution_pct", "max_pairwise_correlation", "stop_distance_pct")}
                 for c in contributors

@@ -15,7 +15,7 @@ class TestGetHoldings:
 
     def test_envelope_and_units(self, mcp_client, holdings_book):
         data, _ = self._rows(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["allocation_pct"].startswith("percent of that row's own account")
         assert data["units"]["market_price"].count("GBp means pence")
 
