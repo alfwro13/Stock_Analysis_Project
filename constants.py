@@ -109,6 +109,7 @@ MCP_TICKER_MAX_CHARS        = 64               # `ticker` argument of the MCP Se
 MCP_ALERTS_MAX_DAYS         = 30               # `days` of get_alerts: system_notifications is pruned after 30 days, so a longer window adds nothing
 MCP_ALERTS_MAX_ROWS         = 50               # rows returned per source by get_alerts
 MCP_ALERT_TEXT_MAX_CHARS    = 500              # alert message text returned by get_alerts
+MCP_WEEK_CHANGE_SESSIONS     = 5                # trading sessions behind get_holdings' week_change_pct
 MCP_NEWS_MAX_ROWS           = 50               # `limit` of get_news
 MCP_NEWS_HEADLINE_MAX_CHARS = 200              # headline returned by get_news (external content)
 MCP_NEWS_SUMMARY_MAX_CHARS  = 400              # summary returned by get_news (external content)

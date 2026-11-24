@@ -1,8 +1,11 @@
-from typing import Any
+from typing import Any, Optional
 
 from accounts import portfolio_metrics_engine
 from accounts.accounts_engine import oldest_quote_epoch
+from constants import MCP_WEEK_CHANGE_SESSIONS
+from price_history_helpers import last_session_change
 from portfolio_service import persisted_fx_reads
+from utils import is_synthetic_ticker
 
 from ..envelope import envelope, iso_utc
 from ..scope import ACCOUNT_ALL, AccountArg, ghostfolio_scope_ids, resolve_scope
@@ -17,6 +20,7 @@ _HOLDING_UNITS = {
     "allocation_pct": "percent of that row's own account equity (an account's rows add up to 100), not of the whole portfolio; get_xray has portfolio-wide weights",
     "day_change": "change since the previous close, per share, in market_price_currency",
     "day_change_pct": "percent change since the previous close (regular session only)",
+    "week_change_pct": f"percent change over the last {MCP_WEEK_CHANGE_SESSIONS} trading sessions, from the stored daily close that many sessions before the last stored close to that close; null (named in missing) while the stored daily history does not end at market_price, for example during a session or before the nightly history update",
     "pre_market_change_pct/post_market_change_pct": "percent versus the regular close, extended-hours only; never mixed into market_price or day_change",
     "extended_hours_as_of": "UTC time of the pre- or post-market tick itself (Yahoo's preMarketTime / postMarketTime), not of the dashboard's last fetch; null when the row has no extended-hours tick or Yahoo sent no time",
     "priced_at_cost": "true when no usable price or FX rate exists; market_value, gain_value, gain_pct and allocation_pct are then null",
@@ -24,7 +28,7 @@ _HOLDING_UNITS = {
 }
 
 
-def _holding_row(h: dict) -> dict:
+def _holding_row(h: dict, week_change_pct: Optional[float]) -> dict:
     unpriced = h["priced_at_cost"]
     return {
         "account_id": h["account_id"], "account_name": h["account_name"], "scope_id": f"acct:{h['account_id']}",
@@ -38,6 +42,7 @@ def _holding_row(h: dict) -> dict:
         "allocation_pct": None if unpriced else h["allocation_pct"],
         "accumulated_dividends": h["accumulated_dividends"],
         "day_change": h["market_change_24h"], "day_change_pct": h["market_change_pct_24h"],
+        "week_change_pct": week_change_pct,
         "pre_market_change_pct": h["pre_market_change_pct"], "post_market_change_pct": h["post_market_change_pct"],
         "extended_hours_as_of": None if h["extended_quote_time"] is None else iso_utc(h["extended_quote_time"]),
         "priced_at_cost": unpriced,
@@ -46,7 +51,7 @@ def _holding_row(h: dict) -> dict:
 
 @server.tool(name="get_holdings", annotations=READ_ONLY)
 def get_holdings(account: AccountArg = ACCOUNT_ALL) -> dict[str, Any]:
-    """Open positions per built-in Trading account (shares, cost basis, market value, P/L, allocation within the account, day change); account is "all" or a scope_id from get_accounts."""
+    """Open positions per built-in Trading account (shares, cost basis, market value, P/L, allocation within the account, day change, 5-session week change); account is "all" or a scope_id from get_accounts."""
     scope = resolve_scope(account, allow_ghostfolio=False)
     with persisted_fx_reads():
         rows = portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"]
@@ -62,10 +67,18 @@ def get_holdings(account: AccountArg = ACCOUNT_ALL) -> dict[str, Any]:
         f"{r['ticker']} ({r['account_name']}): Yahoo sent no time for the extended-hours tick, so extended_hours_as_of is null"
         for r in rows if r["extended_quote_time"] is None and (r["pre_market_change_pct"] is not None or r["post_market_change_pct"] is not None)
     ]
+    week = {}
+    for ticker in sorted({r["ticker"] for r in rows if r["market_price"] and not is_synthetic_ticker(r["ticker"])}):
+        price = next(r["market_price"] for r in rows if r["ticker"] == ticker and r["market_price"])
+        change = last_session_change(ticker, price, MCP_WEEK_CHANGE_SESSIONS)
+        week[ticker] = None if change is None else round(change[1], 4)
+    no_week = sorted(ticker for ticker, pct in week.items() if pct is None)
+    if no_week:
+        missing.append(f"{len(no_week)} ticker(s) have no week_change_pct because the stored daily history does not end at market_price or is shorter than {MCP_WEEK_CHANGE_SESSIONS + 1} sessions: " + ", ".join(no_week))
     if scope == ACCOUNT_ALL and ghostfolio_scope_ids():
         missing.append("Ghostfolio accounts are not covered by get_holdings; get_xray includes them")
     return envelope(
-        {"account": scope, "holdings": [_holding_row(r) for r in rows]},
+        {"account": scope, "holdings": [_holding_row(r, week.get(r["ticker"])) for r in rows]},
         as_of=oldest_quote_epoch(sorted({r["ticker"] for r in rows}), skip_daily_priced=True),
         units=_HOLDING_UNITS,
         missing=missing,

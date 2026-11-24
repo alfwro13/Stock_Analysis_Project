@@ -445,6 +445,16 @@ class TestLastSessionChange:
         with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([200.0, 150.0])):
             assert last_session_change("AAA", 150.0) == (-50.0, -25.0)
 
+    def test_sessions_counts_back_from_the_last_stored_close(self):
+        closes = [100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0]
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame(closes)):
+            assert last_session_change("AAA", 160.0, sessions=5) == (50.0, 45.454545)
+            assert last_session_change("AAA", 160.0, sessions=6) == (60.0, 60.0)
+
+    def test_none_when_the_history_is_shorter_than_the_sessions_asked_for(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([100.0, 110.0, 120.0])):
+            assert last_session_change("AAA", 120.0, sessions=5) is None
+
     def test_none_when_the_last_stored_close_is_not_the_price(self):
         with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame([100.0, 90.0])):
             assert last_session_change("AAA", 95.0) is None
