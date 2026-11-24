@@ -13,7 +13,7 @@ class TestGetAccounts:
 
     def test_envelope_is_present_on_the_tool_response(self, mcp_client, seeded_accounts):
         data, _ = self._rows(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert set(data["market_state"]) == {"LSE", "NYSE"}
         assert set(data["market_state"].values()) <= {"open", "pre", "post", "closed"}
         assert data["units"]["amounts"].startswith("BASE_CURRENCY")

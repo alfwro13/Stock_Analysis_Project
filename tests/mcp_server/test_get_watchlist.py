@@ -134,7 +134,7 @@ def _row(data, ticker):
 class TestRows:
     def test_envelope_and_every_watchlist_ticker_with_held_flagged(self, mcp_client, watchlist):
         data = _watchlist(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["data"]["count"] == len(data["data"]["tickers"])
         assert {t["ticker"] for t in data["data"]["tickers"]} >= set(_TICKERS)
         assert _row(data, HELD)["held"] is True

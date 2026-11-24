@@ -55,7 +55,7 @@ class TestBuy:
     def test_envelope_verdict_and_units(self, mcp_client):
         with patch.object(pretrade_tool, "evaluate_pretrade_check", return_value=dict(_CHECK)) as engine:
             data = tool_data(_check(mcp_client))
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert data["units"]["amount/proposed_value"].startswith("BASE_CURRENCY")
         body = data["data"]
         assert (body["side"], body["ticker"], body["account"], body["proposed_value"]) == ("buy", "ZZPT", "all", 1000.0)

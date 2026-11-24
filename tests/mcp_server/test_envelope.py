@@ -11,7 +11,7 @@ class TestEnvelope:
     def test_envelope_fields(self):
         with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"):
             result = envelope({"x": 1}, as_of=1_700_000_000.0, units={"u": "v"}, missing=[])
-        assert set(result) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(result) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert result["as_of"] == "2023-11-14T22:13:20Z"
         assert result["market_state"] == {"LSE": "closed", "NYSE": "closed"}
         assert result["data"] == {"x": 1}
@@ -61,6 +61,34 @@ class TestEnvelope:
         with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"):
             result = envelope({"a": float("nan"), "b": [float("inf")]}, as_of=None, units={}, missing=[])
         assert result["data"] == {"a": None, "b": [None]}
+
+
+class TestSessionContext:
+    def _near(self, trading_day, last, following, today="2026-11-22"):
+        from datetime import date
+        return {"today": date.fromisoformat(today), "trading_day": trading_day,
+                "last_session": date.fromisoformat(last), "next_session": date.fromisoformat(following)}
+
+    def test_a_weekend_names_the_last_and_next_session(self):
+        near = self._near(False, "2026-11-20", "2026-11-23")
+        with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"), patch("mcp_server.envelope.session_neighbours", return_value=near):
+            session = envelope({}, as_of=None, units={}, missing=[])["session"]
+        assert session["markets"]["LSE"] == {"trading_day": False, "last_session": "2026-11-20", "next_session": "2026-11-23"}
+        assert "(Sunday 2026-11-22) is not a trading day on LSE or NYSE" in session["note"]
+        assert "LSE: last session 2026-11-20, next session 2026-11-23" in session["note"]
+
+    def test_a_trading_day_has_no_note(self):
+        near = self._near(True, "2026-11-19", "2026-11-21", today="2026-11-20")
+        with patch("mcp_server.envelope.get_exchange_session_state", return_value="open"), patch("mcp_server.envelope.session_neighbours", return_value=near):
+            session = envelope({}, as_of=None, units={}, missing=[])["session"]
+        assert session["note"] is None and session["markets"]["NYSE"]["trading_day"] is True
+
+    def test_a_holiday_on_one_market_names_only_that_market(self):
+        def near(exchange):
+            return self._near(exchange == "LSE", "2026-11-25", "2026-11-27", today="2026-11-26")
+        with patch("mcp_server.envelope.get_exchange_session_state", return_value="closed"), patch("mcp_server.envelope.session_neighbours", side_effect=near):
+            session = envelope({}, as_of=None, units={}, missing=[])["session"]
+        assert "not a trading day on NYSE." in session["note"] and "LSE:" not in session["note"]
 
 
 class TestDateEpoch:

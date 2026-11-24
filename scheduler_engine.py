@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -139,6 +140,13 @@ def record_job_run(job_id: str):
         write_or_defer(f"Workflow Monitor run time of {job_id}", write)
     except Exception as e:
         logger.error("Failed to record job run for %s: %s", job_id, e)
+
+def next_run_epoch(job_id: str) -> float | None:
+    """Epoch of the job's next scheduled run; None when the job is not scheduled (disabled) or the scheduler is not running."""
+    job = scheduler.get_job(job_id)
+    next_run = getattr(job, "next_run_time", None) if job is not None else None
+    return None if next_run is None else next_run.timestamp()
+
 
 def get_all_job_last_runs() -> dict:
     conn = None
@@ -646,16 +654,21 @@ def reload_scheduler():
     macro_cfg = scheduling.get("MACRO_ENGINE", {})
     if macro_cfg.get("ENABLED", True):
         calendar_time = macro_cfg.get("CALENDAR_TIME", "04:00")
+        sunday_time = macro_cfg.get("CALENDAR_SUNDAY_TIME", "23:00")
         data_day = macro_cfg.get("DATA_DAY", "sat")
         data_time = macro_cfg.get("DATA_TIME", "05:00")
         try:
             cal_hour, cal_minute = map(int, calendar_time.split(':'))
+            sunday_hour, sunday_minute = map(int, sunday_time.split(':'))
             scheduler.add_job(
                 run_macro_calendar_update,
-                CronTrigger(day_of_week='mon-sun', hour=cal_hour, minute=cal_minute, timezone=user_tz),
+                OrTrigger([
+                    CronTrigger(day_of_week='mon-sun', hour=cal_hour, minute=cal_minute, timezone=user_tz),
+                    CronTrigger(day_of_week='sun', hour=sunday_hour, minute=sunday_minute, timezone=user_tz),
+                ]),
                 id='macro_calendar_job'
             )
-            logger.info("Macro Calendar Update scheduled daily at %s", calendar_time)
+            logger.info("Macro Calendar Update scheduled daily at %s and on Sunday at %s", calendar_time, sunday_time)
 
             data_hour, data_minute = map(int, data_time.split(':'))
             scheduler.add_job(

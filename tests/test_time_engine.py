@@ -351,6 +351,25 @@ class TestExchangeHadSession:
             time_engine._uncovered_calendar_warned.discard("BOGUS_EXCHANGE")
 
 
+class TestSessionNeighbours:
+    def test_a_sunday_has_no_session_and_points_at_friday_and_monday(self):
+        with patch.object(time_engine, "exchange_local_date", return_value=datetime(2026, 11, 22).date()):
+            near = time_engine.session_neighbours("LSE")
+        assert near["trading_day"] is False
+        assert (near["last_session"], near["next_session"]) == (datetime(2026, 11, 20).date(), datetime(2026, 11, 23).date())
+
+    def test_a_trading_day_is_flagged_and_neighbours_skip_the_weekend(self):
+        with patch.object(time_engine, "exchange_local_date", return_value=datetime(2026, 11, 20).date()):
+            near = time_engine.session_neighbours("NYSE")
+        assert near["trading_day"] is True
+        assert (near["last_session"], near["next_session"]) == (datetime(2026, 11, 19).date(), datetime(2026, 11, 23).date())
+
+    def test_a_holiday_is_not_a_trading_day(self):
+        with patch.object(time_engine, "exchange_local_date", return_value=datetime(2026, 11, 26).date()):
+            near = time_engine.session_neighbours("NYSE")
+        assert near["trading_day"] is False and near["next_session"] == datetime(2026, 11, 27).date()
+
+
 class TestTradingDaysSince:
     @pytest.fixture(autouse=True)
     def _home_lse(self):

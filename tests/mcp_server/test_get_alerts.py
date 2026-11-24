@@ -69,7 +69,7 @@ class TestGetAlerts:
     def test_envelope_units_and_default_window(self, mcp_client, alert_tables):
         _trap("ZZAL1", "ACTIVE_SELLOFF", _ago(minutes=10))
         data = self._alerts(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert {"days", "notifications", "trap_monitor", "referee"} <= set(data["units"])
         assert data["data"]["days"] == 7
         assert set(data["data"]) == {"days", "since", "notifications", "trap_monitor", "referee"}

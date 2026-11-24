@@ -305,6 +305,7 @@ async function saveSettings(silent = false) {
                 "ENABLED": document.getElementById('MACRO_ENGINE_ENABLED').checked,
                 "INITIALIZED": macroInitState,
                 "CALENDAR_TIME": document.getElementById('MACRO_CALENDAR_TIME').value,
+                "CALENDAR_SUNDAY_TIME": document.getElementById('MACRO_CALENDAR_SUNDAY_TIME').value,
                 "DATA_DAY": document.getElementById('MACRO_DATA_DAY').value,
                 "DATA_TIME": document.getElementById('MACRO_DATA_TIME').value
             },

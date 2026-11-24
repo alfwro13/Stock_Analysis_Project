@@ -133,6 +133,7 @@ class ScheduleItemConfig(FiniteModel):
     FLASH_CRASH_THRESHOLD: Optional[float] = None
     INITIALIZED: Optional[bool] = None
     CALENDAR_TIME: Optional[str] = None
+    CALENDAR_SUNDAY_TIME: Optional[str] = None
     DATA_DAY: Optional[str] = None
     DATA_TIME: Optional[str] = None
     DAY_OF_WEEK: Optional[str] = None

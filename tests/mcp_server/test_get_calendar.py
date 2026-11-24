@@ -89,7 +89,7 @@ def _calendar(client, **arguments):
 class TestTickerDates:
     def test_envelope_and_window(self, mcp_client, calendar):
         data = _calendar(mcp_client)
-        assert set(data) == {"as_of", "age_seconds", "market_state", "base_currency", "units", "stale", "incomplete", "missing", "data"}
+        assert set(data) == {"as_of", "age_seconds", "market_state", "session", "base_currency", "units", "stale", "incomplete", "missing", "data"}
         assert (data["data"]["days"], data["data"]["from"], data["data"]["to"]) == (7, _day(0), _day(7))
 
     def test_earnings_inside_the_window_soonest_first_with_the_list(self, mcp_client, calendar):
@@ -193,6 +193,25 @@ class TestMacroEvents:
         data = _calendar(mcp_client, days=30)
         covered_to = data["data"]["macro_events"]["covered_to"]
         assert any(f"week ending Saturday {covered_to}" in m for m in data["missing"]) and data["incomplete"] is True
+
+    def test_a_feed_week_that_has_ended_says_the_new_week_is_stored_on_the_next_run(self, mcp_client, calendar):
+        for event_id in ("zz-cpi", "zz-boe", "zz-mpc", "zz-late"):
+            _delete_event(event_id)
+        conn = get_connection()
+        try:
+            _event(conn, "zz-old-week", _at(-10), "Last week release")
+            conn.commit()
+        finally:
+            conn.close()
+        data = _calendar(mcp_client)
+        line = next(m for m in data["missing"] if "feed covers" in m)
+        assert "has not switched to the new week" in line and "Sunday evening run" in line
+
+    def test_a_window_inside_the_current_feed_week_gets_no_new_week_note(self, mcp_client, calendar):
+        _delete_event("zz-late")
+        data = _calendar(mcp_client, days=30)
+        line = next(m for m in data["missing"] if "feed covers" in m)
+        assert "has not switched" not in line
 
     def test_covered_to_is_the_saturday_ending_the_feed_week_of_the_newest_event(self, mcp_client, calendar):
         _delete_event("zz-late")
