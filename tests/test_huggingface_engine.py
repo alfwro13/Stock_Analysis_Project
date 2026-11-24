@@ -218,6 +218,21 @@ class TestFetchAndScoreNews:
             result = fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS)
         assert result == pytest.approx(0.2)
 
+    def test_a_repeated_publisher_summary_is_left_out_of_the_scored_text(self):
+        analyzer = _mock_analyzer("positive", 0.9)
+        news = [_news_item("Own AMD stock?", summary="Today's big story: teaser", publisher="trefis.com")]
+        with patch("huggingface_engine.yahoo_engine") as mock_yf:
+            mock_yf.get_news.return_value = news
+            fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS, frozenset({("trefis.com", "Today's big story: teaser")}))
+        assert "teaser" not in analyzer.call_args[0][0] and "Own AMD stock?" in analyzer.call_args[0][0]
+
+    def test_a_summary_not_in_the_repeated_set_is_scored_with_the_headline(self):
+        analyzer = _mock_analyzer("positive", 0.9)
+        with patch("huggingface_engine.yahoo_engine") as mock_yf:
+            mock_yf.get_news.return_value = [_news_item("Own AMD stock?", summary="Specific text", publisher="trefis.com")]
+            fetch_and_score_news("AAPL", analyzer, MAX_AGE_DAYS, frozenset({("trefis.com", "Other text")}))
+        assert "Specific text" in analyzer.call_args[0][0]
+
     def test_headlines_older_than_the_age_limit_are_ignored(self):
         analyzer = _mock_analyzer("positive", 0.9)
         news = [_news_item("Old", days_ago=MAX_AGE_DAYS + 1), _news_item("Fresh", days_ago=MAX_AGE_DAYS - 1)]

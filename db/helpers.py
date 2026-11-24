@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import List, Optional
 
 from config import load_config
-from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
+from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, NEWS_REPEATED_SUMMARY_MIN_HEADLINES, NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
 from db.database import get_connection, replaying_deferred_write, write_or_defer
 from time_engine import parse_stored_utc, trading_days_since
 from utils import is_valid_ticker
@@ -298,6 +298,28 @@ def filter_equity_tickers(tickers: List[str]) -> List[str]:
     finally:
         if conn:
             conn.close()
+
+
+REPEATED_NEWS_SUMMARY_SQL = (
+    "SELECT lower(COALESCE(publisher, '')), summary FROM news_articles WHERE summary IS NOT NULL AND summary != '' "
+    "GROUP BY lower(COALESCE(publisher, '')), summary HAVING COUNT(DISTINCT headline) >= ?"
+)
+
+
+def get_repeated_news_summaries(conn=None) -> frozenset:
+    """(lower-case publisher, summary) pairs that one publisher attached to several different headlines in `news_articles`; the one definition behind sentiment scoring and `mentions_ticker`."""
+    own = conn is None
+    try:
+        conn = get_connection() if own else conn
+        return frozenset((row[0], row[1]) for row in conn.execute(REPEATED_NEWS_SUMMARY_SQL, (NEWS_REPEATED_SUMMARY_MIN_HEADLINES,)).fetchall())
+    finally:
+        if own and conn:
+            conn.close()
+
+
+def article_summary(publisher: Optional[str], summary: Optional[str], repeated: frozenset) -> Optional[str]:
+    """The summary, or None when it is one the publisher repeats across headlines (it says nothing about this article)."""
+    return None if (str(publisher or "").lower(), summary) in repeated else summary
 
 
 def get_next_earnings_dates(tickers: List[str]) -> dict:

@@ -11,7 +11,7 @@ from transformers import pipeline
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from notification_engine import notify
 from db.database import get_connection
-from db.helpers import sentiment_max_age_days
+from db.helpers import article_summary, get_repeated_news_summaries, sentiment_max_age_days
 from config import load_config
 from constants import (
     NLP_FINBERT_MAX_TOKENS, NLP_FINBERT_REVISION, NLP_TEXT_TRUNCATE_CHARS,
@@ -83,7 +83,7 @@ def _score_text(analyzer, text: str) -> float:
     return 0.0
 
 
-def fetch_and_score_news(ticker: str, analyzer: Any, max_age_days: int) -> Optional[float]:
+def fetch_and_score_news(ticker: str, analyzer: Any, max_age_days: int, repeated: frozenset = frozenset()) -> Optional[float]:
     """Mean FinBERT compound score [-1, 1] of the ticker's headlines no older than max_age_days; None when it has none."""
     news = yahoo_engine.get_news(ticker)
     if news is None:
@@ -98,7 +98,7 @@ def fetch_and_score_news(ticker: str, analyzer: Any, max_age_days: int) -> Optio
         if news_item_published_at(item) < cutoff:
             continue
         title, summary, publisher = news_item_text(item)
-        text_to_analyze = f"{title}. {summary}. {publisher}"
+        text_to_analyze = f"{title}. {article_summary(publisher, summary, repeated) or ''}. {publisher}"
         if not text_to_analyze.strip(". "):
             continue
 
@@ -146,6 +146,7 @@ def update_all_sentiment(tickers: List[str]) -> None:
         return
 
     max_age_days = sentiment_max_age_days()
+    repeated = get_repeated_news_summaries()
     scored = no_headlines = unavailable = 0
 
     conn = None
@@ -156,7 +157,7 @@ def update_all_sentiment(tickers: List[str]) -> None:
         for i, ticker in enumerate(combined_tickers):
             try:
                 try:
-                    score = fetch_and_score_news(ticker, analyzer, max_age_days)
+                    score = fetch_and_score_news(ticker, analyzer, max_age_days, repeated)
                 except SentimentUnavailableError:
                     unavailable += 1
                     logger.warning("[%s] Sentiment unavailable; stored score left unchanged.", ticker)

@@ -25,7 +25,7 @@ Every Plotly chart on `/market-sentiment` (the five built in `sentiment_engine.p
 |---|---|---|
 | `_get_finbert_analyzer()` | `() → Optional[pipeline]` | Thread-safe singleton loader |
 | `_score_text()` | `(analyzer, text) → float` | Score one string, returns `[-1, 1]` |
-| `fetch_and_score_news()` | `(ticker, analyzer, max_age_days) → Optional[float]` | Fetch + score the ticker's headlines no older than `max_age_days`; `None` when it has none, `SentimentUnavailableError` when the fetch or every scoring failed |
+| `fetch_and_score_news()` | `(ticker, analyzer, max_age_days, repeated=frozenset()) → Optional[float]` | Fetch + score the ticker's headlines no older than `max_age_days`; `None` when it has none, `SentimentUnavailableError` when the fetch or every scoring failed |
 | `update_all_sentiment()` | `(tickers: List[str]) → None` | Batch score all portfolio/watchlist tickers + macro set |
 | `run_central_bank_nlp_alert()` | `(event_name, currency) → bool` | Central bank tone detection + Nextcloud dispatch |
 
@@ -106,6 +106,7 @@ drop headlines older than SENTIMENT_ENGINE.MAX_NEWS_AGE_DAYS (default 3);
 at most NLP_NEWS_FETCH_LIMIT remaining headlines are scored
         ↓
 _score_text() per headline+summary+publisher
+  (the summary is left out when the publisher repeats it under several different headlines)
         ↓
 Compound average score  (None when no headline is left)
         ↓
@@ -132,10 +133,12 @@ news_articles (unscored rows)
         ↓
 huggingface_engine._get_finbert_analyzer()   ← shared singleton
         ↓
-_score_text(analyzer, headline + " " + summary)
+_score_text(analyzer, headline + " " + summary)   ← headline alone when the summary is a repeated one
         ↓
 UPDATE news_articles SET sentiment_score, sentiment_label   ← one executemany, after every article is scored
 ```
+
+**Repeated publisher summaries.** Some publishers attach one site-wide teaser as the RSS summary of every article (for example a "Today's big story" line), so a strongly negative teaser would colour the sentiment of unrelated headlines under every ticker. A (publisher, summary) pair that appears under `NEWS_REPEATED_SUMMARY_MIN_HEADLINES` (3) or more different headlines in `news_articles` is a repeated summary (`db.helpers.get_repeated_news_summaries()`): both scoring paths score the headline alone (`db.helpers.article_summary()`), and `mentions_ticker` ignores that summary. Stored scores of such articles are cleared once by a start-up migration and re-scored by the next News Feed run.
 
 The model runs over all unscored articles before the first `UPDATE`, so the write transaction covers only the batched update. Scoring a few hundred articles takes tens of seconds, and a write transaction open that long blocks every other writer.
 

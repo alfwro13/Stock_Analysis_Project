@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from config import load_config
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from db.database import get_connection, get_watchlist_tickers
+from db.helpers import article_summary, get_repeated_news_summaries
 from outbound_fetch_helpers import fetch_body
 
 logger = logging.getLogger(__name__)
@@ -153,16 +154,17 @@ def _score_unscoredrows(conn) -> None:
 
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, headline, summary FROM news_articles WHERE sentiment_score IS NULL"
+        "SELECT id, headline, summary, publisher FROM news_articles WHERE sentiment_score IS NULL"
     )
     rows = cursor.fetchall()
     if not rows:
         return
+    repeated = get_repeated_news_summaries(conn)
 
     logger.info("News Feed: scoring sentiment for %s articles...", len(rows))
     scored_rows = []
     for row in rows:
-        text = " ".join(filter(None, [row["headline"], row["summary"]])).strip()
+        text = " ".join(filter(None, [row["headline"], article_summary(row["publisher"], row["summary"], repeated)])).strip()
         if not text:
             continue
         try:

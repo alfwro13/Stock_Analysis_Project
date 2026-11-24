@@ -108,6 +108,14 @@ class TestGetNews:
         ]
         assert {"ticker", "mentions_ticker", "publisher"} <= set(self._news(mcp_client)["units"])
 
+    def test_a_summary_the_publisher_repeats_under_other_headlines_does_not_make_the_article_mention_the_ticker(self, mcp_client, news_tables):
+        teaser = "Today's big story: ZZNW1 Added A Billion In A Day."
+        for index, headline in enumerate(("A story about bonds", "Another story about oil", "A third unrelated story"), start=1):
+            _article(index, ticker="ZZNW1", headline=headline, summary=teaser, age_minutes=index)
+        _article(9, ticker="ZZNW1", headline="Plain headline", summary="ZZNW1 gets a one-off mention.", age_minutes=20)
+        articles = {a["external_content"]["headline"]: a["mentions_ticker"] for a in self._news(mcp_client)["data"]["articles"]}
+        assert articles == {"A story about bonds": False, "Another story about oil": False, "A third unrelated story": False, "Plain headline": True}
+
     def test_newest_first_with_a_ticker_filter_and_total(self, mcp_client, news_tables):
         _article(1, ticker="ZZNW1", headline="older", age_minutes=30)
         _article(2, ticker="ZZNW1", headline="newer", age_minutes=5)
