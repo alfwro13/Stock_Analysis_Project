@@ -2512,9 +2512,9 @@ trafilatura==2.3.1 \
     --hash=sha256:2e5557aeab32d33b9da7ff0debbb677a676c5b648a927e50d91b8277011e1105 \
     --hash=sha256:f86bad2ee36f82884e14dee84c83aae0f0ac0127da5c65764e82f3846716b822
     # via -r requirements.txt
-transformers==5.23.0 \
-    --hash=sha256:018e82fd07490ad5bb58414f65e31576033dc7f36bed10c574843f69b90991bf \
-    --hash=sha256:19d647a4d5d903a7c644ca5cde2d86efc3dde7d8c687ae7988806ff2205efa71
+transformers==5.24.0 \
+    --hash=sha256:906cb8c3cb2123575e263962586a4d21a979ce97feeb95fe6aaf66fe6ae88bf3 \
+    --hash=sha256:ff5ebedf9359f94bb63772b6380eba6e7104d010cbbb2cb82c788817ea7486f6
     # via -r requirements.txt
 triton==3.9.0 ; python_full_version < '3.16' and sys_platform == 'linux' \
     --hash=sha256:1622118a038b0c6e16fa4a0305da62c8b3c15904ee1cc4d4e65846a25969e41e \
