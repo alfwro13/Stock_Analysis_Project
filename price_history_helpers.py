@@ -132,12 +132,12 @@ def load_daily_close(ticker: str, *, cache_only: bool = False, read_only: bool =
     return normalized_close(df["Close"], tail)
 
 
-def last_session_change(ticker: str, price: float) -> Optional[Tuple[float, float]]:
-    """(change per share, change %) between the last two stored daily closes, only when the last stored close is `price`; None otherwise, so a price from another source never gets a change measured against a different bar."""
-    close = load_daily_close(ticker, read_only=True, tail=2)
-    if close is None or len(close) < 2 or not math.isclose(float(close.iloc[-1]), price, rel_tol=1e-4):
+def last_session_change(ticker: str, price: float, sessions: int = 1) -> Optional[Tuple[float, float]]:
+    """(change per share, change %) between the last stored daily close and the one `sessions` bars earlier, only when the last stored close is `price`; None otherwise, so a price from another source never gets a change measured against a different bar."""
+    close = load_daily_close(ticker, read_only=True, tail=sessions + 1)
+    if close is None or len(close) < sessions + 1 or not math.isclose(float(close.iloc[-1]), price, rel_tol=1e-4):
         return None
-    previous = float(close.iloc[-2])
+    previous = float(close.iloc[-sessions - 1])
     if previous <= 0:
         return None
     change = float(close.iloc[-1]) - previous

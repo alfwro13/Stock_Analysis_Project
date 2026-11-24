@@ -31,6 +31,19 @@ class TestGetHoldings:
         assert row["priced_at_cost"] is False
         assert rows[(holdings_book["first"], "ZZMCPB")]["allocation_pct"] == pytest.approx(250 / 1450 * 100, abs=0.01)
 
+    def test_week_change_is_the_five_session_move_to_the_last_stored_close(self, mcp_client, holdings_book):
+        def change(ticker, price, sessions):
+            assert sessions == 5
+            return (10.0, 12.3456789) if ticker == "ZZMCPA" else None
+        with patch("mcp_server.tools.get_holdings.last_session_change", side_effect=change):
+            data, rows = self._rows(mcp_client)
+        assert rows[(holdings_book["first"], "ZZMCPA")]["week_change_pct"] == 12.3457
+        assert rows[(holdings_book["second"], "ZZMCPA")]["week_change_pct"] == 12.3457
+        assert rows[(holdings_book["first"], "ZZMCPB")]["week_change_pct"] is None
+        line = next(m for m in data["missing"] if "week_change_pct" in m)
+        assert "ZZMCPB" in line and "ZZMCPA" not in line
+        assert "week_change_pct" in data["units"]
+
     def test_extended_hours_move_is_a_separate_field_never_merged_into_the_price(self, mcp_client, holdings_book):
         _, rows = self._rows(mcp_client, f"acct:{holdings_book['first']}")
         row = rows[(holdings_book["first"], "ZZMCPA")]
