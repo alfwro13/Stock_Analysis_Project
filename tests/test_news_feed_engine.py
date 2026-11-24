@@ -243,6 +243,81 @@ class TestMentionsTicker:
         assert not mentions_ticker("AAPL", None, "Apple gains", "")
 
 
+def _repeat_rows(conn, ticker, headlines, summary, publisher="trefis.com", score=-0.9):
+    for index, headline in enumerate(headlines):
+        conn.execute(
+            "INSERT INTO news_articles (article_id, ticker, source_list, headline, summary, publisher, published_at, fetched_at, sentiment_score, sentiment_label) "
+            "VALUES (?, ?, 'portfolio', ?, ?, ?, ?, ?, ?, 'negative')",
+            (f"{ticker}-{index}", ticker, headline, summary, publisher, int(time.time()), int(time.time()), score),
+        )
+
+
+class TestRepeatedSummaries:
+    TEASER = "Today's big story: a site-wide teaser"
+
+    def teardown_method(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM news_articles WHERE ticker LIKE 'ZZREP%'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_a_summary_under_several_different_headlines_is_repeated_but_one_article_on_many_tickers_is_not(self):
+        from db.helpers import get_repeated_news_summaries
+        conn = database.get_connection()
+        try:
+            _repeat_rows(conn, "ZZREP1", ["One", "Two", "Three"], self.TEASER)
+            for ticker in ("ZZREP2", "ZZREP3", "ZZREP4"):
+                _repeat_rows(conn, ticker, ["Same article"], "A real summary")
+            conn.commit()
+            repeated = get_repeated_news_summaries(conn)
+        finally:
+            conn.close()
+        assert ("trefis.com", self.TEASER) in repeated and ("trefis.com", "A real summary") not in repeated
+
+    def test_article_summary_drops_only_a_repeated_one(self):
+        from db.helpers import article_summary
+        repeated = frozenset({("trefis.com", self.TEASER)})
+        assert article_summary("Trefis.com", self.TEASER, repeated) is None
+        assert article_summary("trefis.com", "Specific", repeated) == "Specific"
+        assert article_summary(None, self.TEASER, repeated) == self.TEASER
+
+    def test_scoring_uses_the_headline_alone_for_a_repeated_summary(self):
+        conn = database.get_connection()
+        try:
+            _repeat_rows(conn, "ZZREP1", ["One", "Two", "Three"], self.TEASER, score=None)
+            conn.execute("UPDATE news_articles SET sentiment_score = NULL, sentiment_label = NULL WHERE ticker = 'ZZREP1'")
+            conn.commit()
+            seen = []
+            with patch("huggingface_engine._get_finbert_analyzer", return_value=object()), \
+                 patch("huggingface_engine._score_text", side_effect=lambda analyzer, text: seen.append(text) or 0.0):
+                news_feed_engine._score_unscoredrows(conn)
+        finally:
+            conn.close()
+        assert sorted(seen) == ["One", "Three", "Two"]
+
+    def test_migration_queues_stored_scores_of_a_repeated_summary_once(self):
+        name = "news_articles_repeated_summary_unscored"
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = ?", (name,))
+            _repeat_rows(conn, "ZZREP1", ["One", "Two", "Three"], self.TEASER)
+            _repeat_rows(conn, "ZZREP2", ["Solo"], "A real summary", score=0.4)
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+            rows = {r["ticker"]: r["sentiment_score"] for r in conn.execute("SELECT ticker, sentiment_score FROM news_articles WHERE ticker LIKE 'ZZREP%'")}
+            assert rows == {"ZZREP1": None, "ZZREP2": 0.4}
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = ?", (name,)).fetchone()[0] == 1
+
+            conn.execute("UPDATE news_articles SET sentiment_score = 0.7 WHERE ticker = 'ZZREP1'")
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT MIN(sentiment_score) FROM news_articles WHERE ticker = 'ZZREP1'").fetchone()[0] == 0.7
+        finally:
+            conn.close()
+
+
 class TestFeedTextMigration:
     _NAME = "news_articles_feed_text_repaired"
 

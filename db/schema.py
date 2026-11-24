@@ -3119,6 +3119,25 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to repair stored news article text: %s", e)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'news_articles_repeated_summary_unscored'")
+        if cursor.fetchone() is None:
+            from db.helpers import REPEATED_NEWS_SUMMARY_SQL
+            from constants import NEWS_REPEATED_SUMMARY_MIN_HEADLINES
+            cursor.execute(
+                "UPDATE news_articles SET sentiment_score = NULL, sentiment_label = NULL "
+                f"WHERE (lower(COALESCE(publisher, '')), summary) IN ({REPEATED_NEWS_SUMMARY_SQL})",
+                (NEWS_REPEATED_SUMMARY_MIN_HEADLINES,),
+            )
+            requeued = cursor.rowcount
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('news_articles_repeated_summary_unscored')")
+            conn.commit()
+            if requeued:
+                logger.info("[MIGRATION] Queued %d stored news article(s) with a repeated publisher summary for headline-only sentiment scoring.", requeued)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to queue repeated-summary news articles for re-scoring: %s", e)
+
+    try:
         from db.helpers import refresh_job_average_duration
         refresh_job_average_duration(cursor)
     except Exception as e:
