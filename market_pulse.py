@@ -254,6 +254,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
             "is_positive": bool(row['is_positive']),
             "is_stale": not is_price_fresh(price_as_of or 0, price, refresh_rate, market_open, floor),
             "price_as_of": price_as_of,
+            "used_fallback": used_fallback,
             "extended_price": row['extended_price'],
             "extended_change_pts": row['extended_change_pts'],
             "extended_change_pct": row['extended_change_pct'],

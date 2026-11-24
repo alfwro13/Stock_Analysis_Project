@@ -248,6 +248,24 @@ class TestMacroThreatFailedFetches:
         assert row["gbpusd_close"] is None
         assert row["tnx_close"] == 4.3 and row["us_threat_level"] == "YELLOW"
 
+    def test_a_weekend_bar_with_no_close_is_not_the_latest_reading(self, isolated_regime_tables):
+        tnx_df = _make_tnx_df(4.60, 4.20)
+        weekend = pd.DataFrame({"Close": [float("nan")]}, index=[tnx_df.index[-1] + pd.Timedelta(days=1)])
+        padded = pd.concat([tnx_df, weekend])
+        flat = pd.DataFrame({"Close": [3.5] * len(padded)}, index=padded.index)
+        flat.iloc[-1] = float("nan")
+        dfs = {"^TYX": flat, "^TNX": padded, "DX-Y.NYB": flat, "GBPUSD=X": flat}
+        with (
+            patch("regime_engine.yahoo_engine.get_price_history", return_value=dfs),
+            patch("regime_engine.HISTORICAL_DIR", new=Path(tempfile.mkdtemp())),
+            _ft_gilt(None),
+        ):
+            calculate_systemic_macro_threat()
+        assert self._row(weekend.index[0].strftime("%Y-%m-%d")) is None
+        row = self._row(tnx_df.index[-1].strftime("%Y-%m-%d"))
+        assert row["tnx_close"] == 4.6 and row["us_threat_level"] == "RED"
+        assert (row["tyx_close"], row["dxy_close"], row["gbpusd_close"]) == (3.5, 3.5, 3.5)
+
     def test_successful_fetches_are_stored(self, isolated_regime_tables):
         row = self._run()
         assert (row["tyx_close"], row["dxy_close"], row["gbpusd_close"]) == (3.5, 3.5, 3.5)
