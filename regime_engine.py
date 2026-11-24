@@ -683,6 +683,13 @@ def macro_conditions_snapshot() -> Dict[str, Any]:
     }
 
 
+def _closed_bars(df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Bars with a Close: Yahoo can append a weekend-dated bar whose Close is NaN, which would otherwise become the 'latest' reading."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    return df.dropna(subset=["Close"])
+
+
 def _last_close(df: pd.DataFrame) -> Optional[float]:
     return float(df['Close'].iloc[-1]) if not df.empty else None
 
@@ -718,10 +725,7 @@ def calculate_systemic_macro_threat() -> None:
         _macro_dfs = yahoo_engine.get_price_history(
             ["^TYX", "^TNX", "DX-Y.NYB", "GBPUSD=X"], period="10d", interval="1d"
         )
-        tyx = _macro_dfs.get("^TYX", pd.DataFrame())
-        tnx = _macro_dfs.get("^TNX", pd.DataFrame())
-        dxy = _macro_dfs.get("DX-Y.NYB", pd.DataFrame())
-        gbpusd = _macro_dfs.get("GBPUSD=X", pd.DataFrame())
+        tyx, tnx, dxy, gbpusd = (_closed_bars(_macro_dfs.get(t)) for t in ("^TYX", "^TNX", "DX-Y.NYB", "GBPUSD=X"))
 
         if tnx.empty or len(tnx) < 4:
             logger.warning("Insufficient ^TNX data for macro threat evaluation.")

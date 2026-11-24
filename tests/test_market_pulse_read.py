@@ -291,6 +291,7 @@ class TestGetAllCachedPulse:
         assert result[ASSET_TICKER]["price"] == 219.05
         assert result[ASSET_TICKER]["change_pct"] is None
         assert result[ASSET_TICKER]["change_pts"] is None
+        assert result[ASSET_TICKER]["used_fallback"] is True
 
     def test_price_as_of_is_the_time_of_the_price_returned(self):
         now = time.time()
@@ -308,6 +309,7 @@ class TestGetAllCachedPulse:
         result = _mp.get_all_cached_pulse()
         assert result[ASSET_TICKER]["price"] == 297.11
         assert result[ASSET_TICKER]["change_pct"] == 0.6
+        assert result[ASSET_TICKER]["used_fallback"] is False
 
 
 # ── get_cached_change_pct ───────────────────────────────────────────────────────

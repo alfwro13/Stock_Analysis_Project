@@ -91,10 +91,13 @@ def cached_price(ticker: str, currency: Optional[str], pulse: Optional[dict] = N
     cached = (get_all_cached_pulse() if pulse is None else pulse).get(ticker)
     if cached and cached["price"]:
         epoch = cached["price_as_of"]
+        day_change, day_change_pct = cached["change_pts"], cached["change_pct"]
+        if cached["used_fallback"]:
+            day_change, day_change_pct = last_session_change(ticker, cached["price"]) or (None, None)
         return {
-            "value": cached["price"], "currency": currency, "source": "shared_cache",
+            "value": cached["price"], "currency": currency, "source": "nightly_price" if cached["used_fallback"] else "shared_cache",
             "as_of": None if epoch is None else iso_utc(epoch), "stale": cached["is_stale"],
-            "day_change": cached["change_pts"], "day_change_pct": cached["change_pct"],
+            "day_change": day_change, "day_change_pct": day_change_pct,
         }, _pulse_extended(cached), epoch
 
     priced = current_price_map([ticker]).get(ticker)
