@@ -193,6 +193,24 @@ class TestHeldTicker:
         assert body["ml"]["confidence"] == 72.5 and (body["ml"]["price_q10"], body["ml"]["price_q90"]) == (100.0, 140.0)
         assert body["next_earnings"]["date"] == _day(-20)
 
+    def test_ml_carries_the_time_it_was_scored_and_says_what_the_value_means(self, mcp_client, book):
+        data = _snapshot(mcp_client)
+        ml = data["data"]["ml"]
+        scored = datetime.strptime(ml["as_of"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        assert abs((datetime.now(timezone.utc) - scored).total_seconds()) < 300 and ml["stale"] is False
+        assert "rises more than 3% within 10 trading days" in data["units"]["ml"]
+        assert "step function" in data["units"]["ml"] and "not an expected return" in data["units"]["ml"]
+
+    def test_ml_scored_long_ago_is_null_with_no_time(self, mcp_client, book):
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE quant_signals SET ml_scored_at = datetime('now', '-60 days') WHERE ticker = ?", (HELD,))
+            conn.commit()
+        finally:
+            conn.close()
+        ml = _snapshot(mcp_client)["data"]["ml"]
+        assert (ml["confidence"], ml["as_of"], ml["stale"]) == (None, None, False)
+
     def test_cached_company_dump_adds_raw_numbers_without_the_website(self, mcp_client, book, fundamentals_dir):
         (fundamentals_dir / f"{HELD}.json").write_text(json.dumps({
             "marketCap": 12865473536, "totalCash": 855, "totalDebt": 300, "financialCurrency": "USD", "trailingEps": 0.14,
@@ -242,6 +260,7 @@ class TestUniverseOnlyTicker:
         body = data["data"]
         assert body["coverage"] == "universe_scan_only"
         assert body["technicals"]["rsi_14"] == 55.0 and body["technicals"]["close_price"] == 12.0
+        assert body["ml"]["confidence"] == 72.5 and body["ml"]["as_of"] is not None
         assert body["trend"]["trend_50d"] == "DOWN" and body["trend"]["sma_50"] == 110.0
         assert body["valuation"] is None and body["fundamentals"] is None and body["forensic_scores"] is None and body["next_earnings"] is None
         assert body["position"]["held"] is False and body["position_targets"] == []

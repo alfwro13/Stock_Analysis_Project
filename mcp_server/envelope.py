@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from config import BASE_CURRENCY
+from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 from db.helpers import parse_utc_epoch
 from market_session_helpers import get_exchange_session_state
 from time_engine import session_neighbours
@@ -11,6 +12,12 @@ from utils import sanitize_floats
 ENVELOPE_EXCHANGES = ("LSE", "NYSE")
 STALE_AFTER_SECONDS = 900
 NIGHTLY_STALE_AFTER_SECONDS = 5 * 86400  # Friday evening's run must still count as current on a Tuesday after a bank holiday
+ML_CONFIDENCE_UNITS = (
+    f"0-100: the calibrated model probability that the price rises more than {PREDICTION_RETURN_THRESHOLD:.0%} within "
+    f"{PREDICTION_HORIZON_DAYS} trading days. It rises with volatility and is not an expected return: the calibration "
+    "is a step function, so many tickers share one value and tickers on the same value are not ranked against each other. "
+    f"Null once scored more than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days ago"
+)
 
 
 def iso_utc(epoch: float) -> str:

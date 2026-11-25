@@ -7,7 +7,7 @@ from constants import MCP_DISCOVERY_DEFAULT_ROWS, MCP_DISCOVERY_TEXT_MAX_CHARS
 from reports_engine import get_screener_rows
 
 from ..discovery import CompositeScore, LimitArg, Score, ScopeArg, identity, page, scoped_rows
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope
+from ..envelope import ML_CONFIDENCE_UNITS, NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope
 from ..server import READ_ONLY, server
 
 TextArg = Annotated[str, Field(min_length=1, max_length=MCP_DISCOVERY_TEXT_MAX_CHARS)]
@@ -34,7 +34,7 @@ _UNITS = {
     "week52_pct": "fraction: position inside the 52-week range, 0 at the low and 1 at the high",
     "roe": "fraction (0.15 = 15%)",
     "debt_to_equity": "Yahoo's own percentage-like scale (30 means 30% debt to equity, not 0.30)",
-    "ml_confidence_score": "0-100 model probability; null once older than the ML freshness window",
+    "ml_confidence_score": ML_CONFIDENCE_UNITS,
     "sentiment_score": "-1 to 1 (FinBERT mean over recent headlines); null when there are no recent headlines",
     "volume_surge": "1 when the latest volume exceeds 1.5 times its 20-day average, else 0",
     "earnings_days": "days until the next earnings date, null when unknown or already passed",

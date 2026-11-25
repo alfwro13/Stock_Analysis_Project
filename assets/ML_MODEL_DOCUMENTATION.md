@@ -229,9 +229,11 @@ Each run logs the rows used, the date range, the rows dropped for age or thin da
 
 ### 5.3 Probability Calibration
 
-Each base estimator is individually wrapped in `CalibratedClassifierCV(method='isotonic', cv=walk_forward_splits)` before being assembled into the final `VotingClassifier`. Isotonic regression calibration adjusts the raw model probabilities so they better approximate true event frequencies.
+The data is split 60/20/20 by date into Train, Calib and Test (`_temporal_split()`). Each base estimator is wrapped in `CalibratedClassifierCV(estimator=FrozenEstimator(estimator), method='isotonic')` and the isotonic map is fitted on the Calib rows only (`_fit_calibrated()`). The headline PR-AUC uses estimators fitted on Train alone, calibrated on Calib and scored on Test. The production ensemble is then refitted on Train + Calib with the same hyperparameters and calibrated on Calib again (`_refit_production_ensemble()`), so its calibrator is fitted on rows the estimator has seen (see §6).
 
-**Known limitation (calibration leakage, see §6):** The base estimators (`best_rf`, `best_xgb`) are fitted on the full training dataset before calibration. The `CalibratedClassifierCV` then calibrates using the same walk-forward splits. This introduces mild calibration data leakage — the base model has already seen the data used for calibration. The confidence scores should therefore be treated as **ranking signals** (relative ordering) rather than **calibrated probabilities** (absolute event frequencies). Fixing this requires a three-way temporal split (train / calibrate / test), which is not implemented.
+**The output is a step function.** Isotonic regression maps a range of raw scores to one value, and the ensemble averages two such maps. Many tickers therefore share exactly one `ml_confidence_score`, often a tenth of the universe or more on the top step, and the whole universe takes only a few hundred distinct values. Inside one step the raw scores carry no usable ordering: on a held-out period the raw score of the tickers on the top step separated winners from losers no better than chance. Treat tickers on the same value as tied.
+
+**What the value measures.** It is the probability of a rise above `PREDICTION_RETURN_THRESHOLD` within `PREDICTION_HORIZON_DAYS` trading days. That label favours volatile tickers, so a high score marks a likely large move, not a high expected return: on a held-out period the score ranked the 3% hit rate correctly (the top decile hit about four times as often as the bottom one) while its daily rank correlation with the 10-day return was negative.
 
 ### 5.4 Production Ensemble
 
@@ -299,7 +301,7 @@ count=184, mean=34.03, std=11.62, min=3.90, max=70.17
 `update_daily_ml_predictions()` therefore z-scores every fresh, well-covered date in full, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
 
 ### Calibration data leakage — `ml_training_engine.py`
-`CalibratedClassifierCV` calibrates probability outputs using the same data the base model was already fitted on. This inflates confidence score calibration quality. **Status:** a known limitation. Confidence scores are used as ranking signals only. A full fix requires a three-way temporal split.
+The headline PR-AUC is clean: its estimators never see the Calib or Test rows. The production ensemble is refitted on Train + Calib and its isotonic map is fitted on Calib again, so that map is fitted on rows the estimator was trained on. **Status:** a known limitation. The production probabilities are not an out-of-sample calibration, and the evaluated model is not the one that is saved.
 
 ### Class imbalance correction
 Hyperparameter search does not use `scoring='accuracy'`. Accuracy is a degenerate metric for imbalanced targets — a model predicting the majority class for every observation scores 73.8% accuracy while being completely useless.
@@ -540,16 +542,7 @@ The distribution of `ml_confidence_score` across the inference universe is monit
 
 ### Interpretation of Confidence Scores
 
-| Score range | Interpretation |
-|---|---|
-| 0–20 | Strong bearish signal relative to cross-section |
-| 20–35 | Below-average setup |
-| 35–45 | Neutral — near cross-sectional median |
-| 45–55 | Above-average setup |
-| 55–65 | Strong setup — top 10–15% of universe |
-| 65–100 | High conviction — top 5% of universe |
-
-These bands are calibrated to the current score distribution (mean ~34, std ~11.6). They should be recalibrated if the universe composition changes substantially.
+A score is the estimated chance, in percent, that the ticker rises more than `PREDICTION_RETURN_THRESHOLD` within `PREDICTION_HORIZON_DAYS` trading days. Compare it with the base rate (the share of rows that do, about a quarter to a third of the universe), not with 50: a score above the base rate means the model expects a large upward move more often than average. It is not a bullish or bearish strength and not an expected return (§5.3): volatile tickers score higher, and tickers on the same value are tied. The practical range depends on the trained model, so read the range of the current night's scores rather than fixed bands.
 
 ---
 
