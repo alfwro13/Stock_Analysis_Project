@@ -1664,6 +1664,49 @@ class TestSearchTicker:
 
 # ─── TestSingleton ────────────────────────────────────────────────────────────
 
+class TestInMemoryTzCache:
+    def test_yfinance_uses_in_memory_cache(self):
+        assert isinstance(yahoo_engine_module.yf_cache.get_tz_cache(), yahoo_engine_module._InMemoryTzCache)
+
+    def test_lookup_store_and_delete(self):
+        cache = yahoo_engine_module._InMemoryTzCache()
+        assert cache.lookup("AAA") is None
+        cache.store("AAA", "America/New_York")
+        assert cache.lookup("AAA") == "America/New_York"
+        cache.store("AAA", "Europe/London")
+        assert cache.lookup("AAA") == "Europe/London"
+        cache.store("AAA", None)
+        assert cache.lookup("AAA") is None
+        cache.store("AAA", None)
+
+    def test_threads_do_not_open_tz_db_file_descriptors(self):
+        import os
+
+        def open_tz_db_fds():
+            count = 0
+            for fd in os.listdir("/proc/self/fd"):
+                try:
+                    if os.readlink(f"/proc/self/fd/{fd}").endswith("tkr-tz.db"):
+                        count += 1
+                except OSError:
+                    continue
+            return count
+
+        def touch(i):
+            cache = yahoo_engine_module.yf_cache.get_tz_cache()
+            cache.store(f"FD{i}", "America/New_York")
+            assert cache.lookup(f"FD{i}") == "America/New_York"
+            cache.store(f"FD{i}", None)
+
+        before = open_tz_db_fds()
+        threads = [threading.Thread(target=touch, args=(i,)) for i in range(30)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(10)
+        assert open_tz_db_fds() <= before
+
+
 class TestSingleton:
 
     def test_module_level_instance_is_yahoo_engine_type(self):
