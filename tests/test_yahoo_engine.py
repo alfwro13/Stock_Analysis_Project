@@ -1666,8 +1666,7 @@ class TestSearchTicker:
 
 class TestInMemoryTzCache:
     def test_yfinance_uses_in_memory_cache(self):
-        from yfinance import cache as yf_cache
-        assert isinstance(yf_cache.get_tz_cache(), yahoo_engine_module._InMemoryTzCache)
+        assert isinstance(yahoo_engine_module.yf_cache.get_tz_cache(), yahoo_engine_module._InMemoryTzCache)
 
     def test_lookup_store_and_delete(self):
         cache = yahoo_engine_module._InMemoryTzCache()
@@ -1682,7 +1681,6 @@ class TestInMemoryTzCache:
 
     def test_threads_do_not_open_tz_db_file_descriptors(self):
         import os
-        from yfinance import cache as yf_cache
 
         def open_tz_db_fds():
             count = 0
@@ -1695,7 +1693,7 @@ class TestInMemoryTzCache:
             return count
 
         def touch(i):
-            cache = yf_cache.get_tz_cache()
+            cache = yahoo_engine_module.yf_cache.get_tz_cache()
             cache.store(f"FD{i}", "America/New_York")
             assert cache.lookup(f"FD{i}") == "America/New_York"
             cache.store(f"FD{i}", None)
